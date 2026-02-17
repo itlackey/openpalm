@@ -21,7 +21,7 @@ graph TB
     end
 
     subgraph Apps["Applications (Layer 2)"]
-        Gateway["Gateway<br/><small>:8080 — defense in depth</small>"]
+        Gateway["Gateway<br/><small>:8080 — auth + routing</small>"]
         OpenCode["OpenCode<br/><small>:4096 — agent runtime</small>"]
         OpenMemory["Open Memory<br/><small>:3000/:8765 — MCP</small>"]
         AdminApp["Admin App<br/><small>:8100 — admin API</small>"]
@@ -40,7 +40,7 @@ graph TB
         OpenCodeUI["OpenCode UI"]
     end
 
-    %% Channel flow — all through gateway
+    %% Channel flow — all through gateway, then to OpenCode via agent assignment
     Discord -->|HMAC signed| Gateway
     Voice -->|HMAC signed| Gateway
     Chat -->|HMAC signed| Gateway
@@ -54,8 +54,8 @@ graph TB
     LAN --> OpenMemory
     GW_Route --> Gateway
 
-    %% Core data flow
-    Gateway --> OpenCode
+    %% Core data flow — gateway forwards to OpenCode with agent assignment
+    Gateway -->|channel-intake agent| OpenCode
     OpenCode --> OpenMemory
 
     %% Admin flow
@@ -63,12 +63,10 @@ graph TB
     Controller -->|docker compose| Apps
 
     %% Storage connections
-    Gateway --> PSQL
     OpenMemory --> Qdrant
     OpenCode --> SharedFS
     OpenMemory --> SharedFS
     AdminApp --> SharedFS
-    Gateway --> SharedFS
 
     %% UI served via Caddy
     AdminUI -.-> AdminApp
@@ -99,8 +97,8 @@ Every box in the architecture is a distinct Docker container, except **Shared FS
 | `postgres` | `postgres:16-alpine` | assistant_net | Structured data storage |
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (MCP server) |
-| `opencode` | `./opencode` (build) | assistant_net | Agent runtime, LLM orchestration |
-| `gateway` | `./gateway` (build) | assistant_net | Channel processing, tool firewall, audit |
+| `opencode` | `./opencode` (build) | assistant_net | Agent runtime, LLM orchestration, permissions |
+| `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, agent routing, audit |
 | `admin-app` | `./admin-app` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via Docker socket |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
@@ -112,10 +110,10 @@ Every box in the architecture is a distinct Docker container, except **Shared FS
 
 ### Message processing (channel inbound)
 ```
-User -> Channel Adapter -> [HMAC sign + nonce] -> Gateway -> OpenCode -> Open Memory -> Response
+User -> Channel Adapter -> [HMAC sign + nonce] -> Gateway -> OpenCode (channel-intake agent) -> Agent Team -> Open Memory -> Response
 ```
 
-All channels are processed through the gateway as defense in depth. The gateway verifies HMAC signatures, checks replay protection, applies rate limiting, runs the tool firewall, and logs audit events.
+The gateway is a thin auth and routing layer. It verifies HMAC signatures, checks replay protection, applies rate limiting, logs audit events, and forwards requests to OpenCode with the appropriate agent assignment. Channel requests use the `channel-intake` agent which has a restricted toolset (no shell, no editing, no web) — it validates and summarizes the request before dispatching to the full agent team.
 
 ### Admin operations
 ```
@@ -144,17 +142,19 @@ The admin app provides the API for all admin functions:
 
 | Store | Used by | Purpose |
 |---|---|---|
-| PostgreSQL | Gateway | Structured data, sessions |
+| PostgreSQL | Admin App | Structured data |
 | Qdrant | Open Memory | Vector embeddings for memory search |
-| Shared FS (`/shared`) | OpenCode, Open Memory, Admin App, Gateway | Shared file storage across services |
+| Shared FS (`/shared`) | OpenCode, Open Memory, Admin App | Shared file storage across services |
 
-## Security model
+## Security model — defense in depth
 
-1. **Caddy** enforces LAN-only access for admin and dashboard URLs
-2. **Gateway** is the single entry point for all channel traffic (defense in depth)
-3. **HMAC signatures** + nonce/timestamp verify channel adapter identity and prevent replay
-4. **Tool firewall** classifies and gates tool usage (safe/medium/high risk tiers)
-5. **Admin step-up auth** required for destructive operations
-6. **Controller** has the Docker socket — no other service needs it
-7. **Rate limiting** at gateway message ingress (120 req/min per user)
-8. **Secret detection** blocks memory writes containing sensitive data
+Security is enforced at multiple layers, each with a distinct responsibility:
+
+1. **Caddy** — Network-level access control. LAN-only restriction for admin/dashboard URLs. TLS termination. Non-LAN requests to restricted paths are TCP-aborted.
+2. **Gateway** — Thin auth and routing layer. HMAC signature verification, nonce-based replay protection, rate limiting (120 req/min/user), audit logging. Assigns specialized agents when forwarding to OpenCode.
+3. **OpenCode permissions** — Agent-level capability control. The `channel-intake` agent has `bash: deny`, `edit: deny`, `webfetch: deny`. The default agent gates all capabilities behind `ask` approval.
+4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call.
+5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
+6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.
+7. **Admin step-up auth** — Dual-token model for admin operations, with step-up required for destructive actions.
+8. **Controller isolation** — Only the controller container has the Docker socket.

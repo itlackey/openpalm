@@ -72,19 +72,14 @@ services:
     environment:
       - PORT=8080
       - OPENCODE_BASE_URL=http://opencode:4096
-      - OPENMEMORY_MCP_URL=http://openmemory:8765/mcp/gateway/sse/default-user
-      - OPENMEMORY_API_URL=http://openmemory:8765
-      - TOOL_NETWORK_ALLOWLIST=${TOOL_NETWORK_ALLOWLIST:-example.com,api.open-meteo.com}
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
       - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-openpalm}:${POSTGRES_PASSWORD:-change-me-pg-password}@postgres:5432/${POSTGRES_DB:-openpalm}
     volumes:
       - ${DATA_DIR:-./data}/gateway:/app/data
-      - ${DATA_DIR:-./data}/shared:/shared
     networks: [assistant_net]
-    depends_on: [opencode, openmemory, postgres]
+    depends_on: [opencode]
 
   admin-app:
     build: ./admin-app
