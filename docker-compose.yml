@@ -9,9 +9,9 @@ services:
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${DATA_DIR:-./data}/caddy_data:/data
-      - ${DATA_DIR:-./data}/caddy_config:/config
+      - ${OPENPALM_CONFIG_HOME}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${OPENPALM_DATA_HOME}/caddy:/data
+      - ${OPENPALM_STATE_HOME}/caddy:/config
     networks: [assistant_net]
     depends_on: [gateway, admin-app]
 
@@ -26,14 +26,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-openpalm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-pg-password}
     volumes:
-      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+      - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data
     networks: [assistant_net]
 
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
     volumes:
-      - ${DATA_DIR:-./data}/qdrant:/qdrant/storage
+      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage
     networks: [assistant_net]
 
   # ============================================================
@@ -44,8 +44,8 @@ services:
     restart: unless-stopped
     ports: ["3000:3000", "8765:8765"]
     volumes:
-      - ${DATA_DIR:-./data}/openmemory:/data
-      - ${DATA_DIR:-./data}/shared:/shared
+      - ${OPENPALM_DATA_HOME}/openmemory:/data
+      - ${OPENPALM_DATA_HOME}/shared:/shared
     networks: [assistant_net]
     depends_on: [qdrant]
 
@@ -59,9 +59,10 @@ services:
       - OPENCODE_PORT=4096
     ports: ["4096:4096"]
     volumes:
-      - ./config/opencode-core:/config
-      - ${DATA_DIR:-./data}/opencode:/state
-      - ${DATA_DIR:-./data}/shared:/shared
+      - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
+      - ${OPENPALM_STATE_HOME}/opencode-core:/state
+      - ${OPENPALM_STATE_HOME}/workspace:/work
+      - ${OPENPALM_DATA_HOME}/shared:/shared
     working_dir: /work
     networks: [assistant_net]
     depends_on: [openmemory]
@@ -75,9 +76,9 @@ services:
       - OPENCODE_PROFILE=channel
       - OPENCODE_PORT=4097
     volumes:
-      - ./config/opencode-channel:/config
-      - ${DATA_DIR:-./data}/opencode-channel:/state
-      - ${DATA_DIR:-./data}/shared:/shared
+      - ${OPENPALM_CONFIG_HOME}/opencode-channel:/config
+      - ${OPENPALM_STATE_HOME}/opencode-channel:/state
+      - ${OPENPALM_DATA_HOME}/shared:/shared
     working_dir: /work
     networks: [assistant_net]
     depends_on: [openmemory]
@@ -95,7 +96,7 @@ services:
       - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
     volumes:
-      - ${DATA_DIR:-./data}/gateway:/app/data
+      - ${OPENPALM_STATE_HOME}/gateway:/app/data
     networks: [assistant_net]
     depends_on: [opencode-core, opencode-channel]
 
@@ -114,15 +115,15 @@ services:
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - GATEWAY_URL=http://gateway:8080
-      - CADDYFILE_PATH=/app/config/Caddyfile
+      - CADDYFILE_PATH=/app/config/caddy/Caddyfile
       - CHANNEL_ENV_DIR=/app/channel-env
     volumes:
-      - ./config/opencode-core:/app/config/opencode-core
-      - ./caddy/Caddyfile:/app/config/Caddyfile
-      - ./config/channel-env:/app/channel-env
+      - ${OPENPALM_CONFIG_HOME}/opencode-core:/app/config/opencode-core
+      - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
+      - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env
       - ./admin-ui:/app/admin-ui:ro
-      - ${DATA_DIR:-./data}/admin-app:/app/data
-      - ${DATA_DIR:-./data}/shared:/shared
+      - ${OPENPALM_DATA_HOME}/admin-app:/app/data
+      - ${OPENPALM_DATA_HOME}/shared:/shared
     networks: [assistant_net]
     depends_on: [controller]
 
@@ -147,7 +148,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ./config/channel-env/channel-chat.env
+      - ${OPENPALM_CONFIG_HOME}/channels/channel-chat.env
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
@@ -160,7 +161,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ./config/channel-env/channel-discord.env
+      - ${OPENPALM_CONFIG_HOME}/channels/channel-discord.env
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
@@ -173,7 +174,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ./config/channel-env/channel-voice.env
+      - ${OPENPALM_CONFIG_HOME}/channels/channel-voice.env
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
@@ -186,7 +187,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ./config/channel-env/channel-telegram.env
+      - ${OPENPALM_CONFIG_HOME}/channels/channel-telegram.env
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
