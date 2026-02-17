@@ -48,7 +48,7 @@ services:
     networks: [assistant_net]
     depends_on: [qdrant]
 
-  opencode:
+  opencode-core:
     build: ./opencode
     restart: unless-stopped
     environment:
@@ -66,12 +66,31 @@ services:
     networks: [assistant_net]
     depends_on: [openmemory]
 
+  opencode-channel:
+    build: ./opencode
+    restart: unless-stopped
+    environment:
+      - OPENCODE_CONFIG=/config/opencode.channel.jsonc
+    volumes:
+      - ./opencode/opencode.channel.jsonc:/config/opencode.channel.jsonc:ro
+      - ./opencode/AGENTS.md:/work/AGENTS.md:ro
+      - ./opencode/skills:/work/skills:ro
+      - ./opencode/.opencode:/work/.opencode:ro
+      - ${DATA_DIR:-./data}/opencode-channel:/state
+      - ${DATA_DIR:-./data}/shared:/shared
+    working_dir: /work
+    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4097"]
+    networks: [assistant_net]
+    depends_on: [openmemory]
+
   gateway:
     build: ./gateway
     restart: unless-stopped
     environment:
       - PORT=8080
-      - OPENCODE_BASE_URL=http://opencode:4096
+      - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
+      - OPENCODE_CHANNEL_BASE_URL=http://opencode-channel:4097
+      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
       - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
@@ -79,7 +98,7 @@ services:
     volumes:
       - ${DATA_DIR:-./data}/gateway:/app/data
     networks: [assistant_net]
-    depends_on: [opencode]
+    depends_on: [opencode-core, opencode-channel]
 
   admin-app:
     build: ./admin-app
@@ -96,8 +115,12 @@ services:
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - GATEWAY_URL=http://gateway:8080
+      - CADDYFILE_PATH=/app/config/Caddyfile
+      - CHANNEL_ENV_DIR=/app/channel-env
     volumes:
       - ./opencode/opencode.jsonc:/app/config/opencode.jsonc
+      - ./caddy/Caddyfile:/app/config/Caddyfile
+      - ./config/channel-env:/app/channel-env
       - ./admin-ui:/app/admin-ui:ro
       - ${DATA_DIR:-./data}/admin-app:/app/data
       - ${DATA_DIR:-./data}/shared:/shared
@@ -124,11 +147,12 @@ services:
     build: ./channels/chat
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-chat.env
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
-      - CHAT_INBOUND_TOKEN=${CHAT_INBOUND_TOKEN:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -136,12 +160,12 @@ services:
     build: ./channels/discord
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-discord.env
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
-      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -149,6 +173,8 @@ services:
     build: ./channels/voice
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-voice.env
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
@@ -160,12 +186,12 @@ services:
     build: ./channels/telegram
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-telegram.env
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
     networks: [assistant_net]
     depends_on: [gateway]
 

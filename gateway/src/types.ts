@@ -1,10 +1,3 @@
-export type MessageRequest = {
-  userId: string;
-  sessionId?: string;
-  text: string;
-  metadata?: Record<string, unknown>;
-};
-
 export type ChannelMessage = {
   userId: string;
   channel: string;

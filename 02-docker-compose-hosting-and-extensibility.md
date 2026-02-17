@@ -120,7 +120,7 @@ Gateway emits spans/metrics; OpenCode/OpenMemory logs ship to your aggregator.
 A channel container should only:
 1) receive message/webhook
 2) normalize to `{userId, channel, text, attachments, metadata}`
-3) `POST /message` to the Gateway
+3) `POST /channel/inbound` to the Gateway via channel adapter
 4) return response to the channel
 
 ### Add a channel to Compose

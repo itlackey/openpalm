@@ -20,6 +20,15 @@ const CONTROLLER_URL = Bun.env.CONTROLLER_URL;
 const CONTROLLER_TOKEN = Bun.env.CONTROLLER_TOKEN ?? "";
 const AUTO_APPROVE_EXTENSIONS = (Bun.env.AUTO_APPROVE_EXTENSIONS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
+const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
+const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
+const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
+const CHANNEL_ENV_KEYS: Record<string, string[]> = {
+  "channel-chat": ["CHAT_INBOUND_TOKEN"],
+  "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
+  "channel-voice": [],
+  "channel-telegram": ["TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_TOKEN"]
+};
 
 const extQueue = new ExtensionQueue(EXT_REQUESTS_PATH);
 const setupManager = new SetupManager(DATA_DIR);
@@ -64,6 +73,63 @@ function updateConfigAtomically(mutator: (raw: string) => string) {
   const backup = snapshotFile(OPENCODE_CONFIG_PATH);
   writeFileSync(OPENCODE_CONFIG_PATH, mutator(raw), "utf8");
   return { backup };
+}
+
+
+function detectChannelAccess(channel: "chat" | "voice"): "lan" | "public" {
+  const raw = readFileSync(CADDYFILE_PATH, "utf8");
+  const block = raw.match(new RegExp(`handle \/${channel}\/\* \{[\s\S]*?\n\}`, "m"))?.[0] ?? "";
+  return block.includes("@lan remote_ip") ? "lan" : "public";
+}
+
+function setChannelAccess(channel: "chat" | "voice", access: "lan" | "public") {
+  const raw = readFileSync(CADDYFILE_PATH, "utf8");
+  const blockRegex = new RegExp(`handle \/${channel}\/\* \{[\s\S]*?\n\}`, "m");
+  const replacement = access === "lan"
+    ? [
+      `handle /${channel}/* {`,
+      `\t\t@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8`,
+      `\t\tabort @not_lan`,
+      `\t\treverse_proxy channel-${channel}:818${channel === "chat" ? "1" : "3"}`,
+      `\t}`
+    ].join("\n")
+    : [
+      `handle /${channel}/* {`,
+      `\t\treverse_proxy channel-${channel}:818${channel === "chat" ? "1" : "3"}`,
+      `\t}`
+    ].join("\n");
+
+  if (!blockRegex.test(raw)) throw new Error(`missing_${channel}_route_block`);
+  writeFileSync(CADDYFILE_PATH, raw.replace(blockRegex, replacement), "utf8");
+}
+
+function channelEnvPath(service: string) {
+  return `${CHANNEL_ENV_DIR}/${service}.env`;
+}
+
+function readChannelConfig(service: string) {
+  const keys = CHANNEL_ENV_KEYS[service] ?? [];
+  const path = channelEnvPath(service);
+  const cfg: Record<string, string> = {};
+  for (const k of keys) cfg[k] = "";
+  if (!existsSync(path)) return cfg;
+  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    if (!line || line.startsWith("#") || !line.includes("=")) continue;
+    const [k, ...rest] = line.split("=");
+    if (keys.includes(k.trim())) cfg[k.trim()] = rest.join("=").trim();
+  }
+  return cfg;
+}
+
+function writeChannelConfig(service: string, values: Record<string, string>) {
+  const keys = CHANNEL_ENV_KEYS[service] ?? [];
+  const lines = ["# Channel-specific overrides managed by admin UI"];
+  for (const k of keys) {
+    const v = String(values[k] ?? "").replace(/\n/g, "").trim();
+    lines.push(`${k}=${v}`);
+  }
+  writeFileSync(channelEnvPath(service), lines.join("\n") + "\n", "utf8");
 }
 
 async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: string; error?: string }> {
@@ -164,7 +230,7 @@ const server = Bun.serve({
 
           if (item.installAction === "plugin") {
             const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, true);
-            await controllerAction("restart", "opencode", `gallery install: ${item.name}`);
+            await controllerAction("restart", "opencode-core", `gallery install: ${item.name}`);
             setupManager.addExtension(item.id);
             return cors(json(200, { ok: true, installed: item.id, type: "plugin", result }));
           }
@@ -202,7 +268,7 @@ const server = Bun.serve({
           });
 
           const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, true);
-          await controllerAction("restart", "opencode", `npm plugin install: ${body.pluginId}`);
+          await controllerAction("restart", "opencode-core", `npm plugin install: ${body.pluginId}`);
           item.status = "applied";
           extQueue.upsert(item);
           return cors(json(200, { ok: true, item, result }));
@@ -221,7 +287,7 @@ const server = Bun.serve({
           if (!item) return cors(json(404, { error: "gallery item not found" }));
           if (item.installAction === "plugin") {
             const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, false);
-            await controllerAction("restart", "opencode", `gallery uninstall: ${item.name}`);
+            await controllerAction("restart", "opencode-core", `gallery uninstall: ${item.name}`);
             return cors(json(200, { ok: true, uninstalled: item.id, type: "plugin", result }));
           }
           if (item.installAction === "compose-service") {
@@ -234,7 +300,7 @@ const server = Bun.serve({
         if (body.pluginId) {
           if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
           const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, false);
-          await controllerAction("restart", "opencode", `plugin uninstall: ${body.pluginId}`);
+          await controllerAction("restart", "opencode-core", `plugin uninstall: ${body.pluginId}`);
           return cors(json(200, { ok: true, action: "disabled", result }));
         }
 
@@ -288,6 +354,45 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
 
+      if (url.pathname === "/admin/channels" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        return cors(json(200, {
+          channels: CHANNEL_SERVICES.map((service) => ({
+            service,
+            access: service === "channel-chat" ? detectChannelAccess("chat") : service === "channel-voice" ? detectChannelAccess("voice") : "lan",
+            config: readChannelConfig(service)
+          }))
+        }));
+      }
+
+      if (url.pathname === "/admin/channels/access" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
+        const body = (await req.json()) as { channel: "chat" | "voice"; access: "lan" | "public" };
+        if (!["chat", "voice"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
+        if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
+        setChannelAccess(body.channel, body.access);
+        await controllerAction("restart", "caddy", `channel ${body.channel} access ${body.access}`);
+        return cors(json(200, { ok: true, channel: body.channel, access: body.access }));
+      }
+
+      if (url.pathname === "/admin/channels/config" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const service = url.searchParams.get("service") ?? "";
+        if (!CHANNEL_SERVICES.includes(service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
+        return cors(json(200, { service, config: readChannelConfig(service) }));
+      }
+
+      if (url.pathname === "/admin/channels/config" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
+        const body = (await req.json()) as { service: string; config: Record<string, string>; restart?: boolean };
+        if (!CHANNEL_SERVICES.includes(body.service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
+        writeChannelConfig(body.service, body.config ?? {});
+        if (body.restart ?? true) await controllerAction("restart", body.service, "channel config update");
+        return cors(json(200, { ok: true, service: body.service }));
+      }
+
       // ── Extension lifecycle (original API) ────────────────────────
       if (url.pathname === "/admin/extensions/request" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
@@ -309,7 +414,7 @@ const server = Bun.serve({
         });
         if (autoApproved) {
           const applied = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.pluginId, true);
-          await controllerAction("restart", "opencode", "auto-approved extension");
+          await controllerAction("restart", "opencode-core", "auto-approved extension");
           item.status = "applied";
           extQueue.upsert(item);
           return cors(json(200, { ok: true, item, applied }));
@@ -330,7 +435,7 @@ const server = Bun.serve({
         if (!ext) return cors(json(404, { error: "request_not_found" }));
         if (ext.status !== "pending" && ext.status !== "approved") return cors(json(400, { error: "invalid_state", status: ext.status }));
         const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, ext.pluginId, true);
-        await controllerAction("restart", "opencode", "extension applied");
+        await controllerAction("restart", "opencode-core", "extension applied");
         ext.status = "applied";
         extQueue.upsert(ext);
         return cors(json(200, { ok: true, ext, result }));
@@ -342,7 +447,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { pluginId: string };
         if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
         const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, false);
-        await controllerAction("restart", "opencode", "extension disabled");
+        await controllerAction("restart", "opencode-core", "extension disabled");
         return cors(json(200, { ok: true, action: "disabled", result }));
       }
 
@@ -362,7 +467,7 @@ const server = Bun.serve({
         if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "policy lint failed: permission widening blocked" }));
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
-        if (body.restart ?? true) await controllerAction("restart", "opencode", "config update");
+        if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");
         return cors(json(200, { ok: true, backup }));
       }
 
@@ -401,7 +506,7 @@ const server = Bun.serve({
           return stringifyPretty({ ...doc, plugin: [...plugins] });
         });
         registerBundleState(CHANGE_STATE_DIR, { id: body.bundleId, stage: "applied", backup: outcome.backup, appliedAt: new Date().toISOString() });
-        if (body.restart ?? true) await controllerAction("restart", "opencode", "change bundle applied");
+        if (body.restart ?? true) await controllerAction("restart", "opencode-core", "change bundle applied");
         return cors(json(200, { ok: true, backup: outcome.backup }));
       }
 
@@ -411,7 +516,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { backupPath: string; restart?: boolean };
         const backup = readFileSync(body.backupPath, "utf8");
         writeFileSync(OPENCODE_CONFIG_PATH, backup, "utf8");
-        if (body.restart ?? true) await controllerAction("restart", "opencode", "config rollback");
+        if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config rollback");
         return cors(json(200, { ok: true, restoredFrom: body.backupPath }));
       }
 

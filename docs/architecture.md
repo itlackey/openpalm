@@ -15,14 +15,15 @@ graph TB
 
     subgraph Caddy["Caddy Reverse Proxy (:80/:443)"]
         direction LR
-        Public["/chat, /voice<br/><small>optional public</small>"]
+        Public["/chat, /voice<br/><small>LAN by default; optional public</small>"]
         LAN["/admin, /opencode, /openmemory<br/><small>LAN only</small>"]
-        GW_Route["/message, /health, /channel/*"]
+        GW_Route["/health, /channel/*"]
     end
 
     subgraph Apps["Applications (Layer 2)"]
         Gateway["Gateway<br/><small>:8080 — auth + routing</small>"]
-        OpenCode["OpenCode<br/><small>:4096 — agent runtime</small>"]
+        OpenCodeCore["OpenCode Core<br/><small>:4096 — full agent runtime</small>"]
+        OpenCodeChannel["OpenCode Channel<br/><small>:4097 — isolated intake runtime</small>"]
         OpenMemory["Open Memory<br/><small>:3000/:8765 — MCP</small>"]
         AdminApp["Admin App<br/><small>:8100 — admin API</small>"]
         Controller["Controller<br/><small>:8090 — container lifecycle</small>"]
@@ -40,7 +41,7 @@ graph TB
         OpenCodeUI["OpenCode UI"]
     end
 
-    %% Channel flow — all through gateway, then to OpenCode via agent assignment
+    %% Channel flow — all through gateway, then intake validation before core forwarding
     Discord -->|HMAC signed| Gateway
     Voice -->|HMAC signed| Gateway
     Chat -->|HMAC signed| Gateway
@@ -50,13 +51,16 @@ graph TB
     Public --> Chat
     Public --> Voice
     LAN --> AdminApp
-    LAN --> OpenCode
+    LAN --> OpenCodeCore
     LAN --> OpenMemory
     GW_Route --> Gateway
 
-    %% Core data flow — gateway forwards to OpenCode with agent assignment
-    Gateway -->|channel-intake agent| OpenCode
-    OpenCode --> OpenMemory
+    %% Core data flow — gateway validates/summarizes via channel runtime, then forwards to core runtime
+    Gateway -->|/channel/inbound (validate + summarize)| OpenCodeChannel
+    OpenCodeChannel -->|valid summary| Gateway
+    Gateway -->|forward validated summary| OpenCodeCore
+    OpenCodeCore --> OpenMemory
+    OpenCodeChannel --> OpenMemory
 
     %% Admin flow
     AdminApp --> Controller
@@ -64,14 +68,15 @@ graph TB
 
     %% Storage connections
     OpenMemory --> Qdrant
-    OpenCode --> SharedFS
+    OpenCodeCore --> SharedFS
+    OpenCodeChannel --> SharedFS
     OpenMemory --> SharedFS
     AdminApp --> SharedFS
 
     %% UI served via Caddy
     AdminUI -.-> AdminApp
     OpenMemoryUI -.-> OpenMemory
-    OpenCodeUI -.-> OpenCode
+    OpenCodeUI -.-> OpenCodeCore
 
     %% Styling
     classDef channel fill:#4a9eff,color:#fff,stroke:#2d7cd6
@@ -81,7 +86,7 @@ graph TB
     classDef ui fill:#8e8e93,color:#fff,stroke:#636366
 
     class Discord,Voice,Chat,Telegram channel
-    class Gateway,OpenCode,OpenMemory,AdminApp,Controller app
+    class Gateway,OpenCodeCore,OpenCodeChannel,OpenMemory,AdminApp,Controller app
     class PSQL,Qdrant,SharedFS storage
     class Public,LAN,GW_Route proxy
     class AdminUI,OpenMemoryUI,OpenCodeUI ui
@@ -97,8 +102,9 @@ Every box in the architecture is a distinct Docker container, except **Shared FS
 | `postgres` | `postgres:16-alpine` | assistant_net | Structured data storage |
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (MCP server) |
-| `opencode` | `./opencode` (build) | assistant_net | Agent runtime, LLM orchestration, permissions |
-| `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, agent routing, audit |
+| `opencode-core` | `./opencode` (build) | assistant_net | Primary agent runtime, full approvals/skills |
+| `opencode-channel` | `./opencode` (build) | assistant_net | Isolated channel runtime, locked-down permissions |
+| `gateway` | `./gateway` (build) | assistant_net | Minimal channel auth, rate limiting, runtime routing, audit |
 | `admin-app` | `./admin-app` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via Docker socket |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
@@ -110,10 +116,15 @@ Every box in the architecture is a distinct Docker container, except **Shared FS
 
 ### Message processing (channel inbound)
 ```
-User -> Channel Adapter -> [HMAC sign + nonce] -> Gateway -> OpenCode (channel-intake agent) -> Agent Team -> Open Memory -> Response
+User -> Channel Adapter -> [HMAC sign] -> Gateway -> OpenCode Channel Runtime -> Open Memory -> Response
 ```
 
-The gateway is a thin auth and routing layer. It verifies HMAC signatures, checks replay protection, applies rate limiting, logs audit events, and forwards requests to OpenCode with the appropriate agent assignment. Channel requests use the `channel-intake` agent which has a restricted toolset (no shell, no editing, no web) — it validates and summarizes the request before dispatching to the full agent team.
+The gateway is intentionally thin. It verifies HMAC signatures from channel adapters, applies rate limiting, logs audit events, and routes traffic to the correct OpenCode runtime.
+
+- `opencode-channel` handles `/channel/inbound` with deny-by-default tool permissions.
+- `opencode-core` handles validated summaries from gateway and admin/operator-driven traffic with standard approval gates.
+
+This separation relies on OpenCode's built-in permission model for isolation rather than duplicating complex security logic in the gateway.
 
 ### Admin operations
 ```
@@ -129,12 +140,11 @@ The admin app provides the API for all admin functions:
 
 | URL Path | Target | Access |
 |---|---|---|
-| `/chat` | channel-chat:8181 | Optional public |
-| `/voice` | channel-voice:8183 | Optional public |
+| `/chat` | channel-chat:8181 | LAN by default (public toggle in Admin UI) |
+| `/voice` | channel-voice:8183 | LAN by default (public toggle in Admin UI) |
 | `/admin/*` | admin-app:8100 | LAN only |
-| `/opencode/*` | opencode:4096 | LAN only |
+| `/opencode/*` | opencode-core:4096 | LAN only |
 | `/openmemory/*` | openmemory:3000 | LAN only |
-| `/message` | gateway:8080 | Via Caddy |
 | `/health` | gateway:8080 | Via Caddy |
 | `/channel/*` | gateway:8080 | Via Caddy |
 
@@ -151,8 +161,8 @@ The admin app provides the API for all admin functions:
 Security is enforced at multiple layers, each with a distinct responsibility:
 
 1. **Caddy** — Network-level access control. LAN-only restriction for admin/dashboard URLs. TLS termination. Non-LAN requests to restricted paths are TCP-aborted.
-2. **Gateway** — Thin auth and routing layer. HMAC signature verification, nonce-based replay protection, rate limiting (120 req/min/user), audit logging. Assigns specialized agents when forwarding to OpenCode.
-3. **OpenCode permissions** — Agent-level capability control. The `channel-intake` agent has `bash: deny`, `edit: deny`, `webfetch: deny`. The default agent gates all capabilities behind `ask` approval.
+2. **Gateway** — Thin auth and routing layer. HMAC signature verification, lightweight rate limiting (120 req/min/user), and audit logging. Routes requests to isolated OpenCode runtimes.
+3. **OpenCode runtime isolation** — `opencode-channel` is a dedicated runtime with deny-by-default permissions; `opencode-core` remains the full runtime with approval gates.
 4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call.
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.

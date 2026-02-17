@@ -4,12 +4,17 @@
 }
 
 :80 {
-	# --- Public channels (optional, can be disabled) ---
+	@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
+	@not_lan not remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
+
+	# --- Channel ingress (LAN by default; public can be enabled from admin UI) ---
 	handle /chat/* {
+		abort @not_lan
 		reverse_proxy channel-chat:8181
 	}
 
 	handle /voice/* {
+		abort @not_lan
 		reverse_proxy channel-voice:8183
 	}
 
@@ -18,30 +23,23 @@
 		reverse_proxy gateway:8080
 	}
 
-	# --- Core gateway (message processing, health) ---
-	handle /message {
-		reverse_proxy gateway:8080
-	}
-
+	# --- Core gateway (channel intake + health) ---
 	handle /health {
 		reverse_proxy gateway:8080
 	}
 
 	# --- LAN-only dashboards and admin ---
 	handle /admin* {
-		@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
 		abort @not_lan
 		reverse_proxy admin-app:8100
 	}
 
 	handle /opencode* {
-		@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
 		abort @not_lan
-		reverse_proxy opencode:4096
+		reverse_proxy opencode-core:4096
 	}
 
 	handle /openmemory* {
-		@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
 		abort @not_lan
 		reverse_proxy openmemory:3000
 	}

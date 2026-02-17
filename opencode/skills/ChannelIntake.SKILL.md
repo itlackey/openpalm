@@ -34,12 +34,14 @@ telegram) before they reach the full agent team.
 
 ## Response format
 
-When handing off to the agent team, structure your output as:
+Return strict JSON only (no markdown, no extra text):
 
+```json
+{"valid": true, "summary": "<concise handoff>", "reason": ""}
 ```
-Channel: <channel name>
-User: <userId>
-Intent: <one-line summary>
-Context: <recalled memories or "none">
-Request: <the original message>
+
+For rejected requests:
+
+```json
+{"valid": false, "summary": "", "reason": "<why rejected>"}
 ```

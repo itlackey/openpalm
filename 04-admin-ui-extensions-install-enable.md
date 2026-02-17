@@ -135,7 +135,7 @@ If OpenCode does not natively accept URL/Git in `plugin[]`, implement a **resolv
 Your channel container is a dumb adapter:
 - receive message
 - normalize payload
-- POST to Gateway `/message`
+- POST to Gateway `/channel/inbound`
 - return response
 
 ### B) What the plugin provides
