@@ -1,0 +1,95 @@
+services:
+  openmemory:
+    image: skpassegna/openmemory-mcp:latest
+    restart: unless-stopped
+    ports: ["3000:3000", "8765:8765"]
+    volumes:
+      - ${DATA_DIR:-./data}/openmemory:/data
+    networks: [assistant_net]
+
+  opencode:
+    build: ./opencode
+    restart: unless-stopped
+    environment:
+      - OPENCODE_CONFIG=/config/opencode.jsonc
+    ports: ["4096:4096"]
+    volumes:
+      - ./opencode/opencode.jsonc:/config/opencode.jsonc:ro
+      - ./opencode/AGENTS.md:/work/AGENTS.md:ro
+      - ./opencode/skills:/work/skills:ro
+      - ./opencode/.opencode:/work/.opencode:ro
+      - ${DATA_DIR:-./data}/opencode:/state
+    working_dir: /work
+    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+    networks: [assistant_net]
+    depends_on: [openmemory]
+
+  compose-control:
+    build: ./compose-control
+    restart: unless-stopped
+    environment:
+      - PORT=8090
+      - COMPOSE_CONTROL_TOKEN=${COMPOSE_CONTROL_TOKEN:-change-me-compose-control}
+      - COMPOSE_PROJECT_PATH=/workspace
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace
+    networks: [assistant_net]
+
+  gateway:
+    build: ./gateway
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - OPENCODE_BASE_URL=http://opencode:4096
+      - OPENMEMORY_MCP_URL=http://openmemory:8765/mcp/gateway/sse/default-user
+      - OPENMEMORY_API_URL=http://openmemory:8765
+      - TOOL_NETWORK_ALLOWLIST=${TOOL_NETWORK_ALLOWLIST:-example.com,api.open-meteo.com}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
+      - ADMIN_STEP_UP_TOKEN=${ADMIN_STEP_UP_TOKEN:-change-me-step-up}
+      - AUTO_APPROVE_EXTENSIONS=${AUTO_APPROVE_EXTENSIONS:-}
+      - CHANGE_BUNDLE_DIR=/app/data/bundles
+      - CHANGE_STATE_DIR=/app/data/change-states
+      - EXT_REQUESTS_PATH=/app/data/extension-requests.json
+      - OPENCODE_CONFIG_PATH=/app/config/opencode.jsonc
+      - COMPOSE_CONTROL_URL=http://compose-control:8090
+      - COMPOSE_CONTROL_TOKEN=${COMPOSE_CONTROL_TOKEN:-change-me-compose-control}
+      - CHANNEL_WEBHOOK_SECRET=${CHANNEL_WEBHOOK_SECRET:-}
+      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
+    ports: ["8080:8080"]
+    volumes:
+      - ./opencode/opencode.jsonc:/app/config/opencode.jsonc
+      - ./admin-ui:/app/admin-ui:ro
+      - ${DATA_DIR:-./data}/gateway:/app/data
+    networks: [assistant_net]
+    depends_on: [opencode, openmemory, compose-control]
+
+  channel-webhook:
+    build: ./channels/webhook
+    restart: unless-stopped
+    profiles: ["channels"]
+    environment:
+      - PORT=8181
+      - GATEWAY_URL=http://gateway:8080
+      - CHANNEL_WEBHOOK_SECRET=${CHANNEL_WEBHOOK_SECRET:-}
+      - WEBHOOK_INBOUND_TOKEN=${WEBHOOK_INBOUND_TOKEN:-}
+    ports: ["8181:8181"]
+    networks: [assistant_net]
+    depends_on: [gateway]
+
+  channel-telegram:
+    build: ./channels/telegram
+    restart: unless-stopped
+    profiles: ["channels"]
+    environment:
+      - PORT=8182
+      - GATEWAY_URL=http://gateway:8080
+      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+    ports: ["8182:8182"]
+    networks: [assistant_net]
+    depends_on: [gateway]
+
+networks:
+  assistant_net:

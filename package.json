@@ -1,0 +1,15 @@
+{
+  "name": "openpalm",
+  "private": true,
+  "workspaces": [
+    "gateway",
+    "compose-control",
+    "channels/webhook",
+    "channels/telegram"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsc -b",
+    "admin:extensions": "bun run scripts/extensions-cli.ts"
+  }
+}
