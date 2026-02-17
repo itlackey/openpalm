@@ -1,86 +1,556 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OpenPalm Admin Dashboard</title>
-  <style>
-    body { font-family: system-ui, Arial; margin: 2rem auto; max-width: 900px; padding: 0 1rem; }
-    .card { border:1px solid #ddd; border-radius:8px; padding:1rem; margin-bottom:1rem; }
-    pre { background:#111; color:#eee; padding:1rem; border-radius:8px; overflow-x:auto; }
-    h1 { border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OpenPalm Admin</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#242836;--border:#2e3348;--text:#e4e6f0;--muted:#8b8fa3;--accent:#6366f1;--accent2:#818cf8;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--purple:#a855f7;--radius:8px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5}
+a{color:var(--accent2)}
+button{cursor:pointer;font:inherit;border:none;border-radius:var(--radius);padding:.5rem 1rem;background:var(--accent);color:#fff;transition:opacity .15s}
+button:hover{opacity:.85}
+button:disabled{opacity:.4;cursor:default}
+button.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+button.danger{background:var(--red)}
+button.sm{padding:.3rem .7rem;font-size:13px}
+input,select{font:inherit;padding:.45rem .7rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);width:100%}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.container{max-width:960px;margin:0 auto;padding:1rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;margin-bottom:1rem}
+.card h3{margin:0 0 .5rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+@media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;color:#fff}
+.badge-low{background:var(--green)}.badge-medium{background:var(--yellow);color:#000}.badge-high{background:var(--red)}.badge-critical{background:var(--purple)}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;background:var(--surface2);color:var(--muted);margin:0 3px 3px 0}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+.dot-ok{background:var(--green)}.dot-err{background:var(--red)}.dot-warn{background:var(--yellow)}
+.muted{color:var(--muted)}
+.mb{margin-bottom:1rem}
+.hidden{display:none!important}
+/* nav */
+nav{background:var(--surface);border-bottom:1px solid var(--border);padding:.7rem 1rem;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:10}
+nav .logo{font-weight:700;font-size:18px;color:var(--accent2);margin-right:auto}
+nav button{background:transparent;color:var(--muted);padding:.3rem .8rem;border:1px solid transparent;font-size:14px}
+nav button.active{color:var(--text);border-color:var(--accent);background:var(--surface2)}
+/* setup wizard */
+.wizard-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
+.wizard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:640px;width:95%}
+.wizard h2{margin:0 0 .3rem}
+.wizard .steps{display:flex;gap:.5rem;margin:1rem 0}
+.wizard .step-dot{width:12px;height:12px;border-radius:50%;background:var(--border)}
+.wizard .step-dot.done{background:var(--green)}
+.wizard .step-dot.current{background:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.3)}
+.wizard .body{min-height:180px;margin:1rem 0}
+.wizard .actions{display:flex;gap:.5rem;justify-content:flex-end}
+/* detail modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:90}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:560px;width:95%;max-height:80vh;overflow-y:auto}
+.modal h3{margin:0 0 .5rem}
+.sec-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem;margin:.5rem 0}
+.sec-box .sec-title{font-weight:600;font-size:13px;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem}
+.perm-list{list-style:none;padding:0;margin:.3rem 0}
+.perm-list li::before{content:">";margin-right:6px;color:var(--accent)}
+</style>
 </head>
 <body>
-  <h1>OpenPalm Admin Dashboard</h1>
-  <p>Admin operations are API/CLI-driven. This dashboard provides read-only visibility into the system.</p>
-  <p><strong>Access:</strong> This page is restricted to LAN access via Caddy reverse proxy.</p>
 
-  <div class="grid">
-    <div class="card">
-      <h2>Gateway Health</h2>
-      <button onclick="loadHealth()">Refresh</button>
-      <pre id="gateway-health">Not loaded</pre>
-    </div>
+<nav>
+  <span class="logo">OpenPalm</span>
+  <button id="nav-gallery" onclick="showPage('gallery')">Gallery</button>
+  <button id="nav-installed" onclick="showPage('installed')">Installed</button>
+  <button id="nav-services" onclick="showPage('services')">Services</button>
+  <button id="nav-settings" onclick="showPage('settings')">Settings</button>
+</nav>
 
-    <div class="card">
-      <h2>Admin App Health</h2>
-      <button onclick="loadAdminHealth()">Refresh</button>
-      <pre id="admin-health">Not loaded</pre>
-    </div>
-  </div>
+<div class="container">
+  <!-- PAGES -->
+  <div id="page-gallery" class="page"></div>
+  <div id="page-installed" class="page hidden"></div>
+  <div id="page-services" class="page hidden"></div>
+  <div id="page-settings" class="page hidden"></div>
+</div>
 
-  <div class="card">
-    <h2>Architecture</h2>
-    <pre>
-Caddy (reverse proxy, port 80/443)
-  /chat, /voice        -> Channel adapters (optional public)
-  /admin               -> Admin App (LAN only)
-  /opencode            -> OpenCode UI (LAN only)
-  /openmemory          -> Open Memory UI (LAN only)
-  /message, /health    -> Gateway
-  /channel/*           -> Gateway (defense in depth)
+<!-- setup wizard overlay, rendered by JS -->
+<div id="setup-overlay" class="wizard-overlay hidden"></div>
+<!-- detail modal, rendered by JS -->
+<div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()"></div>
 
-Core: Gateway -> OpenCode -> Open Memory
-Admin: Admin App -> Controller (container lifecycle)
-Storage: PostgreSQL, Qdrant, Shared FS</pre>
-  </div>
+<script>
+/* ── state ────────────────────────────────────────────── */
+let adminToken = localStorage.getItem('op_admin') || '';
+let stepUpToken = localStorage.getItem('op_stepup') || '';
+let galleryItems = [];
+let setupState = null;
+let currentPage = 'gallery';
 
-  <div class="card">
-    <h2>Container Management (via API)</h2>
-    <pre>POST /admin/containers/list     — list running containers
-POST /admin/containers/up       — start a service
-POST /admin/containers/down     — stop a service
-POST /admin/containers/restart  — restart a service</pre>
-  </div>
+const BASE = ''; // same-origin via Caddy
 
-  <div class="card">
-    <h2>Extension Lifecycle (via API/CLI)</h2>
-    <pre>POST /admin/extensions/request  — queue a plugin for install
-GET  /admin/extensions/list     — review queue
-POST /admin/extensions/apply    — apply (requires step-up)
-POST /admin/extensions/disable  — disable (requires step-up)</pre>
-  </div>
+/* ── API helper ───────────────────────────────────────── */
+async function api(path, opts = {}) {
+  const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
+  if (adminToken) headers['x-admin-token'] = adminToken;
+  if (stepUpToken) headers['x-admin-step-up'] = stepUpToken;
+  const res = await fetch(BASE + path, { ...opts, headers });
+  const text = await res.text();
+  try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
+  catch { return { ok: res.ok, status: res.status, data: text }; }
+}
 
-  <script>
-  async function loadHealth(){
-    try {
-      const res = await fetch('/health');
-      document.getElementById('gateway-health').textContent = JSON.stringify(await res.json(), null, 2);
-    } catch(e) {
-      document.getElementById('gateway-health').textContent = 'Error: ' + e.message;
+/* ── pages ────────────────────────────────────────────── */
+function showPage(name) {
+  currentPage = name;
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.getElementById('page-' + name).classList.remove('hidden');
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  const nb = document.getElementById('nav-' + name);
+  if (nb) nb.classList.add('active');
+  if (name === 'gallery') loadGallery();
+  if (name === 'installed') loadInstalled();
+  if (name === 'services') loadServices();
+  if (name === 'settings') renderSettings();
+}
+
+/* ── risk badge ───────────────────────────────────────── */
+function riskBadge(r) {
+  return '<span class="badge badge-' + r + '">' + r.charAt(0).toUpperCase() + r.slice(1) + ' Risk</span>';
+}
+function riskDesc(r) {
+  const m = { low:'Safe. No network access or side effects.', medium:'Limited capabilities. Review before installing.', high:'Significant capabilities. Requires careful review.', critical:'Maximum capability. Review thoroughly.' };
+  return m[r] || '';
+}
+function categoryIcon(c) {
+  return c === 'plugin' ? 'P' : c === 'skill' ? 'S' : 'C';
+}
+function categoryLabel(c) {
+  return c === 'plugin' ? 'Plugin' : c === 'skill' ? 'Skill' : 'Container';
+}
+
+/* ── gallery ──────────────────────────────────────────── */
+let galleryFilter = '';
+let galleryCat = '';
+
+async function loadGallery() {
+  const qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
+  const r = await api(qs);
+  galleryItems = r.ok ? r.data.items : [];
+  renderGallery();
+}
+
+function renderGallery() {
+  const el = document.getElementById('page-gallery');
+  let h = '<h2>Extension Gallery</h2>';
+  h += '<p class="muted">Search for OpenCode plugins, skills, and Docker containers to extend your platform.</p>';
+  // search
+  h += '<div class="mb" style="display:flex;gap:.5rem;flex-wrap:wrap">';
+  h += '<input id="gal-search" style="flex:1;min-width:200px" placeholder="Search extensions..." value="' + esc(galleryFilter) + '" onkeyup="if(event.key===\'Enter\'){galleryFilter=this.value;loadGallery()}" />';
+  h += '<button class="sm" onclick="galleryFilter=document.getElementById(\'gal-search\').value;loadGallery()">Search</button>';
+  h += '</div>';
+  // category tabs
+  h += '<div class="mb" style="display:flex;gap:.4rem;flex-wrap:wrap">';
+  h += catTab('', 'All');
+  h += catTab('plugin', 'Plugins');
+  h += catTab('skill', 'Skills');
+  h += catTab('container', 'Containers');
+  h += '</div>';
+  // npm search link
+  h += '<div class="mb"><button class="secondary sm" onclick="promptNpmSearch()">Search npm registry...</button></div>';
+  // items
+  if (!galleryItems.length) {
+    h += '<p class="muted">No extensions found.</p>';
+  }
+  h += '<div class="grid2">';
+  for (const item of galleryItems) {
+    h += '<div class="card" style="cursor:pointer" onclick="showDetail(\'' + esc(item.id) + '\')">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:start">';
+    h += '<h3 style="margin:0">' + esc(item.name) + '</h3>';
+    h += riskBadge(item.risk);
+    h += '</div>';
+    h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + categoryLabel(item.category) + ' by ' + esc(item.author) + '</div>';
+    h += '<p style="font-size:14px;margin:.4rem 0">' + esc(item.description).substring(0, 120) + '</p>';
+    h += '<div>';
+    for (const t of item.tags.slice(0, 4)) h += '<span class="tag">' + esc(t) + '</span>';
+    h += '</div></div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function catTab(val, label) {
+  const cls = galleryCat === val ? 'sm' : 'secondary sm';
+  return '<button class="' + cls + '" onclick="galleryCat=\'' + val + '\';loadGallery()">' + label + '</button>';
+}
+
+/* ── detail modal ─────────────────────────────────────── */
+async function showDetail(id) {
+  const r = await api('/admin/gallery/item/' + id);
+  if (!r.ok) return;
+  const item = r.data.item;
+  const badge = r.data.riskBadge;
+  const ov = document.getElementById('modal-overlay');
+  let h = '<div class="modal">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:start">';
+  h += '<h3>' + esc(item.name) + '</h3>';
+  h += '<button class="secondary sm" onclick="closeModal()">Close</button>';
+  h += '</div>';
+  h += '<div class="muted" style="font-size:13px">' + categoryLabel(item.category) + ' &middot; v' + esc(item.version) + ' &middot; by ' + esc(item.author) + '</div>';
+  h += '<p>' + esc(item.description) + '</p>';
+  // security section
+  h += '<div class="sec-box">';
+  h += '<div class="sec-title">Security Assessment</div>';
+  h += '<div style="margin-bottom:.4rem">' + riskBadge(item.risk) + ' <span class="muted" style="font-size:13px;margin-left:.5rem">' + esc(badge.description) + '</span></div>';
+  h += '<div style="font-size:14px;margin:.5rem 0"><strong>Security notes:</strong> ' + esc(item.securityNotes) + '</div>';
+  h += '<div class="sec-title" style="margin-top:.6rem">Permissions Required</div>';
+  h += '<ul class="perm-list">';
+  for (const p of item.permissions) h += '<li>' + esc(p) + '</li>';
+  h += '</ul></div>';
+  // tags
+  h += '<div class="mb">';
+  for (const t of item.tags) h += '<span class="tag">' + esc(t) + '</span>';
+  h += '</div>';
+  // defense in depth note
+  h += '<div class="sec-box">';
+  h += '<div class="sec-title">Defense in Depth</div>';
+  h += '<div style="font-size:13px">';
+  if (item.category === 'plugin') {
+    h += 'Plugins run inside the OpenCode sandbox. They can hook into tool calls but cannot make network requests or access the filesystem outside the sandbox. The gateway tool firewall provides a second layer of enforcement.';
+  } else if (item.category === 'skill') {
+    h += 'Skills are behavioral SOPs (markdown files). They have zero tool access and cannot execute code. They only influence how the assistant reasons and responds.';
+  } else {
+    h += 'Containers run on the isolated Docker network. Channel containers can only reach the gateway. All inbound messages pass through HMAC signature verification, replay protection, rate limiting, and the tool firewall before reaching OpenCode.';
+  }
+  h += '</div></div>';
+  // install button
+  if (!adminToken || !stepUpToken) {
+    h += '<p class="muted" style="font-size:13px">Configure admin tokens in Settings to enable installation.</p>';
+  } else {
+    h += '<div style="margin-top:1rem"><button onclick="installGallery(\'' + esc(item.id) + '\')">Install ' + esc(item.name) + '</button></div>';
+  }
+  h += '</div>';
+  ov.innerHTML = h;
+  ov.classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+async function installGallery(id) {
+  if (!confirm('Install this extension? This requires step-up authentication.')) return;
+  const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
+  if (r.ok) {
+    alert('Installed successfully.');
+    closeModal();
+  } else {
+    alert('Install failed: ' + (r.data.error || r.status));
+  }
+}
+
+async function promptNpmSearch() {
+  const q = prompt('Search npm for OpenCode plugins:');
+  if (!q) return;
+  const r = await api('/admin/gallery/npm-search?q=' + encodeURIComponent(q));
+  if (!r.ok || !r.data.results.length) { alert('No results found.'); return; }
+  let msg = 'Results:\n';
+  for (const p of r.data.results.slice(0, 10)) {
+    msg += '\n' + p.name + ' (v' + p.version + ') - ' + p.description.substring(0, 60);
+  }
+  msg += '\n\nEnter package name to install (or cancel):';
+  const pkg = prompt(msg);
+  if (!pkg) return;
+  if (!confirm('Install "' + pkg + '" from npm? This is an unreviewed package (HIGH RISK). Continue?')) return;
+  const ir = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ pluginId: pkg }) });
+  alert(ir.ok ? 'Installed.' : 'Failed: ' + (ir.data.error || ir.status));
+}
+
+/* ── installed ────────────────────────────────────────── */
+async function loadInstalled() {
+  const el = document.getElementById('page-installed');
+  let h = '<h2>Installed Extensions</h2>';
+  if (!adminToken) {
+    h += '<p class="muted">Set your admin token in Settings to view installed extensions.</p>';
+    el.innerHTML = h;
+    return;
+  }
+  const r = await api('/admin/installed');
+  if (!r.ok) {
+    h += '<p class="muted">Could not load: ' + esc(r.data.error || String(r.status)) + '</p>';
+    el.innerHTML = h;
+    return;
+  }
+  const d = r.data;
+  h += '<h3>Active Plugins</h3>';
+  if (!d.plugins.length) h += '<p class="muted">No plugins installed.</p>';
+  for (const p of d.plugins) {
+    h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
+    h += '<div><strong>' + esc(p) + '</strong> <span class="tag">plugin</span></div>';
+    h += '<button class="danger sm" onclick="uninstallPlugin(\'' + esc(p) + '\')">Remove</button>';
+    h += '</div>';
+  }
+  if (d.extensions.length) {
+    h += '<h3>Extension Queue</h3>';
+    for (const e of d.extensions) {
+      h += '<div class="card">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      h += '<div><strong>' + esc(e.pluginId) + '</strong> <span class="tag">' + esc(e.sourceType) + '</span> ' + riskBadge(e.risk) + '</div>';
+      h += '<span class="muted">' + esc(e.status) + '</span>';
+      h += '</div></div>';
     }
   }
-  async function loadAdminHealth(){
-    try {
-      const res = await fetch('/admin/health');
-      document.getElementById('admin-health').textContent = JSON.stringify(await res.json(), null, 2);
-    } catch(e) {
-      document.getElementById('admin-health').textContent = 'Error: ' + e.message;
+  if (d.setupState.installedExtensions.length) {
+    h += '<h3>Gallery Installations</h3>';
+    for (const id of d.setupState.installedExtensions) {
+      h += '<div class="card"><span class="tag">' + esc(id) + '</span></div>';
     }
   }
-  </script>
+  el.innerHTML = h;
+}
+
+async function uninstallPlugin(pluginId) {
+  if (!confirm('Remove "' + pluginId + '"? OpenCode will be restarted.')) return;
+  await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId }) });
+  loadInstalled();
+}
+
+/* ── services ─────────────────────────────────────────── */
+async function loadServices() {
+  const el = document.getElementById('page-services');
+  let h = '<h2>Services</h2>';
+  h += '<p class="muted">Health status and container management.</p>';
+  const hc = await api('/admin/setup/health-check');
+  if (hc.ok) {
+    const s = hc.data.services;
+    h += '<div class="grid3">';
+    for (const [name, info] of Object.entries(s)) {
+      h += '<div class="card"><span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span><strong>' + esc(name) + '</strong>';
+      h += '<div class="muted" style="font-size:13px">' + (info.ok ? 'Healthy' : esc(info.error || 'Unreachable')) + '</div></div>';
+    }
+    h += '</div>';
+  }
+  const known = ['gateway','opencode','openmemory','admin-app','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+  h += '<h3>Container Actions</h3>';
+  if (!adminToken || !stepUpToken) {
+    h += '<p class="muted">Set admin + step-up tokens in Settings to manage containers.</p>';
+  } else {
+    h += '<div class="grid2">';
+    for (const svc of known) {
+      h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
+      h += '<strong>' + esc(svc) + '</strong>';
+      h += '<div style="display:flex;gap:.3rem">';
+      h += '<button class="sm" onclick="svcAction(\'restart\',\'' + svc + '\')">Restart</button>';
+      h += '<button class="sm secondary" onclick="svcAction(\'up\',\'' + svc + '\')">Up</button>';
+      h += '<button class="sm danger" onclick="svcAction(\'down\',\'' + svc + '\')">Down</button>';
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function svcAction(action, svc) {
+  if (!confirm(action.toUpperCase() + ' ' + svc + '?')) return;
+  const r = await api('/admin/containers/' + action, { method: 'POST', body: JSON.stringify({ service: svc }) });
+  alert(r.ok ? 'Done.' : 'Failed: ' + (r.data.error || r.status));
+  loadServices();
+}
+
+/* ── settings ─────────────────────────────────────────── */
+function renderSettings() {
+  const el = document.getElementById('page-settings');
+  let h = '<h2>Settings</h2>';
+  h += '<div class="card"><h3>Authentication</h3>';
+  h += '<p class="muted" style="font-size:13px">Tokens are stored in your browser only (localStorage). They are sent as headers to the admin-app API.</p>';
+  h += '<div class="sec-box"><div class="sec-title">Why two tokens?</div>';
+  h += '<div style="font-size:13px">The admin token authenticates you. The step-up token is required for destructive operations (install, remove, restart). This is defense in depth: even if an admin token is compromised, the attacker cannot modify the system without the step-up token.</div></div>';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Token</label>';
+  h += '<input type="password" id="set-admin" value="' + esc(adminToken) + '" />';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Step-Up Token</label>';
+  h += '<input type="password" id="set-stepup" value="' + esc(stepUpToken) + '" />';
+  h += '<div style="margin-top:.7rem"><button onclick="saveSettings()">Save Tokens</button></div>';
+  h += '</div>';
+  h += '<div class="card"><h3>Re-run Setup Wizard</h3>';
+  h += '<p class="muted" style="font-size:13px">Revisit the initial setup steps.</p>';
+  h += '<button class="secondary" onclick="runSetup()">Open Setup Wizard</button>';
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function saveSettings() {
+  adminToken = document.getElementById('set-admin').value;
+  stepUpToken = document.getElementById('set-stepup').value;
+  localStorage.setItem('op_admin', adminToken);
+  localStorage.setItem('op_stepup', stepUpToken);
+  alert('Saved.');
+}
+
+/* ── setup wizard ─────────────────────────────────────── */
+const STEPS = ['welcome','healthCheck','security','channels','extensions'];
+const STEP_TITLES = ['Welcome','Service Health','Security Review','Channels','Extensions'];
+let wizardStep = 0;
+
+async function checkSetup() {
+  const r = await api('/admin/setup/status');
+  if (!r.ok) return;
+  setupState = r.data;
+  if (!setupState.completed) runSetup();
+}
+
+function runSetup() {
+  wizardStep = 0;
+  document.getElementById('setup-overlay').classList.remove('hidden');
+  renderWizard();
+}
+
+function renderWizard() {
+  const ov = document.getElementById('setup-overlay');
+  let h = '<div class="wizard">';
+  h += '<h2>' + STEP_TITLES[wizardStep] + '</h2>';
+  h += '<div class="steps">';
+  for (let i = 0; i < STEPS.length; i++) {
+    const cls = i < wizardStep ? 'done' : i === wizardStep ? 'current' : '';
+    h += '<div class="step-dot ' + cls + '"></div>';
+  }
+  h += '</div><div class="body">';
+  h += wizardBody();
+  h += '</div><div class="actions">';
+  if (wizardStep > 0) h += '<button class="secondary" onclick="wizardPrev()">Back</button>';
+  if (wizardStep < STEPS.length - 1) h += '<button onclick="wizardNext()">Next</button>';
+  else h += '<button onclick="finishSetup()">Finish Setup</button>';
+  h += '</div></div>';
+  ov.innerHTML = h;
+}
+
+function wizardBody() {
+  switch (STEPS[wizardStep]) {
+    case 'welcome':
+      return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
+        + '<p>This wizard will walk you through initial configuration:</p>'
+        + '<ul><li>Verify core services are running</li><li>Review security settings</li><li>Choose channels to enable</li><li>Install starter extensions</li></ul>'
+        + '<p class="muted" style="font-size:13px">This admin interface is restricted to your local network via Caddy reverse proxy.</p>';
+    case 'healthCheck':
+      return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div>'
+        + '<script>wizHealthCheck()<\/script>';
+    case 'security':
+      return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
+        + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Admin token + step-up token (two-factor API auth). Set these below to manage the platform.</div></div>'
+        + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Token (from .env)</label>'
+        + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
+        + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Step-Up Token (from .env)</label>'
+        + '<input type="password" id="wiz-stepup" value="' + esc(stepUpToken) + '" />'
+        + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
+        + '<ul style="font-size:13px;margin:.2rem 0"><li>HMAC channel signatures + replay protection</li><li>Tool firewall (safe/medium/high risk tiers)</li><li>Secret detection on memory writes</li><li>Rate limiting (120 req/min per user)</li><li>LAN-only admin access via Caddy</li></ul></div>';
+    case 'channels':
+      return '<p>Choose which channels to enable. Channels are dumb adapters; all messages pass through the gateway for security.</p>'
+        + channelCheckboxes();
+    case 'extensions':
+      return '<p>Recommended starter extensions:</p>'
+        + starterExtensions();
+  }
+  return '';
+}
+
+function channelCheckboxes() {
+  const chs = [
+    { id: 'channel-chat', name: 'Chat (HTTP)', desc: 'Web chat widget / custom frontend' },
+    { id: 'channel-discord', name: 'Discord', desc: 'Discord bot (requires DISCORD_BOT_TOKEN in .env)' },
+    { id: 'channel-voice', name: 'Voice', desc: 'Speech-to-text adapter' },
+    { id: 'channel-telegram', name: 'Telegram', desc: 'Telegram bot (requires TELEGRAM_BOT_TOKEN in .env)' }
+  ];
+  let h = '';
+  for (const c of chs) {
+    h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
+    h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" style="width:auto;margin-top:4px" />';
+    h += '<div><strong>' + c.name + '</strong><div class="muted" style="font-size:13px">' + c.desc + '</div></div>';
+    h += '</label>';
+  }
+  return h;
+}
+
+function starterExtensions() {
+  const starters = [
+    { id: 'plugin-policy-telemetry', name: 'Policy & Telemetry', risk: 'low', desc: 'Built-in: blocks secrets, logs tool calls' },
+    { id: 'skill-recall-first', name: 'Recall First', risk: 'low', desc: 'Always check memory before answering' },
+    { id: 'skill-memory-policy', name: 'Memory Policy', risk: 'low', desc: 'Governs when and how to store memory' },
+    { id: 'skill-action-gating', name: 'Action Gating', risk: 'low', desc: 'Require approval for risky actions' }
+  ];
+  let h = '';
+  for (const s of starters) {
+    h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
+    h += '<input type="checkbox" class="wiz-ext" value="' + s.id + '" checked style="width:auto;margin-top:4px" />';
+    h += '<div><strong>' + s.name + '</strong> ' + riskBadge(s.risk);
+    h += '<div class="muted" style="font-size:13px">' + s.desc + '</div></div>';
+    h += '</label>';
+  }
+  return h;
+}
+
+async function wizHealthCheck() {
+  const r = await api('/admin/setup/health-check');
+  const el = document.getElementById('wiz-health');
+  if (!el) return;
+  if (!r.ok) { el.textContent = 'Could not reach admin API.'; return; }
+  let h = '';
+  for (const [name, info] of Object.entries(r.data.services)) {
+    h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span><strong>' + esc(name) + '</strong> — ' + (info.ok ? 'Healthy' : esc(info.error || 'Unreachable')) + '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function wizardNext() {
+  // save step-specific state
+  if (STEPS[wizardStep] === 'security') {
+    const a = document.getElementById('wiz-admin');
+    const s = document.getElementById('wiz-stepup');
+    if (a) { adminToken = a.value; localStorage.setItem('op_admin', adminToken); }
+    if (s) { stepUpToken = s.value; localStorage.setItem('op_stepup', stepUpToken); }
+  }
+  await api('/admin/setup/step', { method: 'POST', body: JSON.stringify({ step: STEPS[wizardStep] }) });
+  wizardStep++;
+  renderWizard();
+  // trigger health check on that step
+  if (STEPS[wizardStep] === 'healthCheck') setTimeout(wizHealthCheck, 100);
+}
+
+function wizardPrev() {
+  wizardStep--;
+  renderWizard();
+  if (STEPS[wizardStep] === 'healthCheck') setTimeout(wizHealthCheck, 100);
+}
+
+async function finishSetup() {
+  // save security tokens
+  if (STEPS[wizardStep] === 'extensions') {
+    // install selected extensions
+    const boxes = document.querySelectorAll('.wiz-ext:checked');
+    for (const b of boxes) {
+      await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: b.value }) });
+    }
+    // start selected channels
+    const chs = document.querySelectorAll('.wiz-ch:checked');
+    for (const c of chs) {
+      await api('/admin/containers/up', { method: 'POST', body: JSON.stringify({ service: c.value }) });
+    }
+  }
+  await api('/admin/setup/step', { method: 'POST', body: JSON.stringify({ step: STEPS[wizardStep] }) });
+  await api('/admin/setup/complete', { method: 'POST' });
+  document.getElementById('setup-overlay').classList.add('hidden');
+  showPage('gallery');
+}
+
+/* ── utils ────────────────────────────────────────────── */
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+/* ── init ─────────────────────────────────────────────── */
+showPage('gallery');
+checkSetup();
+</script>
 </body>
 </html>

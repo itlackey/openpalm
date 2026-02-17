@@ -73,6 +73,34 @@ Health status for the admin app.
 - `POST /admin/change/apply` — apply bundle `{ "bundleId": "my-bundle", "applyPlugins": [], "restart": true }` (step-up required)
 - `POST /admin/change/rollback` — rollback config `{ "backupPath": "...", "restart": true }` (step-up required)
 
+### Setup wizard
+- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag)
+- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "healthCheck" | "security" | "channels" | "extensions" }`
+- `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
+- `GET /admin/setup/health-check` — run health checks against gateway and OpenCode; returns `{ gateway: boolean, opencode: boolean }`
+
+### Gallery (extension marketplace)
+- `GET /admin/gallery/search?q=&category=` — search curated gallery registry
+  - `q` — free-text search (matches name, description, tags, id)
+  - `category` — filter by `plugin`, `skill`, or `container`
+- `GET /admin/gallery/categories` — list gallery categories with counts
+- `GET /admin/gallery/item/:id` — get full detail for a single gallery item including risk badge
+- `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
+
+### Install / uninstall
+- `POST /admin/gallery/install` — install a gallery item (step-up required)
+  ```json
+  { "itemId": "plugin-policy-telemetry" }
+  ```
+  Delegates to extension lifecycle or controller depending on `installAction` type.
+- `POST /admin/gallery/uninstall` — uninstall a gallery item (step-up required)
+  ```json
+  { "itemId": "plugin-policy-telemetry" }
+  ```
+
+### Installed status
+- `GET /admin/installed` — returns currently installed extensions, active services, and loaded skills
+
 ---
 
 ## Controller API (internal only, not exposed via Caddy)

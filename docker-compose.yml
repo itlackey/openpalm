@@ -100,6 +100,7 @@ services:
       - OPENCODE_CONFIG_PATH=/app/config/opencode.jsonc
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
+      - GATEWAY_URL=http://gateway:8080
     volumes:
       - ./opencode/opencode.jsonc:/app/config/opencode.jsonc
       - ./admin-ui:/app/admin-ui:ro
