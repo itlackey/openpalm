@@ -3,8 +3,11 @@
   "private": true,
   "workspaces": [
     "gateway",
-    "compose-control",
-    "channels/webhook",
+    "admin-app",
+    "controller",
+    "channels/chat",
+    "channels/discord",
+    "channels/voice",
     "channels/telegram"
   ],
   "scripts": {

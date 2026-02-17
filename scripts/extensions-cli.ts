@@ -1,5 +1,5 @@
 const [,, cmd, ...rest] = Bun.argv;
-const base = Bun.env.GATEWAY_URL ?? "http://localhost:8080";
+const base = Bun.env.ADMIN_APP_URL ?? Bun.env.GATEWAY_URL ?? "http://localhost/admin";
 const admin = Bun.env.ADMIN_TOKEN ?? "";
 const step = Bun.env.ADMIN_STEP_UP_TOKEN ?? "";
 
