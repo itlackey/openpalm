@@ -32,6 +32,10 @@ Processing behavior:
 4. If valid, gateway forwards only the summary to `opencode-core`.
 
 Possible errors:
+- `400 invalid_payload` when payload fails shape validation (missing fields, invalid channel, text too long).
+- `403 channel_not_configured` when the channel has no shared secret configured.
+- `403 invalid_signature` when HMAC verification fails.
+- `429 rate_limited` when user exceeds 120 requests per minute.
 - `422 invalid_channel_request` when channel intake rejects the request.
 - `502 channel_intake_unavailable` when intake runtime response is invalid/unavailable.
 - `502 core_runtime_unavailable` when core runtime fails.
@@ -47,11 +51,13 @@ Notes:
 
 ## Admin App API (routed via Caddy at /admin/*, LAN only)
 
-Headers for all admin endpoints:
-- `x-admin-token` (required)
-- `x-admin-step-up` (required for destructive operations)
+Headers for all protected admin endpoints:
+- `x-admin-token` (required for most endpoints)
+- `x-admin-step-up` (additionally required for destructive operations)
 
-### GET /admin/health
+**Exceptions (no auth required):** `/health`, `/admin/setup/*`, `/admin/gallery/search`, `/admin/gallery/categories`, `/admin/gallery/item/:id`, `/admin/gallery/npm-search`, static UI assets (`/`, `/index.html`).
+
+### GET /health
 Health status for the admin app.
 
 ### Container management
@@ -144,26 +150,28 @@ Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, 
 
 ## Channel Adapter APIs
 
+All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /admin/channels/access`).
+
 ### Chat (channel-chat, :8181)
-- Public/LAN ingress route via Caddy: `/channels/chat*`
+- Caddy ingress route: `/channels/chat*` (rewrites to `/chat`)
 - `GET /health`
 - `POST /chat` — `{ "userId": "...", "text": "...", "metadata": {} }`
-  - Header: `x-chat-token` (if configured)
+  - Header: `x-chat-token` (required if `CHAT_INBOUND_TOKEN` is set)
 
 ### Discord (channel-discord, :8184)
-- LAN ingress route via Caddy: `/channels/discord*`
+- Caddy ingress route: `/channels/discord*` (rewrites to `/discord/webhook`)
 - `GET /health`
-- `POST /discord/interactions` — Discord interactions endpoint (slash commands, type 1/2)
+- `POST /discord/interactions` — Discord interactions endpoint (slash commands, type 1/2). Note: not routed through Caddy in the default config.
 - `POST /discord/webhook` — simple webhook `{ "userId": "...", "text": "...", "channelId": "...", "guildId": "..." }`
 
 ### Voice (channel-voice, :8183)
-- Public/LAN ingress route via Caddy: `/channels/voice*`
+- Caddy ingress route: `/channels/voice*` (rewrites to `/voice/transcription`)
 - `GET /health`
 - `POST /voice/transcription` — `{ "userId": "...", "text": "...", "audioRef": "...", "language": "en" }`
-- `GET /voice/stream` — placeholder for WebSocket-based real-time streaming (not yet implemented)
+- `GET /voice/stream` — returns 501; WebSocket-based real-time streaming is not yet implemented
 
 ### Telegram (channel-telegram, :8182)
-- LAN ingress route via Caddy: `/channels/telegram*`
+- Caddy ingress route: `/channels/telegram*` (rewrites to `/telegram/webhook`)
 - `GET /health`
-- `POST /telegram/webhook` — Telegram bot update JSON
-  - Header: `x-telegram-bot-api-secret-token`
+- `POST /telegram/webhook` — Telegram bot update JSON (non-text messages are silently skipped)
+  - Header: `x-telegram-bot-api-secret-token` (required if `TELEGRAM_WEBHOOK_SECRET` is set)

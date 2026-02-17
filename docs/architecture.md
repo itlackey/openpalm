@@ -116,13 +116,19 @@ Every box in the architecture is a distinct Docker container, except **Shared FS
 
 ### Message processing (channel inbound)
 ```
-User -> Channel Adapter -> [HMAC sign] -> Gateway -> OpenCode Channel Runtime -> Open Memory -> Response
+User → Channel Adapter → [HMAC sign] → Gateway → OpenCode Channel (validate/summarize)
+  → Gateway → OpenCode Core (full agent) → Open Memory → Response
 ```
 
-The gateway is intentionally thin. It verifies HMAC signatures from channel adapters, applies rate limiting, logs audit events, and routes traffic to the correct OpenCode runtime.
+The gateway receives HMAC-signed payloads from channel adapters and processes them in two stages:
 
-- `opencode-channel` handles `/channel/inbound` with deny-by-default tool permissions.
-- `opencode-core` handles validated summaries from gateway and admin/operator-driven traffic with standard approval gates.
+1. **Intake validation** — Gateway forwards the message to `opencode-channel` (the isolated runtime) which validates and summarizes the input. If the intake is rejected, the gateway returns a 422 error.
+2. **Core forwarding** — If the intake is valid, the gateway forwards only the validated summary to `opencode-core` (the full agent runtime) for processing.
+
+The gateway is intentionally thin. It verifies HMAC signatures, applies rate limiting (120 req/min/user), logs audit events, and routes traffic between the two OpenCode runtimes.
+
+- `opencode-channel` runs with deny-by-default permissions (bash, edit, webfetch all denied).
+- `opencode-core` uses approval gates for tool access.
 
 This separation relies on OpenCode's built-in permission model for isolation rather than duplicating complex security logic in the gateway.
 
@@ -138,15 +144,18 @@ The admin app provides the API for all admin functions:
 
 ### URL routing via Caddy
 
-| URL Path | Target | Access |
-|---|---|---|
-| `/channels/chat*` | channel-chat:8181 | LAN by default (public toggle in Admin UI) |
-| `/channels/voice*` | channel-voice:8183 | LAN by default (public toggle in Admin UI) |
-| `/channels/discord*` | channel-discord:8184 | LAN by default (public toggle possible) |
-| `/channels/telegram*` | channel-telegram:8182 | LAN by default (public toggle possible) |
-| `/admin/*` | admin-app:8100 | LAN only |
-| `/admin/opencode*` | opencode-core:4096 | LAN only |
-| `/admin/openmemory*` | openmemory:3000 | LAN only |
+| URL Path | Target | Rewritten To | Access |
+|---|---|---|---|
+| `/channels/chat*` | channel-chat:8181 | `/chat` | LAN by default (public toggle via Admin API) |
+| `/channels/voice*` | channel-voice:8183 | `/voice/transcription` | LAN by default (public toggle via Admin API) |
+| `/channels/discord*` | channel-discord:8184 | `/discord/webhook` | LAN by default (public toggle via Admin API) |
+| `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
+| `/admin/api*` | admin-app:8100 | prefix stripped to `/admin/*` | LAN only |
+| `/admin/opencode*` | opencode-core:4096 | prefix stripped to `/*` | LAN only |
+| `/admin/openmemory*` | openmemory:3000 | prefix stripped to `/*` | LAN only |
+| `/admin*` (catch-all) | admin-app:8100 | pass-through | LAN only |
+
+Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
 
 ### Storage
 

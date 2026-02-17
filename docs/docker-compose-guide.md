@@ -5,79 +5,46 @@
 
 ### 1) Recommended layout
 ```
-openclaw-min/
+openpalm/
   docker-compose.yml
   .env
+  install.sh
 
-  opencode/
-    Dockerfile
-    opencode.jsonc
-    AGENTS.md
-    skills/
-    .opencode/
-      plugins/
-      tools/
-
-  gateway/
-    Dockerfile
-    src/
-      server.ts
-      channels/
-      telemetry/
+  opencode/              OpenCode Dockerfile (shared by core + channel runtimes)
+  gateway/               Gateway service (Bun)
+  admin-app/             Admin API service (Bun)
+  controller/            Container lifecycle service (Bun + Docker socket)
+  admin-ui/              Vanilla JS SPA for admin dashboard
+  caddy/                 Caddyfile (reverse proxy config)
+  channels/
+    chat/                HTTP chat adapter
+    discord/             Discord adapter
+    voice/               Voice/STT adapter
+    telegram/            Telegram adapter
+  config/
+    opencode-core/       Default agent config for core runtime
+    opencode-channel/    Default agent config for channel runtime
+    channel-env/         Default channel env files
+  scripts/               CLI tools (extensions-cli.ts)
+  docs/                  Architecture, API reference, guides
 ```
 
-### 2) Compose file (Gateway + OpenCode + OpenMemory)
-> Adjust image names/ports to your chosen OpenMemory distribution.
+### 2) Compose file
 > All host mounts follow the XDG Base Directory layout — data, config, and state
 > are separated into `~/.local/share/openpalm`, `~/.config/openpalm`, and
 > `~/.local/state/openpalm` respectively. The three `OPENPALM_*` env vars are
 > resolved by `install.sh` and written into `.env`.
 
-```yaml
-services:
-  openmemory:
-    image: skpassegna/openmemory-mcp:latest
-    restart: unless-stopped
-    ports:
-      - "3000:3000"   # UI
-      - "8765:8765"   # MCP/API
-    volumes:
-      - ${OPENPALM_DATA_HOME}/openmemory:/data
-    networks: [assistant_net]
+The full `docker-compose.yml` in the repository root defines all services. Key design points:
 
-  opencode:
-    build: ./opencode
-    restart: unless-stopped
-    environment:
-      - OPENCODE_CONFIG=/config/opencode.jsonc
-    ports:
-      - "4096:4096"
-    volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
-      - ${OPENPALM_STATE_HOME}/opencode-core:/state
-      - ${OPENPALM_STATE_HOME}/workspace:/work
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-    working_dir: /work
-    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
-    networks: [assistant_net]
-    depends_on: [openmemory]
+- **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). Both build from `./opencode` but use different config files.
+- **Gateway** connects to both runtimes via `OPENCODE_CORE_BASE_URL` and `OPENCODE_CHANNEL_BASE_URL`.
+- **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
+- **Channel adapters** are optional, enabled via `--profile channels`.
+- **Admin-app** manages extensions, config, and containers via the controller.
+- **Controller** is the only service with Docker socket access.
 
-  gateway:
-    build: ./gateway
-    restart: unless-stopped
-    environment:
-      - OPENCODE_BASE_URL=http://opencode:4096
-      - OPENMEMORY_MCP_URL=http://openmemory:8765/mcp/gateway/sse/default-user
-    ports:
-      - "8080:8080"
-    volumes:
-      - ${OPENPALM_STATE_HOME}/gateway:/app/data
-    networks: [assistant_net]
-    depends_on: [opencode, openmemory]
-
-networks:
-  assistant_net:
-```
+See `docker-compose.yml` for the complete service definitions.
 
 ---
 

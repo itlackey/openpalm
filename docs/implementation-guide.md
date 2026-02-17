@@ -1,4 +1,4 @@
-# Minimalist OpenClaw Clone with OpenCode + OpenMemory
+# Implementation Guide — OpenPalm with OpenCode + OpenMemory
 *A secure, robust implementation guide using OpenCode server/SDK, plugins/tools/skills, and OpenMemory for long-term memory.*
 
 ## 0) Target architecture (minimal but robust)
@@ -6,7 +6,7 @@
 ### Components
 1. **OpenCode server** (agent runtime + events)
    - Runs the LLM orchestration loop and exposes HTTP + SSE events.
-2. **Gateway service** (your “OpenClaw gateway/control plane”)
+2. **Gateway service** (the gateway/control plane)
    - Receives messages from channels (HTTP/CLI first).
    - Calls OpenCode via **`@opencode-ai/sdk`**.
    - Owns auth, sessions, approvals, audit logs, and observability export.

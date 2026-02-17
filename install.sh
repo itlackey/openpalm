@@ -111,7 +111,7 @@ for _ in $(seq 1 40); do
   if curl -fsS http://localhost:80/health >/dev/null 2>&1; then
     echo "OpenPalm is ready: http://localhost"
     echo "Admin dashboard (LAN only): http://localhost/admin"
-    echo "Open Memory UI (LAN only): http://localhost/openmemory"
+    echo "Open Memory UI (LAN only): http://localhost/admin/openmemory"
     echo ""
     echo "Host directories:"
     echo "  Data   → $OPENPALM_DATA_HOME"
