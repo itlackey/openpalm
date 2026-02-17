@@ -1,6 +1,17 @@
 FROM oven/bun:1.1.42
+
 RUN bun add -g opencode-ai@latest
 RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /work
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+
+# Bundle default OpenCode configuration/skills/plugins into the image.
+COPY AGENTS.md /opt/opencode-defaults/AGENTS.md
+COPY opencode.jsonc /opt/opencode-defaults/opencode.jsonc
+COPY opencode.channel.jsonc /opt/opencode-defaults/opencode.channel.jsonc
+COPY skills /opt/opencode-defaults/skills
+COPY .opencode /opt/opencode-defaults/.opencode
+COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
+RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]

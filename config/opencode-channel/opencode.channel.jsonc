@@ -1,0 +1,36 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Channel runtime is intentionally constrained and only supports intake tasks.
+  "permission": {
+    "bash": "deny",
+    "edit": "deny",
+    "webfetch": "deny"
+  },
+
+  "agents": {
+    "channel-intake": {
+      "description": "Validate channel input and return structured JSON summary for gateway forwarding.",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "webfetch": "deny"
+      },
+      "skills": ["skills/ChannelIntake.SKILL.md", "skills/RecallFirst.SKILL.md"]
+    }
+  },
+
+  "mcp": {
+    "openmemory": {
+      "enabled": true,
+      "transport": {
+        "type": "sse",
+        "url": "http://openmemory:8765/mcp/gateway/sse/default-user"
+      }
+    }
+  },
+
+  "plugin": [
+    "./.opencode/plugins/policy-and-telemetry.ts"
+  ]
+}

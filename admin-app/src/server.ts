@@ -76,26 +76,43 @@ function updateConfigAtomically(mutator: (raw: string) => string) {
 }
 
 
-function detectChannelAccess(channel: "chat" | "voice"): "lan" | "public" {
+
+function channelRewritePath(channel: "chat" | "voice" | "discord" | "telegram") {
+  if (channel === "chat") return "/chat";
+  if (channel === "voice") return "/voice/transcription";
+  if (channel === "discord") return "/discord/webhook";
+  return "/telegram/webhook";
+}
+
+function channelPort(channel: "chat" | "voice" | "discord" | "telegram") {
+  if (channel === "chat") return "8181";
+  if (channel === "voice") return "8183";
+  if (channel === "discord") return "8184";
+  return "8182";
+}
+
+function detectChannelAccess(channel: "chat" | "voice" | "discord" | "telegram"): "lan" | "public" {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
   const block = raw.match(new RegExp(`handle \/channels\/${channel}\* \{[\s\S]*?\n\}`, "m"))?.[0] ?? "";
   return block.includes("abort @not_lan") ? "lan" : "public";
 }
 
-function setChannelAccess(channel: "chat" | "voice", access: "lan" | "public") {
+function setChannelAccess(channel: "chat" | "voice" | "discord" | "telegram", access: "lan" | "public") {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
   const blockRegex = new RegExp(`handle \/channels\/${channel}\* \{[\s\S]*?\n\}`, "m");
   const replacement = access === "lan"
     ? [
       `handle /channels/${channel}* {`,
-      `\t\tabort @not_lan`,
-      `\t\treverse_proxy channel-${channel}:818${channel === "chat" ? "1" : "3"}`,
-      `\t}`
+      `		abort @not_lan`,
+      `		rewrite * ${channelRewritePath(channel)}`,
+      `		reverse_proxy channel-${channel}:${channelPort(channel)}`,
+      `	}`
     ].join("\n")
     : [
       `handle /channels/${channel}* {`,
-      `\t\treverse_proxy channel-${channel}:818${channel === "chat" ? "1" : "3"}`,
-      `\t}`
+      `		rewrite * ${channelRewritePath(channel)}`,
+      `		reverse_proxy channel-${channel}:${channelPort(channel)}`,
+      `	}`
     ].join("\n");
 
   if (!blockRegex.test(raw)) throw new Error(`missing_${channel}_route_block`);
@@ -358,7 +375,7 @@ const server = Bun.serve({
         return cors(json(200, {
           channels: CHANNEL_SERVICES.map((service) => ({
             service,
-            access: service === "channel-chat" ? detectChannelAccess("chat") : service === "channel-voice" ? detectChannelAccess("voice") : "lan",
+            access: service === "channel-chat" ? detectChannelAccess("chat") : service === "channel-voice" ? detectChannelAccess("voice") : service === "channel-discord" ? detectChannelAccess("discord") : detectChannelAccess("telegram"),
             config: readChannelConfig(service)
           }))
         }));
@@ -367,8 +384,8 @@ const server = Bun.serve({
       if (url.pathname === "/admin/channels/access" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
-        const body = (await req.json()) as { channel: "chat" | "voice"; access: "lan" | "public" };
-        if (!["chat", "voice"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
+        const body = (await req.json()) as { channel: "chat" | "voice" | "discord" | "telegram"; access: "lan" | "public" };
+        if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
         if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
         setChannelAccess(body.channel, body.access);
         await controllerAction("restart", "caddy", `channel ${body.channel} access ${body.access}`);

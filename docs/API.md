@@ -1,12 +1,12 @@
 # API Reference
 
-## Gateway API (routed via Caddy)
+## Gateway API (internal; channel adapters call gateway directly on the Docker network)
 
 ### GET /health
-Health status for the gateway.
+Health status for the gateway (internal).
 
 ### POST /channel/inbound
-Signed channel payload from adapters. Gateway verifies a shared-secret HMAC and forwards to the isolated channel OpenCode runtime.
+Signed channel payload from adapters (internal). Gateway verifies a shared-secret HMAC and forwards to the isolated channel OpenCode runtime.
 
 Headers:
 - `x-channel-signature` (HMAC-SHA256)
@@ -62,7 +62,7 @@ Health status for the admin app.
 
 ### Channel management
 - `GET /admin/channels` — list channel services, network access mode, and editable config keys
-- `POST /admin/channels/access` — set network access for LAN-capable channels `{ "channel": "chat" | "voice", "access": "lan" | "public" }` (step-up required)
+- `POST /admin/channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "lan" | "public" }` (step-up required)
 - `GET /admin/channels/config?service=channel-chat` — read channel-specific env overrides
 - `POST /admin/channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }` (step-up required)
 
@@ -118,10 +118,10 @@ These are available on the internal Docker network for service-to-service API/MC
 
 - OpenCode Core UI/API:
   - Internal service URL: `http://opencode-core:4096`
-  - LAN routes via Caddy: `/admin/opencode*` (preferred), `/opencode*` (legacy)
+  - LAN routes via Caddy: `/admin/opencode*`
 - OpenMemory UI/API/MCP:
   - Internal service URLs: `http://openmemory:3000` (UI/API), `http://openmemory:8765` (MCP SSE)
-  - LAN routes via Caddy: `/admin/openmemory*` (preferred), `/openmemory*` (legacy)
+  - LAN routes via Caddy: `/admin/openmemory*`
 - Admin UI/API:
   - LAN route via Caddy: `/admin*`
   - API namespace: `/admin/api*`
@@ -145,7 +145,7 @@ Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, 
 ## Channel Adapter APIs
 
 ### Chat (channel-chat, :8181)
-- Public/LAN ingress route via Caddy: `/channels/chat*` (legacy `/chat*`)
+- Public/LAN ingress route via Caddy: `/channels/chat*`
 - `GET /health`
 - `POST /chat` — `{ "userId": "...", "text": "...", "metadata": {} }`
   - Header: `x-chat-token` (if configured)
@@ -157,7 +157,7 @@ Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, 
 - `POST /discord/webhook` — simple webhook `{ "userId": "...", "text": "...", "channelId": "...", "guildId": "..." }`
 
 ### Voice (channel-voice, :8183)
-- Public/LAN ingress route via Caddy: `/channels/voice*` (legacy `/voice*`)
+- Public/LAN ingress route via Caddy: `/channels/voice*`
 - `GET /health`
 - `POST /voice/transcription` — `{ "userId": "...", "text": "...", "audioRef": "...", "language": "en" }`
 - `GET /voice/stream` — placeholder for WebSocket-based real-time streaming (not yet implemented)

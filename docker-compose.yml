@@ -2,7 +2,7 @@ services:
   # ============================================================
   # Reverse Proxy — Caddy (front door)
   # Routes channel ingress and LAN-only admin/dashboard URLs:
-  # /channels/*, /channel/*, /health, /admin/*, /admin/opencode*, /admin/openmemory*
+  # /channels/* and /admin/* (including /admin/opencode* and /admin/openmemory*)
   # ============================================================
   caddy:
     image: caddy:2-alpine
@@ -53,17 +53,16 @@ services:
     build: ./opencode
     restart: unless-stopped
     environment:
+      - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.jsonc
+      - OPENCODE_PROFILE=core
+      - OPENCODE_PORT=4096
     ports: ["4096:4096"]
     volumes:
-      - ./opencode/opencode.jsonc:/config/opencode.jsonc:ro
-      - ./opencode/AGENTS.md:/work/AGENTS.md:ro
-      - ./opencode/skills:/work/skills:ro
-      - ./opencode/.opencode:/work/.opencode:ro
+      - ./config/opencode-core:/config
       - ${DATA_DIR:-./data}/opencode:/state
       - ${DATA_DIR:-./data}/shared:/shared
     working_dir: /work
-    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
     networks: [assistant_net]
     depends_on: [openmemory]
 
@@ -71,16 +70,15 @@ services:
     build: ./opencode
     restart: unless-stopped
     environment:
+      - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.channel.jsonc
+      - OPENCODE_PROFILE=channel
+      - OPENCODE_PORT=4097
     volumes:
-      - ./opencode/opencode.channel.jsonc:/config/opencode.channel.jsonc:ro
-      - ./opencode/AGENTS.md:/work/AGENTS.md:ro
-      - ./opencode/skills:/work/skills:ro
-      - ./opencode/.opencode:/work/.opencode:ro
+      - ./config/opencode-channel:/config
       - ${DATA_DIR:-./data}/opencode-channel:/state
       - ${DATA_DIR:-./data}/shared:/shared
     working_dir: /work
-    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4097"]
     networks: [assistant_net]
     depends_on: [openmemory]
 
@@ -112,14 +110,14 @@ services:
       - CHANGE_BUNDLE_DIR=/app/data/bundles
       - CHANGE_STATE_DIR=/app/data/change-states
       - EXT_REQUESTS_PATH=/app/data/extension-requests.json
-      - OPENCODE_CONFIG_PATH=/app/config/opencode.jsonc
+      - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - GATEWAY_URL=http://gateway:8080
       - CADDYFILE_PATH=/app/config/Caddyfile
       - CHANNEL_ENV_DIR=/app/channel-env
     volumes:
-      - ./opencode/opencode.jsonc:/app/config/opencode.jsonc
+      - ./config/opencode-core:/app/config/opencode-core
       - ./caddy/Caddyfile:/app/config/Caddyfile
       - ./config/channel-env:/app/channel-env
       - ./admin-ui:/app/admin-ui:ro
@@ -142,7 +140,7 @@ services:
 
   # ============================================================
   # Channel Layer (optional — enable via --profile channels)
-  # Channels are exposed via Caddy under /channels/* and normalized through gateway /channel/inbound
+  # Channels are exposed via Caddy under /channels/*; adapters forward normalized payloads to gateway internally
   # ============================================================
   channel-chat:
     build: ./channels/chat

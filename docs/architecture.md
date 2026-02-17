@@ -16,8 +16,8 @@ graph TB
     subgraph Caddy["Caddy Reverse Proxy (:80/:443)"]
         direction LR
         Public["/channels/*<br/><small>LAN by default; configurable</small>"]
-        LAN["/admin, /opencode, /openmemory<br/><small>LAN only</small>"]
-        GW_Route["/health, /channel/*"]
+        LAN["/admin/* (includes /admin/opencode*, /admin/openmemory*)<br/><small>LAN only</small>"]
+        GW_Route["/channels/*, /admin/*"]
     end
 
     subgraph Apps["Applications (Layer 2)"]
@@ -145,10 +145,8 @@ The admin app provides the API for all admin functions:
 | `/channels/discord*` | channel-discord:8184 | LAN by default (public toggle possible) |
 | `/channels/telegram*` | channel-telegram:8182 | LAN by default (public toggle possible) |
 | `/admin/*` | admin-app:8100 | LAN only |
-| `/opencode/*` | opencode-core:4096 | LAN only |
-| `/openmemory/*` | openmemory:3000 | LAN only |
-| `/health` | gateway:8080 | Via Caddy |
-| `/channel/*` | gateway:8080 | Via Caddy |
+| `/admin/opencode*` | opencode-core:4096 | LAN only |
+| `/admin/openmemory*` | openmemory:3000 | LAN only |
 
 ### Storage
 
