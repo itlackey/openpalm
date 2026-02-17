@@ -3,36 +3,83 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OpenPalm Ops Dashboard</title>
+  <title>OpenPalm Admin Dashboard</title>
   <style>
     body { font-family: system-ui, Arial; margin: 2rem auto; max-width: 900px; padding: 0 1rem; }
     .card { border:1px solid #ddd; border-radius:8px; padding:1rem; margin-bottom:1rem; }
-    pre { background:#111; color:#eee; padding:1rem; border-radius:8px; }
+    pre { background:#111; color:#eee; padding:1rem; border-radius:8px; overflow-x:auto; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <h1>OpenPalm Operations Dashboard</h1>
-  <p>This page is read-only. Extension approvals and changes are API/CLI-driven (no manual UI flow).</p>
+  <h1>OpenPalm Admin Dashboard</h1>
+  <p>Admin operations are API/CLI-driven. This dashboard provides read-only visibility into the system.</p>
+  <p><strong>Access:</strong> This page is restricted to LAN access via Caddy reverse proxy.</p>
 
-  <div class="card">
-    <h2>Health</h2>
-    <button onclick="loadHealth()">Refresh</button>
-    <pre id="health">Not loaded</pre>
+  <div class="grid">
+    <div class="card">
+      <h2>Gateway Health</h2>
+      <button onclick="loadHealth()">Refresh</button>
+      <pre id="gateway-health">Not loaded</pre>
+    </div>
+
+    <div class="card">
+      <h2>Admin App Health</h2>
+      <button onclick="loadAdminHealth()">Refresh</button>
+      <pre id="admin-health">Not loaded</pre>
+    </div>
   </div>
 
   <div class="card">
-    <h2>How to manage extensions</h2>
-    <pre>Use API/CLI:
-1) POST /admin/extensions/request
-2) GET  /admin/extensions/list
-3) POST /admin/extensions/apply (step-up)
-4) POST /admin/extensions/disable (step-up)</pre>
+    <h2>Architecture</h2>
+    <pre>
+Caddy (reverse proxy, port 80/443)
+  /chat, /voice        -> Channel adapters (optional public)
+  /admin               -> Admin App (LAN only)
+  /opencode            -> OpenCode UI (LAN only)
+  /openmemory          -> Open Memory UI (LAN only)
+  /message, /health    -> Gateway
+  /channel/*           -> Gateway (defense in depth)
+
+Core: Gateway -> OpenCode -> Open Memory
+Admin: Admin App -> Controller (container lifecycle)
+Storage: PostgreSQL, Qdrant, Shared FS</pre>
+  </div>
+
+  <div class="card">
+    <h2>Container Management (via API)</h2>
+    <pre>POST /admin/containers/list     — list running containers
+POST /admin/containers/up       — start a service
+POST /admin/containers/down     — stop a service
+POST /admin/containers/restart  — restart a service</pre>
+  </div>
+
+  <div class="card">
+    <h2>Extension Lifecycle (via API/CLI)</h2>
+    <pre>POST /admin/extensions/request  — queue a plugin for install
+GET  /admin/extensions/list     — review queue
+POST /admin/extensions/apply    — apply (requires step-up)
+POST /admin/extensions/disable  — disable (requires step-up)</pre>
   </div>
 
   <script>
   async function loadHealth(){
-    const res = await fetch('/health');
-    document.getElementById('health').textContent = JSON.stringify(await res.json(), null, 2);
+    try {
+      const res = await fetch('/health');
+      document.getElementById('gateway-health').textContent = JSON.stringify(await res.json(), null, 2);
+    } catch(e) {
+      document.getElementById('gateway-health').textContent = 'Error: ' + e.message;
+    }
+  }
+  async function loadAdminHealth(){
+    try {
+      const res = await fetch('/admin/health');
+      document.getElementById('admin-health').textContent = JSON.stringify(await res.json(), null, 2);
+    } catch(e) {
+      document.getElementById('admin-health').textContent = 'Error: ' + e.message;
+    }
   }
   </script>
 </body>

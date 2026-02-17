@@ -1,0 +1,8 @@
+{
+  "name": "@openpalm/channel-chat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts"
+  }
+}

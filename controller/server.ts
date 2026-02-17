@@ -1,0 +1,68 @@
+import { spawn } from "node:child_process";
+
+const PORT = Number(Bun.env.PORT ?? 8090);
+const TOKEN = Bun.env.CONTROLLER_TOKEN ?? "change-me-controller";
+const PROJECT_PATH = Bun.env.COMPOSE_PROJECT_PATH ?? "/workspace";
+const ALLOWED = new Set(["opencode", "gateway", "openmemory", "admin-app", "channel-chat", "channel-discord", "channel-voice", "caddy"]);
+
+function json(status: number, payload: unknown) {
+  return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });
+}
+
+function runCompose(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn("docker", ["compose", ...args], { cwd: PROJECT_PATH });
+    let out = "";
+    let err = "";
+    proc.stdout.on("data", (d) => (out += d.toString()));
+    proc.stderr.on("data", (d) => (err += d.toString()));
+    proc.on("close", (code) => resolve({ ok: code === 0, stdout: out, stderr: err }));
+  });
+}
+
+Bun.serve({
+  port: PORT,
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === "GET" && url.pathname === "/health") return json(200, { ok: true, service: "controller" });
+    if (req.headers.get("x-controller-token") !== TOKEN) return json(401, { error: "unauthorized" });
+
+    // List running containers
+    if (req.method === "GET" && url.pathname === "/containers") {
+      const result = await runCompose(["ps", "--format", "json"]);
+      if (!result.ok) return json(500, { ok: false, error: result.stderr });
+      return json(200, { ok: true, containers: result.stdout });
+    }
+
+    // Restart a service
+    if (req.method === "POST" && url.pathname.startsWith("/restart/")) {
+      const service = url.pathname.replace("/restart/", "");
+      if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
+      const result = await runCompose(["restart", service]);
+      if (!result.ok) return json(500, { ok: false, error: result.stderr });
+      return json(200, { ok: true, action: "restart", service, stdout: result.stdout });
+    }
+
+    // Start (up) a service
+    if (req.method === "POST" && url.pathname.startsWith("/up/")) {
+      const service = url.pathname.replace("/up/", "");
+      if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
+      const result = await runCompose(["up", "-d", service]);
+      if (!result.ok) return json(500, { ok: false, error: result.stderr });
+      return json(200, { ok: true, action: "up", service, stdout: result.stdout });
+    }
+
+    // Stop (down) a service
+    if (req.method === "POST" && url.pathname.startsWith("/down/")) {
+      const service = url.pathname.replace("/down/", "");
+      if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
+      const result = await runCompose(["stop", service]);
+      if (!result.ok) return json(500, { ok: false, error: result.stderr });
+      return json(200, { ok: true, action: "down", service, stdout: result.stdout });
+    }
+
+    return json(404, { error: "not found" });
+  }
+});
+
+console.log(`controller listening on ${PORT}`);

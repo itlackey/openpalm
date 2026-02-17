@@ -1,11 +1,52 @@
 services:
+  # ============================================================
+  # Reverse Proxy — Caddy (front door)
+  # Routes public channels and LAN-only dashboards
+  # ============================================================
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DATA_DIR:-./data}/caddy_data:/data
+      - ${DATA_DIR:-./data}/caddy_config:/config
+    networks: [assistant_net]
+    depends_on: [gateway, admin-app]
+
+  # ============================================================
+  # Storage Layer
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openpalm}
+      POSTGRES_USER: ${POSTGRES_USER:-openpalm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-pg-password}
+    volumes:
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+    networks: [assistant_net]
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - ${DATA_DIR:-./data}/qdrant:/qdrant/storage
+    networks: [assistant_net]
+
+  # ============================================================
+  # Core Application Layer
+  # ============================================================
   openmemory:
     image: skpassegna/openmemory-mcp:latest
     restart: unless-stopped
     ports: ["3000:3000", "8765:8765"]
     volumes:
       - ${DATA_DIR:-./data}/openmemory:/data
+      - ${DATA_DIR:-./data}/shared:/shared
     networks: [assistant_net]
+    depends_on: [qdrant]
 
   opencode:
     build: ./opencode
@@ -19,22 +60,11 @@ services:
       - ./opencode/skills:/work/skills:ro
       - ./opencode/.opencode:/work/.opencode:ro
       - ${DATA_DIR:-./data}/opencode:/state
+      - ${DATA_DIR:-./data}/shared:/shared
     working_dir: /work
     command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
     networks: [assistant_net]
     depends_on: [openmemory]
-
-  compose-control:
-    build: ./compose-control
-    restart: unless-stopped
-    environment:
-      - PORT=8090
-      - COMPOSE_CONTROL_TOKEN=${COMPOSE_CONTROL_TOKEN:-change-me-compose-control}
-      - COMPOSE_PROJECT_PATH=/workspace
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./:/workspace
-    networks: [assistant_net]
 
   gateway:
     build: ./gateway
@@ -45,6 +75,22 @@ services:
       - OPENMEMORY_MCP_URL=http://openmemory:8765/mcp/gateway/sse/default-user
       - OPENMEMORY_API_URL=http://openmemory:8765
       - TOOL_NETWORK_ALLOWLIST=${TOOL_NETWORK_ALLOWLIST:-example.com,api.open-meteo.com}
+      - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
+      - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
+      - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
+      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-openpalm}:${POSTGRES_PASSWORD:-change-me-pg-password}@postgres:5432/${POSTGRES_DB:-openpalm}
+    volumes:
+      - ${DATA_DIR:-./data}/gateway:/app/data
+      - ${DATA_DIR:-./data}/shared:/shared
+    networks: [assistant_net]
+    depends_on: [opencode, openmemory, postgres]
+
+  admin-app:
+    build: ./admin-app
+    restart: unless-stopped
+    environment:
+      - PORT=8100
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
       - ADMIN_STEP_UP_TOKEN=${ADMIN_STEP_UP_TOKEN:-change-me-step-up}
       - AUTO_APPROVE_EXTENSIONS=${AUTO_APPROVE_EXTENSIONS:-}
@@ -52,28 +98,65 @@ services:
       - CHANGE_STATE_DIR=/app/data/change-states
       - EXT_REQUESTS_PATH=/app/data/extension-requests.json
       - OPENCODE_CONFIG_PATH=/app/config/opencode.jsonc
-      - COMPOSE_CONTROL_URL=http://compose-control:8090
-      - COMPOSE_CONTROL_TOKEN=${COMPOSE_CONTROL_TOKEN:-change-me-compose-control}
-      - CHANNEL_WEBHOOK_SECRET=${CHANNEL_WEBHOOK_SECRET:-}
-      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-    ports: ["8080:8080"]
+      - CONTROLLER_URL=http://controller:8090
+      - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
     volumes:
       - ./opencode/opencode.jsonc:/app/config/opencode.jsonc
       - ./admin-ui:/app/admin-ui:ro
-      - ${DATA_DIR:-./data}/gateway:/app/data
+      - ${DATA_DIR:-./data}/admin-app:/app/data
+      - ${DATA_DIR:-./data}/shared:/shared
     networks: [assistant_net]
-    depends_on: [opencode, openmemory, compose-control]
+    depends_on: [controller]
 
-  channel-webhook:
-    build: ./channels/webhook
+  controller:
+    build: ./controller
+    restart: unless-stopped
+    environment:
+      - PORT=8090
+      - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
+      - COMPOSE_PROJECT_PATH=/workspace
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace
+    networks: [assistant_net]
+
+  # ============================================================
+  # Channel Layer (optional — enable via --profile channels)
+  # All channels route through the gateway for defense in depth
+  # ============================================================
+  channel-chat:
+    build: ./channels/chat
     restart: unless-stopped
     profiles: ["channels"]
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_WEBHOOK_SECRET=${CHANNEL_WEBHOOK_SECRET:-}
-      - WEBHOOK_INBOUND_TOKEN=${WEBHOOK_INBOUND_TOKEN:-}
-    ports: ["8181:8181"]
+      - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
+      - CHAT_INBOUND_TOKEN=${CHAT_INBOUND_TOKEN:-}
+    networks: [assistant_net]
+    depends_on: [gateway]
+
+  channel-discord:
+    build: ./channels/discord
+    restart: unless-stopped
+    profiles: ["channels"]
+    environment:
+      - PORT=8184
+      - GATEWAY_URL=http://gateway:8080
+      - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY:-}
+    networks: [assistant_net]
+    depends_on: [gateway]
+
+  channel-voice:
+    build: ./channels/voice
+    restart: unless-stopped
+    profiles: ["channels"]
+    environment:
+      - PORT=8183
+      - GATEWAY_URL=http://gateway:8080
+      - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -87,7 +170,6 @@ services:
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-    ports: ["8182:8182"]
     networks: [assistant_net]
     depends_on: [gateway]
 

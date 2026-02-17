@@ -19,14 +19,17 @@ if [ ! -f .env ]; then
 import secrets, pathlib
 p = pathlib.Path('.env')
 text = p.read_text()
-for marker in ['replace-with-long-random-token','replace-with-second-long-random-token','replace-with-third-long-random-token','replace-with-channel-secret','replace-with-inbound-token','replace-with-telegram-webhook-secret']:
+for marker in ['replace-with-long-random-token','replace-with-second-long-random-token','replace-with-controller-token','replace-with-pg-password','replace-with-channel-secret','replace-with-inbound-token','replace-with-telegram-webhook-secret']:
     text = text.replace(marker, secrets.token_urlsafe(36), 1)
 p.write_text(text)
 print('Created .env with generated secure defaults.')
 PY
 fi
 
-mkdir -p data/openmemory data/opencode data/gateway data/observability data/backups data/gateway/bundles
+mkdir -p data/openmemory data/opencode data/gateway data/admin-app data/admin-app/bundles data/admin-app/change-states
+mkdir -p data/postgres data/qdrant data/shared
+mkdir -p data/caddy_data data/caddy_config
+mkdir -p data/observability data/backups
 
 echo "Starting core services..."
 docker compose up -d --build
@@ -34,13 +37,14 @@ docker compose up -d --build
 echo "If you want channel adapters too: docker compose --profile channels up -d --build"
 
 for _ in $(seq 1 40); do
-  if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
-    echo "OpenPalm is ready: http://localhost:8080"
-    echo "Ops dashboard: http://localhost:8080/index.html"
+  if curl -fsS http://localhost:80/health >/dev/null 2>&1; then
+    echo "OpenPalm is ready: http://localhost"
+    echo "Admin dashboard (LAN only): http://localhost/admin"
+    echo "Open Memory UI (LAN only): http://localhost/openmemory"
     exit 0
   fi
   sleep 2
 done
 
-echo "Gateway health check failed. Inspect logs with: docker compose logs gateway"
+echo "Health check failed. Inspect logs with: docker compose logs"
 exit 1
