@@ -28,6 +28,10 @@ openclaw-min/
 
 ### 2) Compose file (Gateway + OpenCode + OpenMemory)
 > Adjust image names/ports to your chosen OpenMemory distribution.
+> All host mounts follow the XDG Base Directory layout — data, config, and state
+> are separated into `~/.local/share/openpalm`, `~/.config/openpalm`, and
+> `~/.local/state/openpalm` respectively. The three `OPENPALM_*` env vars are
+> resolved by `install.sh` and written into `.env`.
 
 ```yaml
 services:
@@ -38,7 +42,7 @@ services:
       - "3000:3000"   # UI
       - "8765:8765"   # MCP/API
     volumes:
-      - openmemory_data:/data
+      - ${OPENPALM_DATA_HOME}/openmemory:/data
     networks: [assistant_net]
 
   opencode:
@@ -49,11 +53,10 @@ services:
     ports:
       - "4096:4096"
     volumes:
-      - ./opencode/opencode.jsonc:/config/opencode.jsonc:ro
-      - ./opencode/AGENTS.md:/work/AGENTS.md:ro
-      - ./opencode/skills:/work/skills:ro
-      - ./opencode/.opencode:/work/.opencode:ro
-      - opencode_state:/state
+      - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
+      - ${OPENPALM_STATE_HOME}/opencode-core:/state
+      - ${OPENPALM_STATE_HOME}/workspace:/work
+      - ${OPENPALM_DATA_HOME}/shared:/shared
     working_dir: /work
     command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
     networks: [assistant_net]
@@ -67,15 +70,13 @@ services:
       - OPENMEMORY_MCP_URL=http://openmemory:8765/mcp/gateway/sse/default-user
     ports:
       - "8080:8080"
+    volumes:
+      - ${OPENPALM_STATE_HOME}/gateway:/app/data
     networks: [assistant_net]
     depends_on: [opencode, openmemory]
 
 networks:
   assistant_net:
-
-volumes:
-  openmemory_data:
-  opencode_state:
 ```
 
 ---

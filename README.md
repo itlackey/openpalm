@@ -31,7 +31,7 @@ OpenPalm uses a three-layer architecture where every component runs as a distinc
 │               STORAGE + CONFIG (Layer 3)                │
 │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
 │  │  PSQL    │  │  Qdrant  │  │ Shared FS            │  │
-│  │(postgres)│  │ (vectors)│  │ (host mount at /shared│) │
+│  │(postgres)│  │ (vectors)│  │ (host XDG data mount) │  │
 │  └──────────┘  └──────────┘  └──────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 
@@ -43,6 +43,35 @@ Caddy reverse proxy (front door):
 ```
 
 All boxes represent a distinct container except Shared FS which is a shared mount point on the host.
+
+### Host directory layout (XDG Base Directory)
+
+All persistent host directories follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/):
+
+```
+~/.local/share/openpalm/     (XDG_DATA_HOME — databases, blobs)
+  postgres/                   PostgreSQL data
+  qdrant/                     Vector storage
+  openmemory/                 Memory backend
+  shared/                     Shared filesystem across services
+  caddy/                      Caddy TLS certificates
+  admin-app/                  Extension bundles, change states
+
+~/.config/openpalm/           (XDG_CONFIG_HOME — user-editable config)
+  opencode-core/              Core agent config (opencode.jsonc, AGENTS.md, skills/)
+  opencode-channel/           Channel intake agent config
+  caddy/Caddyfile             Reverse proxy routing rules
+  channels/                   Per-channel env files (channel-chat.env, etc.)
+
+~/.local/state/openpalm/      (XDG_STATE_HOME — runtime state, logs)
+  opencode-core/              Core agent runtime state
+  opencode-channel/           Channel agent runtime state
+  gateway/                    Audit logs
+  caddy/                      Caddy runtime config
+  workspace/                  OpenCode working directory
+```
+
+Override any category by setting `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, or `OPENPALM_STATE_HOME` in `.env`.
 
 ## Key design principles
 
@@ -69,7 +98,7 @@ All boxes represent a distinct container except Shared FS which is a shared moun
 |---|---|
 | `postgres` | Structured data storage |
 | `qdrant` | Vector storage for embeddings |
-| Shared FS | Shared mount point on host (`data/shared`) |
+| Shared FS | Shared mount point on host (`~/.local/share/openpalm/shared`) |
 
 ### Channel services (optional, `--profile channels`)
 | Service | Role | Port |
