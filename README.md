@@ -61,6 +61,25 @@ docker compose --profile channels up -d --build
 | Step-up auth | Dual-token model for destructive admin operations |
 | Controller isolation | Only one container touches the Docker socket |
 
+## OpenPalm vs OpenClaw
+
+OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but takes a fundamentally different approach to security and deployment. Where OpenClaw runs as a local daemon with broad system access, OpenPalm isolates every component in its own container with explicit, layered controls.
+
+| | OpenPalm | OpenClaw |
+|---|---|---|
+| **Architecture** | Containerized microservices — each service is an isolated Docker container on a private network | Local daemon with WebSocket control plane — agent runs directly on the host |
+| **Channel security** | HMAC-signed payloads, gateway signature verification, dual-runtime intake validation | DM pairing codes, opt-in open DM policy |
+| **Runtime isolation** | Two separate runtimes: locked-down channel intake (all tools denied) + gated core agent | Single runtime with elevated bash toggled per session |
+| **Extension safety** | Staged install with risk classification, automated validation gates, step-up auth required to apply | Auto-discovery from ClawHub registry, skills pulled dynamically |
+| **Admin controls** | Dedicated admin API + web dashboard behind dual-token step-up auth | Chat commands (`/status`, `/reset`, `/mesh`) sent in messaging channels |
+| **Memory policy** | Explicit-save-only with secret detection, policy skills, and redaction | Session-based context with `/compact` compression |
+| **Container management** | Controller service (only container with Docker socket), admin API for lifecycle ops | Direct host access — agent can run shell commands natively |
+| **Deployment** | Single `docker compose up` — all services, networking, and secrets generated automatically | Daemon install via `onboard --install-daemon`, multiple hosting modes (local, VPS, Tailscale) |
+| **Channels** | Chat, Discord, Voice, Telegram (containerized adapters) | WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, Google Chat, WebChat, and more |
+| **Proactive features** | Not yet — event-driven responses only | Heartbeat system and cron jobs for autonomous actions |
+
+**In short:** OpenClaw offers broader channel support and proactive capabilities. OpenPalm trades breadth for depth — every layer is designed to prevent the kind of [data exfiltration and prompt injection vulnerabilities](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/) that have been found in OpenClaw's skill ecosystem.
+
 ## Architecture at a glance
 
 ```
