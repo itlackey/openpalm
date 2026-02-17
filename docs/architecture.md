@@ -32,7 +32,7 @@ graph TB
     subgraph Storage["Storage + Config (Layer 3)"]
         PSQL["PostgreSQL<br/><small>structured data</small>"]
         Qdrant["Qdrant<br/><small>vector storage</small>"]
-        SharedFS["Shared FS<br/><small>host mount /shared</small>"]
+        SharedFS["Shared FS<br/><small>XDG data mount</small>"]
     end
 
     subgraph UI["Dashboards (LAN only)"]
@@ -150,11 +150,19 @@ The admin app provides the API for all admin functions:
 
 ### Storage
 
+Host directories follow the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/) with three categories:
+
+| Category | Host Path | Env Var | Contents |
+|---|---|---|---|
+| **Data** | `~/.local/share/openpalm/` | `OPENPALM_DATA_HOME` | PostgreSQL, Qdrant, Open Memory, Shared FS, Caddy TLS, Admin App |
+| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs, Caddyfile, channel env files |
+| **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, workspace |
+
 | Store | Used by | Purpose |
 |---|---|---|
 | PostgreSQL | Admin App | Structured data |
 | Qdrant | Open Memory | Vector embeddings for memory search |
-| Shared FS (`/shared`) | OpenCode, Open Memory, Admin App | Shared file storage across services |
+| Shared FS | OpenCode, Open Memory, Admin App | Shared file storage across services |
 
 ## Security model — defense in depth
 

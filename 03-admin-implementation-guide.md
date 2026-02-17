@@ -21,18 +21,35 @@
 3. If missing:
    - Windows/macOS: guide to Docker Desktop install
    - Linux: offer scripted install with explicit confirmation
-4. Prompt for persistent data directory
-5. Write env + compose override that bind-mounts persistent paths
-6. `docker compose up -d`
-7. Health check endpoints
-8. Enroll first admin with step-up auth (passkey preferred)
+4. Resolve XDG Base Directory paths (data, config, state)
+5. Write resolved absolute paths into `.env`
+6. Seed default configs into `$OPENPALM_CONFIG_HOME`
+7. `docker compose up -d`
+8. Health check endpoints
+9. Enroll first admin with step-up auth (passkey preferred)
 
-### Persistent data layout
+### Persistent directory layout (XDG Base Directory)
 ```
-<DATA_DIR>/
+~/.local/share/openpalm/      (OPENPALM_DATA_HOME — databases, blobs)
+  postgres/
+  qdrant/
   openmemory/
-  opencode/
+  shared/
+  caddy/
+  admin-app/
+
+~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
+  opencode-core/
+  opencode-channel/
+  caddy/Caddyfile
+  channels/
+
+~/.local/state/openpalm/       (OPENPALM_STATE_HOME — runtime state, logs)
+  opencode-core/
+  opencode-channel/
   gateway/
+  caddy/
+  workspace/
   observability/
   backups/
 ```

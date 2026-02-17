@@ -64,3 +64,10 @@
 - [x] Gallery and setup API endpoints added to admin-app server
 
 - [x] Added separate `opencode-channel` runtime to isolate channel traffic from `opencode-core`
+
+## XDG Base Directory compliance
+- [x] All volume mounts use OPENPALM_DATA_HOME / OPENPALM_CONFIG_HOME / OPENPALM_STATE_HOME
+- [x] install.sh resolves XDG_DATA_HOME / XDG_CONFIG_HOME / XDG_STATE_HOME with standard fallbacks
+- [x] install.sh seeds default configs from repo into XDG config home (preserving existing edits)
+- [x] .env.example documents the three XDG path variables
+- [x] All services, channels, and apps conform to the data/config/state separation pattern
