@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 const PORT = Number(Bun.env.PORT ?? 8090);
 const TOKEN = Bun.env.CONTROLLER_TOKEN ?? "change-me-controller";
 const PROJECT_PATH = Bun.env.COMPOSE_PROJECT_PATH ?? "/workspace";
-const ALLOWED = new Set(["opencode", "gateway", "openmemory", "admin-app", "channel-chat", "channel-discord", "channel-voice", "caddy"]);
+const ALLOWED = new Set(["opencode-core", "opencode-channel", "gateway", "openmemory", "admin-app", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });

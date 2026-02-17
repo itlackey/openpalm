@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { AuditLog } from "./audit.ts";
-import { verifyReplayProtection, verifySignature } from "./channel-security.ts";
+import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
+import { verifySignature } from "./channel-security.ts";
 import { allowRequest } from "./rate-limit.ts";
 import { OpenCodeClient } from "./opencode-client.ts";
-import type { ChannelMessage, MessageRequest } from "./types.ts";
+import type { ChannelMessage } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8080);
-const OPENCODE_BASE_URL = Bun.env.OPENCODE_BASE_URL ?? "http://opencode:4096";
+const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://opencode-core:4096";
+const OPENCODE_CHANNEL_BASE_URL = Bun.env.OPENCODE_CHANNEL_BASE_URL ?? "http://opencode-channel:4097";
+const ALLOWED_CHANNELS = new Set(["chat", "discord", "voice", "telegram"]);
+
 const CHANNEL_SHARED_SECRETS: Record<string, string> = {
   chat: Bun.env.CHANNEL_CHAT_SECRET ?? "",
   discord: Bun.env.CHANNEL_DISCORD_SECRET ?? "",
@@ -14,7 +18,8 @@ const CHANNEL_SHARED_SECRETS: Record<string, string> = {
   telegram: Bun.env.CHANNEL_TELEGRAM_SECRET ?? "",
 };
 
-const opencode = new OpenCodeClient(OPENCODE_BASE_URL);
+const coreOpenCode = new OpenCodeClient(OPENCODE_CORE_BASE_URL);
+const channelOpenCode = new OpenCodeClient(OPENCODE_CHANNEL_BASE_URL);
 const audit = new AuditLog("/app/data/audit.log");
 
 function json(status: number, payload: unknown) {
@@ -24,67 +29,113 @@ function json(status: number, payload: unknown) {
   });
 }
 
-/**
- * Forward a message to OpenCode for processing.
- * Channel requests use the "channel-intake" agent (restricted toolset).
- * Direct /message requests use the default agent.
- */
-async function processMessage(
-  body: Partial<MessageRequest>,
-  requestId: string,
-  channel?: string
-) {
-  const userId = body.userId ?? "default-user";
-  const text = body.text?.trim();
-  const sessionId = body.sessionId ?? randomUUID();
-  if (!text) return json(400, { error: "text is required", requestId });
+function validatePayload(payload: Partial<ChannelMessage>): payload is ChannelMessage {
+  return (
+    typeof payload.userId === "string" &&
+    payload.userId.trim().length > 0 &&
+    typeof payload.channel === "string" &&
+    ALLOWED_CHANNELS.has(payload.channel) &&
+    typeof payload.text === "string" &&
+    payload.text.trim().length > 0 &&
+    payload.text.length <= 10_000 &&
+    typeof payload.nonce === "string" &&
+    payload.nonce.trim().length > 0 &&
+    typeof payload.timestamp === "number"
+  );
+}
 
-  const rlKey = `${userId}:${new Date().getUTCMinutes()}`;
+async function processChannelInbound(payload: ChannelMessage, requestId: string) {
+  const sessionId = randomUUID();
+  const rlKey = `${payload.userId}:${new Date().getUTCMinutes()}`;
   if (!allowRequest(rlKey, 120, 60_000))
     return json(429, { error: "rate_limited", requestId });
 
-  // Assign specialized agent for channel requests; default agent for direct API
-  const agent = channel ? "channel-intake" : undefined;
+  let intake;
+  try {
+    const intakeResult = await channelOpenCode.send({
+      message: buildIntakeCommand(payload),
+      userId: payload.userId,
+      sessionId,
+      agent: "channel-intake",
+      channel: payload.channel,
+      metadata: payload.metadata,
+    });
+    intake = parseIntakeDecision(intakeResult.response);
+  } catch (error) {
+    audit.write({
+      ts: new Date().toISOString(),
+      requestId,
+      sessionId,
+      userId: payload.userId,
+      action: "channel_intake",
+      status: "error",
+      details: { channel: payload.channel, error: String(error) },
+    });
+    return json(502, { error: "channel_intake_unavailable", requestId });
+  }
+
+  if (!intake.valid) {
+    audit.write({
+      ts: new Date().toISOString(),
+      requestId,
+      sessionId,
+      userId: payload.userId,
+      action: "channel_intake",
+      status: "denied",
+      details: { channel: payload.channel, reason: intake.reason || "rejected" },
+    });
+    return json(422, {
+      error: "invalid_channel_request",
+      reason: intake.reason || "rejected",
+      requestId,
+    });
+  }
 
   try {
-    const result = await opencode.send({
-      message: text,
-      userId,
+    const coreResult = await coreOpenCode.send({
+      message: intake.summary,
+      userId: payload.userId,
       sessionId,
-      agent,
-      channel,
-      metadata: body.metadata,
+      channel: payload.channel,
+      metadata: {
+        ...payload.metadata,
+        intakeSummary: intake.summary,
+        intakeValid: true,
+      },
     });
 
     audit.write({
       ts: new Date().toISOString(),
       requestId,
       sessionId,
-      userId,
-      action: "message",
+      userId: payload.userId,
+      action: "channel_forward_to_core",
       status: "ok",
-      details: { channel, agent },
+      details: { channel: payload.channel },
     });
 
     return json(200, {
       requestId,
       sessionId,
-      userId,
-      answer: result.response,
-      agent: result.agent,
-      metadata: result.metadata,
+      userId: payload.userId,
+      answer: coreResult.response,
+      intake: {
+        valid: true,
+        summary: intake.summary,
+      },
+      metadata: coreResult.metadata,
     });
   } catch (error) {
     audit.write({
       ts: new Date().toISOString(),
       requestId,
       sessionId,
-      userId,
-      action: "message",
+      userId: payload.userId,
+      action: "channel_forward_to_core",
       status: "error",
-      details: { channel, agent, error: String(error) },
+      details: { channel: payload.channel, error: String(error) },
     });
-    return json(502, { error: "agent_unavailable", requestId });
+    return json(502, { error: "core_runtime_unavailable", requestId });
   }
 }
 
@@ -102,28 +153,19 @@ const server = Bun.serve({
           time: new Date().toISOString(),
         });
 
-      if (url.pathname === "/message" && req.method === "POST")
-        return processMessage(await req.json(), requestId);
-
-      // Channel inbound — verify HMAC + replay, then forward to OpenCode
       if (url.pathname === "/channel/inbound" && req.method === "POST") {
         const raw = await req.text();
-        const payload = JSON.parse(raw) as ChannelMessage;
+        const payload = JSON.parse(raw) as Partial<ChannelMessage>;
         const incomingSig = req.headers.get("x-channel-signature") ?? "";
-        const channelSecret = CHANNEL_SHARED_SECRETS[payload.channel] ?? "";
 
+        if (!validatePayload(payload))
+          return json(400, { error: "invalid_payload", requestId });
+
+        const channelSecret = CHANNEL_SHARED_SECRETS[payload.channel] ?? "";
         if (!channelSecret)
-          return json(403, { error: "channel_not_configured" });
+          return json(403, { error: "channel_not_configured", requestId });
         if (!verifySignature(channelSecret, raw, incomingSig))
-          return json(403, { error: "invalid_signature" });
-        if (
-          !verifyReplayProtection(
-            payload.channel,
-            payload.nonce,
-            payload.timestamp
-          )
-        )
-          return json(409, { error: "replay_detected" });
+          return json(403, { error: "invalid_signature", requestId });
 
         audit.write({
           ts: new Date().toISOString(),
@@ -133,15 +175,7 @@ const server = Bun.serve({
           details: { channel: payload.channel, userId: payload.userId },
         });
 
-        return processMessage(
-          {
-            userId: payload.userId,
-            text: payload.text,
-            metadata: payload.metadata,
-          },
-          requestId,
-          payload.channel
-        );
+        return processChannelInbound(payload, requestId);
       }
 
       return json(404, { error: "not_found" });
@@ -153,7 +187,7 @@ const server = Bun.serve({
         status: "error",
         details: { error: String(error) },
       });
-      return json(500, { error: "internal_error" });
+      return json(500, { error: "internal_error", requestId });
     }
   },
 });

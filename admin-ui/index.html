@@ -220,7 +220,7 @@ async function showDetail(id) {
   } else if (item.category === 'skill') {
     h += 'Skills are behavioral SOPs (markdown files). They have zero tool access and cannot execute code. They only influence how the assistant reasons and responds.';
   } else {
-    h += 'Containers run on the isolated Docker network. Channel containers can only reach the gateway. All inbound messages pass through HMAC signature verification, replay protection, rate limiting, and the tool firewall before reaching OpenCode.';
+    h += 'Containers run on the isolated Docker network. Channel containers can only reach the gateway. All inbound messages pass through HMAC signature verification, rate limiting, and the tool firewall before reaching OpenCode.';
   }
   h += '</div></div>';
   // install button
@@ -319,7 +319,8 @@ async function uninstallPlugin(pluginId) {
 async function loadServices() {
   const el = document.getElementById('page-services');
   let h = '<h2>Services</h2>';
-  h += '<p class="muted">Health status and container management.</p>';
+  h += '<p class="muted">Health status, channel controls, and container management.</p>';
+
   const hc = await api('/admin/setup/health-check');
   if (hc.ok) {
     const s = hc.data.services;
@@ -330,7 +331,34 @@ async function loadServices() {
     }
     h += '</div>';
   }
-  const known = ['gateway','opencode','openmemory','admin-app','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+
+  h += '<h3>Channels</h3>';
+  const ch = await api('/admin/channels');
+  if (ch.ok) {
+    h += '<div class="grid2">';
+    for (const c of ch.data.channels) {
+      h += '<div class="card">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      h += '<strong>' + esc(c.service) + '</strong>';
+      h += '<span class="tag">' + esc(c.access.toUpperCase()) + '</span>';
+      h += '</div>';
+      h += '<div class="muted" style="font-size:13px;margin:.35rem 0">Network access: ' + (c.access === 'public' ? 'Public' : 'LAN only') + '</div>';
+      if (!adminToken || !stepUpToken) {
+        h += '<p class="muted" style="font-size:12px">Set tokens to edit access/config.</p>';
+      } else {
+        if (c.service.startsWith('channel-')) {
+          const next = c.access === 'public' ? 'lan' : 'public';
+          const label = c.access === 'public' ? 'Set LAN only' : 'Set Public';
+          h += `<button class="sm secondary" onclick="setChannelAccess('${esc(c.service)}','${next}')">${label}</button> `;
+        }
+        h += `<button class="sm" onclick="editChannelConfig('${esc(c.service)}')">Edit Config</button>`;
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  const known = ['gateway','opencode-core','opencode-channel','openmemory','admin-app','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
   h += '<h3>Container Actions</h3>';
   if (!adminToken || !stepUpToken) {
     h += '<p class="muted">Set admin + step-up tokens in Settings to manage containers.</p>';
@@ -340,14 +368,44 @@ async function loadServices() {
       h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
       h += '<strong>' + esc(svc) + '</strong>';
       h += '<div style="display:flex;gap:.3rem">';
-      h += '<button class="sm" onclick="svcAction(\'restart\',\'' + svc + '\')">Restart</button>';
-      h += '<button class="sm secondary" onclick="svcAction(\'up\',\'' + svc + '\')">Up</button>';
-      h += '<button class="sm danger" onclick="svcAction(\'down\',\'' + svc + '\')">Down</button>';
+      h += `<button class="sm" onclick="svcAction('restart','${esc(svc)}')">Restart</button>`;
+      h += `<button class="sm secondary" onclick="svcAction('up','${esc(svc)}')">Up</button>`;
+      h += `<button class="sm danger" onclick="svcAction('down','${esc(svc)}')">Down</button>`;
       h += '</div></div>';
     }
     h += '</div>';
   }
+
   el.innerHTML = h;
+}
+
+async function setChannelAccess(service, access) {
+  const channel = service === 'channel-chat' ? 'chat' : service === 'channel-voice' ? 'voice' : service === 'channel-discord' ? 'discord' : service === 'channel-telegram' ? 'telegram' : '';
+  if (!channel) return;
+  if (!confirm('Set ' + service + ' network access to ' + access.toUpperCase() + '? Caddy will restart.')) return;
+  const r = await api('/admin/channels/access', { method: 'POST', body: JSON.stringify({ channel, access }) });
+  alert(r.ok ? 'Updated.' : 'Failed: ' + (r.data.error || r.status));
+  loadServices();
+}
+
+async function editChannelConfig(service) {
+  const r = await api('/admin/channels/config?service=' + encodeURIComponent(service));
+  if (!r.ok) return alert('Could not load config');
+  const cfg = r.data.config || {};
+  const preset = Object.entries(cfg).map(([k, v]) => k + '=' + (v || '')).join('\n');
+  const next = prompt('Edit key=value lines for ' + service, preset);
+  if (next === null) return;
+  const out = {};
+  for (const line of next.split(/\r?\n/)) {
+    if (!line.includes('=')) continue;
+    const idx = line.indexOf('=');
+    const k = line.slice(0, idx).trim();
+    const v = line.slice(idx + 1).trim();
+    out[k] = v;
+  }
+  const wr = await api('/admin/channels/config', { method: 'POST', body: JSON.stringify({ service, config: out, restart: true }) });
+  alert(wr.ok ? 'Config updated.' : 'Failed: ' + (wr.data.error || wr.status));
+  loadServices();
 }
 
 async function svcAction(action, svc) {
@@ -441,7 +499,7 @@ function wizardBody() {
         + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Step-Up Token (from .env)</label>'
         + '<input type="password" id="wiz-stepup" value="' + esc(stepUpToken) + '" />'
         + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
-        + '<ul style="font-size:13px;margin:.2rem 0"><li>HMAC channel signatures + replay protection</li><li>Tool firewall (safe/medium/high risk tiers)</li><li>Secret detection on memory writes</li><li>Rate limiting (120 req/min per user)</li><li>LAN-only admin access via Caddy</li></ul></div>';
+        + '<ul style="font-size:13px;margin:.2rem 0"><li>HMAC channel signatures</li><li>Tool firewall (safe/medium/high risk tiers)</li><li>Secret detection on memory writes</li><li>Rate limiting (120 req/min per user)</li><li>LAN-only admin access via Caddy</li></ul></div>';
     case 'channels':
       return '<p>Choose which channels to enable. Channels are dumb adapters; all messages pass through the gateway for security.</p>'
         + channelCheckboxes();

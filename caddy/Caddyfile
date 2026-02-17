@@ -1,53 +1,61 @@
 {
-	# Global options
 	admin off
 }
 
 :80 {
-	# --- Public channels (optional, can be disabled) ---
-	handle /chat/* {
+	@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
+	@not_lan not remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
+
+	# Channel ingress (LAN by default; configurable by admin API)
+	handle /channels/chat* {
+		abort @not_lan
+		rewrite * /chat
 		reverse_proxy channel-chat:8181
 	}
 
-	handle /voice/* {
+	handle /channels/voice* {
+		abort @not_lan
+		rewrite * /voice/transcription
 		reverse_proxy channel-voice:8183
 	}
 
-	# --- All channel inbound routed through gateway (defense in depth) ---
-	handle /channel/* {
-		reverse_proxy gateway:8080
+	handle /channels/discord* {
+		abort @not_lan
+		rewrite * /discord/webhook
+		reverse_proxy channel-discord:8184
 	}
 
-	# --- Core gateway (message processing, health) ---
-	handle /message {
-		reverse_proxy gateway:8080
+	handle /channels/telegram* {
+		abort @not_lan
+		rewrite * /telegram/webhook
+		reverse_proxy channel-telegram:8182
 	}
 
-	handle /health {
-		reverse_proxy gateway:8080
-	}
-
-	# --- LAN-only dashboards and admin ---
+	# LAN-only admin umbrella
 	handle /admin* {
-		@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
 		abort @not_lan
-		reverse_proxy admin-app:8100
+		route {
+			handle /admin/api* {
+				uri replace /admin/api /admin
+				reverse_proxy admin-app:8100
+			}
+
+			handle /admin/opencode* {
+				uri replace /admin/opencode / 
+				reverse_proxy opencode-core:4096
+			}
+
+			handle /admin/openmemory* {
+				uri replace /admin/openmemory / 
+				reverse_proxy openmemory:3000
+			}
+
+			reverse_proxy admin-app:8100
+		}
 	}
 
-	handle /opencode* {
-		@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
-		abort @not_lan
-		reverse_proxy opencode:4096
-	}
-
-	handle /openmemory* {
-		@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
-		abort @not_lan
-		reverse_proxy openmemory:3000
-	}
-
-	# --- Default: gateway ---
+	# Explicitly reject other URLs at edge
 	handle {
-		reverse_proxy gateway:8080
+		respond "not_found" 404
 	}
 }

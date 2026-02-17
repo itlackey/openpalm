@@ -104,7 +104,7 @@ Design so your Gateway is the final authority for destructive/external actions.
 - Subscribe to OpenCode events and emit telemetry.
 
 ### Suggested API
-- `POST /message` – send a user message
+- `POST /channel/inbound` – ingest signed channel payloads (single inbound path)
 - `GET /health` – readiness
 - `POST /admin/*` – admin ops (later guide)
 

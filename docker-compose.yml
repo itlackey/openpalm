@@ -1,7 +1,8 @@
 services:
   # ============================================================
   # Reverse Proxy — Caddy (front door)
-  # Routes public channels and LAN-only dashboards
+  # Routes channel ingress and LAN-only admin/dashboard URLs:
+  # /channels/* and /admin/* (including /admin/opencode* and /admin/openmemory*)
   # ============================================================
   caddy:
     image: caddy:2-alpine
@@ -48,21 +49,36 @@ services:
     networks: [assistant_net]
     depends_on: [qdrant]
 
-  opencode:
+  opencode-core:
     build: ./opencode
     restart: unless-stopped
     environment:
+      - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.jsonc
+      - OPENCODE_PROFILE=core
+      - OPENCODE_PORT=4096
     ports: ["4096:4096"]
     volumes:
-      - ./opencode/opencode.jsonc:/config/opencode.jsonc:ro
-      - ./opencode/AGENTS.md:/work/AGENTS.md:ro
-      - ./opencode/skills:/work/skills:ro
-      - ./opencode/.opencode:/work/.opencode:ro
+      - ./config/opencode-core:/config
       - ${DATA_DIR:-./data}/opencode:/state
       - ${DATA_DIR:-./data}/shared:/shared
     working_dir: /work
-    command: ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+    networks: [assistant_net]
+    depends_on: [openmemory]
+
+  opencode-channel:
+    build: ./opencode
+    restart: unless-stopped
+    environment:
+      - OPENCODE_CONFIGURATION_DIRECTORY=/config
+      - OPENCODE_CONFIG=/config/opencode.channel.jsonc
+      - OPENCODE_PROFILE=channel
+      - OPENCODE_PORT=4097
+    volumes:
+      - ./config/opencode-channel:/config
+      - ${DATA_DIR:-./data}/opencode-channel:/state
+      - ${DATA_DIR:-./data}/shared:/shared
+    working_dir: /work
     networks: [assistant_net]
     depends_on: [openmemory]
 
@@ -71,7 +87,9 @@ services:
     restart: unless-stopped
     environment:
       - PORT=8080
-      - OPENCODE_BASE_URL=http://opencode:4096
+      - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
+      - OPENCODE_CHANNEL_BASE_URL=http://opencode-channel:4097
+      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
       - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
@@ -79,7 +97,7 @@ services:
     volumes:
       - ${DATA_DIR:-./data}/gateway:/app/data
     networks: [assistant_net]
-    depends_on: [opencode]
+    depends_on: [opencode-core, opencode-channel]
 
   admin-app:
     build: ./admin-app
@@ -92,12 +110,16 @@ services:
       - CHANGE_BUNDLE_DIR=/app/data/bundles
       - CHANGE_STATE_DIR=/app/data/change-states
       - EXT_REQUESTS_PATH=/app/data/extension-requests.json
-      - OPENCODE_CONFIG_PATH=/app/config/opencode.jsonc
+      - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - GATEWAY_URL=http://gateway:8080
+      - CADDYFILE_PATH=/app/config/Caddyfile
+      - CHANNEL_ENV_DIR=/app/channel-env
     volumes:
-      - ./opencode/opencode.jsonc:/app/config/opencode.jsonc
+      - ./config/opencode-core:/app/config/opencode-core
+      - ./caddy/Caddyfile:/app/config/Caddyfile
+      - ./config/channel-env:/app/channel-env
       - ./admin-ui:/app/admin-ui:ro
       - ${DATA_DIR:-./data}/admin-app:/app/data
       - ${DATA_DIR:-./data}/shared:/shared
@@ -118,17 +140,18 @@ services:
 
   # ============================================================
   # Channel Layer (optional — enable via --profile channels)
-  # All channels route through the gateway for defense in depth
+  # Channels are exposed via Caddy under /channels/*; adapters forward normalized payloads to gateway internally
   # ============================================================
   channel-chat:
     build: ./channels/chat
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-chat.env
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
-      - CHAT_INBOUND_TOKEN=${CHAT_INBOUND_TOKEN:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -136,12 +159,12 @@ services:
     build: ./channels/discord
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-discord.env
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
-      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -149,6 +172,8 @@ services:
     build: ./channels/voice
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-voice.env
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
@@ -160,12 +185,12 @@ services:
     build: ./channels/telegram
     restart: unless-stopped
     profiles: ["channels"]
+    env_file:
+      - ./config/channel-env/channel-telegram.env
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
