@@ -1,10 +1,28 @@
 {
   "$schema": "https://opencode.ai/config.json",
+
+  // Default permissions — all gated behind approval
   "permission": {
     "bash": "ask",
     "edit": "ask",
     "webfetch": "ask"
   },
+
+  // Specialized agent profiles
+  "agents": {
+    // Channel intake: restricted agent for processing inbound channel requests.
+    // No shell, no editing, no web — read-only memory only.
+    "channel-intake": {
+      "description": "Validates, summarizes, and dispatches inbound channel requests",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "webfetch": "deny"
+      },
+      "skills": ["skills/ChannelIntake.SKILL.md", "skills/RecallFirst.SKILL.md"]
+    }
+  },
+
   "mcp": {
     "openmemory": {
       "enabled": true,
@@ -14,6 +32,7 @@
       }
     }
   },
+
   "plugin": [
     "./.opencode/plugins/policy-and-telemetry.ts"
   ]

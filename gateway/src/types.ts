@@ -1,12 +1,7 @@
-export type Approval = { approved: boolean; approvedBy?: string; reason?: string };
-
 export type MessageRequest = {
   userId: string;
   sessionId?: string;
   text: string;
-  toolName?: string;
-  toolArgs?: Record<string, unknown>;
-  approval?: Approval;
   metadata?: Record<string, unknown>;
 };
 
@@ -20,16 +15,6 @@ export type ChannelMessage = {
   timestamp: number;
 };
 
-export type MemoryRecord = {
-  id: string;
-  userId: string;
-  content: string;
-  tags: string[];
-  source: string;
-  confidence: number;
-  timestamp: string;
-};
-
 export type AuditEvent = {
   ts: string;
   requestId: string;
@@ -38,15 +23,4 @@ export type AuditEvent = {
   action: string;
   status: "ok" | "denied" | "error";
   details?: Record<string, unknown>;
-};
-
-export type ExtensionRequest = {
-  id: string;
-  pluginId: string;
-  sourceType: "npm" | "local";
-  requestedAt: string;
-  requestedBy: string;
-  status: "pending" | "approved" | "rejected" | "applied";
-  risk: "low" | "high" | "critical";
-  reason?: string;
 };
