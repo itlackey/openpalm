@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OpenPalm Ops Dashboard</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 2rem auto; max-width: 900px; padding: 0 1rem; }
+    .card { border:1px solid #ddd; border-radius:8px; padding:1rem; margin-bottom:1rem; }
+    pre { background:#111; color:#eee; padding:1rem; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <h1>OpenPalm Operations Dashboard</h1>
+  <p>This page is read-only. Extension approvals and changes are API/CLI-driven (no manual UI flow).</p>
+
+  <div class="card">
+    <h2>Health</h2>
+    <button onclick="loadHealth()">Refresh</button>
+    <pre id="health">Not loaded</pre>
+  </div>
+
+  <div class="card">
+    <h2>How to manage extensions</h2>
+    <pre>Use API/CLI:
+1) POST /admin/extensions/request
+2) GET  /admin/extensions/list
+3) POST /admin/extensions/apply (step-up)
+4) POST /admin/extensions/disable (step-up)</pre>
+  </div>
+
+  <script>
+  async function loadHealth(){
+    const res = await fetch('/health');
+    document.getElementById('health').textContent = JSON.stringify(await res.json(), null, 2);
+  }
+  </script>
+</body>
+</html>
