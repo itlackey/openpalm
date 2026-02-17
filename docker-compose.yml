@@ -1,7 +1,8 @@
 services:
   # ============================================================
   # Reverse Proxy — Caddy (front door)
-  # Routes public channels and LAN-only dashboards
+  # Routes channel ingress and LAN-only admin/dashboard URLs:
+  # /channels/*, /channel/*, /health, /admin/*, /admin/opencode*, /admin/openmemory*
   # ============================================================
   caddy:
     image: caddy:2-alpine
@@ -141,7 +142,7 @@ services:
 
   # ============================================================
   # Channel Layer (optional — enable via --profile channels)
-  # All channels route through the gateway for defense in depth
+  # Channels are exposed via Caddy under /channels/* and normalized through gateway /channel/inbound
   # ============================================================
   channel-chat:
     build: ./channels/chat

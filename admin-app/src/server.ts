@@ -78,23 +78,22 @@ function updateConfigAtomically(mutator: (raw: string) => string) {
 
 function detectChannelAccess(channel: "chat" | "voice"): "lan" | "public" {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const block = raw.match(new RegExp(`handle \/${channel}\/\* \{[\s\S]*?\n\}`, "m"))?.[0] ?? "";
-  return block.includes("@lan remote_ip") ? "lan" : "public";
+  const block = raw.match(new RegExp(`handle \/channels\/${channel}\* \{[\s\S]*?\n\}`, "m"))?.[0] ?? "";
+  return block.includes("abort @not_lan") ? "lan" : "public";
 }
 
 function setChannelAccess(channel: "chat" | "voice", access: "lan" | "public") {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const blockRegex = new RegExp(`handle \/${channel}\/\* \{[\s\S]*?\n\}`, "m");
+  const blockRegex = new RegExp(`handle \/channels\/${channel}\* \{[\s\S]*?\n\}`, "m");
   const replacement = access === "lan"
     ? [
-      `handle /${channel}/* {`,
-      `\t\t@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8`,
+      `handle /channels/${channel}* {`,
       `\t\tabort @not_lan`,
       `\t\treverse_proxy channel-${channel}:818${channel === "chat" ? "1" : "3"}`,
       `\t}`
     ].join("\n")
     : [
-      `handle /${channel}/* {`,
+      `handle /channels/${channel}* {`,
       `\t\treverse_proxy channel-${channel}:818${channel === "chat" ? "1" : "3"}`,
       `\t}`
     ].join("\n");

@@ -114,14 +114,17 @@ Health status for the admin app.
 
 ## LAN Web UIs and service endpoints
 
-These are available on the internal Docker network for service-to-service API/MCP use, and are also exposed via Caddy as LAN-only web routes:
+These are available on the internal Docker network for service-to-service API/MCP use, and are also exposed via Caddy as LAN-only web routes under `/admin/*`:
 
 - OpenCode Core UI/API:
   - Internal service URL: `http://opencode-core:4096`
-  - LAN route via Caddy: `/opencode/*`
+  - LAN routes via Caddy: `/admin/opencode*` (preferred), `/opencode*` (legacy)
 - OpenMemory UI/API/MCP:
   - Internal service URLs: `http://openmemory:3000` (UI/API), `http://openmemory:8765` (MCP SSE)
-  - LAN route via Caddy: `/openmemory/*`
+  - LAN routes via Caddy: `/admin/openmemory*` (preferred), `/openmemory*` (legacy)
+- Admin UI/API:
+  - LAN route via Caddy: `/admin*`
+  - API namespace: `/admin/api*`
 
 ---
 
@@ -142,21 +145,25 @@ Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, 
 ## Channel Adapter APIs
 
 ### Chat (channel-chat, :8181)
+- Public/LAN ingress route via Caddy: `/channels/chat*` (legacy `/chat*`)
 - `GET /health`
 - `POST /chat` — `{ "userId": "...", "text": "...", "metadata": {} }`
   - Header: `x-chat-token` (if configured)
 
 ### Discord (channel-discord, :8184)
+- LAN ingress route via Caddy: `/channels/discord*`
 - `GET /health`
 - `POST /discord/interactions` — Discord interactions endpoint (slash commands, type 1/2)
 - `POST /discord/webhook` — simple webhook `{ "userId": "...", "text": "...", "channelId": "...", "guildId": "..." }`
 
 ### Voice (channel-voice, :8183)
+- Public/LAN ingress route via Caddy: `/channels/voice*` (legacy `/voice*`)
 - `GET /health`
 - `POST /voice/transcription` — `{ "userId": "...", "text": "...", "audioRef": "...", "language": "en" }`
 - `GET /voice/stream` — placeholder for WebSocket-based real-time streaming (not yet implemented)
 
 ### Telegram (channel-telegram, :8182)
+- LAN ingress route via Caddy: `/channels/telegram*`
 - `GET /health`
 - `POST /telegram/webhook` — Telegram bot update JSON
   - Header: `x-telegram-bot-api-secret-token`
