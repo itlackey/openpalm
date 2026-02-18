@@ -102,7 +102,26 @@ All admin write operations require the admin password:
 
 ---
 
-## 4) Hardening: protect your channels
+## 4) Default system maintenance cron jobs (controller)
+
+OpenPalm installs a fixed system-level cron schedule in the `controller` container on startup. These jobs are enabled by default and are not user-configurable in the admin UI.
+
+| Schedule | Job | Behavior |
+|---|---|---|
+| `15 3 * * *` | Pull + restart | Pull updated images and run `compose up -d` to recreate services when needed |
+| `17 * * * *` | Log rotation | Compress maintenance logs over 5MB; delete compressed logs older than 14 days |
+| `45 3 * * 0` | Image prune | Remove unused container images older than 7 days |
+| `*/10 * * * *` | Health check | Probe core service health endpoints, capture resource usage, restart non-running services |
+| `40 2 * * *` | Security scan | Run best-effort vulnerability scan with `docker scout` when available |
+| `20 2 * * *` | Database maintenance | Run Postgres `vacuumdb --all --analyze-in-stages` |
+| `10 4 * * *` | Filesystem cleanup | Delete stale temporary files from observability temp paths |
+| `*/5 * * * *` | Metrics scrape | Persist `docker stats` snapshots for dashboard/reporting pipelines |
+
+Logs for each job are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPENPALM_MAINTENANCE_LOG_DIR` when explicitly set).
+
+---
+
+## 5) Hardening: protect your channels
 
 ### Universal channel hardening
 - Dedicated secrets per channel

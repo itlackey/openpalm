@@ -75,6 +75,8 @@ Add capabilities through the admin UI, API, or command line. Extensions include 
 
 Set up recurring jobs that run on your assistant — daily summaries, periodic checks, maintenance tasks. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
 
+OpenPalm also ships with non-configurable system maintenance cron jobs in the `controller` container by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics into `${OPENPALM_STATE_HOME}/observability/maintenance`.
+
 ## Security
 
 OpenPalm is designed with defense in depth — multiple independent layers so that no single failure exposes the system.
