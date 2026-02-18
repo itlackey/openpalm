@@ -5,6 +5,6 @@ COPY server.ts ./server.ts
 COPY entrypoint.sh ./entrypoint.sh
 COPY maintenance.sh ./maintenance.sh
 RUN bun install --production
-RUN apt-get update && apt-get install -y cron curl jq gzip && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y cron curl jq gzip docker.io && rm -rf /var/lib/apt/lists/* \
   && chmod +x /app/entrypoint.sh /app/maintenance.sh
 CMD ["/app/entrypoint.sh"]
