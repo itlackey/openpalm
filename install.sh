@@ -247,8 +247,14 @@ echo "Compose file: $OPENPALM_COMPOSE_FILE"
 
 bootstrap_install_assets
 
-if [ ! -f "$ROOT_DIR/$OPENPALM_COMPOSE_FILE" ] && [ ! -f "$OPENPALM_COMPOSE_FILE" ]; then
-  echo "Compose file not found: $OPENPALM_COMPOSE_FILE"
+if [[ "$OPENPALM_COMPOSE_FILE" = /* ]]; then
+  RESOLVED_COMPOSE_FILE="$OPENPALM_COMPOSE_FILE"
+else
+  RESOLVED_COMPOSE_FILE="$ROOT_DIR/$OPENPALM_COMPOSE_FILE"
+fi
+
+if [ ! -f "$RESOLVED_COMPOSE_FILE" ]; then
+  echo "Compose file not found: $RESOLVED_COMPOSE_FILE"
   exit 1
 fi
 
@@ -343,7 +349,7 @@ echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" -f "$OPENPALM_COMPOSE_FILE" up -d
+"${COMPOSE_CMD[@]}" -f "$RESOLVED_COMPOSE_FILE" up -d
 
 echo "If you want channel adapters too: ${COMPOSE_CMD[*]} -f $OPENPALM_COMPOSE_FILE --profile channels up -d"
 
@@ -370,11 +376,11 @@ if [ "$READY" -eq 1 ]; then
   echo "Admin dashboard (LAN only): $SETUP_URL"
   echo "Open Memory UI (LAN only): http://localhost/admin/openmemory"
   echo ""
-echo "Container runtime config:"
-echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
-echo "  Compose command → ${COMPOSE_CMD[*]}"
-echo "  Compose file    → $OPENPALM_COMPOSE_FILE"
-echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
+  echo "Container runtime config:"
+  echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
+  echo "  Compose command → ${COMPOSE_CMD[*]}"
+  echo "  Compose file    → $OPENPALM_COMPOSE_FILE"
+  echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
   echo ""
   echo "Host directories:"
   echo "  Data   → $OPENPALM_DATA_HOME"

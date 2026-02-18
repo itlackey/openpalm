@@ -17,8 +17,9 @@ function json(status: number, payload: unknown) {
 
 function runCompose(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const composeArgs = COMPOSE_SUBCOMMAND ? [COMPOSE_SUBCOMMAND, ...args] : [...args];
-    composeArgs.unshift("-f", COMPOSE_FILE);
+    const composeArgs = COMPOSE_SUBCOMMAND
+      ? [COMPOSE_SUBCOMMAND, "-f", COMPOSE_FILE, ...args]
+      : ["-f", COMPOSE_FILE, ...args];
     const proc = spawn(COMPOSE_BIN, composeArgs, {
       cwd: PROJECT_PATH,
       env: {

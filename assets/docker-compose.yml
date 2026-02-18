@@ -137,7 +137,7 @@ services:
       - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/openpalm-container.sock}
     volumes:
       - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/openpalm-container.sock}
-      - ../:/workspace
+      - ${OPENPALM_PROJECT_ROOT:-../}:/workspace
     networks: [assistant_net]
 
   # ============================================================
