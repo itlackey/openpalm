@@ -5,6 +5,7 @@
   let wizardStep = 0;
   let accessScope = "host";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
+  let openmemoryProvider = { openaiBaseUrl: "", openaiApiKeyConfigured: false };
   let enabledChannels = [];
   let api;
   let esc;
@@ -37,6 +38,7 @@
     setupState = r.data;
     accessScope = setupState.accessScope || "host";
     serviceInstances = setupState.serviceInstances || { openmemory: "", psql: "", qdrant: "" };
+    openmemoryProvider = setupState.openmemoryProvider || { openaiBaseUrl: "", openaiApiKeyConfigured: false };
     enabledChannels = Array.isArray(setupState.enabledChannels) ? setupState.enabledChannels : [];
     if (!setupState.completed) runSetup();
   }
@@ -95,7 +97,12 @@
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>'
           + '<input id="wiz-svc-psql" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(serviceInstances.psql || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>'
-          + '<input id="wiz-svc-qdrant" placeholder="http://qdrant:6333" value="' + esc(serviceInstances.qdrant || "") + '" />';
+          + '<input id="wiz-svc-qdrant" placeholder="http://qdrant:6333" value="' + esc(serviceInstances.qdrant || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible endpoint for OpenMemory</label>'
+          + '<input id="wiz-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible API key for OpenMemory</label>'
+          + '<input id="wiz-openmemory-openai-key" type="password" placeholder="sk-..." value="" />'
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if OpenMemory should not use OpenAI-compatible model calls.") + '</div>';
       case "security":
         return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
           + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
@@ -179,15 +186,20 @@
       const openmemory = document.getElementById("wiz-svc-openmemory")?.value || "";
       const psql = document.getElementById("wiz-svc-psql")?.value || "";
       const qdrant = document.getElementById("wiz-svc-qdrant")?.value || "";
+      const openaiBaseUrl = document.getElementById("wiz-openmemory-openai-base")?.value || "";
+      const openaiApiKey = document.getElementById("wiz-openmemory-openai-key")?.value || "";
+      const servicePayload = { openmemory, psql, qdrant, openaiBaseUrl };
+      if (openaiApiKey.trim()) servicePayload.openaiApiKey = openaiApiKey.trim();
       const serviceResult = await api("/admin/setup/service-instances", {
         method: "POST",
-        body: JSON.stringify({ openmemory, psql, qdrant })
+        body: JSON.stringify(servicePayload)
       });
       if (!serviceResult.ok) {
         alert("Could not save service instance settings.");
         return;
       }
       serviceInstances = serviceResult.data?.state?.serviceInstances || { openmemory, psql, qdrant };
+      openmemoryProvider = serviceResult.data?.openmemoryProvider || openmemoryProvider;
     }
     await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
     wizardStep++;

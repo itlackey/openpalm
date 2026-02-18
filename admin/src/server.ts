@@ -21,6 +21,7 @@ const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:409
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:3000";
 const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
+const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
@@ -188,6 +189,17 @@ function readRuntimeEnv() {
   return parseRuntimeEnvContent(readFileSync(RUNTIME_ENV_PATH, "utf8"));
 }
 
+function readSecretsEnv() {
+  if (!existsSync(SECRETS_ENV_PATH)) return {};
+  return parseRuntimeEnvContent(readFileSync(SECRETS_ENV_PATH, "utf8"));
+}
+
+function updateSecretsEnv(entries: Record<string, string | undefined>) {
+  const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, "utf8") : "";
+  const next = updateRuntimeEnvContent(current, entries);
+  writeFileSync(SECRETS_ENV_PATH, next, "utf8");
+}
+
 function getConfiguredServiceInstances() {
   const runtime = readRuntimeEnv();
   const state = setupManager.getState();
@@ -195,6 +207,14 @@ function getConfiguredServiceInstances() {
     openmemory: runtime.OPENMEMORY_URL ?? state.serviceInstances.openmemory ?? "",
     psql: runtime.OPENMEMORY_POSTGRES_URL ?? state.serviceInstances.psql ?? "",
     qdrant: runtime.OPENMEMORY_QDRANT_URL ?? state.serviceInstances.qdrant ?? "",
+  };
+}
+
+function getConfiguredOpenmemoryProvider() {
+  const secrets = readSecretsEnv();
+  return {
+    openaiBaseUrl: secrets.OPENAI_BASE_URL ?? "",
+    openaiApiKeyConfigured: Boolean(secrets.OPENAI_API_KEY)
   };
 }
 
@@ -232,7 +252,12 @@ const server = Bun.serve({
       // ── Setup wizard ──────────────────────────────────────────────
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
-        return cors(json(200, { ...state, serviceInstances: getConfiguredServiceInstances(), firstBoot: setupManager.isFirstBoot() }));
+        return cors(json(200, {
+          ...state,
+          serviceInstances: getConfiguredServiceInstances(),
+          openmemoryProvider: getConfiguredOpenmemoryProvider(),
+          firstBoot: setupManager.isFirstBoot()
+        }));
       }
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
@@ -265,19 +290,28 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/service-instances" && req.method === "POST") {
-        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string };
+        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const openmemory = normalizeServiceInstanceUrl(body.openmemory);
         const psql = normalizeServiceInstanceUrl(body.psql);
         const qdrant = normalizeServiceInstanceUrl(body.qdrant);
+        const openaiBaseUrl = sanitizeEnvScalar(body.openaiBaseUrl);
+        const openaiApiKey = sanitizeEnvScalar(body.openaiApiKey);
         updateRuntimeEnv({
           OPENMEMORY_URL: openmemory || undefined,
           OPENMEMORY_POSTGRES_URL: psql || undefined,
           OPENMEMORY_QDRANT_URL: qdrant || undefined
         });
+        const secretEntries: Record<string, string | undefined> = {
+          OPENAI_BASE_URL: openaiBaseUrl || undefined
+        };
+        if (openaiApiKey.length > 0) {
+          secretEntries.OPENAI_API_KEY = openaiApiKey;
+        }
+        updateSecretsEnv(secretEntries);
         const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
-        return cors(json(200, { ok: true, state }));
+        return cors(json(200, { ok: true, state, openmemoryProvider: getConfiguredOpenmemoryProvider() }));
       }
 
       if (url.pathname === "/admin/setup/channels" && req.method === "POST") {

@@ -528,6 +528,9 @@ async function renderSettings() {
   const svc = status.ok && status.data && status.data.serviceInstances
     ? status.data.serviceInstances
     : { openmemory: '', psql: '', qdrant: '' };
+  const openmemoryProvider = status.ok && status.data && status.data.openmemoryProvider
+    ? status.data.openmemoryProvider
+    : { openaiBaseUrl: '', openaiApiKeyConfigured: false };
   let h = '<h2>Settings</h2>';
   h += '<div class="card"><h3>Authentication</h3>';
   h += '<p class="muted" style="font-size:13px">Your admin password is stored in your browser only (localStorage) and sent as a header to the admin API.</p>';
@@ -549,6 +552,11 @@ async function renderSettings() {
   h += '<input id="set-psql-url" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(svc.psql || '') + '" />';
   h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>';
   h += '<input id="set-qdrant-url" placeholder="http://qdrant:6333" value="' + esc(svc.qdrant || '') + '" />';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible endpoint for OpenMemory</label>';
+  h += '<input id="set-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || '') + '" />';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible API key for OpenMemory</label>';
+  h += '<input id="set-openmemory-openai-key" type="password" placeholder="sk-..." value="" />';
+  h += '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? 'API key already configured. Leave blank to keep current key.' : 'Leave blank if OpenMemory should not use OpenAI-compatible model calls.') + '</div>';
   h += '<div style="margin-top:.7rem"><button onclick="saveServiceInstances()">Save Service Configuration</button></div>';
   h += '</div>';
   el.innerHTML = h;
@@ -565,7 +573,11 @@ async function saveServiceInstances() {
   const openmemory = document.getElementById('set-openmemory-url')?.value || '';
   const psql = document.getElementById('set-psql-url')?.value || '';
   const qdrant = document.getElementById('set-qdrant-url')?.value || '';
-  const r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify({ openmemory, psql, qdrant }) });
+  const openaiBaseUrl = document.getElementById('set-openmemory-openai-base')?.value || '';
+  const openaiApiKey = document.getElementById('set-openmemory-openai-key')?.value || '';
+  const payload = { openmemory, psql, qdrant, openaiBaseUrl };
+  if (openaiApiKey.trim()) payload.openaiApiKey = openaiApiKey.trim();
+  const r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify(payload) });
   if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
   alert('Service configuration saved.');
 }
