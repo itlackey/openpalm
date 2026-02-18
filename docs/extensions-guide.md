@@ -1,5 +1,5 @@
-# Admin UI Guide: Installing & Enabling Extensions (OpenCode Plugins) + Stack Add-ons
-*Install OpenCode plugins via Admin UI; enable optional stack extensions (channels/tools/skills) without inventing a new config system.*
+# Extensions Guide: Installing & Enabling Extensions (OpenCode Plugins) + Stack Add-ons
+*Install OpenCode plugins via Admin UI, API, or CLI. Manage optional stack extensions (channels/tools/skills) without inventing a new config system.*
 
 ## 1) Concept: OpenCode `plugin[]` is the canonical extension registry
 
@@ -12,35 +12,26 @@ Everything else (channels/services/UI panels) is derived from that.
 
 ## 2) Admin UI: Extensions page UX
 
-### Add extension form
-- Source type:
-  - **npm package** (recommended)
-  - **local plugin file** (advanced)
-  - URL/Git (optional, implemented as a resolver; see §6)
-- Identifier:
-  - npm: `name` or `@scope/name`
-  - local: `.opencode/plugins/my-plugin.ts`
+### Add extension
+- **Gallery** — browse curated plugins, skills, and container services
+- **npm search** — search the npm registry for OpenCode plugins
+- **CLI** — use `bun run scripts/extensions-cli.ts install --plugin <id>`
 
-### Safety preview + verification
-- Show diff to `opencode.jsonc`
-- Risk classification:
-  - NPM plugin executes code in OpenCode runtime → High
-- Require step-up auth (passkey/TOTP) to enable/apply
+### Source types
+- **npm package** (recommended): `name` or `@scope/name`
+- **local plugin file** (advanced): `.opencode/plugins/my-plugin.ts`
 
-### Apply model
-- Enable now → restart OpenCode
-- Enable later → stage config until next maintenance restart
+### Install flow
+Extensions install directly — no staging or approval queue required. The admin password (set during install) is the only credential needed.
 
 ### Installed inventory
 - plugin id
 - enabled/disabled
-- last loaded timestamp
-- load errors + logs
-- actions: disable/remove, view logs
+- actions: remove
 
 ---
 
-## 3) Implementation: what “Install” does
+## 3) Implementation: what "Install" does
 
 ### Step 1 — Validate identifier
 - strict npm package name validation
@@ -52,14 +43,10 @@ Everything else (channels/services/UI panels) is derived from that.
 - write temp file + rename
 - backup old config
 
-### Step 3 — Preflight (recommended)
-- registry existence check (`npm view <pkg> version`)
-- optional install test in temp dir with locked registry settings
-
-### Step 4 — Restart OpenCode server
+### Step 3 — Restart OpenCode server
 OpenCode installs plugin deps at startup (bun install behavior), so restart is the simplest reliable path.
 
-### Step 5 — Confirm load
+### Step 4 — Confirm load
 Use OpenCode event stream and/or plugin init logs to confirm successful load.
 
 ---
@@ -75,7 +62,7 @@ Use OpenCode event stream and/or plugin init logs to confirm successful load.
 
 ### Key idea
 An OpenCode plugin may optionally export a **manifest** describing stack add-ons.
-But the plugin’s existence is still controlled by `plugin[]`.
+But the plugin's existence is still controlled by `plugin[]`.
 
 #### Convention: `extensionManifest`
 Plugin package exports:
@@ -105,16 +92,16 @@ export const extensionManifest = {
 ```
 
 ### How the stack uses it
-1. Gateway reads `opencode.jsonc` and extracts `plugin[]`.
-2. For each plugin, Gateway attempts to import `extensionManifest`.
-3. Gateway builds desired state:
+1. Admin-app reads `opencode.jsonc` and extracts `plugin[]`.
+2. For each plugin, admin-app attempts to import `extensionManifest`.
+3. Admin-app builds desired state:
    - channel containers to run
    - required secrets
    - admin UI settings panels
    - packaged skills/tools to mount or register
-4. Admin UI shows a plan and requires step-up auth to apply.
+4. Admin UI shows a plan. Admin confirms to apply.
 
-**Result:** No separate “extensions.json” registry; OpenCode config remains canonical.
+**Result:** No separate "extensions.json" registry; OpenCode config remains canonical.
 
 ---
 
@@ -125,7 +112,6 @@ If OpenCode does not natively accept URL/Git in `plugin[]`, implement a **resolv
 - Resolver clones/builds to a local plugin file:
   - writes to `.opencode/plugins/<resolved>.ts`
   - adds that local path to `plugin[]`
-- Apply requires High/Critical approval because code provenance is weaker
 
 ---
 
@@ -147,20 +133,22 @@ Your channel container is a dumb adapter:
 - signature verification (when applicable)
 - replay protection + rate limits
 - outbound allowlists
-- secrets stored in Gateway, injected at runtime
+- secrets stored in `.env`, injected at runtime
 - audit logs + observability
 
 ---
 
-## 8) Admin “Enable stack add-ons” flow
+## 8) CLI usage
 
-After a plugin is installed/loaded:
-1. Admin UI detects `extensionManifest`
-2. Shows requested add-ons:
-   - new services
-   - required secrets
-   - ports (if any)
-3. Admin provides secrets/settings
-4. Step-up auth required
-5. Gateway writes `compose.extensions.yml` (or equivalent) and triggers controlled restart of only required services
-6. Rollback is one click: disable plugin → revert compose override → restart
+```bash
+# Install a plugin
+bun run scripts/extensions-cli.ts install --plugin @scope/plugin
+
+# List installed plugins
+bun run scripts/extensions-cli.ts list
+
+# Uninstall a plugin
+bun run scripts/extensions-cli.ts uninstall --plugin @scope/plugin
+```
+
+Set `ADMIN_TOKEN` in your environment to authenticate CLI requests.

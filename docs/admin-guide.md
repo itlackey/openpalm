@@ -1,5 +1,5 @@
 # Admin Implementation Guide (Advanced)
-*Optional administrator tools that are user-friendly, gated behind additional verification, and safe by design.*
+*Administrator tools that are user-friendly, password-protected, and safe by design.*
 
 ## 1) Cross-platform installer + guided setup
 
@@ -23,10 +23,11 @@
    - Linux: offer scripted install with explicit confirmation
 4. Resolve XDG Base Directory paths (data, config, state)
 5. Write resolved absolute paths into `.env`
-6. Seed default configs into `$OPENPALM_CONFIG_HOME`
-7. `docker compose up -d`
-8. Health check endpoints
-9. Enroll first admin with step-up auth (passkey preferred)
+6. Generate admin password and write to `.env`
+7. Seed default configs into `$OPENPALM_CONFIG_HOME`
+8. `docker compose up -d`
+9. Health check endpoints
+10. Setup wizard runs on first visit to admin UI — user enters admin password from `.env`
 
 ### Persistent directory layout (XDG Base Directory)
 ```
@@ -56,99 +57,50 @@
 
 ---
 
-## 2) Safe runtime updates for tools/skills/plugins
-
-### Pattern: “Staged Change + Verified Apply”
-Implement a **Change Manager** in the Gateway.
-
-#### Lifecycle
-1) Propose (bundle created)
-2) Validate (automated gates)
-3) Admin review + step-up verify
-4) Apply atomically
-5) Rollback available
-
-### Bundle structure
-```
-bundle/
-  manifest.json
-  skills/
-  tools/
-  plugins/ (optional, higher risk)
-  checksums.txt
-  signature.sig (optional)
-```
-
-### Automated gates (before admin review)
-- Path allowlist (only approved directories)
-- Secret detection (block keys/tokens)
-- Static checks for tools/plugins (limit exec/network/env)
-- JSON/JSONC parse + schema validation
-- Optional TS compile/lint/tests
-
-### Risk tiers
-- Low: skills only
-- Medium: tools calling internal services only
-- High: filesystem/network tool changes
-- Critical: plugins, permissions, channels, compose changes
-
-### Admin verification
-- Step-up auth for applies (WebAuthn passkey / TOTP)
-- Optional 2-person rule for High/Critical
-
----
-
-## 3) Settings UI (edit config + restart)
+## 2) Settings UI (edit config + restart)
 
 ### Do not embed config editing inside Grafana
-Use a **Gateway Admin Console**, and link to it from dashboards.
+Use a **dedicated Admin Console**, and link to it from dashboards.
 
 ### Admin Console pages
 - System status
 - Config editor (schema-aware)
-- Change manager (diff/apply/rollback)
-- Service control (restart/rotate keys)
-- Admin/security (users, passkeys, audit)
+- Service control (restart services)
+- Extension gallery (install/uninstall)
 
 ### Safe config editing flow
 1) Parse JSONC
 2) Validate schema
-3) Policy lint (deny widening permissions without extra approval)
+3) Policy lint (deny widening permissions to `allow`)
 4) Write atomically with backup
 5) Restart OpenCode (deterministic)
 
-### Restart without mounting Docker socket into Gateway
-Prefer a restricted “compose-control” sidecar:
+### Restart without mounting Docker socket into admin-app
+Use a restricted "controller" sidecar:
 - Exposes only a tiny HTTP API (restart specific services)
-- Requires shared secret from Gateway
-- Gateway requires step-up auth before calling it
+- Requires shared secret from admin-app
+- Allowlisted services only
 
 ---
 
-## 4) Admin access protection (“approved user”)
+## 3) Admin access protection
 
 ### Auth model
-- Primary: local account or SSO
-- Secondary: required for admin actions (passkey/TOTP)
+- Admin password generated during install and stored in `.env`
+- Password sent as `x-admin-token` header to the admin API
+- Admin UI is LAN-only via Caddy reverse proxy (network-level protection)
+- The admin password is the single credential needed for all admin operations
 
-### Step-up triggers
-- apply bundles
-- edit permissions
-- add channels
-- restart services
-- export memory/logs
-- change allowlists
-
-### Audit trail
-Log:
-- who/when/what
-- diff hash
-- verification method
-- restarts performed
+### Protected actions
+All admin write operations require the admin password:
+- Install/uninstall extensions
+- Edit agent config
+- Manage channels (access, config)
+- Start/stop/restart containers
 
 ---
 
-## 5) Hardening: protect your channels
+## 4) Hardening: protect your channels
 
 ### Universal channel hardening
 - Dedicated secrets per channel
@@ -157,7 +109,6 @@ Log:
 - Rate limiting per user/channel
 - Max message size + attachment allowlist
 - Outbound allowlist for fetches
-- Separate admin-only channel path (stronger auth)
 
 ### Network placement
 - Public entrypoint: reverse proxy + TLS

@@ -106,11 +106,6 @@ services:
     environment:
       - PORT=8100
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
-      - ADMIN_STEP_UP_TOKEN=${ADMIN_STEP_UP_TOKEN:-change-me-step-up}
-      - AUTO_APPROVE_EXTENSIONS=${AUTO_APPROVE_EXTENSIONS:-}
-      - CHANGE_BUNDLE_DIR=/app/data/bundles
-      - CHANGE_STATE_DIR=/app/data/change-states
-      - EXT_REQUESTS_PATH=/app/data/extension-requests.json
       - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
