@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ ! -d "$ROOT_DIR/assets" ]; then
+  ROOT_DIR="$(pwd)"
+fi
 cd "$ROOT_DIR"
 ASSETS_DIR="$ROOT_DIR/assets"
 ASSETS_TMP_DIR=""
