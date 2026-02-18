@@ -80,7 +80,7 @@ bootstrap_install_assets() {
   archive="$tmp_dir/openpalm.tar.gz"
   ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/heads/${OPENPALM_INSTALL_REF}.tar.gz"
 
-  echo "Downloading install assets from ${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}@${OPENPALM_INSTALL_REF}..."
+  echo "Downloading install assets from ${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME} (ref: ${OPENPALM_INSTALL_REF})..."
   if ! curl -fsSL "$ref_url" -o "$archive"; then
     ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/tags/${OPENPALM_INSTALL_REF}.tar.gz"
     curl -fsSL "$ref_url" -o "$archive"

@@ -150,6 +150,8 @@ See [`.env.example`](.env.example) for all available settings.
 
 ## Development
 
+Use the override below when you want containers rebuilt from your local source changes.
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 bun test          # Run tests
