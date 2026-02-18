@@ -63,14 +63,14 @@ case "$TASK" in
             compose -p openpalm restart "$svc" || true
           done
     fi
-    DOCKER_HOST="$OPENPALM_CONTAINER_SOCKET_URI" docker stats --no-stream --format '{{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}}' || true
     ;;
   security-scan)
     log "running security scan"
     if DOCKER_HOST="$OPENPALM_CONTAINER_SOCKET_URI" docker scout version >/dev/null 2>&1; then
-      for image in postgres:16-alpine qdrant/qdrant:latest caddy:2-alpine; do
+      while IFS= read -r image; do
+        [[ -z "$image" ]] && continue
         DOCKER_HOST="$OPENPALM_CONTAINER_SOCKET_URI" docker scout quickview "$image" || true
-      done
+      done < <(compose -p openpalm config --images | sort -u)
     else
       log "docker scout unavailable; skipping vulnerability scan"
     fi
@@ -78,7 +78,7 @@ case "$TASK" in
   db-maintenance)
     log "running postgres vacuum analyze"
     if compose -p openpalm ps --services --filter status=running | grep -qx "postgres"; then
-      compose -p openpalm exec -T postgres vacuumdb --all --analyze-in-stages -U "$POSTGRES_USER" -d "$POSTGRES_DB" || true
+      compose -p openpalm exec -T postgres vacuumdb --all --analyze-in-stages -U "$POSTGRES_USER" || true
     else
       log "postgres is not running; skipping maintenance"
     fi
@@ -89,6 +89,7 @@ case "$TASK" in
     ;;
   metrics-report)
     log "scraping runtime metrics snapshot"
+    find "$LOG_DIR" -type f -name "metrics-*.jsonl" -mtime +7 -delete
     DOCKER_HOST="$OPENPALM_CONTAINER_SOCKET_URI" docker stats --no-stream --format '{{json .}}' > "$LOG_DIR/metrics-$(date +%Y%m%d%H%M%S).jsonl" || true
     ;;
   *)

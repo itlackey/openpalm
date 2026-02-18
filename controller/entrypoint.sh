@@ -5,7 +5,7 @@ STATE_HOME="${OPENPALM_STATE_HOME:-/workspace}"
 LOG_DIR="${OPENPALM_MAINTENANCE_LOG_DIR:-${STATE_HOME}/observability/maintenance}"
 mkdir -p "$LOG_DIR"
 
-cat > /etc/cron.d/openpalm-maintenance <<EOF
+(umask 022 && cat > /etc/cron.d/openpalm-maintenance <<EOF
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 OPENPALM_MAINTENANCE_LOG_DIR=${LOG_DIR}
@@ -34,6 +34,7 @@ POSTGRES_DB=${POSTGRES_DB:-openpalm}
 # Scrape lightweight runtime metrics for observability.
 */5 * * * * root /app/maintenance.sh metrics-report >> ${LOG_DIR}/metrics-report.log 2>&1
 EOF
+)
 
 chmod 0644 /etc/cron.d/openpalm-maintenance
 crontab /etc/cron.d/openpalm-maintenance

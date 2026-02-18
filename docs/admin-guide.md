@@ -115,7 +115,7 @@ OpenPalm installs a fixed system-level cron schedule in the `controller` contain
 | `40 2 * * *` | Security scan | Run best-effort vulnerability scan with `docker scout` when available |
 | `20 2 * * *` | Database maintenance | Run Postgres `vacuumdb --all --analyze-in-stages` |
 | `10 4 * * *` | Filesystem cleanup | Delete stale temporary files from observability temp paths |
-| `*/5 * * * *` | Metrics scrape | Persist `docker stats` snapshots for dashboard/reporting pipelines |
+| `*/5 * * * *` | Metrics scrape | Persist `docker stats` snapshots for dashboard/reporting pipelines (with 7-day retention) |
 
 Logs for each job are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPENPALM_MAINTENANCE_LOG_DIR` when explicitly set).
 
