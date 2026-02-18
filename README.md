@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="OpenPalm" width="200" />
+  <img src="docs/file_000000002d98722f8087977054954936.png" alt="OpenPalm" width="200" />
 </p>
 
 <h1 align="center">OpenPalm</h1>
