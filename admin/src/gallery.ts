@@ -302,6 +302,70 @@ export function listGalleryCategories(): { category: GalleryCategory; count: num
   return Object.entries(counts).map(([category, count]) => ({ category: category as GalleryCategory, count }));
 }
 
+// ── Public community registry ────────────────────────────────────────
+// Fetched at runtime from the registry/ folder in the GitHub repo.
+// Admins can discover community-submitted extensions without rebuilding images.
+// Set OPENPALM_REGISTRY_URL env var to override (e.g. for self-hosted forks).
+
+const DEFAULT_REGISTRY_URL =
+  process.env.OPENPALM_REGISTRY_URL ??
+  "https://raw.githubusercontent.com/itlackey/openpalm/main/registry/index.json";
+
+// Simple in-memory cache — refreshes every 10 minutes
+let _registryCache: { items: GalleryItem[]; fetchedAt: number } | null = null;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+export async function fetchPublicRegistry(): Promise<GalleryItem[]> {
+  const now = Date.now();
+  if (_registryCache && now - _registryCache.fetchedAt < CACHE_TTL_MS) {
+    return _registryCache.items;
+  }
+
+  try {
+    const resp = await fetch(DEFAULT_REGISTRY_URL, {
+      headers: { "Accept": "application/json", "User-Agent": "openpalm-admin/1.0" },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!resp.ok) return _registryCache?.items ?? [];
+    const raw = (await resp.json()) as unknown;
+    if (!Array.isArray(raw)) return _registryCache?.items ?? [];
+
+    // Filter to only well-formed entries (must have id, name, category at minimum)
+    const items = raw.filter(
+      (e): e is GalleryItem =>
+        e != null &&
+        typeof e === "object" &&
+        typeof (e as Record<string, unknown>).id === "string" &&
+        typeof (e as Record<string, unknown>).name === "string" &&
+        typeof (e as Record<string, unknown>).category === "string"
+    );
+
+    _registryCache = { items, fetchedAt: now };
+    return items;
+  } catch {
+    // Network error — return stale cache or empty
+    return _registryCache?.items ?? [];
+  }
+}
+
+export async function searchPublicRegistry(
+  query: string,
+  category?: GalleryCategory
+): Promise<GalleryItem[]> {
+  const all = await fetchPublicRegistry();
+  const q = query.toLowerCase().trim();
+  let items = all;
+  if (category) items = items.filter((i) => i.category === category);
+  if (!q) return items;
+  return items.filter(
+    (item) =>
+      item.name.toLowerCase().includes(q) ||
+      item.description.toLowerCase().includes(q) ||
+      item.tags.some((t) => t.toLowerCase().includes(q)) ||
+      item.id.toLowerCase().includes(q)
+  );
+}
+
 // ── npm search (for discovering plugins not in the curated registry) ─
 
 export async function searchNpm(query: string): Promise<Array<{ name: string; description: string; version: string; author: string }>> {

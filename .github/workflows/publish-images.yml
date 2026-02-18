@@ -6,6 +6,9 @@ on:
     branches: [main]
     tags: ["v*"]
     paths:
+      # NOTE: registry/** is intentionally omitted from this list.
+      # Changes to the community extension registry (registry/*.json) are
+      # handled by update-registry-index.yml and do NOT trigger image builds.
       - ".github/workflows/publish-images.yml"
       - "assets/docker-compose.yml"
       - "assets/system.env"

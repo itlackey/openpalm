@@ -1,0 +1,20 @@
+{
+  "id": "openpalm-slack-channel",
+  "name": "Slack Channel",
+  "description": "Slack bot adapter for OpenPalm. Receives messages via the Slack Events API and routes them through the gateway for processing.",
+  "category": "container",
+  "risk": "medium",
+  "author": "OpenPalm",
+  "version": "1.0.0",
+  "source": "docker.io/openpalm/channel-slack",
+  "tags": ["channel", "slack", "bot", "messaging"],
+  "permissions": [
+    "Network: outbound to gateway + Slack API",
+    "HMAC channel signing",
+    "Requires SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET"
+  ],
+  "securityNotes": "Requires Slack bot token and signing secret (stored in .env, never in container). Validates Slack request signatures on every webhook. All messages pass through the gateway firewall before reaching OpenCode.",
+  "installAction": "compose-service",
+  "installTarget": "channel-slack",
+  "docUrl": "https://api.slack.com/apps"
+}

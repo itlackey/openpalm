@@ -54,7 +54,7 @@ Notes:
 Headers for all protected admin endpoints:
 - `x-admin-token` (required — the admin password set during install)
 
-**Exceptions (no auth required):** `/health`, `/admin/setup/*`, `/admin/gallery/search`, `/admin/gallery/categories`, `/admin/gallery/item/:id`, `/admin/gallery/npm-search`, static UI assets (`/`, `/index.html`).
+**Exceptions (no auth required):** `/health`, `/admin/setup/*`, `/admin/gallery/search`, `/admin/gallery/categories`, `/admin/gallery/item/:id`, `/admin/gallery/npm-search`, `/admin/gallery/community`, static UI assets (`/`, `/index.html`).
 
 ### GET /health
 Health status for the admin app.
@@ -89,6 +89,11 @@ Health status for the admin app.
 - `GET /admin/gallery/categories` — list gallery categories with counts
 - `GET /admin/gallery/item/:id` — get full detail for a single gallery item including risk badge
 - `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
+- `GET /admin/gallery/community?q=&category=` — search the public community registry fetched from GitHub at runtime (no auth required; 10-minute cache)
+  - `q` — optional free-text search
+  - `category` — optional filter by `plugin`, `skill`, or `container`
+  - Returns `{ items, total, source: "community-registry" }`
+- `POST /admin/gallery/community/refresh` — force a cache refresh of the community registry (auth required)
 
 ### Install / uninstall
 - `POST /admin/gallery/install` — install a gallery item or npm plugin
