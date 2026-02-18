@@ -175,7 +175,7 @@ Create skills that the assistant can load:
   - `AGENTS.md`
   - skills
   - tool schemas/allowlists
-- Require admin approval before applying changes (see Admin Guide).
+- Require admin confirmation before applying changes.
 
 ---
 

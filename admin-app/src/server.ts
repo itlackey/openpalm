@@ -1,24 +1,17 @@
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { classifyPluginRisk, preflightPlugin, updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
-import { classifyBundleRisk, collectBundleMetrics, prepareBundleRegistry, registerBundleState, snapshotFile, validateBundle } from "./change-manager.ts";
+import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
-import { ExtensionQueue } from "./admin-store.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
 import type { GalleryCategory } from "./gallery.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
-const ADMIN_STEP_UP_TOKEN = Bun.env.ADMIN_STEP_UP_TOKEN ?? "change-me-step-up";
 const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/config/opencode.jsonc";
-const CHANGE_BUNDLE_DIR = Bun.env.CHANGE_BUNDLE_DIR ?? "/app/data/bundles";
-const CHANGE_STATE_DIR = Bun.env.CHANGE_STATE_DIR ?? "/app/data/change-states";
-const EXT_REQUESTS_PATH = Bun.env.EXT_REQUESTS_PATH ?? "/app/data/extension-requests.json";
 const DATA_DIR = "/app/data";
 const CONTROLLER_URL = Bun.env.CONTROLLER_URL;
 const CONTROLLER_TOKEN = Bun.env.CONTROLLER_TOKEN ?? "";
-const AUTO_APPROVE_EXTENSIONS = (Bun.env.AUTO_APPROVE_EXTENSIONS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
@@ -30,9 +23,7 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-telegram": ["TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_TOKEN"]
 };
 
-const extQueue = new ExtensionQueue(EXT_REQUESTS_PATH);
 const setupManager = new SetupManager(DATA_DIR);
-prepareBundleRegistry(CHANGE_STATE_DIR);
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -43,17 +34,13 @@ function json(status: number, payload: unknown) {
 
 function cors(resp: Response): Response {
   resp.headers.set("access-control-allow-origin", "*");
-  resp.headers.set("access-control-allow-headers", "content-type, x-admin-token, x-admin-step-up, x-request-id");
+  resp.headers.set("access-control-allow-headers", "content-type, x-admin-token, x-request-id");
   resp.headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
   return resp;
 }
 
 function auth(req: Request) {
   return req.headers.get("x-admin-token") === ADMIN_TOKEN;
-}
-
-function stepUp(req: Request) {
-  return req.headers.get("x-admin-step-up") === ADMIN_STEP_UP_TOKEN;
 }
 
 async function controllerAction(action: string, service: string, reason: string) {
@@ -68,11 +55,10 @@ async function controllerAction(action: string, service: string, reason: string)
   });
 }
 
-function updateConfigAtomically(mutator: (raw: string) => string) {
-  const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
-  const backup = snapshotFile(OPENCODE_CONFIG_PATH);
-  writeFileSync(OPENCODE_CONFIG_PATH, mutator(raw), "utf8");
-  return { backup };
+function snapshotFile(path: string) {
+  const backup = `${path}.${Date.now()}.bak`;
+  copyFileSync(path, backup);
+  return backup;
 }
 
 
@@ -237,7 +223,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/gallery/install" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required for extension installation" }));
         const body = (await req.json()) as { galleryId?: string; pluginId?: string };
 
         if (body.galleryId) {
@@ -268,26 +253,9 @@ const server = Bun.serve({
 
         if (body.pluginId) {
           if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
-          const risk = classifyPluginRisk(body.pluginId);
-          const preflight = await preflightPlugin(body.pluginId);
-          if (!preflight.ok) return cors(json(400, { error: "preflight_failed", details: preflight.details }));
-
-          const item = extQueue.upsert({
-            id: randomUUID(),
-            pluginId: body.pluginId,
-            sourceType: body.pluginId.startsWith("./") ? "local" : "npm",
-            requestedAt: new Date().toISOString(),
-            requestedBy: "admin-ui",
-            status: "pending",
-            risk,
-            reason: "installed via gallery UI"
-          });
-
           const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, true);
           await controllerAction("restart", "opencode-core", `npm plugin install: ${body.pluginId}`);
-          item.status = "applied";
-          extQueue.upsert(item);
-          return cors(json(200, { ok: true, item, result }));
+          return cors(json(200, { ok: true, pluginId: body.pluginId, result }));
         }
 
         return cors(json(400, { error: "galleryId or pluginId required" }));
@@ -295,7 +263,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/gallery/uninstall" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { galleryId?: string; pluginId?: string };
 
         if (body.galleryId) {
@@ -331,7 +298,6 @@ const server = Bun.serve({
         const config = parseJsonc(configRaw) as { plugin?: string[] };
         return cors(json(200, {
           plugins: config.plugin ?? [],
-          extensions: extQueue.list(),
           setupState: state
         }));
       }
@@ -348,7 +314,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { service: string };
         await controllerAction("up", body.service, "admin-app action");
         return cors(json(200, { ok: true, action: "up", service: body.service }));
@@ -356,7 +321,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/containers/down" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { service: string };
         await controllerAction("down", body.service, "admin-app action");
         return cors(json(200, { ok: true, action: "down", service: body.service }));
@@ -364,7 +328,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { service: string };
         await controllerAction("restart", body.service, "admin-app action");
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
@@ -383,7 +346,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/channels/access" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { channel: "chat" | "voice" | "discord" | "telegram"; access: "lan" | "public" };
         if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
         if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
@@ -401,70 +363,11 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/channels/config" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { service: string; config: Record<string, string>; restart?: boolean };
         if (!CHANNEL_SERVICES.includes(body.service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
         writeChannelConfig(body.service, body.config ?? {});
         if (body.restart ?? true) await controllerAction("restart", body.service, "channel config update");
         return cors(json(200, { ok: true, service: body.service }));
-      }
-
-      // ── Extension lifecycle (original API) ────────────────────────
-      if (url.pathname === "/admin/extensions/request" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { pluginId: string; sourceType?: "npm" | "local"; requestedBy?: string };
-        if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
-        const risk = classifyPluginRisk(body.pluginId);
-        const preflight = await preflightPlugin(body.pluginId);
-        if (!preflight.ok) return cors(json(400, { error: "preflight_failed", details: preflight.details }));
-        const autoApproved = AUTO_APPROVE_EXTENSIONS.includes(body.pluginId) && risk !== "critical";
-        const item = extQueue.upsert({
-          id: randomUUID(),
-          pluginId: body.pluginId,
-          sourceType: body.sourceType ?? (body.pluginId.startsWith("./") ? "local" : "npm"),
-          requestedAt: new Date().toISOString(),
-          requestedBy: body.requestedBy ?? "admin",
-          status: autoApproved ? "approved" : "pending",
-          risk,
-          reason: autoApproved ? "policy-auto-approved" : "requires_step_up_apply"
-        });
-        if (autoApproved) {
-          const applied = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.pluginId, true);
-          await controllerAction("restart", "opencode-core", "auto-approved extension");
-          item.status = "applied";
-          extQueue.upsert(item);
-          return cors(json(200, { ok: true, item, applied }));
-        }
-        return cors(json(202, { ok: true, item, next: "POST /admin/extensions/apply" }));
-      }
-
-      if (url.pathname === "/admin/extensions/list" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        return cors(json(200, { items: extQueue.list() }));
-      }
-
-      if (url.pathname === "/admin/extensions/apply" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
-        const body = (await req.json()) as { requestId: string };
-        const ext = extQueue.get(body.requestId);
-        if (!ext) return cors(json(404, { error: "request_not_found" }));
-        if (ext.status !== "pending" && ext.status !== "approved") return cors(json(400, { error: "invalid_state", status: ext.status }));
-        const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, ext.pluginId, true);
-        await controllerAction("restart", "opencode-core", "extension applied");
-        ext.status = "applied";
-        extQueue.upsert(ext);
-        return cors(json(200, { ok: true, ext, result }));
-      }
-
-      if (url.pathname === "/admin/extensions/disable" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
-        const body = (await req.json()) as { pluginId: string };
-        if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
-        const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, false);
-        await controllerAction("restart", "opencode-core", "extension disabled");
-        return cors(json(200, { ok: true, action: "disabled", result }));
       }
 
       // ── Config editor ─────────────────────────────────────────────
@@ -475,7 +378,6 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/config" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
         const body = (await req.json()) as { config: string; restart?: boolean };
         const parsed = parseJsonc(body.config);
         if (typeof parsed !== "object") return cors(json(400, { error: "invalid jsonc" }));
@@ -485,55 +387,6 @@ const server = Bun.serve({
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
         if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");
         return cors(json(200, { ok: true, backup }));
-      }
-
-      // ── Change manager ────────────────────────────────────────────
-      if (url.pathname === "/admin/change/propose" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { bundleId: string };
-        const path = `${CHANGE_BUNDLE_DIR}/${body.bundleId}`;
-        if (!existsSync(path)) return cors(json(404, { error: "bundle not found" }));
-        const metrics = collectBundleMetrics(path);
-        const stateId = registerBundleState(CHANGE_STATE_DIR, { id: body.bundleId, stage: "proposed", createdAt: new Date().toISOString(), metrics });
-        return cors(json(200, { ok: true, stateId, metrics }));
-      }
-
-      if (url.pathname === "/admin/change/validate" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { bundleId: string };
-        const path = `${CHANGE_BUNDLE_DIR}/${body.bundleId}`;
-        const valid = validateBundle(path);
-        const risk = classifyBundleRisk(path);
-        const stateId = registerBundleState(CHANGE_STATE_DIR, { id: body.bundleId, stage: "validated", valid, risk, validatedAt: new Date().toISOString() });
-        return cors(json(valid.ok ? 200 : 400, { ok: valid.ok, stateId, risk, ...valid }));
-      }
-
-      if (url.pathname === "/admin/change/apply" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
-        const body = (await req.json()) as { bundleId: string; applyPlugins?: string[]; restart?: boolean };
-        const path = `${CHANGE_BUNDLE_DIR}/${body.bundleId}`;
-        const valid = validateBundle(path);
-        if (!valid.ok) return cors(json(400, { ok: false, errors: valid.errors }));
-        const outcome = updateConfigAtomically((raw) => {
-          const doc = parseJsonc(raw) as { plugin?: string[] } & Record<string, unknown>;
-          const plugins = new Set(Array.isArray(doc.plugin) ? doc.plugin : []);
-          for (const p of body.applyPlugins ?? []) plugins.add(p);
-          return stringifyPretty({ ...doc, plugin: [...plugins] });
-        });
-        registerBundleState(CHANGE_STATE_DIR, { id: body.bundleId, stage: "applied", backup: outcome.backup, appliedAt: new Date().toISOString() });
-        if (body.restart ?? true) await controllerAction("restart", "opencode-core", "change bundle applied");
-        return cors(json(200, { ok: true, backup: outcome.backup }));
-      }
-
-      if (url.pathname === "/admin/change/rollback" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!stepUp(req)) return cors(json(403, { error: "step-up token required" }));
-        const body = (await req.json()) as { backupPath: string; restart?: boolean };
-        const backup = readFileSync(body.backupPath, "utf8");
-        writeFileSync(OPENCODE_CONFIG_PATH, backup, "utf8");
-        if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config rollback");
-        return cors(json(200, { ok: true, restoredFrom: body.backupPath }));
       }
 
       // ── Static UI ─────────────────────────────────────────────────

@@ -140,7 +140,7 @@ Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Controller -> Docker Compose
 The admin app provides the API for all admin functions:
 - Add/remove containers via the controller
 - Edit Caddy configuration to map sub-urls to containers
-- Manage extensions, config, and change bundles
+- Manage extensions and config
 
 ### URL routing via Caddy
 
@@ -183,5 +183,5 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call.
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.
-7. **Admin step-up auth** — Dual-token model for admin operations, with step-up required for destructive actions.
+7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.
 8. **Controller isolation** — Only the controller container has the Docker socket.

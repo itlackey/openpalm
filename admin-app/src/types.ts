@@ -40,13 +40,3 @@ export type AuditEvent = {
   details?: Record<string, unknown>;
 };
 
-export type ExtensionRequest = {
-  id: string;
-  pluginId: string;
-  sourceType: "npm" | "local";
-  requestedAt: string;
-  requestedBy: string;
-  status: "pending" | "approved" | "rejected" | "applied";
-  risk: "low" | "high" | "critical";
-  reason?: string;
-};

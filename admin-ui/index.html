@@ -82,7 +82,6 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 <script>
 /* ── state ────────────────────────────────────────────── */
 let adminToken = localStorage.getItem('op_admin') || '';
-let stepUpToken = localStorage.getItem('op_stepup') || '';
 let galleryItems = [];
 let setupState = null;
 let currentPage = 'gallery';
@@ -93,7 +92,6 @@ const BASE = ''; // same-origin via Caddy
 async function api(path, opts = {}) {
   const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
   if (adminToken) headers['x-admin-token'] = adminToken;
-  if (stepUpToken) headers['x-admin-step-up'] = stepUpToken;
   const res = await fetch(BASE + path, { ...opts, headers });
   const text = await res.text();
   try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
@@ -224,8 +222,8 @@ async function showDetail(id) {
   }
   h += '</div></div>';
   // install button
-  if (!adminToken || !stepUpToken) {
-    h += '<p class="muted" style="font-size:13px">Configure admin tokens in Settings to enable installation.</p>';
+  if (!adminToken) {
+    h += '<p class="muted" style="font-size:13px">Set your admin password in Settings to enable installation.</p>';
   } else {
     h += '<div style="margin-top:1rem"><button onclick="installGallery(\'' + esc(item.id) + '\')">Install ' + esc(item.name) + '</button></div>';
   }
@@ -239,7 +237,7 @@ function closeModal() {
 }
 
 async function installGallery(id) {
-  if (!confirm('Install this extension? This requires step-up authentication.')) return;
+  if (!confirm('Install this extension?')) return;
   const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
   if (r.ok) {
     alert('Installed successfully.');
@@ -271,7 +269,7 @@ async function loadInstalled() {
   const el = document.getElementById('page-installed');
   let h = '<h2>Installed Extensions</h2>';
   if (!adminToken) {
-    h += '<p class="muted">Set your admin token in Settings to view installed extensions.</p>';
+    h += '<p class="muted">Set your admin password in Settings to view installed extensions.</p>';
     el.innerHTML = h;
     return;
   }
@@ -289,16 +287,6 @@ async function loadInstalled() {
     h += '<div><strong>' + esc(p) + '</strong> <span class="tag">plugin</span></div>';
     h += '<button class="danger sm" onclick="uninstallPlugin(\'' + esc(p) + '\')">Remove</button>';
     h += '</div>';
-  }
-  if (d.extensions.length) {
-    h += '<h3>Extension Queue</h3>';
-    for (const e of d.extensions) {
-      h += '<div class="card">';
-      h += '<div style="display:flex;justify-content:space-between;align-items:center">';
-      h += '<div><strong>' + esc(e.pluginId) + '</strong> <span class="tag">' + esc(e.sourceType) + '</span> ' + riskBadge(e.risk) + '</div>';
-      h += '<span class="muted">' + esc(e.status) + '</span>';
-      h += '</div></div>';
-    }
   }
   if (d.setupState.installedExtensions.length) {
     h += '<h3>Gallery Installations</h3>';
@@ -343,8 +331,8 @@ async function loadServices() {
       h += '<span class="tag">' + esc(c.access.toUpperCase()) + '</span>';
       h += '</div>';
       h += '<div class="muted" style="font-size:13px;margin:.35rem 0">Network access: ' + (c.access === 'public' ? 'Public' : 'LAN only') + '</div>';
-      if (!adminToken || !stepUpToken) {
-        h += '<p class="muted" style="font-size:12px">Set tokens to edit access/config.</p>';
+      if (!adminToken) {
+        h += '<p class="muted" style="font-size:12px">Set your admin password in Settings to edit access/config.</p>';
       } else {
         if (c.service.startsWith('channel-')) {
           const next = c.access === 'public' ? 'lan' : 'public';
@@ -360,8 +348,8 @@ async function loadServices() {
 
   const known = ['gateway','opencode-core','opencode-channel','openmemory','admin-app','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
   h += '<h3>Container Actions</h3>';
-  if (!adminToken || !stepUpToken) {
-    h += '<p class="muted">Set admin + step-up tokens in Settings to manage containers.</p>';
+  if (!adminToken) {
+    h += '<p class="muted">Set your admin password in Settings to manage containers.</p>';
   } else {
     h += '<div class="grid2">';
     for (const svc of known) {
@@ -420,14 +408,10 @@ function renderSettings() {
   const el = document.getElementById('page-settings');
   let h = '<h2>Settings</h2>';
   h += '<div class="card"><h3>Authentication</h3>';
-  h += '<p class="muted" style="font-size:13px">Tokens are stored in your browser only (localStorage). They are sent as headers to the admin-app API.</p>';
-  h += '<div class="sec-box"><div class="sec-title">Why two tokens?</div>';
-  h += '<div style="font-size:13px">The admin token authenticates you. The step-up token is required for destructive operations (install, remove, restart). This is defense in depth: even if an admin token is compromised, the attacker cannot modify the system without the step-up token.</div></div>';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Token</label>';
+  h += '<p class="muted" style="font-size:13px">Your admin password is stored in your browser only (localStorage) and sent as a header to the admin API.</p>';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password</label>';
   h += '<input type="password" id="set-admin" value="' + esc(adminToken) + '" />';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Step-Up Token</label>';
-  h += '<input type="password" id="set-stepup" value="' + esc(stepUpToken) + '" />';
-  h += '<div style="margin-top:.7rem"><button onclick="saveSettings()">Save Tokens</button></div>';
+  h += '<div style="margin-top:.7rem"><button onclick="saveSettings()">Save</button></div>';
   h += '</div>';
   h += '<div class="card"><h3>Re-run Setup Wizard</h3>';
   h += '<p class="muted" style="font-size:13px">Revisit the initial setup steps.</p>';
@@ -438,9 +422,7 @@ function renderSettings() {
 
 function saveSettings() {
   adminToken = document.getElementById('set-admin').value;
-  stepUpToken = document.getElementById('set-stepup').value;
   localStorage.setItem('op_admin', adminToken);
-  localStorage.setItem('op_stepup', stepUpToken);
   alert('Saved.');
 }
 
@@ -493,11 +475,9 @@ function wizardBody() {
         + '<script>wizHealthCheck()<\/script>';
     case 'security':
       return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
-        + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Admin token + step-up token (two-factor API auth). Set these below to manage the platform.</div></div>'
-        + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Token (from .env)</label>'
+        + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
+        + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password (from .env)</label>'
         + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
-        + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Step-Up Token (from .env)</label>'
-        + '<input type="password" id="wiz-stepup" value="' + esc(stepUpToken) + '" />'
         + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
         + '<ul style="font-size:13px;margin:.2rem 0"><li>HMAC channel signatures</li><li>Tool firewall (safe/medium/high risk tiers)</li><li>Secret detection on memory writes</li><li>Rate limiting (120 req/min per user)</li><li>LAN-only admin access via Caddy</li></ul></div>';
     case 'channels':
@@ -561,9 +541,7 @@ async function wizardNext() {
   // save step-specific state
   if (STEPS[wizardStep] === 'security') {
     const a = document.getElementById('wiz-admin');
-    const s = document.getElementById('wiz-stepup');
     if (a) { adminToken = a.value; localStorage.setItem('op_admin', adminToken); }
-    if (s) { stepUpToken = s.value; localStorage.setItem('op_stepup', stepUpToken); }
   }
   await api('/admin/setup/step', { method: 'POST', body: JSON.stringify({ step: STEPS[wizardStep] }) });
   wizardStep++;

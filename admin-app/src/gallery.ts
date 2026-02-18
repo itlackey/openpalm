@@ -1,5 +1,3 @@
-import type { ExtensionRequest } from "./types.ts";
-
 // ── Gallery item types ──────────────────────────────────────────────
 
 export type GalleryCategory = "plugin" | "skill" | "container";
@@ -329,7 +327,7 @@ export function getRiskBadge(risk: RiskLevel): { label: string; color: string; d
   switch (risk) {
     case "low": return { label: "Low Risk", color: "#34c759", description: "Safe to install. No network access, no side effects." };
     case "medium": return { label: "Medium Risk", color: "#ff9500", description: "Limited capabilities. Review permissions before installing." };
-    case "high": return { label: "High Risk", color: "#ff3b30", description: "Significant capabilities. Requires step-up authentication and careful review." };
+    case "high": return { label: "High Risk", color: "#ff3b30", description: "Significant capabilities. Review carefully before installing." };
     case "critical": return { label: "Critical Risk", color: "#af52de", description: "Maximum capability. Can execute code, access network, or modify system state. Review thoroughly." };
   }
 }

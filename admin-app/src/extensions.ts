@@ -10,23 +10,6 @@ export function validatePluginIdentifier(id: string) {
   return NPM_RE.test(id);
 }
 
-export function classifyPluginRisk(id: string): "low" | "high" | "critical" {
-  if (id.startsWith("./.opencode/plugins/")) return "high";
-  if (id.includes("security") || id.includes("exec") || id.includes("shell")) return "critical";
-  return "high";
-}
-
-export async function preflightPlugin(pluginId: string): Promise<{ ok: boolean; details: string }> {
-  if (pluginId.startsWith("./.opencode/plugins/")) return { ok: true, details: "local plugin path" };
-  try {
-    const resp = await fetch(`https://registry.npmjs.org/${pluginId}`);
-    if (!resp.ok) return { ok: false, details: `registry status ${resp.status}` };
-    return { ok: true, details: "package exists" };
-  } catch {
-    return { ok: false, details: "registry preflight unavailable" };
-  }
-}
-
 export function updatePluginListAtomically(configPath: string, pluginId: string, enabled: boolean) {
   const raw = readFileSync(configPath, "utf8");
   const doc = parseJsonc(raw) as { plugin?: string[] };

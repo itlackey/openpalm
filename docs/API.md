@@ -52,8 +52,7 @@ Notes:
 ## Admin App API (routed via Caddy at /admin/*, LAN only)
 
 Headers for all protected admin endpoints:
-- `x-admin-token` (required for most endpoints)
-- `x-admin-step-up` (additionally required for destructive operations)
+- `x-admin-token` (required — the admin password set during install)
 
 **Exceptions (no auth required):** `/health`, `/admin/setup/*`, `/admin/gallery/search`, `/admin/gallery/categories`, `/admin/gallery/item/:id`, `/admin/gallery/npm-search`, static UI assets (`/`, `/index.html`).
 
@@ -62,31 +61,19 @@ Health status for the admin app.
 
 ### Container management
 - `GET /admin/containers/list` — list running containers
-- `POST /admin/containers/up` — start a service `{ "service": "channel-discord" }` (step-up required)
-- `POST /admin/containers/down` — stop a service `{ "service": "channel-discord" }` (step-up required)
-- `POST /admin/containers/restart` — restart a service `{ "service": "opencode-core" }` (step-up required)
+- `POST /admin/containers/up` — start a service `{ "service": "channel-discord" }`
+- `POST /admin/containers/down` — stop a service `{ "service": "channel-discord" }`
+- `POST /admin/containers/restart` — restart a service `{ "service": "opencode-core" }`
 
 ### Channel management
 - `GET /admin/channels` — list channel services, network access mode, and editable config keys
-- `POST /admin/channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "lan" | "public" }` (step-up required)
+- `POST /admin/channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "lan" | "public" }`
 - `GET /admin/channels/config?service=channel-chat` — read channel-specific env overrides
-- `POST /admin/channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }` (step-up required)
-
-### Extension lifecycle
-- `POST /admin/extensions/request` — queue a plugin `{ "pluginId": "@scope/plugin" }`
-- `GET /admin/extensions/list` — list all extension requests
-- `POST /admin/extensions/apply` — apply extension `{ "requestId": "uuid" }` (step-up required)
-- `POST /admin/extensions/disable` — disable extension `{ "pluginId": "@scope/plugin" }` (step-up required)
+- `POST /admin/channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }`
 
 ### Config editor
 - `GET /admin/config` — read `opencode.jsonc` (returns text/plain)
-- `POST /admin/config` — write config `{ "config": "...", "restart": true }` (step-up required, denies permission widening to `allow`)
-
-### Change manager
-- `POST /admin/change/propose` — register a change bundle `{ "bundleId": "my-bundle" }`
-- `POST /admin/change/validate` — validate bundle `{ "bundleId": "my-bundle" }`
-- `POST /admin/change/apply` — apply bundle `{ "bundleId": "my-bundle", "applyPlugins": [], "restart": true }` (step-up required)
-- `POST /admin/change/rollback` — rollback config `{ "backupPath": "...", "restart": true }` (step-up required)
+- `POST /admin/config` — write config `{ "config": "...", "restart": true }` (denies permission widening to `allow`)
 
 ### Setup wizard
 - `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag)
@@ -103,14 +90,18 @@ Health status for the admin app.
 - `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
 
 ### Install / uninstall
-- `POST /admin/gallery/install` — install a gallery item (step-up required)
+- `POST /admin/gallery/install` — install a gallery item or npm plugin
   ```json
-  { "itemId": "plugin-policy-telemetry" }
+  { "galleryId": "plugin-policy-telemetry" }
   ```
-  Delegates to extension lifecycle or controller depending on `installAction` type.
-- `POST /admin/gallery/uninstall` — uninstall a gallery item (step-up required)
+  or install an npm plugin directly:
   ```json
-  { "itemId": "plugin-policy-telemetry" }
+  { "pluginId": "@scope/plugin-name" }
+  ```
+  Delegates to atomic config update or controller depending on `installAction` type.
+- `POST /admin/gallery/uninstall` — uninstall a gallery item or plugin
+  ```json
+  { "galleryId": "plugin-policy-telemetry" }
   ```
 
 ### Installed status

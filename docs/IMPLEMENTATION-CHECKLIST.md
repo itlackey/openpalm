@@ -17,17 +17,14 @@
 
 ## Admin guide (docs/admin-guide.md)
 - [x] Installer script with checks + bootstrap
-- [x] Staged change manager endpoints (propose/validate/apply/rollback)
 - [x] Config edit + safe write + restart flow
-- [x] Container lifecycle management (controller replaces compose-control)
-- [x] Step-up auth enforced for high-risk admin operations
+- [x] Container lifecycle management (controller)
+- [x] Admin password authentication for all admin operations
 
 ## Extensions guide (docs/extensions-guide.md)
 - [x] OpenCode `plugin[]` treated as canonical extension registry
-- [x] API flow to request/install/disable plugin IDs
-- [x] Preflight validation and risk tagging
-- [x] API/CLI-first approval flow (not UI-manual)
-- [x] Optional ops dashboard retained read-only
+- [x] Direct install/uninstall via gallery, API, and CLI
+- [x] Atomic config updates with backup on every change
 
 ## Architecture (container/app/channel refactor)
 - [x] Caddy reverse proxy as front door with URL routing
@@ -49,18 +46,16 @@
 
 ## Admin UI gallery and setup wizard
 - [x] Curated gallery registry with plugins, skills, and containers
-- [x] Gallery item types with risk levels (low/medium/high/critical)
 - [x] Gallery search by name, description, tags, and category filter
 - [x] npm registry search for discovering non-curated plugins
-- [x] Risk badge display with color coding and security notes
 - [x] Setup wizard with 5-step first-boot flow (welcome, health check, security, channels, extensions)
 - [x] Setup wizard state persistence (file-backed JSON)
 - [x] Health check endpoint for gateway and OpenCode core connectivity
 - [x] Vanilla JS SPA admin UI (no framework dependency)
 - [x] Dark theme UI with gallery, installed, services, and settings pages
-- [x] Detail modal with security assessment and permissions per extension
+- [x] Detail modal with security notes and permissions per extension
 - [x] Defense-in-depth information displayed contextually per extension type
-- [x] Install/uninstall API endpoints with step-up auth
+- [x] Install/uninstall API endpoints with admin auth
 - [x] Gallery and setup API endpoints added to admin-app server
 
 ## Runtime isolation

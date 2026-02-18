@@ -37,7 +37,7 @@ if [ ! -f .env ]; then
 import secrets, pathlib
 p = pathlib.Path('.env')
 text = p.read_text()
-for marker in ['replace-with-long-random-token','replace-with-second-long-random-token','replace-with-controller-token','replace-with-pg-password','replace-with-channel-secret','replace-with-inbound-token','replace-with-telegram-webhook-secret']:
+for marker in ['replace-with-long-random-token','replace-with-controller-token','replace-with-pg-password','replace-with-channel-secret','replace-with-inbound-token','replace-with-telegram-webhook-secret']:
     text = text.replace(marker, secrets.token_urlsafe(36), 1)
 p.write_text(text)
 print('Created .env with generated secure defaults.')
@@ -57,7 +57,7 @@ done
 # ── Create XDG directory trees ─────────────────────────────────────────────
 # Data — persistent storage (databases, blobs)
 mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
-mkdir -p "$OPENPALM_DATA_HOME"/admin-app/{bundles,change-states}
+mkdir -p "$OPENPALM_DATA_HOME"/admin-app
 
 # Config — user-editable configuration
 mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,opencode-channel,caddy,channels}
