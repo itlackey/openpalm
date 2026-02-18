@@ -50,7 +50,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 <body>
 
 <nav>
-  <span class="logo"><img src="/logo.png" alt="OpenPalm logo" />OpenPalm</span>
+  <span class="logo"><img src="logo.png" alt="OpenPalm logo" />OpenPalm</span>
   <button id="nav-gallery" onclick="showPage('gallery')">Gallery</button>
   <button id="nav-installed" onclick="showPage('installed')">Installed</button>
   <button id="nav-services" onclick="showPage('services')">Services</button>
@@ -72,7 +72,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 <!-- detail modal, rendered by JS -->
 <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()"></div>
 
-<script src="/setup-ui.js"></script>
+<script src="setup-ui.js"></script>
 <script>
 /* ── state ────────────────────────────────────────────── */
 let adminToken = localStorage.getItem('op_admin') || '';

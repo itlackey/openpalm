@@ -346,6 +346,7 @@ upsert_env_var OPENPALM_CONTAINER_SOCKET_PATH "$OPENPALM_CONTAINER_SOCKET_PATH"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_IN_CONTAINER "$OPENPALM_CONTAINER_SOCKET_IN_CONTAINER"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_URI "$OPENPALM_CONTAINER_SOCKET_URI"
 upsert_env_var OPENPALM_IMAGE_TAG "$OPENPALM_IMAGE_TAG"
+upsert_env_var OPENPALM_ENABLED_CHANNELS "${OPENPALM_ENABLED_CHANNELS:-}"
 
 # ── Create XDG directory trees ─────────────────────────────────────────────
 # Data — persistent storage (databases, blobs)

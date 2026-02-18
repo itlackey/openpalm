@@ -230,6 +230,8 @@ try {
   Upsert-EnvVar OPENPALM_CONTAINER_SOCKET_IN_CONTAINER $OpenPalmContainerSocketInContainer
   Upsert-EnvVar OPENPALM_CONTAINER_SOCKET_URI $OpenPalmContainerSocketUri
   Upsert-EnvVar OPENPALM_IMAGE_TAG $OpenPalmImageTag
+  $OpenPalmEnabledChannels = if ($env:OPENPALM_ENABLED_CHANNELS) { $env:OPENPALM_ENABLED_CHANNELS } else { "" }
+  Upsert-EnvVar OPENPALM_ENABLED_CHANNELS $OpenPalmEnabledChannels
 
   @(
     "$OpenPalmDataHome/postgres",

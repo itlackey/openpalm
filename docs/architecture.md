@@ -107,6 +107,8 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `channel-voice` | `./channels/voice` (build) | assistant_net | Voice/STT adapter (profile: channels) |
 | `channel-telegram` | `./channels/telegram` (build) | assistant_net | Telegram adapter (profile: channels) |
 
+Channel containers are optional at install time. During the setup wizard, users pick which channels to enable, and only those selected channel containers are started/pulled.
+
 ## Data flow
 
 ### Message processing (channel inbound)
