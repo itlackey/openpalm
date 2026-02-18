@@ -1,4 +1,4 @@
-<img src="assets/banner.png" alt="OpenPalm" width="800" />
+<img src="assets/banner.png" alt="OpenPalm" width="500" />
 
 <p>
   <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
