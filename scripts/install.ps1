@@ -139,6 +139,17 @@ function Detect-Runtime {
   return $null
 }
 
+function Detect-HostArch {
+  switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+    ([System.Runtime.InteropServices.Architecture]::Arm64) { return "arm64" }
+    ([System.Runtime.InteropServices.Architecture]::X64) { return "amd64" }
+    default {
+      Write-Warning "Unsupported CPU architecture '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)'. Defaulting to amd64 images."
+      return "amd64"
+    }
+  }
+}
+
 try {
   Bootstrap-InstallAssets
 
@@ -180,8 +191,11 @@ try {
   }
 
   $OpenPalmContainerSocketUri = "unix://$OpenPalmContainerSocketInContainer"
+  $OpenPalmHostArch = Detect-HostArch
+  $OpenPalmImageTag = if ($env:OPENPALM_IMAGE_TAG) { $env:OPENPALM_IMAGE_TAG } else { "latest-$OpenPalmHostArch" }
 
   Write-Host "Detected OS: windows"
+  Write-Host "Detected CPU architecture: $OpenPalmHostArch"
   Write-Host "Selected container runtime: $OpenPalmContainerPlatform"
   Write-Host "Compose command: $OpenPalmComposeBin $OpenPalmComposeSubcommand"
 
@@ -224,6 +238,7 @@ try {
   Upsert-EnvVar OPENPALM_CONTAINER_SOCKET_PATH $OpenPalmContainerSocketPath
   Upsert-EnvVar OPENPALM_CONTAINER_SOCKET_IN_CONTAINER $OpenPalmContainerSocketInContainer
   Upsert-EnvVar OPENPALM_CONTAINER_SOCKET_URI $OpenPalmContainerSocketUri
+  Upsert-EnvVar OPENPALM_IMAGE_TAG $OpenPalmImageTag
 
   @(
     "$OpenPalmDataHome/postgres",

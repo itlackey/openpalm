@@ -29,20 +29,68 @@ jobs:
         include:
           - image: opencode-core
             context: ./opencode
+            platform: linux/amd64
+            arch: amd64
+          - image: opencode-core
+            context: ./opencode
+            platform: linux/arm64
+            arch: arm64
           - image: gateway
             context: ./gateway
+            platform: linux/amd64
+            arch: amd64
+          - image: gateway
+            context: ./gateway
+            platform: linux/arm64
+            arch: arm64
           - image: admin
             context: ./admin
+            platform: linux/amd64
+            arch: amd64
+          - image: admin
+            context: ./admin
+            platform: linux/arm64
+            arch: arm64
           - image: controller
             context: ./controller
+            platform: linux/amd64
+            arch: amd64
+          - image: controller
+            context: ./controller
+            platform: linux/arm64
+            arch: arm64
           - image: channel-chat
             context: ./channels/chat
+            platform: linux/amd64
+            arch: amd64
+          - image: channel-chat
+            context: ./channels/chat
+            platform: linux/arm64
+            arch: arm64
           - image: channel-discord
             context: ./channels/discord
+            platform: linux/amd64
+            arch: amd64
+          - image: channel-discord
+            context: ./channels/discord
+            platform: linux/arm64
+            arch: arm64
           - image: channel-voice
             context: ./channels/voice
+            platform: linux/amd64
+            arch: amd64
+          - image: channel-voice
+            context: ./channels/voice
+            platform: linux/arm64
+            arch: arm64
           - image: channel-telegram
             context: ./channels/telegram
+            platform: linux/amd64
+            arch: amd64
+          - image: channel-telegram
+            context: ./channels/telegram
+            platform: linux/arm64
+            arch: arm64
     permissions:
       contents: read
     steps:
@@ -63,6 +111,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}
+          flavor: |
+            suffix=-${{ matrix.arch }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
@@ -74,5 +124,6 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
           push: true
+          platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
