@@ -5,6 +5,7 @@
   let wizardStep = 0;
   let accessScope = "host";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
+  let enabledChannels = [];
   let api;
   let esc;
   let riskBadge;
@@ -36,6 +37,7 @@
     setupState = r.data;
     accessScope = setupState.accessScope || "host";
     serviceInstances = setupState.serviceInstances || { openmemory: "", psql: "", qdrant: "" };
+    enabledChannels = Array.isArray(setupState.enabledChannels) ? setupState.enabledChannels : [];
     if (!setupState.completed) runSetup();
   }
 
@@ -121,7 +123,7 @@
     let h = "";
     for (const c of chs) {
       h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
-      h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" style="width:auto;margin-top:4px" />';
+      h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" ' + (enabledChannels.includes(c.id) ? "checked" : "") + ' style="width:auto;margin-top:4px" />';
       h += '<div><strong>' + c.name + '</strong><div class="muted" style="font-size:13px">' + c.desc + '</div></div>';
       h += "</label>";
     }
@@ -200,13 +202,20 @@
   }
 
   async function finishSetup() {
+    const chs = Array.from(document.querySelectorAll(".wiz-ch:checked")).map((c) => c.value);
+    const channelsResult = await api("/admin/setup/channels", { method: "POST", body: JSON.stringify({ channels: chs }) });
+    if (!channelsResult.ok) {
+      alert("Could not save channel selection.");
+      return;
+    }
+    enabledChannels = channelsResult.data?.state?.enabledChannels || [];
+
     const boxes = document.querySelectorAll(".wiz-ext:checked");
     for (const b of boxes) {
       await api("/admin/gallery/install", { method: "POST", body: JSON.stringify({ galleryId: b.value }) });
     }
-    const chs = document.querySelectorAll(".wiz-ch:checked");
-    for (const c of chs) {
-      await api("/admin/containers/up", { method: "POST", body: JSON.stringify({ service: c.value }) });
+    for (const channel of enabledChannels) {
+      await api("/admin/containers/up", { method: "POST", body: JSON.stringify({ service: channel }) });
     }
     await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
     await api("/admin/setup/complete", { method: "POST" });

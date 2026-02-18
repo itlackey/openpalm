@@ -49,6 +49,10 @@ function sanitizeStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
 function sanitizeServiceInstances(value: unknown): SetupState["serviceInstances"] {
   const source = (value && typeof value === "object") ? value as Partial<SetupState["serviceInstances"]> : {};
   return {
@@ -140,9 +144,14 @@ export class SetupManager {
 
   addChannel(channel: string) {
     const state = this.getState();
-    if (!state.enabledChannels.includes(channel)) {
-      state.enabledChannels.push(channel);
-    }
+    if (!state.enabledChannels.includes(channel)) state.enabledChannels.push(channel);
+    this.save(state);
+    return state;
+  }
+
+  setEnabledChannels(channels: string[]) {
+    const state = this.getState();
+    state.enabledChannels = uniqueStrings(channels);
     this.save(state);
     return state;
   }

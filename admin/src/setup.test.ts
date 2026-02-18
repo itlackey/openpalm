@@ -33,6 +33,18 @@ describe("SetupManager service instance configuration", () => {
     }
   });
 
+  it("persists selected channels as unique service ids", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      manager.setEnabledChannels(["channel-chat", "channel-chat", "channel-discord"]);
+      const state = manager.getState();
+      expect(state.enabledChannels).toEqual(["channel-chat", "channel-discord"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to defaults when setup-state.json is corrupted", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
     try {

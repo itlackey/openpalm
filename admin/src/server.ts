@@ -22,6 +22,7 @@ const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:3000";
 const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
+const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
@@ -170,6 +171,18 @@ function updateRuntimeEnv(entries: Record<string, string | undefined>) {
   writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
 }
 
+function normalizeSelectedChannels(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const selected: string[] = [];
+  for (const service of value) {
+    if (typeof service !== "string") continue;
+    if (!CHANNEL_SERVICE_SET.has(service)) continue;
+    if (selected.includes(service)) continue;
+    selected.push(service);
+  }
+  return selected;
+}
+
 function readRuntimeEnv() {
   if (!existsSync(RUNTIME_ENV_PATH)) return {};
   return parseRuntimeEnvContent(readFileSync(RUNTIME_ENV_PATH, "utf8"));
@@ -264,6 +277,16 @@ const server = Bun.serve({
           OPENMEMORY_QDRANT_URL: qdrant || undefined
         });
         const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
+        return cors(json(200, { ok: true, state }));
+      }
+
+      if (url.pathname === "/admin/setup/channels" && req.method === "POST") {
+        const body = (await req.json()) as { channels?: unknown };
+        const current = setupManager.getState();
+        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        const channels = normalizeSelectedChannels(body.channels);
+        updateRuntimeEnv({ OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(",") : undefined });
+        const state = setupManager.setEnabledChannels(channels);
         return cors(json(200, { ok: true, state }));
       }
 
