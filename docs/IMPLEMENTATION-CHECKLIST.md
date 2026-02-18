@@ -48,7 +48,7 @@
 - [x] Curated gallery registry with plugins, skills, and containers
 - [x] Gallery search by name, description, tags, and category filter
 - [x] npm registry search for discovering non-curated plugins
-- [x] Setup wizard with 5-step first-boot flow (welcome, health check, security, channels, extensions)
+- [x] Setup wizard with first-boot flow including early access scope selection (host-only or LAN)
 - [x] Setup wizard state persistence (file-backed JSON)
 - [x] Health check endpoint for gateway and OpenCode core connectivity
 - [x] Vanilla JS SPA admin UI (no framework dependency)

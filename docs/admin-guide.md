@@ -91,7 +91,7 @@ Use a restricted "controller" sidecar:
 ### Auth model
 - Admin password generated during install and stored in `.env`
 - Password sent as `x-admin-token` header to the admin API
-- Admin UI is LAN-only via Caddy reverse proxy (network-level protection)
+- Setup wizard includes an early access-scope choice (`host` or `lan`) that tightens Caddy + published port bindings for host-only installs
 - The admin password is the single credential needed for all admin operations
 
 ### Protected actions

@@ -19,6 +19,7 @@ const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:3000";
 const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
+const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
@@ -139,6 +140,51 @@ function writeChannelConfig(service: string, values: Record<string, string>) {
   writeFileSync(channelEnvPath(service), lines.join("\n") + "\n", "utf8");
 }
 
+function setAccessScope(scope: "host" | "lan") {
+  const raw = readFileSync(CADDYFILE_PATH, "utf8");
+  const lanRanges = "127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8";
+  const hostRanges = "127.0.0.0/8 ::1";
+  const lanMatcher = scope === "host"
+    ? `@lan remote_ip ${hostRanges}`
+    : `@lan remote_ip ${lanRanges}`;
+  const notLanMatcher = scope === "host"
+    ? `@not_lan not remote_ip ${hostRanges}`
+    : `@not_lan not remote_ip ${lanRanges}`;
+
+  const next = raw
+    .replace(/^\s*@lan remote_ip .+$/m, `\t${lanMatcher}`)
+    .replace(/^\s*@not_lan not remote_ip .+$/m, `\t${notLanMatcher}`);
+  writeFileSync(CADDYFILE_PATH, next, "utf8");
+}
+
+function setRuntimeBindScope(scope: "host" | "lan") {
+  const bindAddress = scope === "host" ? "127.0.0.1" : "0.0.0.0";
+  // Setup scope intentionally normalizes published bind addresses to one profile.
+  // Advanced per-service overrides can still be reapplied in CONFIG/user.env afterward.
+  const entries = {
+    OPENPALM_INGRESS_BIND_ADDRESS: bindAddress,
+    OPENPALM_OPENMEMORY_BIND_ADDRESS: bindAddress,
+    OPENCODE_CORE_BIND_ADDRESS: bindAddress,
+    OPENCODE_CORE_SSH_BIND_ADDRESS: bindAddress
+  };
+  const lines = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8").split(/\r?\n/) : [];
+  const seen = new Set<string>();
+  const next = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !line.includes("=")) return line;
+    const [key] = line.split("=", 1);
+    if (key in entries) {
+      seen.add(key);
+      return `${key}=${entries[key as keyof typeof entries]}`;
+    }
+    return line;
+  });
+  for (const [key, value] of Object.entries(entries)) {
+    if (!seen.has(key)) next.push(`${key}=${value}`);
+  }
+  writeFileSync(RUNTIME_ENV_PATH, next.join("\n").replace(/\n+$/, "") + "\n", "utf8");
+}
+
 async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: string; error?: string }> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -174,9 +220,25 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
-        const validSteps = ["welcome", "healthCheck", "security", "channels", "extensions"];
+        const validSteps = ["welcome", "accessScope", "healthCheck", "security", "channels", "extensions"];
         if (!validSteps.includes(body.step)) return cors(json(400, { error: "invalid step" }));
-        const state = setupManager.completeStep(body.step as "welcome" | "healthCheck" | "security" | "channels" | "extensions");
+        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "healthCheck" | "security" | "channels" | "extensions");
+        return cors(json(200, { ok: true, state }));
+      }
+
+      if (url.pathname === "/admin/setup/access-scope" && req.method === "POST") {
+        const body = (await req.json()) as { scope: "host" | "lan" };
+        if (!["host", "lan"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
+        const current = setupManager.getState();
+        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        setAccessScope(body.scope);
+        setRuntimeBindScope(body.scope);
+        await Promise.all([
+          controllerAction("up", "caddy", `setup scope: ${body.scope}`),
+          controllerAction("up", "openmemory", `setup scope: ${body.scope}`),
+          controllerAction("up", "opencode-core", `setup scope: ${body.scope}`),
+        ]);
+        const state = setupManager.setAccessScope(body.scope);
         return cors(json(200, { ok: true, state }));
       }
 

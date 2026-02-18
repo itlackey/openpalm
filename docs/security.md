@@ -7,6 +7,7 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 - Caddy fronts all inbound traffic.
 - `/admin*`, `/admin/opencode*`, and `/admin/openmemory*` are LAN-restricted.
 - Channel routes are LAN-only by default and can be explicitly toggled to public in admin.
+- Setup wizard can harden further with `host` scope (localhost-only matchers + localhost compose bindings).
 - Unknown routes are rejected at the edge.
 
 **Why:** keep management surfaces private by default and reduce internet-exposed attack surface.

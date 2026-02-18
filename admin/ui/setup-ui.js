@@ -1,8 +1,9 @@
 (() => {
   let setupState = null;
-  const STEPS = ["welcome", "healthCheck", "security", "channels", "extensions", "complete"];
-  const STEP_TITLES = ["Welcome", "Service Health", "Security Review", "Channels", "Extensions", "Complete Setup"];
+  const STEPS = ["welcome", "accessScope", "healthCheck", "security", "channels", "extensions", "complete"];
+  const STEP_TITLES = ["Welcome", "Access Scope", "Service Health", "Security Review", "Channels", "Extensions", "Complete Setup"];
   let wizardStep = 0;
+  let accessScope = "host";
   let api;
   let esc;
   let riskBadge;
@@ -32,6 +33,7 @@
     const r = await api("/admin/setup/status");
     if (!r.ok) return;
     setupState = r.data;
+    accessScope = setupState.accessScope || "host";
     if (!setupState.completed) runSetup();
   }
 
@@ -68,9 +70,19 @@
         return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
           + '<p>This wizard will walk you through initial configuration:</p>'
           + '<ul><li>Verify core services are running</li><li>Review security settings</li><li>Choose channels to enable</li><li>Install starter extensions</li></ul>'
-          + '<p class="muted" style="font-size:13px">This admin interface is restricted to your local network via Caddy reverse proxy.</p>';
+          + '<p class="muted" style="font-size:13px">During setup, choose whether access should be restricted to this host only or available across your LAN.</p>';
       case "healthCheck":
         return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div>';
+      case "accessScope":
+        return '<p>Choose who can access this stack during normal operation.</p>'
+          + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
+          + '<input type="radio" name="wiz-scope" value="host" ' + (accessScope === "host" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
+          + '<div><strong>Host machine only</strong><div class="muted" style="font-size:13px">Tightest mode. Caddy and published service ports are restricted to localhost.</div></div>'
+          + '</label>'
+          + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
+          + '<input type="radio" name="wiz-scope" value="lan" ' + (accessScope === "lan" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
+          + '<div><strong>LAN machines</strong><div class="muted" style="font-size:13px">Allow trusted machines on your local network to reach exposed stack endpoints.</div></div>'
+          + '</label>';
       case "security":
         return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
           + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
@@ -136,6 +148,16 @@
   }
 
   async function wizardNext() {
+    if (STEPS[wizardStep] === "accessScope") {
+      const selected = document.querySelector('input[name="wiz-scope"]:checked');
+      const scope = selected ? selected.value : "host";
+      const scopeResult = await api("/admin/setup/access-scope", { method: "POST", body: JSON.stringify({ scope }) });
+      if (!scopeResult.ok) {
+        alert("Could not apply access scope.");
+        return;
+      }
+      accessScope = scope;
+    }
     if (STEPS[wizardStep] === "security") {
       const a = document.getElementById("wiz-admin");
       if (a) setAdminToken(a.value);

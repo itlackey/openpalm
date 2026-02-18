@@ -24,7 +24,7 @@ OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that run
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 ```
 
-The installer auto-detects `docker`, `podman`, or `orbstack`, pulls images, prepares local assets, shows a startup wait indicator, and opens the admin setup wizard as soon as it is online.
+The installer auto-detects `docker`, `podman`, or `orbstack`, pulls images, prepares local assets, shows a startup wait indicator, and opens the admin setup wizard as soon as it is online. Early in setup, choose whether access is host-only or LAN-wide; host-only mode tightens both Caddy route filtering and compose bind addresses.
 
 ## Key features
 

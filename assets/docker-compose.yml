@@ -7,7 +7,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    ports: ["80:80", "443:443"]
+    ports:
+      - "${OPENPALM_INGRESS_BIND_ADDRESS:-0.0.0.0}:80:80"
+      - "${OPENPALM_INGRESS_BIND_ADDRESS:-0.0.0.0}:443:443"
     volumes:
       - ${OPENPALM_CONFIG_HOME}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ${OPENPALM_DATA_HOME}/caddy:/data
@@ -42,7 +44,9 @@ services:
   openmemory:
     image: skpassegna/openmemory-mcp:latest
     restart: unless-stopped
-    ports: ["3000:3000", "8765:8765"]
+    ports:
+      - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:3000:3000"
+      - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME}/openmemory:/data
       - ${OPENPALM_DATA_HOME}/shared:/shared
@@ -105,12 +109,14 @@ services:
       - OPENCODE_CORE_URL=http://opencode-core:4096
       - CADDYFILE_PATH=/app/config/caddy/Caddyfile
       - CHANNEL_ENV_DIR=/app/channel-env
+      - RUNTIME_ENV_PATH=/workspace/.env
     volumes:
       - ${OPENPALM_CONFIG_HOME}/opencode-core:/app/config/opencode-core
       - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
       - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env
       - ${OPENPALM_DATA_HOME}/admin:/app/data
       - ${OPENPALM_DATA_HOME}/shared:/shared
+      - ${OPENPALM_STATE_HOME}:/workspace
     networks: [assistant_net]
     depends_on: [controller]
 
