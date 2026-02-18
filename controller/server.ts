@@ -9,7 +9,7 @@ const COMPOSE_SUBCOMMAND = Bun.env.OPENPALM_COMPOSE_SUBCOMMAND ?? "compose";
 const COMPOSE_FILE = "docker-compose.yml";
 const CONTAINER_SOCKET_URI = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///var/run/openpalm-container.sock";
 const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean).join(" ");
-const ALLOWED = new Set(["opencode-core", "opencode-channel", "gateway", "openmemory", "admin-app", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
+const ALLOWED = new Set(["opencode-core", "gateway", "openmemory", "admin", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });

@@ -2,13 +2,13 @@ services:
   opencode-core:
     build: ./opencode
 
-  opencode-channel:
-    build: ./opencode-channel
 
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
 
-  admin-app:
+  admin:
     build: ./admin
 
   controller:

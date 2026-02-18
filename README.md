@@ -20,31 +20,11 @@ OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that run
 
 ## Get started
 
-No clone required:
-
 ```bash
-mkdir -p openpalm && cd openpalm
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh -o install.sh
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 ```
 
-Already cloned?
-
-```bash
-./install.sh
-```
-
-That's it. The installer detects your OS, validates your selected container runtime (`docker`, `podman`, or `orbstack`), generates secrets, and boots the full stack from published Docker images with a startup spinner. When ready, it opens the admin setup UI in your browser.
-
-On installed systems, `opencode-channel` is preconfigured in its container image by design. Most users should only customize `opencode-core`.
-
-Optional flags:
-
-```bash
-./install.sh --runtime podman
-./install.sh --runtime orbstack
-./install.sh --no-open
-```
+The installer auto-detects `docker`, `podman`, or `orbstack`, pulls images, prepares local assets, shows a startup wait indicator, and opens the admin setup wizard as soon as it is online.
 
 ## Key features
 
@@ -80,7 +60,7 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | | OpenPalm | OpenClaw |
 |---|---|---|
 | **Architecture** | Containerized microservices — each service is an isolated Docker container on a private network | Local daemon with WebSocket control plane — agent runs directly on the host |
-| **Channel security** | HMAC-signed payloads, gateway signature verification, dual-runtime intake validation | DM pairing codes, opt-in open DM policy |
+| **Channel security** | HMAC-signed payloads, gateway signature verification, and isolated intake validation | DM pairing codes, opt-in open DM policy |
 | **Runtime isolation** | Two separate runtimes: locked-down channel intake (all tools denied) + gated core agent | Single runtime with elevated bash toggled per session |
 | **Extension safety** | Admin-authenticated install via curated gallery or npm, atomic config updates with backup | Auto-discovery from ClawHub registry, skills pulled dynamically |
 | **Admin controls** | Dedicated admin API + web dashboard behind password auth on LAN-only network | Chat commands (`/status`, `/reset`, `/mesh`) sent in messaging channels |
@@ -98,8 +78,8 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 Channels (chat, discord, voice, telegram)
     │  HMAC-signed payloads
     ▼
-Gateway ──▶ OpenCode Channel (validate/summarize)
-    │           deny-by-default permissions
+Gateway (includes isolated OpenCode intake)
+    │  validate/summarize with deny-by-default permissions
     ▼
 OpenCode Core (full agent) ◀──▶ Open Memory (MCP)
     │
@@ -142,16 +122,7 @@ See [`assets/.env.example`](assets/.env.example) for all available settings and 
 
 ## Development
 
-Use the override below when you want containers rebuilt from your local source changes.
-
-```bash
-cp assets/.env.example .env
-docker compose -f assets/docker-compose.yml -f docker-compose.dev.yml up -d --build
-bun test          # Run tests
-bunx tsc -b       # Type-check
-```
-
-Bun workspaces: `gateway`, `admin`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local editing, building, and validation workflows.
 
 ## License
 

@@ -29,10 +29,9 @@ jobs:
         include:
           - image: opencode-core
             context: ./opencode
-          - image: opencode-channel
-            context: ./opencode-channel
           - image: gateway
-            context: ./gateway
+            context: .
+            dockerfile: gateway/Dockerfile
           - image: admin
             context: ./admin
           - image: controller
@@ -74,6 +73,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

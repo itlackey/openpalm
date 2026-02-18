@@ -56,7 +56,7 @@
 - [x] Detail modal with security notes and permissions per extension
 - [x] Defense-in-depth information displayed contextually per extension type
 - [x] Install/uninstall API endpoints with admin auth
-- [x] Gallery and setup API endpoints added to admin-app server
+- [x] Gallery and setup API endpoints added to admin server
 
 ## Runtime isolation
 - [x] Added separate `opencode-channel` runtime to isolate channel traffic from `opencode-core`

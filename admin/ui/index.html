@@ -33,19 +33,10 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .hidden{display:none!important}
 /* nav */
 nav{background:var(--surface);border-bottom:1px solid var(--border);padding:.7rem 1rem;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:10}
-nav .logo{font-weight:700;font-size:18px;color:var(--accent2);margin-right:auto}
+nav .logo{font-weight:700;font-size:18px;color:var(--accent2);margin-right:auto;display:flex;align-items:center;gap:.45rem}
+nav .logo img{width:24px;height:24px;border-radius:6px}
 nav button{background:transparent;color:var(--muted);padding:.3rem .8rem;border:1px solid transparent;font-size:14px}
 nav button.active{color:var(--text);border-color:var(--accent);background:var(--surface2)}
-/* setup wizard */
-.wizard-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
-.wizard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:640px;width:95%}
-.wizard h2{margin:0 0 .3rem}
-.wizard .steps{display:flex;gap:.5rem;margin:1rem 0}
-.wizard .step-dot{width:12px;height:12px;border-radius:50%;background:var(--border)}
-.wizard .step-dot.done{background:var(--green)}
-.wizard .step-dot.current{background:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.3)}
-.wizard .body{min-height:180px;margin:1rem 0}
-.wizard .actions{display:flex;gap:.5rem;justify-content:flex-end}
 /* detail modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:90}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:560px;width:95%;max-height:80vh;overflow-y:auto}
@@ -59,7 +50,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 <body>
 
 <nav>
-  <span class="logo">OpenPalm</span>
+  <span class="logo"><img src="/logo.png" alt="OpenPalm logo" />OpenPalm</span>
   <button id="nav-gallery" onclick="showPage('gallery')">Gallery</button>
   <button id="nav-installed" onclick="showPage('installed')">Installed</button>
   <button id="nav-services" onclick="showPage('services')">Services</button>
@@ -81,6 +72,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 <!-- detail modal, rendered by JS -->
 <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()"></div>
 
+<script src="/setup-ui.js"></script>
 <script>
 /* ── state ────────────────────────────────────────────── */
 let adminToken = localStorage.getItem('op_admin') || '';
@@ -349,7 +341,7 @@ async function loadServices() {
     h += '</div>';
   }
 
-  const known = ['gateway','opencode-core','opencode-channel','openmemory','admin-app','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+  const known = ['gateway','opencode-core','openmemory','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
   h += '<h3>Container Actions</h3>';
   if (!adminToken) {
     h += '<p class="muted">Set your admin password in Settings to manage containers.</p>';
@@ -552,153 +544,12 @@ function saveSettings() {
 }
 
 /* ── setup wizard ─────────────────────────────────────── */
-const STEPS = ['welcome','healthCheck','security','channels','extensions'];
-const STEP_TITLES = ['Welcome','Service Health','Security Review','Channels','Extensions'];
-let wizardStep = 0;
-
 async function checkSetup() {
-  const r = await api('/admin/setup/status');
-  if (!r.ok) return;
-  setupState = r.data;
-  if (!setupState.completed) runSetup();
+  await window.openPalmSetup?.checkSetup();
 }
 
 function runSetup() {
-  wizardStep = 0;
-  document.getElementById('setup-overlay').classList.remove('hidden');
-  renderWizard();
-}
-
-function renderWizard() {
-  const ov = document.getElementById('setup-overlay');
-  let h = '<div class="wizard">';
-  h += '<h2>' + STEP_TITLES[wizardStep] + '</h2>';
-  h += '<div class="steps">';
-  for (let i = 0; i < STEPS.length; i++) {
-    const cls = i < wizardStep ? 'done' : i === wizardStep ? 'current' : '';
-    h += '<div class="step-dot ' + cls + '"></div>';
-  }
-  h += '</div><div class="body">';
-  h += wizardBody();
-  h += '</div><div class="actions">';
-  if (wizardStep > 0) h += '<button class="secondary" onclick="wizardPrev()">Back</button>';
-  if (wizardStep < STEPS.length - 1) h += '<button onclick="wizardNext()">Next</button>';
-  else h += '<button onclick="finishSetup()">Finish Setup</button>';
-  h += '</div></div>';
-  ov.innerHTML = h;
-}
-
-function wizardBody() {
-  switch (STEPS[wizardStep]) {
-    case 'welcome':
-      return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
-        + '<p>This wizard will walk you through initial configuration:</p>'
-        + '<ul><li>Verify core services are running</li><li>Review security settings</li><li>Choose channels to enable</li><li>Install starter extensions</li></ul>'
-        + '<p class="muted" style="font-size:13px">This admin interface is restricted to your local network via Caddy reverse proxy.</p>';
-    case 'healthCheck':
-      return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div>'
-        + '<script>wizHealthCheck()<\/script>';
-    case 'security':
-      return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
-        + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
-        + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password (from .env)</label>'
-        + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
-        + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
-        + '<ul style="font-size:13px;margin:.2rem 0"><li>HMAC channel signatures</li><li>Tool firewall (safe/medium/high risk tiers)</li><li>Secret detection on memory writes</li><li>Rate limiting (120 req/min per user)</li><li>LAN-only admin access via Caddy</li></ul></div>';
-    case 'channels':
-      return '<p>Choose which channels to enable. Channels are dumb adapters; all messages pass through the gateway for security.</p>'
-        + channelCheckboxes();
-    case 'extensions':
-      return '<p>Recommended starter extensions:</p>'
-        + starterExtensions();
-  }
-  return '';
-}
-
-function channelCheckboxes() {
-  const chs = [
-    { id: 'channel-chat', name: 'Chat (HTTP)', desc: 'Web chat widget / custom frontend' },
-    { id: 'channel-discord', name: 'Discord', desc: 'Discord bot (requires DISCORD_BOT_TOKEN in .env)' },
-    { id: 'channel-voice', name: 'Voice', desc: 'Speech-to-text adapter' },
-    { id: 'channel-telegram', name: 'Telegram', desc: 'Telegram bot (requires TELEGRAM_BOT_TOKEN in .env)' }
-  ];
-  let h = '';
-  for (const c of chs) {
-    h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
-    h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" style="width:auto;margin-top:4px" />';
-    h += '<div><strong>' + c.name + '</strong><div class="muted" style="font-size:13px">' + c.desc + '</div></div>';
-    h += '</label>';
-  }
-  return h;
-}
-
-function starterExtensions() {
-  const starters = [
-    { id: 'plugin-policy-telemetry', name: 'Policy & Telemetry', risk: 'low', desc: 'Built-in: blocks secrets, logs tool calls' },
-    { id: 'skill-recall-first', name: 'Recall First', risk: 'low', desc: 'Always check memory before answering' },
-    { id: 'skill-memory-policy', name: 'Memory Policy', risk: 'low', desc: 'Governs when and how to store memory' },
-    { id: 'skill-action-gating', name: 'Action Gating', risk: 'low', desc: 'Require approval for risky actions' }
-  ];
-  let h = '';
-  for (const s of starters) {
-    h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
-    h += '<input type="checkbox" class="wiz-ext" value="' + s.id + '" checked style="width:auto;margin-top:4px" />';
-    h += '<div><strong>' + s.name + '</strong> ' + riskBadge(s.risk);
-    h += '<div class="muted" style="font-size:13px">' + s.desc + '</div></div>';
-    h += '</label>';
-  }
-  return h;
-}
-
-async function wizHealthCheck() {
-  const r = await api('/admin/setup/health-check');
-  const el = document.getElementById('wiz-health');
-  if (!el) return;
-  if (!r.ok) { el.textContent = 'Could not reach admin API.'; return; }
-  let h = '';
-  for (const [name, info] of Object.entries(r.data.services)) {
-    h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span><strong>' + esc(name) + '</strong> — ' + (info.ok ? 'Healthy' : esc(info.error || 'Unreachable')) + '</div>';
-  }
-  el.innerHTML = h;
-}
-
-async function wizardNext() {
-  // save step-specific state
-  if (STEPS[wizardStep] === 'security') {
-    const a = document.getElementById('wiz-admin');
-    if (a) { adminToken = a.value; localStorage.setItem('op_admin', adminToken); }
-  }
-  await api('/admin/setup/step', { method: 'POST', body: JSON.stringify({ step: STEPS[wizardStep] }) });
-  wizardStep++;
-  renderWizard();
-  // trigger health check on that step
-  if (STEPS[wizardStep] === 'healthCheck') setTimeout(wizHealthCheck, 100);
-}
-
-function wizardPrev() {
-  wizardStep--;
-  renderWizard();
-  if (STEPS[wizardStep] === 'healthCheck') setTimeout(wizHealthCheck, 100);
-}
-
-async function finishSetup() {
-  // save security tokens
-  if (STEPS[wizardStep] === 'extensions') {
-    // install selected extensions
-    const boxes = document.querySelectorAll('.wiz-ext:checked');
-    for (const b of boxes) {
-      await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: b.value }) });
-    }
-    // start selected channels
-    const chs = document.querySelectorAll('.wiz-ch:checked');
-    for (const c of chs) {
-      await api('/admin/containers/up', { method: 'POST', body: JSON.stringify({ service: c.value }) });
-    }
-  }
-  await api('/admin/setup/step', { method: 'POST', body: JSON.stringify({ step: STEPS[wizardStep] }) });
-  await api('/admin/setup/complete', { method: 'POST' });
-  document.getElementById('setup-overlay').classList.add('hidden');
-  showPage('gallery');
+  window.openPalmSetup?.runSetup();
 }
 
 /* ── utils ────────────────────────────────────────────── */
@@ -711,6 +562,7 @@ function esc(s) {
 
 /* ── init ─────────────────────────────────────────────── */
 showPage('gallery');
+window.openPalmSetup?.init({ api, esc, riskBadge, showPage, getAdminToken: () => adminToken, setAdminToken: (v) => { adminToken = v; localStorage.setItem('op_admin', v); } });
 checkSetup();
 </script>
 </body>

@@ -93,7 +93,7 @@ export const extensionManifest = {
 
 ### How the stack uses it
 1. Admin-app reads `opencode.jsonc` and extracts `plugin[]`.
-2. For each plugin, admin-app attempts to import `extensionManifest`.
+2. For each plugin, admin attempts to import `extensionManifest`.
 3. Admin-app builds desired state:
    - channel containers to run
    - required secrets

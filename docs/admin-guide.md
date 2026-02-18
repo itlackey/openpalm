@@ -39,7 +39,7 @@
   openmemory/
   shared/
   caddy/
-  admin-app/
+  admin/
 
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
   opencode-core/
@@ -78,10 +78,10 @@ Use a **dedicated Admin Console**, and link to it from dashboards.
 4) Write atomically with backup
 5) Restart OpenCode (deterministic)
 
-### Restart without mounting Docker socket into admin-app
+### Restart without mounting Docker socket into admin
 Use a restricted "controller" sidecar:
 - Exposes only a tiny HTTP API (restart specific services)
-- Requires shared secret from admin-app
+- Requires shared secret from admin
 - Allowlisted services only
 
 ---

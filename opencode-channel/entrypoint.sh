@@ -16,7 +16,7 @@ DEFAULT_CONFIG="$CONFIG_DIR/opencode.channel.jsonc"
 
 export OPENCODE_CONFIG="${OPENCODE_CONFIG:-$DEFAULT_CONFIG}"
 
-# Install crontab managed by admin-app (if present) and start cron daemon.
+# Install crontab managed by admin (if present) and start cron daemon.
 if [[ -f "$CONFIG_DIR/crontab" ]]; then
   crontab "$CONFIG_DIR/crontab"
   echo "crontab installed from $CONFIG_DIR/crontab"

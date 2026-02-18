@@ -17,6 +17,7 @@ const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
+const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:3000";
 const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
@@ -162,7 +163,7 @@ const server = Bun.serve({
 
       // ── Health ────────────────────────────────────────────────────
       if (url.pathname === "/health" && req.method === "GET") {
-        return cors(json(200, { ok: true, service: "admin-app", time: new Date().toISOString() }));
+        return cors(json(200, { ok: true, service: "admin", time: new Date().toISOString() }));
       }
 
       // ── Setup wizard ──────────────────────────────────────────────
@@ -185,15 +186,19 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
-        const [gateway, controller] = await Promise.all([
+        const [gateway, controller, opencodeCore, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
-          CONTROLLER_URL ? checkServiceHealth(`${CONTROLLER_URL}/health`) : Promise.resolve({ ok: false, error: "not configured" })
+          CONTROLLER_URL ? checkServiceHealth(`${CONTROLLER_URL}/health`) : Promise.resolve({ ok: false, error: "not configured" }),
+          checkServiceHealth(`${OPENCODE_CORE_URL}/health`),
+          checkServiceHealth(`${OPENMEMORY_URL}/health`)
         ]);
         return cors(json(200, {
           services: {
             gateway,
             controller,
-            adminApp: { ok: true, time: new Date().toISOString() }
+            opencodeCore,
+            openmemory,
+            admin: { ok: true, time: new Date().toISOString() }
           }
         }));
       }
@@ -319,21 +324,21 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
-        await controllerAction("up", body.service, "admin-app action");
+        await controllerAction("up", body.service, "admin action");
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
 
       if (url.pathname === "/admin/containers/down" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
-        await controllerAction("down", body.service, "admin-app action");
+        await controllerAction("down", body.service, "admin action");
         return cors(json(200, { ok: true, action: "down", service: body.service }));
       }
 
       if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
-        await controllerAction("restart", body.service, "admin-app action");
+        await controllerAction("restart", body.service, "admin action");
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
 
@@ -475,6 +480,16 @@ const server = Bun.serve({
         return new Response(Bun.file("/app/ui/index.html"), { headers: { "content-type": "text/html" } });
       }
 
+      if (url.pathname === "/setup-ui.js" && req.method === "GET") {
+        if (!existsSync("/app/ui/setup-ui.js")) return cors(json(404, { error: "setup ui missing" }));
+        return new Response(Bun.file("/app/ui/setup-ui.js"), { headers: { "content-type": "application/javascript" } });
+      }
+
+      if (url.pathname === "/logo.png" && req.method === "GET") {
+        if (!existsSync("/app/ui/logo.png")) return cors(json(404, { error: "logo missing" }));
+        return new Response(Bun.file("/app/ui/logo.png"), { headers: { "content-type": "image/png" } });
+      }
+
       return cors(json(404, { error: "not_found" }));
     } catch (error) {
       return cors(json(500, { error: "internal_error", requestId }));
@@ -482,4 +497,4 @@ const server = Bun.serve({
   }
 });
 
-console.log(JSON.stringify({ kind: "startup", service: "admin-app", port: server.port }));
+console.log(JSON.stringify({ kind: "startup", service: "admin", port: server.port }));

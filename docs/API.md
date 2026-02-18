@@ -140,7 +140,7 @@ Runtime behavior:
 - `POST /up/:service` — start a service
 - `POST /down/:service` — stop a service
 
-Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, `admin-app`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
+Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
 
 ---
 

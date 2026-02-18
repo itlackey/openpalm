@@ -37,7 +37,7 @@
 		route {
 			handle /admin/api* {
 				uri replace /admin/api /admin
-				reverse_proxy admin-app:8100
+				reverse_proxy admin:8100
 			}
 
 			handle /admin/opencode* {
@@ -50,7 +50,7 @@
 				reverse_proxy openmemory:3000
 			}
 
-			reverse_proxy admin-app:8100
+			reverse_proxy admin:8100
 		}
 	}
 

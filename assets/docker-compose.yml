@@ -13,7 +13,7 @@ services:
       - ${OPENPALM_DATA_HOME}/caddy:/data
       - ${OPENPALM_STATE_HOME}/caddy:/config
     networks: [assistant_net]
-    depends_on: [gateway, admin-app]
+    depends_on: [gateway, admin]
 
   # ============================================================
   # Storage Layer
@@ -52,6 +52,8 @@ services:
   opencode-core:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-core:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    env_file:
+      - ${OPENPALM_CONFIG_HOME}/CONFIG/secrets.env
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.jsonc
@@ -66,19 +68,6 @@ services:
     networks: [assistant_net]
     depends_on: [openmemory]
 
-  opencode-channel:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-channel:${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      - OPENCODE_CONFIGURATION_DIRECTORY=/config
-      - OPENCODE_CONFIG=/config/opencode.channel.jsonc
-      - OPENCODE_PORT=4097
-    volumes:
-      - ${OPENPALM_STATE_HOME}/opencode-channel:/state
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-    working_dir: /work
-    networks: [assistant_net]
-    depends_on: [openmemory]
 
   gateway:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-gateway:${OPENPALM_IMAGE_TAG:-latest}
@@ -86,7 +75,7 @@ services:
     environment:
       - PORT=8080
       - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
-      - OPENCODE_CHANNEL_BASE_URL=http://opencode-channel:4097
+      - OPENCODE_CHANNEL_BASE_URL=http://127.0.0.1:4097
       - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
@@ -94,10 +83,11 @@ services:
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
+      - ${OPENPALM_STATE_HOME}/opencode-channel:/app/opencode-channel-state
     networks: [assistant_net]
-    depends_on: [opencode-core, opencode-channel]
+    depends_on: [opencode-core]
 
-  admin-app:
+  admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-admin:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
@@ -114,7 +104,7 @@ services:
       - ${OPENPALM_CONFIG_HOME}/opencode-core:/app/config/opencode-core
       - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
       - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env
-      - ${OPENPALM_DATA_HOME}/admin-app:/app/data
+      - ${OPENPALM_DATA_HOME}/admin:/app/data
       - ${OPENPALM_DATA_HOME}/shared:/shared
     networks: [assistant_net]
     depends_on: [controller]
