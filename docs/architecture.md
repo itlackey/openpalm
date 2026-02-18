@@ -1,6 +1,6 @@
 # OpenPalm Architecture — Container / App / Channel
 
-This document describes the three-layer container architecture for OpenPalm.
+This document describes the container architecture for OpenPalm.
 
 ## Diagram
 
@@ -22,8 +22,7 @@ graph TB
 
     subgraph Apps["Applications (Layer 2)"]
         Gateway["Gateway<br/><small>:8080 — auth + routing</small>"]
-        OpenCodeCore["OpenCode Core<br/><small>:4096 — full agent runtime</small>"]
-        OpenCodeChannel["OpenCode Channel<br/><small>:4097 — isolated intake runtime</small>"]
+        OpenCodeCore["OpenCode Core<br/><small>:4096 — agent runtime<br/>(includes channel-intake agent)</small>"]
         OpenMemory["Open Memory<br/><small>:3000/:8765 — MCP</small>"]
         AdminApp["Admin App<br/><small>:8100 — admin API</small>"]
         Controller["Controller<br/><small>:8090 — container lifecycle</small>"]
@@ -55,12 +54,10 @@ graph TB
     LAN --> OpenMemory
     GW_Route --> Gateway
 
-    %% Core data flow — gateway validates/summarizes via channel runtime, then forwards to core runtime
-    Gateway -->|/channel/inbound (validate + summarize)| OpenCodeChannel
-    OpenCodeChannel -->|valid summary| Gateway
-    Gateway -->|forward validated summary| OpenCodeCore
+    %% Core data flow — gateway validates via channel-intake agent, then forwards to default agent
+    Gateway -->|"intake (agent: channel-intake)"| OpenCodeCore
+    Gateway -->|"forward validated summary"| OpenCodeCore
     OpenCodeCore --> OpenMemory
-    OpenCodeChannel --> OpenMemory
 
     %% Admin flow
     AdminApp --> Controller
@@ -69,7 +66,6 @@ graph TB
     %% Storage connections
     OpenMemory --> Qdrant
     OpenCodeCore --> SharedFS
-    OpenCodeChannel --> SharedFS
     OpenMemory --> SharedFS
     AdminApp --> SharedFS
 
@@ -86,7 +82,7 @@ graph TB
     classDef ui fill:#8e8e93,color:#fff,stroke:#636366
 
     class Discord,Voice,Chat,Telegram channel
-    class Gateway,OpenCodeCore,OpenCodeChannel,OpenMemory,AdminApp,Controller app
+    class Gateway,OpenCodeCore,OpenMemory,AdminApp,Controller app
     class PSQL,Qdrant,SharedFS storage
     class Public,LAN,GW_Route proxy
     class AdminUI,OpenMemoryUI,OpenCodeUI ui
@@ -102,9 +98,8 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `postgres` | `postgres:16-alpine` | assistant_net | Structured data storage |
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (MCP server) |
-| `opencode-core` | `./opencode` (build) | assistant_net | Primary agent runtime, full approvals/skills |
-| `opencode-channel` | `./opencode-channel` (build) | assistant_net | Isolated channel runtime, locked-down permissions |
-| `gateway` | `./gateway` (build) | assistant_net | Minimal channel auth, rate limiting, runtime routing, audit |
+| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — full approvals/skills + locked-down channel-intake agent |
+| `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
@@ -116,21 +111,18 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 
 ### Message processing (channel inbound)
 ```
-User → Channel Adapter → [HMAC sign] → Gateway → OpenCode Channel (validate/summarize)
-  → Gateway → OpenCode Core (full agent) → Open Memory → Response
+User -> Channel Adapter -> [HMAC sign] -> Gateway -> OpenCode Core (channel-intake agent: validate/summarize)
+  -> Gateway -> OpenCode Core (default agent: full processing) -> Open Memory -> Response
 ```
 
-The gateway receives HMAC-signed payloads from channel adapters and processes them in two stages:
+The gateway receives HMAC-signed payloads from channel adapters and processes them in two stages using the single OpenCode Core runtime:
 
-1. **Intake validation** — Gateway forwards the message to `opencode-channel` (the isolated runtime) which validates and summarizes the input. If the intake is rejected, the gateway returns a 422 error.
-2. **Core forwarding** — If the intake is valid, the gateway forwards only the validated summary to `opencode-core` (the full agent runtime) for processing.
+1. **Intake validation** — Gateway forwards the message to `opencode-core` using the `channel-intake` agent, which validates and summarizes the input. The `channel-intake` agent runs with deny-by-default permissions (bash, edit, webfetch all denied). If the intake is rejected, the gateway returns a 422 error.
+2. **Core forwarding** — If the intake is valid, the gateway forwards only the validated summary to `opencode-core` (default agent) for full processing with approval gates.
 
-The gateway is intentionally thin. It verifies HMAC signatures, applies rate limiting (120 req/min/user), logs audit events, and routes traffic between the two OpenCode runtimes.
+The gateway is intentionally thin. It verifies HMAC signatures, applies rate limiting (120 req/min/user), logs audit events, and routes traffic to the OpenCode runtime.
 
-- `opencode-channel` runs with deny-by-default permissions (bash, edit, webfetch all denied).
-- `opencode-core` uses approval gates for tool access.
-
-This separation relies on OpenCode's built-in permission model for isolation rather than duplicating complex security logic in the gateway.
+This approach uses OpenCode's built-in agent permission model for isolation — the `channel-intake` agent has all tools denied, while the default agent uses approval gates — without requiring a separate container or runtime process.
 
 ### Admin operations
 ```
@@ -166,7 +158,7 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 | Category | Host Path | Env Var | Contents |
 |---|---|---|---|
 | **Data** | `~/.local/share/openpalm/` | `OPENPALM_DATA_HOME` | PostgreSQL, Qdrant, Open Memory, Shared FS, Caddy TLS, Admin App |
-| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs, Caddyfile, channel env files |
+| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs, Caddyfile, channel env files, user overrides, secrets |
 | **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, workspace |
 
 | Store | Used by | Purpose |
@@ -180,8 +172,8 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 Security is enforced at multiple layers, each with a distinct responsibility:
 
 1. **Caddy** — Network-level access control. LAN-only restriction for admin/dashboard URLs. TLS termination. Non-LAN requests to restricted paths are TCP-aborted.
-2. **Gateway** — Thin auth and routing layer. HMAC signature verification, lightweight rate limiting (120 req/min/user), and audit logging. Routes requests to isolated OpenCode runtimes.
-3. **OpenCode runtime isolation** — `opencode-channel` is a dedicated runtime with deny-by-default permissions; `opencode-core` remains the full runtime with approval gates.
+2. **Gateway** — Thin auth and routing layer. HMAC signature verification, lightweight rate limiting (120 req/min/user), and audit logging. Routes requests to the OpenCode runtime.
+3. **OpenCode agent isolation** — The `channel-intake` agent runs with deny-by-default permissions (all tools denied); the default agent uses approval gates. Both run on the same OpenCode Core runtime but are isolated by OpenCode's agent permission model.
 4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call.
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.

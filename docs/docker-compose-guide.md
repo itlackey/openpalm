@@ -15,7 +15,7 @@ openpalm/
   .env
   install.sh             Cross-platform installer (Linux/macOS/Windows Bash)
 
-  opencode/              OpenCode Dockerfile (shared by core + channel runtimes)
+  opencode/              OpenCode Core Dockerfile + default config
   gateway/               Gateway service (Bun)
   admin/                 Admin API + bundled admin UI service (Bun)
   controller/            Container lifecycle service (Bun + Docker socket)
@@ -24,7 +24,7 @@ openpalm/
     discord/             Discord adapter
     voice/               Voice/STT adapter
     telegram/            Telegram adapter
-  docker-compose.dev.yml Local override for source builds
+  docker-compose.yml     Local override for source builds
   scripts/               CLI tools (extensions-cli.ts)
   docs/                  Architecture, API reference, guides
 ```
@@ -43,16 +43,16 @@ openpalm/
 For local development, start by copying `assets/system.env` to `.env`.
 Treat `system.env` as installer/system-managed (advanced users only), and put user-specific overrides in `assets/user.env`.
 
-The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.dev.yml` on top. Key design points:
+The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.yml` on top. Key design points:
 
-- **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). They use separate images: `openpalm-opencode-core` (user-configurable) and `openpalm-opencode-channel` (channel config bundled in image).
-- **Gateway** connects to both runtimes via `OPENCODE_CORE_BASE_URL` and `OPENCODE_CHANNEL_BASE_URL`.
+- **Single OpenCode runtime** — `opencode-core` (port 4096) hosts both the full agent (approval gates) and the `channel-intake` agent (all tools denied). Agent-level permissions provide isolation without requiring a separate runtime.
+- **Gateway** connects to `opencode-core` via `OPENCODE_CORE_BASE_URL` and uses the `channel-intake` agent for intake validation.
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.
 - **Admin-app** manages extensions, config, and containers via the controller.
 - **Controller** is the only service with container engine socket access and runs compose commands using the persisted runtime settings.
 
-See `assets/docker-compose.yml` for install/runtime defaults and `docker-compose.dev.yml` for local build overrides.
+See `assets/docker-compose.yml` for install/runtime defaults and `docker-compose.yml` for local build overrides.
 
 ---
 
@@ -78,7 +78,7 @@ CMD ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
 
 ---
 
-## C) Observability in Compose (minimal → real)
+## C) Observability in Compose (minimal -> real)
 
 ### Minimal
 - Gateway subscribes to OpenCode SSE events and logs JSON lines.
@@ -112,7 +112,7 @@ A channel container should only:
 ```
 
 ### Channel identity
-Channel adapter maps platform identity → your stable `userId`.
+Channel adapter maps platform identity -> your stable `userId`.
 Gateway enforces per-user sessions, memory namespaces, tool policies.
 
 ---
@@ -124,7 +124,7 @@ Gateway enforces per-user sessions, memory namespaces, tool policies.
 - Easier to revoke and secure.
 - Add service + add MCP config.
 
-### Use custom tools for “glue”
+### Use custom tools for "glue"
 - redaction wrapper
 - safe fetch allowlist
 - gateway RPC tools
@@ -133,8 +133,8 @@ Gateway enforces per-user sessions, memory namespaces, tool policies.
 
 ## F) Safety hard rules as you extend
 Before shipping a channel/tool, check:
-- adds network egress? → allowlist required
-- touches filesystem? → sandbox paths + ask approvals
-- stores memory? → explicit save + redaction
-- replayable? → idempotency keys
-- audited? → logs/spans with correlation IDs
+- adds network egress? -> allowlist required
+- touches filesystem? -> sandbox paths + ask approvals
+- stores memory? -> explicit save + redaction
+- replayable? -> idempotency keys
+- audited? -> logs/spans with correlation IDs

@@ -12,7 +12,6 @@ on:
       - "assets/user.env"
       - "docker-compose.dev.yml"
       - "opencode/**"
-      - "opencode-channel/**"
       - "gateway/**"
       - "admin/**"
       - "controller/**"
@@ -31,8 +30,7 @@ jobs:
           - image: opencode-core
             context: ./opencode
           - image: gateway
-            context: .
-            dockerfile: gateway/Dockerfile
+            context: ./gateway
           - image: admin
             context: ./admin
           - image: controller

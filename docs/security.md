@@ -21,12 +21,13 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 
 **Why:** prevent spoofed requests, dampen abuse, and provide traceability.
 
-## 3) Isolated intake runtime for channel content
+## 3) Agent-level isolation for channel intake
 
-- Gateway starts a dedicated OpenCode intake runtime with channel-safe defaults.
-- Intake validates/summarizes raw channel input before forwarding to core runtime.
+- The gateway sends raw channel input to the `channel-intake` agent on OpenCode Core.
+- The `channel-intake` agent has all tools denied (bash, edit, webfetch) — it can only validate and summarize.
+- Only validated summaries are forwarded to the default agent for full processing.
 
-**Why:** reduce prompt-injection risk by separating untrusted channel input handling from full agent execution.
+**Why:** reduce prompt-injection risk by handling untrusted channel input with a locked-down agent before it reaches the full agent.
 
 ## 4) Core runtime guardrails
 
@@ -47,8 +48,8 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 ## 6) Secrets and configuration partitioning
 
 - `system.env`: installer-managed system template (advanced edits only).
-- `CONFIG/user.env`: user-specific overrides.
-- `CONFIG/secrets.env`: runtime secrets for core integrations.
+- `user.env`: user-specific overrides (in config home).
+- `secrets.env`: runtime secrets for core integrations (in config home).
 
 **Why:** separate generated system settings, user overrides, and secrets to reduce accidental misconfiguration and leakage.
 

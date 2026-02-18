@@ -41,7 +41,7 @@
 - [x] PostgreSQL added for structured storage
 - [x] Qdrant added as dedicated vector store
 - [x] Shared filesystem mount across containers (/shared)
-- [x] Gateway stripped to minimal auth + routing (security delegated to isolated OpenCode runtimes)
+- [x] Gateway stripped to minimal auth + routing (security delegated to OpenCode agent permissions)
 - [x] Architecture diagram created (docs/architecture.md)
 
 ## Admin UI gallery and setup wizard
@@ -58,8 +58,11 @@
 - [x] Install/uninstall API endpoints with admin auth
 - [x] Gallery and setup API endpoints added to admin server
 
-## Runtime isolation
-- [x] Added separate `opencode-channel` runtime to isolate channel traffic from `opencode-core`
+## Simplified architecture
+- [x] Removed separate `opencode-channel` runtime — channel intake now handled by the `channel-intake` agent on `opencode-core`
+- [x] Gateway simplified to a pure HTTP service (no embedded OpenCode runtime process)
+- [x] Removed CONFIG directory — `user.env` and `secrets.env` placed directly in config home
+- [x] Gateway Dockerfile simplified (no longer needs repo-root build context)
 
 ## XDG Base Directory compliance
 - [x] All volume mounts use OPENPALM_DATA_HOME / OPENPALM_CONFIG_HOME / OPENPALM_STATE_HOME

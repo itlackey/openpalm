@@ -45,18 +45,17 @@
   opencode-core/
   caddy/Caddyfile
   channels/
+  user.env
+  secrets.env
 
 ~/.local/state/openpalm/       (OPENPALM_STATE_HOME — runtime state, logs)
   opencode-core/
-  opencode-channel/
   gateway/
   caddy/
   workspace/
   observability/
   backups/
 ```
-
-`opencode-channel` is intentionally preconfigured in its container image. Most users should only customize `opencode-core`.
 
 ---
 

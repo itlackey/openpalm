@@ -8,7 +8,6 @@ import type { ChannelMessage } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8080);
 const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://opencode-core:4096";
-const OPENCODE_CHANNEL_BASE_URL = Bun.env.OPENCODE_CHANNEL_BASE_URL ?? "http://127.0.0.1:4097";
 const ALLOWED_CHANNELS = new Set(["chat", "discord", "voice", "telegram"]);
 
 const CHANNEL_SHARED_SECRETS: Record<string, string> = {
@@ -18,8 +17,7 @@ const CHANNEL_SHARED_SECRETS: Record<string, string> = {
   telegram: Bun.env.CHANNEL_TELEGRAM_SECRET ?? "",
 };
 
-const coreOpenCode = new OpenCodeClient(OPENCODE_CORE_BASE_URL);
-const channelOpenCode = new OpenCodeClient(OPENCODE_CHANNEL_BASE_URL);
+const openCode = new OpenCodeClient(OPENCODE_CORE_BASE_URL);
 const audit = new AuditLog("/app/data/audit.log");
 
 function json(status: number, payload: unknown) {
@@ -52,7 +50,7 @@ async function processChannelInbound(payload: ChannelMessage, requestId: string)
 
   let intake;
   try {
-    const intakeResult = await channelOpenCode.send({
+    const intakeResult = await openCode.send({
       message: buildIntakeCommand(payload),
       userId: payload.userId,
       sessionId,
@@ -92,7 +90,7 @@ async function processChannelInbound(payload: ChannelMessage, requestId: string)
   }
 
   try {
-    const coreResult = await coreOpenCode.send({
+    const coreResult = await openCode.send({
       message: intake.summary,
       userId: payload.userId,
       sessionId,

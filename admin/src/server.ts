@@ -160,7 +160,7 @@ function setAccessScope(scope: "host" | "lan") {
 function setRuntimeBindScope(scope: "host" | "lan") {
   const bindAddress = scope === "host" ? "127.0.0.1" : "0.0.0.0";
   // Setup scope intentionally normalizes published bind addresses to one profile.
-  // Advanced per-service overrides can still be reapplied in CONFIG/user.env afterward.
+  // Advanced per-service overrides can still be reapplied in user.env afterward.
   const entries = {
     OPENPALM_INGRESS_BIND_ADDRESS: bindAddress,
     OPENPALM_OPENMEMORY_BIND_ADDRESS: bindAddress,

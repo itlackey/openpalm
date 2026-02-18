@@ -17,7 +17,7 @@
    - Emit structured events/logs.
 
 ### Data flow
-User message → Channel Adapter → **Gateway** → **OpenCode Server** (model/tools) → **OpenMemory (MCP)** → response → Channel Adapter.
+User message -> Channel Adapter -> **Gateway** -> **OpenCode Server** (channel-intake agent: validate/summarize) -> **Gateway** -> **OpenCode Server** (default agent: model/tools) -> **OpenMemory (MCP)** -> response -> Channel Adapter.
 
 ---
 
