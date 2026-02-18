@@ -105,7 +105,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `opencode-core` | `./opencode` (build) | assistant_net | Primary agent runtime, full approvals/skills |
 | `opencode-channel` | `./opencode-channel` (build) | assistant_net | Isolated channel runtime, locked-down permissions |
 | `gateway` | `./gateway` (build) | assistant_net | Minimal channel auth, rate limiting, runtime routing, audit |
-| `admin-app` | `./admin` (build) | assistant_net | Admin API for all management functions |
+| `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
 | `channel-discord` | `./channels/discord` (build) | assistant_net | Discord adapter (profile: channels) |
@@ -150,12 +150,14 @@ The admin app provides the API for all admin functions:
 | `/channels/voice*` | channel-voice:8183 | `/voice/transcription` | LAN by default (public toggle via Admin API) |
 | `/channels/discord*` | channel-discord:8184 | `/discord/webhook` | LAN by default (public toggle via Admin API) |
 | `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
-| `/admin/api*` | admin-app:8100 | prefix stripped to `/admin/*` | LAN only |
+| `/admin/api*` | admin:8100 | prefix stripped to `/admin/*` | LAN only |
 | `/admin/opencode*` | opencode-core:4096 | prefix stripped to `/*` | LAN only |
 | `/admin/openmemory*` | openmemory:3000 | prefix stripped to `/*` | LAN only |
-| `/admin*` (catch-all) | admin-app:8100 | pass-through | LAN only |
+| `/admin*` (catch-all) | admin:8100 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
+
+During first-boot setup, users can choose `host` vs `lan` scope. `host` scope rewrites Caddy LAN matchers to localhost-only and sets compose bind addresses to `127.0.0.1` for ingress and exposed service ports.
 
 ### Storage
 

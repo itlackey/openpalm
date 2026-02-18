@@ -76,7 +76,7 @@ export class CronStore {
   writeCrontab(): void {
     const jobs = this.store.get().jobs;
     const lines: string[] = [
-      "# OpenPalm cron jobs — managed by admin-app, do not edit manually",
+      "# OpenPalm cron jobs — managed by admin, do not edit manually",
       "# Installed into opencode-core container by entrypoint.sh",
       "",
     ];

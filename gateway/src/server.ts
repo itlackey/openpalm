@@ -8,7 +8,7 @@ import type { ChannelMessage } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8080);
 const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://opencode-core:4096";
-const OPENCODE_CHANNEL_BASE_URL = Bun.env.OPENCODE_CHANNEL_BASE_URL ?? "http://opencode-channel:4097";
+const OPENCODE_CHANNEL_BASE_URL = Bun.env.OPENCODE_CHANNEL_BASE_URL ?? "http://127.0.0.1:4097";
 const ALLOWED_CHANNELS = new Set(["chat", "discord", "voice", "telegram"]);
 
 const CHANNEL_SHARED_SECRETS: Record<string, string> = {

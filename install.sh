@@ -74,7 +74,8 @@ fi
 
 bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
-    && [ -f "$ASSETS_DIR/.env.example" ] \
+    && [ -f "$ASSETS_DIR/system.env" ] \
+    && [ -f "$ASSETS_DIR/user.env" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
     && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
     && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
@@ -155,7 +156,38 @@ compose_version_ok() {
   fi
 }
 
-OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-docker}}"
+detect_runtime() {
+  if [ -n "${RUNTIME_OVERRIDE:-}" ]; then
+    echo "$RUNTIME_OVERRIDE"
+    return
+  fi
+
+  if [ "$OS_NAME" = "macos" ] && [ -S "$HOME/.orbstack/run/docker.sock" ] && command -v docker >/dev/null 2>&1; then
+    echo "orbstack"
+    return
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    echo "docker"
+    return
+  fi
+
+  if command -v podman >/dev/null 2>&1; then
+    echo "podman"
+    return
+  fi
+
+  echo ""
+}
+
+OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-}}"
+if [ -z "$OPENPALM_CONTAINER_PLATFORM" ]; then
+  OPENPALM_CONTAINER_PLATFORM="$(detect_runtime)"
+fi
+if [ -z "$OPENPALM_CONTAINER_PLATFORM" ]; then
+  echo "No supported container runtime detected. Install docker, podman, or orbstack and rerun."
+  exit 1
+fi
 OPENPALM_COMPOSE_BIN=""
 OPENPALM_COMPOSE_SUBCOMMAND=""
 OPENPALM_CONTAINER_SOCKET_PATH=""
@@ -261,7 +293,7 @@ echo "  State  → $OPENPALM_STATE_HOME"
 
 # ── Generate .env if missing ───────────────────────────────────────────────
 if [ ! -f .env ]; then
-  cp "$INSTALL_ASSETS_DIR/.env.example" .env
+  cp "$INSTALL_ASSETS_DIR/system.env" .env
   python3 - <<'PY'
 import secrets, pathlib
 p = pathlib.Path('.env')
@@ -295,10 +327,10 @@ upsert_env_var OPENPALM_CONTAINER_SOCKET_URI "$OPENPALM_CONTAINER_SOCKET_URI"
 # ── Create XDG directory trees ─────────────────────────────────────────────
 # Data — persistent storage (databases, blobs)
 mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
-mkdir -p "$OPENPALM_DATA_HOME"/admin-app
+mkdir -p "$OPENPALM_DATA_HOME"/admin
 
 # Config — user-editable configuration
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,CONFIG}
 
 # State — runtime state, logs, workspace
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,opencode-channel,gateway,caddy,workspace}
@@ -325,6 +357,7 @@ seed_dir() {
 seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
 seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
 seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/ssh"            "$OPENPALM_CONFIG_HOME/opencode-core/ssh"
 
 # Caddy config
 seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
@@ -333,6 +366,10 @@ seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Cad
 for env_file in "$INSTALL_ASSETS_DIR"/config/channel-env/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
+
+# Runtime secrets file for opencode-core integrations
+seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/CONFIG/secrets.env"
+seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/CONFIG/user.env"
 
 echo ""
 echo "Directory structure created. Config seeded from defaults."
@@ -344,7 +381,7 @@ echo "Starting core services..."
 
 echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH --profile channels up -d"
 
-HEALTH_URL="http://localhost:80/health"
+ADMIN_READY_URL="http://localhost/admin/setup/status"
 SETUP_URL="http://localhost/admin"
 SPIN='|/-\\'
 READY=0
@@ -353,8 +390,8 @@ echo ""
 for i in $(seq 1 90); do
   idx=$(( (i - 1) % 4 ))
   ch="${SPIN:$idx:1}"
-  printf "\r[%s] Waiting for containers to become healthy..." "$ch"
-  if (( i % 2 == 0 )) && curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+  printf "\r[%s] Waiting for admin setup UI to come online..." "$ch"
+  if (( i % 2 == 0 )) && curl -fsS "$ADMIN_READY_URL" >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -363,8 +400,8 @@ done
 printf "\r"
 
 if [ "$READY" -eq 1 ]; then
-  echo "OpenPalm is ready: http://localhost"
-  echo "Admin dashboard (LAN only): $SETUP_URL"
+  echo "OpenPalm setup is ready: $SETUP_URL"
+  echo "Containers will continue coming online while you complete setup."
   echo "Open Memory UI (LAN only): http://localhost/admin/openmemory"
   echo ""
   echo "Container runtime config:"

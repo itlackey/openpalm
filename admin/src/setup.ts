@@ -4,8 +4,10 @@ import { dirname } from "node:path";
 export type SetupState = {
   completed: boolean;
   completedAt?: string;
+  accessScope: "host" | "lan";
   steps: {
     welcome: boolean;
+    accessScope: boolean;
     healthCheck: boolean;
     security: boolean;
     channels: boolean;
@@ -17,8 +19,10 @@ export type SetupState = {
 
 const DEFAULT_STATE: SetupState = {
   completed: false,
+  accessScope: "host",
   steps: {
     welcome: false,
+    accessScope: false,
     healthCheck: false,
     security: false,
     channels: false,
@@ -38,7 +42,18 @@ export class SetupManager {
 
   getState(): SetupState {
     if (!existsSync(this.path)) return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps } };
-    return JSON.parse(readFileSync(this.path, "utf8")) as SetupState;
+    const parsed = JSON.parse(readFileSync(this.path, "utf8")) as Partial<SetupState>;
+    return {
+      ...DEFAULT_STATE,
+      ...parsed,
+      accessScope: parsed.accessScope ?? DEFAULT_STATE.accessScope,
+      steps: {
+        ...DEFAULT_STATE.steps,
+        ...(parsed.steps ?? {}),
+      },
+      enabledChannels: parsed.enabledChannels ?? [],
+      installedExtensions: parsed.installedExtensions ?? [],
+    };
   }
 
   save(state: SetupState) {
@@ -48,6 +63,13 @@ export class SetupManager {
   completeStep(step: keyof SetupState["steps"]) {
     const state = this.getState();
     state.steps[step] = true;
+    this.save(state);
+    return state;
+  }
+
+  setAccessScope(scope: "host" | "lan") {
+    const state = this.getState();
+    state.accessScope = scope;
     this.save(state);
     return state;
   }

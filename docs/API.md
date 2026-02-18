@@ -77,7 +77,8 @@ Health status for the admin app.
 
 ### Setup wizard
 - `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag)
-- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "healthCheck" | "security" | "channels" | "extensions" }`
+- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "healthCheck" | "security" | "channels" | "extensions" }`
+- `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
 - `GET /admin/setup/health-check` — run health checks against gateway and OpenCode; returns `{ gateway: boolean, opencode: boolean }`
 
@@ -140,7 +141,7 @@ Runtime behavior:
 - `POST /up/:service` — start a service
 - `POST /down/:service` — stop a service
 
-Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, `admin-app`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
+Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
 
 ---
 

@@ -48,7 +48,7 @@
 - [x] Curated gallery registry with plugins, skills, and containers
 - [x] Gallery search by name, description, tags, and category filter
 - [x] npm registry search for discovering non-curated plugins
-- [x] Setup wizard with 5-step first-boot flow (welcome, health check, security, channels, extensions)
+- [x] Setup wizard with first-boot flow including early access scope selection (host-only or LAN)
 - [x] Setup wizard state persistence (file-backed JSON)
 - [x] Health check endpoint for gateway and OpenCode core connectivity
 - [x] Vanilla JS SPA admin UI (no framework dependency)
@@ -56,7 +56,7 @@
 - [x] Detail modal with security notes and permissions per extension
 - [x] Defense-in-depth information displayed contextually per extension type
 - [x] Install/uninstall API endpoints with admin auth
-- [x] Gallery and setup API endpoints added to admin-app server
+- [x] Gallery and setup API endpoints added to admin server
 
 ## Runtime isolation
 - [x] Added separate `opencode-channel` runtime to isolate channel traffic from `opencode-core`
@@ -65,5 +65,5 @@
 - [x] All volume mounts use OPENPALM_DATA_HOME / OPENPALM_CONFIG_HOME / OPENPALM_STATE_HOME
 - [x] install.sh resolves XDG_DATA_HOME / XDG_CONFIG_HOME / XDG_STATE_HOME with standard fallbacks
 - [x] install.sh seeds default configs from repo into XDG config home (preserving existing edits)
-- [x] assets/.env.example documents the three XDG path variables
+- [x] assets/system.env documents the three XDG path variables
 - [x] All services, channels, and apps conform to the data/config/state separation pattern

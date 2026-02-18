@@ -39,7 +39,7 @@
   openmemory/
   shared/
   caddy/
-  admin-app/
+  admin/
 
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
   opencode-core/
@@ -78,10 +78,10 @@ Use a **dedicated Admin Console**, and link to it from dashboards.
 4) Write atomically with backup
 5) Restart OpenCode (deterministic)
 
-### Restart without mounting Docker socket into admin-app
+### Restart without mounting Docker socket into admin
 Use a restricted "controller" sidecar:
 - Exposes only a tiny HTTP API (restart specific services)
-- Requires shared secret from admin-app
+- Requires shared secret from admin
 - Allowlisted services only
 
 ---
@@ -91,7 +91,7 @@ Use a restricted "controller" sidecar:
 ### Auth model
 - Admin password generated during install and stored in `.env`
 - Password sent as `x-admin-token` header to the admin API
-- Admin UI is LAN-only via Caddy reverse proxy (network-level protection)
+- Setup wizard includes an early access-scope choice (`host` or `lan`) that tightens Caddy + published port bindings for host-only installs
 - The admin password is the single credential needed for all admin operations
 
 ### Protected actions
