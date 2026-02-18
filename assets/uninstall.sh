@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_NAME="$(basename "$0")"
 if [ ! -d "$ROOT_DIR/assets" ]; then
   ROOT_DIR="$(pwd)"
 fi
@@ -36,8 +37,8 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     -h|--help)
-      cat <<'HELP'
-Usage: ./scripts/uninstall.sh [--runtime docker|podman|orbstack] [--remove-all] [--remove-images] [--yes]
+      cat <<HELP
+Usage: ./$SCRIPT_NAME [--runtime docker|podman|orbstack] [--remove-all] [--remove-images] [--yes]
 
 Options:
   --runtime        Force a container runtime platform selection.
@@ -50,7 +51,7 @@ HELP
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Run ./scripts/uninstall.sh --help for usage."
+      echo "Run ./$SCRIPT_NAME --help for usage."
       exit 1
       ;;
   esac
