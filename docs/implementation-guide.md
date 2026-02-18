@@ -99,7 +99,7 @@ Keep these co-located with your project:
 | `OPENMEMORY_BASE_URL` | `http://openmemory:8765` | OpenMemory REST endpoint |
 | `OPENMEMORY_API_KEY` | *(empty)* | Bearer token for OpenMemory (if auth is enabled) |
 | `RECALL_LIMIT` | `5` | Max memories to inject per turn (1–50) |
-| `RECALL_MAX_CHARS` | `2000` | Max characters for the recall context block (100–20 000) |
+| `RECALL_MAX_CHARS` | `2000` | Max characters for the recall context block (100–20000) |
 | `WRITEBACK_ENABLED` | `true` | Enable automatic write-back of save-worthy items |
 | `TEMPORAL_ENABLED` | `false` | Enable temporal knowledge graph writes |
 
