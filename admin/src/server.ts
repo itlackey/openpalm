@@ -196,6 +196,11 @@ async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: st
   }
 }
 
+function normalizeServiceInstanceUrl(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -220,9 +225,9 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
-        const validSteps = ["welcome", "accessScope", "healthCheck", "security", "channels", "extensions"];
+        const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions"];
         if (!validSteps.includes(body.step)) return cors(json(400, { error: "invalid step" }));
-        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "healthCheck" | "security" | "channels" | "extensions");
+        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions");
         return cors(json(200, { ok: true, state }));
       }
 
@@ -247,12 +252,26 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, state }));
       }
 
+      if (url.pathname === "/admin/setup/service-instances" && req.method === "POST") {
+        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string };
+        const current = setupManager.getState();
+        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        const state = setupManager.setServiceInstances({
+          openmemory: normalizeServiceInstanceUrl(body.openmemory),
+          psql: normalizeServiceInstanceUrl(body.psql),
+          qdrant: normalizeServiceInstanceUrl(body.qdrant)
+        });
+        return cors(json(200, { ok: true, state }));
+      }
+
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
+        const state = setupManager.getState();
+        const openmemoryBaseUrl = state.serviceInstances.openmemory || OPENMEMORY_URL;
         const [gateway, controller, opencodeCore, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
           CONTROLLER_URL ? checkServiceHealth(`${CONTROLLER_URL}/health`) : Promise.resolve({ ok: false, error: "not configured" }),
           checkServiceHealth(`${OPENCODE_CORE_URL}/health`),
-          checkServiceHealth(`${OPENMEMORY_URL}/health`)
+          checkServiceHealth(`${openmemoryBaseUrl}/health`)
         ]);
         return cors(json(200, {
           services: {
@@ -261,7 +280,8 @@ const server = Bun.serve({
             opencodeCore,
             openmemory,
             admin: { ok: true, time: new Date().toISOString() }
-          }
+          },
+          serviceInstances: state.serviceInstances
         }));
       }
 

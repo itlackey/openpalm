@@ -1,9 +1,10 @@
 (() => {
   let setupState = null;
-  const STEPS = ["welcome", "accessScope", "healthCheck", "security", "channels", "extensions", "complete"];
-  const STEP_TITLES = ["Welcome", "Access Scope", "Service Health", "Security Review", "Channels", "Extensions", "Complete Setup"];
+  const STEPS = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions", "complete"];
+  const STEP_TITLES = ["Welcome", "Access Scope", "Existing Service Instances", "Service Health", "Security Review", "Channels", "Extensions", "Complete Setup"];
   let wizardStep = 0;
   let accessScope = "host";
+  let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
   let api;
   let esc;
   let riskBadge;
@@ -34,6 +35,7 @@
     if (!r.ok) return;
     setupState = r.data;
     accessScope = setupState.accessScope || "host";
+    serviceInstances = setupState.serviceInstances || { openmemory: "", psql: "", qdrant: "" };
     if (!setupState.completed) runSetup();
   }
 
@@ -81,8 +83,17 @@
           + '</label>'
           + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
           + '<input type="radio" name="wiz-scope" value="lan" ' + (accessScope === "lan" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
-          + '<div><strong>LAN machines</strong><div class="muted" style="font-size:13px">Allow trusted machines on your local network to reach exposed stack endpoints.</div></div>'
-          + '</label>';
+           + '<div><strong>LAN machines</strong><div class="muted" style="font-size:13px">Allow trusted machines on your local network to reach exposed stack endpoints.</div></div>'
+           + '</label>';
+      case "serviceInstances":
+        return '<p>Optionally connect to existing service instances instead of bundled defaults.</p>'
+          + '<div class="sec-box" style="border-color:var(--yellow);background:rgba(234,179,8,.1)"><strong>Warning:</strong> Changing these values after initial setup can break existing data access and workflows.</div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenMemory base URL</label>'
+          + '<input id="wiz-svc-openmemory" placeholder="http://openmemory:3000" value="' + esc(serviceInstances.openmemory || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>'
+          + '<input id="wiz-svc-psql" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(serviceInstances.psql || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>'
+          + '<input id="wiz-svc-qdrant" placeholder="http://qdrant:6333" value="' + esc(serviceInstances.qdrant || "") + '" />';
       case "security":
         return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
           + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
@@ -161,6 +172,20 @@
     if (STEPS[wizardStep] === "security") {
       const a = document.getElementById("wiz-admin");
       if (a) setAdminToken(a.value);
+    }
+    if (STEPS[wizardStep] === "serviceInstances") {
+      const openmemory = document.getElementById("wiz-svc-openmemory")?.value || "";
+      const psql = document.getElementById("wiz-svc-psql")?.value || "";
+      const qdrant = document.getElementById("wiz-svc-qdrant")?.value || "";
+      const serviceResult = await api("/admin/setup/service-instances", {
+        method: "POST",
+        body: JSON.stringify({ openmemory, psql, qdrant })
+      });
+      if (!serviceResult.ok) {
+        alert("Could not save service instance settings.");
+        return;
+      }
+      serviceInstances = serviceResult.data?.state?.serviceInstances || { openmemory, psql, qdrant };
     }
     await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
     wizardStep++;

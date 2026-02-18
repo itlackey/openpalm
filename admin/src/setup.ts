@@ -5,9 +5,15 @@ export type SetupState = {
   completed: boolean;
   completedAt?: string;
   accessScope: "host" | "lan";
+  serviceInstances: {
+    openmemory: string;
+    psql: string;
+    qdrant: string;
+  };
   steps: {
     welcome: boolean;
     accessScope: boolean;
+    serviceInstances: boolean;
     healthCheck: boolean;
     security: boolean;
     channels: boolean;
@@ -20,9 +26,15 @@ export type SetupState = {
 const DEFAULT_STATE: SetupState = {
   completed: false,
   accessScope: "host",
+  serviceInstances: {
+    openmemory: "",
+    psql: "",
+    qdrant: ""
+  },
   steps: {
     welcome: false,
     accessScope: false,
+    serviceInstances: false,
     healthCheck: false,
     security: false,
     channels: false,
@@ -47,6 +59,10 @@ export class SetupManager {
       ...DEFAULT_STATE,
       ...parsed,
       accessScope: parsed.accessScope ?? DEFAULT_STATE.accessScope,
+      serviceInstances: {
+        ...DEFAULT_STATE.serviceInstances,
+        ...(parsed.serviceInstances ?? {}),
+      },
       steps: {
         ...DEFAULT_STATE.steps,
         ...(parsed.steps ?? {}),
@@ -70,6 +86,16 @@ export class SetupManager {
   setAccessScope(scope: "host" | "lan") {
     const state = this.getState();
     state.accessScope = scope;
+    this.save(state);
+    return state;
+  }
+
+  setServiceInstances(serviceInstances: Partial<SetupState["serviceInstances"]>) {
+    const state = this.getState();
+    state.serviceInstances = {
+      ...state.serviceInstances,
+      ...serviceInstances
+    };
     this.save(state);
     return state;
   }
