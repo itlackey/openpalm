@@ -50,7 +50,7 @@ services:
     depends_on: [qdrant]
 
   opencode-core:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-core:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
@@ -68,15 +68,12 @@ services:
     depends_on: [openmemory]
 
   opencode-channel:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-channel:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      - OPENCODE_CONFIGURATION_DIRECTORY=/config
-      - OPENCODE_CONFIG=/config/opencode.channel.jsonc
       - OPENCODE_PROFILE=channel
       - OPENCODE_PORT=4097
     volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-channel:/config
       - ${OPENPALM_STATE_HOME}/opencode-channel:/state
       - ${OPENPALM_DATA_HOME}/shared:/shared
     working_dir: /work

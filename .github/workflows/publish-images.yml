@@ -8,8 +8,10 @@ on:
     paths:
       - ".github/workflows/publish-images.yml"
       - "assets/docker-compose.yml"
+      - "assets/.env.example"
       - "docker-compose.dev.yml"
       - "opencode/**"
+      - "opencode-channel/**"
       - "gateway/**"
       - "admin/**"
       - "controller/**"
@@ -25,8 +27,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: opencode
+          - image: opencode-core
             context: ./opencode
+          - image: opencode-channel
+            context: ./opencode-channel
           - image: gateway
             context: ./gateway
           - image: admin

@@ -5,9 +5,9 @@ RUN apt-get update && apt-get install -y tini cron curl && rm -rf /var/lib/apt/l
 
 WORKDIR /work
 
-# Bundle default OpenCode configuration/skills/plugins into the image.
+# Bundle channel runtime configuration directly in the image.
 COPY AGENTS.md /opt/opencode-defaults/AGENTS.md
-COPY opencode.jsonc /opt/opencode-defaults/opencode.jsonc
+COPY opencode.channel.jsonc /opt/opencode-defaults/opencode.channel.jsonc
 COPY skills /opt/opencode-defaults/skills
 COPY .opencode /opt/opencode-defaults/.opencode
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh

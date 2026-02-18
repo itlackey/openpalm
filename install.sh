@@ -74,10 +74,9 @@ fi
 
 bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
-    && [ -f "$ROOT_DIR/.env.example" ] \
+    && [ -f "$ASSETS_DIR/.env.example" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
     && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
-    && [ -f "$ASSETS_DIR/config/opencode-channel/opencode.channel.jsonc" ] \
     && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
     INSTALL_ASSETS_DIR="$ASSETS_DIR"
     return
@@ -113,7 +112,6 @@ bootstrap_install_assets() {
   else
     INSTALL_ASSETS_DIR="$src_dir"
   fi
-  [ -f "$ROOT_DIR/.env.example" ] || cp "$src_dir/.env.example" "$ROOT_DIR/.env.example"
 }
 
 upsert_env_var() {
@@ -263,12 +261,20 @@ echo "  State  → $OPENPALM_STATE_HOME"
 
 # ── Generate .env if missing ───────────────────────────────────────────────
 if [ ! -f .env ]; then
-  cp .env.example .env
+  cp "$INSTALL_ASSETS_DIR/.env.example" .env
   python3 - <<'PY'
 import secrets, pathlib
 p = pathlib.Path('.env')
 text = p.read_text()
-for marker in ['replace-with-long-random-token','replace-with-controller-token','replace-with-pg-password','replace-with-channel-secret','replace-with-inbound-token','replace-with-telegram-webhook-secret']:
+for marker in [
+    'replace-with-long-random-token',
+    'replace-with-controller-token',
+    'replace-with-pg-password',
+    'replace-with-channel-secret',
+    'replace-with-channel-secret',
+    'replace-with-channel-secret',
+    'replace-with-channel-secret',
+]:
     text = text.replace(marker, secrets.token_urlsafe(36), 1)
 p.write_text(text)
 print('Created .env with generated secure defaults.')
@@ -292,7 +298,7 @@ mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin-app
 
 # Config — user-editable configuration
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,opencode-channel,caddy,channels}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels}
 
 # State — runtime state, logs, workspace
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,opencode-channel,gateway,caddy,workspace}
@@ -319,11 +325,6 @@ seed_dir() {
 seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
 seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
 seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
-
-# opencode-channel config
-seed_file "$INSTALL_ASSETS_DIR/config/opencode-channel/opencode.channel.jsonc" "$OPENPALM_CONFIG_HOME/opencode-channel/opencode.channel.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/config/opencode-channel/AGENTS.md"              "$OPENPALM_CONFIG_HOME/opencode-channel/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-channel/skills"                 "$OPENPALM_CONFIG_HOME/opencode-channel/skills"
 
 # Caddy config
 seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"

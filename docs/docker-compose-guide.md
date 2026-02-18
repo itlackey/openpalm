@@ -7,6 +7,7 @@
 ```
 openpalm/
   assets/
+    .env.example
     docker-compose.yml
     caddy/
     config/
@@ -38,9 +39,11 @@ openpalm/
 - `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`
 
+For local development, start by copying `assets/.env.example` to `.env`.
+
 The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.dev.yml` on top. Key design points:
 
-- **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). Both use the same published `openpalm-opencode` image and different config files.
+- **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). They use separate images: `openpalm-opencode-core` (user-configurable) and `openpalm-opencode-channel` (channel config bundled in image).
 - **Gateway** connects to both runtimes via `OPENCODE_CORE_BASE_URL` and `OPENCODE_CHANNEL_BASE_URL`.
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.

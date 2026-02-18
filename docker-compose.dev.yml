@@ -3,7 +3,7 @@ services:
     build: ./opencode
 
   opencode-channel:
-    build: ./opencode
+    build: ./opencode-channel
 
   gateway:
     build: ./gateway

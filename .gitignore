@@ -68,7 +68,7 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
+!assets/.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -143,4 +143,3 @@ vite.config.ts.timestamp-*
 
 # Bun
 bun.lockb
-
