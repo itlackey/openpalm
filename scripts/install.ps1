@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 if (-not $IsWindows) {
   Write-Host "This installer is for Windows PowerShell."
   Write-Host "On Linux/macOS, run the shell installer instead:"
-  Write-Host "  bash ./scripts/install.sh"
+  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.sh | bash"
   exit 1
 }
 
@@ -281,6 +281,9 @@ try {
 
   Write-Host "Starting core services..."
   & $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file "$OpenPalmStateHome/.env" -f $composeFilePath up -d
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to start services with '$OpenPalmComposeBin $OpenPalmComposeSubcommand up -d'."
+  }
 
   Write-Host "If you want channel adapters too: $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath --profile channels up -d"
 

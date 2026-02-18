@@ -76,7 +76,7 @@ fi
 if [ "$OS_NAME" = "windows-bash" ]; then
   echo "This installer is for Linux/macOS shells."
   echo "On Windows, run the PowerShell installer instead:"
-  echo "  pwsh -ExecutionPolicy Bypass -File .\\scripts\\install.ps1"
+  echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"'
   exit 1
 fi
 
