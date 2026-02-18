@@ -38,7 +38,7 @@ case "$TASK" in
     ;;
   log-rotate)
     log "rotating maintenance logs"
-    find "$LOG_DIR" -type f -name "*.log" -size +5M -print0 | while IFS= read -r -d '' file; do
+    find "$LOG_DIR" -type f -name "*.log" -size +5M -mtime +0 -print0 | while IFS= read -r -d '' file; do
       gzip -f "$file"
     done
     find "$LOG_DIR" -type f -name "*.gz" -mtime +14 -delete
@@ -56,7 +56,7 @@ case "$TASK" in
     done
     if command -v jq >/dev/null 2>&1; then
       compose -p openpalm ps --format json \
-        | jq -r '.[] | select(.State != "running") | .Service' \
+        | jq -r '.[] | select(((.State // "" | ascii_downcase) | test("running|healthy|up")) | not) | .Service' \
         | while IFS= read -r svc; do
             [[ -z "$svc" ]] && continue
             log "restarting non-running service: $svc"
