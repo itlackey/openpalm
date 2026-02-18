@@ -1,0 +1,84 @@
+name: Update Registry Index
+
+# Runs when extension registry entries are added or modified.
+# Regenerates registry/index.json from the individual *.json entry files.
+# This workflow does NOT trigger the Docker image build.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "registry/*.json"
+      - "!registry/index.json"
+
+jobs:
+  rebuild-index:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate entries against schema
+        run: |
+          npm install -g ajv-cli ajv-formats 2>/dev/null || true
+          # Collect all entry files (exclude index.json and schema.json)
+          ENTRY_FILES=$(find registry -maxdepth 1 -name "*.json" \
+            ! -name "index.json" ! -name "schema.json" | sort)
+
+          ERRORS=0
+          for f in $ENTRY_FILES; do
+            echo "Validating $f ..."
+            # Basic structural check — ensure it parses as JSON object with required fields
+            MISSING=$(jq -r '
+              [ "id","name","description","category","risk","author",
+                "version","source","tags","permissions","securityNotes",
+                "installAction","installTarget" ]
+              | map(select(. as $k | input? | has($k) | not))
+              | if length > 0 then "Missing fields: " + join(", ") else empty end
+            ' "$f" 2>/dev/null || echo "")
+
+            if ! jq empty "$f" 2>/dev/null; then
+              echo "  ERROR: $f is not valid JSON"
+              ERRORS=$((ERRORS + 1))
+            elif [ -n "$MISSING" ]; then
+              echo "  ERROR: $f — $MISSING"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  OK"
+            fi
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "Validation failed with $ERRORS error(s). Aborting index rebuild."
+            exit 1
+          fi
+
+      - name: Rebuild index.json
+        run: |
+          ENTRY_FILES=$(find registry -maxdepth 1 -name "*.json" \
+            ! -name "index.json" ! -name "schema.json" | sort)
+
+          if [ -z "$ENTRY_FILES" ]; then
+            echo "[]" > registry/index.json
+            echo "No entries found — wrote empty index."
+          else
+            # Combine all entry objects into a JSON array
+            jq -s '.' $ENTRY_FILES > registry/index.json
+            COUNT=$(jq length registry/index.json)
+            echo "Wrote $COUNT entries to registry/index.json"
+          fi
+
+      - name: Commit and push updated index
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add registry/index.json
+          if git diff --cached --quiet; then
+            echo "index.json is already up to date — nothing to commit."
+          else
+            git commit -m "chore: regenerate registry/index.json [skip ci]"
+            git push
+          fi

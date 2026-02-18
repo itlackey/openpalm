@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/itlackey/openpalm/registry/schema.json",
+  "title": "OpenPalm Registry Entry",
+  "description": "Schema for a single OpenPalm extension registry entry",
+  "type": "object",
+  "required": ["id", "name", "description", "category", "risk", "author", "version", "source", "tags", "permissions", "securityNotes", "installAction", "installTarget"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique extension identifier. Use reverse-domain or kebab-case (e.g. com.myorg.my-plugin or my-org-my-plugin)",
+      "pattern": "^[a-z0-9][a-z0-9._-]*[a-z0-9]$",
+      "minLength": 3,
+      "maxLength": 100
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name shown in the gallery",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "description": "One or two sentences describing what the extension does",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "category": {
+      "type": "string",
+      "enum": ["plugin", "skill", "container"],
+      "description": "Extension type"
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "Self-assessed risk level"
+    },
+    "author": {
+      "type": "string",
+      "description": "Author name, GitHub handle, or organization",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version string (e.g. 1.0.0)",
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "source": {
+      "type": "string",
+      "description": "npm package name, Docker image reference, or GitHub URL",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "tags": {
+      "type": "array",
+      "description": "Keywords for search",
+      "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "permissions": {
+      "type": "array",
+      "description": "Plain-English list of what the extension accesses",
+      "items": { "type": "string", "minLength": 1, "maxLength": 200 },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "securityNotes": {
+      "type": "string",
+      "description": "Honest description of what the extension can and cannot do",
+      "minLength": 10,
+      "maxLength": 1000
+    },
+    "installAction": {
+      "type": "string",
+      "enum": ["plugin", "skill-file", "compose-service"],
+      "description": "How OpenPalm installs this extension"
+    },
+    "installTarget": {
+      "type": "string",
+      "description": "npm package name, skill file path, or compose service name",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "docUrl": {
+      "type": "string",
+      "description": "Optional URL to documentation",
+      "format": "uri",
+      "maxLength": 500
+    }
+  }
+}

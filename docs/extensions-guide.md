@@ -138,7 +138,45 @@ Your channel container is a dumb adapter:
 
 ---
 
-## 8) CLI usage
+## 8) Community Extension Registry
+
+OpenPalm maintains a **public community registry** in the `registry/` folder of this repository. The admin dashboard fetches this registry at runtime — no Docker image rebuild required to discover new extensions.
+
+### How it works
+
+- `registry/*.json` — one JSON file per community extension entry
+- `registry/index.json` — auto-generated aggregated list (rebuilt by CI on every merge to `main`)
+- The admin fetches `index.json` from GitHub at runtime and caches results for 10 minutes
+
+### Admin API endpoints
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/admin/gallery/community` | GET | None | Search community registry (supports `?q=` and `?category=`) |
+| `/admin/gallery/community/refresh` | POST | Token | Force refresh the 10-minute cache |
+
+### Configuring a self-hosted registry
+
+By default the admin fetches from the main OpenPalm repository. To point to your own fork or a private registry, set the `OPENPALM_REGISTRY_URL` environment variable:
+
+```env
+OPENPALM_REGISTRY_URL=https://raw.githubusercontent.com/your-org/your-fork/main/registry/index.json
+```
+
+### Submitting an extension to the community registry
+
+See [`registry/README.md`](../registry/README.md) for the full contribution guide. The short version:
+
+1. Fork the repository
+2. Add a new `registry/<your-extension-id>.json` file
+3. Open a pull request — CI validates your entry automatically
+4. After merge, `registry/index.json` is auto-regenerated and the extension becomes discoverable
+
+> Updating registry entries **never triggers a Docker image rebuild** — the CI workflow for building images explicitly excludes the `registry/` folder.
+
+---
+
+## 9) CLI usage
 
 ```bash
 # Install a plugin

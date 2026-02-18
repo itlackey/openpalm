@@ -1,27 +1,30 @@
 name: Publish Docker images
 
+# Releases are controlled via version tags. Push a v* tag to trigger.
+# Manual dispatch also requires a v* version string.
+# Registry changes (registry/*.json) NEVER trigger this workflow.
+
 on:
-  workflow_dispatch:
   push:
-    branches: [main]
     tags: ["v*"]
-    paths:
-      - ".github/workflows/publish-images.yml"
-      - "assets/docker-compose.yml"
-      - "assets/system.env"
-      - "assets/user.env"
-      - "docker-compose.dev.yml"
-      - "opencode/**"
-      - "gateway/**"
-      - "admin/**"
-      - "controller/**"
-      - "channels/chat/**"
-      - "channels/discord/**"
-      - "channels/voice/**"
-      - "channels/telegram/**"
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (must start with v, e.g. v1.2.0)"
+        required: true
+        type: string
 
 jobs:
+  # Gate: abort early if manual dispatch version doesn't match v*
+  validate-version:
+    if: github.event_name != 'workflow_dispatch' || startsWith(github.event.inputs.version, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Version OK — ${{ github.event.inputs.version || github.ref_name }}"
+
   publish:
+    needs: validate-version
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -106,6 +109,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Resolve version tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -114,9 +126,9 @@ jobs:
           flavor: |
             suffix=-${{ matrix.arch }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.tag }}
             type=sha
-            type=ref,event=tag
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -129,7 +141,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   publish-latest-manifests:
-    if: github.ref == 'refs/heads/main'
     needs: publish
     runs-on: ubuntu-latest
     strategy:
@@ -155,6 +166,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Resolve version tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create latest manifest
         run: |
           IMAGE="${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}"
@@ -162,3 +182,12 @@ jobs:
             -t "${IMAGE}:latest" \
             "${IMAGE}:latest-amd64" \
             "${IMAGE}:latest-arm64"
+
+      - name: Create version manifest
+        run: |
+          IMAGE="${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          docker buildx imagetools create \
+            -t "${IMAGE}:${TAG}" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"

@@ -2,7 +2,7 @@ import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
-import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge } from "./gallery.ts";
+import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
 import { CronStore, validateCron } from "./cron-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
@@ -373,12 +373,29 @@ const server = Bun.serve({
         return cors(json(200, { results }));
       }
 
+      // Community registry — fetched at runtime from the registry/ folder on GitHub.
+      // No auth required (read-only, public data). Results are cached for 10 minutes.
+      if (url.pathname === "/admin/gallery/community" && req.method === "GET") {
+        const query = url.searchParams.get("q") ?? "";
+        const category = url.searchParams.get("category") as GalleryCategory | null;
+        const items = await searchPublicRegistry(query, category ?? undefined);
+        return cors(json(200, { items, total: items.length, source: "community-registry" }));
+      }
+
+      // Force a cache refresh of the community registry index
+      if (url.pathname === "/admin/gallery/community/refresh" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const items = await fetchPublicRegistry(true);
+        return cors(json(200, { ok: true, total: items.length, refreshedAt: new Date().toISOString() }));
+      }
+
       if (url.pathname === "/admin/gallery/install" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { galleryId?: string; pluginId?: string };
 
         if (body.galleryId) {
-          const item = getGalleryItem(body.galleryId);
+          // Look up in curated gallery first, then fall back to community registry
+          const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
           if (!item) return cors(json(404, { error: "gallery item not found" }));
 
           if (item.installAction === "plugin") {
@@ -418,7 +435,8 @@ const server = Bun.serve({
         const body = (await req.json()) as { galleryId?: string; pluginId?: string };
 
         if (body.galleryId) {
-          const item = getGalleryItem(body.galleryId);
+          // Look up in curated gallery first, then fall back to community registry
+          const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
           if (!item) return cors(json(404, { error: "gallery item not found" }));
           if (item.installAction === "plugin") {
             const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, false);
