@@ -63,6 +63,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <button id="nav-gallery" onclick="showPage('gallery')">Gallery</button>
   <button id="nav-installed" onclick="showPage('installed')">Installed</button>
   <button id="nav-services" onclick="showPage('services')">Services</button>
+  <button id="nav-crons" onclick="showPage('crons')">Cron Jobs</button>
   <button id="nav-settings" onclick="showPage('settings')">Settings</button>
 </nav>
 
@@ -71,6 +72,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <div id="page-gallery" class="page"></div>
   <div id="page-installed" class="page hidden"></div>
   <div id="page-services" class="page hidden"></div>
+  <div id="page-crons" class="page hidden"></div>
   <div id="page-settings" class="page hidden"></div>
 </div>
 
@@ -109,6 +111,7 @@ function showPage(name) {
   if (name === 'gallery') loadGallery();
   if (name === 'installed') loadInstalled();
   if (name === 'services') loadServices();
+  if (name === 'crons') loadCrons();
   if (name === 'settings') renderSettings();
 }
 
@@ -401,6 +404,135 @@ async function svcAction(action, svc) {
   const r = await api('/admin/containers/' + action, { method: 'POST', body: JSON.stringify({ service: svc }) });
   alert(r.ok ? 'Done.' : 'Failed: ' + (r.data.error || r.status));
   loadServices();
+}
+
+/* ── cron jobs ────────────────────────────────────────── */
+let cronJobs = [];
+let cronEditId = null;
+
+async function loadCrons() {
+  const el = document.getElementById('page-crons');
+  let h = '<h2>Cron Jobs</h2>';
+  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent. Jobs use standard 5-field cron expressions.</p>';
+  if (!adminToken) {
+    h += '<p class="muted">Set your admin password in Settings to manage cron jobs.</p>';
+    el.innerHTML = h;
+    return;
+  }
+  const r = await api('/admin/crons');
+  if (!r.ok) {
+    h += '<p class="muted">Could not load: ' + esc(r.data.error || String(r.status)) + '</p>';
+    el.innerHTML = h;
+    return;
+  }
+  cronJobs = r.data.jobs || [];
+  renderCrons();
+}
+
+function renderCrons() {
+  const el = document.getElementById('page-crons');
+  let h = '<h2>Cron Jobs</h2>';
+  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent. Jobs use standard 5-field cron expressions.</p>';
+
+  // create / edit form
+  h += '<div class="card">';
+  h += '<h3>' + (cronEditId ? 'Edit Cron Job' : 'New Cron Job') + '</h3>';
+  const editing = cronEditId ? cronJobs.find(j => j.id === cronEditId) : null;
+  h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">Name</label>';
+  h += '<input id="cron-name" placeholder="e.g. Daily summary" value="' + esc(editing ? editing.name : '') + '" />';
+  h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">Schedule (cron expression)</label>';
+  h += '<input id="cron-schedule" placeholder="e.g. 0 9 * * *  (every day at 9 AM)" value="' + esc(editing ? editing.schedule : '') + '" />';
+  h += '<div class="muted" style="font-size:12px;margin:.2rem 0">Format: minute hour day-of-month month day-of-week &mdash; Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * 1-5</code> (weekdays 9 AM), <code>0 0 1 * *</code> (1st of month)</div>';
+  h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">Prompt</label>';
+  h += '<textarea id="cron-prompt" rows="3" style="width:100%;font:inherit;padding:.45rem .7rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);resize:vertical" placeholder="The message to send to the agent...">' + esc(editing ? editing.prompt : '') + '</textarea>';
+  h += '<div style="margin-top:.7rem;display:flex;gap:.5rem">';
+  h += '<button onclick="saveCron()">' + (cronEditId ? 'Update' : 'Create') + '</button>';
+  if (cronEditId) h += '<button class="secondary" onclick="cancelEditCron()">Cancel</button>';
+  h += '</div></div>';
+
+  // list
+  if (!cronJobs.length) {
+    h += '<p class="muted">No cron jobs configured yet.</p>';
+  }
+  for (const job of cronJobs) {
+    h += '<div class="card">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:start">';
+    h += '<div>';
+    h += '<strong>' + esc(job.name) + '</strong> ';
+    h += job.enabled
+      ? '<span class="badge badge-low" style="font-size:11px">Enabled</span>'
+      : '<span class="badge" style="font-size:11px;background:var(--muted)">Disabled</span>';
+    h += '<div class="muted" style="font-size:13px;margin:.2rem 0"><code>' + esc(job.schedule) + '</code></div>';
+    h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
+    if (job.lastRunAt) {
+      h += '<div class="muted" style="font-size:12px">Last run: ' + esc(job.lastRunAt) + ' &mdash; ';
+      h += job.lastResult === 'ok'
+        ? '<span style="color:var(--green)">OK</span>'
+        : '<span style="color:var(--red)">Error' + (job.lastError ? ': ' + esc(job.lastError.substring(0, 80)) : '') + '</span>';
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
+    h += '<button class="sm" onclick="triggerCron(\'' + esc(job.id) + '\')">Run Now</button>';
+    h += '<button class="sm secondary" onclick="toggleCron(\'' + esc(job.id) + '\',' + !job.enabled + ')">' + (job.enabled ? 'Disable' : 'Enable') + '</button>';
+    h += '<button class="sm secondary" onclick="editCron(\'' + esc(job.id) + '\')">Edit</button>';
+    h += '<button class="sm danger" onclick="deleteCron(\'' + esc(job.id) + '\')">Delete</button>';
+    h += '</div></div></div>';
+  }
+  el.innerHTML = h;
+}
+
+async function saveCron() {
+  const name = document.getElementById('cron-name').value.trim();
+  const schedule = document.getElementById('cron-schedule').value.trim();
+  const prompt = document.getElementById('cron-prompt').value.trim();
+  if (!name || !schedule || !prompt) { alert('All fields are required.'); return; }
+
+  if (cronEditId) {
+    const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: cronEditId, name, schedule, prompt }) });
+    if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
+    cronEditId = null;
+  } else {
+    const r = await api('/admin/crons', { method: 'POST', body: JSON.stringify({ name, schedule, prompt }) });
+    if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
+  }
+  loadCrons();
+}
+
+function editCron(id) {
+  cronEditId = id;
+  renderCrons();
+  document.getElementById('cron-name').focus();
+}
+
+function cancelEditCron() {
+  cronEditId = null;
+  renderCrons();
+}
+
+async function toggleCron(id, enabled) {
+  const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id, enabled }) });
+  if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
+  loadCrons();
+}
+
+async function deleteCron(id) {
+  if (!confirm('Delete this cron job?')) return;
+  const r = await api('/admin/crons/delete', { method: 'POST', body: JSON.stringify({ id }) });
+  if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
+  loadCrons();
+}
+
+async function triggerCron(id) {
+  const job = cronJobs.find(j => j.id === id);
+  if (!confirm('Run "' + (job ? job.name : id) + '" now?')) return;
+  const r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id }) });
+  if (r.ok) {
+    alert('Job triggered. Check back for results.');
+    loadCrons();
+  } else {
+    alert('Failed: ' + (r.data.error || r.status));
+  }
 }
 
 /* ── settings ─────────────────────────────────────────── */

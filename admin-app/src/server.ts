@@ -4,6 +4,8 @@ import { updatePluginListAtomically, validatePluginIdentifier } from "./extensio
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
+import { CronStore } from "./cron-store.ts";
+import { CronScheduler, validateCron } from "./cron-scheduler.ts";
 import type { GalleryCategory } from "./gallery.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
@@ -15,6 +17,7 @@ const CONTROLLER_TOKEN = Bun.env.CONTROLLER_TOKEN ?? "";
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
+const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
@@ -24,6 +27,15 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
 };
 
 const setupManager = new SetupManager(DATA_DIR);
+const cronStore = new CronStore(DATA_DIR);
+const cronScheduler = new CronScheduler({
+  store: cronStore,
+  opencodeUrl: OPENCODE_CORE_URL,
+  onRun: (job, result, error) => {
+    console.log(JSON.stringify({ kind: "cron-result", jobId: job.id, name: job.name, result, error }));
+  },
+});
+cronScheduler.start();
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -368,6 +380,65 @@ const server = Bun.serve({
         writeChannelConfig(body.service, body.config ?? {});
         if (body.restart ?? true) await controllerAction("restart", body.service, "channel config update");
         return cors(json(200, { ok: true, service: body.service }));
+      }
+
+      // ── Cron jobs ──────────────────────────────────────────────────
+      if (url.pathname === "/admin/crons" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        return cors(json(200, { jobs: cronStore.list() }));
+      }
+
+      if (url.pathname === "/admin/crons" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { name?: string; schedule?: string; prompt?: string };
+        if (!body.name || !body.schedule || !body.prompt) {
+          return cors(json(400, { error: "name, schedule, and prompt are required" }));
+        }
+        const cronError = validateCron(body.schedule);
+        if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
+        const job = {
+          id: randomUUID(),
+          name: body.name,
+          schedule: body.schedule,
+          prompt: body.prompt,
+          enabled: true,
+          createdAt: new Date().toISOString(),
+        };
+        cronStore.add(job);
+        return cors(json(201, { ok: true, job }));
+      }
+
+      if (url.pathname === "/admin/crons/update" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; prompt?: string; enabled?: boolean };
+        if (!body.id) return cors(json(400, { error: "id is required" }));
+        if (body.schedule) {
+          const cronError = validateCron(body.schedule);
+          if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
+        }
+        const { id, ...fields } = body;
+        const updated = cronStore.update(id, fields);
+        if (!updated) return cors(json(404, { error: "cron job not found" }));
+        return cors(json(200, { ok: true, job: updated }));
+      }
+
+      if (url.pathname === "/admin/crons/delete" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string };
+        if (!body.id) return cors(json(400, { error: "id is required" }));
+        const removed = cronStore.remove(body.id);
+        if (!removed) return cors(json(404, { error: "cron job not found" }));
+        return cors(json(200, { ok: true, deleted: body.id }));
+      }
+
+      if (url.pathname === "/admin/crons/trigger" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string };
+        if (!body.id) return cors(json(400, { error: "id is required" }));
+        const job = cronStore.get(body.id);
+        if (!job) return cors(json(404, { error: "cron job not found" }));
+        cronScheduler.executeJob(job);
+        return cors(json(200, { ok: true, triggered: job.id }));
       }
 
       // ── Config editor ─────────────────────────────────────────────
