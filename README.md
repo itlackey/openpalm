@@ -1,9 +1,7 @@
-
-  <img src="docs/logo.png" alt="OpenPalm" style="float: left; height: 3rem; aspect-ratio: 1;" />
-
-
-<h1>OpenPalm</h1>
-
+<div>
+  <img src="assets/logo.png" alt="OpenPalm" style="float: left; height: 3rem; aspect-ratio: 1;" />
+  <h1>OpenPalm</h1>
+</div>
 <p>
   <strong>A safety-first AI assistant platform you own and control.</strong><br/>
   Multi-channel. Extensible. Defense in depth. One compose command away.
@@ -48,12 +46,6 @@ Optional flags:
 ./install.sh --runtime podman
 ./install.sh --runtime orbstack
 ./install.sh --no-open
-```
-
-Want channels too?
-
-```bash
-${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} -f ${OPENPALM_STATE_HOME:-$HOME/.local/state/openpalm}/docker-compose.yml --profile channels up -d
 ```
 
 ## Key features
