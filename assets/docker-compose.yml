@@ -44,6 +44,9 @@ services:
   openmemory:
     image: skpassegna/openmemory-mcp:latest
     restart: unless-stopped
+    env_file:
+      - ${OPENPALM_CONFIG_HOME}/user.env
+      - ${OPENPALM_CONFIG_HOME}/secrets.env
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:3000:3000"
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:8765:8765"

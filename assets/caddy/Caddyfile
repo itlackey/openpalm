@@ -50,6 +50,8 @@
 				reverse_proxy openmemory:3000
 			}
 
+			# Admin service serves UI/assets from root paths.
+			uri strip_prefix /admin
 			reverse_proxy admin:8100
 		}
 	}
