@@ -101,6 +101,7 @@ bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
     && [ -f "$ASSETS_DIR/system.env" ] \
     && [ -f "$ASSETS_DIR/user.env" ] \
+    && [ -f "$ASSETS_DIR/uninstall.sh" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
     && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
     && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
@@ -399,7 +400,7 @@ seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
 seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/user.env"
 
 # Copy uninstall scripts to state directory for easy access
-cp "$SCRIPT_DIR/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
+cp "$INSTALL_ASSETS_DIR/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
 chmod +x "$OPENPALM_STATE_HOME/uninstall.sh"
 
 echo ""
