@@ -13,7 +13,8 @@ openpalm/
     caddy/
     config/
   .env
-  install.sh             Cross-platform installer (Linux/macOS/Windows Bash)
+  scripts/install.sh     Linux/macOS installer
+  scripts/install.ps1    Windows PowerShell installer
 
   opencode/              OpenCode Core Dockerfile + default config
   gateway/               Gateway service (Bun)
@@ -33,9 +34,9 @@ openpalm/
 > All host mounts follow the XDG Base Directory layout — data, config, and state
 > are separated into `~/.local/share/openpalm`, `~/.config/openpalm`, and
 > `~/.local/state/openpalm` respectively. The three `OPENPALM_*` env vars are
-> resolved by `install.sh` and written into `.env`.
+> resolved by `scripts/install.sh` / `scripts/install.ps1` and written into `.env`.
 
-`install.sh` also persists container runtime settings in `.env` so lifecycle actions stay consistent:
+The installer also persists container runtime settings in `.env` so lifecycle actions stay consistent:
 - `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
 - `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`

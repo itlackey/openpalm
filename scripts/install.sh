@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 ASSETS_DIR="$ROOT_DIR/assets"
 ASSETS_TMP_DIR=""
@@ -34,7 +35,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./install.sh [--runtime docker|podman|orbstack] [--no-open]
+Usage: ./scripts/install.sh [--runtime docker|podman|orbstack] [--no-open]
 
 Options:
   --runtime   Force a container runtime platform selection.
@@ -45,7 +46,7 @@ HELP
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Run ./install.sh --help for usage."
+      echo "Run ./scripts/install.sh --help for usage."
       exit 1
       ;;
   esac
@@ -68,7 +69,14 @@ OPENPALM_REPO_NAME="${OPENPALM_REPO_NAME:-openpalm}"
 OPENPALM_INSTALL_REF="${OPENPALM_INSTALL_REF:-main}"
 
 if [ "$OS_NAME" = "unknown" ]; then
-  echo "Unsupported OS detected. Please run from Linux, macOS, or Windows Bash."
+  echo "Unsupported OS detected. Please run from Linux or macOS."
+  exit 1
+fi
+
+if [ "$OS_NAME" = "windows-bash" ]; then
+  echo "This installer is for Linux/macOS shells."
+  echo "On Windows, run the PowerShell installer instead:"
+  echo "  pwsh -ExecutionPolicy Bypass -File .\\scripts\\install.ps1"
   exit 1
 fi
 
@@ -240,9 +248,6 @@ if ! command -v "$OPENPALM_COMPOSE_BIN" >/dev/null 2>&1; then
       ;;
     linux)
       echo "Install Docker Engine + Compose plugin, or Podman + podman-compose support, then rerun."
-      ;;
-    windows-bash)
-      echo "Install Docker Desktop or Podman Desktop, ensure the CLI is in PATH, then rerun from Bash."
       ;;
   esac
   exit 1
@@ -422,13 +427,6 @@ if [ "$READY" -eq 1 ]; then
         ;;
       linux)
         xdg-open "$SETUP_URL" >/dev/null 2>&1 || true
-        ;;
-      windows-bash)
-        if command -v cmd.exe >/dev/null 2>&1; then
-          cmd.exe /c start "" "$SETUP_URL" >/dev/null 2>&1 || true
-        elif command -v powershell.exe >/dev/null 2>&1; then
-          powershell.exe -NoProfile -Command "Start-Process '$SETUP_URL'" >/dev/null 2>&1 || true
-        fi
         ;;
     esac
     echo "Opened setup UI in your default browser: $SETUP_URL"

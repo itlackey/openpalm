@@ -20,7 +20,11 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 ## Get started
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.sh | bash
+```
+
+```powershell
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit.
