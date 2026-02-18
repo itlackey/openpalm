@@ -315,9 +315,9 @@ const DEFAULT_REGISTRY_URL =
 let _registryCache: { items: GalleryItem[]; fetchedAt: number } | null = null;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
-export async function fetchPublicRegistry(): Promise<GalleryItem[]> {
+export async function fetchPublicRegistry(forceRefresh = false): Promise<GalleryItem[]> {
   const now = Date.now();
-  if (_registryCache && now - _registryCache.fetchedAt < CACHE_TTL_MS) {
+  if (!forceRefresh && _registryCache && now - _registryCache.fetchedAt < CACHE_TTL_MS) {
     return _registryCache.items;
   }
 
@@ -346,6 +346,11 @@ export async function fetchPublicRegistry(): Promise<GalleryItem[]> {
     // Network error — return stale cache or empty
     return _registryCache?.items ?? [];
   }
+}
+
+export async function getPublicRegistryItem(id: string): Promise<GalleryItem | null> {
+  const items = await fetchPublicRegistry();
+  return items.find((i) => i.id === id) ?? null;
 }
 
 export async function searchPublicRegistry(
