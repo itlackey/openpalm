@@ -19,7 +19,7 @@ export type CronState = {
  * files that the opencode-core container's system cron daemon executes.
  *
  * Layout on the shared config volume:
- *   <crontabDir>/crontab              — installed by entrypoint.sh
+ *   <crontabDir>/crontab              — installed by entrypoint.sh from /cron/crontab
  *   <crontabDir>/cron-payloads/<id>.json — curl reads these with -d @<file>
  */
 export class CronStore {
@@ -95,7 +95,7 @@ export class CronStore {
       const prefix = job.enabled ? "" : "# DISABLED: ";
       lines.push(`# ${job.name} (${job.id})`);
       lines.push(
-        `${prefix}${job.schedule} curl -sf -m 120 -X POST http://localhost:4096/chat -H 'Content-Type: application/json' -d @/config/cron-payloads/${job.id}.json >/dev/null 2>&1`
+        `${prefix}${job.schedule} curl -sf -m 120 -X POST http://localhost:4096/chat -H 'Content-Type: application/json' -d @/cron/cron-payloads/${job.id}.json >/dev/null 2>&1`
       );
       lines.push("");
     }

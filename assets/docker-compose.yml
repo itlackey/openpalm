@@ -67,12 +67,14 @@ services:
       - OPENCODE_CONFIG=/config/opencode.jsonc
       - OPENCODE_PORT=4096
       - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}
+      - CRON_DIR=/cron
     # Bind addresses default to localhost; set *_BIND_ADDRESS=0.0.0.0 to allow LAN access.
     ports:
       - "${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096"
       - "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22"
     volumes:
       - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
+      - ${OPENPALM_CONFIG_HOME}/cron:/cron
       - ${OPENPALM_STATE_HOME}/opencode-core:/state
       - ${OPENPALM_STATE_HOME}/workspace:/work
       - ${OPENPALM_DATA_HOME}/shared:/shared
@@ -110,6 +112,7 @@ services:
       - OPENCODE_CORE_URL=http://opencode-core:4096
       - CADDYFILE_PATH=/app/config/caddy/Caddyfile
       - CHANNEL_ENV_DIR=/app/channel-env
+      - CRON_DIR=/app/config-root/cron
       - RUNTIME_ENV_PATH=/workspace/.env
       - SECRETS_ENV_PATH=/app/config-root/secrets.env
     volumes:
