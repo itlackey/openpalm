@@ -270,10 +270,13 @@ for marker in [
     'replace-with-long-random-token',
     'replace-with-controller-token',
     'replace-with-pg-password',
+    'replace-with-channel-chat-secret',
+    'replace-with-channel-discord-secret',
+    'replace-with-channel-voice-secret',
+    'replace-with-channel-telegram-secret',
     'replace-with-channel-secret',
-    'replace-with-channel-secret',
-    'replace-with-channel-secret',
-    'replace-with-channel-secret',
+    'replace-with-inbound-token',
+    'replace-with-telegram-webhook-secret',
 ]:
     text = text.replace(marker, secrets.token_urlsafe(36), 1)
 p.write_text(text)

@@ -71,6 +71,8 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-channel:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
+      - OPENCODE_CONFIGURATION_DIRECTORY=/config
+      - OPENCODE_CONFIG=/config/opencode.channel.jsonc
       - OPENCODE_PROFILE=channel
       - OPENCODE_PORT=4097
     volumes:
