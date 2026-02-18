@@ -1,4 +1,4 @@
-# Hosting in a Single Docker Compose Stack + Extending with Channels/Tools
+# Hosting in a Single Compose Stack + Extending with Channels/Tools
 *Extension guide: run everything in one compose file and safely grow the system.*
 
 ## A) Single `docker-compose.yml` stack
@@ -8,7 +8,7 @@
 openpalm/
   docker-compose.yml
   .env
-  install.sh
+  install.sh             Cross-platform installer (Linux/macOS/Windows Bash)
 
   opencode/              OpenCode Dockerfile (shared by core + channel runtimes)
   gateway/               Gateway service (Bun)
@@ -35,6 +35,11 @@ openpalm/
 > `~/.local/state/openpalm` respectively. The three `OPENPALM_*` env vars are
 > resolved by `install.sh` and written into `.env`.
 
+`install.sh` also persists container runtime settings in `.env` so lifecycle actions stay consistent:
+- `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
+- `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
+- `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`
+
 The full `docker-compose.yml` in the repository root defines all services. Key design points:
 
 - **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). Both build from `./opencode` but use different config files.
@@ -42,7 +47,7 @@ The full `docker-compose.yml` in the repository root defines all services. Key d
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.
 - **Admin-app** manages extensions, config, and containers via the controller.
-- **Controller** is the only service with Docker socket access.
+- **Controller** is the only service with container engine socket access and runs compose commands using the persisted runtime settings.
 
 See `docker-compose.yml` for the complete service definitions.
 

@@ -1,15 +1,15 @@
 
-  <img src="docs/file_000000002d98722f8087977054954936.png" alt="OpenPalm" width="200" style="float: left" />
+  <img src="docs/logo.png" alt="OpenPalm" style="float: left; height: 3rem; aspect-ratio: 1;" />
 
 
-<h1 align="center">OpenPalm</h1>
+<h1>OpenPalm</h1>
 
-<p align="center">
+<p>
   <strong>A safety-first AI assistant platform you own and control.</strong><br/>
-  Multi-channel. Extensible. Defense in depth. One <code>docker compose up</code> away.
+  Multi-channel. Extensible. Defense in depth. One compose command away.
 </p>
 
-<p align="center">
+<p >
   <a href="docs/architecture.md">Architecture</a> &middot;
   <a href="docs/API.md">API Reference</a> &middot;
   <a href="docs/admin-guide.md">Admin Guide</a> &middot;
@@ -28,12 +28,20 @@ OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that run
 ./install.sh
 ```
 
-That's it. The installer detects prerequisites, generates secrets, and boots the full stack. Open `http://localhost/admin` when it's ready.
+That's it. The installer detects your OS, validates your selected container runtime (`docker`, `podman`, or `orbstack`), generates secrets, and boots the full stack with a startup spinner. When ready, it opens the admin setup UI in your browser.
+
+Optional flags:
+
+```bash
+./install.sh --runtime podman
+./install.sh --runtime orbstack
+./install.sh --no-open
+```
 
 Want channels too?
 
 ```bash
-docker compose --profile channels up -d --build
+${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} --profile channels up -d --build
 ```
 
 ## Key features
@@ -48,7 +56,7 @@ docker compose --profile channels up -d --build
 
 **Cron scheduler** — Schedule recurring tasks that run on the core agent. Create jobs with standard 5-field cron expressions, toggle them on/off, trigger them manually, and monitor results — all from the admin UI or API. Jobs execute directly against the OpenCode core runtime.
 
-**Extension system** — Install OpenCode plugins, skills, and container services through the admin UI, API, or CLI. Extensions install directly without unnecessary staging gates.
+**Extension system** — Install OpenCode plugins, skills, and container services through the admin UI, API, or CLI.
 
 **Defense in depth** — Eight security layers from network edge to agent behavior:
 
@@ -61,7 +69,7 @@ docker compose --profile channels up -d --build
 | Agent rules | Behavioral constraints in AGENTS.md |
 | Skills | SOPs: ChannelIntake, RecallFirst, MemoryPolicy, ActionGating |
 | Admin auth | Password-protected admin API (LAN only) |
-| Controller isolation | Only one container touches the Docker socket |
+| Controller isolation | Only one container touches the container engine socket |
 
 ## OpenPalm vs OpenClaw
 
@@ -75,12 +83,12 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | **Extension safety** | Admin-authenticated install via curated gallery or npm, atomic config updates with backup | Auto-discovery from ClawHub registry, skills pulled dynamically |
 | **Admin controls** | Dedicated admin API + web dashboard behind password auth on LAN-only network | Chat commands (`/status`, `/reset`, `/mesh`) sent in messaging channels |
 | **Memory policy** | Explicit-save-only with secret detection, policy skills, and redaction | Session-based context with `/compact` compression |
-| **Container management** | Controller service (only container with Docker socket), admin API for lifecycle ops | Direct host access — agent can run shell commands natively |
-| **Deployment** | Single `docker compose up` — all services, networking, and secrets generated automatically | Daemon install via `onboard --install-daemon`, multiple hosting modes (local, VPS, Tailscale) |
+| **Container management** | Controller service (only container with engine socket), admin API for lifecycle ops | Direct host access — agent can run shell commands natively |
+| **Deployment** | Single compose up command (`docker/podman/orbstack`) — services, networking, and secrets generated automatically | Daemon install via `onboard --install-daemon`, multiple hosting modes (local, VPS, Tailscale) |
 | **Channels** | Chat, Discord, Voice, Telegram (containerized adapters) | WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, Google Chat, WebChat, and more |
 | **Proactive features** | Cron scheduler with admin UI — create, edit, toggle, and manually trigger scheduled agent tasks | Heartbeat system and cron jobs for autonomous actions |
 
-**In short:** OpenClaw offers broader channel support. OpenPalm now matches proactive capabilities with its cron scheduler while maintaining depth-first security — every layer is designed to prevent the kind of [data exfiltration and prompt injection vulnerabilities](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/) that have been found in OpenClaw's skill ecosystem.
+**In short:** OpenPalm provides depth-first security — every layer is designed to prevent the kind of [data exfiltration and prompt injection vulnerabilities](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/) that have been found in OpenClaw's skill ecosystem.
 
 ## Architecture at a glance
 
@@ -96,7 +104,9 @@ OpenCode Core (full agent) ◀──▶ Open Memory (MCP)
 Admin App ──▶ Controller ──▶ Docker Compose
 ```
 
-Every box is a distinct container on a private Docker network. Caddy sits in front, routing `/channels/*` to adapters and `/admin/*` to the dashboard. See the [full architecture](docs/architecture.md) for the container inventory, Mermaid diagram, and routing table.
+The controller uses runtime settings persisted in `.env` (`OPENPALM_CONTAINER_*` and `OPENPALM_COMPOSE_*`) so admin lifecycle actions always use the same platform selected during install.
+
+Every service is a distinct container on a private Docker network. Caddy sits in front, routing `/channels/*` to adapters and `/admin/*` to the dashboard. See the [full architecture](docs/architecture.md) for the container inventory, Mermaid diagram, and routing table.
 
 ## Configuration
 
@@ -108,7 +118,14 @@ All persistent data follows the [XDG Base Directory Specification](https://speci
 | Config | `~/.config/openpalm/` | Agent configs, Caddyfile, channel env |
 | State | `~/.local/state/openpalm/` | Runtime state, audit logs, workspace |
 
-Override with `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, or `OPENPALM_STATE_HOME` in `.env`. See [`.env.example`](.env.example) for all available settings.
+Override with `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, or `OPENPALM_STATE_HOME` in `.env`.
+
+Container runtime selection is also persisted in `.env`:
+- `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
+- `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND`
+- `OPENPALM_CONTAINER_SOCKET_PATH` / `OPENPALM_CONTAINER_SOCKET_URI`
+
+See [`.env.example`](.env.example) for all available settings.
 
 ## Documentation
 

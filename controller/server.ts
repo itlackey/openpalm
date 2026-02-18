@@ -3,6 +3,11 @@ import { spawn } from "node:child_process";
 const PORT = Number(Bun.env.PORT ?? 8090);
 const TOKEN = Bun.env.CONTROLLER_TOKEN ?? "change-me-controller";
 const PROJECT_PATH = Bun.env.COMPOSE_PROJECT_PATH ?? "/workspace";
+const RUNTIME_PLATFORM = Bun.env.OPENPALM_CONTAINER_PLATFORM ?? "docker";
+const COMPOSE_BIN = Bun.env.OPENPALM_COMPOSE_BIN ?? "docker";
+const COMPOSE_SUBCOMMAND = Bun.env.OPENPALM_COMPOSE_SUBCOMMAND ?? "compose";
+const CONTAINER_SOCKET_URI = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///var/run/openpalm-container.sock";
+const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean).join(" ");
 const ALLOWED = new Set(["opencode-core", "opencode-channel", "gateway", "openmemory", "admin-app", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
 
 function json(status: number, payload: unknown) {
@@ -11,11 +16,23 @@ function json(status: number, payload: unknown) {
 
 function runCompose(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const proc = spawn("docker", ["compose", ...args], { cwd: PROJECT_PATH });
+    const composeArgs = COMPOSE_SUBCOMMAND ? [COMPOSE_SUBCOMMAND, ...args] : [...args];
+    const proc = spawn(COMPOSE_BIN, composeArgs, {
+      cwd: PROJECT_PATH,
+      env: {
+        ...process.env,
+        DOCKER_HOST: CONTAINER_SOCKET_URI,
+        CONTAINER_HOST: CONTAINER_SOCKET_URI
+      }
+    });
     let out = "";
     let err = "";
     proc.stdout.on("data", (d) => (out += d.toString()));
     proc.stderr.on("data", (d) => (err += d.toString()));
+    proc.on("error", (spawnError) => {
+      err += spawnError.message;
+      resolve({ ok: false, stdout: out, stderr: err });
+    });
     proc.on("close", (code) => resolve({ ok: code === 0, stdout: out, stderr: err }));
   });
 }
@@ -65,4 +82,4 @@ Bun.serve({
   }
 });
 
-console.log(`controller listening on ${PORT}`);
+console.log(`controller listening on ${PORT} (runtime=${RUNTIME_PLATFORM}, compose='${COMPOSE_COMMAND_DISPLAY}')`);

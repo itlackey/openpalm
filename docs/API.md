@@ -129,8 +129,13 @@ These are available on the internal Docker network for service-to-service API/MC
 
 Header: `x-controller-token` (required)
 
+Runtime behavior:
+- Uses configured compose command from `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
+- Uses configured container socket URI from `OPENPALM_CONTAINER_SOCKET_URI`
+- Runtime selection persisted by installer (`OPENPALM_CONTAINER_PLATFORM`)
+
 - `GET /health` — health check
-- `GET /containers` — list running containers (via `docker compose ps`)
+- `GET /containers` — list running containers (via configured compose runtime `ps`)
 - `POST /restart/:service` — restart a service
 - `POST /up/:service` — start a service
 - `POST /down/:service` — stop a service

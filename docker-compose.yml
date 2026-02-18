@@ -130,8 +130,12 @@ services:
       - PORT=8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - COMPOSE_PROJECT_PATH=/workspace
+      - OPENPALM_CONTAINER_PLATFORM=${OPENPALM_CONTAINER_PLATFORM:-docker}
+      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}
+      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
+      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/openpalm-container.sock}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/openpalm-container.sock}
       - ./:/workspace
     networks: [assistant_net]
 

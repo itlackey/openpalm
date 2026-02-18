@@ -64,7 +64,7 @@ graph TB
 
     %% Admin flow
     AdminApp --> Controller
-    Controller -->|docker compose| Apps
+    Controller -->|compose runtime| Apps
 
     %% Storage connections
     OpenMemory --> Qdrant
@@ -94,7 +94,7 @@ graph TB
 
 ## Container inventory
 
-Every box in the architecture is a distinct Docker container, except **Shared FS** which is a shared mount point on the host.
+Every box in the architecture is a distinct container, except **Shared FS** which is a shared mount point on the host.
 
 | Container | Image | Network | Purpose |
 |---|---|---|---|
@@ -106,7 +106,7 @@ Every box in the architecture is a distinct Docker container, except **Shared FS
 | `opencode-channel` | `./opencode` (build) | assistant_net | Isolated channel runtime, locked-down permissions |
 | `gateway` | `./gateway` (build) | assistant_net | Minimal channel auth, rate limiting, runtime routing, audit |
 | `admin-app` | `./admin-app` (build) | assistant_net | Admin API for all management functions |
-| `controller` | `./controller` (build) | assistant_net | Container up/down/restart via Docker socket |
+| `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
 | `channel-discord` | `./channels/discord` (build) | assistant_net | Discord adapter (profile: channels) |
 | `channel-voice` | `./channels/voice` (build) | assistant_net | Voice/STT adapter (profile: channels) |
@@ -134,7 +134,7 @@ This separation relies on OpenCode's built-in permission model for isolation rat
 
 ### Admin operations
 ```
-Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Controller -> Docker Compose
+Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Controller -> Compose Runtime
 ```
 
 The admin app provides the API for all admin functions:
@@ -171,7 +171,7 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 |---|---|---|
 | PostgreSQL | Admin App | Structured data |
 | Qdrant | Open Memory | Vector embeddings for memory search |
-| Shared FS | OpenCode, Open Memory, Admin App | Shared file storage across services |
+
 
 ## Security model — defense in depth
 
@@ -184,4 +184,4 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.
 7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.
-8. **Controller isolation** — Only the controller container has the Docker socket.
+8. **Controller isolation** — Only the controller container has access to the container engine socket.

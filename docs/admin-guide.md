@@ -5,11 +5,11 @@
 
 ### Goals
 - One installer that:
-  1) checks prerequisites (Docker/Compose)
-  2) installs Docker if needed (or guides user)
+  1) checks prerequisites for selected runtime (Docker/Podman/OrbStack compose)
+  2) guides runtime installation if missing
   3) selects a directory for persistent data
-  4) writes `.env` + compose overrides
-  5) boots stack and verifies health
+  4) writes `.env` + runtime/compose overrides
+  5) boots stack, shows startup progress indicator, and verifies health
 
 ### Recommended path
 - **CLI installer (Node/Bun)** first for speed and portability.
@@ -17,17 +17,19 @@
 
 ### Installer flow
 1. Detect OS + admin privileges
-2. Detect Docker + Compose
+2. Resolve runtime (`docker`, `podman`, or `orbstack`) and validate compose command
 3. If missing:
-   - Windows/macOS: guide to Docker Desktop install
-   - Linux: offer scripted install with explicit confirmation
+  - Windows/macOS: guide to Docker Desktop / Podman Desktop / OrbStack install
+  - Linux: guide to Docker Engine or Podman install
 4. Resolve XDG Base Directory paths (data, config, state)
 5. Write resolved absolute paths into `.env`
+6. Persist runtime command/socket config in `.env`
 6. Generate admin password and write to `.env`
 7. Seed default configs into `$OPENPALM_CONFIG_HOME`
-8. `docker compose up -d`
-9. Health check endpoints
-10. Setup wizard runs on first visit to admin UI — user enters admin password from `.env`
+8. Run compose up via selected runtime
+9. Show spinner while waiting for health check endpoints
+10. Auto-open setup UI in browser (unless user disables)
+11. Setup wizard runs on first visit to admin UI — user enters admin password from `.env`
 
 ### Persistent directory layout (XDG Base Directory)
 ```
