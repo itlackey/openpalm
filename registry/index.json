@@ -8,7 +8,12 @@
     "author": "OpenPalm",
     "version": "1.0.0",
     "source": "docker.io/openpalm/channel-slack",
-    "tags": ["channel", "slack", "bot", "messaging"],
+    "tags": [
+      "channel",
+      "slack",
+      "bot",
+      "messaging"
+    ],
     "permissions": [
       "Network: outbound to gateway + Slack API",
       "HMAC channel signing",
