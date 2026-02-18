@@ -11,7 +11,7 @@ on:
       - "docker-compose.dev.yml"
       - "opencode/**"
       - "gateway/**"
-      - "admin-app/**"
+      - "admin/**"
       - "controller/**"
       - "channels/chat/**"
       - "channels/discord/**"
@@ -29,8 +29,8 @@ jobs:
             context: ./opencode
           - image: gateway
             context: ./gateway
-          - image: admin-app
-            context: ./admin-app
+          - image: admin
+            context: ./admin
           - image: controller
             context: ./controller
           - image: channel-chat
@@ -60,7 +60,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}/openpalm-${{ matrix.image }}
+          images: ${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/openpalm-${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha

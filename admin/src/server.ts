@@ -471,7 +471,7 @@ const server = Bun.serve({
 
       // ── Static UI ─────────────────────────────────────────────────
       if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
-        return new Response(Bun.file("/app/admin-ui/index.html"), { headers: { "content-type": "text/html" } });
+        return new Response(Bun.file("/app/ui/index.html"), { headers: { "content-type": "text/html" } });
       }
 
       return cors(json(404, { error: "not_found" }));

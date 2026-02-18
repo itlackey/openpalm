@@ -9,7 +9,7 @@ services:
     build: ./gateway
 
   admin-app:
-    build: ./admin-app
+    build: ./admin
 
   controller:
     build: ./controller

@@ -8,7 +8,6 @@
 openpalm/
   assets/
     docker-compose.yml
-    admin-ui/
     caddy/
     config/
   .env
@@ -16,7 +15,7 @@ openpalm/
 
   opencode/              OpenCode Dockerfile (shared by core + channel runtimes)
   gateway/               Gateway service (Bun)
-  admin-app/             Admin API service (Bun)
+  admin/                 Admin API + bundled admin UI service (Bun)
   controller/            Container lifecycle service (Bun + Docker socket)
   channels/
     chat/                HTTP chat adapter
@@ -37,7 +36,6 @@ openpalm/
 `install.sh` also persists container runtime settings in `.env` so lifecycle actions stay consistent:
 - `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
 - `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
-- `OPENPALM_COMPOSE_FILE`
 - `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`
 
 The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.dev.yml` on top. Key design points:

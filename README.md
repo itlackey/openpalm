@@ -51,7 +51,7 @@ Optional flags:
 Want channels too?
 
 ```bash
-${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} -f ${OPENPALM_COMPOSE_FILE:-assets/docker-compose.yml} --profile channels up -d
+${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} -f ${OPENPALM_STATE_HOME:-$HOME/.local/state/openpalm}/docker-compose.yml --profile channels up -d
 ```
 
 ## Key features
@@ -132,7 +132,7 @@ Override with `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, or `OPENPALM_STATE_H
 
 Container runtime selection is also persisted in `.env`:
 - `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
-- `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND` / `OPENPALM_COMPOSE_FILE`
+- `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` / `OPENPALM_CONTAINER_SOCKET_URI`
 
 See [`.env.example`](.env.example) for all available settings.
@@ -158,7 +158,7 @@ bun test          # Run tests
 bunx tsc -b       # Type-check
 ```
 
-Bun workspaces: `gateway`, `admin-app`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
+Bun workspaces: `gateway`, `admin`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
 
 ## License
 

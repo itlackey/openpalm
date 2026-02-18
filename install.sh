@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 ASSETS_DIR="$ROOT_DIR/assets"
+ASSETS_TMP_DIR=""
+INSTALL_ASSETS_DIR="$ASSETS_DIR"
+
+cleanup_assets_tmp() {
+  if [ -n "$ASSETS_TMP_DIR" ] && [ -d "$ASSETS_TMP_DIR" ]; then
+    rm -rf "$ASSETS_TMP_DIR"
+  fi
+}
+
+trap cleanup_assets_tmp EXIT
 
 RUNTIME_OVERRIDE=""
 OPEN_BROWSER=1
@@ -66,8 +76,8 @@ bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
     && [ -f "$ROOT_DIR/.env.example" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
-    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
-    && [ -f "$ASSETS_DIR/admin-ui/index.html" ]; then
+    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ]; then
+    INSTALL_ASSETS_DIR="$ASSETS_DIR"
     return
   fi
 
@@ -76,9 +86,9 @@ bootstrap_install_assets() {
     exit 1
   fi
 
-  local tmp_dir archive src_dir ref_url
-  tmp_dir="$(mktemp -d)"
-  archive="$tmp_dir/openpalm.tar.gz"
+  local archive src_dir ref_url
+  ASSETS_TMP_DIR="$(mktemp -d)"
+  archive="$ASSETS_TMP_DIR/openpalm.tar.gz"
   ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/heads/${OPENPALM_INSTALL_REF}.tar.gz"
 
   echo "Downloading install assets from ${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME} (ref: ${OPENPALM_INSTALL_REF})..."
@@ -87,37 +97,21 @@ bootstrap_install_assets() {
     curl -fsSL "$ref_url" -o "$archive"
   fi
 
-  tar -xzf "$archive" -C "$tmp_dir"
-  src_dir="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d -name "${OPENPALM_REPO_NAME}-*" | head -n 1)"
+  tar -xzf "$archive" -C "$ASSETS_TMP_DIR"
+  src_dir="$(find "$ASSETS_TMP_DIR" -mindepth 1 -maxdepth 1 -type d -name "${OPENPALM_REPO_NAME}-*" | head -n 1)"
 
   if [ -z "$src_dir" ]; then
     echo "Failed to resolve installer assets from downloaded archive."
-    rm -rf "$tmp_dir"
+    rm -rf "$ASSETS_TMP_DIR"
     exit 1
   fi
 
-  mkdir -p "$ASSETS_DIR"
   if [ -d "$src_dir/assets" ]; then
-    [ -f "$ASSETS_DIR/docker-compose.yml" ] || cp "$src_dir/assets/docker-compose.yml" "$ASSETS_DIR/docker-compose.yml"
-    [ -f "$ROOT_DIR/docker-compose.dev.yml" ] || cp "$src_dir/docker-compose.dev.yml" "$ROOT_DIR/docker-compose.dev.yml"
-    [ -f "$ASSETS_DIR/caddy/Caddyfile" ] || { mkdir -p "$ASSETS_DIR/caddy"; cp "$src_dir/assets/caddy/Caddyfile" "$ASSETS_DIR/caddy/Caddyfile"; }
-    [ -f "$ASSETS_DIR/admin-ui/index.html" ] || { mkdir -p "$ASSETS_DIR/admin-ui"; cp "$src_dir/assets/admin-ui/index.html" "$ASSETS_DIR/admin-ui/index.html"; }
-    [ -d "$ASSETS_DIR/config/opencode-core" ] || { mkdir -p "$ASSETS_DIR/config"; cp -r "$src_dir/assets/config/opencode-core" "$ASSETS_DIR/config/opencode-core"; }
-    [ -d "$ASSETS_DIR/config/opencode-channel" ] || cp -r "$src_dir/assets/config/opencode-channel" "$ASSETS_DIR/config/opencode-channel"
-    [ -d "$ASSETS_DIR/config/channel-env" ] || cp -r "$src_dir/assets/config/channel-env" "$ASSETS_DIR/config/channel-env"
+    INSTALL_ASSETS_DIR="$src_dir/assets"
   else
-    mkdir -p "$ASSETS_DIR/config" "$ASSETS_DIR/caddy" "$ASSETS_DIR/admin-ui"
-    [ -f "$ASSETS_DIR/docker-compose.yml" ] || cp "$src_dir/docker-compose.yml" "$ASSETS_DIR/docker-compose.yml"
-    [ -f "$ROOT_DIR/docker-compose.dev.yml" ] || cp "$src_dir/docker-compose.dev.yml" "$ROOT_DIR/docker-compose.dev.yml"
-    [ -f "$ASSETS_DIR/caddy/Caddyfile" ] || cp "$src_dir/caddy/Caddyfile" "$ASSETS_DIR/caddy/Caddyfile"
-    [ -f "$ASSETS_DIR/admin-ui/index.html" ] || cp "$src_dir/admin-ui/index.html" "$ASSETS_DIR/admin-ui/index.html"
-    [ -d "$ASSETS_DIR/config/opencode-core" ] || cp -r "$src_dir/config/opencode-core" "$ASSETS_DIR/config/opencode-core"
-    [ -d "$ASSETS_DIR/config/opencode-channel" ] || cp -r "$src_dir/config/opencode-channel" "$ASSETS_DIR/config/opencode-channel"
-    [ -d "$ASSETS_DIR/config/channel-env" ] || cp -r "$src_dir/config/channel-env" "$ASSETS_DIR/config/channel-env"
+    INSTALL_ASSETS_DIR="$src_dir"
   fi
   [ -f "$ROOT_DIR/.env.example" ] || cp "$src_dir/.env.example" "$ROOT_DIR/.env.example"
-
-  rm -rf "$tmp_dir"
 }
 
 upsert_env_var() {
@@ -167,7 +161,6 @@ OPENPALM_COMPOSE_SUBCOMMAND=""
 OPENPALM_CONTAINER_SOCKET_PATH=""
 OPENPALM_CONTAINER_SOCKET_IN_CONTAINER="/var/run/openpalm-container.sock"
 OPENPALM_CONTAINER_SOCKET_URI=""
-OPENPALM_COMPOSE_FILE="${OPENPALM_COMPOSE_FILE:-assets/docker-compose.yml}"
 
 case "$OPENPALM_CONTAINER_PLATFORM" in
   docker)
@@ -243,18 +236,10 @@ fi
 echo "Detected OS: $OS_NAME"
 echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
-echo "Compose file: $OPENPALM_COMPOSE_FILE"
 
 bootstrap_install_assets
-
-if [[ "$OPENPALM_COMPOSE_FILE" = /* ]]; then
-  RESOLVED_COMPOSE_FILE="$OPENPALM_COMPOSE_FILE"
-else
-  RESOLVED_COMPOSE_FILE="$ROOT_DIR/$OPENPALM_COMPOSE_FILE"
-fi
-
-if [ ! -f "$RESOLVED_COMPOSE_FILE" ]; then
-  echo "Compose file not found: $RESOLVED_COMPOSE_FILE"
+if [ ! -f "$INSTALL_ASSETS_DIR/docker-compose.yml" ]; then
+  echo "Compose file not found in installer assets."
   exit 1
 fi
 
@@ -295,7 +280,6 @@ upsert_env_var OPENPALM_STATE_HOME "$OPENPALM_STATE_HOME"
 upsert_env_var OPENPALM_CONTAINER_PLATFORM "$OPENPALM_CONTAINER_PLATFORM"
 upsert_env_var OPENPALM_COMPOSE_BIN "$OPENPALM_COMPOSE_BIN"
 upsert_env_var OPENPALM_COMPOSE_SUBCOMMAND "$OPENPALM_COMPOSE_SUBCOMMAND"
-upsert_env_var OPENPALM_COMPOSE_FILE "$OPENPALM_COMPOSE_FILE"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_PATH "$OPENPALM_CONTAINER_SOCKET_PATH"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_IN_CONTAINER "$OPENPALM_CONTAINER_SOCKET_IN_CONTAINER"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_URI "$OPENPALM_CONTAINER_SOCKET_URI"
@@ -312,6 +296,10 @@ mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,opencode-channel,caddy,channels}
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,opencode-channel,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
 
+COMPOSE_FILE_PATH="$OPENPALM_STATE_HOME/docker-compose.yml"
+cp "$INSTALL_ASSETS_DIR/docker-compose.yml" "$COMPOSE_FILE_PATH"
+cp .env "$OPENPALM_STATE_HOME/.env"
+
 # ── Seed default configs into XDG config home ─────────────────────────────
 # Only copies files that don't already exist so manual edits are preserved.
 
@@ -326,20 +314,20 @@ seed_dir() {
 }
 
 # opencode-core config
-seed_file "$ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
-seed_file "$ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
-seed_dir  "$ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
 
 # opencode-channel config
-seed_file "$ASSETS_DIR/config/opencode-channel/opencode.channel.jsonc" "$OPENPALM_CONFIG_HOME/opencode-channel/opencode.channel.jsonc"
-seed_file "$ASSETS_DIR/config/opencode-channel/AGENTS.md"              "$OPENPALM_CONFIG_HOME/opencode-channel/AGENTS.md"
-seed_dir  "$ASSETS_DIR/config/opencode-channel/skills"                 "$OPENPALM_CONFIG_HOME/opencode-channel/skills"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode-channel/opencode.channel.jsonc" "$OPENPALM_CONFIG_HOME/opencode-channel/opencode.channel.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode-channel/AGENTS.md"              "$OPENPALM_CONFIG_HOME/opencode-channel/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-channel/skills"                 "$OPENPALM_CONFIG_HOME/opencode-channel/skills"
 
 # Caddy config
-seed_file "$ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
+seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
 # Channel env files
-for env_file in "$ASSETS_DIR"/config/channel-env/*.env; do
+for env_file in "$INSTALL_ASSETS_DIR"/config/channel-env/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
 
@@ -349,9 +337,9 @@ echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" -f "$RESOLVED_COMPOSE_FILE" up -d
+"${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE_PATH" up -d
 
-echo "If you want channel adapters too: ${COMPOSE_CMD[*]} -f $OPENPALM_COMPOSE_FILE --profile channels up -d"
+echo "If you want channel adapters too: ${COMPOSE_CMD[*]} -f $COMPOSE_FILE_PATH --profile channels up -d"
 
 HEALTH_URL="http://localhost:80/health"
 SETUP_URL="http://localhost/admin"
@@ -379,7 +367,7 @@ if [ "$READY" -eq 1 ]; then
   echo "Container runtime config:"
   echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
   echo "  Compose command → ${COMPOSE_CMD[*]}"
-  echo "  Compose file    → $OPENPALM_COMPOSE_FILE"
+  echo "  Compose file    → $COMPOSE_FILE_PATH"
   echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
   echo ""
   echo "Host directories:"

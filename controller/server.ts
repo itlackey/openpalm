@@ -6,7 +6,6 @@ const PROJECT_PATH = Bun.env.COMPOSE_PROJECT_PATH ?? "/workspace";
 const RUNTIME_PLATFORM = Bun.env.OPENPALM_CONTAINER_PLATFORM ?? "docker";
 const COMPOSE_BIN = Bun.env.OPENPALM_COMPOSE_BIN ?? "docker";
 const COMPOSE_SUBCOMMAND = Bun.env.OPENPALM_COMPOSE_SUBCOMMAND ?? "compose";
-const COMPOSE_FILE = Bun.env.OPENPALM_COMPOSE_FILE ?? "assets/docker-compose.yml";
 const CONTAINER_SOCKET_URI = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///var/run/openpalm-container.sock";
 const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean).join(" ");
 const ALLOWED = new Set(["opencode-core", "opencode-channel", "gateway", "openmemory", "admin-app", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
@@ -17,9 +16,7 @@ function json(status: number, payload: unknown) {
 
 function runCompose(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const composeArgs = COMPOSE_SUBCOMMAND
-      ? [COMPOSE_SUBCOMMAND, "-f", COMPOSE_FILE, ...args]
-      : ["-f", COMPOSE_FILE, ...args];
+    const composeArgs = COMPOSE_SUBCOMMAND ? [COMPOSE_SUBCOMMAND, ...args] : [...args];
     const proc = spawn(COMPOSE_BIN, composeArgs, {
       cwd: PROJECT_PATH,
       env: {
