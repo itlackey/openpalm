@@ -3,6 +3,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
+ASSETS_DIR="$ROOT_DIR/assets"
+ASSETS_TMP_DIR=""
+INSTALL_ASSETS_DIR="$ASSETS_DIR"
+
+cleanup_assets_tmp() {
+  if [ -n "$ASSETS_TMP_DIR" ] && [ -d "$ASSETS_TMP_DIR" ]; then
+    rm -rf "$ASSETS_TMP_DIR"
+  fi
+}
+
+trap cleanup_assets_tmp EXIT
 
 RUNTIME_OVERRIDE=""
 OPEN_BROWSER=1
@@ -52,11 +63,56 @@ detect_os() {
 }
 
 OS_NAME="$(detect_os)"
+OPENPALM_REPO_OWNER="${OPENPALM_REPO_OWNER:-itlackey}"
+OPENPALM_REPO_NAME="${OPENPALM_REPO_NAME:-openpalm}"
+OPENPALM_INSTALL_REF="${OPENPALM_INSTALL_REF:-main}"
 
 if [ "$OS_NAME" = "unknown" ]; then
   echo "Unsupported OS detected. Please run from Linux, macOS, or Windows Bash."
   exit 1
 fi
+
+bootstrap_install_assets() {
+  if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
+    && [ -f "$ASSETS_DIR/.env.example" ] \
+    && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
+    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
+    && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
+    INSTALL_ASSETS_DIR="$ASSETS_DIR"
+    return
+  fi
+
+  if ! command -v curl >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1; then
+    echo "Missing required tools to bootstrap installer assets. Please install curl and tar."
+    exit 1
+  fi
+
+  local archive src_dir ref_url
+  ASSETS_TMP_DIR="$(mktemp -d)"
+  archive="$ASSETS_TMP_DIR/openpalm.tar.gz"
+  ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/heads/${OPENPALM_INSTALL_REF}.tar.gz"
+
+  echo "Downloading install assets from ${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME} (ref: ${OPENPALM_INSTALL_REF})..."
+  if ! curl -fsSL "$ref_url" -o "$archive"; then
+    ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/tags/${OPENPALM_INSTALL_REF}.tar.gz"
+    curl -fsSL "$ref_url" -o "$archive"
+  fi
+
+  tar -xzf "$archive" -C "$ASSETS_TMP_DIR"
+  src_dir="$(find "$ASSETS_TMP_DIR" -mindepth 1 -maxdepth 1 -type d -name "${OPENPALM_REPO_NAME}-*" | head -n 1)"
+
+  if [ -z "$src_dir" ]; then
+    echo "Failed to resolve installer assets from downloaded archive."
+    rm -rf "$ASSETS_TMP_DIR"
+    exit 1
+  fi
+
+  INSTALL_ASSETS_DIR="$src_dir/assets"
+  if [ ! -d "$INSTALL_ASSETS_DIR" ]; then
+    echo "Installer assets directory missing in archive: $INSTALL_ASSETS_DIR"
+    exit 1
+  fi
+}
 
 upsert_env_var() {
   local key="$1"
@@ -181,6 +237,12 @@ echo "Detected OS: $OS_NAME"
 echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
 
+bootstrap_install_assets
+if [ ! -f "$INSTALL_ASSETS_DIR/docker-compose.yml" ]; then
+  echo "Compose file not found in installer assets."
+  exit 1
+fi
+
 # ── Resolve XDG Base Directory paths ───────────────────────────────────────
 # https://specifications.freedesktop.org/basedir-spec/latest/
 #
@@ -199,12 +261,20 @@ echo "  State  → $OPENPALM_STATE_HOME"
 
 # ── Generate .env if missing ───────────────────────────────────────────────
 if [ ! -f .env ]; then
-  cp .env.example .env
+  cp "$INSTALL_ASSETS_DIR/.env.example" .env
   python3 - <<'PY'
 import secrets, pathlib
 p = pathlib.Path('.env')
 text = p.read_text()
-for marker in ['replace-with-long-random-token','replace-with-controller-token','replace-with-pg-password','replace-with-channel-secret','replace-with-inbound-token','replace-with-telegram-webhook-secret']:
+for marker in [
+    'replace-with-long-random-token',
+    'replace-with-controller-token',
+    'replace-with-pg-password',
+    'replace-with-channel-chat-secret',
+    'replace-with-channel-discord-secret',
+    'replace-with-channel-voice-secret',
+    'replace-with-channel-telegram-secret',
+]:
     text = text.replace(marker, secrets.token_urlsafe(36), 1)
 p.write_text(text)
 print('Created .env with generated secure defaults.')
@@ -228,11 +298,15 @@ mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin-app
 
 # Config — user-editable configuration
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,opencode-channel,caddy,channels}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels}
 
 # State — runtime state, logs, workspace
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,opencode-channel,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
+
+COMPOSE_FILE_PATH="$OPENPALM_STATE_HOME/docker-compose.yml"
+cp "$INSTALL_ASSETS_DIR/docker-compose.yml" "$COMPOSE_FILE_PATH"
+cp .env "$OPENPALM_STATE_HOME/.env"
 
 # ── Seed default configs into XDG config home ─────────────────────────────
 # Only copies files that don't already exist so manual edits are preserved.
@@ -248,20 +322,15 @@ seed_dir() {
 }
 
 # opencode-core config
-seed_file "$ROOT_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
-seed_file "$ROOT_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
-seed_dir  "$ROOT_DIR/config/opencode-core/skills"          "$OPENPALM_CONFIG_HOME/opencode-core/skills"
-
-# opencode-channel config
-seed_file "$ROOT_DIR/config/opencode-channel/opencode.channel.jsonc" "$OPENPALM_CONFIG_HOME/opencode-channel/opencode.channel.jsonc"
-seed_file "$ROOT_DIR/config/opencode-channel/AGENTS.md"              "$OPENPALM_CONFIG_HOME/opencode-channel/AGENTS.md"
-seed_dir  "$ROOT_DIR/config/opencode-channel/skills"                 "$OPENPALM_CONFIG_HOME/opencode-channel/skills"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
 
 # Caddy config
-seed_file "$ROOT_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
+seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
 # Channel env files
-for env_file in "$ROOT_DIR"/config/channel-env/*.env; do
+for env_file in "$INSTALL_ASSETS_DIR"/config/channel-env/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
 
@@ -271,9 +340,9 @@ echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" up -d --build
+"${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" up -d
 
-echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --profile channels up -d --build"
+echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH --profile channels up -d"
 
 HEALTH_URL="http://localhost:80/health"
 SETUP_URL="http://localhost/admin"
@@ -301,6 +370,7 @@ if [ "$READY" -eq 1 ]; then
   echo "Container runtime config:"
   echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
   echo "  Compose command → ${COMPOSE_CMD[*]}"
+  echo "  Compose file    → $COMPOSE_FILE_PATH"
   echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
   echo ""
   echo "Host directories:"

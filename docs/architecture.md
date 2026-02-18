@@ -103,9 +103,9 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (MCP server) |
 | `opencode-core` | `./opencode` (build) | assistant_net | Primary agent runtime, full approvals/skills |
-| `opencode-channel` | `./opencode` (build) | assistant_net | Isolated channel runtime, locked-down permissions |
+| `opencode-channel` | `./opencode-channel` (build) | assistant_net | Isolated channel runtime, locked-down permissions |
 | `gateway` | `./gateway` (build) | assistant_net | Minimal channel auth, rate limiting, runtime routing, audit |
-| `admin-app` | `./admin-app` (build) | assistant_net | Admin API for all management functions |
+| `admin-app` | `./admin` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
 | `channel-discord` | `./channels/discord` (build) | assistant_net | Discord adapter (profile: channels) |

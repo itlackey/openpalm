@@ -1,6 +1,8 @@
 FROM oven/bun:1.1.42
 WORKDIR /app
 COPY package.json tsconfig.json ./
-COPY server.ts ./server.ts
+COPY src ./src
+COPY ui ./ui
 RUN bun install --production
-CMD ["bun", "run", "server.ts"]
+EXPOSE 8100
+CMD ["bun", "run", "src/server.ts"]

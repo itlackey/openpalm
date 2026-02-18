@@ -1,199 +1,27 @@
 services:
-  # ============================================================
-  # Reverse Proxy — Caddy (front door)
-  # Routes channel ingress and LAN-only admin/dashboard URLs:
-  # /channels/* and /admin/* (including /admin/opencode* and /admin/openmemory*)
-  # ============================================================
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports: ["80:80", "443:443"]
-    volumes:
-      - ${OPENPALM_CONFIG_HOME}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${OPENPALM_DATA_HOME}/caddy:/data
-      - ${OPENPALM_STATE_HOME}/caddy:/config
-    networks: [assistant_net]
-    depends_on: [gateway, admin-app]
-
-  # ============================================================
-  # Storage Layer
-  # ============================================================
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-openpalm}
-      POSTGRES_USER: ${POSTGRES_USER:-openpalm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-pg-password}
-    volumes:
-      - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data
-    networks: [assistant_net]
-
-  qdrant:
-    image: qdrant/qdrant:latest
-    restart: unless-stopped
-    volumes:
-      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage
-    networks: [assistant_net]
-
-  # ============================================================
-  # Core Application Layer
-  # ============================================================
-  openmemory:
-    image: skpassegna/openmemory-mcp:latest
-    restart: unless-stopped
-    ports: ["3000:3000", "8765:8765"]
-    volumes:
-      - ${OPENPALM_DATA_HOME}/openmemory:/data
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-    networks: [assistant_net]
-    depends_on: [qdrant]
-
   opencode-core:
     build: ./opencode
-    restart: unless-stopped
-    environment:
-      - OPENCODE_CONFIGURATION_DIRECTORY=/config
-      - OPENCODE_CONFIG=/config/opencode.jsonc
-      - OPENCODE_PROFILE=core
-      - OPENCODE_PORT=4096
-    ports: ["4096:4096"]
-    volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
-      - ${OPENPALM_STATE_HOME}/opencode-core:/state
-      - ${OPENPALM_STATE_HOME}/workspace:/work
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-    working_dir: /work
-    networks: [assistant_net]
-    depends_on: [openmemory]
 
   opencode-channel:
-    build: ./opencode
-    restart: unless-stopped
-    environment:
-      - OPENCODE_CONFIGURATION_DIRECTORY=/config
-      - OPENCODE_CONFIG=/config/opencode.channel.jsonc
-      - OPENCODE_PROFILE=channel
-      - OPENCODE_PORT=4097
-    volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-channel:/config
-      - ${OPENPALM_STATE_HOME}/opencode-channel:/state
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-    working_dir: /work
-    networks: [assistant_net]
-    depends_on: [openmemory]
+    build: ./opencode-channel
 
   gateway:
     build: ./gateway
-    restart: unless-stopped
-    environment:
-      - PORT=8080
-      - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
-      - OPENCODE_CHANNEL_BASE_URL=http://opencode-channel:4097
-      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
-      - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
-      - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
-      - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
-      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-    volumes:
-      - ${OPENPALM_STATE_HOME}/gateway:/app/data
-    networks: [assistant_net]
-    depends_on: [opencode-core, opencode-channel]
 
   admin-app:
-    build: ./admin-app
-    restart: unless-stopped
-    environment:
-      - PORT=8100
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
-      - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc
-      - CONTROLLER_URL=http://controller:8090
-      - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
-      - GATEWAY_URL=http://gateway:8080
-      - OPENCODE_CORE_URL=http://opencode-core:4096
-      - CADDYFILE_PATH=/app/config/caddy/Caddyfile
-      - CHANNEL_ENV_DIR=/app/channel-env
-    volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-core:/app/config/opencode-core
-      - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
-      - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env
-      - ./admin-ui:/app/admin-ui:ro
-      - ${OPENPALM_DATA_HOME}/admin-app:/app/data
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-    networks: [assistant_net]
-    depends_on: [controller]
+    build: ./admin
 
   controller:
     build: ./controller
-    restart: unless-stopped
-    environment:
-      - PORT=8090
-      - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
-      - COMPOSE_PROJECT_PATH=/workspace
-      - OPENPALM_CONTAINER_PLATFORM=${OPENPALM_CONTAINER_PLATFORM:-docker}
-      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}
-      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
-      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/openpalm-container.sock}
-    volumes:
-      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/openpalm-container.sock}
-      - ./:/workspace
-    networks: [assistant_net]
 
-  # ============================================================
-  # Channel Layer (optional — enable via --profile channels)
-  # Channels are exposed via Caddy under /channels/*; adapters forward normalized payloads to gateway internally
-  # ============================================================
   channel-chat:
     build: ./channels/chat
-    restart: unless-stopped
-    profiles: ["channels"]
-    env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-chat.env
-    environment:
-      - PORT=8181
-      - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
-    networks: [assistant_net]
-    depends_on: [gateway]
 
   channel-discord:
     build: ./channels/discord
-    restart: unless-stopped
-    profiles: ["channels"]
-    env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-discord.env
-    environment:
-      - PORT=8184
-      - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
-    networks: [assistant_net]
-    depends_on: [gateway]
 
   channel-voice:
     build: ./channels/voice
-    restart: unless-stopped
-    profiles: ["channels"]
-    env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-voice.env
-    environment:
-      - PORT=8183
-      - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
-    networks: [assistant_net]
-    depends_on: [gateway]
 
   channel-telegram:
     build: ./channels/telegram
-    restart: unless-stopped
-    profiles: ["channels"]
-    env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-telegram.env
-    environment:
-      - PORT=8182
-      - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-    networks: [assistant_net]
-    depends_on: [gateway]
-
-networks:
-  assistant_net:

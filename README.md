@@ -1,9 +1,7 @@
-
-  <img src="docs/logo.png" alt="OpenPalm" style="float: left; height: 3rem; aspect-ratio: 1;" />
-
-
-<h1>OpenPalm</h1>
-
+<div>
+  <img src="assets/logo.png" alt="OpenPalm" style="float: left; height: 3rem; aspect-ratio: 1;" />
+  <h1>OpenPalm</h1>
+</div>
 <p>
   <strong>A safety-first AI assistant platform you own and control.</strong><br/>
   Multi-channel. Extensible. Defense in depth. One compose command away.
@@ -24,11 +22,23 @@ OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that run
 
 ## Get started
 
+No clone required:
+
+```bash
+mkdir -p openpalm && cd openpalm
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh -o install.sh
+bash install.sh
+```
+
+Already cloned?
+
 ```bash
 ./install.sh
 ```
 
-That's it. The installer detects your OS, validates your selected container runtime (`docker`, `podman`, or `orbstack`), generates secrets, and boots the full stack with a startup spinner. When ready, it opens the admin setup UI in your browser.
+That's it. The installer detects your OS, validates your selected container runtime (`docker`, `podman`, or `orbstack`), generates secrets, and boots the full stack from published Docker images with a startup spinner. When ready, it opens the admin setup UI in your browser.
+
+On installed systems, `opencode-channel` is preconfigured in its container image by design. Most users should only customize `opencode-core`.
 
 Optional flags:
 
@@ -36,12 +46,6 @@ Optional flags:
 ./install.sh --runtime podman
 ./install.sh --runtime orbstack
 ./install.sh --no-open
-```
-
-Want channels too?
-
-```bash
-${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} --profile channels up -d --build
 ```
 
 ## Key features
@@ -125,7 +129,7 @@ Container runtime selection is also persisted in `.env`:
 - `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` / `OPENPALM_CONTAINER_SOCKET_URI`
 
-See [`.env.example`](.env.example) for all available settings.
+See [`assets/.env.example`](assets/.env.example) for all available settings and optional override examples.
 
 ## Documentation
 
@@ -140,12 +144,16 @@ See [`.env.example`](.env.example) for all available settings.
 
 ## Development
 
+Use the override below when you want containers rebuilt from your local source changes.
+
 ```bash
+cp assets/.env.example .env
+docker compose -f assets/docker-compose.yml -f docker-compose.dev.yml up -d --build
 bun test          # Run tests
 bunx tsc -b       # Type-check
 ```
 
-Bun workspaces: `gateway`, `admin-app`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
+Bun workspaces: `gateway`, `admin`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
 
 ## License
 

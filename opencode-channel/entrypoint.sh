@@ -2,13 +2,13 @@
 set -euo pipefail
 
 CONFIG_DIR="${OPENCODE_CONFIGURATION_DIRECTORY:-/config}"
-PORT="${OPENCODE_PORT:-4096}"
+PORT="${OPENCODE_PORT:-4097}"
 
 mkdir -p "$CONFIG_DIR"
 
-# Seed core defaults once into the user-managed configuration directory.
-[[ -f "$CONFIG_DIR/opencode.jsonc" ]] || cp /opt/opencode-defaults/opencode.jsonc "$CONFIG_DIR/opencode.jsonc"
-DEFAULT_CONFIG="$CONFIG_DIR/opencode.jsonc"
+# Seed channel defaults once into the configuration directory.
+[[ -f "$CONFIG_DIR/opencode.channel.jsonc" ]] || cp /opt/opencode-defaults/opencode.channel.jsonc "$CONFIG_DIR/opencode.channel.jsonc"
+DEFAULT_CONFIG="$CONFIG_DIR/opencode.channel.jsonc"
 
 [[ -f "$CONFIG_DIR/AGENTS.md" ]] || cp /opt/opencode-defaults/AGENTS.md "$CONFIG_DIR/AGENTS.md"
 [[ -d "$CONFIG_DIR/skills" ]] || cp -r /opt/opencode-defaults/skills "$CONFIG_DIR/skills"

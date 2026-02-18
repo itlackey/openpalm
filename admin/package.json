@@ -1,5 +1,5 @@
 {
-  "name": "@openpalm/admin-app",
+  "name": "@openpalm/admin",
   "private": true,
   "type": "module",
   "scripts": {

@@ -83,13 +83,13 @@ function channelPort(channel: "chat" | "voice" | "discord" | "telegram") {
 
 function detectChannelAccess(channel: "chat" | "voice" | "discord" | "telegram"): "lan" | "public" {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const block = raw.match(new RegExp(`handle \/channels\/${channel}\* \{[\s\S]*?\n\}`, "m"))?.[0] ?? "";
+  const block = raw.match(new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m"))?.[0] ?? "";
   return block.includes("abort @not_lan") ? "lan" : "public";
 }
 
 function setChannelAccess(channel: "chat" | "voice" | "discord" | "telegram", access: "lan" | "public") {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const blockRegex = new RegExp(`handle \/channels\/${channel}\* \{[\s\S]*?\n\}`, "m");
+  const blockRegex = new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m");
   const replacement = access === "lan"
     ? [
       `handle /channels/${channel}* {`,
@@ -471,7 +471,8 @@ const server = Bun.serve({
 
       // ── Static UI ─────────────────────────────────────────────────
       if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
-        return new Response(Bun.file("/app/admin-ui/index.html"), { headers: { "content-type": "text/html" } });
+        if (!existsSync("/app/ui/index.html")) return cors(json(500, { error: "admin ui missing" }));
+        return new Response(Bun.file("/app/ui/index.html"), { headers: { "content-type": "text/html" } });
       }
 
       return cors(json(404, { error: "not_found" }));

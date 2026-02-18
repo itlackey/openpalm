@@ -43,7 +43,6 @@
 
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
   opencode-core/
-  opencode-channel/
   caddy/Caddyfile
   channels/
 
@@ -56,6 +55,8 @@
   observability/
   backups/
 ```
+
+`opencode-channel` is intentionally preconfigured in its container image. Most users should only customize `opencode-core`.
 
 ---
 
