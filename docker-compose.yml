@@ -1,7 +1,19 @@
 services:
   opencode-core:
     build: ./opencode
+    environment:
+      # OpenMemory HTTP API plugin configuration
+      OPENPALM_MEMORY_MODE: "api"
+      OPENMEMORY_BASE_URL: "http://openmemory:8765"
+      # OPENMEMORY_API_KEY: ""        # set in .env or secrets if auth is enabled
+      RECALL_LIMIT: "5"
+      RECALL_MAX_CHARS: "2000"
+      WRITEBACK_ENABLED: "true"
+      TEMPORAL_ENABLED: "false"
 
+  openmemory:
+    image: openmemory/openmemory:latest
+    # No ports exposed — LAN-only access from opencode-core
 
   gateway:
     build: ./gateway

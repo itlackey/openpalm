@@ -23,9 +23,11 @@
     }
   },
 
+  // MCP transport kept for optional external tooling; runtime memory uses
+  // the HTTP API plugin below (OPENPALM_MEMORY_MODE=api disables this path).
   "mcp": {
     "openmemory": {
-      "enabled": true,
+      "enabled": false,
       "transport": {
         "type": "sse",
         "url": "http://openmemory:8765/mcp/gateway/sse/default-user"
@@ -34,6 +36,7 @@
   },
 
   "plugin": [
-    "./.opencode/plugins/policy-and-telemetry.ts"
+    "./.opencode/plugins/policy-and-telemetry.ts",
+    "./.opencode/plugins/openmemory-http.ts"
   ]
 }
