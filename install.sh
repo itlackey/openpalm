@@ -52,11 +52,61 @@ detect_os() {
 }
 
 OS_NAME="$(detect_os)"
+OPENPALM_REPO_OWNER="${OPENPALM_REPO_OWNER:-itlackey}"
+OPENPALM_REPO_NAME="${OPENPALM_REPO_NAME:-openpalm}"
+OPENPALM_INSTALL_REF="${OPENPALM_INSTALL_REF:-main}"
 
 if [ "$OS_NAME" = "unknown" ]; then
   echo "Unsupported OS detected. Please run from Linux, macOS, or Windows Bash."
   exit 1
 fi
+
+bootstrap_install_assets() {
+  if [ -f "$ROOT_DIR/docker-compose.yml" ] \
+    && [ -f "$ROOT_DIR/.env.example" ] \
+    && [ -f "$ROOT_DIR/caddy/Caddyfile" ] \
+    && [ -f "$ROOT_DIR/config/opencode-core/opencode.jsonc" ] \
+    && [ -f "$ROOT_DIR/admin-ui/index.html" ]; then
+    return
+  fi
+
+  if ! command -v curl >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1; then
+    echo "Missing required tools to bootstrap installer assets. Please install curl and tar."
+    exit 1
+  fi
+
+  local tmp_dir archive src_dir ref_url
+  tmp_dir="$(mktemp -d)"
+  archive="$tmp_dir/openpalm.tar.gz"
+  ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/heads/${OPENPALM_INSTALL_REF}.tar.gz"
+
+  echo "Downloading install assets from ${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}@${OPENPALM_INSTALL_REF}..."
+  if ! curl -fsSL "$ref_url" -o "$archive"; then
+    ref_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/archive/refs/tags/${OPENPALM_INSTALL_REF}.tar.gz"
+    curl -fsSL "$ref_url" -o "$archive"
+  fi
+
+  tar -xzf "$archive" -C "$tmp_dir"
+  src_dir="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d -name "${OPENPALM_REPO_NAME}-*" | head -n 1)"
+
+  if [ -z "$src_dir" ]; then
+    echo "Failed to resolve installer assets from downloaded archive."
+    rm -rf "$tmp_dir"
+    exit 1
+  fi
+
+  mkdir -p "$ROOT_DIR/config" "$ROOT_DIR/caddy" "$ROOT_DIR/admin-ui"
+  [ -f "$ROOT_DIR/.env.example" ] || cp "$src_dir/.env.example" "$ROOT_DIR/.env.example"
+  [ -f "$ROOT_DIR/docker-compose.yml" ] || cp "$src_dir/docker-compose.yml" "$ROOT_DIR/docker-compose.yml"
+  [ -f "$ROOT_DIR/docker-compose.dev.yml" ] || cp "$src_dir/docker-compose.dev.yml" "$ROOT_DIR/docker-compose.dev.yml"
+  [ -f "$ROOT_DIR/caddy/Caddyfile" ] || cp "$src_dir/caddy/Caddyfile" "$ROOT_DIR/caddy/Caddyfile"
+  [ -f "$ROOT_DIR/admin-ui/index.html" ] || cp "$src_dir/admin-ui/index.html" "$ROOT_DIR/admin-ui/index.html"
+  [ -d "$ROOT_DIR/config/opencode-core" ] || cp -r "$src_dir/config/opencode-core" "$ROOT_DIR/config/opencode-core"
+  [ -d "$ROOT_DIR/config/opencode-channel" ] || cp -r "$src_dir/config/opencode-channel" "$ROOT_DIR/config/opencode-channel"
+  [ -d "$ROOT_DIR/config/channel-env" ] || cp -r "$src_dir/config/channel-env" "$ROOT_DIR/config/channel-env"
+
+  rm -rf "$tmp_dir"
+}
 
 upsert_env_var() {
   local key="$1"
@@ -181,6 +231,8 @@ echo "Detected OS: $OS_NAME"
 echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
 
+bootstrap_install_assets
+
 # ── Resolve XDG Base Directory paths ───────────────────────────────────────
 # https://specifications.freedesktop.org/basedir-spec/latest/
 #
@@ -271,9 +323,9 @@ echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" up -d --build
+"${COMPOSE_CMD[@]}" up -d
 
-echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --profile channels up -d --build"
+echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --profile channels up -d"
 
 HEALTH_URL="http://localhost:80/health"
 SETUP_URL="http://localhost/admin"

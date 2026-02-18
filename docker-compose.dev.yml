@@ -1,0 +1,27 @@
+services:
+  opencode-core:
+    build: ./opencode
+
+  opencode-channel:
+    build: ./opencode
+
+  gateway:
+    build: ./gateway
+
+  admin-app:
+    build: ./admin-app
+
+  controller:
+    build: ./controller
+
+  channel-chat:
+    build: ./channels/chat
+
+  channel-discord:
+    build: ./channels/discord
+
+  channel-voice:
+    build: ./channels/voice
+
+  channel-telegram:
+    build: ./channels/telegram

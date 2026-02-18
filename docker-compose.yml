@@ -50,7 +50,7 @@ services:
     depends_on: [qdrant]
 
   opencode-core:
-    build: ./opencode
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-opencode:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
@@ -68,7 +68,7 @@ services:
     depends_on: [openmemory]
 
   opencode-channel:
-    build: ./opencode
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-opencode:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
@@ -84,7 +84,7 @@ services:
     depends_on: [openmemory]
 
   gateway:
-    build: ./gateway
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-gateway:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       - PORT=8080
@@ -101,7 +101,7 @@ services:
     depends_on: [opencode-core, opencode-channel]
 
   admin-app:
-    build: ./admin-app
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-admin-app:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       - PORT=8100
@@ -124,7 +124,7 @@ services:
     depends_on: [controller]
 
   controller:
-    build: ./controller
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-controller:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       - PORT=8090
@@ -144,7 +144,7 @@ services:
   # Channels are exposed via Caddy under /channels/*; adapters forward normalized payloads to gateway internally
   # ============================================================
   channel-chat:
-    build: ./channels/chat
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-channel-chat:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
@@ -157,7 +157,7 @@ services:
     depends_on: [gateway]
 
   channel-discord:
-    build: ./channels/discord
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-channel-discord:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
@@ -170,7 +170,7 @@ services:
     depends_on: [gateway]
 
   channel-voice:
-    build: ./channels/voice
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-channel-voice:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
@@ -183,7 +183,7 @@ services:
     depends_on: [gateway]
 
   channel-telegram:
-    build: ./channels/telegram
+    image: ${OPENPALM_IMAGE_NAMESPACE:-itlackey}/openpalm-channel-telegram:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     profiles: ["channels"]
     env_file:

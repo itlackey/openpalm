@@ -40,16 +40,16 @@ openpalm/
 - `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`
 
-The full `docker-compose.yml` in the repository root defines all services. Key design points:
+The full `docker-compose.yml` in the repository root defines all services using published OpenPalm images. For local development builds, layer `docker-compose.dev.yml` on top. Key design points:
 
-- **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). Both build from `./opencode` but use different config files.
+- **Two OpenCode runtimes** — `opencode-core` (port 4096, approval gates) and `opencode-channel` (port 4097, deny-by-default permissions). Both use the same published `openpalm-opencode` image and different config files.
 - **Gateway** connects to both runtimes via `OPENCODE_CORE_BASE_URL` and `OPENCODE_CHANNEL_BASE_URL`.
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.
 - **Admin-app** manages extensions, config, and containers via the controller.
 - **Controller** is the only service with container engine socket access and runs compose commands using the persisted runtime settings.
 
-See `docker-compose.yml` for the complete service definitions.
+See `docker-compose.yml` for install/runtime defaults and `docker-compose.dev.yml` for local build overrides.
 
 ---
 

@@ -24,11 +24,21 @@ OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that run
 
 ## Get started
 
+No clone required:
+
+```bash
+mkdir -p openpalm && cd openpalm
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh -o install.sh
+bash install.sh
+```
+
+Already cloned?
+
 ```bash
 ./install.sh
 ```
 
-That's it. The installer detects your OS, validates your selected container runtime (`docker`, `podman`, or `orbstack`), generates secrets, and boots the full stack with a startup spinner. When ready, it opens the admin setup UI in your browser.
+That's it. The installer detects your OS, validates your selected container runtime (`docker`, `podman`, or `orbstack`), generates secrets, and boots the full stack from published Docker images with a startup spinner. When ready, it opens the admin setup UI in your browser.
 
 Optional flags:
 
@@ -41,7 +51,7 @@ Optional flags:
 Want channels too?
 
 ```bash
-${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} --profile channels up -d --build
+${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} --profile channels up -d
 ```
 
 ## Key features
@@ -141,6 +151,7 @@ See [`.env.example`](.env.example) for all available settings.
 ## Development
 
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 bun test          # Run tests
 bunx tsc -b       # Type-check
 ```
