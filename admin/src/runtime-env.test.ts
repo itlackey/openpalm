@@ -33,6 +33,20 @@ describe("runtime env content helpers", () => {
     expect(next.endsWith("\n")).toBe(true);
   });
 
+  it("preserves existing keys when they are not in the managed update set", () => {
+    const current = [
+      "OPENAI_BASE_URL=https://old.example/v1",
+      "OPENAI_API_KEY=sk-existing"
+    ].join("\n");
+
+    const next = updateRuntimeEnvContent(current, {
+      OPENAI_BASE_URL: "https://new.example/v1"
+    });
+
+    expect(next).toContain("OPENAI_BASE_URL=https://new.example/v1");
+    expect(next).toContain("OPENAI_API_KEY=sk-existing");
+  });
+
   it("applies host bind scope and appends missing runtime bind keys", () => {
     const current = [
       "OPENPALM_INGRESS_BIND_ADDRESS=0.0.0.0",

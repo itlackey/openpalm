@@ -40,13 +40,11 @@
 				reverse_proxy admin:8100
 			}
 
-			handle /admin/opencode* {
-				uri replace /admin/opencode / 
+			handle_path /admin/opencode* {
 				reverse_proxy opencode-core:4096
 			}
 
-			handle /admin/openmemory* {
-				uri replace /admin/openmemory / 
+			handle_path /admin/openmemory* {
 				reverse_proxy openmemory:3000
 			}
 

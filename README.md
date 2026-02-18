@@ -30,6 +30,7 @@ pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itl
 The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit.
 
 During setup you choose whether your assistant is accessible only from this machine or from your local network. You can change this later from the admin dashboard.
+The setup wizard also lets you configure OpenMemory's OpenAI-compatible endpoint and API key, which are persisted in `~/.config/openpalm/secrets.env`.
 
 ## What you get
 

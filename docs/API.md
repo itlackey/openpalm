@@ -76,9 +76,10 @@ Health status for the admin app.
 - `POST /admin/config` — write config `{ "config": "...", "restart": true }` (denies permission widening to `allow`)
 
 ### Setup wizard
-- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag)
+- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag), current service-instance overrides, and OpenMemory provider setup (`openmemoryProvider.openaiBaseUrl`, `openmemoryProvider.openaiApiKeyConfigured`)
 - `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "healthCheck" | "security" | "channels" | "extensions" }`
 - `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
+- `POST /admin/setup/service-instances` — update service instance overrides and OpenMemory OpenAI-compatible provider settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "..." }` (`openaiApiKey` is optional; leave empty to keep current key)
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
 - `GET /admin/setup/health-check` — run health checks against gateway and OpenCode; returns `{ gateway: boolean, opencode: boolean }`
 
