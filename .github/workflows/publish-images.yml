@@ -7,7 +7,7 @@ on:
     tags: ["v*"]
     paths:
       - ".github/workflows/publish-images.yml"
-      - "docker-compose.yml"
+      - "assets/docker-compose.yml"
       - "docker-compose.dev.yml"
       - "opencode/**"
       - "gateway/**"

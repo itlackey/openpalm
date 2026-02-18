@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
+ASSETS_DIR="$ROOT_DIR/assets"
 
 RUNTIME_OVERRIDE=""
 OPEN_BROWSER=1
@@ -62,11 +63,11 @@ if [ "$OS_NAME" = "unknown" ]; then
 fi
 
 bootstrap_install_assets() {
-  if [ -f "$ROOT_DIR/docker-compose.yml" ] \
+  if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
     && [ -f "$ROOT_DIR/.env.example" ] \
-    && [ -f "$ROOT_DIR/caddy/Caddyfile" ] \
-    && [ -f "$ROOT_DIR/config/opencode-core/opencode.jsonc" ] \
-    && [ -f "$ROOT_DIR/admin-ui/index.html" ]; then
+    && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
+    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
+    && [ -f "$ASSETS_DIR/admin-ui/index.html" ]; then
     return
   fi
 
@@ -95,15 +96,26 @@ bootstrap_install_assets() {
     exit 1
   fi
 
-  mkdir -p "$ROOT_DIR/config" "$ROOT_DIR/caddy" "$ROOT_DIR/admin-ui"
+  mkdir -p "$ASSETS_DIR"
+  if [ -d "$src_dir/assets" ]; then
+    [ -f "$ASSETS_DIR/docker-compose.yml" ] || cp "$src_dir/assets/docker-compose.yml" "$ASSETS_DIR/docker-compose.yml"
+    [ -f "$ROOT_DIR/docker-compose.dev.yml" ] || cp "$src_dir/docker-compose.dev.yml" "$ROOT_DIR/docker-compose.dev.yml"
+    [ -f "$ASSETS_DIR/caddy/Caddyfile" ] || { mkdir -p "$ASSETS_DIR/caddy"; cp "$src_dir/assets/caddy/Caddyfile" "$ASSETS_DIR/caddy/Caddyfile"; }
+    [ -f "$ASSETS_DIR/admin-ui/index.html" ] || { mkdir -p "$ASSETS_DIR/admin-ui"; cp "$src_dir/assets/admin-ui/index.html" "$ASSETS_DIR/admin-ui/index.html"; }
+    [ -d "$ASSETS_DIR/config/opencode-core" ] || { mkdir -p "$ASSETS_DIR/config"; cp -r "$src_dir/assets/config/opencode-core" "$ASSETS_DIR/config/opencode-core"; }
+    [ -d "$ASSETS_DIR/config/opencode-channel" ] || cp -r "$src_dir/assets/config/opencode-channel" "$ASSETS_DIR/config/opencode-channel"
+    [ -d "$ASSETS_DIR/config/channel-env" ] || cp -r "$src_dir/assets/config/channel-env" "$ASSETS_DIR/config/channel-env"
+  else
+    mkdir -p "$ASSETS_DIR/config" "$ASSETS_DIR/caddy" "$ASSETS_DIR/admin-ui"
+    [ -f "$ASSETS_DIR/docker-compose.yml" ] || cp "$src_dir/docker-compose.yml" "$ASSETS_DIR/docker-compose.yml"
+    [ -f "$ROOT_DIR/docker-compose.dev.yml" ] || cp "$src_dir/docker-compose.dev.yml" "$ROOT_DIR/docker-compose.dev.yml"
+    [ -f "$ASSETS_DIR/caddy/Caddyfile" ] || cp "$src_dir/caddy/Caddyfile" "$ASSETS_DIR/caddy/Caddyfile"
+    [ -f "$ASSETS_DIR/admin-ui/index.html" ] || cp "$src_dir/admin-ui/index.html" "$ASSETS_DIR/admin-ui/index.html"
+    [ -d "$ASSETS_DIR/config/opencode-core" ] || cp -r "$src_dir/config/opencode-core" "$ASSETS_DIR/config/opencode-core"
+    [ -d "$ASSETS_DIR/config/opencode-channel" ] || cp -r "$src_dir/config/opencode-channel" "$ASSETS_DIR/config/opencode-channel"
+    [ -d "$ASSETS_DIR/config/channel-env" ] || cp -r "$src_dir/config/channel-env" "$ASSETS_DIR/config/channel-env"
+  fi
   [ -f "$ROOT_DIR/.env.example" ] || cp "$src_dir/.env.example" "$ROOT_DIR/.env.example"
-  [ -f "$ROOT_DIR/docker-compose.yml" ] || cp "$src_dir/docker-compose.yml" "$ROOT_DIR/docker-compose.yml"
-  [ -f "$ROOT_DIR/docker-compose.dev.yml" ] || cp "$src_dir/docker-compose.dev.yml" "$ROOT_DIR/docker-compose.dev.yml"
-  [ -f "$ROOT_DIR/caddy/Caddyfile" ] || cp "$src_dir/caddy/Caddyfile" "$ROOT_DIR/caddy/Caddyfile"
-  [ -f "$ROOT_DIR/admin-ui/index.html" ] || cp "$src_dir/admin-ui/index.html" "$ROOT_DIR/admin-ui/index.html"
-  [ -d "$ROOT_DIR/config/opencode-core" ] || cp -r "$src_dir/config/opencode-core" "$ROOT_DIR/config/opencode-core"
-  [ -d "$ROOT_DIR/config/opencode-channel" ] || cp -r "$src_dir/config/opencode-channel" "$ROOT_DIR/config/opencode-channel"
-  [ -d "$ROOT_DIR/config/channel-env" ] || cp -r "$src_dir/config/channel-env" "$ROOT_DIR/config/channel-env"
 
   rm -rf "$tmp_dir"
 }
@@ -155,6 +167,7 @@ OPENPALM_COMPOSE_SUBCOMMAND=""
 OPENPALM_CONTAINER_SOCKET_PATH=""
 OPENPALM_CONTAINER_SOCKET_IN_CONTAINER="/var/run/openpalm-container.sock"
 OPENPALM_CONTAINER_SOCKET_URI=""
+OPENPALM_COMPOSE_FILE="${OPENPALM_COMPOSE_FILE:-assets/docker-compose.yml}"
 
 case "$OPENPALM_CONTAINER_PLATFORM" in
   docker)
@@ -230,8 +243,14 @@ fi
 echo "Detected OS: $OS_NAME"
 echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
+echo "Compose file: $OPENPALM_COMPOSE_FILE"
 
 bootstrap_install_assets
+
+if [ ! -f "$ROOT_DIR/$OPENPALM_COMPOSE_FILE" ] && [ ! -f "$OPENPALM_COMPOSE_FILE" ]; then
+  echo "Compose file not found: $OPENPALM_COMPOSE_FILE"
+  exit 1
+fi
 
 # ── Resolve XDG Base Directory paths ───────────────────────────────────────
 # https://specifications.freedesktop.org/basedir-spec/latest/
@@ -270,6 +289,7 @@ upsert_env_var OPENPALM_STATE_HOME "$OPENPALM_STATE_HOME"
 upsert_env_var OPENPALM_CONTAINER_PLATFORM "$OPENPALM_CONTAINER_PLATFORM"
 upsert_env_var OPENPALM_COMPOSE_BIN "$OPENPALM_COMPOSE_BIN"
 upsert_env_var OPENPALM_COMPOSE_SUBCOMMAND "$OPENPALM_COMPOSE_SUBCOMMAND"
+upsert_env_var OPENPALM_COMPOSE_FILE "$OPENPALM_COMPOSE_FILE"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_PATH "$OPENPALM_CONTAINER_SOCKET_PATH"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_IN_CONTAINER "$OPENPALM_CONTAINER_SOCKET_IN_CONTAINER"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_URI "$OPENPALM_CONTAINER_SOCKET_URI"
@@ -300,20 +320,20 @@ seed_dir() {
 }
 
 # opencode-core config
-seed_file "$ROOT_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
-seed_file "$ROOT_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
-seed_dir  "$ROOT_DIR/config/opencode-core/skills"          "$OPENPALM_CONFIG_HOME/opencode-core/skills"
+seed_file "$ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
+seed_file "$ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
+seed_dir  "$ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
 
 # opencode-channel config
-seed_file "$ROOT_DIR/config/opencode-channel/opencode.channel.jsonc" "$OPENPALM_CONFIG_HOME/opencode-channel/opencode.channel.jsonc"
-seed_file "$ROOT_DIR/config/opencode-channel/AGENTS.md"              "$OPENPALM_CONFIG_HOME/opencode-channel/AGENTS.md"
-seed_dir  "$ROOT_DIR/config/opencode-channel/skills"                 "$OPENPALM_CONFIG_HOME/opencode-channel/skills"
+seed_file "$ASSETS_DIR/config/opencode-channel/opencode.channel.jsonc" "$OPENPALM_CONFIG_HOME/opencode-channel/opencode.channel.jsonc"
+seed_file "$ASSETS_DIR/config/opencode-channel/AGENTS.md"              "$OPENPALM_CONFIG_HOME/opencode-channel/AGENTS.md"
+seed_dir  "$ASSETS_DIR/config/opencode-channel/skills"                 "$OPENPALM_CONFIG_HOME/opencode-channel/skills"
 
 # Caddy config
-seed_file "$ROOT_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
+seed_file "$ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
 # Channel env files
-for env_file in "$ROOT_DIR"/config/channel-env/*.env; do
+for env_file in "$ASSETS_DIR"/config/channel-env/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
 
@@ -323,9 +343,9 @@ echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" up -d
+"${COMPOSE_CMD[@]}" -f "$OPENPALM_COMPOSE_FILE" up -d
 
-echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --profile channels up -d"
+echo "If you want channel adapters too: ${COMPOSE_CMD[*]} -f $OPENPALM_COMPOSE_FILE --profile channels up -d"
 
 HEALTH_URL="http://localhost:80/health"
 SETUP_URL="http://localhost/admin"
@@ -350,10 +370,11 @@ if [ "$READY" -eq 1 ]; then
   echo "Admin dashboard (LAN only): $SETUP_URL"
   echo "Open Memory UI (LAN only): http://localhost/admin/openmemory"
   echo ""
-  echo "Container runtime config:"
-  echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
-  echo "  Compose command → ${COMPOSE_CMD[*]}"
-  echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
+echo "Container runtime config:"
+echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
+echo "  Compose command → ${COMPOSE_CMD[*]}"
+echo "  Compose file    → $OPENPALM_COMPOSE_FILE"
+echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
   echo ""
   echo "Host directories:"
   echo "  Data   → $OPENPALM_DATA_HOME"

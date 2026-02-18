@@ -51,7 +51,7 @@ Optional flags:
 Want channels too?
 
 ```bash
-${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} --profile channels up -d
+${OPENPALM_COMPOSE_BIN:-docker} ${OPENPALM_COMPOSE_SUBCOMMAND:-compose} -f ${OPENPALM_COMPOSE_FILE:-assets/docker-compose.yml} --profile channels up -d
 ```
 
 ## Key features
@@ -132,7 +132,7 @@ Override with `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, or `OPENPALM_STATE_H
 
 Container runtime selection is also persisted in `.env`:
 - `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
-- `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND`
+- `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND` / `OPENPALM_COMPOSE_FILE`
 - `OPENPALM_CONTAINER_SOCKET_PATH` / `OPENPALM_CONTAINER_SOCKET_URI`
 
 See [`.env.example`](.env.example) for all available settings.
@@ -153,7 +153,7 @@ See [`.env.example`](.env.example) for all available settings.
 Use the override below when you want containers rebuilt from your local source changes.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose -f assets/docker-compose.yml -f docker-compose.dev.yml up -d --build
 bun test          # Run tests
 bunx tsc -b       # Type-check
 ```

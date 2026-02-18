@@ -33,7 +33,7 @@
 - [x] Admin app extracted from gateway into separate container
 - [x] Admin app provides API for all admin functions
 - [x] Admin app can add/remove containers via controller
-- [x] Controller replaces compose-control with up/down/restart capabilities
+- [x] Controller provides up/down/restart capabilities
 - [x] All channels processed through gateway (defense in depth)
 - [x] Discord channel adapter added
 - [x] Voice channel adapter added
