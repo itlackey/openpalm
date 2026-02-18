@@ -521,8 +521,13 @@ async function triggerCron(id) {
 }
 
 /* ── settings ─────────────────────────────────────────── */
-function renderSettings() {
+async function renderSettings() {
   const el = document.getElementById('page-settings');
+  const status = await api('/admin/setup/status');
+  const statusWarning = status.ok ? '' : '<p style="color:var(--yellow);font-size:13px">Could not load saved service instance settings from admin API. Showing empty defaults.</p>';
+  const svc = status.ok && status.data && status.data.serviceInstances
+    ? status.data.serviceInstances
+    : { openmemory: '', psql: '', qdrant: '' };
   let h = '<h2>Settings</h2>';
   h += '<div class="card"><h3>Authentication</h3>';
   h += '<p class="muted" style="font-size:13px">Your admin password is stored in your browser only (localStorage) and sent as a header to the admin API.</p>';
@@ -534,6 +539,18 @@ function renderSettings() {
   h += '<p class="muted" style="font-size:13px">Revisit the initial setup steps.</p>';
   h += '<button class="secondary" onclick="runSetup()">Open Setup Wizard</button>';
   h += '</div>';
+  h += '<div class="card"><h3>System Service Instances</h3>';
+  h += '<p class="muted" style="font-size:13px">Optional: point OpenPalm at existing OpenMemory, Postgres, or Qdrant instances.</p>';
+  h += statusWarning;
+  h += '<p style="color:var(--yellow);font-size:13px"><strong>Warning:</strong> Changing these settings after initial setup may break memory access and existing workflows.</p>';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenMemory base URL</label>';
+  h += '<input id="set-openmemory-url" placeholder="http://openmemory:3000" value="' + esc(svc.openmemory || '') + '" />';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>';
+  h += '<input id="set-psql-url" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(svc.psql || '') + '" />';
+  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>';
+  h += '<input id="set-qdrant-url" placeholder="http://qdrant:6333" value="' + esc(svc.qdrant || '') + '" />';
+  h += '<div style="margin-top:.7rem"><button onclick="saveServiceInstances()">Save Service Configuration</button></div>';
+  h += '</div>';
   el.innerHTML = h;
 }
 
@@ -541,6 +558,16 @@ function saveSettings() {
   adminToken = document.getElementById('set-admin').value;
   localStorage.setItem('op_admin', adminToken);
   alert('Saved.');
+}
+
+async function saveServiceInstances() {
+  if (!confirm('Changing service instance settings after initial setup may break memory access and existing workflows. Continue?')) return;
+  const openmemory = document.getElementById('set-openmemory-url')?.value || '';
+  const psql = document.getElementById('set-psql-url')?.value || '';
+  const qdrant = document.getElementById('set-qdrant-url')?.value || '';
+  const r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify({ openmemory, psql, qdrant }) });
+  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  alert('Service configuration saved.');
 }
 
 /* ── setup wizard ─────────────────────────────────────── */

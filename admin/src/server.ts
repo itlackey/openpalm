@@ -185,6 +185,61 @@ function setRuntimeBindScope(scope: "host" | "lan") {
   writeFileSync(RUNTIME_ENV_PATH, next.join("\n").replace(/\n+$/, "") + "\n", "utf8");
 }
 
+function updateRuntimeEnv(entries: Record<string, string | undefined>) {
+  const lines = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8").split(/\r?\n/) : [];
+  const managedKeys = new Set(Object.keys(entries));
+  const next: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.includes("=") || trimmed.startsWith("#")) {
+      next.push(line);
+      continue;
+    }
+    const [key] = line.split("=", 1);
+    if (!managedKeys.has(key)) {
+      next.push(line);
+      continue;
+    }
+    seen.add(key);
+    const value = entries[key];
+    if (typeof value === "string" && value.length > 0) {
+      next.push(`${key}=${value}`);
+    }
+  }
+
+  for (const [key, value] of Object.entries(entries)) {
+    if (seen.has(key)) continue;
+    if (typeof value === "string" && value.length > 0) next.push(`${key}=${value}`);
+  }
+
+  writeFileSync(RUNTIME_ENV_PATH, next.join("\n").replace(/\n+$/, "") + "\n", "utf8");
+}
+
+function readRuntimeEnv() {
+  const out: Record<string, string> = {};
+  if (!existsSync(RUNTIME_ENV_PATH)) return out;
+  const lines = readFileSync(RUNTIME_ENV_PATH, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.includes("=") || trimmed.startsWith("#")) continue;
+    const [k, ...rest] = trimmed.split("=");
+    out[k.trim()] = rest.join("=").trim();
+  }
+  return out;
+}
+
+function getConfiguredServiceInstances() {
+  const runtime = readRuntimeEnv();
+  const state = setupManager.getState();
+  return {
+    openmemory: runtime.OPENMEMORY_URL ?? state.serviceInstances.openmemory ?? "",
+    psql: runtime.OPENMEMORY_POSTGRES_URL ?? state.serviceInstances.psql ?? "",
+    qdrant: runtime.OPENMEMORY_QDRANT_URL ?? state.serviceInstances.qdrant ?? "",
+  };
+}
+
 async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: string; error?: string }> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -194,6 +249,11 @@ async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: st
   } catch (e) {
     return { ok: false, error: String(e) };
   }
+}
+
+function normalizeServiceInstanceUrl(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
 const server = Bun.serve({
@@ -215,14 +275,14 @@ const server = Bun.serve({
       // ── Setup wizard ──────────────────────────────────────────────
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
-        return cors(json(200, { ...state, firstBoot: setupManager.isFirstBoot() }));
+        return cors(json(200, { ...state, serviceInstances: getConfiguredServiceInstances(), firstBoot: setupManager.isFirstBoot() }));
       }
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
-        const validSteps = ["welcome", "accessScope", "healthCheck", "security", "channels", "extensions"];
+        const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions"];
         if (!validSteps.includes(body.step)) return cors(json(400, { error: "invalid step" }));
-        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "healthCheck" | "security" | "channels" | "extensions");
+        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions");
         return cors(json(200, { ok: true, state }));
       }
 
@@ -247,12 +307,30 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, state }));
       }
 
+      if (url.pathname === "/admin/setup/service-instances" && req.method === "POST") {
+        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string };
+        const current = setupManager.getState();
+        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        const openmemory = normalizeServiceInstanceUrl(body.openmemory);
+        const psql = normalizeServiceInstanceUrl(body.psql);
+        const qdrant = normalizeServiceInstanceUrl(body.qdrant);
+        updateRuntimeEnv({
+          OPENMEMORY_URL: openmemory || undefined,
+          OPENMEMORY_POSTGRES_URL: psql || undefined,
+          OPENMEMORY_QDRANT_URL: qdrant || undefined
+        });
+        const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
+        return cors(json(200, { ok: true, state }));
+      }
+
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
+        const serviceInstances = getConfiguredServiceInstances();
+        const openmemoryBaseUrl = serviceInstances.openmemory || OPENMEMORY_URL;
         const [gateway, controller, opencodeCore, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
           CONTROLLER_URL ? checkServiceHealth(`${CONTROLLER_URL}/health`) : Promise.resolve({ ok: false, error: "not configured" }),
           checkServiceHealth(`${OPENCODE_CORE_URL}/health`),
-          checkServiceHealth(`${OPENMEMORY_URL}/health`)
+          checkServiceHealth(`${openmemoryBaseUrl}/health`)
         ]);
         return cors(json(200, {
           services: {
@@ -261,7 +339,8 @@ const server = Bun.serve({
             opencodeCore,
             openmemory,
             admin: { ok: true, time: new Date().toISOString() }
-          }
+          },
+          serviceInstances
         }));
       }
 
