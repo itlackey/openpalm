@@ -71,7 +71,8 @@ esac
 if [ "$OS_NAME" = "windows-bash" ]; then
   echo "This uninstaller is for Linux/macOS shells."
   echo "On Windows, run the PowerShell uninstaller instead:"
-  echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"'
+  echo "  1) iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/uninstall.ps1 -OutFile \$env:TEMP/openpalm-uninstall.ps1"
+  echo "  2) & \$env:TEMP/openpalm-uninstall.ps1"
   exit 1
 fi
 

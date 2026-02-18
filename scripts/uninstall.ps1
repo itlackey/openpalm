@@ -8,7 +8,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if (-not $IsWindows) {
+$RunningOnWindows = ((($PSVersionTable.PSVersion.Major -ge 6) -and $IsWindows) -or ($env:OS -eq "Windows_NT"))
+if (-not $RunningOnWindows) {
   Write-Host "This uninstaller is for Windows PowerShell."
   Write-Host "On Linux/macOS, run the shell uninstaller instead:"
   Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/uninstall.sh | bash"
