@@ -64,7 +64,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/openpalm-${{ matrix.image }}
+          images: ${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha
