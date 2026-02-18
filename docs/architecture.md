@@ -23,7 +23,7 @@ graph TB
     subgraph Apps["Applications (Layer 2)"]
         Gateway["Gateway<br/><small>:8080 — auth + routing</small>"]
         OpenCodeCore["OpenCode Core<br/><small>:4096 — agent runtime<br/>(includes channel-intake agent)</small>"]
-        OpenMemory["Open Memory<br/><small>:3000/:8765 — MCP</small>"]
+        OpenMemory["Open Memory<br/><small>:8765 — MCP</small>"]
         AdminApp["Admin App<br/><small>:8100 — admin API</small>"]
         Controller["Controller<br/><small>:8090 — container lifecycle</small>"]
     end
@@ -146,7 +146,7 @@ The admin app provides the API for all admin functions:
 | `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
 | `/admin/api*` | admin:8100 | prefix stripped to `/admin/*` | LAN only |
 | `/admin/opencode*` | opencode-core:4096 | prefix stripped to `/*` | LAN only |
-| `/admin/openmemory*` | openmemory:3000 | prefix stripped to `/*` | LAN only |
+| `/admin/openmemory*` | openmemory:8765 | prefix stripped to `/*` | LAN only |
 | `/admin*` (catch-all) | admin:8100 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
