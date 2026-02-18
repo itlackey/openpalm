@@ -2,10 +2,12 @@
 set -euo pipefail
 
 CONFIG_DIR="${OPENCODE_CONFIGURATION_DIRECTORY:-/config}"
+CRON_DIR="${CRON_DIR:-/cron}"
 PORT="${OPENCODE_PORT:-4096}"
 ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 
 mkdir -p "$CONFIG_DIR"
+mkdir -p "$CRON_DIR"
 
 # Seed core defaults once into the user-managed configuration directory.
 [[ -f "$CONFIG_DIR/opencode.jsonc" ]] || cp /opt/opencode-defaults/opencode.jsonc "$CONFIG_DIR/opencode.jsonc"
@@ -18,9 +20,9 @@ DEFAULT_CONFIG="$CONFIG_DIR/opencode.jsonc"
 export OPENCODE_CONFIG="${OPENCODE_CONFIG:-$DEFAULT_CONFIG}"
 
 # Install crontab managed by admin (if present) and start cron daemon.
-if [[ -f "$CONFIG_DIR/crontab" ]]; then
-  crontab "$CONFIG_DIR/crontab"
-  echo "crontab installed from $CONFIG_DIR/crontab"
+if [[ -f "$CRON_DIR/crontab" ]]; then
+  crontab "$CRON_DIR/crontab"
+  echo "crontab installed from $CRON_DIR/crontab"
 else
   # Ensure empty crontab so cron starts cleanly
   echo "" | crontab -

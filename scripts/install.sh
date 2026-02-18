@@ -354,7 +354,7 @@ mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
 
 # Config — user-editable configuration
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,cron}
 
 # State — runtime state, logs, workspace
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
@@ -394,6 +394,10 @@ done
 # Runtime secrets and user overrides for opencode-core
 seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
 seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/user.env"
+
+# Copy uninstall scripts to state directory for easy access
+cp "$SCRIPT_DIR/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
+chmod +x "$OPENPALM_STATE_HOME/uninstall.sh"
 
 echo ""
 echo "Directory structure created. Config seeded from defaults."

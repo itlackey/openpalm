@@ -20,6 +20,7 @@ const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:3000";
 const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
+const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
@@ -32,7 +33,7 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
 };
 
 const setupManager = new SetupManager(DATA_DIR);
-const cronStore = new CronStore(DATA_DIR, OPENCODE_CORE_CONFIG_DIR);
+const cronStore = new CronStore(DATA_DIR, CRON_DIR);
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {

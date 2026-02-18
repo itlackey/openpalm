@@ -243,6 +243,7 @@ try {
     "$OpenPalmConfigHome/opencode-core",
     "$OpenPalmConfigHome/caddy",
     "$OpenPalmConfigHome/channels",
+    "$OpenPalmConfigHome/cron",
     "$OpenPalmStateHome/opencode-core",
     "$OpenPalmStateHome/gateway",
     "$OpenPalmStateHome/caddy",
@@ -282,6 +283,9 @@ try {
 
   Seed-File (Join-Path $InstallAssetsDir "secrets.env") "$OpenPalmConfigHome/secrets.env"
   Seed-File (Join-Path $InstallAssetsDir "user.env") "$OpenPalmConfigHome/user.env"
+
+  # Copy uninstall script to state directory for easy access
+  Copy-Item (Join-Path $PSScriptRoot "uninstall.ps1") "$OpenPalmStateHome/uninstall.ps1" -Force
 
   Write-Host ""
   Write-Host "Directory structure created. Config seeded from defaults."
