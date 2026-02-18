@@ -50,6 +50,7 @@
 				reverse_proxy openmemory:3000
 			}
 
+			uri strip_prefix /admin
 			reverse_proxy admin:8100
 		}
 	}
