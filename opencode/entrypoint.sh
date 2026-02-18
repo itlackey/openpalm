@@ -20,4 +20,14 @@ fi
 
 export OPENCODE_CONFIG="${OPENCODE_CONFIG:-$CONFIG_DIR/opencode.jsonc}"
 
+# Install crontab managed by admin-app (if present) and start cron daemon.
+if [[ -f "$CONFIG_DIR/crontab" ]]; then
+  crontab "$CONFIG_DIR/crontab"
+  echo "crontab installed from $CONFIG_DIR/crontab"
+else
+  # Ensure empty crontab so cron starts cleanly
+  echo "" | crontab -
+fi
+cron
+
 exec opencode serve --hostname 0.0.0.0 --port "$PORT"

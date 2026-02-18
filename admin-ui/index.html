@@ -413,7 +413,7 @@ let cronEditId = null;
 async function loadCrons() {
   const el = document.getElementById('page-crons');
   let h = '<h2>Cron Jobs</h2>';
-  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent. Jobs use standard 5-field cron expressions.</p>';
+  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent via system cron. Changes will restart opencode-core to install the updated crontab.</p>';
   if (!adminToken) {
     h += '<p class="muted">Set your admin password in Settings to manage cron jobs.</p>';
     el.innerHTML = h;
@@ -432,7 +432,7 @@ async function loadCrons() {
 function renderCrons() {
   const el = document.getElementById('page-crons');
   let h = '<h2>Cron Jobs</h2>';
-  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent. Jobs use standard 5-field cron expressions.</p>';
+  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent via system cron. Changes will restart opencode-core to install the updated crontab.</p>';
 
   // create / edit form
   h += '<div class="card">';
@@ -464,13 +464,6 @@ function renderCrons() {
       : '<span class="badge" style="font-size:11px;background:var(--muted)">Disabled</span>';
     h += '<div class="muted" style="font-size:13px;margin:.2rem 0"><code>' + esc(job.schedule) + '</code></div>';
     h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
-    if (job.lastRunAt) {
-      h += '<div class="muted" style="font-size:12px">Last run: ' + esc(job.lastRunAt) + ' &mdash; ';
-      h += job.lastResult === 'ok'
-        ? '<span style="color:var(--green)">OK</span>'
-        : '<span style="color:var(--red)">Error' + (job.lastError ? ': ' + esc(job.lastError.substring(0, 80)) : '') + '</span>';
-      h += '</div>';
-    }
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
     h += '<button class="sm" onclick="triggerCron(\'' + esc(job.id) + '\')">Run Now</button>';
@@ -528,7 +521,7 @@ async function triggerCron(id) {
   if (!confirm('Run "' + (job ? job.name : id) + '" now?')) return;
   const r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id }) });
   if (r.ok) {
-    alert('Job triggered. Check back for results.');
+    alert('Job triggered against opencode-core.');
     loadCrons();
   } else {
     alert('Failed: ' + (r.data.error || r.status));

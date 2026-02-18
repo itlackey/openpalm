@@ -4,8 +4,7 @@ import { updatePluginListAtomically, validatePluginIdentifier } from "./extensio
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
-import { CronStore } from "./cron-store.ts";
-import { CronScheduler, validateCron } from "./cron-scheduler.ts";
+import { CronStore, validateCron } from "./cron-store.ts";
 import type { GalleryCategory } from "./gallery.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
@@ -18,6 +17,7 @@ const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
+const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
@@ -27,15 +27,7 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
 };
 
 const setupManager = new SetupManager(DATA_DIR);
-const cronStore = new CronStore(DATA_DIR);
-const cronScheduler = new CronScheduler({
-  store: cronStore,
-  opencodeUrl: OPENCODE_CORE_URL,
-  onRun: (job, result, error) => {
-    console.log(JSON.stringify({ kind: "cron-result", jobId: job.id, name: job.name, result, error }));
-  },
-});
-cronScheduler.start();
+const cronStore = new CronStore(DATA_DIR, OPENCODE_CORE_CONFIG_DIR);
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -405,6 +397,8 @@ const server = Bun.serve({
           createdAt: new Date().toISOString(),
         };
         cronStore.add(job);
+        cronStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", `cron job created: ${job.name}`);
         return cors(json(201, { ok: true, job }));
       }
 
@@ -419,6 +413,8 @@ const server = Bun.serve({
         const { id, ...fields } = body;
         const updated = cronStore.update(id, fields);
         if (!updated) return cors(json(404, { error: "cron job not found" }));
+        cronStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", `cron job updated: ${updated.name}`);
         return cors(json(200, { ok: true, job: updated }));
       }
 
@@ -428,6 +424,8 @@ const server = Bun.serve({
         if (!body.id) return cors(json(400, { error: "id is required" }));
         const removed = cronStore.remove(body.id);
         if (!removed) return cors(json(404, { error: "cron job not found" }));
+        cronStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", "cron job deleted");
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
@@ -437,7 +435,18 @@ const server = Bun.serve({
         if (!body.id) return cors(json(400, { error: "id is required" }));
         const job = cronStore.get(body.id);
         if (!job) return cors(json(404, { error: "cron job not found" }));
-        cronScheduler.executeJob(job);
+        // Fire directly against opencode-core without waiting for cron
+        fetch(`${OPENCODE_CORE_URL}/chat`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            message: job.prompt,
+            session_id: `cron-${job.id}`,
+            user_id: "cron-scheduler",
+            metadata: { source: "cron", cronJobId: job.id, cronJobName: job.name },
+          }),
+          signal: AbortSignal.timeout(120_000),
+        }).catch(() => {});
         return cors(json(200, { ok: true, triggered: job.id }));
       }
 
