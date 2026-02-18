@@ -45,6 +45,7 @@
   opencode-core/
   caddy/Caddyfile
   channels/
+  cron/                        — user-editable crontab and payload files
   user.env
   secrets.env
 
@@ -55,6 +56,7 @@
   workspace/
   observability/
   backups/
+  uninstall.sh                 — copied during install for easy access
 ```
 
 ---
