@@ -110,6 +110,7 @@ services:
       - CONTROLLER_URL=http://controller:8090
       - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - GATEWAY_URL=http://gateway:8080
+      - OPENCODE_CORE_URL=http://opencode-core:4096
       - CADDYFILE_PATH=/app/config/caddy/Caddyfile
       - CHANNEL_ENV_DIR=/app/channel-env
     volumes:

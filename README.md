@@ -44,7 +44,9 @@ docker compose --profile channels up -d --build
 
 **Long-term memory** — OpenMemory provides vector-backed recall via MCP. The agent remembers context across sessions while policy skills prevent secret storage.
 
-**Admin dashboard & gallery** — A built-in web UI for managing services, browsing curated extensions, installing plugins from npm, toggling channel access, and editing agent config — all behind admin password authentication set during install.
+**Admin dashboard & gallery** — A built-in web UI for managing services, browsing curated extensions, installing plugins from npm, toggling channel access, editing agent config, and scheduling cron jobs — all behind admin password authentication set during install.
+
+**Cron scheduler** — Schedule recurring tasks that run on the core agent. Create jobs with standard 5-field cron expressions, toggle them on/off, trigger them manually, and monitor results — all from the admin UI or API. Jobs execute directly against the OpenCode core runtime.
 
 **Extension system** — Install OpenCode plugins, skills, and container services through the admin UI, API, or CLI. Extensions install directly without unnecessary staging gates.
 
@@ -76,9 +78,9 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | **Container management** | Controller service (only container with Docker socket), admin API for lifecycle ops | Direct host access — agent can run shell commands natively |
 | **Deployment** | Single `docker compose up` — all services, networking, and secrets generated automatically | Daemon install via `onboard --install-daemon`, multiple hosting modes (local, VPS, Tailscale) |
 | **Channels** | Chat, Discord, Voice, Telegram (containerized adapters) | WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, Google Chat, WebChat, and more |
-| **Proactive features** | Not yet — event-driven responses only | Heartbeat system and cron jobs for autonomous actions |
+| **Proactive features** | Cron scheduler with admin UI — create, edit, toggle, and manually trigger scheduled agent tasks | Heartbeat system and cron jobs for autonomous actions |
 
-**In short:** OpenClaw offers broader channel support and proactive capabilities. OpenPalm trades breadth for depth — every layer is designed to prevent the kind of [data exfiltration and prompt injection vulnerabilities](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/) that have been found in OpenClaw's skill ecosystem.
+**In short:** OpenClaw offers broader channel support. OpenPalm now matches proactive capabilities with its cron scheduler while maintaining depth-first security — every layer is designed to prevent the kind of [data exfiltration and prompt injection vulnerabilities](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/) that have been found in OpenClaw's skill ecosystem.
 
 ## Architecture at a glance
 
