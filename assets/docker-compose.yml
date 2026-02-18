@@ -57,8 +57,8 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-core:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/CONFIG/user.env
-      - ${OPENPALM_CONFIG_HOME}/CONFIG/secrets.env
+      - ${OPENPALM_CONFIG_HOME}/user.env
+      - ${OPENPALM_CONFIG_HOME}/secrets.env
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.jsonc
@@ -84,7 +84,6 @@ services:
     environment:
       - PORT=8080
       - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
-      - OPENCODE_CHANNEL_BASE_URL=http://127.0.0.1:4097
       - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
       - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
@@ -92,7 +91,6 @@ services:
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
-      - ${OPENPALM_STATE_HOME}/opencode-channel:/app/opencode-channel-state
     networks: [assistant_net]
     depends_on: [opencode-core]
 

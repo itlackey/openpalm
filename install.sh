@@ -330,10 +330,10 @@ mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
 
 # Config — user-editable configuration
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,CONFIG}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels}
 
 # State — runtime state, logs, workspace
-mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,opencode-channel,gateway,caddy,workspace}
+mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
 
 COMPOSE_FILE_PATH="$OPENPALM_STATE_HOME/docker-compose.yml"
@@ -367,9 +367,9 @@ for env_file in "$INSTALL_ASSETS_DIR"/config/channel-env/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
 
-# Runtime secrets file for opencode-core integrations
-seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/CONFIG/secrets.env"
-seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/CONFIG/user.env"
+# Runtime secrets and user overrides for opencode-core
+seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
+seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/user.env"
 
 echo ""
 echo "Directory structure created. Config seeded from defaults."

@@ -4,9 +4,7 @@ services:
 
 
   gateway:
-    build:
-      context: .
-      dockerfile: gateway/Dockerfile
+    build: ./gateway
 
   admin:
     build: ./admin

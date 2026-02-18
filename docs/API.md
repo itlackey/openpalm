@@ -6,7 +6,7 @@
 Health status for the gateway (internal).
 
 ### POST /channel/inbound
-Signed channel payload from adapters (internal). Gateway verifies a shared-secret HMAC and forwards to the isolated channel OpenCode runtime.
+Signed channel payload from adapters (internal). Gateway verifies a shared-secret HMAC and forwards to the OpenCode Core runtime for intake validation.
 
 Headers:
 - `x-channel-signature` (HMAC-SHA256)
@@ -27,9 +27,9 @@ Supported channels: `chat`, `discord`, `voice`, `telegram`
 
 Processing behavior:
 1. Gateway verifies HMAC and payload shape.
-2. Gateway sends a dedicated intake command to `opencode-channel` (`agent: channel-intake`).
+2. Gateway sends a dedicated intake command to `opencode-core` using the `channel-intake` agent (all tools denied).
 3. Gateway parses intake JSON (`valid`, `summary`, `reason`).
-4. If valid, gateway forwards only the summary to `opencode-core`.
+4. If valid, gateway forwards only the summary to `opencode-core` (default agent).
 
 Possible errors:
 - `400 invalid_payload` when payload fails shape validation (missing fields, invalid channel, text too long).
@@ -45,7 +45,7 @@ Gateway runtime knobs:
 
 Notes:
 - All inbound user traffic is routed through `/channel/inbound` only.
-- Gateway first calls `opencode-channel` to validate + summarize, then forwards valid summaries to `opencode-core`.
+- Gateway uses the `channel-intake` agent on `opencode-core` to validate + summarize, then forwards valid summaries to `opencode-core` (default agent).
 
 ---
 
@@ -141,7 +141,7 @@ Runtime behavior:
 - `POST /up/:service` — start a service
 - `POST /down/:service` — stop a service
 
-Allowed services: `opencode-core`, `opencode-channel`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
+Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
 
 ---
 

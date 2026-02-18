@@ -1,22 +1,21 @@
-<img src="assets/banner.png" alt="OpenPalm"  width="800" />  
+<img src="assets/banner.png" alt="OpenPalm" width="800" />
 
 <p>
-  <strong>A safety-first AI assistant platform you own and control.</strong><br/>
-  Multi-channel. Extensible. Defense in depth. One compose command away.
-</p>
-
-<p >
-  <a href="docs/architecture.md">Architecture</a> &middot;
-  <a href="docs/API.md">API Reference</a> &middot;
-  <a href="docs/admin-guide.md">Admin Guide</a> &middot;
-  <a href="docs/extensions-guide.md">Extensions</a>
+  <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
+  Talk to it from Discord, Telegram, web chat, or voice. It remembers what matters and forgets what it should.
 </p>
 
 ---
 
-## What is OpenPalm?
+## Why OpenPalm?
 
-OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that runs entirely in Docker. Connect it to Discord, Telegram, a web chat, or voice — every message flows through layered security controls before reaching the agent runtime. Long-term memory, an admin dashboard, and an extension gallery are built in.
+Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your conversations, your memory, your rules — nothing leaves your network unless you want it to.
+
+- **One command to install** — works with Docker, Podman, or OrbStack on Linux, macOS, or Windows.
+- **Connect your channels** — Discord, Telegram, web chat, and voice are built in. Add more without coding.
+- **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
+- **Admin dashboard** — manage everything from a browser: services, extensions, agent config, and scheduled tasks.
+- **Built for safety** — eight layers of security stand between the internet and your assistant's actions.
 
 ## Get started
 
@@ -24,125 +23,118 @@ OpenPalm is a self-hosted AI assistant platform built on Bun/TypeScript that run
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 ```
 
-The installer auto-detects `docker`, `podman`, or `orbstack`, pulls images, prepares local assets, shows a startup wait indicator, and opens the admin setup wizard as soon as it is online. Early in setup, choose whether access is host-only or LAN-wide; host-only mode tightens both Caddy route filtering and compose bind addresses.
+The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit.
 
-## Key features
+During setup you choose whether your assistant is accessible only from this machine or from your local network. You can change this later from the admin dashboard.
 
-**Multi-channel ingress** — Chat, Discord, Voice, and Telegram adapters plug in as lightweight containers. Each one signs payloads with HMAC and forwards through a single gateway. Add channels without touching core logic.
+## What you get
 
-**Dual-runtime isolation** — Untrusted channel input is validated by a locked-down OpenCode runtime (all tools denied). Only validated summaries reach the full agent runtime with approval gates.
+### Talk from anywhere
 
-**Long-term memory** — OpenMemory provides vector-backed recall via MCP. The agent remembers context across sessions while policy skills prevent secret storage.
+Connect Discord, Telegram, a web chat widget, or a voice interface. Each channel runs as a lightweight adapter — your assistant's core logic stays the same regardless of where the message comes from.
 
-**Admin dashboard & gallery** — A built-in web UI for managing services, browsing curated extensions, installing plugins from npm, toggling channel access, editing agent config, and scheduling cron jobs — all behind admin password authentication set during install.
+### It remembers
 
-**Cron scheduler** — Schedule recurring tasks that run on the core agent. Create jobs with standard 5-field cron expressions, toggle them on/off, trigger them manually, and monitor results — all from the admin UI or API. Jobs execute directly against the OpenCode core runtime.
+OpenPalm includes a built-in memory system (powered by OpenMemory). Your assistant recalls past conversations, preferences, and context. A strict policy layer ensures passwords, tokens, and private keys are never saved to memory.
 
-**Extension system** — Install OpenCode plugins, skills, and container services through the admin UI, API, or CLI.
+### Admin dashboard
 
-**Defense in depth** — Eight security layers from network edge to agent behavior:
+A web-based control panel lets you:
+- Start, stop, and restart services
+- Browse and install extensions from a curated gallery or npm
+- Edit agent configuration with validation
+- Toggle channel access between private and public
+- Create and manage scheduled tasks (cron jobs)
+- Monitor system health
+
+Everything is password-protected. The admin panel is only accessible from your local network.
+
+### Extensions
+
+Add capabilities through the admin UI, API, or command line. Extensions include OpenCode plugins, behavioral skills, and container services. Install from a curated gallery or directly from npm.
+
+### Scheduled tasks
+
+Set up recurring jobs that run on your assistant — daily summaries, periodic checks, maintenance tasks. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
+
+## Security
+
+OpenPalm is designed with defense in depth — multiple independent layers so that no single failure exposes the system.
 
 | Layer | What it does |
 |---|---|
-| Caddy reverse proxy | LAN-only restriction for admin; TLS termination |
-| Gateway | HMAC verification, rate limiting (120 req/min), audit logging |
-| Runtime isolation | Channel runtime: all tools denied; Core runtime: approval gates |
-| Policy plugin | Blocks tool calls containing secrets |
-| Agent rules | Behavioral constraints in AGENTS.md |
-| Skills | SOPs: ChannelIntake, RecallFirst, MemoryPolicy, ActionGating |
-| Admin auth | Password-protected admin API (LAN only) |
-| Controller isolation | Only one container touches the container engine socket |
+| **Network boundary** | Caddy reverse proxy restricts admin access to your local network; TLS encryption |
+| **Signed messages** | Every channel message is cryptographically signed and verified before processing |
+| **Rate limiting** | Per-user throttling prevents abuse (120 requests/minute) |
+| **Input validation** | Incoming messages are validated by a restricted agent that cannot run commands or edit files |
+| **Approval gates** | The main agent requires approval before running tools, editing files, or accessing the web |
+| **Secret protection** | A policy plugin blocks any tool call that contains passwords or tokens |
+| **Behavioral rules** | Hard-coded rules prevent data exfiltration and require confirmation for destructive actions |
+| **Isolated control plane** | Only one container can manage the Docker runtime — the rest have no access |
 
-## OpenPalm vs OpenClaw
+For a detailed breakdown, see the [Security Guide](docs/security.md).
 
-OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but takes a fundamentally different approach to security and deployment. Where OpenClaw runs as a local daemon with broad system access, OpenPalm isolates every component in its own container with explicit, layered controls.
-
-| | OpenPalm | OpenClaw |
-|---|---|---|
-| **Architecture** | Containerized microservices — each service is an isolated Docker container on a private network | Local daemon with WebSocket control plane — agent runs directly on the host |
-| **Channel security** | HMAC-signed payloads, gateway signature verification, and isolated intake validation | DM pairing codes, opt-in open DM policy |
-| **Runtime isolation** | Two separate runtimes: locked-down channel intake (all tools denied) + gated core agent | Single runtime with elevated bash toggled per session |
-| **Extension safety** | Admin-authenticated install via curated gallery or npm, atomic config updates with backup | Auto-discovery from ClawHub registry, skills pulled dynamically |
-| **Admin controls** | Dedicated admin API + web dashboard behind password auth on LAN-only network | Chat commands (`/status`, `/reset`, `/mesh`) sent in messaging channels |
-| **Memory policy** | Explicit-save-only with secret detection, policy skills, and redaction | Session-based context with `/compact` compression |
-| **Container management** | Controller service (only container with engine socket), admin API for lifecycle ops | Direct host access — agent can run shell commands natively |
-| **Deployment** | Single compose up command (`docker/podman/orbstack`) — services, networking, and secrets generated automatically | Daemon install via `onboard --install-daemon`, multiple hosting modes (local, VPS, Tailscale) |
-| **Channels** | Chat, Discord, Voice, Telegram (containerized adapters) | WhatsApp, Telegram, Slack, Discord, Signal, iMessage, Teams, Google Chat, WebChat, and more |
-| **Proactive features** | Cron scheduler with admin UI — create, edit, toggle, and manually trigger scheduled agent tasks | Heartbeat system and cron jobs for autonomous actions |
-
-**In short:** OpenPalm provides depth-first security — every layer is designed to prevent the kind of [data exfiltration and prompt injection vulnerabilities](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/) that have been found in OpenClaw's skill ecosystem.
-
-## Architecture at a glance
+## How it works
 
 ```
-Channels (chat, discord, voice, telegram)
-    │  HMAC-signed payloads
-    ▼
-Gateway (includes isolated OpenCode intake)
-    │  validate/summarize with deny-by-default permissions
-    ▼
-OpenCode Core (full agent) ◀──▶ Open Memory (MCP)
-    │
-Admin App ──▶ Controller ──▶ Docker Compose
+Channels (Discord, Telegram, Chat, Voice)
+    |  signed messages
+    v
+Gateway (verify, rate-limit, audit)
+    |  validate with locked-down agent
+    v
+OpenCode Core (full assistant) <--> Open Memory
+    |
+Admin Dashboard --> Controller --> Docker Compose
 ```
 
-The controller uses runtime settings persisted in `.env` (`OPENPALM_CONTAINER_*` and `OPENPALM_COMPOSE_*`) so admin lifecycle actions always use the same platform selected during install.
+Every component runs in its own container on a private network. The gateway verifies message signatures and validates input before anything reaches your assistant. The admin dashboard and controller manage the system lifecycle.
 
-Every service is a distinct container on a private Docker network. Caddy sits in front, routing `/channels/*` to adapters and `/admin/*` to the dashboard. See the [full architecture](docs/architecture.md) for the container inventory, Mermaid diagram, and routing table.
+For the full architecture, container inventory, and routing details, see the [Architecture Guide](docs/architecture.md).
 
 ## Configuration
 
-All persistent data follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/):
+All data is organized following standard conventions:
 
-| Category | Default path | Purpose |
+| What | Where | Purpose |
 |---|---|---|
-| Data | `~/.local/share/openpalm/` | Databases, vectors, blobs |
-| Config | `~/.config/openpalm/` | Agent configs, Caddyfile, channel env |
-| State | `~/.local/state/openpalm/` | Runtime state, audit logs, workspace |
+| Databases & storage | `~/.local/share/openpalm/` | PostgreSQL, vector store, shared files |
+| Configuration | `~/.config/openpalm/` | Agent config, channel settings, secrets |
+| Runtime state | `~/.local/state/openpalm/` | Logs, audit trail, workspace |
 
-Override with `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, or `OPENPALM_STATE_HOME` in `.env`.
+The installer sets these up automatically. Override the paths with environment variables if you prefer a different location.
 
-Container runtime selection is also persisted in `.env`:
-- `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
-- `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND`
-- `OPENPALM_CONTAINER_SOCKET_PATH` / `OPENPALM_CONTAINER_SOCKET_URI`
+## OpenPalm vs OpenClaw
 
-`assets/system.env` is system-managed by the installer and should only be edited manually by experienced users.
+OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but takes a fundamentally different approach to security. Where OpenClaw runs as a local daemon with broad system access, OpenPalm isolates every component in its own container with explicit, layered controls.
 
-Use `assets/user.env` (installed to `$OPENPALM_CONFIG_HOME/CONFIG/user.env`) for user-specific overrides.
+| | OpenPalm | OpenClaw |
+|---|---|---|
+| **Runs as** | Isolated Docker containers on a private network | Local daemon with direct host access |
+| **Message security** | Cryptographically signed and verified | DM pairing codes |
+| **Tool access** | Approval gates + locked-down intake validation | Elevated bash toggled per session |
+| **Extensions** | Admin-authenticated install with curated gallery | Auto-discovery from registry |
+| **Admin** | Web dashboard with password auth (LAN only) | Chat commands in messaging channels |
+| **Memory** | Explicit-save-only with secret detection | Session-based with compression |
+| **Deployment** | Single compose command (docker/podman/orbstack) | Daemon install with multiple modes |
 
-### Optional: Enable LAN + SSH access for OpenCode core
-
-To use the OpenCode TUI from another machine on your LAN, set these in your `.env`:
-
-```bash
-OPENCODE_CORE_BIND_ADDRESS=0.0.0.0
-OPENCODE_ENABLE_SSH=1
-OPENCODE_CORE_SSH_BIND_ADDRESS=0.0.0.0
-OPENCODE_CORE_SSH_PORT=2222
-```
-
-Then add your public key(s) to:
-
-`$OPENPALM_CONFIG_HOME/opencode-core/ssh/authorized_keys`
-
-After restart, remote LAN clients can target `http://<host-lan-ip>:4096` for OpenCode server access, and SSH to `ssh -p 2222 root@<host-lan-ip>` (key auth).
+For more context: [data exfiltration and prompt injection vulnerabilities found in OpenClaw's skill ecosystem](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/).
 
 ## Documentation
 
-| | |
+| Guide | What's inside |
 |---|---|
-| [Architecture](docs/architecture.md) | Container inventory, data flow, URL routing, storage layout |
+| [Architecture](docs/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](docs/API.md) | All service endpoints: gateway, admin, controller, channels |
-| [Admin Guide](docs/admin-guide.md) | Installer, settings UI, admin authentication |
+| [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |
 | [Extensions Guide](docs/extensions-guide.md) | Plugin system, gallery, building channel plugins |
 | [Docker Compose Guide](docs/docker-compose-guide.md) | Hosting, observability, extending the stack |
 | [Implementation Guide](docs/implementation-guide.md) | Design rationale and build order |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 
-## Development
+## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local editing, building, and validation workflows.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and workflows.
 
 ## License
 
