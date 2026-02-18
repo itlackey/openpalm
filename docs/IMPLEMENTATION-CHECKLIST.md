@@ -3,11 +3,21 @@
 ## Implementation guide (docs/implementation-guide.md)
 - [x] OpenMemory private service wiring in compose
 - [x] OpenCode runtime service and config
-- [x] OpenMemory MCP referenced from OpenCode config
+- [x] OpenMemory HTTP API plugin registered in OpenCode config
+- [x] OpenMemory MCP disabled by default (HTTP API plugin replaces MCP runtime path)
 - [x] Gateway `/channel/inbound` and `/health`
 - [x] Tool firewall (allowlist, approval gates)
 - [x] Observability/audit event logging
 - [x] Rules + skills for recall-first + memory policy + action gating
+
+## OpenMemory HTTP API integration (opencode/.opencode/plugins/)
+- [x] openmemory-client.ts — REST client (queryMemory, addMemory, addTemporalFact)
+- [x] openmemory-http.ts — pipeline plugin (pre-turn recall, post-turn write-back, compaction)
+- [x] Secret detection prevents persisting sensitive data
+- [x] Write-back classifier (save-worthy vs ignored)
+- [x] Bounded recall injection (RECALL_LIMIT, RECALL_MAX_CHARS)
+- [x] Fully configurable via env vars and disableable (OPENPALM_MEMORY_MODE)
+- [x] Unit tests (20 tests covering client, classifier, formatting, config, secrets)
 
 ## Docker Compose guide (docs/docker-compose-guide.md)
 - [x] Single compose stack with Gateway + OpenCode + OpenMemory

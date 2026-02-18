@@ -17,7 +17,7 @@
    - Emit structured events/logs.
 
 ### Data flow
-User message -> Channel Adapter -> **Gateway** -> **OpenCode Server** (channel-intake agent: validate/summarize) -> **Gateway** -> **OpenCode Server** (default agent: model/tools) -> **OpenMemory (MCP)** -> response -> Channel Adapter.
+User message -> Channel Adapter -> **Gateway** -> **OpenCode Server** (channel-intake agent: validate/summarize) -> **Gateway** -> **OpenCode Server** (default agent: model/tools) -> **OpenMemory (HTTP API)** -> response -> Channel Adapter.
 
 ---
 
@@ -57,12 +57,13 @@ Keep these co-located with your project:
 
 ---
 
-## 3) Configure OpenCode to use OpenMemory via MCP
+## 3) Configure OpenCode to use OpenMemory
 
 ### What you’re doing
-- Register OpenMemory as an MCP server in OpenCode config.
-- Expose OpenMemory’s memory tools to the model.
-- Wrap memory calls with policy (skills + gateway checks).
+- Register the `openmemory-http` plugin in OpenCode config.
+- The plugin calls OpenMemory’s REST API directly (no MCP in the runtime path).
+- Memory recall is injected automatically before each turn; save-worthy items are persisted after each turn.
+- Session compaction preserves critical state via the `experimental.session.compacting` hook.
 
 ### `opencode.jsonc` template (shape)
 ```jsonc
@@ -75,16 +76,37 @@ Keep these co-located with your project:
     "webfetch": "ask"
   },
 
+  // MCP transport kept for optional external tooling; disabled by default
+  // because runtime memory now uses the HTTP API plugin.
   "mcp": {
     "openmemory": {
-      "enabled": true
+      "enabled": false
       // transport details (SSE URL) per your environment
     }
   },
 
-  "plugin": ["./.opencode/plugins/policy-and-telemetry.ts"]
+  "plugin": [
+    "./.opencode/plugins/policy-and-telemetry.ts",
+    "./.opencode/plugins/openmemory-http.ts"
+  ]
 }
 ```
+
+### Environment variables (all optional — defaults work inside Docker Compose)
+| Variable | Default | Description |
+|---|---|---|
+| `OPENPALM_MEMORY_MODE` | `api` | Set to `api` to enable the HTTP plugin. Any other value disables it. |
+| `OPENMEMORY_BASE_URL` | `http://openmemory:8765` | OpenMemory REST endpoint |
+| `OPENMEMORY_API_KEY` | *(empty)* | Bearer token for OpenMemory (if auth is enabled) |
+| `RECALL_LIMIT` | `5` | Max memories to inject per turn (1–50) |
+| `RECALL_MAX_CHARS` | `2000` | Max characters for the recall context block (100–20 000) |
+| `WRITEBACK_ENABLED` | `true` | Enable automatic write-back of save-worthy items |
+| `TEMPORAL_ENABLED` | `false` | Enable temporal knowledge graph writes |
+
+### How it works
+1. **Pre-turn recall** — On each user message the plugin queries OpenMemory and injects a `<recalled_memories>` block into the model context.
+2. **Post-turn write-back** — After the assistant responds, the plugin persists any save-worthy content (preferences, facts, decisions, TODOs, project state) while blocking secrets.
+3. **Session compaction** — When OpenCode compacts a session, the plugin re-injects `must-keep` tagged memories so they survive the compaction.
 
 ### Guardrail note (design for defense in depth)
 Assume policy hooks may not always intercept **every** tool call path in every build.

@@ -33,6 +33,7 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 
 - Core runtime policy blocks permission widening in config editor flows.
 - Secret-aware memory policy and action-gating skills are included by default.
+- The `openmemory-http` plugin enforces secret detection on all write-back operations and bounds context injection to prevent token exhaustion.
 - Plugin/extension risk levels and permission notes are surfaced in admin.
 
 **Why:** constrain high-risk operations and make capability risks explicit before enabling extensions.
