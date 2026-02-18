@@ -5,6 +5,7 @@ import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
 import { CronStore, validateCron } from "./cron-store.ts";
+import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import type { GalleryCategory } from "./gallery.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
@@ -158,76 +159,20 @@ function setAccessScope(scope: "host" | "lan") {
 }
 
 function setRuntimeBindScope(scope: "host" | "lan") {
-  const bindAddress = scope === "host" ? "127.0.0.1" : "0.0.0.0";
-  // Setup scope intentionally normalizes published bind addresses to one profile.
-  // Advanced per-service overrides can still be reapplied in user.env afterward.
-  const entries = {
-    OPENPALM_INGRESS_BIND_ADDRESS: bindAddress,
-    OPENPALM_OPENMEMORY_BIND_ADDRESS: bindAddress,
-    OPENCODE_CORE_BIND_ADDRESS: bindAddress,
-    OPENCODE_CORE_SSH_BIND_ADDRESS: bindAddress
-  };
-  const lines = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8").split(/\r?\n/) : [];
-  const seen = new Set<string>();
-  const next = lines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !line.includes("=")) return line;
-    const [key] = line.split("=", 1);
-    if (key in entries) {
-      seen.add(key);
-      return `${key}=${entries[key as keyof typeof entries]}`;
-    }
-    return line;
-  });
-  for (const [key, value] of Object.entries(entries)) {
-    if (!seen.has(key)) next.push(`${key}=${value}`);
-  }
-  writeFileSync(RUNTIME_ENV_PATH, next.join("\n").replace(/\n+$/, "") + "\n", "utf8");
+  const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
+  const next = setRuntimeBindScopeContent(current, scope);
+  writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
 }
 
 function updateRuntimeEnv(entries: Record<string, string | undefined>) {
-  const lines = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8").split(/\r?\n/) : [];
-  const managedKeys = new Set(Object.keys(entries));
-  const next: string[] = [];
-  const seen = new Set<string>();
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || !trimmed.includes("=") || trimmed.startsWith("#")) {
-      next.push(line);
-      continue;
-    }
-    const [key] = line.split("=", 1);
-    if (!managedKeys.has(key)) {
-      next.push(line);
-      continue;
-    }
-    seen.add(key);
-    const value = entries[key];
-    if (typeof value === "string" && value.length > 0) {
-      next.push(`${key}=${value}`);
-    }
-  }
-
-  for (const [key, value] of Object.entries(entries)) {
-    if (seen.has(key)) continue;
-    if (typeof value === "string" && value.length > 0) next.push(`${key}=${value}`);
-  }
-
-  writeFileSync(RUNTIME_ENV_PATH, next.join("\n").replace(/\n+$/, "") + "\n", "utf8");
+  const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
+  const next = updateRuntimeEnvContent(current, entries);
+  writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
 }
 
 function readRuntimeEnv() {
-  const out: Record<string, string> = {};
-  if (!existsSync(RUNTIME_ENV_PATH)) return out;
-  const lines = readFileSync(RUNTIME_ENV_PATH, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || !trimmed.includes("=") || trimmed.startsWith("#")) continue;
-    const [k, ...rest] = trimmed.split("=");
-    out[k.trim()] = rest.join("=").trim();
-  }
-  return out;
+  if (!existsSync(RUNTIME_ENV_PATH)) return {};
+  return parseRuntimeEnvContent(readFileSync(RUNTIME_ENV_PATH, "utf8"));
 }
 
 function getConfiguredServiceInstances() {
@@ -252,8 +197,7 @@ async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: st
 }
 
 function normalizeServiceInstanceUrl(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.trim();
+  return sanitizeEnvScalar(value);
 }
 
 const server = Bun.serve({

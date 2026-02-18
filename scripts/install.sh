@@ -140,32 +140,42 @@ bootstrap_install_assets() {
 upsert_env_var() {
   local key="$1"
   local value="$2"
-  python3 - "$key" "$value" <<'PY'
-import pathlib
-import re
-import sys
+  local tmp
+  tmp="$(mktemp)"
 
-key = sys.argv[1]
-value = sys.argv[2]
-env_file = pathlib.Path('.env')
+  if [ -f .env ]; then
+    awk -v key="$key" -v value="$value" '
+      BEGIN { updated = 0 }
+      $0 ~ "^" key "=" && updated == 0 {
+        print key "=" value
+        updated = 1
+        next
+      }
+      { print }
+      END {
+        if (updated == 0) print key "=" value
+      }
+    ' .env > "$tmp"
+  else
+    printf '%s=%s\n' "$key" "$value" > "$tmp"
+  fi
 
-if env_file.exists():
-    text = env_file.read_text()
-else:
-    text = ""
+  mv "$tmp" .env
+}
 
-pattern = rf"(?m)^{re.escape(key)}=.*$"
-replacement = f"{key}={value}"
+generate_token() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n' | cut -c1-64
+    return
+  fi
 
-if re.search(pattern, text):
-    text = re.sub(pattern, replacement, text, count=1)
-else:
-    if text and not text.endswith("\n"):
-        text += "\n"
-    text += replacement + "\n"
+  if command -v base64 >/dev/null 2>&1; then
+    head -c 48 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n' | cut -c1-64
+    return
+  fi
 
-env_file.write_text(text)
-PY
+  echo "Unable to generate secure tokens. Install openssl (preferred) or base64 coreutils and rerun." >&2
+  exit 1
 }
 
 compose_version_ok() {
@@ -315,23 +325,14 @@ echo "  State  → $OPENPALM_STATE_HOME"
 # ── Generate .env if missing ───────────────────────────────────────────────
 if [ ! -f .env ]; then
   cp "$INSTALL_ASSETS_DIR/system.env" .env
-  python3 - <<'PY'
-import secrets, pathlib
-p = pathlib.Path('.env')
-text = p.read_text()
-for marker in [
-    'replace-with-long-random-token',
-    'replace-with-controller-token',
-    'replace-with-pg-password',
-    'replace-with-channel-chat-secret',
-    'replace-with-channel-discord-secret',
-    'replace-with-channel-voice-secret',
-    'replace-with-channel-telegram-secret',
-]:
-    text = text.replace(marker, secrets.token_urlsafe(36), 1)
-p.write_text(text)
-print('Created .env with generated secure defaults.')
-PY
+  upsert_env_var ADMIN_TOKEN "$(generate_token)"
+  upsert_env_var CONTROLLER_TOKEN "$(generate_token)"
+  upsert_env_var POSTGRES_PASSWORD "$(generate_token)"
+  upsert_env_var CHANNEL_CHAT_SECRET "$(generate_token)"
+  upsert_env_var CHANNEL_DISCORD_SECRET "$(generate_token)"
+  upsert_env_var CHANNEL_VOICE_SECRET "$(generate_token)"
+  upsert_env_var CHANNEL_TELEGRAM_SECRET "$(generate_token)"
+  echo "Created .env with generated secure defaults."
 fi
 
 # Write resolved configuration into .env (idempotent)

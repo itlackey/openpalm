@@ -44,6 +44,46 @@ const DEFAULT_STATE: SetupState = {
   installedExtensions: []
 };
 
+function sanitizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function sanitizeServiceInstances(value: unknown): SetupState["serviceInstances"] {
+  const source = (value && typeof value === "object") ? value as Partial<SetupState["serviceInstances"]> : {};
+  return {
+    openmemory: typeof source.openmemory === "string" ? source.openmemory : "",
+    psql: typeof source.psql === "string" ? source.psql : "",
+    qdrant: typeof source.qdrant === "string" ? source.qdrant : "",
+  };
+}
+
+function sanitizeSteps(value: unknown): SetupState["steps"] {
+  const source = (value && typeof value === "object") ? value as Partial<SetupState["steps"]> : {};
+  return {
+    welcome: source.welcome === true,
+    accessScope: source.accessScope === true,
+    serviceInstances: source.serviceInstances === true,
+    healthCheck: source.healthCheck === true,
+    security: source.security === true,
+    channels: source.channels === true,
+    extensions: source.extensions === true,
+  };
+}
+
+function normalizeState(parsed: Partial<SetupState>): SetupState {
+  const accessScope = parsed.accessScope === "lan" ? "lan" : "host";
+  return {
+    completed: parsed.completed === true,
+    completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
+    accessScope,
+    serviceInstances: sanitizeServiceInstances(parsed.serviceInstances),
+    steps: sanitizeSteps(parsed.steps),
+    enabledChannels: sanitizeStringArray(parsed.enabledChannels),
+    installedExtensions: sanitizeStringArray(parsed.installedExtensions),
+  };
+}
+
 export class SetupManager {
   private path: string;
 
@@ -54,22 +94,12 @@ export class SetupManager {
 
   getState(): SetupState {
     if (!existsSync(this.path)) return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps } };
-    const parsed = JSON.parse(readFileSync(this.path, "utf8")) as Partial<SetupState>;
-    return {
-      ...DEFAULT_STATE,
-      ...parsed,
-      accessScope: parsed.accessScope ?? DEFAULT_STATE.accessScope,
-      serviceInstances: {
-        ...DEFAULT_STATE.serviceInstances,
-        ...(parsed.serviceInstances ?? {}),
-      },
-      steps: {
-        ...DEFAULT_STATE.steps,
-        ...(parsed.steps ?? {}),
-      },
-      enabledChannels: parsed.enabledChannels ?? [],
-      installedExtensions: parsed.installedExtensions ?? [],
-    };
+    try {
+      const parsed = JSON.parse(readFileSync(this.path, "utf8")) as Partial<SetupState>;
+      return normalizeState(parsed);
+    } catch {
+      return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps }, serviceInstances: { ...DEFAULT_STATE.serviceInstances } };
+    }
   }
 
   save(state: SetupState) {

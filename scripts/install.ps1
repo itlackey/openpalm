@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("docker", "podman", "orbstack")]
+  [ValidateSet("docker", "podman")]
   [string]$Runtime,
   [switch]$NoOpen
 )
@@ -178,7 +178,7 @@ try {
       throw "OrbStack is only supported on macOS."
     }
     default {
-      throw "Unsupported runtime '$OpenPalmContainerPlatform'. Use docker or podman."
+      throw "Unsupported runtime '$OpenPalmContainerPlatform' on Windows. Use docker or podman."
     }
   }
 
@@ -201,22 +201,13 @@ try {
 
   if (-not (Test-Path ".env")) {
     Copy-Item (Join-Path $InstallAssetsDir "system.env") ".env"
-    $envText = Get-Content -LiteralPath ".env" -Raw
-    $markers = @(
-      "replace-with-long-random-token",
-      "replace-with-controller-token",
-      "replace-with-pg-password",
-      "replace-with-channel-chat-secret",
-      "replace-with-channel-discord-secret",
-      "replace-with-channel-voice-secret",
-      "replace-with-channel-telegram-secret"
-    )
-
-    foreach ($marker in $markers) {
-      $envText = $envText -replace [regex]::Escape($marker), (New-Token)
-    }
-
-    Set-Content -LiteralPath ".env" -Value $envText
+    Upsert-EnvVar ADMIN_TOKEN (New-Token)
+    Upsert-EnvVar CONTROLLER_TOKEN (New-Token)
+    Upsert-EnvVar POSTGRES_PASSWORD (New-Token)
+    Upsert-EnvVar CHANNEL_CHAT_SECRET (New-Token)
+    Upsert-EnvVar CHANNEL_DISCORD_SECRET (New-Token)
+    Upsert-EnvVar CHANNEL_VOICE_SECRET (New-Token)
+    Upsert-EnvVar CHANNEL_TELEGRAM_SECRET (New-Token)
     Write-Host "Created .env with generated secure defaults."
   }
 
