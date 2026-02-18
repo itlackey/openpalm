@@ -109,6 +109,23 @@ Container runtime selection is also persisted in `.env`:
 
 See [`assets/.env.example`](assets/.env.example) for all available settings and optional override examples.
 
+### Optional: Enable LAN + SSH access for OpenCode core
+
+To use the OpenCode TUI from another machine on your LAN, set these in your `.env`:
+
+```bash
+OPENCODE_CORE_BIND_ADDRESS=0.0.0.0
+OPENCODE_ENABLE_SSH=1
+OPENCODE_CORE_SSH_BIND_ADDRESS=0.0.0.0
+OPENCODE_CORE_SSH_PORT=2222
+```
+
+Then add your public key(s) to:
+
+`$OPENPALM_CONFIG_HOME/opencode-core/ssh/authorized_keys`
+
+After restart, remote LAN clients can target `http://<host-lan-ip>:4096` for OpenCode server access, and SSH to `ssh -p 2222 root@<host-lan-ip>` (key auth).
+
 ## Documentation
 
 | | |

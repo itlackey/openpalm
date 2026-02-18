@@ -58,7 +58,11 @@ services:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.jsonc
       - OPENCODE_PORT=4096
-    ports: ["4096:4096"]
+      - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}
+    # Bind addresses default to localhost; set *_BIND_ADDRESS=0.0.0.0 to allow LAN access.
+    ports:
+      - "${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096"
+      - "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22"
     volumes:
       - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
       - ${OPENPALM_STATE_HOME}/opencode-core:/state
