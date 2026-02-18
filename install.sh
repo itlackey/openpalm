@@ -107,10 +107,10 @@ bootstrap_install_assets() {
     exit 1
   fi
 
-  if [ -d "$src_dir/assets" ]; then
-    INSTALL_ASSETS_DIR="$src_dir/assets"
-  else
-    INSTALL_ASSETS_DIR="$src_dir"
+  INSTALL_ASSETS_DIR="$src_dir/assets"
+  if [ ! -d "$INSTALL_ASSETS_DIR" ]; then
+    echo "Installer assets directory missing in archive: $INSTALL_ASSETS_DIR"
+    exit 1
   fi
 }
 
@@ -274,9 +274,6 @@ for marker in [
     'replace-with-channel-discord-secret',
     'replace-with-channel-voice-secret',
     'replace-with-channel-telegram-secret',
-    'replace-with-channel-secret',
-    'replace-with-inbound-token',
-    'replace-with-telegram-webhook-secret',
 ]:
     text = text.replace(marker, secrets.token_urlsafe(36), 1)
 p.write_text(text)

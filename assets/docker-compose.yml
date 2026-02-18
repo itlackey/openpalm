@@ -55,7 +55,6 @@ services:
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.jsonc
-      - OPENCODE_PROFILE=core
       - OPENCODE_PORT=4096
     ports: ["4096:4096"]
     volumes:
@@ -73,7 +72,6 @@ services:
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config
       - OPENCODE_CONFIG=/config/opencode.channel.jsonc
-      - OPENCODE_PROFILE=channel
       - OPENCODE_PORT=4097
     volumes:
       - ${OPENPALM_STATE_HOME}/opencode-channel:/state
