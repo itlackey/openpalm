@@ -76,7 +76,9 @@ bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
     && [ -f "$ROOT_DIR/.env.example" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
-    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ]; then
+    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
+    && [ -f "$ASSETS_DIR/config/opencode-channel/opencode.channel.jsonc" ] \
+    && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
     INSTALL_ASSETS_DIR="$ASSETS_DIR"
     return
   fi
@@ -337,9 +339,9 @@ echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE_PATH" up -d
+"${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" up -d
 
-echo "If you want channel adapters too: ${COMPOSE_CMD[*]} -f $COMPOSE_FILE_PATH --profile channels up -d"
+echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH --profile channels up -d"
 
 HEALTH_URL="http://localhost:80/health"
 SETUP_URL="http://localhost/admin"
