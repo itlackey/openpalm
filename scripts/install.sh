@@ -63,7 +63,21 @@ detect_os() {
   esac
 }
 
+detect_host_arch() {
+  local uname_m
+  uname_m="$(uname -m 2>/dev/null || echo unknown)"
+  case "$uname_m" in
+    x86_64|amd64) echo "amd64" ;;
+    arm64|aarch64) echo "arm64" ;;
+    *)
+      echo "Unsupported CPU architecture '$uname_m'. Defaulting to amd64 images." >&2
+      echo "amd64"
+      ;;
+  esac
+}
+
 OS_NAME="$(detect_os)"
+OPENPALM_HOST_ARCH="$(detect_host_arch)"
 OPENPALM_REPO_OWNER="${OPENPALM_REPO_OWNER:-itlackey}"
 OPENPALM_REPO_NAME="${OPENPALM_REPO_NAME:-openpalm}"
 OPENPALM_INSTALL_REF="${OPENPALM_INSTALL_REF:-main}"
@@ -264,6 +278,7 @@ if ! compose_version_ok "$OPENPALM_COMPOSE_BIN" "$OPENPALM_COMPOSE_SUBCOMMAND"; 
 fi
 
 OPENPALM_CONTAINER_SOCKET_URI="unix://$OPENPALM_CONTAINER_SOCKET_IN_CONTAINER"
+OPENPALM_IMAGE_TAG="${OPENPALM_IMAGE_TAG:-latest-$OPENPALM_HOST_ARCH}"
 
 COMPOSE_CMD=("$OPENPALM_COMPOSE_BIN")
 if [ -n "$OPENPALM_COMPOSE_SUBCOMMAND" ]; then
@@ -271,6 +286,7 @@ if [ -n "$OPENPALM_COMPOSE_SUBCOMMAND" ]; then
 fi
 
 echo "Detected OS: $OS_NAME"
+echo "Detected CPU architecture: $OPENPALM_HOST_ARCH"
 echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
 
@@ -328,6 +344,7 @@ upsert_env_var OPENPALM_COMPOSE_SUBCOMMAND "$OPENPALM_COMPOSE_SUBCOMMAND"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_PATH "$OPENPALM_CONTAINER_SOCKET_PATH"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_IN_CONTAINER "$OPENPALM_CONTAINER_SOCKET_IN_CONTAINER"
 upsert_env_var OPENPALM_CONTAINER_SOCKET_URI "$OPENPALM_CONTAINER_SOCKET_URI"
+upsert_env_var OPENPALM_IMAGE_TAG "$OPENPALM_IMAGE_TAG"
 
 # ── Create XDG directory trees ─────────────────────────────────────────────
 # Data — persistent storage (databases, blobs)
