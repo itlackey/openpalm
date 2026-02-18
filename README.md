@@ -1,6 +1,6 @@
-<p align="center">
-  <img src="docs/file_000000002d98722f8087977054954936.png" alt="OpenPalm" width="200" />
-</p>
+
+  <img src="docs/file_000000002d98722f8087977054954936.png" alt="OpenPalm" width="200" style="float: left" />
+
 
 <h1 align="center">OpenPalm</h1>
 
