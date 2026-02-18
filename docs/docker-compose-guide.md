@@ -7,7 +7,8 @@
 ```
 openpalm/
   assets/
-    .env.example
+    system.env
+    user.env
     docker-compose.yml
     caddy/
     config/
@@ -39,7 +40,8 @@ openpalm/
 - `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`
 
-For local development, start by copying `assets/.env.example` to `.env`.
+For local development, start by copying `assets/system.env` to `.env`.
+Treat `system.env` as installer/system-managed (advanced users only), and put user-specific overrides in `assets/user.env`.
 
 The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.dev.yml` on top. Key design points:
 

@@ -74,7 +74,8 @@ fi
 
 bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
-    && [ -f "$ASSETS_DIR/.env.example" ] \
+    && [ -f "$ASSETS_DIR/system.env" ] \
+    && [ -f "$ASSETS_DIR/user.env" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
     && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
     && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
@@ -292,7 +293,7 @@ echo "  State  → $OPENPALM_STATE_HOME"
 
 # ── Generate .env if missing ───────────────────────────────────────────────
 if [ ! -f .env ]; then
-  cp "$INSTALL_ASSETS_DIR/.env.example" .env
+  cp "$INSTALL_ASSETS_DIR/system.env" .env
   python3 - <<'PY'
 import secrets, pathlib
 p = pathlib.Path('.env')
@@ -368,6 +369,7 @@ done
 
 # Runtime secrets file for opencode-core integrations
 seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/CONFIG/secrets.env"
+seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/CONFIG/user.env"
 
 echo ""
 echo "Directory structure created. Config seeded from defaults."

@@ -53,6 +53,7 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/openpalm-opencode-core:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
+      - ${OPENPALM_CONFIG_HOME}/CONFIG/user.env
       - ${OPENPALM_CONFIG_HOME}/CONFIG/secrets.env
     environment:
       - OPENCODE_CONFIGURATION_DIRECTORY=/config

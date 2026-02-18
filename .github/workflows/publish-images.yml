@@ -8,7 +8,8 @@ on:
     paths:
       - ".github/workflows/publish-images.yml"
       - "assets/docker-compose.yml"
-      - "assets/.env.example"
+      - "assets/system.env"
+      - "assets/user.env"
       - "docker-compose.dev.yml"
       - "opencode/**"
       - "opencode-channel/**"

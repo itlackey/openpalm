@@ -107,7 +107,9 @@ Container runtime selection is also persisted in `.env`:
 - `OPENPALM_COMPOSE_BIN` / `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` / `OPENPALM_CONTAINER_SOCKET_URI`
 
-See [`assets/.env.example`](assets/.env.example) for all available settings and optional override examples.
+`assets/system.env` is system-managed by the installer and should only be edited manually by experienced users.
+
+Use `assets/user.env` (installed to `$OPENPALM_CONFIG_HOME/CONFIG/user.env`) for user-specific overrides.
 
 ### Optional: Enable LAN + SSH access for OpenCode core
 
@@ -136,6 +138,7 @@ After restart, remote LAN clients can target `http://<host-lan-ip>:4096` for Ope
 | [Extensions Guide](docs/extensions-guide.md) | Plugin system, gallery, building channel plugins |
 | [Docker Compose Guide](docs/docker-compose-guide.md) | Hosting, observability, extending the stack |
 | [Implementation Guide](docs/implementation-guide.md) | Design rationale and build order |
+| [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 
 ## Development
 
