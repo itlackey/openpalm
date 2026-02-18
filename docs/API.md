@@ -124,7 +124,7 @@ These are available on the internal Docker network for service-to-service API/MC
   - Internal service URL: `http://opencode-core:4096`
   - LAN routes via Caddy: `/admin/opencode*`
 - OpenMemory UI/API/MCP:
-  - Internal service URLs: `http://openmemory:3000` (UI/API), `http://openmemory:8765` (MCP SSE)
+  - Internal service URL: `http://openmemory:8765` (API/MCP)
   - LAN routes via Caddy: `/admin/openmemory*`
 - Admin UI/API:
   - LAN route via Caddy: `/admin*`

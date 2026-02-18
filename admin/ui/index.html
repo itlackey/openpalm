@@ -547,7 +547,7 @@ async function renderSettings() {
   h += statusWarning;
   h += '<p style="color:var(--yellow);font-size:13px"><strong>Warning:</strong> Changing these settings after initial setup may break memory access and existing workflows.</p>';
   h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenMemory base URL</label>';
-  h += '<input id="set-openmemory-url" placeholder="http://openmemory:3000" value="' + esc(svc.openmemory || '') + '" />';
+  h += '<input id="set-openmemory-url" placeholder="http://openmemory:8765" value="' + esc(svc.openmemory || '') + '" />';
   h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>';
   h += '<input id="set-psql-url" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(svc.psql || '') + '" />';
   h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>';

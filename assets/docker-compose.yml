@@ -48,7 +48,6 @@ services:
       - ${OPENPALM_CONFIG_HOME}/user.env
       - ${OPENPALM_CONFIG_HOME}/secrets.env
     ports:
-      - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:3000:3000"
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME}/openmemory:/data

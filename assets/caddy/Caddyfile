@@ -45,7 +45,7 @@
 			}
 
 			handle_path /admin/openmemory* {
-				reverse_proxy openmemory:3000
+				reverse_proxy openmemory:8765
 			}
 
 			# Admin service serves UI/assets from root paths.

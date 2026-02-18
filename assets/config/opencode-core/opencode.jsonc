@@ -9,27 +9,25 @@
   },
 
   // Specialized agent profiles
-  "agents": {
+  "agent": {
     // Channel intake: restricted agent for processing inbound channel requests.
     // No shell, no editing, no web — read-only memory only.
     "channel-intake": {
       "description": "Validates, summarizes, and dispatches inbound channel requests",
-      "permission": {
-        "bash": "deny",
-        "edit": "deny",
-        "webfetch": "deny"
-      },
-      "skills": ["skills/ChannelIntake.SKILL.md", "skills/RecallFirst.SKILL.md"]
+      "prompt": "Follow skills/ChannelIntake.SKILL.md and skills/RecallFirst.SKILL.md for behavior rules.",
+      "tools": {
+        "bash": false,
+        "edit": false,
+        "write": false
+      }
     }
   },
 
   "mcp": {
     "openmemory": {
-      "enabled": true,
-      "transport": {
-        "type": "sse",
-        "url": "http://openmemory:8765/mcp/gateway/sse/default-user"
-      }
+      "type": "remote",
+      "url": "http://openmemory:8765/mcp/gateway/sse/default-user",
+      "enabled": true
     }
   },
 

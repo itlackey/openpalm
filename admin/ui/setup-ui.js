@@ -93,7 +93,7 @@
         return '<p>Optionally connect to existing service instances instead of bundled defaults.</p>'
           + '<div class="sec-box" style="border-color:var(--yellow);background:rgba(234,179,8,.1)"><strong>Warning:</strong> Changing these values after completing setup can break existing data access and workflows.</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenMemory base URL</label>'
-          + '<input id="wiz-svc-openmemory" placeholder="http://openmemory:3000" value="' + esc(serviceInstances.openmemory || "") + '" />'
+          + '<input id="wiz-svc-openmemory" placeholder="http://openmemory:8765" value="' + esc(serviceInstances.openmemory || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>'
           + '<input id="wiz-svc-psql" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(serviceInstances.psql || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>'
