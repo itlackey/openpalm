@@ -1,7 +1,13 @@
 {
+  "extends": "./tsconfig.base.json",
   "files": [],
   "references": [
+    { "path": "./admin" },
+    { "path": "./controller" },
     { "path": "./gateway" },
+    { "path": "./channels/chat" },
+    { "path": "./channels/discord" },
+    { "path": "./channels/voice" },
     { "path": "./channels/webhook" },
     { "path": "./channels/telegram" }
   ]
