@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "test": "bun test",
-    "typecheck": "bunx tsc -b",
+    "typecheck": "bunx tsc",
     "admin:extensions": "bun run scripts/extensions-cli.ts"
   },
   "devDependencies": {
