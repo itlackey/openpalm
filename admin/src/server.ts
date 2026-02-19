@@ -220,6 +220,34 @@ function getConfiguredOpenmemoryProvider() {
   };
 }
 
+function getConfiguredSmallModel() {
+  const state = setupManager.getState();
+  const secrets = readSecretsEnv();
+  return {
+    endpoint: state.smallModel.endpoint,
+    modelId: state.smallModel.modelId,
+    apiKeyConfigured: Boolean(secrets.OPENPALM_SMALL_MODEL_API_KEY)
+  };
+}
+
+function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
+  if (!modelId || !existsSync(OPENCODE_CONFIG_PATH)) return;
+  const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
+  const doc = parseJsonc(raw) as Record<string, unknown>;
+  doc.small_model = modelId;
+  if (endpoint) {
+    const parts = modelId.split("/");
+    const providerId = parts.length > 1 ? parts[0] : "openpalm-small";
+    const providers = (typeof doc.provider === "object" && doc.provider !== null) ? { ...doc.provider as Record<string, unknown> } : {};
+    const providerOptions: Record<string, unknown> = { baseURL: endpoint };
+    providerOptions.apiKey = "{env:OPENPALM_SMALL_MODEL_API_KEY}";
+    providers[providerId] = { options: providerOptions };
+    doc.provider = providers;
+  }
+  const next = stringifyPretty(doc);
+  writeFileSync(OPENCODE_CONFIG_PATH, next, "utf8");
+}
+
 async function checkServiceHealth(url: string, expectJson = true): Promise<{ ok: boolean; time?: string; error?: string }> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -259,6 +287,7 @@ const server = Bun.serve({
           ...state,
           serviceInstances: getConfiguredServiceInstances(),
           openmemoryProvider: getConfiguredOpenmemoryProvider(),
+          smallModelProvider: getConfiguredSmallModel(),
           firstBoot: setupManager.isFirstBoot()
         }));
       }
@@ -293,7 +322,7 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/service-instances" && req.method === "POST") {
-        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string };
+        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string; smallModelEndpoint?: string; smallModelApiKey?: string; smallModelId?: string };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const openmemory = normalizeServiceInstanceUrl(body.openmemory);
@@ -301,6 +330,9 @@ const server = Bun.serve({
         const qdrant = normalizeServiceInstanceUrl(body.qdrant);
         const openaiBaseUrl = sanitizeEnvScalar(body.openaiBaseUrl);
         const openaiApiKey = sanitizeEnvScalar(body.openaiApiKey);
+        const smallModelEndpoint = sanitizeEnvScalar(body.smallModelEndpoint);
+        const smallModelApiKey = sanitizeEnvScalar(body.smallModelApiKey);
+        const smallModelId = sanitizeEnvScalar(body.smallModelId);
         updateRuntimeEnv({
           OPENMEMORY_URL: openmemory || undefined,
           OPENMEMORY_POSTGRES_URL: psql || undefined,
@@ -312,9 +344,16 @@ const server = Bun.serve({
         if (openaiApiKey.length > 0) {
           secretEntries.OPENAI_API_KEY = openaiApiKey;
         }
+        if (smallModelApiKey.length > 0) {
+          secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
+        }
         updateSecretsEnv(secretEntries);
         const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
-        return cors(json(200, { ok: true, state, openmemoryProvider: getConfiguredOpenmemoryProvider() }));
+        if (smallModelId) {
+          setupManager.setSmallModel({ endpoint: smallModelEndpoint, modelId: smallModelId });
+          applySmallModelToOpencodeConfig(smallModelEndpoint, smallModelId);
+        }
+        return cors(json(200, { ok: true, state, openmemoryProvider: getConfiguredOpenmemoryProvider(), smallModelProvider: getConfiguredSmallModel() }));
       }
 
       if (url.pathname === "/admin/setup/channels" && req.method === "POST") {
