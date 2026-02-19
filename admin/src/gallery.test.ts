@@ -93,8 +93,12 @@ describe("gallery", () => {
   });
 
   it("returns correct risk badge metadata", () => {
-    const risk = getRiskBadge("critical");
-    expect(risk.label).toBe("Critical Risk");
-    expect(risk.color).toBe("#af52de");
+    const risk = getRiskBadge("highest");
+    expect(risk.label).toBe("Highest Risk");
+    expect(risk.color).toBe("#ff3b30");
+
+    const lowest = getRiskBadge("lowest");
+    expect(lowest.label).toBe("Lowest Risk");
+    expect(lowest.color).toBe("#8e8e93");
   });
 });

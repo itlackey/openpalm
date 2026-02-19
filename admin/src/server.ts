@@ -4,7 +4,7 @@ import { updatePluginListAtomically, validatePluginIdentifier } from "./extensio
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
-import { CronStore, validateCron } from "./cron-store.ts";
+import { AutomationStore, validateCron } from "./automation-store.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import type { GalleryCategory } from "./gallery.ts";
@@ -28,15 +28,20 @@ const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.e
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
+const KNOWN_SERVICES = new Set<string>([
+  "gateway", "controller", "opencode-core", "openmemory", "openmemory-ui",
+  "admin", "caddy",
+  "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
+]);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
   "channel-voice": [],
-  "channel-telegram": ["TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_TOKEN"]
+  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
 };
 
 const setupManager = new SetupManager(DATA_DIR);
-const cronStore = new CronStore(DATA_DIR, CRON_DIR);
+const automationStore = new AutomationStore(DATA_DIR, CRON_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
 
 function json(status: number, payload: unknown) {
@@ -59,14 +64,18 @@ function auth(req: Request) {
 
 async function controllerAction(action: string, service: string, reason: string) {
   if (!CONTROLLER_URL) return;
-  await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-controller-token": CONTROLLER_TOKEN
-    },
-    body: JSON.stringify({ reason })
-  });
+  try {
+    await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-controller-token": CONTROLLER_TOKEN
+      },
+      body: JSON.stringify({ reason })
+    });
+  } catch (err) {
+    console.error(`[controllerAction] ${action}/${service} failed:`, err);
+  }
 }
 
 function snapshotFile(path: string) {
@@ -254,14 +263,14 @@ function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
 function applyProviderAssignment(role: ModelAssignment, providerUrl: string, providerApiKey: string, modelId: string) {
   if (role === "small") {
     const secretKey = "OPENPALM_SMALL_MODEL_API_KEY";
-    if (providerApiKey) updateSecretsEnv({ [secretKey]: providerApiKey });
+    updateSecretsEnv({ [secretKey]: providerApiKey || undefined });
     applySmallModelToOpencodeConfig(providerUrl, modelId);
     setupManager.setSmallModel({ endpoint: providerUrl, modelId });
   } else if (role === "openmemory") {
-    const entries: Record<string, string | undefined> = {};
-    if (providerUrl) entries.OPENAI_BASE_URL = providerUrl;
-    if (providerApiKey) entries.OPENAI_API_KEY = providerApiKey;
-    updateSecretsEnv(entries);
+    updateSecretsEnv({
+      OPENAI_BASE_URL: providerUrl || undefined,
+      OPENAI_API_KEY: providerApiKey || undefined,
+    });
   }
 }
 
@@ -311,9 +320,44 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, service: "admin", time: new Date().toISOString() }));
       }
 
+      // ── Meta (display names) ────────────────────────────────────────
+      if (url.pathname === "/admin/meta" && req.method === "GET") {
+        return cors(json(200, {
+          serviceNames: {
+            gateway: { label: "Message Router", description: "Routes messages between channels and your assistant" },
+            controller: { label: "System Manager", description: "Manages background services" },
+            opencodeCore: { label: "AI Assistant", description: "The core assistant engine" },
+            "opencode-core": { label: "AI Assistant", description: "The core assistant engine" },
+            openmemory: { label: "Memory", description: "Stores conversation history and context" },
+            "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
+            admin: { label: "Admin Panel", description: "This management interface" },
+            "channel-chat": { label: "Chat Channel", description: "Web chat interface" },
+            "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
+            "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
+            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
+            caddy: { label: "Web Server", description: "Handles secure connections" }
+          },
+          channelFields: {
+            "channel-chat": [
+              { key: "CHAT_INBOUND_TOKEN", label: "Inbound Token", type: "password", required: false, helpText: "Token for authenticating incoming chat messages" }
+            ],
+            "channel-discord": [
+              { key: "DISCORD_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Create a bot at discord.com/developers and copy the token" },
+              { key: "DISCORD_PUBLIC_KEY", label: "Public Key", type: "text", required: true, helpText: "Found on the same page as your bot token" }
+            ],
+            "channel-voice": [],
+            "channel-telegram": [
+              { key: "TELEGRAM_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Get a bot token from @BotFather on Telegram" },
+              { key: "TELEGRAM_WEBHOOK_SECRET", label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" }
+            ]
+          }
+        }));
+      }
+
       // ── Setup wizard ──────────────────────────────────────────────
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
+        if (state.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, {
           ...state,
           serviceInstances: getConfiguredServiceInstances(),
@@ -348,6 +392,8 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/complete" && req.method === "POST") {
+        const current = setupManager.getState();
+        if (current.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const state = setupManager.completeSetup();
         return cors(json(200, { ok: true, state }));
       }
@@ -557,6 +603,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
+        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await controllerAction("up", body.service, "admin action");
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
@@ -564,6 +611,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/down" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
+        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await controllerAction("down", body.service, "admin action");
         return cors(json(200, { ok: true, action: "down", service: body.service }));
       }
@@ -571,6 +619,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
+        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await controllerAction("restart", body.service, "admin action");
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
@@ -578,11 +627,21 @@ const server = Bun.serve({
       if (url.pathname === "/admin/channels" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, {
-          channels: CHANNEL_SERVICES.map((service) => ({
-            service,
-            access: service === "channel-chat" ? detectChannelAccess("chat") : service === "channel-voice" ? detectChannelAccess("voice") : service === "channel-discord" ? detectChannelAccess("discord") : detectChannelAccess("telegram"),
-            config: readChannelConfig(service)
-          }))
+          channels: CHANNEL_SERVICES.map((service) => {
+            const channelName = service.replace("channel-", "") as "chat" | "voice" | "discord" | "telegram";
+            return {
+              service,
+              label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
+              access: detectChannelAccess(channelName),
+              config: readChannelConfig(service),
+              fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => ({
+                key,
+                label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
+                type: key.toLowerCase().includes("token") || key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") ? "password" : "text",
+                required: key.includes("BOT_TOKEN"),
+              }))
+            };
+          })
         }));
       }
 
@@ -612,13 +671,13 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, service: body.service }));
       }
 
-      // ── Cron jobs ──────────────────────────────────────────────────
-      if (url.pathname === "/admin/crons" && req.method === "GET") {
+      // ── Automations ────────────────────────────────────────────────
+      if (url.pathname === "/admin/automations" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        return cors(json(200, { jobs: cronStore.list() }));
+        return cors(json(200, { automations: automationStore.list() }));
       }
 
-      if (url.pathname === "/admin/crons" && req.method === "POST") {
+      if (url.pathname === "/admin/automations" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { name?: string; schedule?: string; prompt?: string };
         if (!body.name || !body.schedule || !body.prompt) {
@@ -626,53 +685,53 @@ const server = Bun.serve({
         }
         const cronError = validateCron(body.schedule);
         if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
-        const job = {
+        const automation = {
           id: randomUUID(),
           name: body.name,
           schedule: body.schedule,
           prompt: body.prompt,
-          enabled: true,
+          status: "enabled" as const,
           createdAt: new Date().toISOString(),
         };
-        cronStore.add(job);
-        cronStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", `cron job created: ${job.name}`);
-        return cors(json(201, { ok: true, job }));
+        automationStore.add(automation);
+        automationStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", `automation created: ${automation.name}`);
+        return cors(json(201, { ok: true, automation }));
       }
 
-      if (url.pathname === "/admin/crons/update" && req.method === "POST") {
+      if (url.pathname === "/admin/automations/update" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; prompt?: string; enabled?: boolean };
+        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; prompt?: string; status?: "enabled" | "disabled" };
         if (!body.id) return cors(json(400, { error: "id is required" }));
         if (body.schedule) {
           const cronError = validateCron(body.schedule);
           if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
         }
         const { id, ...fields } = body;
-        const updated = cronStore.update(id, fields);
-        if (!updated) return cors(json(404, { error: "cron job not found" }));
-        cronStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", `cron job updated: ${updated.name}`);
-        return cors(json(200, { ok: true, job: updated }));
+        const updated = automationStore.update(id, fields);
+        if (!updated) return cors(json(404, { error: "automation not found" }));
+        automationStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", `automation updated: ${updated.name}`);
+        return cors(json(200, { ok: true, automation: updated }));
       }
 
-      if (url.pathname === "/admin/crons/delete" && req.method === "POST") {
+      if (url.pathname === "/admin/automations/delete" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const removed = cronStore.remove(body.id);
-        if (!removed) return cors(json(404, { error: "cron job not found" }));
-        cronStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", "cron job deleted");
+        const removed = automationStore.remove(body.id);
+        if (!removed) return cors(json(404, { error: "automation not found" }));
+        automationStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", "automation deleted");
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
-      if (url.pathname === "/admin/crons/trigger" && req.method === "POST") {
+      if (url.pathname === "/admin/automations/trigger" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const job = cronStore.get(body.id);
-        if (!job) return cors(json(404, { error: "cron job not found" }));
+        const job = automationStore.get(body.id);
+        if (!job) return cors(json(404, { error: "automation not found" }));
         // Fire directly against opencode-core without waiting for cron
         fetch(`${OPENCODE_CORE_URL}/chat`, {
           method: "POST",
@@ -681,7 +740,7 @@ const server = Bun.serve({
             message: job.prompt,
             session_id: `cron-${job.id}`,
             user_id: "cron-scheduler",
-            metadata: { source: "cron", cronJobId: job.id, cronJobName: job.name },
+            metadata: { source: "automation", automationId: job.id, automationName: job.name },
           }),
           signal: AbortSignal.timeout(120_000),
         }).catch(() => {});
@@ -725,8 +784,22 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
+        // Capture which roles used this provider before removal
+        const stateBefore = providerStore.getState();
+        const affectedRoles = Object.entries(stateBefore.assignments)
+          .filter(([, assignment]) => assignment.providerId === body.id)
+          .map(([role]) => role);
         const removed = providerStore.removeProvider(body.id);
         if (!removed) return cors(json(404, { error: "provider not found" }));
+        // Restart services that depended on the deleted provider
+        for (const role of affectedRoles) {
+          if (role === "small" || role === "openmemory") {
+            await controllerAction("restart", "opencode-core", `provider deleted: ${role} assignment cleared`);
+          }
+          if (role === "openmemory") {
+            await controllerAction("restart", "openmemory", `provider deleted: openmemory assignment cleared`);
+          }
+        }
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
@@ -767,9 +840,9 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { config: string; restart?: boolean };
         const parsed = parseJsonc(body.config);
-        if (typeof parsed !== "object") return cors(json(400, { error: "invalid jsonc" }));
+        if (typeof parsed !== "object") return cors(json(400, { error: "The configuration file has a syntax error" }));
         const permissions = (parsed as Record<string, unknown>).permission as Record<string, string> | undefined;
-        if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "policy lint failed: permission widening blocked" }));
+        if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
         if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");
@@ -798,12 +871,17 @@ const server = Bun.serve({
       return cors(json(404, { error: "not_found" }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const status = message.includes("not found") || message.includes("missing") ? 400 : 500;
-      const errorCode = status === 400 ? "validation_error" : "internal_error";
+      const isNotFound = message.includes("not found") || message.includes("missing");
+      const status = isNotFound ? 404 : 500;
+      const errorCode = isNotFound ? "not_found" : "internal_error";
       console.error(`[${requestId}] ${errorCode}:`, error);
-      return cors(json(status, { error: errorCode, message, requestId }));
+      const clientMessage = status === 500 ? "An internal error occurred" : message;
+      return cors(json(status, { error: errorCode, message: clientMessage, requestId }));
     }
   }
 });
 
 console.log(JSON.stringify({ kind: "startup", service: "admin", port: server.port }));
+if (ADMIN_TOKEN === "change-me-admin-token") {
+  console.warn("[WARN] Using default admin token. Set ADMIN_TOKEN environment variable for security.");
+}

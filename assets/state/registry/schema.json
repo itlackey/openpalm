@@ -28,13 +28,13 @@
     },
     "category": {
       "type": "string",
-      "enum": ["plugin", "skill", "container"],
-      "description": "Extension type"
+      "enum": ["plugin", "skill", "command", "agent", "tool", "channel"],
+      "description": "Extension type: one of the five extension sub-types, or channel for channel adapters"
     },
     "risk": {
       "type": "string",
-      "enum": ["low", "medium", "high", "critical"],
-      "description": "Self-assessed risk level"
+      "enum": ["lowest", "low", "medium", "medium-high", "highest"],
+      "description": "Risk level based on extension type capabilities"
     },
     "author": {
       "type": "string",
@@ -76,7 +76,7 @@
     },
     "installAction": {
       "type": "string",
-      "enum": ["plugin", "skill-file", "compose-service"],
+      "enum": ["plugin", "skill-file", "command-file", "agent-file", "tool-file", "compose-service"],
       "description": "How OpenPalm installs this extension"
     },
     "installTarget": {

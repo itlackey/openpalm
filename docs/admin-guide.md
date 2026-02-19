@@ -32,6 +32,9 @@
 11. Setup wizard runs on first visit to admin UI — user enters admin password from `.env`
 
 ### Persistent directory layout (XDG Base Directory)
+
+> **Config path note**: `OPENPALM_CONFIG_HOME` is the host-side XDG path (e.g., `~/.config/openpalm/`). Inside the `opencode-core` container, this directory is volume-mounted and referenced as `OPENCODE_CONFIG_DIR`. The `OPENCODE_CONFIG_DIR` env var is what OpenCode itself uses to locate its configuration at runtime.
+
 ```
 ~/.local/share/openpalm/      (OPENPALM_DATA_HOME — databases, blobs)
   postgres/
@@ -71,7 +74,38 @@ Use a **dedicated Admin Console**, and link to it from dashboards.
 - System status
 - Config editor (schema-aware)
 - Service control (restart services)
-- Extension gallery (install/uninstall)
+- Extension gallery (install/uninstall) — see [Extension gallery](#extension-gallery) below
+- Connections management — see [Connections](#connections-management) below
+- Automations management — see [Automations](#automations-management) below
+
+### Extension gallery
+
+The extension gallery lets users discover, install, and uninstall extensions without editing files directly. Key features:
+
+- **Risk badges**: Each extension is labeled with its risk level (Skill = lowest, Command = low, Agent = medium, Custom Tool = medium-high, Plugin = highest) so users can make informed install decisions.
+- **Discovery sources**: Extensions are surfaced from three places:
+  1. **Curated gallery** — Officially reviewed extensions maintained by the OpenPalm project.
+  2. **Community registry** — Community-submitted extensions with automated validation but no official review.
+  3. **npm search** — Live search of the npm registry for packages that follow the OpenPalm extension convention.
+
+### Connections management
+
+The admin UI provides a Connections page for managing named credential/endpoint configurations:
+
+- **What users see**: Each connection is displayed with a friendly name, a status indicator (connected / error / unchecked), and "Used by" information listing which extensions reference it.
+- **Connection types**: AI Provider (e.g. OpenAI, Anthropic), Platform (e.g. Discord, Telegram), API Service (generic REST/webhook credentials).
+- **Validation**: Users can trigger an optional validation check from the UI. The admin API probes the endpoint with the stored credentials and reports success or failure without revealing the raw secret.
+- **Storage**: Connections are stored in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`) using the `OPENPALM_CONN_*` env var prefix. Extensions reference them in `opencode.jsonc` via `{env:VAR_NAME}` interpolation.
+
+### Automations management
+
+The admin UI provides an Automations page for managing user-defined scheduled prompts:
+
+- **Creating an automation**: Users provide a Name, a Prompt (the text sent to the assistant), and a Schedule using a cron expression or schedule picker. The automation is assigned a UUID and stored as a JSON payload file in `cron-payloads/`.
+- **Enable/disable**: Each automation has a Status toggle. Disabled automations remain stored but are not executed by the cron daemon.
+- **Run Now**: A manual trigger button allows users to fire an automation immediately, outside its normal schedule, for testing or one-off use.
+- **Edit**: Name, prompt, and schedule can be updated at any time. The change takes effect at the next scheduled run (or immediately if Run Now is used).
+- **Delete**: Removes the automation and its payload file permanently.
 
 ### Safe config editing flow
 1) Parse JSONC
@@ -99,7 +133,7 @@ Use a restricted "controller" sidecar:
 ### Protected actions
 All admin write operations require the admin password:
 - Install/uninstall extensions
-- Edit agent config
+- Edit extension config
 - Manage channels (access, config)
 - Start/stop/restart containers
 
@@ -137,6 +171,19 @@ Logs for each job are written to `${OPENPALM_STATE_HOME}/observability/maintenan
 ### Network placement
 - Public entrypoint: reverse proxy + TLS
 - Keep OpenCode/OpenMemory private; only Gateway can access them
+
+### Gateway security pipeline
+
+Every inbound channel message passes through the Gateway's 6-step security pipeline before reaching the AI assistant:
+
+1. **HMAC signature verification** — Rejects unsigned or tampered requests from channel adapters.
+2. **Payload validation** — Validates the structure and content of the incoming message.
+3. **Rate limiting** — Caps traffic at 120 requests/min/user; excess requests receive a 429 response.
+4. **Intake validation** — The `channel-intake` agent (running with zero tool access) validates and summarizes the input; invalid messages are rejected with 422.
+5. **Forward to assistant** — Only the validated summary is forwarded to the AI assistant (default agent with approval gates).
+6. **Audit log** — All requests and outcomes are written to the immutable audit log.
+
+This pipeline is enforced at the `/channel/inbound` endpoint on the Gateway container. Network isolation (Caddy + internal Docker network) provides an additional perimeter, but the pipeline is the primary channel security control.
 
 ### Capability isolation
 Channel adapters should not:

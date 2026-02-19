@@ -1,7 +1,7 @@
 // ── Gallery item types ──────────────────────────────────────────────
 
-export type GalleryCategory = "plugin" | "skill" | "container";
-export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type GalleryCategory = "plugin" | "skill" | "command" | "agent" | "tool" | "channel" | "service";
+export type RiskLevel = "lowest" | "low" | "medium" | "medium-high" | "highest";
 
 export type GalleryItem = {
   id: string;
@@ -15,7 +15,7 @@ export type GalleryItem = {
   tags?: string[];
   permissions?: string[];
   securityNotes?: string;
-  installAction?: "plugin" | "skill-file" | "compose-service";
+  installAction?: "plugin" | "skill-file" | "command-file" | "agent-file" | "tool-file" | "compose-service";
   installTarget: string; // npm package, skill file path, or compose service name
   docUrl?: string;
   builtIn?: boolean;
@@ -33,13 +33,13 @@ const REGISTRY: GalleryItem[] = [
     name: "Policy & Telemetry",
     description: "Built-in plugin that blocks secrets from tool arguments and logs every tool call as structured JSON. Ships with OpenPalm by default.",
     category: "plugin",
-    risk: "low",
+    risk: "highest",
     author: "OpenPalm",
     version: "built-in",
     source: "plugins/policy-and-telemetry.ts",
     tags: ["security", "audit", "built-in"],
-    permissions: ["tool.execute.before hook"],
-    securityNotes: "Read-only hook — inspects tool calls but cannot modify responses. Logs to stdout only.",
+    permissions: ["Monitors tool activity"],
+    securityNotes: "Read-only — inspects actions but cannot modify responses. Logs activity for auditing.",
     installAction: "plugin",
     installTarget: "plugins/policy-and-telemetry.ts"
   },
@@ -49,41 +49,101 @@ const REGISTRY: GalleryItem[] = [
     id: "skill-memory",
     name: "Memory Policy",
     description: "Governs memory storage and recall behavior for the assistant",
-    category: "skill" as GalleryCategory,
-    risk: "low" as RiskLevel,
+    category: "skill",
+    risk: "lowest",
+    author: "OpenPalm",
+    version: "built-in",
     source: "skills/memory/SKILL.md",
+    tags: ["memory", "behavior", "built-in"],
+    permissions: ["No tool access — influences reasoning only"],
+    securityNotes: "Pure markdown behavior file. Cannot execute code or access external resources.",
+    installAction: "skill-file",
     installTarget: "skills/memory/SKILL.md",
     builtIn: true,
   },
 
-  // ── Containers ────────────────────────────────────────────────────
+  // ── Commands ──────────────────────────────────────────────────────
+  {
+    id: "command-health",
+    name: "Health Check Command",
+    description: "Slash command that reports the health status of all connected services.",
+    category: "command" as GalleryCategory,
+    risk: "low" as RiskLevel,
+    author: "OpenPalm",
+    version: "1.0.0",
+    source: "bundled",
+    tags: ["health", "status", "monitoring"],
+    permissions: ["None — sends a predefined prompt"],
+    securityNotes: "Triggers a prompt; cannot execute code or access external services.",
+    installAction: "command-file",
+    installTarget: "commands/health.md",
+    builtIn: true,
+  },
+
+  // ── Agents ────────────────────────────────────────────────────────
+  {
+    id: "agent-channel-intake",
+    name: "Channel Intake Agent",
+    description: "Restricted agent that validates inbound channel messages for safety and correctness. Has zero tool access.",
+    category: "agent" as GalleryCategory,
+    risk: "medium" as RiskLevel,
+    author: "OpenPalm",
+    version: "1.0.0",
+    source: "bundled",
+    tags: ["security", "gateway", "validation"],
+    permissions: ["Controls tool access policy (denies all tools)"],
+    securityNotes: "Has no tool access. Can only reason about incoming text. Cannot make network requests, read files, or execute code.",
+    installAction: "agent-file",
+    installTarget: "agents/channel-intake.md",
+    builtIn: true,
+  },
+
+  // ── Custom Tools ──────────────────────────────────────────────────
+  {
+    id: "tool-health-check",
+    name: "Health Check Tool",
+    description: "Custom tool that checks the health of configured services and returns structured status data.",
+    category: "tool" as GalleryCategory,
+    risk: "medium-high" as RiskLevel,
+    author: "OpenPalm",
+    version: "1.0.0",
+    source: "bundled",
+    tags: ["health", "monitoring", "services"],
+    permissions: ["Network access to internal services", "Can execute health check scripts"],
+    securityNotes: "Executes code to probe service endpoints. Only checks services on the internal Docker network.",
+    installAction: "tool-file",
+    installTarget: "tools/health-check.ts",
+    builtIn: true,
+  },
+
+  // ── Channels ──────────────────────────────────────────────────────
   {
     id: "container-channel-chat",
     name: "Chat Channel",
-    description: "HTTP-based chat adapter. Accepts JSON messages and routes them through the gateway for processing. Ideal for web chat widgets and custom frontends.",
-    category: "container",
+    description: "HTTP-based chat adapter. Accepts JSON messages and routes them securely to your assistant. Ideal for web chat widgets and custom frontends.",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
     source: "channels/chat",
     tags: ["channel", "http", "chat"],
-    permissions: ["Network: outbound to gateway only", "HMAC channel signing"],
-    securityNotes: "Dumb adapter — normalizes input and forwards to gateway. All auth and policy enforced by gateway. HMAC-signed payloads prevent tampering.",
+    permissions: ["Internal network only", "Messages are cryptographically verified"],
+    securityNotes: "Simple message relay with built-in security. All messages are verified and filtered before reaching your assistant.",
     installAction: "compose-service",
     installTarget: "channel-chat"
   },
   {
     id: "container-channel-discord",
     name: "Discord Channel",
-    description: "Discord bot adapter supporting slash commands and webhook-based message forwarding. Routes all messages through the gateway for defense in depth.",
-    category: "container",
+    description: "Discord bot adapter supporting slash commands and webhook-based message forwarding. All messages are verified and filtered for security.",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
     source: "channels/discord",
     tags: ["channel", "discord", "bot"],
-    permissions: ["Network: outbound to gateway + Discord API", "HMAC channel signing", "Requires DISCORD_BOT_TOKEN"],
-    securityNotes: "Requires Discord bot token (stored in .env, never in container). All messages pass through gateway tool firewall before reaching OpenCode.",
+    permissions: ["Connects to Discord API", "Messages are cryptographically verified", "Requires a Discord bot token"],
+    securityNotes: "Requires a Discord bot token. All messages are verified and filtered before reaching your assistant.",
     installAction: "compose-service",
     installTarget: "channel-discord",
     docUrl: "https://discord.com/developers/docs"
@@ -91,30 +151,30 @@ const REGISTRY: GalleryItem[] = [
   {
     id: "container-channel-voice",
     name: "Voice Channel",
-    description: "Voice/speech-to-text adapter. Accepts transcribed text from an STT pipeline and routes through the gateway. WebSocket streaming endpoint planned.",
-    category: "container",
+    description: "Voice/speech-to-text adapter. Accepts transcribed text and routes it securely to your assistant. WebSocket streaming endpoint planned.",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
     source: "channels/voice",
     tags: ["channel", "voice", "stt"],
-    permissions: ["Network: outbound to gateway only", "HMAC channel signing"],
-    securityNotes: "Accepts pre-transcribed text only. No direct microphone access. All input passes through gateway rate limiting and tool firewall.",
+    permissions: ["Internal network only", "Messages are cryptographically verified"],
+    securityNotes: "Accepts transcribed text only. No direct microphone access. All input is verified and rate-limited.",
     installAction: "compose-service",
     installTarget: "channel-voice"
   },
   {
     id: "container-channel-telegram",
     name: "Telegram Channel",
-    description: "Telegram bot adapter. Receives webhook updates from Telegram's Bot API and forwards text messages through the gateway.",
-    category: "container",
+    description: "Telegram bot adapter. Receives webhook updates from Telegram's Bot API and forwards text messages securely to your assistant.",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
     source: "channels/telegram",
     tags: ["channel", "telegram", "bot"],
-    permissions: ["Network: outbound to gateway + Telegram API", "HMAC channel signing", "Requires TELEGRAM_BOT_TOKEN"],
-    securityNotes: "Requires Telegram bot token (stored in .env). Validates Telegram's webhook secret header. All messages pass through gateway.",
+    permissions: ["Connects to Telegram API", "Messages are cryptographically verified", "Requires a Telegram bot token"],
+    securityNotes: "Requires a Telegram bot token. Webhook requests are verified. All messages are filtered before reaching your assistant.",
     installAction: "compose-service",
     installTarget: "channel-telegram",
     docUrl: "https://core.telegram.org/bots/api"
@@ -122,15 +182,15 @@ const REGISTRY: GalleryItem[] = [
   {
     id: "container-n8n",
     name: "n8n Workflow Automation",
-    description: "Self-hosted workflow automation tool. Connect OpenPalm to hundreds of services via visual workflows. Runs as a separate container with gateway API access.",
-    category: "container",
-    risk: "high",
+    description: "Self-hosted workflow automation tool. Connect OpenPalm to hundreds of services via visual workflows. Runs as a separate service with API access.",
+    category: "service",
+    risk: "medium-high",
     author: "n8n.io",
     version: "latest",
     source: "docker.io/n8nio/n8n",
     tags: ["automation", "workflows", "integration"],
-    permissions: ["Network: outbound to gateway + external services", "Persistent storage", "May require additional credentials"],
-    securityNotes: "HIGH RISK: n8n can make arbitrary network requests and execute code in workflows. Restrict to LAN access via Caddy. Review workflows before enabling external connections. Use credential encryption.",
+    permissions: ["Connects to external services", "Persistent storage", "May require additional credentials"],
+    securityNotes: "High risk: n8n can make network requests and execute code in workflows. Restrict access to your local network. Review workflows before enabling external connections.",
     installAction: "compose-service",
     installTarget: "n8n"
   },
@@ -138,13 +198,13 @@ const REGISTRY: GalleryItem[] = [
     id: "container-ollama",
     name: "Ollama (Local LLM)",
     description: "Run local LLM models alongside OpenCode. Useful for offline inference, private data processing, or cost reduction on simple tasks.",
-    category: "container",
+    category: "service",
     risk: "medium",
     author: "Ollama",
     version: "latest",
     source: "docker.io/ollama/ollama",
     tags: ["llm", "local", "inference"],
-    permissions: ["GPU access (optional)", "Persistent model storage", "Network: internal only"],
+    permissions: ["GPU access (optional)", "Persistent model storage", "Internal network only"],
     securityNotes: "Runs on internal network only. No external API access by default. Model downloads require temporary outbound access. Large disk footprint.",
     installAction: "compose-service",
     installTarget: "ollama"
@@ -153,14 +213,14 @@ const REGISTRY: GalleryItem[] = [
     id: "container-searxng",
     name: "SearXNG (Private Search)",
     description: "Privacy-respecting metasearch engine. Provides web search capabilities to the assistant without sending queries to commercial search APIs.",
-    category: "container",
+    category: "service",
     risk: "medium",
     author: "SearXNG",
     version: "latest",
     source: "docker.io/searxng/searxng",
     tags: ["search", "privacy", "web"],
-    permissions: ["Network: outbound to search engines", "No persistent storage needed"],
-    securityNotes: "Makes outbound requests to search engines on behalf of the assistant. Restrict to internal network. Does not store search history by default.",
+    permissions: ["Connects to search engines", "No persistent storage needed"],
+    securityNotes: "Searches the web on behalf of your assistant. Restricted to internal network. Does not store search history by default.",
     installAction: "compose-service",
     installTarget: "searxng"
   }
@@ -285,9 +345,10 @@ export async function searchNpm(query: string): Promise<Array<{ name: string; de
 
 export function getRiskBadge(risk: RiskLevel): { label: string; color: string; description: string } {
   switch (risk) {
-    case "low": return { label: "Low Risk", color: "#34c759", description: "Safe to install. No network access, no side effects." };
-    case "medium": return { label: "Medium Risk", color: "#ff9500", description: "Limited capabilities. Review permissions before installing." };
-    case "high": return { label: "High Risk", color: "#ff3b30", description: "Significant capabilities. Review carefully before installing." };
-    case "critical": return { label: "Critical Risk", color: "#af52de", description: "Maximum capability. Can execute code, access network, or modify system state. Review thoroughly." };
+    case "lowest": return { label: "Lowest Risk", color: "#8e8e93", description: "Text-only behavioral directive. Cannot execute code or access tools." };
+    case "low": return { label: "Low Risk", color: "#34c759", description: "Sends a predefined prompt. No code execution." };
+    case "medium": return { label: "Medium Risk", color: "#ff9500", description: "Can control which tools the assistant has access to." };
+    case "medium-high": return { label: "Medium-High Risk", color: "#ff6b35", description: "Can execute code, make network requests, and interact with services." };
+    case "highest": return { label: "Highest Risk", color: "#ff3b30", description: "Can observe and modify all tool calls and assistant behavior." };
   }
 }

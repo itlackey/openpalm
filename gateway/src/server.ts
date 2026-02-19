@@ -20,6 +20,11 @@ const CHANNEL_SHARED_SECRETS: Record<string, string> = {
 const openCode = new OpenCodeClient(OPENCODE_CORE_BASE_URL);
 const audit = new AuditLog("/app/data/audit.log");
 
+function safeRequestId(header: string | null): string {
+  if (header && /^[a-zA-Z0-9_-]{1,64}$/.test(header)) return header;
+  return randomUUID();
+}
+
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
@@ -44,9 +49,32 @@ function validatePayload(payload: Partial<ChannelMessage>): payload is ChannelMe
 
 async function processChannelInbound(payload: ChannelMessage, requestId: string) {
   const sessionId = randomUUID();
-  const rlKey = `${payload.userId}:${new Date().getUTCMinutes()}`;
-  if (!allowRequest(rlKey, 120, 60_000))
+
+  // Rate-limit check FIRST (pipeline step 3 before audit step 6).
+  const rlKey = payload.userId;
+  if (!allowRequest(rlKey, 120, 60_000)) {
+    audit.write({
+      ts: new Date().toISOString(),
+      requestId,
+      sessionId,
+      userId: payload.userId,
+      action: "channel_inbound",
+      status: "denied",
+      details: { channel: payload.channel, reason: "rate_limited" },
+    });
     return json(429, { error: "rate_limited", requestId });
+  }
+
+  // Initial audit entry written only for requests that pass rate limiting.
+  audit.write({
+    ts: new Date().toISOString(),
+    requestId,
+    sessionId,
+    userId: payload.userId,
+    action: "channel_inbound",
+    status: "ok",
+    details: { channel: payload.channel },
+  });
 
   let intake;
   try {
@@ -140,7 +168,7 @@ async function processChannelInbound(payload: ChannelMessage, requestId: string)
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
-    const requestId = req.headers.get("x-request-id") ?? randomUUID();
+    const requestId = safeRequestId(req.headers.get("x-request-id"));
     try {
       const url = new URL(req.url);
 
@@ -156,22 +184,22 @@ const server = Bun.serve({
         const payload = JSON.parse(raw) as Partial<ChannelMessage>;
         const incomingSig = req.headers.get("x-channel-signature") ?? "";
 
-        if (!validatePayload(payload))
-          return json(400, { error: "invalid_payload", requestId });
+        // Issue 1 fix: HMAC verification happens BEFORE full payload validation.
+        // Step 1: extract channel from the parsed (but not yet fully validated) payload.
+        const channelName = typeof payload.channel === "string" ? payload.channel : "";
+        const channelSecret = CHANNEL_SHARED_SECRETS[channelName] ?? "";
 
-        const channelSecret = CHANNEL_SHARED_SECRETS[payload.channel] ?? "";
+        // Step 2: reject unknown / unconfigured channels before checking signature.
         if (!channelSecret)
           return json(403, { error: "channel_not_configured", requestId });
+
+        // Step 3: verify HMAC signature first.
         if (!verifySignature(channelSecret, raw, incomingSig))
           return json(403, { error: "invalid_signature", requestId });
 
-        audit.write({
-          ts: new Date().toISOString(),
-          requestId,
-          action: "channel_inbound",
-          status: "ok",
-          details: { channel: payload.channel, userId: payload.userId },
-        });
+        // Step 4: now run full structural payload validation.
+        if (!validatePayload(payload))
+          return json(400, { error: "invalid_payload", requestId });
 
         return processChannelInbound(payload, requestId);
       }

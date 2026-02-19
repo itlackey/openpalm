@@ -1,67 +1,67 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { JsonStore } from "./admin-store.ts";
 
-export type CronJob = {
+export type Automation = {
   id: string;
   name: string;
   schedule: string;
   prompt: string;
-  enabled: boolean;
+  status: "enabled" | "disabled";
   createdAt: string;
 };
 
-export type CronState = {
-  jobs: CronJob[];
+export type AutomationState = {
+  automations: Automation[];
 };
 
 /**
- * Manages cron job metadata (crons.json) and generates the crontab + payload
+ * Manages automation metadata (automations.json) and generates the crontab + payload
  * files that the opencode-core container's system cron daemon executes.
  *
  * Layout on the shared config volume:
  *   <crontabDir>/crontab              — installed by entrypoint.sh from /cron/crontab
  *   <crontabDir>/cron-payloads/<id>.json — curl reads these with -d @<file>
  */
-export class CronStore {
-  private store: JsonStore<CronState>;
+export class AutomationStore {
+  private store: JsonStore<AutomationState>;
   private crontabDir: string;
   private payloadDir: string;
 
   constructor(dataDir: string, crontabDir: string) {
-    this.store = new JsonStore<CronState>(`${dataDir}/crons.json`, { jobs: [] });
+    this.store = new JsonStore<AutomationState>(`${dataDir}/automations.json`, { automations: [] });
     this.crontabDir = crontabDir;
     this.payloadDir = `${crontabDir}/cron-payloads`;
     mkdirSync(this.payloadDir, { recursive: true });
   }
 
-  list(): CronJob[] {
-    return this.store.get().jobs;
+  list(): Automation[] {
+    return this.store.get().automations;
   }
 
-  get(id: string): CronJob | undefined {
-    return this.store.get().jobs.find((j) => j.id === id);
+  get(id: string): Automation | undefined {
+    return this.store.get().automations.find((j) => j.id === id);
   }
 
-  add(job: CronJob): void {
+  add(automation: Automation): void {
     const state = this.store.get();
-    state.jobs.push(job);
+    state.automations.push(automation);
     this.store.set(state);
   }
 
-  update(id: string, fields: Partial<Omit<CronJob, "id" | "createdAt">>): CronJob | undefined {
+  update(id: string, fields: Partial<Omit<Automation, "id" | "createdAt">>): Automation | undefined {
     const state = this.store.get();
-    const idx = state.jobs.findIndex((j) => j.id === id);
+    const idx = state.automations.findIndex((j) => j.id === id);
     if (idx === -1) return undefined;
-    state.jobs[idx] = { ...state.jobs[idx], ...fields };
+    state.automations[idx] = { ...state.automations[idx], ...fields };
     this.store.set(state);
-    return state.jobs[idx];
+    return state.automations[idx];
   }
 
   remove(id: string): boolean {
     const state = this.store.get();
-    const before = state.jobs.length;
-    state.jobs = state.jobs.filter((j) => j.id !== id);
-    if (state.jobs.length === before) return false;
+    const before = state.automations.length;
+    state.automations = state.automations.filter((j) => j.id !== id);
+    if (state.automations.length === before) return false;
     this.store.set(state);
     // Clean up the payload file
     const payloadPath = `${this.payloadDir}/${id}.json`;
@@ -70,29 +70,29 @@ export class CronStore {
   }
 
   /**
-   * Regenerates the crontab file and per-job JSON payloads from current state.
+   * Regenerates the crontab file and per-automation JSON payloads from current state.
    * Call this after any mutation, then restart opencode-core so crond picks it up.
    */
   writeCrontab(): void {
-    const jobs = this.store.get().jobs;
+    const automations = this.store.get().automations;
     const lines: string[] = [
-      "# OpenPalm cron jobs — managed by admin, do not edit manually",
+      "# OpenPalm automations — managed by admin, do not edit manually",
       "# Installed into opencode-core container by entrypoint.sh",
       "",
     ];
 
-    for (const job of jobs) {
+    for (const job of automations) {
       // Write the JSON payload file (avoids shell-escaping issues)
       const payload = JSON.stringify({
         message: job.prompt,
         session_id: `cron-${job.id}`,
         user_id: "cron-scheduler",
-        metadata: { source: "cron", cronJobId: job.id, cronJobName: job.name },
+        metadata: { source: "automation", automationId: job.id, automationName: job.name },
       });
       writeFileSync(`${this.payloadDir}/${job.id}.json`, payload);
 
       // Add crontab entry (commented out if disabled)
-      const prefix = job.enabled ? "" : "# DISABLED: ";
+      const prefix = job.status === "enabled" ? "" : "# DISABLED: ";
       lines.push(`# ${job.name} (${job.id})`);
       lines.push(
         `${prefix}${job.schedule} curl -sf -m 120 -X POST http://localhost:4096/chat -H 'Content-Type: application/json' -d @/cron/cron-payloads/${job.id}.json >/dev/null 2>&1`

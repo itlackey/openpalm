@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-const PORT = Number(Bun.env.PORT ?? 8181);
+const PORT = Number(Bun.env.PORT ?? 8185);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const SHARED_SECRET = Bun.env.CHANNEL_WEBHOOK_SECRET ?? "";
 const INBOUND_TOKEN = Bun.env.WEBHOOK_INBOUND_TOKEN ?? "";
@@ -45,4 +45,4 @@ Bun.serve({
   }
 });
 
-console.log(`webhook channel listening on ${PORT}`);
+console.log(JSON.stringify({ kind: "startup", service: "channel-webhook", port: PORT }));

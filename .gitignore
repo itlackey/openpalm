@@ -148,3 +148,4 @@ vite.config.ts.timestamp-*
 
 # Bun
 bun.lockb
+admin/test-results/.last-run.json

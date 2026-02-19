@@ -168,6 +168,8 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 - Filesystem cleanup (daily 4:10)
 - Metrics report (every 5 min)
 
+Note: these are infrastructure maintenance jobs in the controller container, distinct from user-facing Automations (scheduled prompts in opencode-core).
+
 **Recommendation:** Add cron-based maintenance to architecture documentation.
 
 ---
@@ -194,21 +196,30 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 
 ---
 
-### 3.9 Missing: Admin Cron Job API
-**Gap:** `api-reference.md` doesn't document the cron job endpoints implemented in admin.
+### 3.9 Missing: Admin Automations API
+**Gap:** `api-reference.md` doesn't document the Automations endpoints implemented in admin.
+
+The admin Automations API (routes: /admin/crons) manages user-defined scheduled prompts.
 
 **Implementation:** `admin/src/server.ts:545-619` implements:
-- `GET /admin/crons` - list jobs
-- `POST /admin/crons` - create job
-- `POST /admin/crons/update` - update job
-- `POST /admin/crons/delete` - delete job
-- `POST /admin/crons/trigger` - run job immediately
+- `GET /admin/crons` - list automations
+- `POST /admin/crons` - create automation
+- `POST /admin/crons/update` - update automation
+- `POST /admin/crons/delete` - delete automation
+- `POST /admin/crons/trigger` - run automation immediately
 
-**Recommendation:** Add cron job API to api-reference.md
+**Recommendation:** Add Automations API to api-reference.md
 
 ---
 
-### 3.10 Missing: Config Editor Policy Lint Details
+### 3.10 Missing: Connections Concept Analysis
+**Gap:** The Connections concept (named credential sets, secrets.env management, admin API for credential CRUD) is not analyzed in this report and should be reviewed separately.
+
+**Recommendation:** Conduct a dedicated review of the Connections concept covering: credential storage in secrets.env, OPENPALM_CONN_* naming convention, connection types (AI Provider, Platform, API Service), {env:VAR_NAME} interpolation, "Used by" tracking, and admin API CRUD endpoints.
+
+---
+
+### 3.11 Missing: Config Editor Policy Lint Details
 **Gap:** Multiple docs mention permission widening is blocked but don't detail the validation logic.
 
 **Implementation:** `admin/src/server.ts:632-633`:
@@ -227,8 +238,8 @@ if (permissions && Object.values(permissions).some((v) => v === "allow")) return
 |----------|-------|--------|
 | Discrepancies Found | 5 | Requires attention |
 | Issues Fixed (was in docs) | 7 | ✅ Resolved |
-| Documentation Gaps | 10 | Needs documentation |
-| **Total** | **22** | |
+| Documentation Gaps | 11 | Needs documentation |
+| **Total** | **23** | |
 
 ---
 
@@ -238,4 +249,4 @@ The documentation is in good shape overall. The main areas needing attention are
 
 1. **Updating `extensions-reference.md`** - Reflect current gateway agent configuration (agent is passed as parameter, not defined in config)
 2. **Adding `serviceInstances` to setup wizard steps** - The documentation is missing this step
-3. **Filling the 10 documentation gaps** - Especially around config layering, cron jobs, and cron API endpoints
+3. **Filling the 11 documentation gaps** - Especially around config layering, Automations (controller maintenance vs user-facing), Automations API endpoints, and the Connections concept

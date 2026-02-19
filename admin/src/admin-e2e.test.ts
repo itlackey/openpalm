@@ -209,8 +209,13 @@ describe("setup wizard", () => {
   it("POST /admin/setup/complete marks setup as complete", async () => {
     const r = await apiJson("/admin/setup/complete", { method: "POST" });
     expect(r.ok).toBe(true);
-    const status = await apiJson("/admin/setup/status");
+    const status = await authed("/admin/setup/status");
     expect(status.data.completed).toBe(true);
+  });
+
+  it("after completion, /admin/setup/status requires auth", async () => {
+    const r = await apiJson("/admin/setup/status");
+    expect(r.status).toBe(401);
   });
 
   it("after completion, write endpoints require auth", async () => {
@@ -247,9 +252,9 @@ describe("gallery", () => {
   });
 
   it("gallery search filters by category", async () => {
-    const r = await apiJson("/admin/gallery/search?q=&category=container");
+    const r = await apiJson("/admin/gallery/search?q=&category=channel");
     const items = r.data.items as Array<{ category: string }>;
-    expect(items.every((i) => i.category === "container")).toBe(true);
+    expect(items.every((i) => i.category === "channel")).toBe(true);
     expect(items.length).toBeGreaterThan(0);
   });
 
@@ -298,15 +303,15 @@ describe("auth-protected endpoints", () => {
     expect(Array.isArray(r.data.channels)).toBe(true);
   });
 
-  it("GET /admin/crons requires auth", async () => {
-    const r = await apiJson("/admin/crons");
+  it("GET /admin/automations requires auth", async () => {
+    const r = await apiJson("/admin/automations");
     expect(r.status).toBe(401);
   });
 
-  it("GET /admin/crons returns job list with auth", async () => {
-    const r = await authed("/admin/crons");
+  it("GET /admin/automations returns automation list with auth", async () => {
+    const r = await authed("/admin/automations");
     expect(r.ok).toBe(true);
-    expect(Array.isArray(r.data.jobs)).toBe(true);
+    expect(Array.isArray(r.data.automations)).toBe(true);
   });
 
   it("GET /admin/config requires auth", async () => {
@@ -336,6 +341,24 @@ describe("health check", () => {
   });
 });
 
+// ── Meta ─────────────────────────────────────────────────
+
+describe("meta endpoint", () => {
+  it("GET /admin/meta returns service display names and channel fields", async () => {
+    const r = await apiJson("/admin/meta");
+    expect(r.ok).toBe(true);
+    expect(r.data).toHaveProperty("serviceNames");
+    expect(r.data).toHaveProperty("channelFields");
+    const names = r.data.serviceNames as Record<string, { label: string }>;
+    expect(names.gateway.label).toBe("Message Router");
+    expect(names.opencodeCore.label).toBe("AI Assistant");
+    expect(names.openmemory.label).toBe("Memory");
+    const fields = r.data.channelFields as Record<string, Array<{ key: string; label: string }>>;
+    expect(fields["channel-discord"].length).toBe(2);
+    expect(fields["channel-discord"][0].label).toBe("Bot Token");
+  });
+});
+
 // ── UI Content Verification ─────────────────────────────
 
 describe("UI content", () => {
@@ -350,12 +373,10 @@ describe("UI content", () => {
   it("index.html includes all page containers", async () => {
     const r = await api("/");
     const text = await r.text();
-    expect(text).toContain('id="page-gallery"');
-    expect(text).toContain('id="page-installed"');
-    expect(text).toContain('id="page-services"');
-    expect(text).toContain('id="page-crons"');
-    expect(text).toContain('id="page-settings"');
-    expect(text).toContain('id="page-providers"');
+    expect(text).toContain('id="page-extensions"');
+    expect(text).toContain('id="page-channels"');
+    expect(text).toContain('id="page-automations"');
+    expect(text).toContain('id="page-system"');
   });
 
   it("index.html includes setup-ui.js script tag", async () => {

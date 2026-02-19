@@ -99,7 +99,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `mem0/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
 | `openmemory-ui` | `mem0/openmemory-ui:latest` | assistant_net | OpenMemory dashboard (Next.js, port 3000) |
-| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (plugins, skills, lib) are baked into the image from `opencode/extensions/`; host config provides optional overrides |
+| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `opencode/extensions/`; host config provides optional overrides |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
@@ -114,16 +114,25 @@ Channel containers are optional at install time. During the setup wizard, users 
 
 ### Message processing (channel inbound)
 ```
-User -> Channel Adapter -> [HMAC sign] -> Gateway -> OpenCode Core (channel-intake agent: validate/summarize)
-  -> Gateway -> OpenCode Core (default agent: full processing) -> Open Memory -> Response
+User -> Channel Adapter -> Gateway -> AI Assistant -> Gateway -> Channel Adapter -> User
 ```
 
-The gateway receives HMAC-signed payloads from channel adapters and processes them in two stages using the single OpenCode Core runtime:
+More specifically, the inbound path through the gateway is:
+```
+User -> Channel Adapter -> [HMAC sign] -> Gateway (/channel/inbound) -> OpenCode Core (channel-intake agent: validate/summarize)
+  -> Gateway -> OpenCode Core (default agent: full processing) -> Open Memory -> Response -> Gateway -> Channel Adapter -> User
+```
 
-1. **Intake validation** — Gateway forwards the message to `opencode-core` using the `channel-intake` agent, which validates and summarizes the input. The `channel-intake` agent runs with deny-by-default permissions (bash, edit, webfetch all denied). If the intake is rejected, the gateway returns a 422 error.
-2. **Core forwarding** — If the intake is valid, the gateway forwards only the validated summary to `opencode-core` (default agent) for full processing with approval gates.
+The gateway endpoint is `/channel/inbound`. It receives HMAC-signed payloads from channel adapters and processes them through a 6-step pipeline:
 
-The gateway is intentionally thin. It verifies HMAC signatures, applies rate limiting (120 req/min/user), logs audit events, and routes traffic to the OpenCode runtime.
+1. **HMAC signature verification** — Validates the channel adapter's HMAC signature. Rejects unsigned or tampered requests.
+2. **Payload validation** — Validates the structure and content of the incoming payload before further processing.
+3. **Rate limiting** — Enforces a limit of 120 requests/min/user. Excess requests are rejected with 429.
+4. **Intake validation** — Gateway forwards the message to `opencode-core` using the `channel-intake` agent, which validates and summarizes the input. The `channel-intake` agent runs with deny-by-default permissions (all tools denied). If the intake is rejected, the gateway returns a 422 error.
+5. **Forward to assistant** — If the intake is valid, the gateway forwards only the validated summary to `opencode-core` (default agent) for full processing with approval gates.
+6. **Audit log** — All inbound requests and their outcomes are written to the audit log.
+
+The gateway is stateless. It verifies HMAC signatures, applies rate limiting (120 req/min/user), logs audit events, and routes traffic to the OpenCode runtime.
 
 This approach uses OpenCode's built-in agent permission model for isolation — the `channel-intake` agent has all tools denied, while the default agent uses approval gates — without requiring a separate container or runtime process.
 
@@ -185,11 +194,23 @@ Logs are written to `$OPENPALM_STATE_HOME/observability/maintenance/`.
 
 ### Extension directory layout
 
-Extensions (plugins, skills, agents, lib) are **baked into container images** at build time. The canonical sources are `opencode/extensions/` (core) and `gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
+Extensions (skills, commands, agents, tools, plugins) are **baked into container images** at build time. `lib/` is a shared library directory used internally and is not an extension sub-type. The canonical sources are `opencode/extensions/` (core) and `gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
+
+**Extension sub-types and directory layout:**
+
+| Sub-type | Risk level | Directory convention | Example path |
+|---|---|---|---|
+| Skill | Lowest | `skills/<name>/` | `skills/memory/SKILL.md` |
+| Command | Low | `commands/` | `commands/<name>.md` |
+| Agent | Medium | `agents/` | `agents/<name>.md` |
+| Custom Tool | Medium-high | `tools/` | `tools/<name>.ts` |
+| Plugin | Highest | `plugins/` | `plugins/<name>.ts` |
+
+Directory names are **plural** by convention.
 
 | Source Directory | Container | Contents |
 |---|---|---|
-| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tool/, command/, skills/memory/ |
+| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/ (currently singular `tool/` in codebase, migration to plural planned), commands/ (currently singular `command/` in codebase, migration to plural planned), skills/memory/ |
 | `gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, agent/channel-intake.md, skills/channel-intake/ |
 
 | Store | Used by | Purpose |
@@ -197,13 +218,34 @@ Extensions (plugins, skills, agents, lib) are **baked into container images** at
 | PostgreSQL | Admin App | Structured data |
 | Qdrant | Open Memory | Vector embeddings for memory search |
 
+### Connections
+
+Connections are named credential/endpoint configurations for external services. They provide a layer of indirection so that secrets are never hard-coded into extension configs.
+
+- **Storage**: Defined in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`), managed via the admin API.
+- **Types**: AI Provider (e.g. OpenAI, Anthropic), Platform (e.g. Discord, Telegram), API Service (generic REST/webhook credentials).
+- **Env var naming**: All connection env vars use the `OPENPALM_CONN_*` prefix (e.g. `OPENPALM_CONN_OPENAI_API_KEY`).
+- **Config interpolation**: Extensions reference connections in `opencode.jsonc` using `{env:VAR_NAME}` syntax, which is resolved at runtime.
+- **Validation**: Connection validation is optional. When triggered (e.g. via the admin UI), the admin API performs a lightweight probe against the endpoint to confirm the credentials are accepted.
+
+### Automations
+
+Automations are user-defined scheduled prompts, distinct from the controller's system-level maintenance cron jobs. They allow users to configure proactive assistant behavior (e.g. daily summaries, nightly data pulls) without writing code.
+
+- **Properties**: Each automation has an ID (UUID), Name, Prompt (the text sent to the assistant), Schedule (standard Unix cron expression), and Status (enabled/disabled).
+- **Implementation**: Automations run inside `opencode-core` via a cron daemon. Each job executes a `curl` call against `localhost:4096/chat` with the configured prompt.
+- **Payload storage**: Automation payloads are stored as JSON files in `cron-payloads/` (under `$OPENPALM_CONFIG_HOME/cron/`).
+- **Session isolation**: Each automation run executes in its own session, identified as `cron-<job-id>`, so runs do not bleed context into each other.
+- **Manual trigger**: Automations can be triggered immediately via a "Run Now" action in the admin UI, independent of the schedule.
+- **Reactive vs proactive**: Channels are _reactive_ — they respond to user-initiated messages. Automations are _proactive_ — they initiate assistant activity on a schedule.
+
 
 ## Security model — defense in depth
 
 Security is enforced at multiple layers, each with a distinct responsibility:
 
 1. **Caddy** — Network-level access control. LAN-only restriction for admin/dashboard URLs. TLS termination. Non-LAN requests to restricted paths are TCP-aborted.
-2. **Gateway** — Thin auth and routing layer. HMAC signature verification, lightweight rate limiting (120 req/min/user), and audit logging. Routes requests to the OpenCode runtime.
+2. **Gateway** — Security and routing layer. Processes every inbound channel message through a 6-step pipeline: (1) HMAC signature verification, (2) payload validation, (3) rate limiting (120 req/min/user), (4) intake validation via the `channel-intake` agent (zero tool access), (5) forward validated summary to the AI assistant, (6) audit log. The gateway is stateless and exposes a single inbound endpoint at `/channel/inbound`.
 3. **OpenCode agent isolation** — The `channel-intake` agent runs with deny-by-default permissions (all tools denied); the default agent uses approval gates. Both run on the same OpenCode Core runtime but are isolated by OpenCode's agent permission model.
 4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call. The `openmemory-http` plugin provides automatic memory recall, write-back, and session-compaction preservation via OpenMemory's HTTP API (no MCP in the runtime path). All plugins are baked into the container image from `opencode/extensions/plugins/`; host config overrides are volume-mounted and take precedence when present.
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.

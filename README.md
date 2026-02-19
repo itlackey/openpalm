@@ -14,7 +14,7 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 - **One command to install** — works with Docker, Podman, or OrbStack on Linux, macOS, or Windows.
 - **Connect your channels** — Discord, Telegram, web chat, and voice are built in. Add more without coding.
 - **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
-- **Admin dashboard** — manage everything from a browser: services, extensions, agent config, and scheduled tasks.
+- **Admin dashboard** — manage everything from a browser: services, extensions, agent config, and automations.
 - **Built for safety** — eight layers of security stand between the internet and your assistant's actions.
 
 ## Get started
@@ -43,21 +43,21 @@ OpenPalm includes a built-in memory system (powered by OpenMemory). Your assista
 
 A web-based control panel lets you:
 - Start, stop, and restart services
-- Browse and install extensions from a curated gallery or npm
+- Browse and install extensions from the curated gallery, community registry, or npm
 - Edit agent configuration with validation
 - Toggle channel access between private and public
-- Create and manage scheduled tasks (cron jobs)
+- Create and manage automations
 - Monitor system health
 
 Everything is password-protected. The admin panel is only accessible from your local network.
 
 ### Extensions
 
-Add capabilities through the admin UI, API, or command line. Extensions include OpenCode plugins, behavioral skills, and container services. Install from a curated gallery or directly from npm.
+Add capabilities through the admin UI, API, or command line. Extensions add new abilities to your assistant -- behavioral skills, slash commands, specialized agents, custom tools, and lifecycle plugins. Browse and manage them in the Extension Gallery, where each has a risk badge and plain-language description. Install from the curated gallery, community registry, or npm.
 
-### Scheduled tasks
+### Automations
 
-Set up recurring jobs that run on your assistant — daily summaries, periodic checks, maintenance tasks. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
+Automations let your assistant act on a schedule -- daily briefings, weekly reports, periodic checks -- without anyone sending a message. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
 
 OpenPalm also ships with non-configurable system maintenance cron jobs in the `controller` container by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics into `${OPENPALM_STATE_HOME}/observability/maintenance`.
 

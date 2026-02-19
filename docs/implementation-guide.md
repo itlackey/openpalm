@@ -1,5 +1,5 @@
 # Implementation Guide — OpenPalm with OpenCode + OpenMemory
-*A secure, robust implementation guide using OpenCode server/SDK, plugins/tools/skills, and OpenMemory for long-term memory.*
+*A secure, robust implementation guide using OpenCode server/SDK, Extensions, and OpenMemory for long-term memory.*
 
 ## 0) Target architecture (minimal but robust)
 
@@ -12,7 +12,7 @@
    - Owns auth, sessions, approvals, audit logs, and observability export.
 3. **OpenMemory** (long-term memory)
    - Exposed as an **MCP server (SSE transport)**.
-4. **OpenCode plugins** (guardrails + telemetry enrichment)
+4. **OpenCode Extensions (skills, commands, agents, tools, plugins)** (guardrails + telemetry enrichment)
    - Enforce policy at tool boundaries.
    - Emit structured events/logs.
 
@@ -52,7 +52,7 @@ Extensions are baked into the container images at build time:
 - `opencode/extensions/opencode.jsonc` – primary config for the core agent
 - `opencode/extensions/AGENTS.md` – rules (hard constraints)
 - `opencode/extensions/skills/*.SKILL.md` – reusable behavioral SOPs
-- `opencode/extensions/skills/memory/scripts/` – local plugins and shared libraries (baked into the image as `OPENCODE_CONFIG_DIR`)
+- `opencode/extensions/skills/memory/scripts/` – shared utility scripts (not an extension sub-type; baked into the image as `OPENCODE_CONFIG_DIR`)
 - `gateway/opencode/` – intake agent config (baked into the gateway container image)
 
 ---
@@ -90,6 +90,9 @@ Extensions are baked into the container images at build time:
   // OPENCODE_CONFIG_DIR — they are loaded automatically at startup.
 }
 ```
+
+### Connections (credential management)
+Credentials are managed as **Connections** — named sets stored in `secrets.env` and referenced via `{env:VAR_NAME}` interpolation in config. Connection types include AI Provider, Platform, and API Service credentials. All Connection keys use the `OPENPALM_CONN_*` prefix convention. Mount `secrets.env` only into services that require it.
 
 ### Environment variables (all optional — defaults work inside Docker Compose)
 | Variable | Default | Description |
@@ -185,6 +188,8 @@ Create skills that the assistant can load:
 - Safe HTTP fetch with allowlist
 - Gateway RPC tools like `create_reminder()` that are centrally enforced
 
+**Note:** Custom Tools are an extension sub-type with medium-high risk — they execute code at runtime. Apply the same tool firewall scrutiny to custom tools that you apply to any other code-execution path.
+
 ---
 
 ## 8) “Recursive learning” safely (no self-modifying agent)
@@ -204,7 +209,8 @@ Create skills that the assistant can load:
 
 1. Run OpenMemory and validate add/search.
 2. Run OpenCode server and validate SDK control.
-3. Connect OpenMemory via MCP in OpenCode config.
+3. Connect OpenMemory via REST plugin in OpenCode config.
 4. Add a policy+telemetry plugin (minimal).
 5. Add rules + skills for recall-first and gating.
-6. Add channels one at a time as dumb adapters.
+6. Add Channels one at a time — Channels are self-contained adapter services that normalize platform messages and forward them through the Gateway.
+7. Configure Automations (scheduled prompts) via the admin UI for any recurring tasks.
