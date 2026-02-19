@@ -26,10 +26,11 @@ Body:
 Supported channels: `chat`, `discord`, `voice`, `telegram`
 
 Processing behavior:
-1. Gateway verifies HMAC and payload shape.
-2. Gateway sends a dedicated intake command to `opencode-core` using the `channel-intake` agent (all tools denied).
-3. Gateway parses intake JSON (`valid`, `summary`, `reason`).
-4. If valid, gateway forwards only the summary to `opencode-core` (default agent).
+1. Gateway verifies HMAC and payload shape (payload validation).
+2. Rate limiting: 120 requests per minute per user.
+3. Gateway sends a dedicated intake command to `opencode-core` using the `channel-intake` agent (all tools denied) — intake validation.
+4. Gateway parses intake JSON (`valid`, `summary`, `reason`).
+5. If valid, gateway forwards only the summary to `opencode-core` (default agent).
 
 Possible errors:
 - `400 invalid_payload` when payload fails shape validation (missing fields, invalid channel, text too long).
@@ -88,13 +89,13 @@ Health status for the admin app.
 ### Gallery (extension marketplace)
 - `GET /admin/gallery/search?q=&category=` — search curated gallery registry
   - `q` — free-text search (matches name, description, tags, id)
-  - `category` — filter by `plugin`, `skill`, or `container`
+  - `category` — filter by `plugin`, `skill`, `command`, `agent`, or `tool`. Note: `container` is not an extension type — channel management has its own dedicated endpoints (see Channel management above). If `container` appears in legacy registry entries it maps to the Channels concept.
 - `GET /admin/gallery/categories` — list gallery categories with counts
 - `GET /admin/gallery/item/:id` — get full detail for a single gallery item including risk badge
 - `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
 - `GET /admin/gallery/community?q=&category=` — search the public community registry fetched from GitHub at runtime (no auth required; 10-minute cache)
   - `q` — optional free-text search
-  - `category` — optional filter by `plugin`, `skill`, or `container`
+  - `category` — optional filter by `plugin`, `skill`, `command`, `agent`, or `tool`
   - Returns `{ items, total, source: "community-registry" }`
 - `POST /admin/gallery/community/refresh` — force a cache refresh of the community registry (auth required)
 
@@ -114,14 +115,16 @@ Health status for the admin app.
   ```
 
 ### Installed status
-- `GET /admin/installed` — returns currently installed extensions, active services, and loaded skills
+- `GET /admin/installed` — returns currently installed extensions (including skills, commands, agents, tools, and plugins) and active services
 
-### Cron jobs
-- `GET /admin/crons` — list all scheduled cron jobs (auth required)
-- `POST /admin/crons` — create a cron job `{ "name": "...", "schedule": "*/30 * * * *", "prompt": "..." }` (auth required). Returns `201` with the created job. Validates cron expression syntax. Triggers an `opencode-core` restart.
-- `POST /admin/crons/update` — update a cron job `{ "id": "...", "name?": "...", "schedule?": "...", "prompt?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Triggers an `opencode-core` restart.
-- `POST /admin/crons/delete` — delete a cron job `{ "id": "..." }` (auth required). Triggers an `opencode-core` restart.
-- `POST /admin/crons/trigger` — immediately trigger a cron job `{ "id": "..." }` (auth required). Fires the job's prompt against `opencode-core` without waiting for the cron schedule.
+### Automations
+Automations are scheduled prompts. Each automation has an ID (UUID), Name, Prompt, Schedule, and Status. The API routes use `/admin/crons` for implementation reasons.
+
+- `GET /admin/crons` — list all automations (auth required)
+- `POST /admin/crons` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "prompt": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Triggers an `opencode-core` restart.
+- `POST /admin/crons/update` — update an automation `{ "id": "...", "name?": "...", "schedule?": "...", "prompt?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Triggers an `opencode-core` restart.
+- `POST /admin/crons/delete` — delete an automation `{ "id": "..." }` (auth required). Triggers an `opencode-core` restart.
+- `POST /admin/crons/trigger` — "Run Now": immediately trigger an automation `{ "id": "..." }` (auth required). Fires the automation's prompt against `opencode-core` without waiting for the schedule.
 
 ---
 
@@ -165,6 +168,8 @@ Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-ch
 All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /admin/channels/access`).
 
 ### Channel Environment Variables
+
+Channel-specific env override files follow the naming convention `channels/<channel>.env` (e.g., `channels/discord.env`, `channels/chat.env`). These files live under the `assets/config/channels/` directory and are mounted into each channel adapter container.
 
 Each channel adapter reads the following environment variables at startup:
 

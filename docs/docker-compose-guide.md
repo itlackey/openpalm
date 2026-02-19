@@ -19,7 +19,8 @@ openpalm/
   assets/state/scripts/install.ps1    Windows PowerShell installer
 
   opencode/              OpenCode Core Dockerfile + entrypoint (extensions baked in)
-    extensions/          Extensions (plugins, skills, lib) built into the container image
+    extensions/          Extensions (skills, commands, agents, tools, plugins) built into the container image
+                         The lib/ directory contains shared utilities and is not an extension sub-type.
   gateway/               Gateway service (Bun)
   admin/                 Admin API + bundled admin UI service (Bun)
   controller/            Container lifecycle service (Bun + Docker socket)
@@ -50,7 +51,7 @@ Treat `system.env` as installer/system-managed (advanced users only), and put us
 
 The full `assets/state/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.yml` on top. Key design points:
 
-- **Single OpenCode runtime** — `opencode-core` (port 4096) hosts both the full agent (approval gates) and the `channel-intake` agent (all tools denied). Agent-level permissions provide isolation without requiring a separate runtime. Extensions (plugins, skills, lib) are baked into the container image at build time. The `/config` volume mount provides a location for user overrides that take effect on container restart without rebuilding.
+- **Single OpenCode runtime** — `opencode-core` (port 4096) hosts both the full agent (approval gates) and the `channel-intake` agent (all tools denied). Agent-level permissions provide isolation without requiring a separate runtime. Extensions (skills, commands, agents, tools, plugins) are baked into the container image at build time. The `/config` volume mount provides a location for user overrides that take effect on container restart without rebuilding. The `/config` mount inside the container corresponds to `OPENCODE_CONFIG_DIR`, which OpenCode scans for extensions at startup. **Automations** (scheduled prompts) also run inside this container via cron, using `curl` against the assistant's HTTP API at port 4096. **Connections** (credential management) are stored in `secrets.env` and mounted into services that require them.
 - **Gateway** connects to `opencode-core` via `OPENCODE_CORE_BASE_URL` and uses the `channel-intake` agent for intake validation. Gateway extensions are baked into the image; the `opencode-gateway:/app/opencode-config` volume mount is no longer required.
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.
@@ -72,9 +73,10 @@ RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs &&
 
 WORKDIR /work
 
-# Extensions (plugins, skills, agents, lib) are baked into the image
+# Extensions (skills, commands, agents, tools, plugins) are baked into the image
 # from opencode/extensions/ at build time. The /config volume mount
 # is for user overrides only and takes effect on container restart.
+# The lib/ directory contains shared utilities and is not an extension sub-type.
 COPY extensions/ /config/
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
@@ -86,7 +88,7 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 **Operational tips**
 - Pin `opencode-ai` version after validation.
 - Keep OpenCode on a private network; only expose the Gateway.
-- Extensions (plugins, skills, lib) live in `opencode/extensions/` in the container source tree and are baked into the image at build time. To override or add extensions without rebuilding, place files under the host config directory mounted at `/config`; those files take effect on container restart.
+- Extensions (skills, commands, agents, tools, plugins) live in `opencode/extensions/` in the container source tree and are baked into the image at build time. The `lib/` directory contains shared utilities and is not an extension sub-type. To override or add extensions without rebuilding, place files under the host config directory mounted at `/config` (i.e., `OPENCODE_CONFIG_DIR`); those files take effect on container restart.
 
 ---
 
@@ -104,7 +106,11 @@ Gateway emits spans/metrics; OpenCode/OpenMemory logs ship to your aggregator.
 
 ## D) Extending with additional channels (without spaghetti)
 
-### Rule: channels are dumb adapters
+### Rule: Channels are self-contained adapter services
+Channels normalize platform messages and forward them through the Gateway. Each Channel runs as a dedicated container. Key properties:
+- **Per-channel access control**: each channel can be set to `private` (LAN-only) or `public` (internet-accessible) via the Admin API (`POST /admin/channels/access`).
+- **Caddy routing**: Caddy sits in front routing `/channels/<name>*` to the appropriate channel adapter. Access mode changes update Caddy matchers automatically.
+
 A channel container should only:
 1) receive message/webhook
 2) normalize to `{userId, channel, text, attachments, metadata}`

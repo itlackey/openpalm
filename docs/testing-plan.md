@@ -11,7 +11,7 @@ Detect regressions, feature drift, implementation gaps, and security violations 
 The following items from this plan are now implemented in-repo:
 
 - ✅ Layer 1 unit tests for gateway (`rate-limit`, `audit`, intake/security/client edge cases), controller routes, and channel adapters.
-- ✅ Layer 1 admin tests for `gallery` and `cron-store`.
+- ✅ Layer 1 admin tests for `gallery` and `cron-store` (Automations backend).
 - ✅ Layer 2 integration suites for channel→gateway and admin→controller flows.
 - ✅ Layer 3 contract suites for channel-message validation and docs parity checks.
 - ✅ Layer 4 security suites for auth, HMAC edge rejection, and input bounds.
@@ -71,7 +71,7 @@ Voice-specific: `GET /voice/stream` returns 501.
 | `runtime-env.ts` | _(exists)_ | add: missing file handled gracefully; malformed lines skipped |
 | `gallery.ts` | `gallery.test.ts` | search by name, tags, category; empty query returns all; npm search response parsing; community cache TTL |
 | `extensions.ts` | `extensions.test.ts` | install plugin adds to config; uninstall removes; permission-widening blocked; atomic backup created |
-| `cron-store.ts` | `cron-store.test.ts` | CRUD operations; persistence to disk; invalid cron expressions rejected |
+| `cron-store.ts` | `cron-store.test.ts` | CRUD operations (Automations); persistence to disk; invalid cron expressions rejected |
 
 ### OpenMemory plugin
 
@@ -177,7 +177,7 @@ The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`
 - **Playwright** (`@playwright/test`) for browser automation
 - Real admin `Bun.serve()` instance started per test suite on a random port
 - Mock controller and mock gateway via `Bun.serve()` on random ports
-- Temp filesystem for admin state (setup.json, cron-store.json, config files)
+- Temp filesystem for admin state (setup.json, cron-store.json (Automations backend), config files)
 - Tests in `admin/ui/tests/` directory
 
 Run: `bun run test:ui` — target < 30 seconds.
@@ -217,7 +217,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 |------|------------|
 | Initial load | gallery cards rendered from curated registry |
 | Search by text | type query + Enter → cards filtered; empty results shows message |
-| Category filter tabs | click "Plugins" → only plugin cards; click "All" → all cards back |
+| Category filter tabs | Category filters for Skills, Commands, Agents, Tools, and Plugins; click any category → only matching cards; click "All" → all cards back |
 | Card content | each card shows name, risk badge, category, author, description (truncated), tags (max 4) |
 | Risk badge colors | low=green, medium=yellow, high=red, critical=purple |
 | Detail modal opens | click card → modal overlay appears with full item details |
@@ -232,7 +232,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 
 | Test | Assertions |
 |------|------------|
-| Lists active plugins | page shows plugins currently in opencode config |
+| Lists active extensions | page shows active extensions (skills, commands, agents, tools, plugins) currently in opencode config |
 | Lists gallery installations | page shows items installed via gallery |
 | Remove plugin | click Remove → confirm → plugin removed from list; calls `POST /admin/gallery/uninstall` |
 | Requires auth | page without admin token shows auth-required message or empty |
@@ -254,21 +254,21 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Container actions require auth | without token → error |
 | All known services listed | grid includes: gateway, opencode-core, openmemory, openmemory-ui, admin, controller, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
 
-### 5f. Cron Jobs Page
+### 5f. Automations Page
 
 | Test | Assertions |
 |------|------------|
-| Empty state | no crons → shows empty message or empty list |
-| Create cron job | fill name, schedule, prompt → click Create → job appears in list; calls `POST /admin/crons` |
-| Cron job card content | shows name, enabled/disabled badge, schedule in `<code>`, prompt preview (truncated 120 chars) |
+| Empty state | no automations → shows empty message or empty list |
+| Create automation | fill name, schedule, prompt → click Create → automation appears in list; calls `POST /admin/crons` |
+| Automation card content | shows name, enabled/disabled badge, schedule in `<code>`, prompt preview (truncated 120 chars) |
 | Validation: missing fields | submit with empty name → "All fields are required" error |
-| Validation: invalid cron | submit with bad expression → server error shown |
-| Edit cron job | click Edit → form populated with job data → modify → save → list updated; calls `POST /admin/crons/update` |
-| Delete cron job | click Delete → confirm → job removed from list; calls `POST /admin/crons/delete` |
+| Validation: invalid schedule | submit with bad expression → server error shown |
+| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /admin/crons/update` |
+| Delete automation | click Delete → confirm → automation removed from list; calls `POST /admin/crons/delete` |
 | Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /admin/crons/update` |
 | Run Now | click Run Now → calls `POST /admin/crons/trigger` → success message |
-| Multiple crons | create 3 crons → all 3 visible in list |
-| Persistence | create cron → reload page → cron still listed (re-fetched from API) |
+| Multiple automations | create 3 automations → all 3 visible in list |
+| Persistence | create automation → reload page → automation still listed (re-fetched from API) |
 
 ### 5g. Settings Page
 
@@ -281,7 +281,23 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Warning displayed | shows warning about breaking workflows |
 | Re-run setup button | click "Open Setup Wizard" → wizard overlay appears |
 
-### 5h. Error Handling (cross-cutting)
+### 5h. Connections
+
+Connections are named credential sets stored in `secrets.env` and managed via the admin API. Keys use the `OPENPALM_CONN_*` naming prefix. Types: AI Provider, Platform, API Service.
+
+| Test | Assertions |
+|------|------------|
+| List connections | `GET /admin/connections` returns all stored connections with name, type, and masked value |
+| Create connection | POST with name, type (AI Provider / Platform / API Service), and value → connection appears in list; key written to `secrets.env` with `OPENPALM_CONN_*` prefix |
+| Update connection | POST update with new value → `secrets.env` entry updated |
+| Delete connection | POST delete → connection removed from list; key removed from `secrets.env` |
+| Connection type filter | filter by "AI Provider" → only AI Provider connections shown; same for Platform and API Service |
+| Credential validation | submit connection with empty name or empty value → error shown |
+| "Used by" tracking | connection used by an extension → "Used by" count shown on connection entry |
+| Secrets storage | after creating connection, verify `secrets.env` contains `OPENPALM_CONN_<NAME>=<value>` |
+| Requires auth | all connection CRUD operations without admin token → 401 |
+
+### 5i. Error Handling (cross-cutting)
 
 | Test | Assertions |
 |------|------------|
@@ -289,9 +305,9 @@ Run: `bun run test:ui` — target < 30 seconds.
 | API 500 on server error | mock returns 500 → alert shown with error text |
 | Network failure | mock server down → error alert or "Could not load" text |
 | Gallery load failure | mock returns error → "Could not load" message in gallery area |
-| Cron load failure | mock returns error → "Could not load" message in crons area |
+| Automations load failure | mock returns error → "Could not load" message in automations area |
 
-### 5i. Auth Flow (cross-cutting)
+### 5j. Auth Flow (cross-cutting)
 
 | Test | Assertions |
 |------|------------|
@@ -308,7 +324,8 @@ admin/ui/tests/
 ├── gallery.ui.test.ts
 ├── installed.ui.test.ts
 ├── services.ui.test.ts
-├── crons.ui.test.ts
+├── automations.ui.test.ts      # Automations page (cron-store backend)
+├── connections.ui.test.ts      # Connections CRUD (secrets.env / OPENPALM_CONN_*)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
 ├── auth-flow.ui.test.ts
@@ -316,7 +333,7 @@ admin/ui/tests/
 └── helpers/
     ├── admin-harness.ts        # starts admin server + mocks on random ports
     ├── page-objects.ts         # page object helpers (selectors, common actions)
-    └── mock-responses.ts       # canned API responses for gallery, crons, etc.
+    └── mock-responses.ts       # canned API responses for gallery, automations, connections, etc.
 ```
 
 ### CI considerations for UI tests
@@ -467,7 +484,8 @@ admin/ui/tests/                     # admin UI tests (Layer 5)
 ├── gallery.ui.test.ts
 ├── installed.ui.test.ts
 ├── services.ui.test.ts
-├── crons.ui.test.ts
+├── automations.ui.test.ts          # Automations page (cron-store backend)
+├── connections.ui.test.ts          # Connections CRUD (secrets.env / OPENPALM_CONN_*)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
 ├── auth-flow.ui.test.ts
@@ -475,7 +493,7 @@ admin/ui/tests/                     # admin UI tests (Layer 5)
 └── helpers/
     ├── admin-harness.ts            # starts admin server + mocks on random ports
     ├── page-objects.ts             # page object helpers (selectors, common actions)
-    └── mock-responses.ts           # canned API responses for gallery, crons, etc.
+    └── mock-responses.ts           # canned API responses for gallery, automations, connections, etc.
 test/
 ├── contracts/                      # contract schemas and tests (Layer 3)
 │   ├── channel-message.contract.ts

@@ -2,7 +2,16 @@
 
 ## Project Overview
 
-OpenPalm is a multi-channel AI agent gateway with a microservices architecture. It connects various communication channels (Discord, Telegram, Voice, Chat, Webhook) to an OpenCode agent runtime.
+OpenPalm is a multi-channel AI assistant platform with a microservices architecture. It connects various communication channels (Discord, Telegram, Voice, Chat, Webhook) to an OpenCode agent runtime.
+
+## Core Concepts
+
+The platform is built around five concepts:
+- **Extensions** -- capabilities added to the assistant (skills, commands, agents, tools, plugins), managed via the config directory
+- **Connections** -- named credential sets for external services (AI providers, platforms, APIs), stored in secrets.env
+- **Channels** -- adapter services for user-facing platforms (Discord, Telegram, Voice, Web Chat)
+- **Automations** -- scheduled prompts that run on a cron schedule without user interaction
+- **Gateway** -- security and routing layer between channels and the assistant
 
 ## Directory Structure
 
@@ -17,7 +26,7 @@ OpenPalm is a multi-channel AI agent gateway with a microservices architecture. 
 │   ├── telegram/
 │   ├── voice/
 │   └── webhook/
-├── opencode/          # OpenCode extensions and skills
+├── opencode/          # OpenCode extensions
 └── assets/            # Config templates, scripts, state
 ```
 

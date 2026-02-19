@@ -16,14 +16,17 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 
 - Channel adapters sign payloads with HMAC shared secrets.
 - Gateway verifies signatures before processing messages.
+- Gateway validates incoming payloads before further processing.
 - Gateway enforces per-user rate limiting.
 - Gateway writes audit logs for accepted, denied, and failed actions.
+
+See the full 6-step Gateway pipeline: HMAC verification, payload validation, rate limiting (120/min per user), intake validation, forward to assistant, audit log.
 
 **Why:** prevent spoofed requests, dampen abuse, and provide traceability.
 
 ## 3) Agent-level isolation for channel intake
 
-- The gateway sends raw channel input to the `channel-intake` agent on OpenCode Core.
+- The gateway sends raw channel input to the `channel-intake` agent on `opencode-core`.
 - The `channel-intake` agent has all tools denied (bash, edit, webfetch) — it can only validate and summarize.
 - Only validated summaries are forwarded to the default agent for full processing.
 
@@ -34,7 +37,7 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 - Core runtime policy blocks permission widening in config editor flows.
 - Secret-aware memory policy and action-gating skills are included by default.
 - The `openmemory-http` plugin enforces secret detection on all write-back operations and bounds context injection to prevent token exhaustion.
-- Plugin/extension risk levels and permission notes are surfaced in admin.
+- Extension risk levels and permission notes are surfaced in admin.
 
 **Why:** constrain high-risk operations and make capability risks explicit before enabling extensions.
 

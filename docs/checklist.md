@@ -22,7 +22,7 @@
 ## Docker Compose guide (docs/docker-compose-guide.md)
 - [x] Single compose stack with Gateway + OpenCode + OpenMemory
 - [x] Optional channel services as dumb adapters
-- [x] MCP/custom-tool extension path documented
+- [x] Custom Tool extension path documented; MCP integration configured separately.
 - [x] Safety hard rules implemented (egress allowlist, replay, auth)
 
 ## Admin guide (docs/admin-guide.md)
@@ -32,7 +32,7 @@
 - [x] Admin password authentication for all admin operations
 
 ## Extensions guide (docs/extensions-guide.md)
-- [x] OpenCode `plugin[]` treated as canonical extension registry
+- [x] Extensions managed via OPENCODE_CONFIG_DIR with sub-type directories (skills/, commands/, agents/, tools/, plugins/). The plugin[] config array registers Plugin-type extensions specifically.
 - [x] Direct install/uninstall via gallery, API, and CLI
 - [x] Atomic config updates with backup on every change
 
@@ -71,12 +71,13 @@
 ## Simplified architecture
 - [x] Removed separate `opencode-channel` runtime — channel intake now handled by the `channel-intake` agent on `opencode-core`
 - [x] Gateway simplified to a pure HTTP service (no embedded OpenCode runtime process)
-- [x] Removed CONFIG directory — `user.env` and `secrets.env` placed directly in config home
+- [x] Removed separate CONFIG directory — `user.env` and `secrets.env` placed directly in config home. OPENCODE_CONFIG_DIR now points to the mounted config directory (e.g., `/config` inside the opencode-core container).
 - [x] Gateway Dockerfile simplified (no longer needs repo-root build context)
 
 ## Container extension architecture
-- [x] Extensions (plugins, skills, agents, lib) baked into opencode container image at build time
+- [x] Extensions (skills, commands, agents, tools, plugins) baked into opencode container image at build time. Note: lib/ contains shared utilities, not an extension sub-type.
 - [x] Canonical extension source lives in opencode/extensions/ (core) and gateway/opencode/ (gateway)
+- [x] Extensions managed via OPENCODE_CONFIG_DIR with sub-type directories (skills/, commands/, agents/, tools/, plugins/). The plugin[] config array registers Plugin-type extensions specifically.
 - [x] Host config directory provides optional user overrides at runtime
 - [x] Docker compose mounts host config for user overrides; extensions are available from the image by default
 - [x] Gateway container has intake agent config baked in from gateway/opencode/
@@ -89,6 +90,14 @@
 - [x] assets/config/system.env documents the three XDG path variables
 - [x] All services, channels, and apps conform to the data/config/state separation pattern
 
+
+## Connections (credential management)
+- [ ] Credential management via admin API (CRUD: create, read, update, delete connections)
+- [ ] Credentials stored in `secrets.env` using `OPENPALM_CONN_*` naming prefix
+- [ ] Connection types supported: AI Provider, Platform, API Service
+- [ ] Connection validation (non-empty name and value required; type must be a known type)
+- [ ] "Used by" tracking: extensions can reference connections via {env:VAR_NAME} interpolation
+- [ ] Admin UI Connections page covers all CRUD operations and type filtering
 
 ## Testing implementation status
 - [x] Gateway unit tests expanded (`rate-limit`, `audit`, intake/security/client edge cases)

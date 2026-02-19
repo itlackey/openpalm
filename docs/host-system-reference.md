@@ -101,21 +101,22 @@ User-editable configuration files. The installer seeds defaults but never overwr
 │   ├── discord.env        # Discord channel credentials
 │   ├── telegram.env       # Telegram channel credentials
 │   └── voice.env          # Voice channel credentials
-├── cron/                  # Cron job definitions managed by admin
-│   └── crontab            # (created by admin when cron jobs are added)
+├── cron/                  # Automation definitions (scheduled prompts managed by admin)
+│   ├── crontab            # (created by admin when automations are added)
+│   └── cron-payloads/     # JSON payload files for each automation (one per automation ID)
 ├── secrets.env            # API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
 └── user.env               # User-level environment overrides
 ```
 
 ### Key Config Files
 
-**`opencode-core/opencode.jsonc`** — User override layer for the opencode-core container. Seeded as an empty JSON object `{}`. Extensions are baked into the container image at build time; this file exists so operators can add npm plugins, change permissions, or configure MCP connections without rebuilding images. Mounted at `/config/opencode.jsonc` inside the container.
+**`opencode-core/opencode.jsonc`** — User override layer for the opencode-core container. Seeded as an empty JSON object `{}`. Extensions are baked into the container image at build time; this file exists so operators can add npm plugins, change permissions, or configure MCP connections without rebuilding images. Mounted at `/config/opencode.jsonc` inside the container. Inside the container, the config mount is referenced as `OPENCODE_CONFIG_DIR`.
 
 **`caddy/Caddyfile`** — Reverse proxy rules. Routes `/channels/*` to channel adapters, `/admin/*` to the admin service, and enforces LAN-only access via IP matchers.
 
-**`channels/*.env`** — Per-channel credential files (e.g., `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`).
+**`channels/*.env`** — Per-channel credential files (e.g., `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`). Each channel uses its own env file named after the channel (e.g., `channels/discord.env`, `channels/telegram.env`).
 
-**`secrets.env`** — API keys consumed by opencode-core and openmemory. Operators populate this with their provider keys.
+**`secrets.env`** — API keys consumed by opencode-core and openmemory. Operators populate this with their provider keys. This file implements the Connections concept -- named credential sets managed via the admin API. Keys use the `OPENPALM_CONN_*` naming prefix.
 
 **`user.env`** — User-level environment variable overrides.
 
@@ -230,6 +231,8 @@ Extensions follow a layered model:
 2. **Host override layer (opencode-core only)** — `~/.config/openpalm/opencode-core/` is mounted at `/config`. If `/config/opencode.jsonc` exists, the entrypoint uses `/config` as the config directory. If missing, it copies baked-in defaults from `/root/.config/opencode/` into `/config`.
 
 3. **Gateway has no host override** — the gateway's config is fully baked into its image with no host volume mount.
+
+Extensions are organized into subdirectories by type: `skills/`, `commands/`, `agents/`, `tools/`, `plugins/`.
 
 The installer does not seed extension files (plugins, skills, AGENTS.md). It seeds only an empty `opencode.jsonc` for user-level overrides.
 

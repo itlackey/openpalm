@@ -40,13 +40,15 @@ bun run dev:fresh
 
 `dev-setup.sh` creates the same XDG-style directory tree that the production installer creates:
 
+On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpalm/`). Inside the opencode-core container, this is mounted as `OPENCODE_CONFIG_DIR`. Channel env files are stored in the `channels/` subdirectory of the config home.
+
 ```
 .dev/
 ├── config/          ← OPENPALM_CONFIG_HOME
 │   ├── caddy/Caddyfile
 │   ├── opencode-core/opencode.jsonc
 │   ├── channels/{chat,discord,voice,telegram}.env
-│   ├── cron/
+│   ├── cron/        ← Automation definitions and cron payloads
 │   ├── ssh/authorized_keys
 │   ├── secrets.env
 │   └── user.env
