@@ -8,11 +8,11 @@ describe("gallery", () => {
   });
 
   it("supports searching by text, tags, and category", () => {
-    const byName = searchGallery("memory guard");
-    expect(byName.some((item) => item.id === "plugin-opencode-memory-guard")).toBe(true);
+    const byName = searchGallery("telemetry");
+    expect(byName.some((item) => item.id === "plugin-policy-telemetry")).toBe(true);
 
-    const byTag = searchGallery("privacy");
-    expect(byTag.some((item) => item.id === "skill-memory-policy")).toBe(true);
+    const byTag = searchGallery("security");
+    expect(byTag.some((item) => item.id === "plugin-policy-telemetry")).toBe(true);
 
     const pluginsOnly = searchGallery("", "plugin");
     expect(pluginsOnly.every((item) => item.category === "plugin")).toBe(true);
