@@ -103,9 +103,9 @@ bootstrap_install_assets() {
     && [ -f "$ASSETS_DIR/user.env" ] \
     && [ -f "$ASSETS_DIR/uninstall.sh" ] \
     && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
-    && [ -f "$ASSETS_DIR/config/opencode-core/opencode.jsonc" ] \
-    && [ -d "$ASSETS_DIR/config/opencode-core/plugins" ] \
-    && [ -f "$ASSETS_DIR/config/opencode-gateway/opencode.jsonc" ] \
+    && [ -f "$ASSETS_DIR/opencode/core/opencode.jsonc" ] \
+    && [ -d "$ASSETS_DIR/opencode/core/plugins" ] \
+    && [ -f "$ASSETS_DIR/opencode/gateway/opencode.jsonc" ] \
     && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
     INSTALL_ASSETS_DIR="$ASSETS_DIR"
     return
@@ -385,17 +385,17 @@ seed_dir() {
 
 # opencode-core config (extensions are no longer baked into the container image;
 # they live here and are volume-mounted into the container at runtime)
-seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/config/opencode-core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/plugins"        "$OPENPALM_CONFIG_HOME/opencode-core/plugins"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/lib"            "$OPENPALM_CONFIG_HOME/opencode-core/lib"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-core/ssh"            "$OPENPALM_CONFIG_HOME/opencode-core/ssh"
+seed_file "$INSTALL_ASSETS_DIR/opencode/core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/opencode/core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
+seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/plugins"        "$OPENPALM_CONFIG_HOME/opencode-core/plugins"
+seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/lib"            "$OPENPALM_CONFIG_HOME/opencode-core/lib"
+seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/ssh"            "$OPENPALM_CONFIG_HOME/opencode-core/ssh"
 
 # opencode-gateway config (intake agent extensions, mounted into the gateway container)
-seed_file "$INSTALL_ASSETS_DIR/config/opencode-gateway/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-gateway/opencode.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/config/opencode-gateway/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-gateway/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode-gateway/skills"         "$OPENPALM_CONFIG_HOME/opencode-gateway/skills"
+seed_file "$INSTALL_ASSETS_DIR/opencode/gateway/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-gateway/opencode.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/opencode/gateway/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-gateway/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/opencode/gateway/skills"         "$OPENPALM_CONFIG_HOME/opencode-gateway/skills"
 
 # Caddy config
 seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"

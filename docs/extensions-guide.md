@@ -10,14 +10,101 @@ Everything else (channels/services/UI panels) is derived from that.
 
 ### Extension directory layout
 
-Extensions are **not baked into the container image**. They live in `assets/config/` and are organized by which opencode instance they serve:
+Extensions are **not baked into the container image**. They live in `assets/opencode/` and are organized by which opencode instance they serve:
 
 | Directory | Container | Purpose |
 |---|---|---|
-| `assets/config/opencode-core/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (ActionGating, MemoryPolicy, RecallFirst, ChannelIntake), lib (openmemory-client), AGENTS.md |
-| `assets/config/opencode-gateway/` | gateway | Intake agent: skills (ChannelIntake, RecallFirst), AGENTS.md |
+| `assets/opencode/core/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (ActionGating, MemoryPolicy, RecallFirst, ChannelIntake), lib (openmemory-client), AGENTS.md |
+| `assets/opencode/gateway/` | gateway | Intake agent: skills (ChannelIntake, RecallFirst), AGENTS.md |
 
 The installer seeds these into `~/.config/openpalm/opencode-core/` and `~/.config/openpalm/opencode-gateway/` respectively. Docker compose volume-mounts them into the containers at runtime.
+
+### Recommended structure in `assets/opencode/`
+
+```text
+assets/
+  opencode/
+    core/
+      opencode.jsonc
+      AGENTS.md
+      plugins/
+      skills/
+      lib/
+      ssh/
+    gateway/
+      opencode.jsonc
+      AGENTS.md
+      skills/
+```
+
+### Extension authoring rule
+
+All new assistant features should be implemented as OpenCode extensions (plugin, skill, or shared `lib/` module) under `assets/opencode/` first, then enabled via `plugin[]` in `opencode.jsonc`.
+
+### Naming conventions
+
+- Plugin files: `kebab-case.ts` (example: `calendar-sync.ts`)
+- Skill files: `PascalCase.SKILL.md` (example: `CalendarOps.SKILL.md`)
+- Shared helpers in `lib/`: `kebab-case.ts` matching the plugin domain
+- Keep plugin IDs stable (`@scope/name` or `name`) so admin/API/CLI operations remain deterministic
+
+### Quick scaffold: add a local extension in `assets/opencode/core/`
+
+1. Create plugin file `assets/opencode/core/plugins/calendar-sync.ts`:
+
+```ts
+export default {
+  name: "calendar-sync",
+  async setup() {
+    return {
+      "calendar.ping": async () => "calendar-sync ready"
+    };
+  }
+};
+```
+
+2. (Optional) Add a skill file `assets/opencode/core/skills/CalendarOps.SKILL.md`:
+
+```md
+# CalendarOps
+
+Use `calendar.ping` before running calendar actions to verify plugin health.
+```
+
+3. Register the extension in `assets/opencode/core/opencode.jsonc`:
+
+```jsonc
+{
+  "plugin": [
+    "plugins/calendar-sync.ts"
+  ]
+}
+```
+
+4. Re-run the installer (or copy seeded config into `~/.config/openpalm/opencode-core/`) and restart `opencode-core`.
+
+### Best practices
+
+- Keep extensions small and single-purpose.
+- Add/update tests near changed code paths (for example `opencode/*.test.ts` for plugin helpers).
+- Document behavior and operational constraints in skill files and `AGENTS.md`.
+- Prefer local `plugins/` + `lib/` composition over large one-file plugins.
+
+### Primary references
+
+- OpenCode extension documentation: https://opencode.ai/docs/plugins
+- Gateway main code: https://github.com/itlackey/openpalm/blob/main/gateway/src/server.ts
+- Admin main code: https://github.com/itlackey/openpalm/blob/main/admin/src/server.ts
+- Controller main code: https://github.com/itlackey/openpalm/blob/main/controller/server.ts
+
+### Reference architecture (brief)
+
+- `assets/` is the canonical source for install-time defaults.
+- `assets/opencode/core/` drives the `opencode-core` container (full assistant runtime).
+- `assets/opencode/gateway/` provides the restricted intake-agent config used by the gateway.
+- Gateway handles signature verification/rate limits and forwards validated work to `opencode-core`.
+- Admin manages config/extensions and invokes the controller for lifecycle actions.
+- Controller is the only container-control plane component and executes compose operations.
 
 ---
 

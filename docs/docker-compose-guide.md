@@ -72,7 +72,7 @@ RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs &&
 WORKDIR /work
 
 # Extensions (plugins, skills, agents, lib) are NOT baked into the image.
-# They are kept in assets/config/opencode-core/, copied to the host config
+# They are kept in assets/opencode/core/, copied to the host config
 # directory during install, and volume-mounted into /config at runtime.
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
@@ -84,7 +84,7 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 **Operational tips**
 - Pin `opencode-ai` version after validation.
 - Keep OpenCode on a private network; only expose the Gateway.
-- Extensions are managed via the `assets/config/opencode-core/` directory and seeded into the host config home by the installer. This keeps the container image lean and allows extensions to be updated without rebuilding the image.
+- Extensions are managed via the `assets/opencode/core/` directory and seeded into the host config home by the installer. This keeps the container image lean and allows extensions to be updated without rebuilding the image.
 
 ---
 

@@ -49,12 +49,12 @@ Even if OpenMemory supports more, standardize on these operations in your assist
 
 ### Configuration sources
 Extensions are kept in `assets/config/` and volume-mounted at runtime (not baked into the container image):
-- `assets/config/opencode-core/opencode.jsonc` – primary config for the core agent
-- `assets/config/opencode-core/AGENTS.md` – rules (hard constraints)
-- `assets/config/opencode-core/skills/*.SKILL.md` – reusable behavioral SOPs
-- `assets/config/opencode-core/plugins/*` – local plugins (volume-mounted as `OPENCODE_CONFIG_DIR`)
-- `assets/config/opencode-core/lib/*` – shared libraries used by plugins
-- `assets/config/opencode-gateway/` – intake agent config (mounted into the gateway container)
+- `assets/opencode/core/opencode.jsonc` – primary config for the core agent
+- `assets/opencode/core/AGENTS.md` – rules (hard constraints)
+- `assets/opencode/core/skills/*.SKILL.md` – reusable behavioral SOPs
+- `assets/opencode/core/plugins/*` – local plugins (volume-mounted as `OPENCODE_CONFIG_DIR`)
+- `assets/opencode/core/lib/*` – shared libraries used by plugins
+- `assets/opencode/gateway/` – intake agent config (mounted into the gateway container)
 
 ---
 

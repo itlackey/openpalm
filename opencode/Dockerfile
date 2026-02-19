@@ -8,7 +8,7 @@ WORKDIR /work
 # Extensions (plugins, skills, agents, lib) are NOT baked into the image.
 # They are kept in the assets directory, copied to the host config directory
 # during install, and volume-mounted into /config at runtime.
-# See assets/config/opencode-core/ for the canonical extension source.
+# See assets/opencode/core/ for the canonical extension source.
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
