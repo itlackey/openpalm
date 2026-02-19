@@ -6,6 +6,25 @@ Detect regressions, feature drift, implementation gaps, and security violations 
 
 ---
 
+## Implementation Status (Current)
+
+The following items from this plan are now implemented in-repo:
+
+- ✅ Layer 1 unit tests for gateway (`rate-limit`, `audit`, intake/security/client edge cases), controller routes, and channel adapters.
+- ✅ Layer 1 admin tests for `gallery` and `cron-store`.
+- ✅ Layer 2 integration suites for channel→gateway and admin→controller flows.
+- ✅ Layer 3 contract suites for channel-message validation and docs parity checks.
+- ✅ Layer 4 security suites for auth, HMAC edge rejection, and input bounds.
+- ⚠️ Layer 5 admin UI Playwright tests are scaffolded under `admin/ui/tests/` and require expansion to full page-object coverage listed below.
+
+Run status-oriented lanes with:
+
+- `bun test --filter integration`
+- `bun test --filter contract`
+- `bun test --filter security`
+
+---
+
 ## Layer 1: Unit Tests (fast, no network, no Docker)
 
 Run: `bun test` — target < 5 seconds total.

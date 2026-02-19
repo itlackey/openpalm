@@ -24,7 +24,15 @@
     "dev:ps": "docker compose --project-directory . --env-file .env -f assets/state/docker-compose.yml -f docker-compose.yml ps -a",
     "dev:config": "docker compose --project-directory . --env-file .env -f assets/state/docker-compose.yml -f docker-compose.yml config",
     "dev:fresh": "./dev-setup.sh --clean && docker compose --project-directory . --env-file .env -f assets/state/docker-compose.yml -f docker-compose.yml up -d --build",
-    "admin:extensions": "bun run assets/state/scripts/extensions-cli.ts"
+    "admin:extensions": "bun run assets/state/scripts/extensions-cli.ts",
+    "test:unit": "bun test --filter '!integration|contract|security|compose|ui'",
+    "test:integration": "bun test --filter integration",
+    "test:contracts": "bun test --filter contract",
+    "test:security": "bun test --filter security",
+    "test:ui": "bun test --filter ui.test",
+    "test:compose": "bun test --filter compose",
+    "test:compose:ui": "bun test --filter e2e-ui.compose",
+    "test:ci": "bun run typecheck && bun test --filter '!compose'"
   },
   "devDependencies": {
     "@types/bun": "^1.3.9"

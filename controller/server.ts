@@ -9,13 +9,16 @@ const COMPOSE_SUBCOMMAND = Bun.env.OPENPALM_COMPOSE_SUBCOMMAND ?? "compose";
 const COMPOSE_FILE = "docker-compose.yml";
 const CONTAINER_SOCKET_URI = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///var/run/openpalm-container.sock";
 const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean).join(" ");
-const ALLOWED = new Set(["opencode-core", "gateway", "openmemory", "admin", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
+
+export const ALLOWED = new Set(["opencode-core", "gateway", "openmemory", "admin", "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy"]);
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });
 }
 
-function runCompose(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+export type ComposeRunner = (args: string[]) => Promise<{ ok: boolean; stdout: string; stderr: string }>;
+
+const runCompose: ComposeRunner = (args: string[]) => {
   return new Promise((resolve) => {
     const composeArgs = COMPOSE_SUBCOMMAND
       ? [COMPOSE_SUBCOMMAND, "-f", COMPOSE_FILE, ...args]
@@ -38,51 +41,53 @@ function runCompose(args: string[]): Promise<{ ok: boolean; stdout: string; stde
     });
     proc.on("close", (code) => resolve({ ok: code === 0, stdout: out, stderr: err }));
   });
-}
+};
 
-Bun.serve({
-  port: PORT,
-  async fetch(req) {
+export function createControllerFetch(controllerToken: string, compose: ComposeRunner) {
+  return async function fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "GET" && url.pathname === "/health") return json(200, { ok: true, service: "controller" });
-    if (req.headers.get("x-controller-token") !== TOKEN) return json(401, { error: "unauthorized" });
+    if (req.headers.get("x-controller-token") !== controllerToken) return json(401, { error: "unauthorized" });
 
-    // List running containers
     if (req.method === "GET" && url.pathname === "/containers") {
-      const result = await runCompose(["ps", "--format", "json"]);
+      const result = await compose(["ps", "--format", "json"]);
       if (!result.ok) return json(500, { ok: false, error: result.stderr });
       return json(200, { ok: true, containers: result.stdout });
     }
 
-    // Restart a service
     if (req.method === "POST" && url.pathname.startsWith("/restart/")) {
       const service = url.pathname.replace("/restart/", "");
       if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
-      const result = await runCompose(["restart", service]);
+      const result = await compose(["restart", service]);
       if (!result.ok) return json(500, { ok: false, error: result.stderr });
       return json(200, { ok: true, action: "restart", service, stdout: result.stdout });
     }
 
-    // Start (up) a service
     if (req.method === "POST" && url.pathname.startsWith("/up/")) {
       const service = url.pathname.replace("/up/", "");
       if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
-      const result = await runCompose(["up", "-d", service]);
+      const result = await compose(["up", "-d", service]);
       if (!result.ok) return json(500, { ok: false, error: result.stderr });
       return json(200, { ok: true, action: "up", service, stdout: result.stdout });
     }
 
-    // Stop (down) a service
     if (req.method === "POST" && url.pathname.startsWith("/down/")) {
       const service = url.pathname.replace("/down/", "");
       if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
-      const result = await runCompose(["stop", service]);
+      const result = await compose(["stop", service]);
       if (!result.ok) return json(500, { ok: false, error: result.stderr });
       return json(200, { ok: true, action: "down", service, stdout: result.stdout });
     }
 
     return json(404, { error: "not found" });
-  }
-});
+  };
+}
 
-console.log(`controller listening on ${PORT} (runtime=${RUNTIME_PLATFORM}, compose='${COMPOSE_COMMAND_DISPLAY}')`);
+if (import.meta.main) {
+  Bun.serve({
+    port: PORT,
+    fetch: createControllerFetch(TOKEN, runCompose)
+  });
+
+  console.log(`controller listening on ${PORT} (runtime=${RUNTIME_PLATFORM}, compose='${COMPOSE_COMMAND_DISPLAY}')`);
+}
