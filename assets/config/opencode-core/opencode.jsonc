@@ -29,9 +29,5 @@
       "url": "http://openmemory:8765/mcp/gateway/sse/default-user",
       "enabled": true
     }
-  },
-
-  "plugin": [
-    "./.opencode/plugins/policy-and-telemetry.ts"
-  ]
+  }
 }
