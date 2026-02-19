@@ -145,7 +145,8 @@
           + '<div id="wiz-step-error" class="wiz-error"></div>'
           + channelCheckboxes();
       case "extensions":
-        return '<p>Recommended starter extensions:</p>' + starterExtensions();
+        return '<div id="wiz-step-error" class="wiz-error"></div>'
+          + '<p>Recommended starter extensions:</p>' + starterExtensions();
       case "complete":
         return '<p>Finalizing setup and starting your assistant...</p><div id="wiz-complete-status">Loading...</div>';
     }
@@ -233,6 +234,9 @@
       const a = document.getElementById("wiz-admin");
       if (a) setAdminToken(a.value);
     }
+    if (STEPS[wizardStep] === "channels") {
+      enabledChannels = Array.from(document.querySelectorAll(".wiz-ch:checked")).map((c) => c.value);
+    }
     if (STEPS[wizardStep] === "serviceInstances") {
       const openmemory = document.getElementById("wiz-svc-openmemory")?.value || "";
       const psql = document.getElementById("wiz-svc-psql")?.value || "";
@@ -271,8 +275,7 @@
 
   async function finishSetup() {
     clearStepError();
-    const chs = Array.from(document.querySelectorAll(".wiz-ch:checked")).map((c) => c.value);
-    const channelsResult = await api("/admin/setup/channels", { method: "POST", body: JSON.stringify({ channels: chs }) });
+    const channelsResult = await api("/admin/setup/channels", { method: "POST", body: JSON.stringify({ channels: enabledChannels }) });
     if (!channelsResult.ok) {
       showStepError("Could not save your channel choices. Please try again.");
       return;

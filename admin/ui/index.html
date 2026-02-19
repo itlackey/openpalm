@@ -526,8 +526,12 @@ function confirmUninstall(pluginId, index) {
 }
 
 async function doUninstall(pluginId) {
-  await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
-  showToast('Extension removed. Your assistant will restart to apply changes.', 'success');
+  var r = await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
+  if (r.ok) {
+    showToast('Extension removed. Your assistant will restart to apply changes.', 'success');
+  } else {
+    showToast('Failed to remove: ' + friendlyError(r.data ? r.data.error : String(r.status)), 'error');
+  }
   loadMyExtensions();
 }
 
@@ -548,14 +552,11 @@ async function loadChannels() {
   }
   channelsData = ch.data.channels || [];
 
-  /* Load configs for all channels */
+  /* Use config data already included in the channels response */
   for (var ci = 0; ci < channelsData.length; ci++) {
     var c = channelsData[ci];
-    if (c.service && c.service.startsWith('channel-')) {
-      var cfgR = await api('/admin/channels/config?service=' + encodeURIComponent(c.service));
-      if (cfgR.ok) {
-        channelConfigs[c.service] = cfgR.data.config || {};
-      }
+    if (c.service && c.config) {
+      channelConfigs[c.service] = c.config;
     }
   }
 

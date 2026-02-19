@@ -57,6 +57,7 @@ const REGISTRY: GalleryItem[] = [
     tags: ["memory", "behavior", "built-in"],
     permissions: ["No tool access — influences reasoning only"],
     securityNotes: "Pure markdown behavior file. Cannot execute code or access external resources.",
+    installAction: "skill-file",
     installTarget: "skills/memory/SKILL.md",
     builtIn: true,
   },
