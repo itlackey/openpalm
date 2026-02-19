@@ -9,15 +9,16 @@ export type GalleryItem = {
   description: string;
   category: GalleryCategory;
   risk: RiskLevel;
-  author: string;
-  version: string;
+  author?: string;
+  version?: string;
   source: string;
-  tags: string[];
-  permissions: string[];
-  securityNotes: string;
-  installAction: "plugin" | "skill-file" | "compose-service";
+  tags?: string[];
+  permissions?: string[];
+  securityNotes?: string;
+  installAction?: "plugin" | "skill-file" | "compose-service";
   installTarget: string; // npm package, skill file path, or compose service name
   docUrl?: string;
+  builtIn?: boolean;
 };
 
 // ── Curated gallery registry ────────────────────────────────────────
@@ -35,134 +36,24 @@ const REGISTRY: GalleryItem[] = [
     risk: "low",
     author: "OpenPalm",
     version: "built-in",
-    source: "./plugins/policy-and-telemetry.ts",
+    source: "plugins/policy-and-telemetry.ts",
     tags: ["security", "audit", "built-in"],
     permissions: ["tool.execute.before hook"],
     securityNotes: "Read-only hook — inspects tool calls but cannot modify responses. Logs to stdout only.",
     installAction: "plugin",
-    installTarget: "./plugins/policy-and-telemetry.ts"
-  },
-  {
-    id: "plugin-opencode-memory-guard",
-    name: "Memory Guard",
-    description: "Plugin that intercepts memory writes and applies additional PII/secret detection before data reaches OpenMemory. Adds a second layer of defense beyond the gateway's built-in checks.",
-    category: "plugin",
-    risk: "medium",
-    author: "OpenPalm",
-    version: "1.0.0",
-    source: "./plugins/memory-guard.ts",
-    tags: ["security", "memory", "pii"],
-    permissions: ["tool.execute.before hook", "memory write interception"],
-    securityNotes: "Intercepts memory_write tool calls. Cannot exfiltrate data — runs inside OpenCode sandbox with no network access.",
-    installAction: "plugin",
-    installTarget: "./plugins/memory-guard.ts"
-  },
-  {
-    id: "plugin-rate-limit-enforcer",
-    name: "Rate Limit Enforcer",
-    description: "Plugin-level rate limiting that tracks tool call frequency per session. Provides a second rate-limiting layer in addition to the gateway's per-user limits.",
-    category: "plugin",
-    risk: "low",
-    author: "OpenPalm",
-    version: "1.0.0",
-    source: "./plugins/rate-limit-enforcer.ts",
-    tags: ["security", "rate-limiting"],
-    permissions: ["tool.execute.before hook"],
-    securityNotes: "Read-only counting — denies calls that exceed threshold but cannot modify tool behavior.",
-    installAction: "plugin",
-    installTarget: "./plugins/rate-limit-enforcer.ts"
-  },
-  {
-    id: "plugin-response-sanitizer",
-    name: "Response Sanitizer",
-    description: "Scans LLM responses for accidental credential leaks, internal URLs, and PII before they reach the user. Defense in depth for output safety.",
-    category: "plugin",
-    risk: "medium",
-    author: "OpenPalm",
-    version: "1.0.0",
-    source: "./plugins/response-sanitizer.ts",
-    tags: ["security", "output-safety", "pii"],
-    permissions: ["tool.execute.after hook"],
-    securityNotes: "Inspects outbound responses. Can redact content but cannot make external calls.",
-    installAction: "plugin",
-    installTarget: "./plugins/response-sanitizer.ts"
+    installTarget: "plugins/policy-and-telemetry.ts"
   },
 
   // ── Skills ────────────────────────────────────────────────────────
   {
-    id: "skill-recall-first",
-    name: "Recall First",
-    description: "Standard operating procedure: always query memory for user-specific context before answering. Explains relevance and includes memory IDs in responses for trust.",
-    category: "skill",
-    risk: "low",
-    author: "OpenPalm",
-    version: "built-in",
-    source: "skills/RecallFirst.SKILL.md",
-    tags: ["memory", "behavior", "built-in"],
-    permissions: ["Behavioral — no tool access"],
-    securityNotes: "Pure behavioral SOP. No tool access, no side effects. Guides how the assistant uses existing memory tools.",
-    installAction: "skill-file",
-    installTarget: "skills/RecallFirst.SKILL.md"
-  },
-  {
-    id: "skill-memory-policy",
+    id: "skill-memory",
     name: "Memory Policy",
-    description: "Governs when to store data in memory: explicit-save only, redact secrets, track source and confidence. Prevents accidental data hoarding.",
-    category: "skill",
-    risk: "low",
-    author: "OpenPalm",
-    version: "built-in",
-    source: "skills/MemoryPolicy.SKILL.md",
-    tags: ["memory", "privacy", "built-in"],
-    permissions: ["Behavioral — no tool access"],
-    securityNotes: "Restricts memory writes. Pure behavioral SOP with no tool access.",
-    installAction: "skill-file",
-    installTarget: "skills/MemoryPolicy.SKILL.md"
-  },
-  {
-    id: "skill-action-gating",
-    name: "Action Gating",
-    description: "Classifies actions into safe/medium/high risk tiers and requires explicit user approval for medium+ actions. Prevents the assistant from taking destructive actions autonomously.",
-    category: "skill",
-    risk: "low",
-    author: "OpenPalm",
-    version: "built-in",
-    source: "skills/ActionGating.SKILL.md",
-    tags: ["security", "approval", "built-in"],
-    permissions: ["Behavioral — no tool access"],
-    securityNotes: "Adds approval gates. Pure behavioral SOP — makes the assistant more cautious, never less.",
-    installAction: "skill-file",
-    installTarget: "skills/ActionGating.SKILL.md"
-  },
-  {
-    id: "skill-code-review",
-    name: "Code Review",
-    description: "SOP for reviewing code changes: check for security issues (injection, XSS, secrets), verify test coverage, validate error handling. Useful for development-focused assistants.",
-    category: "skill",
-    risk: "low",
-    author: "OpenPalm",
-    version: "1.0.0",
-    source: "skills/CodeReview.SKILL.md",
-    tags: ["development", "security", "review"],
-    permissions: ["Behavioral — no tool access"],
-    securityNotes: "Read-only behavioral SOP. Guides analysis but cannot modify code.",
-    installAction: "skill-file",
-    installTarget: "skills/CodeReview.SKILL.md"
-  },
-  {
-    id: "skill-summarize-context",
-    name: "Context Summarizer",
-    description: "SOP for summarizing long conversations and documents. Extracts key facts, decisions, and action items while preserving important context.",
-    category: "skill",
-    risk: "low",
-    author: "OpenPalm",
-    version: "1.0.0",
-    source: "skills/SummarizeContext.SKILL.md",
-    tags: ["productivity", "memory", "summarization"],
-    permissions: ["Behavioral — no tool access"],
-    securityNotes: "Pure behavioral SOP. No tool access or side effects.",
-    installAction: "skill-file",
-    installTarget: "skills/SummarizeContext.SKILL.md"
+    description: "Governs memory storage and recall behavior for the assistant",
+    category: "skill" as GalleryCategory,
+    risk: "low" as RiskLevel,
+    source: "skills/memory/SKILL.md",
+    installTarget: "skills/memory/SKILL.md",
+    builtIn: true,
   },
 
   // ── Containers ────────────────────────────────────────────────────
@@ -285,7 +176,7 @@ export function searchGallery(query: string, category?: GalleryCategory): Galler
   return items.filter((item) =>
     item.name.toLowerCase().includes(q) ||
     item.description.toLowerCase().includes(q) ||
-    item.tags.some((t) => t.includes(q)) ||
+    item.tags?.some((t) => t.includes(q)) ||
     item.id.includes(q)
   );
 }
@@ -366,7 +257,7 @@ export async function searchPublicRegistry(
     (item) =>
       item.name.toLowerCase().includes(q) ||
       item.description.toLowerCase().includes(q) ||
-      item.tags.some((t) => t.toLowerCase().includes(q)) ||
+      item.tags?.some((t) => t.toLowerCase().includes(q)) ||
       item.id.toLowerCase().includes(q)
   );
 }

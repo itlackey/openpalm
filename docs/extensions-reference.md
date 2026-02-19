@@ -61,14 +61,22 @@ The gateway container has no such fallback — its config is fully baked and not
 opencode/extensions/
 ├── opencode.jsonc                          # Core agent configuration
 ├── AGENTS.md                               # Safety rules (immutable behavioral constraints)
-└── skills/
-    └── memory/
-        ├── SKILL.md                        # Memory policy + recall-first behavioral rules
-        └── scripts/
-            ├── openmemory-client.ts         # Shared OpenMemory REST client library
-            ├── openmemory-http.ts           # Memory recall/writeback pipeline plugin
-            ├── openmemory-http.test.ts      # Tests for the memory plugin
-            └── policy-and-telemetry.ts      # Secret detection + audit logging plugin
+├── plugins/
+│   ├── openmemory-http.ts                  # Memory recall/writeback pipeline plugin
+│   └── policy-and-telemetry.ts            # Secret detection + audit logging plugin
+├── lib/
+│   └── openmemory-client.ts               # Shared OpenMemory REST client library
+├── skills/
+│   └── memory/
+│       └── SKILL.md                        # Memory policy + recall-first behavioral rules
+├── tool/
+│   ├── memory-query.ts                     # LLM-callable tool: search OpenMemory
+│   ├── memory-save.ts                      # LLM-callable tool: save to OpenMemory
+│   └── health-check.ts                     # LLM-callable tool: check service health
+└── command/
+    ├── memory-recall.md                    # Slash command: /memory-recall
+    ├── memory-save.md                      # Slash command: /memory-save
+    └── health.md                           # Slash command: /health
 ```
 
 ### Gateway Extensions (`gateway/opencode/`)
@@ -89,7 +97,7 @@ gateway/opencode/
 | Skill directories | `kebab-case/` | `memory/`, `channel-intake/` |
 | Skill files | `SKILL.md` | `memory/SKILL.md` |
 | Plugin/script files | `kebab-case.ts` | `openmemory-http.ts` |
-| Shared libraries | `kebab-case.ts` in `scripts/` | `openmemory-client.ts` |
+| Shared libraries | `kebab-case.ts` in `lib/` | `openmemory-client.ts` |
 | Plugin identifiers | npm `@scope/name` or local path | `@myorg/calendar-sync` |
 
 ---
@@ -129,7 +137,7 @@ export OPENCODE_CONFIG_DIR="$CONFIG_DIR"
 
 OpenCode discovers and loads plugins through two mechanisms:
 
-**Auto-discovery** — Any `.ts` file in `$OPENCODE_CONFIG_DIR/plugins/` is automatically discovered and loaded. Note: in the current repository layout, the plugin files (`openmemory-http.ts`, `policy-and-telemetry.ts`) are located under `skills/memory/scripts/` rather than a top-level `plugins/` directory.
+**Auto-discovery** — Any `.ts` file in `$OPENCODE_CONFIG_DIR/plugins/` is automatically discovered and loaded. The plugin files (`openmemory-http.ts`, `policy-and-telemetry.ts`) are located in `plugins/`, which is the auto-discovery path. Custom tools in `tool/` and slash commands in `command/` are also auto-discovered from their respective subdirectories.
 
 **Explicit registration** — Plugins listed in the `plugin[]` array of `opencode.jsonc` are loaded by identifier. These can be npm packages (`@scope/name`) or local paths (`./plugins/my-plugin.ts`). When a plugin is an npm package, OpenCode runs `bun install` at startup to resolve dependencies.
 
@@ -217,7 +225,7 @@ The gateway uses wildcard permission denial (`"*": "deny"`) and wildcard tool di
 
 ## The Built-In Plugins
 
-Both plugins are located at `opencode/extensions/skills/memory/scripts/`.
+Both plugins are located at `opencode/extensions/plugins/`.
 
 ### `openmemory-http.ts` — Memory Pipeline
 
@@ -243,9 +251,45 @@ Implements a three-phase memory pipeline using OpenMemory's REST API:
 
 Intercepts every tool call via `tool.execute.before`. Scans arguments for secret patterns and blocks execution if detected. Logs every tool call as structured JSON to stdout.
 
-### Shared Library (`openmemory-client.ts`)
+### Shared Library (`lib/openmemory-client.ts`)
 
 Provides the `OpenMemoryClient` REST class, `loadConfig()` for env-driven configuration, `containsSecret()` for secret detection, and `isSaveWorthy()` for writeback classification.
+
+---
+
+## Custom Tools (`tool/`)
+
+The `tool/` directory contains Zod-validated, LLM-callable functions that OpenCode auto-discovers and exposes to the agent.
+
+### `memory-query.ts`
+
+Searches OpenMemory for stored facts matching a query string. Accepts `query` (required), `limit` (default 5), and optional `tags` for filtering. Returns a `results` array from the OpenMemory REST API.
+
+### `memory-save.ts`
+
+Persists content to OpenMemory. Accepts `text` (required) and optional `tags`. Returns `{ saved: true, id }` on success.
+
+### `health-check.ts`
+
+Checks the health of core OpenPalm services (gateway, openmemory, admin) by hitting each service's `/health` endpoint. Returns a map of service name to `{ status, latencyMs }`.
+
+---
+
+## Slash Commands (`command/`)
+
+The `command/` directory contains Markdown files that define slash commands the agent recognizes. Each file has YAML frontmatter declaring the command name, description, and arguments.
+
+### `memory-recall.md` — `/memory-recall`
+
+Invokes `memory-query` to search OpenMemory and presents matching facts.
+
+### `memory-save.md` — `/memory-save`
+
+Invokes `memory-save` to persist content and confirms the saved memory ID.
+
+### `health.md` — `/health`
+
+Invokes `health-check` and presents service status and latency in a table.
 
 ---
 

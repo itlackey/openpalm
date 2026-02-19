@@ -199,5 +199,5 @@ function json(status: number, payload: unknown) {
 
 ### Docker/Compose
 
-- Service names must be in the ALLOWED set in controller
-- Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
+- Core services are always allowed: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
+- Additional services can be allowed via `OPENPALM_EXTRA_SERVICES` env var (comma-separated list)

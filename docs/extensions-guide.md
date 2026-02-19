@@ -161,50 +161,24 @@ Use OpenCode event stream and/or plugin init logs to confirm successful load.
 
 ---
 
-## 5) Extending the stack via plugins (channels/tools/skills) without a new config system
+## 5. Adding channel adapters
 
-### Key idea
-An OpenCode plugin may optionally export a **manifest** describing stack add-ons.
-But the plugin's existence is still controlled by `plugin[]`.
+Channel adapters are Docker containers that bridge external messaging platforms
+to the OpenPalm gateway. Each adapter is a thin service that:
 
-#### Convention: `extensionManifest`
-Plugin package exports:
-- the OpenCode plugin itself
-- `extensionManifest` metadata
+1. Receives platform-specific webhooks or socket events.
+2. Normalises them to the OpenPalm inbound schema.
+3. POSTs the normalised payload to the gateway `/channel/inbound` endpoint.
+4. Forwards the gateway response back to the originating platform.
 
-Example shape:
-```ts
-export const extensionManifest = {
-  id: "com.yourorg.telegram-channel",
-  channels: [
-    {
-      id: "telegram",
-      service: {
-        image: "yourorg/assistant-telegram:1.0.0",
-        env: ["TELEGRAM_BOT_TOKEN"],
-        ports: []
-      }
-    }
-  ],
-  skills: ["skills/TelegramOps.SKILL.md"],
-  tools: ["tools/telegram_send.ts"],
-  adminUI: {
-    settingsSchema: "schemas/telegram.settings.json"
-  }
-}
-```
+### Registering a new channel adapter
 
-### How the stack uses it
-1. Admin-app reads `opencode.jsonc` and extracts `plugin[]`.
-2. For each plugin, admin attempts to import `extensionManifest`.
-3. Admin-app builds desired state:
-   - channel containers to run
-   - required secrets
-   - admin UI settings panels
-   - packaged skills/tools to mount or register
-4. Admin UI shows a plan. Admin confirms to apply.
-
-**Result:** No separate "extensions.json" registry; OpenCode config remains canonical.
+1. Add the service to `docker-compose.yml` with a unique service name.
+2. Set `GATEWAY_URL=http://gateway:4097` in the service's environment.
+3. Add the service name to `OPENPALM_EXTRA_SERVICES` so the controller
+   can manage it (see the controller's dynamic allowlist).
+4. Add a gallery entry in `admin/src/gallery.ts` under the `container`
+   category so it appears in the admin UI.
 
 ---
 
@@ -218,26 +192,26 @@ If OpenCode does not natively accept URL/Git in `plugin[]`, implement a **resolv
 
 ---
 
-## 7) Developer guide: building a plugin that adds a new channel
+## 7. Developer guide: building a channel adapter
 
-### A) Channel contract (unchanged)
-Your channel container is a dumb adapter:
-- receive message
-- normalize payload
-- POST to Gateway `/channel/inbound`
-- return response
+### A) Channel contract
 
-### B) What the plugin provides
-- `extensionManifest.channels[]` entry with container image + env schema
-- optional skills/tools bundled with the plugin
-- optional admin UI settings schema
+The adapter container is a dumb bridge — it receives platform events,
+normalises them, POSTs to `/channel/inbound`, and returns the response.
+
+### B) What the adapter provides
+
+- A Docker image published to a registry (or built locally).
+- Environment variables for platform credentials (API keys, webhook secrets).
+- A health endpoint at `/health` for the controller to monitor.
 
 ### C) What the platform enforces
-- signature verification (when applicable)
-- replay protection + rate limits
-- outbound allowlists
-- secrets stored in `.env`, injected at runtime
-- audit logs + observability
+
+- Signature verification and replay protection at the gateway.
+- Rate limiting per channel.
+- Outbound message allowlists.
+- Secrets stored in `.env`, never baked into images.
+- Audit logging of all inbound/outbound messages.
 
 ---
 

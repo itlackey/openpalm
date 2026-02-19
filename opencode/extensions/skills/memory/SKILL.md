@@ -1,3 +1,8 @@
+---
+name: memory
+description: Governs memory storage and recall behavior for the assistant
+---
+
 # Memory Policy
 
 ## Record

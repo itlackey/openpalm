@@ -14,7 +14,9 @@ function containsSecret(value: unknown): boolean {
   return SECRET_PATTERNS.some((p) => p.test(text));
 }
 
-export const PolicyAndTelemetry = async () => {
+type Plugin = () => Promise<Record<string, unknown>>;
+
+export const PolicyAndTelemetry: Plugin = async () => {
   return {
     "tool.execute.before": async (
       input: { tool: string; sessionID?: string; callID?: string },

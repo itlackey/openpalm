@@ -13,10 +13,24 @@ mkdir -p "$CRON_DIR"
 # If a host config volume is mounted at /config, it takes priority.
 # If /config is empty or missing opencode.jsonc, fall back to the baked-in defaults.
 BAKED_IN_DIR="/root/.config/opencode"
+
+# Always merge baked-in extension directories into the active config dir.
+# cp -rn copies without overwriting, so host overrides are preserved.
+if [[ -d "$BAKED_IN_DIR" ]]; then
+  for item in "$BAKED_IN_DIR"/*/; do
+    [[ -d "$item" ]] && cp -rn "$item" "$CONFIG_DIR/" 2>/dev/null || true
+  done
+  # Copy non-config files (AGENTS.md, etc.)
+  for file in "$BAKED_IN_DIR"/*.md; do
+    [[ -f "$file" ]] && cp -n "$file" "$CONFIG_DIR/" 2>/dev/null || true
+  done
+fi
+
+# Only copy opencode.jsonc when it's completely absent.
 if [[ ! -f "$CONFIG_DIR/opencode.jsonc" ]]; then
   if [[ -f "$BAKED_IN_DIR/opencode.jsonc" ]]; then
-    echo "No volume-mounted config found at $CONFIG_DIR; using baked-in defaults."
-    cp -rn "$BAKED_IN_DIR/." "$CONFIG_DIR/"
+    echo "No volume-mounted config found at $CONFIG_DIR; copying baked-in opencode.jsonc."
+    cp "$BAKED_IN_DIR/opencode.jsonc" "$CONFIG_DIR/opencode.jsonc"
   else
     echo "ERROR: No opencode.jsonc found at $CONFIG_DIR or $BAKED_IN_DIR."
     exit 1

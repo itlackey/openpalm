@@ -1,6 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
+  "model": "anthropic/claude-sonnet-4-5",
+  "provider": {
+    "anthropic": {
+      "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" }
+    }
+  },
+
   // Default permissions — all gated behind approval
   "permission": {
     "bash": "ask",
@@ -8,15 +15,19 @@
     "webfetch": "ask"
   },
 
+  // Plugins loaded from the plugins/ directory
+  "plugin": [
+    "plugins/openmemory-http.ts",
+    "plugins/policy-and-telemetry.ts"
+  ],
 
-  // Globally disable MCP tools; the openmemory-http plugin handles memory
-  // via direct REST API calls for deterministic behaviour. MCP is available
-  // as a fallback if needed.
+  // MCP disabled — the openmemory-http plugin handles memory via direct
+  // REST API calls for deterministic behaviour.
   "mcp": {
     "openmemory": {
       "type": "remote",
       "url": "http://openmemory:8765/mcp/gateway/sse/default-user",
-      "enabled": true
+      "enabled": false
     }
   }
 }

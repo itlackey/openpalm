@@ -17,9 +17,9 @@ import {
   containsSecret,
   isSaveWorthy,
   OpenMemoryClient,
-} from "./openmemory-client.ts";
+} from "../lib/openmemory-client.ts";
 
-import type { MemoryHit } from "./openmemory-client.ts";
+import type { MemoryHit } from "../lib/openmemory-client.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,10 +64,10 @@ export function formatRecallBlock(hits: MemoryHit[], maxChars: number): string {
 const cfg = loadConfig();
 const enabled = cfg.mode === "api";
 
-export const OpenMemoryHTTP = async (ctx: {
-  client?: any;
-  [key: string]: unknown;
-}) => {
+type PluginContext = { client?: any; $?: any; [key: string]: unknown };
+type Plugin = (ctx: PluginContext) => Promise<Record<string, unknown>>;
+
+export const OpenMemoryHTTP: Plugin = async ({ client }) => {
   if (!enabled) return {};
 
   const memClient = new OpenMemoryClient(cfg.baseUrl, cfg.apiKey || undefined);
@@ -133,11 +133,11 @@ export const OpenMemoryHTTP = async (ctx: {
       if (!cfg.writebackEnabled) return;
 
       const sessionId = event.properties?.sessionID;
-      if (!sessionId || !ctx.client) return;
+      if (!sessionId || !client) return;
 
       try {
         // Use the SDK client to retrieve the latest session messages.
-        const session = await ctx.client.session.get({
+        const session = await client.session.get({
           path: { id: sessionId },
         });
         const messages = session?.data?.messages ?? [];

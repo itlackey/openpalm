@@ -2,6 +2,26 @@
 
 This document is a technical review of how OpenPalm implements its extension system, evaluated against the capabilities of the OpenCode runtime it depends on. It identifies gaps, structural issues, and concrete recommendations for improvement. It has been updated to reflect recent repository changes.
 
+## Status
+
+All recommendations (R1–R12) from this analysis have been addressed. See the
+git history for implementation details.
+
+| Rec | Status | Summary |
+|-----|--------|---------|
+| R1  | Done   | YAML frontmatter added to all SKILL.md files |
+| R2  | Done   | Phantom gallery entries removed, skill-memory added |
+| R3  | Done   | Controller allowlist made dynamic via OPENPALM_EXTRA_SERVICES |
+| R4  | Done   | Plugins moved to plugins/ auto-discovery path |
+| R5  | Done   | MCP disabled in opencode.jsonc |
+| R6  | Done   | Entrypoint config layering fixed with cp -rn merge |
+| R7  | Done   | Plugin type signatures adopted |
+| R8  | Done   | Custom tools created in tool/ directory |
+| R9  | Done   | Model and provider config added |
+| R10 | Done   | extensionManifest documentation removed |
+| R11 | Done   | Channel-intake agent moved to agent/ markdown file |
+| R12 | Done   | Slash commands created in command/ directory |
+
 ---
 
 ## Changes Since Last Review

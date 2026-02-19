@@ -6,17 +6,55 @@
 # Usage:
 #   ./dev-setup.sh           # first-time setup (no-clobber)
 #   ./dev-setup.sh --clean   # wipe .dev/ and .env, then re-seed (fresh install)
+#   ./dev-setup.sh --help    # show this help message
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEV_DIR="$REPO_ROOT/.dev"
 
+# ── Handle --help flag ─────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+	echo "OpenPalm Development Setup"
+	echo ""
+	echo "Usage:"
+	echo "  ./dev-setup.sh           # first-time setup (no-clobber)"
+	echo "  ./dev-setup.sh --clean  # wipe .dev/ and .env, then re-seed"
+	echo "  ./dev-setup.sh --help   # show this help message"
+	echo ""
+	echo "This script creates:"
+	echo "  .env           - environment configuration"
+	echo "  .dev/          - XDG-style directory tree (config, data, state)"
+	exit 0
+fi
+
+# ── Validate template files exist ────────────────────────────────────────
+TEMPLATE_ERRORS=0
+if [[ ! -f "$REPO_ROOT/.env.example" ]]; then
+	echo "Error: .env.example template not found" >&2
+	TEMPLATE_ERRORS=1
+fi
+
+if [[ ! -d "$REPO_ROOT/assets/state" ]]; then
+	echo "Error: assets/state directory not found" >&2
+	TEMPLATE_ERRORS=1
+fi
+
+if [[ ! -d "$REPO_ROOT/assets/config" ]]; then
+	echo "Error: assets/config directory not found" >&2
+	TEMPLATE_ERRORS=1
+fi
+
+if [[ $TEMPLATE_ERRORS -eq 1 ]]; then
+	echo "Run this script from the repository root." >&2
+	exit 1
+fi
+
 # ── Handle --clean flag ──────────────────────────────────────────────
 if [[ "${1:-}" == "--clean" ]]; then
-  echo "Cleaning previous dev environment..."
-  rm -rf "$DEV_DIR"
-  rm -f "$REPO_ROOT/.env"
-  echo "  Removed .dev/ and .env"
+	echo "Cleaning previous dev environment..."
+	rm -rf "$DEV_DIR"
+	rm -f "$REPO_ROOT/.env"
+	echo "  Removed .dev/ and .env"
 fi
 
 echo "Setting up OpenPalm local dev environment..."
@@ -25,10 +63,10 @@ echo "  Dev dir:   $DEV_DIR"
 
 # ── Create .env from template with absolute paths ───────────────────
 if [[ -f "$REPO_ROOT/.env" ]]; then
-  echo "  .env already exists — skipping (delete it or use --clean to regenerate)"
+	echo "  .env already exists — skipping (delete it or use --clean to regenerate)"
 else
-  sed "s|/REPLACE/WITH/ABSOLUTE/PATH|$REPO_ROOT|g" "$REPO_ROOT/.env.example" > "$REPO_ROOT/.env"
-  echo "  Created .env"
+	sed "s|/REPLACE/WITH/ABSOLUTE/PATH|$REPO_ROOT|g" "$REPO_ROOT/.env.example" >"$REPO_ROOT/.env"
+	echo "  Created .env"
 fi
 
 # ── Create the full XDG-style directory tree ─────────────────────────
@@ -37,45 +75,45 @@ fi
 
 # CONFIG_HOME directories
 mkdir -p \
-  "$DEV_DIR/config/caddy" \
-  "$DEV_DIR/config/opencode-core" \
-  "$DEV_DIR/config/channels" \
-  "$DEV_DIR/config/cron" \
-  "$DEV_DIR/config/ssh"
+	"$DEV_DIR/config/caddy" \
+	"$DEV_DIR/config/opencode-core" \
+	"$DEV_DIR/config/channels" \
+	"$DEV_DIR/config/cron" \
+	"$DEV_DIR/config/ssh"
 
 # DATA_HOME directories (persistent storage for databases, vectors, blobs)
 mkdir -p \
-  "$DEV_DIR/data/caddy" \
-  "$DEV_DIR/data/postgres" \
-  "$DEV_DIR/data/qdrant" \
-  "$DEV_DIR/data/openmemory" \
-  "$DEV_DIR/data/shared" \
-  "$DEV_DIR/data/admin"
+	"$DEV_DIR/data/caddy" \
+	"$DEV_DIR/data/postgres" \
+	"$DEV_DIR/data/qdrant" \
+	"$DEV_DIR/data/openmemory" \
+	"$DEV_DIR/data/shared" \
+	"$DEV_DIR/data/admin"
 
 # STATE_HOME directories (runtime state, logs, workspace)
 mkdir -p \
-  "$DEV_DIR/state/caddy" \
-  "$DEV_DIR/state/opencode-core" \
-  "$DEV_DIR/state/workspace" \
-  "$DEV_DIR/state/gateway"
+	"$DEV_DIR/state/caddy" \
+	"$DEV_DIR/state/opencode-core" \
+	"$DEV_DIR/state/workspace" \
+	"$DEV_DIR/state/gateway"
 
 # ── Seed config files (no-clobber: don't overwrite existing) ─────────
-cp -n "$REPO_ROOT/assets/state/caddy/Caddyfile"  "$DEV_DIR/config/caddy/Caddyfile"        2>/dev/null || true
-cp -n "$REPO_ROOT/assets/config/channels/"*.env   "$DEV_DIR/config/channels/"               2>/dev/null || true
-cp -n "$REPO_ROOT/assets/config/secrets.env"      "$DEV_DIR/config/secrets.env"              2>/dev/null || true
-cp -n "$REPO_ROOT/assets/config/user.env"         "$DEV_DIR/config/user.env"                 2>/dev/null || true
-cp -n "$REPO_ROOT/assets/config/ssh/authorized_keys" "$DEV_DIR/config/ssh/authorized_keys"  2>/dev/null || true
+cp -n "$REPO_ROOT/assets/state/caddy/Caddyfile" "$DEV_DIR/config/caddy/Caddyfile" 2>/dev/null || true
+cp -n "$REPO_ROOT/assets/config/channels/"*.env "$DEV_DIR/config/channels/" 2>/dev/null || true
+cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" 2>/dev/null || true
+cp -n "$REPO_ROOT/assets/config/user.env" "$DEV_DIR/config/user.env" 2>/dev/null || true
+cp -n "$REPO_ROOT/assets/config/ssh/authorized_keys" "$DEV_DIR/config/ssh/authorized_keys" 2>/dev/null || true
 
 # Seed empty opencode.jsonc for user overrides (extensions are baked into the image)
 if [[ ! -f "$DEV_DIR/config/opencode-core/opencode.jsonc" ]]; then
-  echo '{}' > "$DEV_DIR/config/opencode-core/opencode.jsonc"
+	echo '{}' >"$DEV_DIR/config/opencode-core/opencode.jsonc"
 fi
 
 # Seed a default project in the workspace so OpenCode's web UI has something to open.
 # OpenCode discovers projects by their git root, so we initialize a bare repo.
 if [[ ! -d "$DEV_DIR/state/workspace/default/.git" ]]; then
-  mkdir -p "$DEV_DIR/state/workspace/default"
-  git init "$DEV_DIR/state/workspace/default" >/dev/null 2>&1
+	mkdir -p "$DEV_DIR/state/workspace/default"
+	git init "$DEV_DIR/state/workspace/default" >/dev/null 2>&1
 fi
 
 echo ""
