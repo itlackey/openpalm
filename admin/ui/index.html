@@ -83,8 +83,13 @@ let currentPage = 'gallery';
 const BASE = ''; // same-origin via Caddy
 const ADMIN_PREFIX = '/admin/';
 const ADMIN_API_PREFIX = '/admin/api/';
+// Detect if the page was loaded behind Caddy's /admin* route.
+// When served through Caddy the page URL starts with /admin; when served
+// directly from the admin server the page is at /.
+const BEHIND_CADDY = window.location.pathname.startsWith('/admin');
 
 function normalizeAdminApiPath(path) {
+  if (!BEHIND_CADDY) return path;
   if (path.startsWith(ADMIN_API_PREFIX)) return path;
   if (!path.startsWith(ADMIN_PREFIX)) return path;
   return ADMIN_API_PREFIX + path.slice(ADMIN_PREFIX.length);
