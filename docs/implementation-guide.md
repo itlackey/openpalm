@@ -48,12 +48,13 @@ Even if OpenMemory supports more, standardize on these operations in your assist
 - You get an event stream for observability (SSE).
 
 ### Configuration sources
-Keep these co-located with your project:
-- `opencode.jsonc` – primary config
-- `AGENTS.md` – rules (hard constraints)
-- `skills/*.SKILL.md` – reusable behavioral SOPs
-- `plugins/*` – local plugins (in `OPENCODE_CONFIG_DIR`)
-- `tools/*` – local tools (in `OPENCODE_CONFIG_DIR`)
+Extensions are kept in `assets/config/` and volume-mounted at runtime (not baked into the container image):
+- `assets/config/opencode-core/opencode.jsonc` – primary config for the core agent
+- `assets/config/opencode-core/AGENTS.md` – rules (hard constraints)
+- `assets/config/opencode-core/skills/*.SKILL.md` – reusable behavioral SOPs
+- `assets/config/opencode-core/plugins/*` – local plugins (volume-mounted as `OPENCODE_CONFIG_DIR`)
+- `assets/config/opencode-core/lib/*` – shared libraries used by plugins
+- `assets/config/opencode-gateway/` – intake agent config (mounted into the gateway container)
 
 ---
 

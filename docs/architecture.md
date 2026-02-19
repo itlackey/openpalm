@@ -98,7 +98,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `postgres` | `postgres:16-alpine` | assistant_net | Structured data storage |
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
-| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — full approvals/skills + locked-down channel-intake agent + memory pipeline plugin |
+| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (plugins, skills, lib) are volume-mounted from `assets/config/opencode-core/`, not baked into the image |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
@@ -160,8 +160,17 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 | Category | Host Path | Env Var | Contents |
 |---|---|---|---|
 | **Data** | `~/.local/share/openpalm/` | `OPENPALM_DATA_HOME` | PostgreSQL, Qdrant, Open Memory, Shared FS, Caddy TLS, Admin App |
-| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs, Caddyfile, channel env files, user overrides, secrets |
+| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (opencode-core/, opencode-gateway/), Caddyfile, channel env files, user overrides, secrets |
 | **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, workspace |
+
+### Extension directory layout
+
+Extensions (plugins, skills, agents, lib) are **not baked into container images**. They are kept in `assets/config/` and seeded into the config home by the installer, then volume-mounted into containers at runtime.
+
+| Config Directory | Container | Contents |
+|---|---|---|
+| `opencode-core/` | opencode-core (`/config`) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, skills/, lib/, ssh/ |
+| `opencode-gateway/` | gateway (`/app/opencode-config`, read-only) | Intake agent config: opencode.jsonc, AGENTS.md, skills/ (ChannelIntake, RecallFirst) |
 
 | Store | Used by | Purpose |
 |---|---|---|
@@ -176,7 +185,7 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 1. **Caddy** — Network-level access control. LAN-only restriction for admin/dashboard URLs. TLS termination. Non-LAN requests to restricted paths are TCP-aborted.
 2. **Gateway** — Thin auth and routing layer. HMAC signature verification, lightweight rate limiting (120 req/min/user), and audit logging. Routes requests to the OpenCode runtime.
 3. **OpenCode agent isolation** — The `channel-intake` agent runs with deny-by-default permissions (all tools denied); the default agent uses approval gates. Both run on the same OpenCode Core runtime but are isolated by OpenCode's agent permission model.
-4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call. The `openmemory-http` plugin provides automatic memory recall, write-back, and session-compaction preservation via OpenMemory's HTTP API (no MCP in the runtime path).
+4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call. The `openmemory-http` plugin provides automatic memory recall, write-back, and session-compaction preservation via OpenMemory's HTTP API (no MCP in the runtime path). All plugins are volume-mounted from the host config directory, not baked into the container image.
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.
 7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.

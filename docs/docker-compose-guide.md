@@ -12,11 +12,14 @@ openpalm/
     docker-compose.yml
     caddy/
     config/
+      opencode-core/     Core agent extensions (plugins, skills, lib)
+      opencode-gateway/  Intake agent extensions (skills)
+      channel-env/       Channel-specific env files
   .env
   scripts/install.sh     Linux/macOS installer
   scripts/install.ps1    Windows PowerShell installer
 
-  opencode/              OpenCode Core Dockerfile + default config
+  opencode/              OpenCode Core Dockerfile + entrypoint (no baked-in extensions)
   gateway/               Gateway service (Bun)
   admin/                 Admin API + bundled admin UI service (Bun)
   controller/            Container lifecycle service (Bun + Docker socket)
@@ -46,7 +49,7 @@ Treat `system.env` as installer/system-managed (advanced users only), and put us
 
 The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.yml` on top. Key design points:
 
-- **Single OpenCode runtime** — `opencode-core` (port 4096) hosts both the full agent (approval gates) and the `channel-intake` agent (all tools denied). Agent-level permissions provide isolation without requiring a separate runtime.
+- **Single OpenCode runtime** — `opencode-core` (port 4096) hosts both the full agent (approval gates) and the `channel-intake` agent (all tools denied). Agent-level permissions provide isolation without requiring a separate runtime. Extensions (plugins, skills, lib) are volume-mounted from the host config directory, not baked into the container image.
 - **Gateway** connects to `opencode-core` via `OPENCODE_CORE_BASE_URL` and uses the `channel-intake` agent for intake validation.
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.
@@ -61,21 +64,27 @@ See `assets/docker-compose.yml` for install/runtime defaults and `docker-compose
 
 ### `opencode/Dockerfile`
 ```dockerfile
-FROM node:22-slim
+FROM oven/bun:1.1.42
 
-RUN npm i -g bun
-RUN npm i -g opencode-ai
+RUN bun add -g opencode-ai@latest
+RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
-RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
-ENTRYPOINT ["/usr/bin/tini", "--"]
 
-CMD ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+# Extensions (plugins, skills, agents, lib) are NOT baked into the image.
+# They are kept in assets/config/opencode-core/, copied to the host config
+# directory during install, and volume-mounted into /config at runtime.
+
+COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
+RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 ```
 
 **Operational tips**
 - Pin `opencode-ai` version after validation.
 - Keep OpenCode on a private network; only expose the Gateway.
+- Extensions are managed via the `assets/config/opencode-core/` directory and seeded into the host config home by the installer. This keeps the container image lean and allows extensions to be updated without rebuilding the image.
 
 ---
 

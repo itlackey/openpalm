@@ -72,6 +72,7 @@ function Bootstrap-InstallAssets {
     (Join-Path $AssetsDir "uninstall.ps1"),
     (Join-Path $AssetsDir "caddy/Caddyfile"),
     (Join-Path $AssetsDir "config/opencode-core/opencode.jsonc"),
+    (Join-Path $AssetsDir "config/opencode-gateway/opencode.jsonc"),
     (Join-Path $AssetsDir "config/channel-env/channel-chat.env")
   )
 
@@ -242,6 +243,7 @@ try {
     "$OpenPalmDataHome/caddy",
     "$OpenPalmDataHome/admin",
     "$OpenPalmConfigHome/opencode-core",
+    "$OpenPalmConfigHome/opencode-gateway",
     "$OpenPalmConfigHome/caddy",
     "$OpenPalmConfigHome/channels",
     "$OpenPalmConfigHome/cron",
@@ -271,10 +273,19 @@ try {
     }
   }
 
+  # opencode-core config (extensions are no longer baked into the container image;
+  # they live here and are volume-mounted into the container at runtime)
   Seed-File (Join-Path $InstallAssetsDir "config/opencode-core/opencode.jsonc") "$OpenPalmConfigHome/opencode-core/opencode.jsonc"
   Seed-File (Join-Path $InstallAssetsDir "config/opencode-core/AGENTS.md") "$OpenPalmConfigHome/opencode-core/AGENTS.md"
   Seed-Dir (Join-Path $InstallAssetsDir "config/opencode-core/skills") "$OpenPalmConfigHome/opencode-core/skills"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode-core/plugins") "$OpenPalmConfigHome/opencode-core/plugins"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode-core/lib") "$OpenPalmConfigHome/opencode-core/lib"
   Seed-Dir (Join-Path $InstallAssetsDir "config/opencode-core/ssh") "$OpenPalmConfigHome/opencode-core/ssh"
+
+  # opencode-gateway config (intake agent extensions, mounted into the gateway container)
+  Seed-File (Join-Path $InstallAssetsDir "config/opencode-gateway/opencode.jsonc") "$OpenPalmConfigHome/opencode-gateway/opencode.jsonc"
+  Seed-File (Join-Path $InstallAssetsDir "config/opencode-gateway/AGENTS.md") "$OpenPalmConfigHome/opencode-gateway/AGENTS.md"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode-gateway/skills") "$OpenPalmConfigHome/opencode-gateway/skills"
 
   Seed-File (Join-Path $InstallAssetsDir "caddy/Caddyfile") "$OpenPalmConfigHome/caddy/Caddyfile"
 

@@ -9,17 +9,19 @@ ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$CRON_DIR"
 
-# Seed core defaults once into the user-managed configuration directory.
-[[ -f "$CONFIG_DIR/opencode.jsonc" ]] || cp /opt/opencode-defaults/opencode.jsonc "$CONFIG_DIR/opencode.jsonc"
-DEFAULT_CONFIG="$CONFIG_DIR/opencode.jsonc"
-
-[[ -f "$CONFIG_DIR/AGENTS.md" ]] || cp /opt/opencode-defaults/AGENTS.md "$CONFIG_DIR/AGENTS.md"
-[[ -d "$CONFIG_DIR/skills" ]]    || cp -r /opt/opencode-defaults/skills "$CONFIG_DIR/skills"
-[[ -d "$CONFIG_DIR/plugins" ]]   || cp -r /opt/opencode-defaults/plugins "$CONFIG_DIR/plugins"
-[[ -d "$CONFIG_DIR/lib" ]]       || cp -r /opt/opencode-defaults/lib "$CONFIG_DIR/lib"
+# Extensions (plugins, skills, lib, AGENTS.md) are mounted from the host
+# config directory — they are NOT baked into the image.  The installer seeds
+# default extensions from assets/config/opencode-core/ into the host config
+# home at install time, and docker-compose mounts that directory here.
+if [[ ! -f "$CONFIG_DIR/opencode.jsonc" ]]; then
+  echo "ERROR: $CONFIG_DIR/opencode.jsonc not found."
+  echo "The opencode config directory must be volume-mounted from the host."
+  echo "Run the installer or seed assets/config/opencode-core/ into the host config home."
+  exit 1
+fi
 
 # Tell OpenCode where the config file lives.
-export OPENCODE_CONFIG="${OPENCODE_CONFIG:-$DEFAULT_CONFIG}"
+export OPENCODE_CONFIG="${OPENCODE_CONFIG:-$CONFIG_DIR/opencode.jsonc}"
 
 # Tell OpenCode where to discover plugins, skills, agents, etc.
 # OPENCODE_CONFIG_DIR is searched the same way as .opencode/ — it looks for
