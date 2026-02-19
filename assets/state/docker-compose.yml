@@ -110,7 +110,6 @@ services:
       - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
       - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-      - CHANNEL_WEBHOOK_SECRET=${CHANNEL_WEBHOOK_SECRET:-}
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
       # Gateway opencode config is baked into the image; no host override needed.
@@ -225,19 +224,6 @@ services:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
-    networks: [assistant_net]
-    depends_on: [gateway]
-
-  channel-webhook:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-webhook:${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    profiles: ["channels"]
-    env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/webhook.env
-    environment:
-      - PORT=8185
-      - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_WEBHOOK_SECRET=${CHANNEL_WEBHOOK_SECRET:-}
     networks: [assistant_net]
     depends_on: [gateway]
 

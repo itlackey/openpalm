@@ -13,7 +13,7 @@ const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean
 const CORE_SERVICES = new Set([
   "opencode-core", "gateway", "openmemory", "admin",
   "channel-chat", "channel-discord", "channel-voice",
-  "channel-telegram", "channel-webhook", "caddy"
+  "channel-telegram", "caddy"
 ]);
 const EXTRA_SERVICES = (Bun.env.OPENPALM_EXTRA_SERVICES ?? "")
   .split(",")

@@ -8,7 +8,7 @@
 
 ## 1) Concept: Extensions and the `OPENCODE_CONFIG_DIR`
 
-**Extension** is the umbrella term for all modular components that add behavior or capability to the OpenPalm stack. There are five sub-types:
+**Extension** is the umbrella term for all modular components that add behavior or capability to the OpenPalm stack. OpenCode-native extension sub-types are listed alongside gallery extension categories used by admin:
 
 | Sub-type | Risk | Directory | Description |
 |---|---|---|---|
@@ -17,12 +17,14 @@
 | Agent | medium | `agents/<name>.md` | Specialized assistant persona |
 | Custom Tool | medium-high | `tools/<name>.ts` | TypeScript LLM-callable function |
 | Plugin | highest | `plugins/<name>.ts` | TypeScript lifecycle hooks |
+| Channel | medium | compose service (`channel-*`) | Optional adapter extension surfaced in the gallery and managed by controller/admin |
+| Service | medium-high | compose service (`service-*` or third-party images) | Optional infrastructure extension surfaced in the gallery and managed by controller/admin |
 
 Extensions are managed via the mounted config directory (`OPENCODE_CONFIG_DIR`). OpenCode auto-discovers each sub-type from its respective subdirectory: `plugins/`, `skills/`, `agents/`, `commands/`, and `tools/`. The `plugin[]` array in `opencode.jsonc` is **specifically for registering Plugin-type extensions and npm packages** — it does not cover Skills, Commands, Agents, or Custom Tools, which are discovered purely from the filesystem.
 
 > **Note on `lib/`:** The `lib/` directory is a shared library directory, not an extension sub-type. Files in `lib/` are imported by plugins and tools as internal utilities — they are not auto-discovered by OpenCode.
 
-**Container path resolution:** In the OpenPalm stack, extensions live in `opencode/extensions/` in the repository, are `COPY`'d into the container image at `/root/.config/opencode/`, and then merged into `/config/` at startup via `cp -rn` (no-clobber recursive copy). The `OPENCODE_CONFIG_DIR` environment variable is set to `/config/`, so all extension sub-types in `/config/plugins/`, `/config/skills/`, `/config/commands/`, `/config/agents/`, and `/config/tools/` are auto-discovered. Host-side overrides mounted at `/config` take precedence over baked-in defaults.
+**Container path resolution:** In the OpenPalm stack, extensions live in `opencode/extensions/` in the repository, are `COPY`'d into the container image at `/opt/openpalm/opencode-defaults/`, and then merged into `/config/` at startup via `cp -rn` (no-clobber recursive copy). The `OPENCODE_CONFIG_DIR` environment variable is set to `/config/`, so all extension sub-types in `/config/plugins/`, `/config/skills/`, `/config/commands/`, `/config/agents/`, and `/config/tools/` are auto-discovered. Host-side overrides mounted at `/config` take precedence over baked-in defaults.
 
 **Your rule:** the Admin UI manages Plugin-type extensions and npm packages by editing `opencode.jsonc -> plugin[]`. Skills, Commands, Agents, and Custom Tools are managed by placing files in the appropriate subdirectory under `OPENCODE_CONFIG_DIR`.
 
@@ -35,7 +37,7 @@ Extensions are **baked into the container image**. They live in `opencode/extens
 | `opencode/extensions/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (memory/SKILL.md), tools (memory-query, memory-save, health-check), commands (memory-recall, memory-save, health), lib (openmemory-client), AGENTS.md |
 | `gateway/opencode/` | gateway | Intake agent: skills (channel-intake/SKILL.md), agents (channel-intake.md), AGENTS.md |
 
-Extensions ship inside the container images. Users can still override or supplement extensions by mounting a volume at `/config` — any files present there take precedence over the baked-in defaults. The installer seeds only an empty `opencode.jsonc` at `~/.config/openpalm/opencode-core/opencode.jsonc` for user-level overrides; it does not seed the extensions themselves.
+Extensions ship inside the container images. Users can still override or supplement extensions by mounting a volume at `/config` — any files present there take precedence over the baked-in defaults. The installer creates `~/.config/openpalm/opencode-core/` as an empty override directory by default. On first container start, baked-in defaults are copied in only when files are absent, so local overrides still win.
 
 ### Recommended structure in `opencode/extensions/` and `gateway/opencode/`
 
@@ -162,7 +164,7 @@ Use the `calendar.ping` tool to verify that the calendar-sync plugin is ready.
 - `opencode/extensions/` is the canonical source for core agent extensions, baked into the `opencode-core` container image at build time.
 - `gateway/opencode/` is the canonical source for gateway agent extensions, baked into the `gateway` container image at build time.
 - Users can override or supplement baked-in extensions by mounting a volume at `/config` inside the container — files present there take precedence over image defaults.
-- The installer seeds only an empty `opencode.jsonc` at `~/.config/openpalm/opencode-core/opencode.jsonc` for user-level plugin overrides; extension files themselves are not seeded by the installer.
+- The installer leaves `~/.config/openpalm/opencode-core/` empty by default. The opencode-core entrypoint populates missing defaults at runtime without overwriting user files.
 - The Gateway is the security/routing layer: it runs a 6-step pipeline (HMAC verification, payload validation, rate limiting at 120 req/min per user, intake validation via restricted agent, forward to assistant, audit log).
 - Admin manages config/extensions and invokes the controller for lifecycle actions.
 - Controller is the only container-control plane component and executes compose operations.

@@ -226,9 +226,9 @@ Channel adapters are in the `channels` compose profile and are not started by de
 
 Extensions follow a layered model:
 
-1. **Baked into images at build time** — `opencode/extensions/` is COPY'd to `/root/.config/opencode/` in the `opencode-core` image. `gateway/opencode/` is COPY'd to `/root/.config/opencode/` in the `gateway` image.
+1. **Baked into images at build time** — `opencode/extensions/` is COPY'd to `/opt/openpalm/opencode-defaults/` in the `opencode-core` image. `gateway/opencode/` is COPY'd to `/opt/openpalm/opencode-defaults/` in the `gateway` image.
 
-2. **Host override layer (opencode-core only)** — `~/.config/openpalm/opencode-core/` is mounted at `/config`. If `/config/opencode.jsonc` exists, the entrypoint uses `/config` as the config directory. If missing, it copies baked-in defaults from `/root/.config/opencode/` into `/config`.
+2. **Host override layer (opencode-core only)** — `~/.config/openpalm/opencode-core/` is mounted at `/config`. If `/config/opencode.jsonc` exists, the entrypoint uses `/config` as the config directory. If missing, it copies baked-in defaults from `/opt/openpalm/opencode-defaults/` into `/config`.
 
 3. **Gateway has no host override** — the gateway's config is fully baked into its image with no host volume mount.
 

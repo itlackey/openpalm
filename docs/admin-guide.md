@@ -46,7 +46,6 @@
 
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
   opencode-core/               — core agent extensions (plugins, skills, lib, AGENTS.md)
-  opencode-gateway/            — intake agent extensions (skills, AGENTS.md)
   caddy/Caddyfile
   channels/
   cron/                        — user-editable crontab and payload files
@@ -115,6 +114,8 @@ The admin UI provides an Automations page for managing user-defined scheduled pr
 3) Policy lint (deny widening permissions to `allow`)
 4) Write atomically with backup
 5) Restart OpenCode (deterministic)
+
+If `opencode.jsonc` does not exist yet (for example, first boot with an empty override directory), the admin service bootstraps a minimal `{}` config file automatically before read/write operations so the UI and API remain functional.
 
 ### Restart without mounting Docker socket into admin
 Use a restricted "controller" sidecar:

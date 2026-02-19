@@ -335,7 +335,6 @@ if [ ! -f .env ]; then
   upsert_env_var CHANNEL_DISCORD_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_VOICE_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_TELEGRAM_SECRET "$(generate_token)"
-  upsert_env_var CHANNEL_WEBHOOK_SECRET "$(generate_token)"
   echo "Created .env with generated secure defaults."
   echo ""
   echo "  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup."
@@ -360,7 +359,7 @@ mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
 
 # Config — user-editable configuration
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,opencode-gateway,caddy,channels,cron}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,cron}
 
 # State — runtime state, logs, workspace
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
@@ -383,15 +382,6 @@ seed_dir() {
   [ -d "$dst" ] || cp -r "$src" "$dst"
 }
 
-# Seed a minimal opencode.jsonc so users can customize the opencode-core container.
-# Extensions are baked into the container image; this file serves as a user override layer.
-OPENCODE_CORE_DIR="$OPENPALM_CONFIG_HOME/opencode-core"
-mkdir -p "$OPENCODE_CORE_DIR"
-if [[ ! -f "$OPENCODE_CORE_DIR/opencode.jsonc" ]]; then
-  echo '{}' > "$OPENCODE_CORE_DIR/opencode.jsonc"
-  echo "Seeded empty opencode.jsonc → $OPENCODE_CORE_DIR/opencode.jsonc"
-fi
-
 # Caddy config
 seed_file "$INSTALL_ASSETS_DIR/state/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
@@ -413,8 +403,11 @@ echo "Directory structure created. Config seeded from defaults."
 echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
+echo "Pulling latest images..."
+"${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" pull
+
 echo "Starting core services..."
-"${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" up -d
+"${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" up -d --pull always
 
 echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH --profile channels up -d"
 

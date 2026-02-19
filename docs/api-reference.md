@@ -89,13 +89,13 @@ Health status for the admin app.
 ### Gallery (extension marketplace)
 - `GET /admin/gallery/search?q=&category=` — search curated gallery registry
   - `q` — free-text search (matches name, description, tags, id)
-  - `category` — filter by `plugin`, `skill`, `command`, `agent`, or `tool`. Note: `container` is not an extension type — channel management has its own dedicated endpoints (see Channel management above). If `container` appears in legacy registry entries it maps to the Channels concept.
+  - `category` — filter by `plugin`, `skill`, `command`, `agent`, `tool`, `channel`, or `service`.
 - `GET /admin/gallery/categories` — list gallery categories with counts
 - `GET /admin/gallery/item/:id` — get full detail for a single gallery item including risk badge
 - `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
 - `GET /admin/gallery/community?q=&category=` — search the public community registry fetched from GitHub at runtime (no auth required; 10-minute cache)
   - `q` — optional free-text search
-  - `category` — optional filter by `plugin`, `skill`, `command`, `agent`, or `tool`
+  - `category` — optional filter by `plugin`, `skill`, `command`, `agent`, `tool`, `channel`, or `service`
   - Returns `{ items, total, source: "community-registry" }`
 - `POST /admin/gallery/community/refresh` — force a cache refresh of the community registry (auth required)
 
@@ -159,7 +159,7 @@ Runtime behavior:
 - `POST /up/:service` — start a service
 - `POST /down/:service` — stop a service (Note: despite the endpoint name, this runs `docker compose stop`, not `docker compose down`. The container is halted but not removed, which preserves container state and is safer for single-service operations.)
 
-Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `channel-webhook`, `caddy`
+Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
 
 ---
 
@@ -179,7 +179,6 @@ Each channel adapter reads the following environment variables at startup:
 | discord | 8184 | `PORT` (default `8184`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_DISCORD_SECRET` | `DISCORD_BOT_TOKEN` — Discord bot token |
 | voice | 8183 | `PORT` (default `8183`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_VOICE_SECRET` | — |
 | telegram | 8182 | `PORT` (default `8182`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_TELEGRAM_SECRET` | `TELEGRAM_WEBHOOK_SECRET` — Telegram webhook verification secret |
-| webhook | 8181 | `PORT` (default `8181`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_WEBHOOK_SECRET` | `WEBHOOK_INBOUND_TOKEN` — optional bearer token for inbound requests |
 
 All adapters default `GATEWAY_URL` to `http://gateway:8080` (the gateway's internal Docker network address).
 

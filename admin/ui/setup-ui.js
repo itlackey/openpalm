@@ -161,7 +161,6 @@
       { id: "channel-discord", name: "Discord", desc: "Connect your assistant to a Discord server" },
       { id: "channel-voice", name: "Voice", desc: "Talk to your assistant using voice" },
       { id: "channel-telegram", name: "Telegram", desc: "Connect your assistant to Telegram" },
-      { id: "channel-webhook", name: "Webhook", desc: "Receive messages from external services via HTTP webhooks" }
     ];
     let h = "";
     for (const c of chs) {

@@ -1,5 +1,6 @@
-import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
@@ -34,19 +35,18 @@ const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
-const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram", "channel-webhook"] as const;
+const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const KNOWN_SERVICES = new Set<string>([
   "gateway", "controller", "opencode-core", "openmemory", "openmemory-ui",
   "admin", "caddy",
-  "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "channel-webhook"
+  "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
 ]);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
   "channel-voice": [],
-  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
-  "channel-webhook": ["WEBHOOK_INBOUND_TOKEN"]
+  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
 };
 
 const setupManager = new SetupManager(DATA_DIR);
@@ -95,13 +95,20 @@ function snapshotFile(path: string) {
 
 
 
-type ChannelName = "chat" | "voice" | "discord" | "telegram" | "webhook";
+function ensureOpencodeConfigPath() {
+  if (existsSync(OPENCODE_CONFIG_PATH)) return;
+  mkdirSync(dirname(OPENCODE_CONFIG_PATH), { recursive: true });
+  writeFileSync(OPENCODE_CONFIG_PATH, "{}\n", "utf8");
+}
+
+
+
+type ChannelName = "chat" | "voice" | "discord" | "telegram";
 
 function channelRewritePath(channel: ChannelName) {
   if (channel === "chat") return "/chat";
   if (channel === "voice") return "/voice/transcription";
   if (channel === "discord") return "/discord/webhook";
-  if (channel === "webhook") return "/webhook/inbound";
   return "/telegram/webhook";
 }
 
@@ -109,7 +116,6 @@ function channelPort(channel: ChannelName) {
   if (channel === "chat") return "8181";
   if (channel === "voice") return "8183";
   if (channel === "discord") return "8184";
-  if (channel === "webhook") return "8185";
   return "8182";
 }
 
@@ -348,7 +354,6 @@ const server = Bun.serve({
             "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
             "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
             "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
-            "channel-webhook": { label: "Webhook Channel", description: "Receive messages from external services" },
             caddy: { label: "Web Server", description: "Handles secure connections" }
           },
           channelFields: {
@@ -363,9 +368,6 @@ const server = Bun.serve({
             "channel-telegram": [
               { key: "TELEGRAM_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Get a bot token from @BotFather on Telegram" },
               { key: "TELEGRAM_WEBHOOK_SECRET", label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" }
-            ],
-            "channel-webhook": [
-              { key: "WEBHOOK_INBOUND_TOKEN", label: "Inbound Token", type: "password", required: false, helpText: "Token to authenticate incoming webhook requests" }
             ]
           }
         }));
@@ -605,6 +607,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/installed" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const state = setupManager.getState();
+        ensureOpencodeConfigPath();
         const configRaw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
         const config = parseJsonc(configRaw) as { plugin?: string[] };
         return cors(json(200, {
@@ -671,7 +674,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/channels/access" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { channel: ChannelName; access: "lan" | "public" };
-        if (!["chat", "voice", "discord", "telegram", "webhook"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
+        if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
         if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
         setChannelAccess(body.channel, body.access);
         await controllerAction("restart", "caddy", `channel ${body.channel} access ${body.access}`);
@@ -856,6 +859,7 @@ const server = Bun.serve({
       // ── Config editor ─────────────────────────────────────────────
       if (url.pathname === "/admin/config" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        ensureOpencodeConfigPath();
         return cors(new Response(readFileSync(OPENCODE_CONFIG_PATH, "utf8"), { headers: { "content-type": "text/plain" } }));
       }
 
@@ -866,6 +870,7 @@ const server = Bun.serve({
         if (typeof parsed !== "object") return cors(json(400, { error: "The configuration file has a syntax error" }));
         const permissions = (parsed as Record<string, unknown>).permission as Record<string, string> | undefined;
         if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
+        ensureOpencodeConfigPath();
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
         if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");
