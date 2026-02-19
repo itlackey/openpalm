@@ -95,7 +95,7 @@ services:
       - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
-      - ${OPENPALM_CONFIG_HOME}/opencode-gateway:/app/opencode-config:ro
+      # Gateway opencode config is baked into the image; no host override needed.
     networks: [assistant_net]
     depends_on: [opencode-core]
 

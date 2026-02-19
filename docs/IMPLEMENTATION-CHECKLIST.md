@@ -10,7 +10,7 @@
 - [x] Observability/audit event logging
 - [x] Rules + skills for recall-first + memory policy + action gating
 
-## OpenMemory HTTP API integration (assets/config/opencode/plugins/ and lib/)
+## OpenMemory HTTP API integration (opencode/extensions/skills/memory/scripts/)
 - [x] openmemory-client.ts — REST client (queryMemory, addMemory, addTemporalFact)
 - [x] openmemory-http.ts — pipeline plugin (pre-turn recall, post-turn write-back, compaction)
 - [x] Secret detection prevents persisting sensitive data
@@ -74,14 +74,13 @@
 - [x] Removed CONFIG directory — `user.env` and `secrets.env` placed directly in config home
 - [x] Gateway Dockerfile simplified (no longer needs repo-root build context)
 
-## Container extension externalization
-- [x] Extensions (plugins, skills, agents, lib) removed from opencode container image
-- [x] Canonical extension source moved to assets/config/opencode/ and assets/shared/gateway/
-- [x] Installer seeds plugins, lib, and gateway config into host config directory
-- [x] Docker compose mounts extensions from host config directory into containers
-- [x] Gateway container mounts intake agent config (opencode-gateway) as read-only volume
-- [x] Entrypoint requires volume-mounted config (no built-in fallback)
-- [x] Test imports updated to reference canonical assets location
+## Container extension architecture
+- [x] Extensions (plugins, skills, agents, lib) baked into opencode container image at build time
+- [x] Canonical extension source lives in opencode/extensions/ (core) and gateway/opencode/ (gateway)
+- [x] Host config directory provides optional user overrides at runtime
+- [x] Docker compose mounts host config for user overrides; extensions are available from the image by default
+- [x] Gateway container has intake agent config baked in from gateway/opencode/
+- [x] Test imports updated to reference canonical source locations
 
 ## XDG Base Directory compliance
 - [x] All volume mounts use OPENPALM_DATA_HOME / OPENPALM_CONFIG_HOME / OPENPALM_STATE_HOME

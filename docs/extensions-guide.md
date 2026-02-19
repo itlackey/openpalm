@@ -10,41 +10,40 @@ Everything else (channels/services/UI panels) is derived from that.
 
 ### Extension directory layout
 
-Extensions are **not baked into the container image**. They live in `assets/config/opencode/` and `assets/shared/gateway/` and are organized by which opencode instance they serve:
+Extensions are **baked into the container image**. They live in `opencode/extensions/` and `gateway/opencode/` within the repository and are organized by which opencode instance they serve:
 
 | Directory | Container | Purpose |
 |---|---|---|
-| `assets/config/opencode/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (memory/SKILL.md), lib (openmemory-client), AGENTS.md |
-| `assets/shared/gateway/` | gateway | Intake agent: skills (channel-intake/SKILL.md), AGENTS.md |
+| `opencode/extensions/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (memory/SKILL.md), lib (openmemory-client), AGENTS.md |
+| `gateway/opencode/` | gateway | Intake agent: skills (channel-intake/SKILL.md), AGENTS.md |
 
-The installer seeds these into `~/.config/openpalm/opencode-core/` and `~/.config/openpalm/opencode-gateway/` respectively. Docker compose volume-mounts them into the containers at runtime.
+Extensions ship inside the container images. Users can still override or supplement extensions by mounting a volume at `/config` — any files present there take precedence over the baked-in defaults. The installer seeds only an empty `opencode.jsonc` at `~/.config/openpalm/opencode-core/opencode.jsonc` for user-level overrides; it does not seed the extensions themselves.
 
-### Recommended structure in `assets/config/opencode/` and `assets/shared/gateway/`
+### Recommended structure in `opencode/extensions/` and `gateway/opencode/`
 
 ```text
-assets/
-  config/
-    opencode/
-      opencode.jsonc
-      AGENTS.md
-      plugins/
-      skills/
-        memory/
-          SKILL.md
-      lib/
-      ssh/
-  shared/
-    gateway/
-      opencode.jsonc
-      AGENTS.md
-      skills/
-        channel-intake/
-          SKILL.md
+opencode/
+  extensions/
+    opencode.jsonc
+    AGENTS.md
+    plugins/
+    skills/
+      memory/
+        SKILL.md
+    lib/
+    ssh/
+gateway/
+  opencode/
+    opencode.jsonc
+    AGENTS.md
+    skills/
+      channel-intake/
+        SKILL.md
 ```
 
 ### Extension authoring rule
 
-All new assistant features should be implemented as OpenCode extensions (plugin, skill, or shared `lib/` module) under `assets/config/opencode/` first, then enabled via `plugin[]` in `opencode.jsonc`.
+All new assistant features should be implemented as OpenCode extensions (plugin, skill, or shared `lib/` module) under `opencode/extensions/` first, then enabled via `plugin[]` in `opencode.jsonc`.
 
 ### Naming conventions
 
@@ -53,9 +52,9 @@ All new assistant features should be implemented as OpenCode extensions (plugin,
 - Shared helpers in `lib/`: `kebab-case.ts` matching the plugin domain
 - Keep plugin IDs stable (`@scope/name` or `name`) so admin/API/CLI operations remain deterministic
 
-### Quick scaffold: add a local extension in `assets/config/opencode/`
+### Quick scaffold: add a local extension in `opencode/extensions/`
 
-1. Create plugin file `assets/config/opencode/plugins/calendar-sync.ts`:
+1. Create plugin file `opencode/extensions/plugins/calendar-sync.ts`:
 
 ```ts
 export default {
@@ -68,7 +67,7 @@ export default {
 };
 ```
 
-2. (Optional) Add a skill file `assets/config/opencode/skills/CalendarOps.SKILL.md`:
+2. (Optional) Add a skill file `opencode/extensions/skills/CalendarOps.SKILL.md`:
 
 ```md
 # CalendarOps
@@ -76,7 +75,7 @@ export default {
 Use `calendar.ping` before running calendar actions to verify plugin health.
 ```
 
-3. Register the extension in `assets/config/opencode/opencode.jsonc`:
+3. Register the extension in `opencode/extensions/opencode.jsonc`:
 
 ```jsonc
 {
@@ -86,7 +85,7 @@ Use `calendar.ping` before running calendar actions to verify plugin health.
 }
 ```
 
-4. Re-run the installer (or copy seeded config into `~/.config/openpalm/opencode-core/`) and restart `opencode-core`.
+4. Rebuild the container image to bake in the new extension, then restart `opencode-core`. If you need to test locally without a rebuild, mount a volume at `/config` pointing to your `opencode/extensions/` directory.
 
 ### Best practices
 
@@ -104,9 +103,10 @@ Use `calendar.ping` before running calendar actions to verify plugin health.
 
 ### Reference architecture (brief)
 
-- `assets/` is the canonical source for install-time defaults.
-- `assets/config/opencode/` drives the `opencode-core` container (full assistant runtime).
-- `assets/shared/gateway/` provides the restricted intake-agent config used by the gateway.
+- `opencode/extensions/` is the canonical source for core agent extensions, baked into the `opencode-core` container image at build time.
+- `gateway/opencode/` is the canonical source for gateway agent extensions, baked into the `gateway` container image at build time.
+- Users can override or supplement baked-in extensions by mounting a volume at `/config` inside the container — files present there take precedence over image defaults.
+- The installer seeds only an empty `opencode.jsonc` at `~/.config/openpalm/opencode-core/opencode.jsonc` for user-level plugin overrides; extension files themselves are not seeded by the installer.
 - Gateway handles signature verification/rate limits and forwards validated work to `opencode-core`.
 - Admin manages config/extensions and invokes the controller for lifecycle actions.
 - Controller is the only container-control plane component and executes compose operations.

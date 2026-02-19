@@ -24,7 +24,7 @@ The directory from which `install.sh` (or `install.ps1`) is executed serves as t
 
 ### `.env`
 
-The master environment file. Generated from `assets/config/system.env` on first install, then enriched with auto-generated secrets and resolved paths. It is the single source of truth for every variable referenced by `assets/shared/docker-compose.yml`. Key categories of variables:
+The master environment file. Generated from `assets/config/system.env` on first install, then enriched with auto-generated secrets and resolved paths. It is the single source of truth for every variable referenced by `assets/state/docker-compose.yml`. Key categories of variables:
 
 **XDG paths** — `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`
 
@@ -112,9 +112,9 @@ Holds user-editable configuration. The installer seeds defaults here on first ru
 
 **`caddy/Caddyfile`** — Defines all HTTP routing. By default it listens on ports 80 and 443, restricts admin and channel paths to LAN-only access (private IP ranges), and proxies to internal services. Routes include `/channels/{chat,voice,discord,telegram}` for channel ingress, `/admin/*` for the admin UI and API, `/admin/opencode*` for the core agent, and `/admin/openmemory*` for the memory UI.
 
-**`opencode-core/opencode.jsonc`** — The primary agent configuration. Sets default permissions (bash, edit, webfetch all require approval), defines the `channel-intake` agent profile with all tools disabled (read-only), and configures the OpenMemory MCP connection. Extensions (plugins, skills, lib) are volume-mounted from this directory rather than baked into the container image, so changes take effect on container restart without rebuilding.
+**`opencode-core/opencode.jsonc`** — The primary agent configuration. Sets default permissions (bash, edit, webfetch all require approval), defines the `channel-intake` agent profile with all tools disabled (read-only), and configures the OpenMemory MCP connection. Extensions (plugins, skills, lib) are baked into the container image at build time from `opencode/extensions/`. Files placed in this config directory serve as optional host overrides; they are merged at container startup and take effect on container restart without rebuilding.
 
-**`opencode-gateway/opencode.jsonc`** — The gateway's intake agent configuration. All permissions are set to `never`; the gateway agent is strictly read-only and used for channel message validation before messages reach the core agent.
+**`opencode-gateway/opencode.jsonc`** — The gateway's intake agent configuration. All permissions are set to `never`; the gateway agent is strictly read-only and used for channel message validation before messages reach the core agent. Gateway extensions are baked into the gateway container image, so this config home entry is no longer required for standard deployments. Files here act as optional overrides only.
 
 **`secrets.env`** — Consumed as an `env_file` by the `openmemory` and `opencode-core` containers. Contains API keys for OpenAI-compatible endpoints that power memory features. This file is the appropriate place for any secret that needs to reach the core agent or memory service.
 
@@ -129,7 +129,7 @@ Holds user-editable configuration. The installer seeds defaults here on first ru
 | `caddy/Caddyfile` | caddy | `/etc/caddy/Caddyfile` | ro |
 | `opencode-core/` | opencode-core | `/config` | rw |
 | `opencode-core/` | admin | `/app/config/opencode-core` | rw |
-| `opencode-gateway/` | gateway | `/app/opencode-config` | ro |
+| `opencode-gateway/` | gateway | `/app/opencode-config` | ro | *(optional override — gateway extensions are baked in)* |
 | `caddy/` | admin | `/app/config/caddy` | rw |
 | `channels/` | admin | `/app/channel-env` | rw |
 | (config root) | admin | `/app/config-root` | rw |
@@ -162,7 +162,7 @@ Holds runtime state, logs, and ephemeral working data. Safe to delete if you wan
 
 ### Key State Files Explained
 
-**`docker-compose.yml`** — The operative compose file. Copied from the repo's `assets/shared/docker-compose.yml` during installation. This is the file that `docker compose` actually reads. It defines all services: caddy, postgres, qdrant, openmemory, opencode-core, gateway, admin, controller, and the optional channel adapters (chat, discord, voice, telegram) behind the `channels` profile.
+**`docker-compose.yml`** — The operative compose file. Copied from the repo's `assets/state/docker-compose.yml` during installation. This is the file that `docker compose` actually reads. It defines all services: caddy, postgres, qdrant, openmemory, opencode-core, gateway, admin, controller, and the optional channel adapters (chat, discord, voice, telegram) behind the `channels` profile.
 
 **`.env`** — A copy of the working directory's `.env`, placed here so the compose file and controller have a local reference. The controller mounts the entire state directory as `/workspace`.
 

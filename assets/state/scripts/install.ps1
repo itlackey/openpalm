@@ -66,13 +66,11 @@ function Upsert-EnvVar {
 
 function Bootstrap-InstallAssets {
   $required = @(
-    (Join-Path $AssetsDir "docker-compose.yml"),
+    (Join-Path $AssetsDir "state/docker-compose.yml"),
     (Join-Path $AssetsDir "config/system.env"),
     (Join-Path $AssetsDir "config/user.env"),
     (Join-Path $AssetsDir "state/scripts/uninstall.ps1"),
-    (Join-Path $AssetsDir "shared/caddy/Caddyfile"),
-    (Join-Path $AssetsDir "config/opencode/opencode.jsonc"),
-    (Join-Path $AssetsDir "shared/gateway/opencode.jsonc"),
+    (Join-Path $AssetsDir "state/caddy/Caddyfile"),
     (Join-Path $AssetsDir "config/channels/chat.env")
   )
 
@@ -258,7 +256,7 @@ try {
   }
 
   $composeFilePath = "$OpenPalmStateHome/docker-compose.yml"
-  Copy-Item (Join-Path $InstallAssetsDir "docker-compose.yml") $composeFilePath -Force
+  Copy-Item (Join-Path $InstallAssetsDir "state/docker-compose.yml") $composeFilePath -Force
   Copy-Item ".env" "$OpenPalmStateHome/.env" -Force
 
   function Seed-File([string]$Src, [string]$Dst) {
@@ -273,21 +271,17 @@ try {
     }
   }
 
-  # opencode-core config (extensions are no longer baked into the container image;
-  # they live here and are volume-mounted into the container at runtime)
-  Seed-File (Join-Path $InstallAssetsDir "config/opencode/opencode.jsonc") "$OpenPalmConfigHome/opencode-core/opencode.jsonc"
-  Seed-File (Join-Path $InstallAssetsDir "config/opencode/AGENTS.md") "$OpenPalmConfigHome/opencode-core/AGENTS.md"
-  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode/skills") "$OpenPalmConfigHome/opencode-core/skills"
-  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode/plugins") "$OpenPalmConfigHome/opencode-core/plugins"
-  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode/lib") "$OpenPalmConfigHome/opencode-core/lib"
-  Seed-Dir (Join-Path $InstallAssetsDir "config/ssh") "$OpenPalmConfigHome/opencode-core/ssh"
+  # Seed a minimal opencode.jsonc so users can customize the opencode-core container.
+  # Extensions are baked into the container image; this file serves as a user override layer.
+  $OpencodeCoreDir = Join-Path $OpenPalmConfigHome "opencode-core"
+  New-Item -ItemType Directory -Path $OpencodeCoreDir -Force | Out-Null
+  $OpencodeJsoncPath = Join-Path $OpencodeCoreDir "opencode.jsonc"
+  if (-not (Test-Path $OpencodeJsoncPath)) {
+      Set-Content -Path $OpencodeJsoncPath -Value "{}"
+      Write-Host "Seeded empty opencode.jsonc -> $OpencodeJsoncPath"
+  }
 
-  # opencode-gateway config (intake agent extensions, mounted into the gateway container)
-  Seed-File (Join-Path $InstallAssetsDir "shared/gateway/opencode.jsonc") "$OpenPalmConfigHome/opencode-gateway/opencode.jsonc"
-  Seed-File (Join-Path $InstallAssetsDir "shared/gateway/AGENTS.md") "$OpenPalmConfigHome/opencode-gateway/AGENTS.md"
-  Seed-Dir (Join-Path $InstallAssetsDir "shared/gateway/skills") "$OpenPalmConfigHome/opencode-gateway/skills"
-
-  Seed-File (Join-Path $InstallAssetsDir "shared/caddy/Caddyfile") "$OpenPalmConfigHome/caddy/Caddyfile"
+  Seed-File (Join-Path $InstallAssetsDir "state/caddy/Caddyfile") "$OpenPalmConfigHome/caddy/Caddyfile"
 
   Get-ChildItem (Join-Path $InstallAssetsDir "config/channels") -Filter "*.env" | ForEach-Object {
     Seed-File $_.FullName "$OpenPalmConfigHome/channels/$($_.Name)"

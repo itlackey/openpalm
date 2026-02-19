@@ -1,22 +1,19 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
   // Intake agent configuration — used by the gateway for channel message
   // validation.  All tools are denied; the intake agent is read-only.
   "permission": {
-    "bash": "never",
-    "edit": "never",
-    "webfetch": "never"
+    "*": "deny"
   },
-
+  "instructions": [
+    "AGENTS.md"
+  ],
   "agent": {
     "channel-intake": {
       "description": "Validates, summarizes, and dispatches inbound channel requests",
       "prompt": "Follow the skills/channel-intake/SKILL.md behavioral rules. Follow the safety rules in AGENTS.md.",
       "tools": {
-        "bash": false,
-        "edit": false,
-        "write": false
+        "*": false
       }
     }
   }

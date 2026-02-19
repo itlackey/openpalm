@@ -5,10 +5,10 @@ RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs &&
 
 WORKDIR /work
 
-# Extensions (plugins, skills, agents, lib) are NOT baked into the image.
-# They are kept in the assets directory, copied to the host config directory
-# during install, and volume-mounted into /config at runtime.
-# See assets/config/opencode/ for the canonical extension source.
+# Extensions (plugins, skills, agents, lib) are baked into the image from
+# opencode/extensions/ and installed to /root/.config/opencode/ at build time.
+# At runtime, a host config volume may be mounted at /config to override defaults.
+COPY extensions/ /root/.config/opencode/
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

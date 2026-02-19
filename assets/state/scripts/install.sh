@@ -98,14 +98,11 @@ if [ "$OS_NAME" = "windows-bash" ]; then
 fi
 
 bootstrap_install_assets() {
-  if [ -f "$ASSETS_DIR/shared/docker-compose.yml" ] \
+  if [ -f "$ASSETS_DIR/state/docker-compose.yml" ] \
     && [ -f "$ASSETS_DIR/config/system.env" ] \
     && [ -f "$ASSETS_DIR/config/user.env" ] \
     && [ -f "$ASSETS_DIR/state/scripts/uninstall.sh" ] \
-    && [ -f "$ASSETS_DIR/shared/caddy/Caddyfile" ] \
-    && [ -f "$ASSETS_DIR/config/opencode/opencode.jsonc" ] \
-    && [ -d "$ASSETS_DIR/config/opencode/plugins" ] \
-    && [ -f "$ASSETS_DIR/shared/gateway/opencode.jsonc" ] \
+    && [ -f "$ASSETS_DIR/state/caddy/Caddyfile" ] \
     && [ -f "$ASSETS_DIR/config/channels/chat.env" ]; then
     INSTALL_ASSETS_DIR="$ASSETS_DIR"
     return
@@ -307,7 +304,7 @@ echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
 
 bootstrap_install_assets
-if [ ! -f "$INSTALL_ASSETS_DIR/shared/docker-compose.yml" ]; then
+if [ ! -f "$INSTALL_ASSETS_DIR/state/docker-compose.yml" ]; then
   echo "Compose file not found in installer assets."
   exit 1
 fi
@@ -367,7 +364,7 @@ mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
 
 COMPOSE_FILE_PATH="$OPENPALM_STATE_HOME/docker-compose.yml"
-cp "$INSTALL_ASSETS_DIR/shared/docker-compose.yml" "$COMPOSE_FILE_PATH"
+cp "$INSTALL_ASSETS_DIR/state/docker-compose.yml" "$COMPOSE_FILE_PATH"
 cp .env "$OPENPALM_STATE_HOME/.env"
 
 # ── Seed default configs into XDG config home ─────────────────────────────
@@ -383,22 +380,17 @@ seed_dir() {
   [ -d "$dst" ] || cp -r "$src" "$dst"
 }
 
-# opencode-core config (extensions are no longer baked into the container image;
-# they live here and are volume-mounted into the container at runtime)
-seed_file "$INSTALL_ASSETS_DIR/config/opencode/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/config/opencode/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode/plugins"        "$OPENPALM_CONFIG_HOME/opencode-core/plugins"
-seed_dir  "$INSTALL_ASSETS_DIR/config/opencode/lib"            "$OPENPALM_CONFIG_HOME/opencode-core/lib"
-seed_dir  "$INSTALL_ASSETS_DIR/config/ssh"                     "$OPENPALM_CONFIG_HOME/opencode-core/ssh"
-
-# opencode-gateway config (intake agent extensions, mounted into the gateway container)
-seed_file "$INSTALL_ASSETS_DIR/shared/gateway/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-gateway/opencode.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/shared/gateway/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-gateway/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/shared/gateway/skills"         "$OPENPALM_CONFIG_HOME/opencode-gateway/skills"
+# Seed a minimal opencode.jsonc so users can customize the opencode-core container.
+# Extensions are baked into the container image; this file serves as a user override layer.
+OPENCODE_CORE_DIR="$OPENPALM_CONFIG_HOME/opencode-core"
+mkdir -p "$OPENCODE_CORE_DIR"
+if [[ ! -f "$OPENCODE_CORE_DIR/opencode.jsonc" ]]; then
+  echo '{}' > "$OPENCODE_CORE_DIR/opencode.jsonc"
+  echo "Seeded empty opencode.jsonc → $OPENCODE_CORE_DIR/opencode.jsonc"
+fi
 
 # Caddy config
-seed_file "$INSTALL_ASSETS_DIR/shared/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
+seed_file "$INSTALL_ASSETS_DIR/state/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
 # Channel env files
 for env_file in "$INSTALL_ASSETS_DIR"/config/channels/*.env; do

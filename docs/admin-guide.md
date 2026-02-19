@@ -143,3 +143,22 @@ Channel adapters should not:
 - access Docker
 - access host filesystem
 - hold non-channel secrets
+
+
+## Uninstall
+
+To uninstall:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash
+```
+
+```powershell
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
+```
+
+Use `--remove-all` to delete all OpenPalm config/state/data directories and `--remove-images` to remove container images.
+PowerShell example with full cleanup: `& $env:TEMP/openpalm-uninstall.ps1 -RemoveAll -RemoveImages`.
+
+During setup you choose whether your assistant is accessible only from this machine or from your local network. You can change this later from the admin dashboard.
+The setup wizard also lets you configure OpenMemory's OpenAI-compatible endpoint and API key, which are persisted in `~/.config/openpalm/secrets.env`.

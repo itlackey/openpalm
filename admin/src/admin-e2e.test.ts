@@ -51,8 +51,8 @@ beforeAll(async () => {
   }
 
   // Copy config files
-  copyFileSync(join(REPO_ROOT, "assets/config/opencode/opencode.jsonc"), join(configDir, "opencode.jsonc"));
-  copyFileSync(join(REPO_ROOT, "assets/shared/caddy/Caddyfile"), join(caddyDir, "Caddyfile"));
+  copyFileSync(join(REPO_ROOT, "opencode/extensions/opencode.jsonc"), join(configDir, "opencode.jsonc"));
+  copyFileSync(join(REPO_ROOT, "assets/state/caddy/Caddyfile"), join(caddyDir, "Caddyfile"));
 
   // Create required env/secrets files
   writeFileSync(join(tmpDir, ".env"), "", "utf8");

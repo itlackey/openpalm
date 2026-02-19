@@ -9,15 +9,18 @@ ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$CRON_DIR"
 
-# Extensions (plugins, skills, lib, AGENTS.md) are mounted from the host
-# config directory — they are NOT baked into the image.  The installer seeds
-# default extensions from assets/config/opencode/ into the host config
-# home at install time, and docker-compose mounts that directory here.
+# Default extensions are baked into the image at /root/.config/opencode/.
+# If a host config volume is mounted at /config, it takes priority.
+# If /config is empty or missing opencode.jsonc, fall back to the baked-in defaults.
+BAKED_IN_DIR="/root/.config/opencode"
 if [[ ! -f "$CONFIG_DIR/opencode.jsonc" ]]; then
-  echo "ERROR: $CONFIG_DIR/opencode.jsonc not found."
-  echo "The opencode config directory must be volume-mounted from the host."
-  echo "Run the installer or seed assets/config/opencode/ into the host config home."
-  exit 1
+  if [[ -f "$BAKED_IN_DIR/opencode.jsonc" ]]; then
+    echo "No volume-mounted config found at $CONFIG_DIR; using baked-in defaults."
+    cp -rn "$BAKED_IN_DIR/." "$CONFIG_DIR/"
+  else
+    echo "ERROR: No opencode.jsonc found at $CONFIG_DIR or $BAKED_IN_DIR."
+    exit 1
+  fi
 fi
 
 # Tell OpenCode where the config file lives.

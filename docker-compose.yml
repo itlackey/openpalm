@@ -1,9 +1,8 @@
 services:
   opencode-core:
     build: ./opencode
-    # Extensions (plugins, skills, lib) are not baked into the image.
-    # For local dev, layer this over assets/shared/docker-compose.yml which
-    # volume-mounts assets/config/opencode/ into /config.
+    # Extensions are baked into the image from opencode/extensions/.
+    # For local dev, layer this over assets/state/docker-compose.yml.
     environment:
       # OpenMemory HTTP API plugin configuration
       OPENPALM_MEMORY_MODE: "api"
@@ -13,10 +12,6 @@ services:
       RECALL_MAX_CHARS: "2000"
       WRITEBACK_ENABLED: "true"
       TEMPORAL_ENABLED: "false"
-
-  openmemory:
-    image: openmemory/openmemory:latest
-    # No ports exposed — LAN-only access from opencode-core
 
   gateway:
     build: ./gateway
