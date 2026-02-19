@@ -1,5 +1,6 @@
-import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
@@ -90,6 +91,14 @@ function snapshotFile(path: string) {
   const backup = `${path}.${Date.now()}.bak`;
   copyFileSync(path, backup);
   return backup;
+}
+
+
+
+function ensureOpencodeConfigPath() {
+  if (existsSync(OPENCODE_CONFIG_PATH)) return;
+  mkdirSync(dirname(OPENCODE_CONFIG_PATH), { recursive: true });
+  writeFileSync(OPENCODE_CONFIG_PATH, "{}\n", "utf8");
 }
 
 
@@ -598,6 +607,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/installed" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const state = setupManager.getState();
+        ensureOpencodeConfigPath();
         const configRaw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
         const config = parseJsonc(configRaw) as { plugin?: string[] };
         return cors(json(200, {
@@ -849,6 +859,7 @@ const server = Bun.serve({
       // ── Config editor ─────────────────────────────────────────────
       if (url.pathname === "/admin/config" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        ensureOpencodeConfigPath();
         return cors(new Response(readFileSync(OPENCODE_CONFIG_PATH, "utf8"), { headers: { "content-type": "text/plain" } }));
       }
 
@@ -859,6 +870,7 @@ const server = Bun.serve({
         if (typeof parsed !== "object") return cors(json(400, { error: "The configuration file has a syntax error" }));
         const permissions = (parsed as Record<string, unknown>).permission as Record<string, string> | undefined;
         if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
+        ensureOpencodeConfigPath();
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
         if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");

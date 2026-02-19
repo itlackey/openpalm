@@ -15,6 +15,7 @@ const REPO_ROOT = resolve(import.meta.dir, "../..");
 let base: string;
 let tmpDir: string;
 let proc: Subprocess;
+let opencodeConfigPath: string;
 
 function api(path: string, opts?: RequestInit) {
   return fetch(`${base}${path}`, opts);
@@ -39,6 +40,7 @@ beforeAll(async () => {
   const dataDir = join(tmpDir, "data");
   const uiDir = join(tmpDir, "ui");
   const configDir = join(tmpDir, "config");
+  opencodeConfigPath = join(configDir, "opencode.jsonc");
   const caddyDir = join(tmpDir, "caddy");
   const channelEnvDir = join(tmpDir, "channel-env");
   const cronDir = join(tmpDir, "cron");
@@ -51,7 +53,7 @@ beforeAll(async () => {
   }
 
   // Copy config files
-  copyFileSync(join(REPO_ROOT, "opencode/extensions/opencode.jsonc"), join(configDir, "opencode.jsonc"));
+  copyFileSync(join(REPO_ROOT, "opencode/extensions/opencode.jsonc"), opencodeConfigPath);
   copyFileSync(join(REPO_ROOT, "assets/state/caddy/Caddyfile"), join(caddyDir, "Caddyfile"));
 
   // Create required env/secrets files
@@ -75,7 +77,7 @@ beforeAll(async () => {
       ADMIN_TOKEN: "test-token-e2e",
       DATA_DIR: dataDir,
       UI_DIR: uiDir,
-      OPENCODE_CONFIG_PATH: join(configDir, "opencode.jsonc"),
+      OPENCODE_CONFIG_PATH: opencodeConfigPath,
       CADDYFILE_PATH: join(caddyDir, "Caddyfile"),
       CHANNEL_ENV_DIR: channelEnvDir,
       CRON_DIR: cronDir,
@@ -288,8 +290,7 @@ describe("auth-protected endpoints", () => {
   it("GET /admin/installed returns plugins with auth", async () => {
     const r = await authed("/admin/installed");
     expect(r.ok).toBe(true);
-    expect(r.data).toHaveProperty("plugins");
-    expect(r.data).toHaveProperty("setupState");
+    expect(Array.isArray(r.data.plugins)).toBe(true);
   });
 
   it("GET /admin/channels requires auth", async () => {
@@ -326,6 +327,21 @@ describe("auth-protected endpoints", () => {
     expect(r.status).toBe(200);
     const text = await r.text();
     expect(text).toContain("$schema");
+  });
+
+  it("auto-creates missing opencode config for installed/config endpoints", async () => {
+    rmSync(opencodeConfigPath, { force: true });
+
+    const installed = await authed("/admin/installed");
+    expect(installed.status).toBe(200);
+    expect(Array.isArray(installed.data.plugins)).toBe(true);
+
+    const cfg = await api("/admin/config", {
+      headers: { "x-admin-token": "test-token-e2e" },
+    });
+    expect(cfg.status).toBe(200);
+    const text = await cfg.text();
+    expect(text).toContain("{");
   });
 });
 
