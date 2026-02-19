@@ -11,12 +11,12 @@ describe("voice adapter", () => {
   it("forwards normalized transcription payload", async () => {
     let signature = "";
     let body = "";
-    const mockFetch: typeof fetch = async (_input, init) => {
+    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
       signature = String((init?.headers as Record<string, string>)["x-channel-signature"]);
       body = String(init?.body);
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     };
-    const fetchHandler = createVoiceFetch("http://gateway", "secret", mockFetch);
+    const fetchHandler = createVoiceFetch("http://gateway", "secret", mockFetch as typeof fetch);
     const resp = await fetchHandler(new Request("http://voice/voice/transcription", {
       method: "POST",
       body: JSON.stringify({ text: "transcribed", audioRef: "a1" })

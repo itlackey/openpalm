@@ -34,7 +34,7 @@ describe("gallery", () => {
             },
           ],
         })
-      )) as typeof fetch;
+      )) as unknown as typeof fetch;
 
     try {
       const results = await searchNpm("awesome");
@@ -78,7 +78,7 @@ describe("gallery", () => {
         );
       }
       throw new Error("network down");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     try {
       const first = await searchPublicRegistry("community");
