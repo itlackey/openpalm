@@ -311,6 +311,40 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, service: "admin", time: new Date().toISOString() }));
       }
 
+      // ── Meta (display names) ────────────────────────────────────────
+      if (url.pathname === "/admin/meta" && req.method === "GET") {
+        return cors(json(200, {
+          serviceNames: {
+            gateway: { label: "Message Router", description: "Routes messages between channels and your assistant" },
+            controller: { label: "System Manager", description: "Manages background services" },
+            opencodeCore: { label: "AI Assistant", description: "The core assistant engine" },
+            "opencode-core": { label: "AI Assistant", description: "The core assistant engine" },
+            openmemory: { label: "Memory", description: "Stores conversation history and context" },
+            "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
+            admin: { label: "Admin Panel", description: "This management interface" },
+            "channel-chat": { label: "Chat Channel", description: "Web chat interface" },
+            "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
+            "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
+            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
+            caddy: { label: "Web Server", description: "Handles secure connections" }
+          },
+          channelFields: {
+            "channel-chat": [
+              { key: "CHAT_INBOUND_TOKEN", label: "Inbound Token", type: "password", required: false, helpText: "Token for authenticating incoming chat messages" }
+            ],
+            "channel-discord": [
+              { key: "DISCORD_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Create a bot at discord.com/developers and copy the token" },
+              { key: "DISCORD_PUBLIC_KEY", label: "Public Key", type: "text", required: true, helpText: "Found on the same page as your bot token" }
+            ],
+            "channel-voice": [],
+            "channel-telegram": [
+              { key: "TELEGRAM_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Get a bot token from @BotFather on Telegram" },
+              { key: "TELEGRAM_WEBHOOK_SECRET", label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" }
+            ]
+          }
+        }));
+      }
+
       // ── Setup wizard ──────────────────────────────────────────────
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
@@ -578,11 +612,21 @@ const server = Bun.serve({
       if (url.pathname === "/admin/channels" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, {
-          channels: CHANNEL_SERVICES.map((service) => ({
-            service,
-            access: service === "channel-chat" ? detectChannelAccess("chat") : service === "channel-voice" ? detectChannelAccess("voice") : service === "channel-discord" ? detectChannelAccess("discord") : detectChannelAccess("telegram"),
-            config: readChannelConfig(service)
-          }))
+          channels: CHANNEL_SERVICES.map((service) => {
+            const channelName = service.replace("channel-", "") as "chat" | "voice" | "discord" | "telegram";
+            return {
+              service,
+              label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
+              access: detectChannelAccess(channelName),
+              config: readChannelConfig(service),
+              fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => ({
+                key,
+                label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
+                type: key.toLowerCase().includes("token") || key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") ? "password" : "text",
+                required: key.includes("BOT_TOKEN"),
+              }))
+            };
+          })
         }));
       }
 
@@ -767,9 +811,9 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { config: string; restart?: boolean };
         const parsed = parseJsonc(body.config);
-        if (typeof parsed !== "object") return cors(json(400, { error: "invalid jsonc" }));
+        if (typeof parsed !== "object") return cors(json(400, { error: "The configuration file has a syntax error" }));
         const permissions = (parsed as Record<string, unknown>).permission as Record<string, string> | undefined;
-        if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "policy lint failed: permission widening blocked" }));
+        if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
         if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");

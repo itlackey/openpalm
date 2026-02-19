@@ -336,6 +336,24 @@ describe("health check", () => {
   });
 });
 
+// ── Meta ─────────────────────────────────────────────────
+
+describe("meta endpoint", () => {
+  it("GET /admin/meta returns service display names and channel fields", async () => {
+    const r = await apiJson("/admin/meta");
+    expect(r.ok).toBe(true);
+    expect(r.data).toHaveProperty("serviceNames");
+    expect(r.data).toHaveProperty("channelFields");
+    const names = r.data.serviceNames as Record<string, { label: string }>;
+    expect(names.gateway.label).toBe("Message Router");
+    expect(names.opencodeCore.label).toBe("AI Assistant");
+    expect(names.openmemory.label).toBe("Memory");
+    const fields = r.data.channelFields as Record<string, Array<{ key: string; label: string }>>;
+    expect(fields["channel-discord"].length).toBe(2);
+    expect(fields["channel-discord"][0].label).toBe("Bot Token");
+  });
+});
+
 // ── UI Content Verification ─────────────────────────────
 
 describe("UI content", () => {
@@ -350,12 +368,10 @@ describe("UI content", () => {
   it("index.html includes all page containers", async () => {
     const r = await api("/");
     const text = await r.text();
-    expect(text).toContain('id="page-gallery"');
-    expect(text).toContain('id="page-installed"');
-    expect(text).toContain('id="page-services"');
-    expect(text).toContain('id="page-crons"');
-    expect(text).toContain('id="page-settings"');
-    expect(text).toContain('id="page-providers"');
+    expect(text).toContain('id="page-extensions"');
+    expect(text).toContain('id="page-channels"');
+    expect(text).toContain('id="page-automations"');
+    expect(text).toContain('id="page-system"');
   });
 
   it("index.html includes setup-ui.js script tag", async () => {

@@ -1,7 +1,7 @@
 (() => {
   let setupState = null;
   const STEPS = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions", "complete"];
-  const STEP_TITLES = ["Welcome", "Access Scope", "Existing Service Instances", "Service Health", "Security Review", "Channels", "Extensions", "Complete Setup"];
+  const STEP_TITLES = ["Welcome", "Access", "Services", "Health Check", "Security", "Channels", "Extensions", "Complete"];
   let wizardStep = 0;
   let accessScope = "host";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
@@ -14,6 +14,14 @@
   let showPage;
   let getAdminToken;
   let setAdminToken;
+
+  const FRIENDLY_SERVICE_NAMES = {
+    gateway: "Message Router",
+    controller: "System Manager",
+    opencodeCore: "AI Assistant",
+    openmemory: "Memory",
+    admin: "Admin Panel"
+  };
 
   function ensureStyles() {
     if (document.getElementById("setup-ui-style")) return;
@@ -29,6 +37,10 @@
       .wizard .step-dot.current{background:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.3)}
       .wizard .body{min-height:180px;margin:1rem 0}
       .wizard .actions{display:flex;gap:.5rem;justify-content:flex-end}
+      .wizard .wiz-error{background:rgba(239,68,68,.1);border:1px solid var(--red,#ef4444);color:var(--red,#ef4444);border-radius:8px;padding:.6rem 1rem;margin:.5rem 0;font-size:13px;display:none}
+      .wizard .wiz-error.visible{display:block}
+      .wizard details.advanced-section{margin-top:.8rem;border:1px solid var(--border);border-radius:8px;padding:.5rem .8rem}
+      .wizard details.advanced-section summary{cursor:pointer;font-weight:600;font-size:14px;padding:.3rem 0;user-select:none}
     `;
     document.head.appendChild(style);
   }
@@ -77,34 +89,38 @@
       case "welcome":
         return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
           + '<p>This wizard will walk you through initial configuration:</p>'
-          + '<ul><li>Verify core services are running</li><li>Review security settings</li><li>Choose channels to enable</li><li>Install starter extensions</li></ul>'
-          + '<p class="muted" style="font-size:13px">During setup, choose whether access should be restricted to this host only or available across your LAN.</p>';
+          + '<ul><li>Make sure everything is working</li><li>Set up security</li><li>Choose how to connect</li><li>Add starter features</li></ul>'
+          + '<p class="muted" style="font-size:13px">During setup, choose who can access your assistant.</p>';
       case "healthCheck":
         return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div>';
       case "accessScope":
-        return '<p>Choose who can access this stack during normal operation.</p>'
+        return '<p>Choose who can access your assistant.</p>'
+          + '<div id="wiz-step-error" class="wiz-error"></div>'
           + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
           + '<input type="radio" name="wiz-scope" value="host" ' + (accessScope === "host" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
-          + '<div><strong>Host machine only</strong><div class="muted" style="font-size:13px">Tightest mode. Caddy and published service ports are restricted to localhost.</div></div>'
+          + '<div><strong>Just this computer</strong><div class="muted" style="font-size:13px">Only accessible from this device. Most secure option.</div></div>'
           + '</label>'
           + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
           + '<input type="radio" name="wiz-scope" value="lan" ' + (accessScope === "lan" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
-          + '<div><strong>LAN machines</strong><div class="muted" style="font-size:13px">Allow trusted machines on your local network to reach exposed stack endpoints.</div></div>'
+          + '<div><strong>Any device on my home network</strong><div class="muted" style="font-size:13px">Other devices on your local network can access your assistant.</div></div>'
           + '</label>';
       case "serviceInstances":
-        return '<p>Optionally connect to existing service instances instead of bundled defaults.</p>'
-          + '<div class="sec-box" style="border-color:var(--yellow);background:rgba(234,179,8,.1)"><strong>Warning:</strong> Changing these values after completing setup can break existing data access and workflows.</div>'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenMemory base URL</label>'
-          + '<input id="wiz-svc-openmemory" placeholder="http://openmemory:8765" value="' + esc(serviceInstances.openmemory || "") + '" />'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>'
-          + '<input id="wiz-svc-psql" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(serviceInstances.psql || "") + '" />'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>'
-          + '<input id="wiz-svc-qdrant" placeholder="http://qdrant:6333" value="' + esc(serviceInstances.qdrant || "") + '" />'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible endpoint for OpenMemory</label>'
-          + '<input id="wiz-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible API key for OpenMemory</label>'
+        return '<p>OpenPalm includes everything it needs to run. If you have existing services you want to connect, expand the advanced section below.</p>'
+          + '<div id="wiz-step-error" class="wiz-error"></div>'
+          + '<details class="advanced-section">'
+          + '<summary>Advanced: Connect Existing Services</summary>'
+          + '<div class="sec-box" style="border-color:var(--yellow);background:rgba(234,179,8,.1);margin-top:.5rem"><strong>Warning:</strong> Changing these values after setup is complete may affect your data and workflows.</div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Memory service address</label>'
+          + '<input id="wiz-svc-openmemory" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.openmemory || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Database connection</label>'
+          + '<input id="wiz-svc-psql" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.psql || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Search service address</label>'
+          + '<input id="wiz-svc-qdrant" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.qdrant || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model endpoint for memory</label>'
+          + '<input id="wiz-openmemory-openai-base" placeholder="e.g. https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model API key for memory</label>'
           + '<input id="wiz-openmemory-openai-key" type="password" placeholder="sk-..." value="" />'
-          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if OpenMemory should not use OpenAI-compatible model calls.") + '</div>'
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if not needed.") + '</div>'
           + '<hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)" />'
           + '<p style="margin:.5rem 0"><strong>Small / Fast Model for OpenCode</strong></p>'
           + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Configure a lightweight model for system tasks like summaries and title generation. This sets the <code>small_model</code> in the OpenCode configuration. Use an OpenAI-compatible endpoint — for example, a local <a href="https://ollama.com/" target="_blank" rel="noopener">Ollama</a> instance at <code>http://localhost:11434/v1</code>.</div>'
@@ -115,30 +131,33 @@
           + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (smallModelProvider.apiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if your endpoint does not require authentication (e.g. local Ollama).") + '</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model name</label>'
           + '<input id="wiz-small-model-id" placeholder="ollama/tinyllama:latest" value="' + esc(smallModelProvider.modelId || "") + '" />'
-          + '<div class="muted" style="font-size:12px;margin-top:.2rem">Format: <code>provider/model-name</code>. Examples: <code>ollama/tinyllama:latest</code>, <code>openai/gpt-4o-mini</code></div>';
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">Format: <code>provider/model-name</code>. Examples: <code>ollama/tinyllama:latest</code>, <code>openai/gpt-4o-mini</code></div>'
+          + '</details>';
       case "security":
         return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
-          + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password (from .env)</label>'
+          + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password you created during installation.</div></div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password</label>'
           + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
           + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
-          + '<ul style="font-size:13px;margin:.2rem 0"><li>HMAC channel signatures</li><li>Tool firewall (safe/medium/high risk tiers)</li><li>Secret detection on memory writes</li><li>Rate limiting (120 req/min per user)</li><li>LAN-only admin access via Caddy</li></ul></div>';
+          + '<ul style="font-size:13px;margin:.2rem 0"><li>Messages are cryptographically verified</li><li>Actions are categorized by risk level and require approval</li><li>Sensitive data is automatically filtered from memory</li><li>Rate limiting prevents abuse</li><li>Admin access restricted to your network</li></ul></div>';
       case "channels":
-        return '<p>Choose which channels to enable. Channels are adapters; all messages pass through the gateway for security.</p>' + channelCheckboxes();
+        return '<p>Choose how you want to talk to your assistant.</p>'
+          + '<div id="wiz-step-error" class="wiz-error"></div>'
+          + channelCheckboxes();
       case "extensions":
         return '<p>Recommended starter extensions:</p>' + starterExtensions();
       case "complete":
-        return '<p>Finalizing setup and waiting for containers to come online...</p><div id="wiz-complete-status">Loading...</div>';
+        return '<p>Finalizing setup and starting your assistant...</p><div id="wiz-complete-status">Loading...</div>';
     }
     return "";
   }
 
   function channelCheckboxes() {
     const chs = [
-      { id: "channel-chat", name: "Chat (HTTP)", desc: "Web chat widget / custom frontend" },
-      { id: "channel-discord", name: "Discord", desc: "Discord bot (requires DISCORD_BOT_TOKEN in .env)" },
-      { id: "channel-voice", name: "Voice", desc: "Speech-to-text adapter" },
-      { id: "channel-telegram", name: "Telegram", desc: "Telegram bot (requires TELEGRAM_BOT_TOKEN in .env)" }
+      { id: "channel-chat", name: "Chat (HTTP)", desc: "Chat with your assistant through a web interface" },
+      { id: "channel-discord", name: "Discord", desc: "Connect your assistant to a Discord server" },
+      { id: "channel-voice", name: "Voice", desc: "Talk to your assistant using voice" },
+      { id: "channel-telegram", name: "Telegram", desc: "Connect your assistant to Telegram" }
     ];
     let h = "";
     for (const c of chs) {
@@ -168,6 +187,22 @@
     return h;
   }
 
+  function showStepError(msg) {
+    const el = document.getElementById("wiz-step-error");
+    if (el) {
+      el.textContent = msg;
+      el.classList.add("visible");
+    }
+  }
+
+  function clearStepError() {
+    const el = document.getElementById("wiz-step-error");
+    if (el) {
+      el.textContent = "";
+      el.classList.remove("visible");
+    }
+  }
+
   async function wizHealthCheck() {
     const r = await api("/admin/setup/health-check");
     const el = document.getElementById("wiz-health");
@@ -175,18 +210,21 @@
     if (!r.ok) { el.textContent = "Could not reach admin API."; return; }
     let h = "";
     for (const [name, info] of Object.entries(r.data.services)) {
-      h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? "dot-ok" : "dot-err") + '"></span><strong>' + esc(name) + '</strong> — ' + (info.ok ? "Healthy" : esc(info.error || "Unreachable")) + '</div>';
+      const friendly = FRIENDLY_SERVICE_NAMES[name] || esc(name);
+      h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? "dot-ok" : "dot-err") + '"></span><strong>' + friendly + '</strong> — ' + (info.ok ? "Healthy" : esc(info.error || "Unreachable")) + '</div>';
     }
     el.innerHTML = h;
   }
 
   async function wizardNext() {
+    clearStepError();
+
     if (STEPS[wizardStep] === "accessScope") {
       const selected = document.querySelector('input[name="wiz-scope"]:checked');
       const scope = selected ? selected.value : "host";
       const scopeResult = await api("/admin/setup/access-scope", { method: "POST", body: JSON.stringify({ scope }) });
       if (!scopeResult.ok) {
-        alert("Could not apply access scope.");
+        showStepError("Could not save your access preference. Please try again.");
         return;
       }
       accessScope = scope;
@@ -212,7 +250,7 @@
         body: JSON.stringify(servicePayload)
       });
       if (!serviceResult.ok) {
-        alert("Could not save service instance settings.");
+        showStepError("Could not save service settings. Please try again.");
         return;
       }
       serviceInstances = serviceResult.data?.state?.serviceInstances || { openmemory, psql, qdrant };
@@ -232,10 +270,11 @@
   }
 
   async function finishSetup() {
+    clearStepError();
     const chs = Array.from(document.querySelectorAll(".wiz-ch:checked")).map((c) => c.value);
     const channelsResult = await api("/admin/setup/channels", { method: "POST", body: JSON.stringify({ channels: chs }) });
     if (!channelsResult.ok) {
-      alert("Could not save channel selection.");
+      showStepError("Could not save your channel choices. Please try again.");
       return;
     }
     enabledChannels = channelsResult.data?.state?.enabledChannels || [];
@@ -263,19 +302,19 @@
         const services = Object.values(r.data.services || {});
         const allOk = services.every((s) => s && s.ok);
         if (allOk) {
-          el.innerHTML = '<p>All core containers are online.</p><button onclick="window.openPalmSetup.continueToAdmin()">Continue to Admin</button>';
+          el.innerHTML = '<p>Everything is ready!</p><button onclick="window.openPalmSetup.continueToAdmin()">Continue to Admin</button>';
           return;
         }
       }
-      el.innerHTML = '<p class="muted">Waiting for containers... (' + (i + 1) + ')</p>';
+      el.innerHTML = '<p class="muted">Starting services... (' + (i + 1) + ')</p>';
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    el.innerHTML = '<p class="muted">Some containers are still starting. You can continue and monitor Services.</p><button class="secondary" onclick="window.openPalmSetup.continueToAdmin()">Continue to Admin</button>';
+    el.innerHTML = '<p class="muted">Some services are still starting. You can continue and check the System page.</p><button class="secondary" onclick="window.openPalmSetup.continueToAdmin()">Continue to Admin</button>';
   }
 
   function continueToAdmin() {
     document.getElementById("setup-overlay")?.classList.add("hidden");
-    showPage("gallery");
+    showPage("extensions");
   }
 
   function init(deps) {

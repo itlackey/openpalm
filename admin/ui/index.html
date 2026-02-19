@@ -15,8 +15,9 @@ button:disabled{opacity:.4;cursor:default}
 button.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
 button.danger{background:var(--red)}
 button.sm{padding:.3rem .7rem;font-size:13px}
-input,select{font:inherit;padding:.45rem .7rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);width:100%}
-input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+input,select,textarea{font:inherit;padding:.45rem .7rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+textarea{resize:vertical}
 .container{max-width:960px;margin:0 auto;padding:1rem}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;margin-bottom:1rem}
 .card h3{margin:0 0 .5rem}
@@ -45,34 +46,51 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 .sec-box .sec-title{font-weight:600;font-size:13px;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem}
 .perm-list{list-style:none;padding:0;margin:.3rem 0}
 .perm-list li::before{content:">";margin-right:6px;color:var(--accent)}
-.iframe-wrap{position:fixed;top:49px;left:0;right:0;bottom:0}
-.iframe-wrap iframe{width:100%;height:100%;border:none}
+/* Toast notifications */
+.toast-container{position:fixed;top:60px;right:1rem;z-index:200;display:flex;flex-direction:column;gap:.5rem}
+.toast{padding:.7rem 1.2rem;border-radius:var(--radius);font-size:14px;animation:toast-in .3s ease;max-width:380px;border:1px solid var(--border)}
+.toast-success{background:var(--surface);border-color:var(--green);color:var(--green)}
+.toast-error{background:var(--surface);border-color:var(--red);color:var(--red)}
+.toast-info{background:var(--surface);border-color:var(--accent);color:var(--text)}
+@keyframes toast-in{from{opacity:0;transform:translateX(1rem)}to{opacity:1;transform:none}}
+/* Inline confirm */
+.inline-confirm{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem;margin-top:.5rem}
+/* Frequency picker */
+.freq-row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.freq-row select{width:auto}
+/* View toggle */
+.view-toggle{display:flex;gap:0;margin-bottom:1rem}
+.view-toggle button{border-radius:0;border:1px solid var(--border);background:var(--surface2);color:var(--muted);padding:.4rem 1.2rem;font-size:14px}
+.view-toggle button:first-child{border-radius:var(--radius) 0 0 var(--radius)}
+.view-toggle button:last-child{border-radius:0 var(--radius) var(--radius) 0}
+.view-toggle button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* Channel card */
+.channel-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;margin-bottom:1rem}
+.channel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem}
+.channel-status{display:flex;align-items:center;gap:.4rem}
+.help-text{font-size:12px;color:var(--muted);margin-top:.2rem}
+.field-group{margin-bottom:.7rem}
+.field-group label{display:block;font-size:13px;font-weight:600;margin-bottom:.2rem}
+/* Access toggle */
+.access-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:13px;cursor:pointer;padding:.3rem .6rem;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border)}
+.access-toggle .toggle-dot{width:8px;height:8px;border-radius:50%}
 </style>
 </head>
 <body>
 
 <nav>
   <span class="logo"><img src="logo.png" alt="OpenPalm logo" />OpenPalm</span>
-  <button id="nav-gallery" onclick="showPage('gallery')">Gallery</button>
-  <button id="nav-installed" onclick="showPage('installed')">Installed</button>
-  <button id="nav-providers" onclick="showPage('providers')">Providers</button>
-  <button id="nav-services" onclick="showPage('services')">Services</button>
-  <button id="nav-crons" onclick="showPage('crons')">Cron Jobs</button>
-  <button id="nav-opencode" onclick="showPage('opencode')">OpenCode</button>
-  <button id="nav-openmemory" onclick="showPage('openmemory')">OpenMemory</button>
-  <button id="nav-settings" onclick="showPage('settings')">Settings</button>
+  <button id="nav-extensions" onclick="showPage('extensions')">Extensions</button>
+  <button id="nav-channels" onclick="showPage('channels')">Channels</button>
+  <button id="nav-automations" onclick="showPage('automations')">Automations</button>
+  <button id="nav-system" onclick="showPage('system')">System</button>
 </nav>
 
 <div class="container">
-  <!-- PAGES -->
-  <div id="page-gallery" class="page"></div>
-  <div id="page-installed" class="page hidden"></div>
-  <div id="page-providers" class="page hidden"></div>
-  <div id="page-services" class="page hidden"></div>
-  <div id="page-crons" class="page hidden"></div>
-  <div id="page-opencode" class="page hidden"></div>
-  <div id="page-openmemory" class="page hidden"></div>
-  <div id="page-settings" class="page hidden"></div>
+  <div id="page-extensions" class="page"></div>
+  <div id="page-channels" class="page hidden"></div>
+  <div id="page-automations" class="page hidden"></div>
+  <div id="page-system" class="page hidden"></div>
 </div>
 
 <!-- setup wizard overlay, rendered by JS -->
@@ -86,15 +104,71 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 let adminToken = localStorage.getItem('op_admin') || '';
 let galleryItems = [];
 let setupState = null;
-let currentPage = 'gallery';
+let currentPage = 'extensions';
 
-const BASE = ''; // same-origin via Caddy
+/* Extensions page state */
+let extensionsView = 'browse'; // 'browse' or 'my'
+let galleryFilter = '';
+let galleryCat = '';
+let npmSearchVisible = false;
+let npmSearchResults = [];
+
+/* Cron / Automations state */
+let cronJobs = [];
+let cronEditId = null;
+
+/* Providers state */
+let providersList = [];
+let providerAssignments = {};
+let providerModels = [];
+let selectedProviderId = '';
+
+const BASE = '';
 const ADMIN_PREFIX = '/admin/';
 const ADMIN_API_PREFIX = '/admin/api/';
-// Detect if the page was loaded behind Caddy's /admin* route.
-// When served through Caddy the page URL starts with /admin; when served
-// directly from the admin server the page is at /.
 const BEHIND_CADDY = window.location.pathname.startsWith('/admin');
+
+/* ── service name mapping ─────────────────────────────── */
+const SERVICE_NAMES = {
+  'gateway': { label: 'Message Router', desc: 'Routes messages between channels and your assistant' },
+  'opencode-core': { label: 'AI Assistant', desc: 'The core assistant engine' },
+  'opencodeCore': { label: 'AI Assistant', desc: 'The core assistant engine' },
+  'openmemory': { label: 'Memory', desc: 'Stores conversation history and context' },
+  'openmemory-ui': { label: 'Memory Dashboard', desc: 'Visual interface for memory data' },
+  'admin': { label: 'Admin Panel', desc: 'This management interface' },
+  'controller': { label: 'System Manager', desc: 'Manages background services' },
+  'channel-chat': { label: 'Chat Channel', desc: 'Web chat interface' },
+  'channel-discord': { label: 'Discord Channel', desc: 'Discord bot connection' },
+  'channel-voice': { label: 'Voice Channel', desc: 'Voice input interface' },
+  'channel-telegram': { label: 'Telegram Channel', desc: 'Telegram bot connection' },
+  'caddy': { label: 'Web Server', desc: 'Handles secure connections' }
+};
+
+const CHANNEL_FRIENDLY = {
+  'channel-chat': 'Chat',
+  'channel-discord': 'Discord',
+  'channel-voice': 'Voice',
+  'channel-telegram': 'Telegram'
+};
+
+const CHANNEL_FIELDS = {
+  'channel-chat': [
+    { key: 'CHAT_INBOUND_TOKEN', label: 'Inbound Token', type: 'password', helpText: 'Token for authenticating incoming chat messages' }
+  ],
+  'channel-discord': [
+    { key: 'DISCORD_BOT_TOKEN', label: 'Bot Token', type: 'password', helpText: 'Create a bot at discord.com/developers and copy the token', required: true },
+    { key: 'DISCORD_PUBLIC_KEY', label: 'Public Key', type: 'text', helpText: 'Found on the same page as your bot token', required: true }
+  ],
+  'channel-voice': [],
+  'channel-telegram': [
+    { key: 'TELEGRAM_BOT_TOKEN', label: 'Bot Token', type: 'password', helpText: 'Get a bot token from @BotFather on Telegram', required: true },
+    { key: 'TELEGRAM_WEBHOOK_SECRET', label: 'Webhook Secret', type: 'password', helpText: 'A secret string to verify incoming webhook requests' }
+  ]
+};
+
+function friendlyServiceName(svc) {
+  return (SERVICE_NAMES[svc] && SERVICE_NAMES[svc].label) || svc;
+}
 
 function normalizeAdminApiPath(path) {
   if (!BEHIND_CADDY) return path;
@@ -114,35 +188,38 @@ async function api(path, opts = {}) {
   catch { return { ok: res.ok, status: res.status, data: text }; }
 }
 
-/* ── pages ────────────────────────────────────────────── */
-const IFRAME_PAGES = { opencode: '/admin/opencode/', openmemory: window.location.protocol + '//' + window.location.hostname + ':3000' };
+/* ── toast notifications ──────────────────────────────── */
+function showToast(message, type) {
+  if (!type) type = 'info';
+  var container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  var toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(function() { toast.remove(); }, 4000);
+}
 
+/* ── pages ────────────────────────────────────────────── */
 function showPage(name) {
   currentPage = name;
-  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.add('hidden'); });
   document.getElementById('page-' + name).classList.remove('hidden');
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  const nb = document.getElementById('nav-' + name);
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  var nb = document.getElementById('nav-' + name);
   if (nb) nb.classList.add('active');
-  // Remove any existing iframe overlay
-  const existing = document.getElementById('iframe-overlay');
+  var existing = document.getElementById('iframe-overlay');
   if (existing) existing.remove();
   document.querySelector('.container').style.display = '';
-  if (IFRAME_PAGES[name]) {
-    document.querySelector('.container').style.display = 'none';
-    const wrap = document.createElement('div');
-    wrap.id = 'iframe-overlay';
-    wrap.className = 'iframe-wrap';
-    wrap.innerHTML = '<iframe src="' + IFRAME_PAGES[name] + '"></iframe>';
-    document.body.appendChild(wrap);
-    return;
-  }
-  if (name === 'gallery') loadGallery();
-  if (name === 'installed') loadInstalled();
-  if (name === 'providers') loadProviders();
-  if (name === 'services') loadServices();
-  if (name === 'crons') loadCrons();
-  if (name === 'settings') renderSettings();
+  if (name === 'extensions') loadExtensions();
+  if (name === 'channels') loadChannels();
+  if (name === 'automations') loadAutomations();
+  if (name === 'system') loadSystem();
 }
 
 /* ── risk badge ───────────────────────────────────────── */
@@ -150,51 +227,136 @@ function riskBadge(r) {
   return '<span class="badge badge-' + r + '">' + r.charAt(0).toUpperCase() + r.slice(1) + ' Risk</span>';
 }
 function riskDesc(r) {
-  const m = { low:'Safe. No network access or side effects.', medium:'Limited capabilities. Review before installing.', high:'Significant capabilities. Requires careful review.', critical:'Maximum capability. Review thoroughly.' };
+  var m = { low:'Safe. No network access or side effects.', medium:'Limited capabilities. Review before installing.', high:'Significant capabilities. Requires careful review.', critical:'Maximum capability. Review thoroughly.' };
   return m[r] || '';
 }
 function categoryIcon(c) {
   return c === 'plugin' ? 'P' : c === 'skill' ? 'S' : 'C';
 }
 function categoryLabel(c) {
-  return c === 'plugin' ? 'Plugin' : c === 'skill' ? 'Skill' : 'Container';
+  return c === 'plugin' ? 'Capability' : c === 'skill' ? 'Behavior' : 'Service';
+}
+function categoryLabelPlural(c) {
+  return c === 'plugin' ? 'Capabilities' : c === 'skill' ? 'Behaviors' : 'Services';
 }
 
-/* ── gallery ──────────────────────────────────────────── */
-let galleryFilter = '';
-let galleryCat = '';
+/* ── utils ────────────────────────────────────────────── */
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function friendlyError(msg) {
+  if (!msg) return 'An unexpected error occurred';
+  var s = String(msg);
+  if (s.indexOf('admin token required') !== -1) return 'Please enter your admin password in Settings to continue';
+  if (s.indexOf('invalid jsonc') !== -1) return 'The configuration file has a syntax error';
+  if (s.indexOf('policy lint failed') !== -1 && s.indexOf('permission widening blocked') !== -1) return 'This change would weaken security protections and was blocked';
+  return s;
+}
+
+function toggleCollapse(el) {
+  var body = el.parentElement.querySelector('.collapse-body');
+  if (body) body.classList.toggle('hidden');
+  var arrow = el.querySelector('.arrow');
+  if (arrow) arrow.textContent = arrow.textContent === '\u25B6' ? '\u25BC' : '\u25B6';
+}
+
+/* ── inline confirm helper ────────────────────────────── */
+function showInlineConfirm(containerId, message, onYes) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '<div class="inline-confirm"><p style="margin:0 0 .5rem;font-size:14px">' + esc(message) + '</p>' +
+    '<div style="display:flex;gap:.4rem"><button class="sm danger" id="' + containerId + '-yes">Yes, continue</button>' +
+    '<button class="sm secondary" id="' + containerId + '-no">Cancel</button></div></div>';
+  document.getElementById(containerId + '-yes').onclick = function() {
+    container.innerHTML = '';
+    onYes();
+  };
+  document.getElementById(containerId + '-no').onclick = function() {
+    container.innerHTML = '';
+  };
+}
+
+/* ── EXTENSIONS PAGE ──────────────────────────────────── */
+async function loadExtensions() {
+  if (extensionsView === 'browse') {
+    await loadGallery();
+  } else {
+    await loadMyExtensions();
+  }
+}
+
+function renderExtensionsToggle() {
+  var h = '<h2>Extensions</h2>';
+  h += '<div class="view-toggle">';
+  h += '<button class="' + (extensionsView === 'browse' ? 'active' : '') + '" onclick="extensionsView=\'browse\';loadExtensions()">Browse</button>';
+  h += '<button class="' + (extensionsView === 'my' ? 'active' : '') + '" onclick="extensionsView=\'my\';loadExtensions()">My Extensions</button>';
+  h += '</div>';
+  return h;
+}
 
 async function loadGallery() {
-  const qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
-  const r = await api(qs);
+  var qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
+  var r = await api(qs);
   galleryItems = r.ok ? r.data.items : [];
   renderGallery();
 }
 
 function renderGallery() {
-  const el = document.getElementById('page-gallery');
-  let h = '<h2>Extension Gallery</h2>';
-  h += '<p class="muted">Search for OpenCode plugins, skills, and Docker containers to extend your platform.</p>';
-  // search
+  var el = document.getElementById('page-extensions');
+  var h = renderExtensionsToggle();
+  h += '<p class="muted">Search for extensions to add new capabilities, behaviors, and services to your assistant.</p>';
   h += '<div class="mb" style="display:flex;gap:.5rem;flex-wrap:wrap">';
   h += '<input id="gal-search" style="flex:1;min-width:200px" placeholder="Search extensions..." value="' + esc(galleryFilter) + '" onkeyup="if(event.key===\'Enter\'){galleryFilter=this.value;loadGallery()}" />';
   h += '<button class="sm" onclick="galleryFilter=document.getElementById(\'gal-search\').value;loadGallery()">Search</button>';
   h += '</div>';
-  // category tabs
   h += '<div class="mb" style="display:flex;gap:.4rem;flex-wrap:wrap">';
   h += catTab('', 'All');
-  h += catTab('plugin', 'Plugins');
-  h += catTab('skill', 'Skills');
-  h += catTab('container', 'Containers');
+  h += catTab('plugin', 'Capabilities');
+  h += catTab('skill', 'Behaviors');
+  h += catTab('container', 'Services');
   h += '</div>';
-  // npm search link
-  h += '<div class="mb"><button class="secondary sm" onclick="promptNpmSearch()">Search npm registry...</button></div>';
-  // items
+  /* npm registry link */
+  h += '<div class="mb">';
+  if (!npmSearchVisible) {
+    h += '<a href="#" style="font-size:13px" onclick="event.preventDefault();npmSearchVisible=true;renderGallery()">Advanced: Install from registry</a>';
+  } else {
+    h += '<div class="card">';
+    h += '<h3 style="font-size:14px">Install from npm registry</h3>';
+    h += '<div style="display:flex;gap:.5rem">';
+    h += '<input id="npm-search-input" style="flex:1" placeholder="Search npm for OpenCode plugins..." />';
+    h += '<button class="sm" onclick="doNpmSearch()">Search</button>';
+    h += '<button class="sm secondary" onclick="npmSearchVisible=false;npmSearchResults=[];renderGallery()">Close</button>';
+    h += '</div>';
+    if (npmSearchResults.length > 0) {
+      h += '<div style="margin-top:.7rem">';
+      for (var i = 0; i < npmSearchResults.length; i++) {
+        var pkg = npmSearchResults[i];
+        h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:.7rem">';
+        h += '<div>';
+        h += '<strong style="font-size:14px">' + esc(pkg.name) + '</strong> <span class="muted" style="font-size:12px">v' + esc(pkg.version) + '</span>';
+        h += '<div class="muted" style="font-size:13px">' + esc((pkg.description || '').substring(0, 100)) + '</div>';
+        h += '</div>';
+        h += '<div id="npm-install-confirm-' + i + '">';
+        h += '<button class="sm" onclick="confirmNpmInstall(' + i + ')">Install</button>';
+        h += '</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  /* gallery items */
   if (!galleryItems.length) {
     h += '<p class="muted">No extensions found.</p>';
   }
   h += '<div class="grid2">';
-  for (const item of galleryItems) {
+  for (var gi = 0; gi < galleryItems.length; gi++) {
+    var item = galleryItems[gi];
     h += '<div class="card" style="cursor:pointer" onclick="showDetail(\'' + esc(item.id) + '\')">';
     h += '<div style="display:flex;justify-content:space-between;align-items:start">';
     h += '<h3 style="margin:0">' + esc(item.name) + '</h3>';
@@ -203,7 +365,8 @@ function renderGallery() {
     h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + categoryLabel(item.category) + ' by ' + esc(item.author) + '</div>';
     h += '<p style="font-size:14px;margin:.4rem 0">' + esc(item.description).substring(0, 120) + '</p>';
     h += '<div>';
-    for (const t of item.tags.slice(0, 4)) h += '<span class="tag">' + esc(t) + '</span>';
+    var tags = item.tags.slice(0, 4);
+    for (var ti = 0; ti < tags.length; ti++) h += '<span class="tag">' + esc(tags[ti]) + '</span>';
     h += '</div></div>';
   }
   h += '</div>';
@@ -211,54 +374,85 @@ function renderGallery() {
 }
 
 function catTab(val, label) {
-  const cls = galleryCat === val ? 'sm' : 'secondary sm';
+  var cls = galleryCat === val ? 'sm' : 'secondary sm';
   return '<button class="' + cls + '" onclick="galleryCat=\'' + val + '\';loadGallery()">' + label + '</button>';
+}
+
+async function doNpmSearch() {
+  var q = document.getElementById('npm-search-input').value.trim();
+  if (!q) return;
+  var r = await api('/admin/gallery/npm-search?q=' + encodeURIComponent(q));
+  if (!r.ok || !r.data.results || !r.data.results.length) {
+    showToast('No results found.', 'info');
+    npmSearchResults = [];
+    renderGallery();
+    return;
+  }
+  npmSearchResults = r.data.results.slice(0, 10);
+  renderGallery();
+}
+
+function confirmNpmInstall(index) {
+  var pkg = npmSearchResults[index];
+  if (!pkg) return;
+  showInlineConfirm('npm-install-confirm-' + index,
+    'Install "' + pkg.name + '" from npm? This is an unreviewed package (high risk).',
+    function() { doNpmInstall(pkg.name, index); }
+  );
+}
+
+async function doNpmInstall(pkgName, index) {
+  var r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ pluginId: pkgName }) });
+  if (r.ok) {
+    showToast('Installed "' + pkgName + '" successfully.', 'success');
+  } else {
+    showToast('Install failed: ' + friendlyError(r.data.error || r.status), 'error');
+  }
+  renderGallery();
 }
 
 /* ── detail modal ─────────────────────────────────────── */
 async function showDetail(id) {
-  const r = await api('/admin/gallery/item/' + id);
+  var r = await api('/admin/gallery/item/' + id);
   if (!r.ok) return;
-  const item = r.data.item;
-  const badge = r.data.riskBadge;
-  const ov = document.getElementById('modal-overlay');
-  let h = '<div class="modal">';
+  var item = r.data.item;
+  var badge = r.data.riskBadge;
+  var ov = document.getElementById('modal-overlay');
+  var h = '<div class="modal">';
   h += '<div style="display:flex;justify-content:space-between;align-items:start">';
   h += '<h3>' + esc(item.name) + '</h3>';
   h += '<button class="secondary sm" onclick="closeModal()">Close</button>';
   h += '</div>';
   h += '<div class="muted" style="font-size:13px">' + categoryLabel(item.category) + ' &middot; v' + esc(item.version) + ' &middot; by ' + esc(item.author) + '</div>';
   h += '<p>' + esc(item.description) + '</p>';
-  // security section
   h += '<div class="sec-box">';
   h += '<div class="sec-title">Security Assessment</div>';
   h += '<div style="margin-bottom:.4rem">' + riskBadge(item.risk) + ' <span class="muted" style="font-size:13px;margin-left:.5rem">' + esc(badge.description) + '</span></div>';
   h += '<div style="font-size:14px;margin:.5rem 0"><strong>Security notes:</strong> ' + esc(item.securityNotes) + '</div>';
   h += '<div class="sec-title" style="margin-top:.6rem">Permissions Required</div>';
   h += '<ul class="perm-list">';
-  for (const p of item.permissions) h += '<li>' + esc(p) + '</li>';
+  for (var pi = 0; pi < item.permissions.length; pi++) h += '<li>' + esc(item.permissions[pi]) + '</li>';
   h += '</ul></div>';
-  // tags
   h += '<div class="mb">';
-  for (const t of item.tags) h += '<span class="tag">' + esc(t) + '</span>';
+  for (var ti = 0; ti < item.tags.length; ti++) h += '<span class="tag">' + esc(item.tags[ti]) + '</span>';
   h += '</div>';
-  // defense in depth note
   h += '<div class="sec-box">';
   h += '<div class="sec-title">Defense in Depth</div>';
   h += '<div style="font-size:13px">';
   if (item.category === 'plugin') {
-    h += 'Plugins run inside the OpenCode sandbox. They can hook into tool calls but cannot make network requests or access the filesystem outside the sandbox. The gateway tool firewall provides a second layer of enforcement.';
+    h += 'Capabilities run inside the sandbox. They can hook into tool calls but cannot make network requests or access the filesystem outside the sandbox. A tool firewall provides a second layer of enforcement.';
   } else if (item.category === 'skill') {
-    h += 'Skills are behavioral SOPs (markdown files). They have zero tool access and cannot execute code. They only influence how the assistant reasons and responds.';
+    h += 'Behaviors are behavioral SOPs (markdown files). They have zero tool access and cannot execute code. They only influence how the assistant reasons and responds.';
   } else {
-    h += 'Containers run on the isolated Docker network. Channel containers can only reach the gateway. All inbound messages pass through HMAC signature verification, rate limiting, and the tool firewall before reaching OpenCode.';
+    h += 'Services run on an isolated network. All inbound messages pass through signature verification, rate limiting, and the tool firewall before reaching your assistant.';
   }
   h += '</div></div>';
-  // install button
   if (!adminToken) {
-    h += '<p class="muted" style="font-size:13px">Set your admin password in Settings to enable installation.</p>';
+    h += '<p class="muted" style="font-size:13px">Set your admin password in System settings to enable installation.</p>';
   } else {
-    h += '<div style="margin-top:1rem"><button onclick="installGallery(\'' + esc(item.id) + '\')">Install ' + esc(item.name) + '</button></div>';
+    h += '<div style="margin-top:1rem" id="gallery-install-confirm-' + esc(item.id) + '">';
+    h += '<button onclick="confirmInstallGallery(\'' + esc(item.id) + '\',\'' + esc(item.name) + '\')">Install ' + esc(item.name) + '</button>';
+    h += '</div>';
   }
   h += '</div>';
   ov.innerHTML = h;
@@ -269,222 +463,309 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
-async function installGallery(id) {
-  if (!confirm('Install this extension?')) return;
-  const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
+function confirmInstallGallery(id, name) {
+  showInlineConfirm('gallery-install-confirm-' + id,
+    'Install "' + name + '"? Your assistant will restart to apply changes.',
+    function() { doInstallGallery(id); }
+  );
+}
+
+async function doInstallGallery(id) {
+  var r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
   if (r.ok) {
-    alert('Installed successfully.');
+    showToast('Installed successfully.', 'success');
     closeModal();
   } else {
-    alert('Install failed: ' + (r.data.error || r.status));
+    showToast('Install failed: ' + friendlyError(r.data.error || r.status), 'error');
   }
 }
 
-async function promptNpmSearch() {
-  const q = prompt('Search npm for OpenCode plugins:');
-  if (!q) return;
-  const r = await api('/admin/gallery/npm-search?q=' + encodeURIComponent(q));
-  if (!r.ok || !r.data.results.length) { alert('No results found.'); return; }
-  let msg = 'Results:\n';
-  for (const p of r.data.results.slice(0, 10)) {
-    msg += '\n' + p.name + ' (v' + p.version + ') - ' + p.description.substring(0, 60);
-  }
-  msg += '\n\nEnter package name to install (or cancel):';
-  const pkg = prompt(msg);
-  if (!pkg) return;
-  if (!confirm('Install "' + pkg + '" from npm? This is an unreviewed package (HIGH RISK). Continue?')) return;
-  const ir = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ pluginId: pkg }) });
-  alert(ir.ok ? 'Installed.' : 'Failed: ' + (ir.data.error || ir.status));
-}
-
-/* ── installed ────────────────────────────────────────── */
-async function loadInstalled() {
-  const el = document.getElementById('page-installed');
-  let h = '<h2>Installed Extensions</h2>';
+/* ── My Extensions ────────────────────────────────────── */
+async function loadMyExtensions() {
+  var el = document.getElementById('page-extensions');
+  var h = renderExtensionsToggle();
+  h += '<p class="muted">Extensions currently active on your assistant.</p>';
   if (!adminToken) {
-    h += '<p class="muted">Set your admin password in Settings to view installed extensions.</p>';
+    h += '<p class="muted">Please enter your admin password in System settings to view installed extensions.</p>';
     el.innerHTML = h;
     return;
   }
-  const r = await api('/admin/installed');
+  var r = await api('/admin/installed');
   if (!r.ok) {
-    h += '<p class="muted">Could not load: ' + esc(r.data.error || String(r.status)) + '</p>';
+    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data.error || String(r.status))) + '</p>';
     el.innerHTML = h;
     return;
   }
-  const d = r.data;
-  h += '<h3>Active Plugins</h3>';
-  if (!d.plugins.length) h += '<p class="muted">No plugins installed.</p>';
-  for (const p of d.plugins) {
+  var d = r.data;
+  h += '<h3>Active Capabilities</h3>';
+  if (!d.plugins.length) h += '<p class="muted">No capabilities installed.</p>';
+  for (var pi = 0; pi < d.plugins.length; pi++) {
+    var p = d.plugins[pi];
     h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
-    h += '<div><strong>' + esc(p) + '</strong> <span class="tag">plugin</span></div>';
-    h += '<button class="danger sm" onclick="uninstallPlugin(\'' + esc(p) + '\')">Remove</button>';
+    h += '<div><strong>' + esc(p) + '</strong> <span class="tag">Capability</span></div>';
+    h += '<div id="uninstall-confirm-' + pi + '"><button class="danger sm" onclick="confirmUninstall(\'' + esc(p) + '\',' + pi + ')">Remove</button></div>';
     h += '</div>';
   }
-  if (d.setupState.installedExtensions.length) {
+  if (d.setupState && d.setupState.installedExtensions && d.setupState.installedExtensions.length) {
     h += '<h3>Gallery Installations</h3>';
-    for (const id of d.setupState.installedExtensions) {
-      h += '<div class="card"><span class="tag">' + esc(id) + '</span></div>';
+    for (var ei = 0; ei < d.setupState.installedExtensions.length; ei++) {
+      var extId = d.setupState.installedExtensions[ei];
+      h += '<div class="card"><span class="tag">' + esc(extId) + '</span></div>';
     }
   }
   el.innerHTML = h;
 }
 
-async function uninstallPlugin(pluginId) {
-  if (!confirm('Remove "' + pluginId + '"? OpenCode will be restarted.')) return;
-  await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId }) });
-  loadInstalled();
+function confirmUninstall(pluginId, index) {
+  showInlineConfirm('uninstall-confirm-' + index,
+    'Are you sure? Your assistant will restart to apply changes.',
+    function() { doUninstall(pluginId); }
+  );
 }
 
-/* ── services ─────────────────────────────────────────── */
-async function loadServices() {
-  const el = document.getElementById('page-services');
-  let h = '<h2>Services</h2>';
-  h += '<p class="muted">Health status, channel controls, and container management.</p>';
-
-  const hc = await api('/admin/setup/health-check');
-  if (hc.ok) {
-    const s = hc.data.services;
-    h += '<div class="grid3">';
-    for (const [name, info] of Object.entries(s)) {
-      h += '<div class="card"><span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span><strong>' + esc(name) + '</strong>';
-      h += '<div class="muted" style="font-size:13px">' + (info.ok ? 'Healthy' : esc(info.error || 'Unreachable')) + '</div></div>';
-    }
-    h += '</div>';
-  }
-
-  h += '<h3>Channels</h3>';
-  const ch = await api('/admin/channels');
-  if (ch.ok) {
-    h += '<div class="grid2">';
-    for (const c of ch.data.channels) {
-      h += '<div class="card">';
-      h += '<div style="display:flex;justify-content:space-between;align-items:center">';
-      h += '<strong>' + esc(c.service) + '</strong>';
-      h += '<span class="tag">' + esc(c.access.toUpperCase()) + '</span>';
-      h += '</div>';
-      h += '<div class="muted" style="font-size:13px;margin:.35rem 0">Network access: ' + (c.access === 'public' ? 'Public' : 'LAN only') + '</div>';
-      if (!adminToken) {
-        h += '<p class="muted" style="font-size:12px">Set your admin password in Settings to edit access/config.</p>';
-      } else {
-        if (c.service.startsWith('channel-')) {
-          const next = c.access === 'public' ? 'lan' : 'public';
-          const label = c.access === 'public' ? 'Set LAN only' : 'Set Public';
-          h += `<button class="sm secondary" onclick="setChannelAccess('${esc(c.service)}','${next}')">${label}</button> `;
-        }
-        h += `<button class="sm" onclick="editChannelConfig('${esc(c.service)}')">Edit Config</button>`;
-      }
-      h += '</div>';
-    }
-    h += '</div>';
-  }
-
-  const known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
-  h += '<h3>Container Actions</h3>';
-  if (!adminToken) {
-    h += '<p class="muted">Set your admin password in Settings to manage containers.</p>';
-  } else {
-    h += '<div class="grid2">';
-    for (const svc of known) {
-      h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
-      h += '<strong>' + esc(svc) + '</strong>';
-      h += '<div style="display:flex;gap:.3rem">';
-      h += `<button class="sm" onclick="svcAction('restart','${esc(svc)}')">Restart</button>`;
-      h += `<button class="sm secondary" onclick="svcAction('up','${esc(svc)}')">Up</button>`;
-      h += `<button class="sm danger" onclick="svcAction('down','${esc(svc)}')">Down</button>`;
-      h += '</div></div>';
-    }
-    h += '</div>';
-  }
-
-  el.innerHTML = h;
+async function doUninstall(pluginId) {
+  await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
+  showToast('Extension removed. Your assistant will restart to apply changes.', 'success');
+  loadMyExtensions();
 }
 
-async function setChannelAccess(service, access) {
-  const channel = service === 'channel-chat' ? 'chat' : service === 'channel-voice' ? 'voice' : service === 'channel-discord' ? 'discord' : service === 'channel-telegram' ? 'telegram' : '';
-  if (!channel) return;
-  if (!confirm('Set ' + service + ' network access to ' + access.toUpperCase() + '? Caddy will restart.')) return;
-  const r = await api('/admin/channels/access', { method: 'POST', body: JSON.stringify({ channel, access }) });
-  alert(r.ok ? 'Updated.' : 'Failed: ' + (r.data.error || r.status));
-  loadServices();
-}
+/* ── CHANNELS PAGE ────────────────────────────────────── */
+let channelsData = [];
+let channelConfigs = {};
 
-async function editChannelConfig(service) {
-  const r = await api('/admin/channels/config?service=' + encodeURIComponent(service));
-  if (!r.ok) return alert('Could not load config');
-  const cfg = r.data.config || {};
-  const preset = Object.entries(cfg).map(([k, v]) => k + '=' + (v || '')).join('\n');
-  const next = prompt('Edit key=value lines for ' + service, preset);
-  if (next === null) return;
-  const out = {};
-  for (const line of next.split(/\r?\n/)) {
-    if (!line.includes('=')) continue;
-    const idx = line.indexOf('=');
-    const k = line.slice(0, idx).trim();
-    const v = line.slice(idx + 1).trim();
-    out[k] = v;
-  }
-  const wr = await api('/admin/channels/config', { method: 'POST', body: JSON.stringify({ service, config: out, restart: true }) });
-  alert(wr.ok ? 'Config updated.' : 'Failed: ' + (wr.data.error || wr.status));
-  loadServices();
-}
+async function loadChannels() {
+  var el = document.getElementById('page-channels');
+  var h = '<h2>Channels</h2>';
+  h += '<p class="muted">Connect your assistant to different messaging platforms.</p>';
 
-async function svcAction(action, svc) {
-  if (!confirm(action.toUpperCase() + ' ' + svc + '?')) return;
-  const r = await api('/admin/containers/' + action, { method: 'POST', body: JSON.stringify({ service: svc }) });
-  alert(r.ok ? 'Done.' : 'Failed: ' + (r.data.error || r.status));
-  loadServices();
-}
-
-/* ── cron jobs ────────────────────────────────────────── */
-let cronJobs = [];
-let cronEditId = null;
-
-async function loadCrons() {
-  const el = document.getElementById('page-crons');
-  let h = '<h2>Cron Jobs</h2>';
-  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent via system cron. Changes will restart opencode-core to install the updated crontab.</p>';
-  if (!adminToken) {
-    h += '<p class="muted">Set your admin password in Settings to manage cron jobs.</p>';
+  var ch = await api('/admin/channels');
+  if (!ch.ok) {
+    h += '<p class="muted">Could not load channels.</p>';
     el.innerHTML = h;
     return;
   }
-  const r = await api('/admin/crons');
+  channelsData = ch.data.channels || [];
+
+  /* Load configs for all channels */
+  for (var ci = 0; ci < channelsData.length; ci++) {
+    var c = channelsData[ci];
+    if (c.service && c.service.startsWith('channel-')) {
+      var cfgR = await api('/admin/channels/config?service=' + encodeURIComponent(c.service));
+      if (cfgR.ok) {
+        channelConfigs[c.service] = cfgR.data.config || {};
+      }
+    }
+  }
+
+  renderChannels();
+}
+
+function renderChannels() {
+  var el = document.getElementById('page-channels');
+  var h = '<h2>Channels</h2>';
+  h += '<p class="muted">Connect your assistant to different messaging platforms.</p>';
+
+  if (!channelsData.length) {
+    h += '<p class="muted">No channels available.</p>';
+    el.innerHTML = h;
+    return;
+  }
+
+  for (var ci = 0; ci < channelsData.length; ci++) {
+    var c = channelsData[ci];
+    var svc = c.service;
+    var friendly = CHANNEL_FRIENDLY[svc] || svc;
+    var isEnabled = c.access === 'public' || (channelConfigs[svc] && Object.keys(channelConfigs[svc]).length > 0);
+    var fields = CHANNEL_FIELDS[svc] || [];
+    var cfg = channelConfigs[svc] || {};
+
+    h += '<div class="channel-card">';
+    h += '<div class="channel-header">';
+    h += '<div class="channel-status">';
+    h += '<span class="dot ' + (c.access !== 'disabled' ? 'dot-ok' : 'dot-err') + '"></span>';
+    h += '<strong style="font-size:16px">' + esc(friendly) + '</strong>';
+    h += '</div>';
+    /* Access toggle */
+    if (adminToken && svc.startsWith('channel-')) {
+      if (c.access === 'public') {
+        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + esc(svc) + '\',\'lan\')" title="Currently accessible from the internet. Click to make private.">';
+        h += '<span class="toggle-dot" style="background:var(--green)"></span> Public';
+        h += '</span>';
+      } else {
+        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + esc(svc) + '\',\'public\')" title="Currently private. Click to make accessible from the internet.">';
+        h += '<span class="toggle-dot" style="background:var(--muted)"></span> Private';
+        h += '</span>';
+      }
+    } else {
+      h += '<span class="tag">' + (c.access === 'public' ? 'Public' : 'Private') + '</span>';
+    }
+    h += '</div>';
+
+    /* Inline config form */
+    if (adminToken && fields.length > 0) {
+      for (var fi = 0; fi < fields.length; fi++) {
+        var f = fields[fi];
+        var val = cfg[f.key] || '';
+        h += '<div class="field-group">';
+        h += '<label>' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
+        h += '<input id="ch-' + esc(svc) + '-' + esc(f.key) + '" type="' + f.type + '" placeholder="' + esc(f.helpText || '') + '" value="' + esc(val) + '" />';
+        h += '<div class="help-text">' + esc(f.helpText || '') + '</div>';
+        h += '</div>';
+      }
+      h += '<div style="display:flex;gap:.5rem;align-items:center">';
+      h += '<button class="sm" onclick="saveChannelConfig(\'' + esc(svc) + '\')">Save</button>';
+      h += '<div id="channel-save-status-' + esc(svc) + '"></div>';
+      h += '</div>';
+    } else if (!adminToken) {
+      h += '<p class="muted" style="font-size:12px">Please enter your admin password in System settings to edit channel configuration.</p>';
+    } else if (svc === 'channel-voice') {
+      h += '<p class="muted" style="font-size:13px">No configuration needed for voice channel.</p>';
+    }
+
+    h += '<div id="channel-access-confirm-' + esc(svc) + '" style="margin-top:.3rem"></div>';
+    h += '</div>';
+  }
+
+  el.innerHTML = h;
+}
+
+function toggleChannelAccess(service, newAccess) {
+  var channel = service === 'channel-chat' ? 'chat' : service === 'channel-voice' ? 'voice' : service === 'channel-discord' ? 'discord' : service === 'channel-telegram' ? 'telegram' : '';
+  if (!channel) return;
+  var msg = newAccess === 'public' ? 'Make accessible from the internet?' : 'Make private?';
+  showInlineConfirm('channel-access-confirm-' + service, msg, function() {
+    doSetChannelAccess(service, channel, newAccess);
+  });
+}
+
+async function doSetChannelAccess(service, channel, access) {
+  var r = await api('/admin/channels/access', { method: 'POST', body: JSON.stringify({ channel: channel, access: access }) });
+  if (r.ok) {
+    showToast('Access updated.', 'success');
+  } else {
+    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+  }
+  loadChannels();
+}
+
+async function saveChannelConfig(service) {
+  var fields = CHANNEL_FIELDS[service] || [];
+  var out = {};
+  for (var fi = 0; fi < fields.length; fi++) {
+    var f = fields[fi];
+    var el = document.getElementById('ch-' + service + '-' + f.key);
+    if (el) out[f.key] = el.value;
+  }
+  var r = await api('/admin/channels/config', { method: 'POST', body: JSON.stringify({ service: service, config: out, restart: true }) });
+  if (r.ok) {
+    showToast('Channel configuration saved.', 'success');
+    channelConfigs[service] = out;
+  } else {
+    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+  }
+}
+
+/* ── AUTOMATIONS PAGE ─────────────────────────────────── */
+const FREQ_PRESETS = [
+  { label: 'Every hour', cron: '0 * * * *' },
+  { label: 'Every day', cron: '0 9 * * *' },
+  { label: 'Every weekday', cron: '0 9 * * 1-5' },
+  { label: 'Every Monday', cron: '0 9 * * 1' },
+  { label: 'Every month (1st)', cron: '0 9 1 * *' }
+];
+
+const HOUR_OPTIONS = [];
+(function() {
+  for (var hr = 0; hr < 24; hr++) {
+    var ampm = hr < 12 ? 'AM' : 'PM';
+    var h12 = hr === 0 ? 12 : hr > 12 ? hr - 12 : hr;
+    HOUR_OPTIONS.push({ label: h12 + ':00 ' + ampm, value: hr });
+  }
+})();
+
+function cronFromPreset(presetLabel, hour) {
+  if (presetLabel === 'Every hour') return '0 * * * *';
+  if (presetLabel === 'Every day') return '0 ' + hour + ' * * *';
+  if (presetLabel === 'Every weekday') return '0 ' + hour + ' * * 1-5';
+  if (presetLabel === 'Every Monday') return '0 ' + hour + ' * * 1';
+  if (presetLabel === 'Every month (1st)') return '0 ' + hour + ' 1 * *';
+  return '';
+}
+
+async function loadAutomations() {
+  var el = document.getElementById('page-automations');
+  var h = '<h2>Automations</h2>';
+  h += '<p class="muted">Schedule recurring tasks for your assistant. Changes will restart your assistant to apply the new schedule.</p>';
+  if (!adminToken) {
+    h += '<p class="muted">Please enter your admin password in System settings to manage automations.</p>';
+    el.innerHTML = h;
+    return;
+  }
+  var r = await api('/admin/crons');
   if (!r.ok) {
-    h += '<p class="muted">Could not load: ' + esc(r.data.error || String(r.status)) + '</p>';
+    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data.error || String(r.status))) + '</p>';
     el.innerHTML = h;
     return;
   }
   cronJobs = r.data.jobs || [];
-  renderCrons();
+  renderAutomations();
 }
 
-function renderCrons() {
-  const el = document.getElementById('page-crons');
-  let h = '<h2>Cron Jobs</h2>';
-  h += '<p class="muted">Schedule recurring tasks that run on the OpenCode core agent via system cron. Changes will restart opencode-core to install the updated crontab.</p>';
+function renderAutomations() {
+  var el = document.getElementById('page-automations');
+  var h = '<h2>Automations</h2>';
+  h += '<p class="muted">Schedule recurring tasks for your assistant. Changes will restart your assistant to apply the new schedule.</p>';
 
-  // create / edit form
+  /* create / edit form */
   h += '<div class="card">';
-  h += '<h3>' + (cronEditId ? 'Edit Cron Job' : 'New Cron Job') + '</h3>';
-  const editing = cronEditId ? cronJobs.find(j => j.id === cronEditId) : null;
-  h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">Name</label>';
+  h += '<h3>' + (cronEditId ? 'Edit Automation' : 'New Automation') + '</h3>';
+  var editing = cronEditId ? cronJobs.find(function(j) { return j.id === cronEditId; }) : null;
+
+  h += '<div class="field-group">';
+  h += '<label>Name</label>';
   h += '<input id="cron-name" placeholder="e.g. Daily summary" value="' + esc(editing ? editing.name : '') + '" />';
-  h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">Schedule (cron expression)</label>';
+  h += '</div>';
+
+  /* Frequency picker */
+  h += '<div class="field-group">';
+  h += '<label>Frequency</label>';
+  h += '<div class="freq-row">';
+  h += '<select id="cron-freq-preset" onchange="updateCronFromPreset()">';
+  h += '<option value="">Choose a preset...</option>';
+  for (var fi = 0; fi < FREQ_PRESETS.length; fi++) {
+    h += '<option value="' + esc(FREQ_PRESETS[fi].label) + '">' + esc(FREQ_PRESETS[fi].label) + '</option>';
+  }
+  h += '</select>';
+  h += '<span class="muted" style="font-size:13px">at</span>';
+  h += '<select id="cron-freq-hour" onchange="updateCronFromPreset()">';
+  for (var hi = 0; hi < HOUR_OPTIONS.length; hi++) {
+    var sel = HOUR_OPTIONS[hi].value === 9 ? ' selected' : '';
+    h += '<option value="' + HOUR_OPTIONS[hi].value + '"' + sel + '>' + esc(HOUR_OPTIONS[hi].label) + '</option>';
+  }
+  h += '</select>';
+  h += '</div>';
+  h += '<div style="margin:.5rem 0;font-size:13px;color:var(--muted)">&mdash; or &mdash;</div>';
+  h += '<label style="font-size:13px">Custom schedule (cron expression)</label>';
   h += '<input id="cron-schedule" placeholder="e.g. 0 9 * * *  (every day at 9 AM)" value="' + esc(editing ? editing.schedule : '') + '" />';
-  h += '<div class="muted" style="font-size:12px;margin:.2rem 0">Format: minute hour day-of-month month day-of-week &mdash; Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * 1-5</code> (weekdays 9 AM), <code>0 0 1 * *</code> (1st of month)</div>';
-  h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">Prompt</label>';
-  h += '<textarea id="cron-prompt" rows="3" style="width:100%;font:inherit;padding:.45rem .7rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);resize:vertical" placeholder="The message to send to the agent...">' + esc(editing ? editing.prompt : '') + '</textarea>';
-  h += '<div style="margin-top:.7rem;display:flex;gap:.5rem">';
+  h += '<div class="help-text">Format: minute hour day-of-month month day-of-week. Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * 1-5</code> (weekdays 9 AM)</div>';
+  h += '</div>';
+
+  h += '<div class="field-group">';
+  h += '<label>What should the assistant do?</label>';
+  h += '<textarea id="cron-prompt" rows="3" placeholder="e.g. Write a summary of today\'s events and send it to the team Discord channel">' + esc(editing ? editing.prompt : '') + '</textarea>';
+  h += '</div>';
+
+  h += '<div style="display:flex;gap:.5rem">';
   h += '<button onclick="saveCron()">' + (cronEditId ? 'Update' : 'Create') + '</button>';
   if (cronEditId) h += '<button class="secondary" onclick="cancelEditCron()">Cancel</button>';
   h += '</div></div>';
 
-  // list
+  /* list */
   if (!cronJobs.length) {
-    h += '<p class="muted">No cron jobs configured yet.</p>';
+    h += '<p class="muted">No automations configured yet.</p>';
   }
-  for (const job of cronJobs) {
+  for (var ji = 0; ji < cronJobs.length; ji++) {
+    var job = cronJobs[ji];
     h += '<div class="card">';
     h += '<div style="display:flex;justify-content:space-between;align-items:start">';
     h += '<div>';
@@ -496,91 +777,245 @@ function renderCrons() {
     h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
-    h += '<button class="sm" onclick="triggerCron(\'' + esc(job.id) + '\')">Run Now</button>';
+    h += '<button class="sm" onclick="confirmTriggerCron(\'' + esc(job.id) + '\',' + ji + ')">Run Now</button>';
     h += '<button class="sm secondary" onclick="toggleCron(\'' + esc(job.id) + '\',' + !job.enabled + ')">' + (job.enabled ? 'Disable' : 'Enable') + '</button>';
     h += '<button class="sm secondary" onclick="editCron(\'' + esc(job.id) + '\')">Edit</button>';
-    h += '<button class="sm danger" onclick="deleteCron(\'' + esc(job.id) + '\')">Delete</button>';
-    h += '</div></div></div>';
+    h += '<button class="sm danger" onclick="confirmDeleteCron(\'' + esc(job.id) + '\',' + ji + ')">Delete</button>';
+    h += '</div></div>';
+    h += '<div id="cron-action-confirm-' + ji + '"></div>';
+    h += '</div>';
   }
   el.innerHTML = h;
 }
 
+function updateCronFromPreset() {
+  var preset = document.getElementById('cron-freq-preset').value;
+  var hour = document.getElementById('cron-freq-hour').value;
+  if (!preset) return;
+  var expr = cronFromPreset(preset, hour);
+  if (expr) {
+    document.getElementById('cron-schedule').value = expr;
+  }
+}
+
 async function saveCron() {
-  const name = document.getElementById('cron-name').value.trim();
-  const schedule = document.getElementById('cron-schedule').value.trim();
-  const prompt = document.getElementById('cron-prompt').value.trim();
-  if (!name || !schedule || !prompt) { alert('All fields are required.'); return; }
+  var name = document.getElementById('cron-name').value.trim();
+  var schedule = document.getElementById('cron-schedule').value.trim();
+  var prompt = document.getElementById('cron-prompt').value.trim();
+  if (!name || !schedule || !prompt) { showToast('All fields are required.', 'error'); return; }
 
   if (cronEditId) {
-    const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: cronEditId, name, schedule, prompt }) });
-    if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
+    var r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: cronEditId, name: name, schedule: schedule, prompt: prompt }) });
+    if (!r.ok) { showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error'); return; }
     cronEditId = null;
   } else {
-    const r = await api('/admin/crons', { method: 'POST', body: JSON.stringify({ name, schedule, prompt }) });
-    if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
+    var r2 = await api('/admin/crons', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, prompt: prompt }) });
+    if (!r2.ok) { showToast('Failed: ' + friendlyError(r2.data.error || r2.status), 'error'); return; }
   }
-  loadCrons();
+  showToast('Automation saved.', 'success');
+  loadAutomations();
 }
 
 function editCron(id) {
   cronEditId = id;
-  renderCrons();
+  renderAutomations();
   document.getElementById('cron-name').focus();
 }
 
 function cancelEditCron() {
   cronEditId = null;
-  renderCrons();
+  renderAutomations();
 }
 
 async function toggleCron(id, enabled) {
-  const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id, enabled }) });
-  if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
-  loadCrons();
+  var r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: id, enabled: enabled }) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error'); return; }
+  showToast(enabled ? 'Automation enabled.' : 'Automation disabled.', 'success');
+  loadAutomations();
 }
 
-async function deleteCron(id) {
-  if (!confirm('Delete this cron job?')) return;
-  const r = await api('/admin/crons/delete', { method: 'POST', body: JSON.stringify({ id }) });
-  if (!r.ok) { alert('Failed: ' + (r.data.error || r.status)); return; }
-  loadCrons();
+function confirmDeleteCron(id, index) {
+  showInlineConfirm('cron-action-confirm-' + index,
+    'Delete this automation? Your assistant will restart to apply the new schedule.',
+    function() { doDeleteCron(id); }
+  );
 }
 
-async function triggerCron(id) {
-  const job = cronJobs.find(j => j.id === id);
-  if (!confirm('Run "' + (job ? job.name : id) + '" now?')) return;
-  const r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id }) });
+async function doDeleteCron(id) {
+  var r = await api('/admin/crons/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error'); return; }
+  showToast('Automation deleted.', 'success');
+  loadAutomations();
+}
+
+function confirmTriggerCron(id, index) {
+  var job = cronJobs.find(function(j) { return j.id === id; });
+  showInlineConfirm('cron-action-confirm-' + index,
+    'Run "' + (job ? job.name : 'this automation') + '" now?',
+    function() { doTriggerCron(id); }
+  );
+}
+
+async function doTriggerCron(id) {
+  var r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id: id }) });
   if (r.ok) {
-    alert('Job triggered against opencode-core.');
-    loadCrons();
+    showToast('Task sent to your assistant.', 'success');
   } else {
-    alert('Failed: ' + (r.data.error || r.status));
+    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
   }
 }
 
-/* ── providers ─────────────────────────────────────────── */
-let providersList = [];
-let providerAssignments = {};
-let providerModels = [];
-let selectedProviderId = '';
+/* ── SYSTEM PAGE ──────────────────────────────────────── */
+async function loadSystem() {
+  var el = document.getElementById('page-system');
+  var h = '<h2>System</h2>';
 
-async function loadProviders() {
-  const r = await api('/admin/providers');
+  /* Health Status */
+  h += '<div class="card"><h3>Health Status</h3>';
+  var hc = await api('/admin/setup/health-check');
+  if (hc.ok) {
+    var s = hc.data.services;
+    h += '<div class="grid3">';
+    for (var name in s) {
+      if (!s.hasOwnProperty(name)) continue;
+      var info = s[name];
+      var friendly = friendlyServiceName(name);
+      h += '<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem">';
+      h += '<span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span>';
+      h += '<div><strong style="font-size:14px">' + esc(friendly) + '</strong>';
+      h += '<div class="muted" style="font-size:12px">' + (info.ok ? 'Healthy' : esc(friendlyError(info.error || 'Unreachable'))) + '</div></div>';
+      h += '</div>';
+    }
+    h += '</div>';
+  } else {
+    h += '<p class="muted">Could not load health status.</p>';
+  }
+  h += '</div>';
+
+  /* Authentication */
+  h += '<div class="card"><h3>Authentication</h3>';
+  h += '<p class="muted" style="font-size:13px">This is the password you use to manage your assistant.</p>';
+  h += '<div class="field-group">';
+  h += '<label>Admin Password</label>';
+  h += '<input type="password" id="set-admin" value="' + esc(adminToken) + '" />';
+  h += '</div>';
+  h += '<button onclick="saveSettings()">Save</button>';
+  h += '</div>';
+
+  /* Re-run Setup Wizard */
+  h += '<div class="card"><h3>Re-run Setup Wizard</h3>';
+  h += '<p class="muted" style="font-size:13px">Revisit the initial setup steps.</p>';
+  h += '<button class="secondary" onclick="runSetup()">Open Setup Wizard</button>';
+  h += '</div>';
+
+  /* Providers */
+  h += '<div class="card" id="providers-section">';
+  h += renderProvidersSection();
+  h += '</div>';
+
+  /* Advanced Configuration (collapsed) */
+  var status = await api('/admin/setup/status');
+  var svc = status.ok && status.data && status.data.serviceInstances
+    ? status.data.serviceInstances
+    : { openmemory: '', psql: '', qdrant: '' };
+  var openmemoryProvider = status.ok && status.data && status.data.openmemoryProvider
+    ? status.data.openmemoryProvider
+    : { openaiBaseUrl: '', openaiApiKeyConfigured: false };
+
+  h += '<div class="card">';
+  h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
+  h += '<span class="arrow">&#9654;</span> Advanced Configuration</h3>';
+  h += '<div class="collapse-body hidden">';
+  h += '<p class="muted" style="font-size:13px">Only change these if you know what you are doing.</p>';
+  if (!status.ok) {
+    h += '<p style="color:var(--yellow);font-size:13px">Could not load saved settings. Showing empty defaults.</p>';
+  }
+  h += '<div class="field-group">';
+  h += '<label>Memory service address</label>';
+  h += '<input id="set-openmemory-url" placeholder="http://openmemory:8765" value="' + esc(svc.openmemory || '') + '" />';
+  h += '</div>';
+  h += '<div class="field-group">';
+  h += '<label>Database connection</label>';
+  h += '<input id="set-psql-url" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(svc.psql || '') + '" />';
+  h += '</div>';
+  h += '<div class="field-group">';
+  h += '<label>Search service address</label>';
+  h += '<input id="set-qdrant-url" placeholder="http://qdrant:6333" value="' + esc(svc.qdrant || '') + '" />';
+  h += '</div>';
+  h += '<div class="field-group">';
+  h += '<label>AI model endpoint for memory</label>';
+  h += '<input id="set-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || '') + '" />';
+  h += '</div>';
+  h += '<div class="field-group">';
+  h += '<label>AI model API key for memory</label>';
+  h += '<input id="set-openmemory-openai-key" type="password" placeholder="sk-..." value="" />';
+  h += '<div class="help-text">' + (openmemoryProvider.openaiApiKeyConfigured ? 'API key already configured. Leave blank to keep current key.' : 'Leave blank if not using an external AI model for memory.') + '</div>';
+  h += '</div>';
+  h += '<div id="advanced-save-confirm"></div>';
+  h += '<button onclick="confirmSaveServiceInstances()">Save Configuration</button>';
+  h += '</div></div>';
+
+  /* Developer Tools (collapsed) */
+  h += '<div class="card">';
+  h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
+  h += '<span class="arrow">&#9654;</span> Developer Tools</h3>';
+  h += '<div class="collapse-body hidden">';
+  var opencodeUrl = '/admin/opencode/';
+  var openmemoryUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
+  h += '<div style="display:flex;flex-direction:column;gap:.5rem">';
+  h += '<a href="' + esc(opencodeUrl) + '" target="_blank">Open OpenCode UI</a>';
+  h += '<a href="' + esc(openmemoryUrl) + '" target="_blank">Open Memory Dashboard</a>';
+  h += '</div>';
+  h += '</div></div>';
+
+  /* Troubleshooting (collapsed) */
+  h += '<div class="card">';
+  h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
+  h += '<span class="arrow">&#9654;</span> Troubleshooting</h3>';
+  h += '<div class="collapse-body hidden">';
+  h += '<p style="color:var(--yellow);font-size:13px"><strong>Warning:</strong> These controls can disrupt your assistant. Only use them if something isn\'t working.</p>';
+  if (!adminToken) {
+    h += '<p class="muted">Please enter your admin password above to manage services.</p>';
+  } else {
+    var known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+    for (var ki = 0; ki < known.length; ki++) {
+      var svcName = known[ki];
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--border)">';
+      h += '<span style="font-size:14px">' + esc(friendlyServiceName(svcName)) + '</span>';
+      h += '<div id="svc-action-confirm-' + ki + '" style="display:inline-flex;gap:.3rem;align-items:center">';
+      h += '<button class="sm secondary" onclick="confirmSvcRestart(\'' + esc(svcName) + '\',' + ki + ')">Restart</button>';
+      h += '</div>';
+      h += '</div>';
+    }
+  }
+  h += '</div></div>';
+
+  el.innerHTML = h;
+
+  /* Now load providers data */
+  await loadProvidersData();
+}
+
+/* ── Providers (embedded in System) ───────────────────── */
+async function loadProvidersData() {
+  var r = await api('/admin/providers');
   if (r.ok) {
     providersList = r.data.providers || [];
     providerAssignments = r.data.assignments || {};
   }
-  renderProviders();
+  var section = document.getElementById('providers-section');
+  if (section) {
+    section.innerHTML = renderProvidersSection();
+  }
 }
 
-function renderProviders() {
-  const el = document.getElementById('page-providers');
-  let h = '<h2>Model Providers</h2>';
-  h += '<p class="muted">Manage AI provider connections and assign models to roles in the stack.</p>';
+function renderProvidersSection() {
+  var h = '<h3>Providers</h3>';
+  h += '<p class="muted" style="font-size:13px">Manage AI provider connections and assign models to roles.</p>';
 
-  // Add provider form
-  h += '<div class="card"><h3>Add Provider</h3>';
-  h += '<div class="grid3">';
+  h += '<div style="margin-bottom:1rem;padding:.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">';
+  h += '<strong style="font-size:14px">Add Provider</strong>';
+  h += '<div class="grid3" style="margin-top:.5rem">';
   h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">Name</label>';
   h += '<input id="prov-name" placeholder="e.g. OpenAI, Ollama" /></div>';
   h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">Base URL</label>';
@@ -588,70 +1023,81 @@ function renderProviders() {
   h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">API Key</label>';
   h += '<input id="prov-key" type="password" placeholder="sk-..." /></div>';
   h += '</div>';
-  h += '<div style="margin-top:.7rem"><button onclick="addProvider()">Add Provider</button></div>';
+  h += '<div style="margin-top:.5rem"><button class="sm" onclick="addProvider()">Add Provider</button></div>';
   h += '</div>';
 
-  // Provider list
   if (providersList.length === 0) {
-    h += '<p class="muted">No providers configured yet. Add one above to get started.</p>';
+    h += '<p class="muted" style="font-size:13px">No providers configured yet. Add one above to get started.</p>';
   } else {
     h += '<div class="grid2">';
-    for (const p of providersList) {
-      const isSmall = providerAssignments.small?.providerId === p.id;
-      const isOpenmemory = providerAssignments.openmemory?.providerId === p.id;
-      h += '<div class="card">';
+    for (var pi = 0; pi < providersList.length; pi++) {
+      var p = providersList[pi];
+      var isSmall = providerAssignments.small && providerAssignments.small.providerId === p.id;
+      var isOpenmemory = providerAssignments.openmemory && providerAssignments.openmemory.providerId === p.id;
+      h += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem">';
       h += '<div style="display:flex;justify-content:space-between;align-items:start">';
-      h += '<h3 style="margin:0">' + esc(p.name) + '</h3>';
+      h += '<strong>' + esc(p.name) + '</strong>';
       h += '<button class="danger sm" onclick="deleteProvider(\'' + esc(p.id) + '\')">Delete</button>';
       h += '</div>';
-      h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + esc(p.url || 'No URL') + '</div>';
-      h += '<div class="muted" style="font-size:12px">Key: ' + (p.apiKey ? '••••••' : 'none') + '</div>';
+      h += '<div class="muted" style="font-size:12px;margin:.2rem 0">' + esc(p.url || 'No URL') + '</div>';
+      h += '<div class="muted" style="font-size:12px">Key: ' + (p.apiKey ? '------' : 'none') + '</div>';
       if (isSmall) h += '<div style="margin-top:.3rem"><span class="badge badge-low">Small Model</span> ' + esc(providerAssignments.small.modelId) + '</div>';
-      if (isOpenmemory) h += '<div style="margin-top:.3rem"><span class="badge badge-medium">OpenMemory</span> ' + esc(providerAssignments.openmemory.modelId) + '</div>';
-      h += '<div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap">';
+      if (isOpenmemory) h += '<div style="margin-top:.3rem"><span class="badge badge-medium">Memory Model</span> ' + esc(providerAssignments.openmemory.modelId) + '</div>';
+      h += '<div style="margin-top:.4rem;display:flex;gap:.3rem;flex-wrap:wrap">';
       h += '<button class="secondary sm" onclick="fetchModels(\'' + esc(p.id) + '\')">Fetch Models</button>';
       h += '<button class="secondary sm" onclick="editProvider(\'' + esc(p.id) + '\')">Edit</button>';
       h += '</div>';
+      h += '<div id="provider-delete-confirm-' + esc(p.id) + '"></div>';
       h += '</div>';
     }
     h += '</div>';
   }
 
-  // Model selection area (shown after fetching models)
   h += '<div id="provider-models-section"></div>';
-
-  el.innerHTML = h;
+  return h;
 }
 
 async function addProvider() {
-  const name = document.getElementById('prov-name')?.value?.trim();
-  const url = document.getElementById('prov-url')?.value?.trim();
-  const apiKey = document.getElementById('prov-key')?.value?.trim();
-  if (!name) { alert('Provider name is required.'); return; }
-  const r = await api('/admin/providers', { method: 'POST', body: JSON.stringify({ name, url, apiKey }) });
-  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
-  loadProviders();
+  var name = document.getElementById('prov-name') ? document.getElementById('prov-name').value.trim() : '';
+  var url = document.getElementById('prov-url') ? document.getElementById('prov-url').value.trim() : '';
+  var apiKey = document.getElementById('prov-key') ? document.getElementById('prov-key').value.trim() : '';
+  if (!name) { showToast('Provider name is required.', 'error'); return; }
+  var r = await api('/admin/providers', { method: 'POST', body: JSON.stringify({ name: name, url: url, apiKey: apiKey }) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
+  showToast('Provider added.', 'success');
+  await loadProvidersData();
 }
 
 async function deleteProvider(id) {
-  if (!confirm('Delete this provider? Any model assignments will be removed.')) return;
-  const r = await api('/admin/providers/delete', { method: 'POST', body: JSON.stringify({ id }) });
-  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
-  loadProviders();
+  showInlineConfirm('provider-delete-confirm-' + id,
+    'Delete this provider? Any model assignments will be removed.',
+    async function() {
+      var r = await api('/admin/providers/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+      if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
+      showToast('Provider deleted.', 'success');
+      await loadProvidersData();
+    }
+  );
 }
 
 function editProvider(id) {
-  const p = providersList.find(x => x.id === id);
+  var p = providersList.find(function(x) { return x.id === id; });
   if (!p) return;
-  const el = document.getElementById('modal-overlay');
-  let h = '<div class="modal">';
+  var el = document.getElementById('modal-overlay');
+  var h = '<div class="modal">';
   h += '<h3>Edit Provider: ' + esc(p.name) + '</h3>';
-  h += '<label style="display:block;font-size:13px;margin:.5rem 0 .2rem">Name</label>';
+  h += '<div class="field-group">';
+  h += '<label>Name</label>';
   h += '<input id="edit-prov-name" value="' + esc(p.name) + '" />';
-  h += '<label style="display:block;font-size:13px;margin:.5rem 0 .2rem">Base URL</label>';
+  h += '</div>';
+  h += '<div class="field-group">';
+  h += '<label>Base URL</label>';
   h += '<input id="edit-prov-url" value="' + esc(p.url) + '" />';
-  h += '<label style="display:block;font-size:13px;margin:.5rem 0 .2rem">API Key</label>';
+  h += '</div>';
+  h += '<div class="field-group">';
+  h += '<label>API Key</label>';
   h += '<input id="edit-prov-key" type="password" placeholder="Leave blank to keep current" />';
+  h += '</div>';
   h += '<div style="margin-top:1rem;display:flex;gap:.5rem">';
   h += '<button onclick="saveProviderEdit(\'' + esc(id) + '\')">Save</button>';
   h += '<button class="secondary" onclick="closeModal()">Cancel</button>';
@@ -661,26 +1107,28 @@ function editProvider(id) {
 }
 
 async function saveProviderEdit(id) {
-  const name = document.getElementById('edit-prov-name')?.value?.trim();
-  const url = document.getElementById('edit-prov-url')?.value?.trim();
-  const apiKey = document.getElementById('edit-prov-key')?.value?.trim();
-  const payload = { id };
+  var name = document.getElementById('edit-prov-name') ? document.getElementById('edit-prov-name').value.trim() : '';
+  var url = document.getElementById('edit-prov-url') ? document.getElementById('edit-prov-url').value.trim() : '';
+  var apiKey = document.getElementById('edit-prov-key') ? document.getElementById('edit-prov-key').value.trim() : '';
+  var payload = { id: id };
   if (name) payload.name = name;
   if (url !== undefined) payload.url = url;
   if (apiKey) payload.apiKey = apiKey;
-  const r = await api('/admin/providers/update', { method: 'POST', body: JSON.stringify(payload) });
-  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  var r = await api('/admin/providers/update', { method: 'POST', body: JSON.stringify(payload) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   closeModal();
-  loadProviders();
+  showToast('Provider updated.', 'success');
+  await loadProvidersData();
 }
 
 async function fetchModels(providerId) {
   selectedProviderId = providerId;
-  const section = document.getElementById('provider-models-section');
-  section.innerHTML = '<div class="card"><p class="muted">Fetching models...</p></div>';
-  const r = await api('/admin/providers/models', { method: 'POST', body: JSON.stringify({ providerId }) });
+  var section = document.getElementById('provider-models-section');
+  if (!section) return;
+  section.innerHTML = '<div style="padding:.5rem"><p class="muted">Fetching models...</p></div>';
+  var r = await api('/admin/providers/models', { method: 'POST', body: JSON.stringify({ providerId: providerId }) });
   if (!r.ok) {
-    section.innerHTML = '<div class="card" style="border-color:var(--red)"><p style="color:var(--red)">Failed to fetch models: ' + esc(r.data?.message || r.data?.error || 'Unknown error') + '</p></div>';
+    section.innerHTML = '<div style="padding:.5rem;border:1px solid var(--red);border-radius:var(--radius)"><p style="color:var(--red);font-size:13px">Failed to fetch models: ' + esc(friendlyError(r.data ? (r.data.message || r.data.error) : 'Unknown error')) + '</p></div>';
     return;
   }
   providerModels = r.data.models || [];
@@ -688,21 +1136,23 @@ async function fetchModels(providerId) {
 }
 
 function renderModelSelection() {
-  const section = document.getElementById('provider-models-section');
-  const p = providersList.find(x => x.id === selectedProviderId);
+  var section = document.getElementById('provider-models-section');
+  if (!section) return;
+  var p = providersList.find(function(x) { return x.id === selectedProviderId; });
   if (!p || !providerModels.length) {
-    section.innerHTML = '<div class="card"><p class="muted">No models found for this provider.</p></div>';
+    section.innerHTML = '<div style="padding:.5rem"><p class="muted">No models found for this provider.</p></div>';
     return;
   }
-  let h = '<div class="card"><h3>Available Models from ' + esc(p.name) + '</h3>';
+  var h = '<div style="margin-top:.8rem"><strong>Available Models from ' + esc(p.name) + '</strong>';
   h += '<p class="muted" style="font-size:13px">Select a model and assign it to a role.</p>';
   h += '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin:.5rem 0">';
-  for (const m of providerModels) {
+  for (var mi = 0; mi < providerModels.length; mi++) {
+    var m = providerModels[mi];
     h += '<div style="padding:.4rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
     h += '<span style="font-size:14px">' + esc(m.id) + '</span>';
     h += '<span style="display:flex;gap:.3rem">';
     h += '<button class="sm" onclick="assignModel(\'' + esc(m.id) + '\',\'small\')">Set Small</button>';
-    h += '<button class="secondary sm" onclick="assignModel(\'' + esc(m.id) + '\',\'openmemory\')">Set OpenMemory</button>';
+    h += '<button class="secondary sm" onclick="assignModel(\'' + esc(m.id) + '\',\'openmemory\')">Set Memory</button>';
     h += '</span>';
     h += '</div>';
   }
@@ -711,73 +1161,55 @@ function renderModelSelection() {
 }
 
 async function assignModel(modelId, role) {
-  const r = await api('/admin/providers/assign', { method: 'POST', body: JSON.stringify({ role, providerId: selectedProviderId, modelId }) });
-  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  var r = await api('/admin/providers/assign', { method: 'POST', body: JSON.stringify({ role: role, providerId: selectedProviderId, modelId: modelId }) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   providerAssignments = r.data.assignments || {};
-  alert('Model "' + modelId + '" assigned as ' + role + '. OpenCode will restart to apply changes.');
-  renderProviders();
+  showToast('Model "' + modelId + '" assigned as ' + role + '. Your assistant will restart to apply changes.', 'success');
+  await loadProvidersData();
 }
 
-/* ── settings ─────────────────────────────────────────── */
-async function renderSettings() {
-  const el = document.getElementById('page-settings');
-  const status = await api('/admin/setup/status');
-  const statusWarning = status.ok ? '' : '<p style="color:var(--yellow);font-size:13px">Could not load saved service instance settings from admin API. Showing empty defaults.</p>';
-  const svc = status.ok && status.data && status.data.serviceInstances
-    ? status.data.serviceInstances
-    : { openmemory: '', psql: '', qdrant: '' };
-  const openmemoryProvider = status.ok && status.data && status.data.openmemoryProvider
-    ? status.data.openmemoryProvider
-    : { openaiBaseUrl: '', openaiApiKeyConfigured: false };
-  let h = '<h2>Settings</h2>';
-  h += '<div class="card"><h3>Authentication</h3>';
-  h += '<p class="muted" style="font-size:13px">Your admin password is stored in your browser only (localStorage) and sent as a header to the admin API.</p>';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password</label>';
-  h += '<input type="password" id="set-admin" value="' + esc(adminToken) + '" />';
-  h += '<div style="margin-top:.7rem"><button onclick="saveSettings()">Save</button></div>';
-  h += '</div>';
-  h += '<div class="card"><h3>Re-run Setup Wizard</h3>';
-  h += '<p class="muted" style="font-size:13px">Revisit the initial setup steps.</p>';
-  h += '<button class="secondary" onclick="runSetup()">Open Setup Wizard</button>';
-  h += '</div>';
-  h += '<div class="card"><h3>System Service Instances</h3>';
-  h += '<p class="muted" style="font-size:13px">Optional: point OpenPalm at existing OpenMemory, Postgres, or Qdrant instances.</p>';
-  h += statusWarning;
-  h += '<p style="color:var(--yellow);font-size:13px"><strong>Warning:</strong> Changing these settings after initial setup may break memory access and existing workflows.</p>';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenMemory base URL</label>';
-  h += '<input id="set-openmemory-url" placeholder="http://openmemory:8765" value="' + esc(svc.openmemory || '') + '" />';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Postgres connection URL</label>';
-  h += '<input id="set-psql-url" placeholder="postgresql://user:pass@host:5432/db" value="' + esc(svc.psql || '') + '" />';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Qdrant URL</label>';
-  h += '<input id="set-qdrant-url" placeholder="http://qdrant:6333" value="' + esc(svc.qdrant || '') + '" />';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible endpoint for OpenMemory</label>';
-  h += '<input id="set-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || '') + '" />';
-  h += '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible API key for OpenMemory</label>';
-  h += '<input id="set-openmemory-openai-key" type="password" placeholder="sk-..." value="" />';
-  h += '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? 'API key already configured. Leave blank to keep current key.' : 'Leave blank if OpenMemory should not use OpenAI-compatible model calls.') + '</div>';
-  h += '<div style="margin-top:.7rem"><button onclick="saveServiceInstances()">Save Service Configuration</button></div>';
-  h += '</div>';
-  el.innerHTML = h;
-}
-
+/* ── Settings (Authentication) ────────────────────────── */
 function saveSettings() {
   adminToken = document.getElementById('set-admin').value;
   localStorage.setItem('op_admin', adminToken);
-  alert('Saved.');
+  showToast('Password saved.', 'success');
+}
+
+function confirmSaveServiceInstances() {
+  showInlineConfirm('advanced-save-confirm',
+    'Changing these settings may affect how your assistant accesses memory and data. Are you sure?',
+    function() { saveServiceInstances(); }
+  );
 }
 
 async function saveServiceInstances() {
-  if (!confirm('Changing service instance settings after initial setup may break memory access and existing workflows. Continue?')) return;
-  const openmemory = document.getElementById('set-openmemory-url')?.value || '';
-  const psql = document.getElementById('set-psql-url')?.value || '';
-  const qdrant = document.getElementById('set-qdrant-url')?.value || '';
-  const openaiBaseUrl = document.getElementById('set-openmemory-openai-base')?.value || '';
-  const openaiApiKey = document.getElementById('set-openmemory-openai-key')?.value || '';
-  const payload = { openmemory, psql, qdrant, openaiBaseUrl };
+  var openmemory = document.getElementById('set-openmemory-url') ? document.getElementById('set-openmemory-url').value : '';
+  var psql = document.getElementById('set-psql-url') ? document.getElementById('set-psql-url').value : '';
+  var qdrant = document.getElementById('set-qdrant-url') ? document.getElementById('set-qdrant-url').value : '';
+  var openaiBaseUrl = document.getElementById('set-openmemory-openai-base') ? document.getElementById('set-openmemory-openai-base').value : '';
+  var openaiApiKey = document.getElementById('set-openmemory-openai-key') ? document.getElementById('set-openmemory-openai-key').value : '';
+  var payload = { openmemory: openmemory, psql: psql, qdrant: qdrant, openaiBaseUrl: openaiBaseUrl };
   if (openaiApiKey.trim()) payload.openaiApiKey = openaiApiKey.trim();
-  const r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify(payload) });
-  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
-  alert('Service configuration saved.');
+  var r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify(payload) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
+  showToast('Configuration saved.', 'success');
+}
+
+/* ── Troubleshooting service actions ──────────────────── */
+function confirmSvcRestart(svc, index) {
+  showInlineConfirm('svc-action-confirm-' + index,
+    'Restart ' + friendlyServiceName(svc) + '?',
+    function() { doSvcAction('restart', svc); }
+  );
+}
+
+async function doSvcAction(action, svc) {
+  var r = await api('/admin/containers/' + action, { method: 'POST', body: JSON.stringify({ service: svc }) });
+  if (r.ok) {
+    showToast(friendlyServiceName(svc) + ' is restarting.', 'success');
+  } else {
+    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+  }
 }
 
 /* ── setup wizard ─────────────────────────────────────── */
@@ -789,17 +1221,9 @@ function runSetup() {
   window.openPalmSetup?.runSetup();
 }
 
-/* ── utils ────────────────────────────────────────────── */
-function esc(s) {
-  if (!s) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
-
 /* ── init ─────────────────────────────────────────────── */
-showPage('gallery');
-window.openPalmSetup?.init({ api, esc, riskBadge, showPage, getAdminToken: () => adminToken, setAdminToken: (v) => { adminToken = v; localStorage.setItem('op_admin', v); } });
+showPage('extensions');
+window.openPalmSetup?.init({ api: api, esc: esc, riskBadge: riskBadge, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
 checkSetup();
 </script>
 </body>
