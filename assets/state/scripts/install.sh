@@ -335,7 +335,10 @@ if [ ! -f .env ]; then
   upsert_env_var CHANNEL_DISCORD_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_VOICE_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_TELEGRAM_SECRET "$(generate_token)"
+  upsert_env_var CHANNEL_WEBHOOK_SECRET "$(generate_token)"
   echo "Created .env with generated secure defaults."
+  echo ""
+  echo "  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup."
 fi
 
 # Write resolved configuration into .env (idempotent)

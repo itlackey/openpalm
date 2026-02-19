@@ -97,10 +97,24 @@
           + '<div><strong>Any device on my home network</strong><div class="muted" style="font-size:13px">Other devices on your local network can access your assistant.</div></div>'
           + '</label>';
       case "serviceInstances":
-        return '<p>OpenPalm includes everything it needs to run. If you have existing services you want to connect, expand the advanced section below.</p>'
+        return '<p>Configure API keys for your AI providers. Your assistant needs at least one AI model to function.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
+          + '<div class="sec-box"><div class="sec-title">AI Assistant Model</div>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Required. Your assistant uses this API key to communicate. Get one from <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>.</div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Anthropic API Key</label>'
+          + '<input id="wiz-anthropic-key" type="password" placeholder="sk-ant-..." value="" />'
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (setupState && setupState.anthropicKeyConfigured ? "API key already configured. Leave blank to keep current key." : "") + '</div>'
+          + '</div>'
+          + '<div class="sec-box"><div class="sec-title">Memory System</div>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Required for memory features. Uses an OpenAI-compatible endpoint to store and recall information.</div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model endpoint for memory</label>'
+          + '<input id="wiz-openmemory-openai-base" placeholder="e.g. https://api.openai.com/v1 (leave blank for default)" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model API key for memory</label>'
+          + '<input id="wiz-openmemory-openai-key" type="password" placeholder="sk-..." value="" />'
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "") + '</div>'
+          + '</div>'
           + '<details class="advanced-section">'
-          + '<summary>Advanced: Connect Existing Services</summary>'
+          + '<summary>Advanced: Service Connections &amp; Small Model</summary>'
           + '<div class="sec-box" style="border-color:var(--yellow);background:rgba(234,179,8,.1);margin-top:.5rem"><strong>Warning:</strong> Changing these values after setup is complete may affect your data and workflows.</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Memory service address</label>'
           + '<input id="wiz-svc-openmemory" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.openmemory || "") + '" />'
@@ -108,11 +122,6 @@
           + '<input id="wiz-svc-psql" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.psql || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Search service address</label>'
           + '<input id="wiz-svc-qdrant" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.qdrant || "") + '" />'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model endpoint for memory</label>'
-          + '<input id="wiz-openmemory-openai-base" placeholder="e.g. https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model API key for memory</label>'
-          + '<input id="wiz-openmemory-openai-key" type="password" placeholder="sk-..." value="" />'
-          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if not needed.") + '</div>'
           + '<hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)" />'
           + '<p style="margin:.5rem 0"><strong>Small / Fast Model for OpenCode</strong></p>'
           + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Configure a lightweight model for system tasks like summaries and title generation. This sets the <code>small_model</code> in the OpenCode configuration. Use an OpenAI-compatible endpoint — for example, a local <a href="https://ollama.com/" target="_blank" rel="noopener">Ollama</a> instance at <code>http://localhost:11434/v1</code>.</div>'
@@ -127,7 +136,7 @@
           + '</details>';
       case "security":
         return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
-          + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password you created during installation.</div></div>'
+          + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Your admin token was auto-generated during installation. Find it in your <code>.env</code> file (look for <code>ADMIN_TOKEN</code>).</div></div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password</label>'
           + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
           + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
@@ -236,11 +245,13 @@
       const qdrant = document.getElementById("wiz-svc-qdrant")?.value || "";
       const openaiBaseUrl = document.getElementById("wiz-openmemory-openai-base")?.value || "";
       const openaiApiKey = document.getElementById("wiz-openmemory-openai-key")?.value || "";
+      const anthropicApiKey = document.getElementById("wiz-anthropic-key")?.value || "";
       const smallModelEndpoint = document.getElementById("wiz-small-model-endpoint")?.value || "";
       const smallModelApiKey = document.getElementById("wiz-small-model-key")?.value || "";
       const smallModelId = document.getElementById("wiz-small-model-id")?.value || "";
       const servicePayload = { openmemory, psql, qdrant, openaiBaseUrl, smallModelEndpoint, smallModelId };
       if (openaiApiKey.trim()) servicePayload.openaiApiKey = openaiApiKey.trim();
+      if (anthropicApiKey.trim()) servicePayload.anthropicApiKey = anthropicApiKey.trim();
       if (smallModelApiKey.trim()) servicePayload.smallModelApiKey = smallModelApiKey.trim();
       const serviceResult = await api("/admin/setup/service-instances", {
         method: "POST",

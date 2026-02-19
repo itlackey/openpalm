@@ -358,11 +358,13 @@ const server = Bun.serve({
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
         if (state.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        const secrets = readSecretsEnv();
         return cors(json(200, {
           ...state,
           serviceInstances: getConfiguredServiceInstances(),
           openmemoryProvider: getConfiguredOpenmemoryProvider(),
           smallModelProvider: getConfiguredSmallModel(),
+          anthropicKeyConfigured: Boolean(secrets.ANTHROPIC_API_KEY),
           firstBoot: setupManager.isFirstBoot()
         }));
       }
@@ -399,7 +401,7 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/service-instances" && req.method === "POST") {
-        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string; smallModelEndpoint?: string; smallModelApiKey?: string; smallModelId?: string };
+        const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string; anthropicApiKey?: string; smallModelEndpoint?: string; smallModelApiKey?: string; smallModelId?: string };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const openmemory = normalizeServiceInstanceUrl(body.openmemory);
@@ -407,6 +409,7 @@ const server = Bun.serve({
         const qdrant = normalizeServiceInstanceUrl(body.qdrant);
         const openaiBaseUrl = sanitizeEnvScalar(body.openaiBaseUrl);
         const openaiApiKey = sanitizeEnvScalar(body.openaiApiKey);
+        const anthropicApiKey = sanitizeEnvScalar(body.anthropicApiKey);
         const smallModelEndpoint = sanitizeEnvScalar(body.smallModelEndpoint);
         const smallModelApiKey = sanitizeEnvScalar(body.smallModelApiKey);
         const smallModelId = sanitizeEnvScalar(body.smallModelId);
@@ -420,6 +423,9 @@ const server = Bun.serve({
         };
         if (openaiApiKey.length > 0) {
           secretEntries.OPENAI_API_KEY = openaiApiKey;
+        }
+        if (anthropicApiKey.length > 0) {
+          secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
         }
         if (smallModelApiKey.length > 0) {
           secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;

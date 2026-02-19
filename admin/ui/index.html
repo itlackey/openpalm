@@ -128,14 +128,14 @@ const ADMIN_API_PREFIX = '/admin/api/';
 const BEHIND_CADDY = window.location.pathname.startsWith('/admin');
 
 /* ── service name mapping (populated from /admin/meta) ── */
-let SERVICE_NAMES = {};
+window.SERVICE_NAMES = {};
 let CHANNEL_FIELDS = {};
 
 async function loadMeta() {
   try {
     const r = await api('/admin/meta');
     if (r.ok && r.data) {
-      if (r.data.serviceNames) SERVICE_NAMES = r.data.serviceNames;
+      if (r.data.serviceNames) window.SERVICE_NAMES = r.data.serviceNames;
       if (r.data.channelFields) CHANNEL_FIELDS = r.data.channelFields;
     }
   } catch (e) {
@@ -151,7 +151,7 @@ const CHANNEL_FRIENDLY = {
 };
 
 function friendlyServiceName(svc) {
-  return (SERVICE_NAMES[svc] && SERVICE_NAMES[svc].label) || svc;
+  return (window.SERVICE_NAMES[svc] && window.SERVICE_NAMES[svc].label) || svc;
 }
 
 function normalizeAdminApiPath(path) {

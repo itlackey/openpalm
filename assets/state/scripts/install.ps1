@@ -208,7 +208,10 @@ try {
     Upsert-EnvVar CHANNEL_DISCORD_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_VOICE_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_TELEGRAM_SECRET (New-Token)
+    Upsert-EnvVar CHANNEL_WEBHOOK_SECRET (New-Token)
     Write-Host "Created .env with generated secure defaults."
+    Write-Host ""
+    Write-Host "  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup."
   }
 
   $OpenPalmDataHome = if ($env:OPENPALM_DATA_HOME) { $env:OPENPALM_DATA_HOME } else { Normalize-EnvPath (Join-Path $HOME ".local/share/openpalm") }
