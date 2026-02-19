@@ -1,15 +1,15 @@
 name: Update Registry Index
 
 # Runs when extension registry entries are added or modified.
-# Regenerates registry/index.json from the individual *.json entry files.
+# Regenerates assets/state/registry/index.json from the individual *.json entry files.
 # This workflow does NOT trigger the Docker image build.
 
 on:
   push:
     branches: [main]
     paths:
-      - "registry/*.json"
-      - "!registry/index.json"
+      - "assets/state/registry/*.json"
+      - "!assets/state/registry/index.json"
 
 jobs:
   rebuild-index:
@@ -25,7 +25,7 @@ jobs:
         run: |
           npm install -g ajv-cli ajv-formats 2>/dev/null || true
           # Collect all entry files (exclude index.json and schema.json)
-          ENTRY_FILES=$(find registry -maxdepth 1 -name "*.json" \
+          ENTRY_FILES=$(find assets/state/registry -maxdepth 1 -name "*.json" \
             ! -name "index.json" ! -name "schema.json" | sort)
 
           ERRORS=0
@@ -58,27 +58,27 @@ jobs:
 
       - name: Rebuild index.json
         run: |
-          ENTRY_FILES=$(find registry -maxdepth 1 -name "*.json" \
+          ENTRY_FILES=$(find assets/state/registry -maxdepth 1 -name "*.json" \
             ! -name "index.json" ! -name "schema.json" | sort)
 
           if [ -z "$ENTRY_FILES" ]; then
-            echo "[]" > registry/index.json
+            echo "[]" > assets/state/registry/index.json
             echo "No entries found — wrote empty index."
           else
             # Combine all entry objects into a JSON array
-            jq -s '.' $ENTRY_FILES > registry/index.json
-            COUNT=$(jq length registry/index.json)
-            echo "Wrote $COUNT entries to registry/index.json"
+            jq -s '.' $ENTRY_FILES > assets/state/registry/index.json
+            COUNT=$(jq length assets/state/registry/index.json)
+            echo "Wrote $COUNT entries to assets/state/registry/index.json"
           fi
 
       - name: Commit and push updated index
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add registry/index.json
+          git add assets/state/registry/index.json
           if git diff --cached --quiet; then
             echo "index.json is already up to date — nothing to commit."
           else
-            git commit -m "chore: regenerate registry/index.json [skip ci]"
+            git commit -m "chore: regenerate assets/state/registry/index.json [skip ci]"
             git push
           fi

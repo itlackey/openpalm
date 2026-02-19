@@ -1,4 +1,4 @@
-<img src="assets/banner.png" alt="OpenPalm" width="500" />
+<img src="assets/state/content/banner.png" alt="OpenPalm" width="500" />
 
 <p>
   <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
@@ -20,11 +20,11 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 ## Get started
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
 ```
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit.
@@ -32,11 +32,11 @@ The installer detects your container runtime, generates secure credentials, star
 To uninstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash
 ```
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
 ```
 
 Use `--remove-all` to delete all OpenPalm config/state/data directories and `--remove-images` to remove container images.

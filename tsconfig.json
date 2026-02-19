@@ -7,14 +7,18 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-    "types": ["bun"]
+    "types": [
+      "bun"
+    ]
   },
   "include": [
     "admin/src/**/*.ts",
     "controller/**/*.ts",
     "gateway/src/**/*.ts",
     "channels/**/*.ts",
-    "scripts/**/*.ts"
+    "assets/state/scripts/extensions-cli.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ]
 }

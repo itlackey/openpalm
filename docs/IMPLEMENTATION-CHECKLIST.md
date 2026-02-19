@@ -10,7 +10,7 @@
 - [x] Observability/audit event logging
 - [x] Rules + skills for recall-first + memory policy + action gating
 
-## OpenMemory HTTP API integration (assets/opencode/core/plugins/ and lib/)
+## OpenMemory HTTP API integration (assets/config/opencode/plugins/ and lib/)
 - [x] openmemory-client.ts — REST client (queryMemory, addMemory, addTemporalFact)
 - [x] openmemory-http.ts — pipeline plugin (pre-turn recall, post-turn write-back, compaction)
 - [x] Secret detection prevents persisting sensitive data
@@ -76,7 +76,7 @@
 
 ## Container extension externalization
 - [x] Extensions (plugins, skills, agents, lib) removed from opencode container image
-- [x] Canonical extension source moved to assets/opencode/core/ and assets/opencode/gateway/
+- [x] Canonical extension source moved to assets/config/opencode/ and assets/shared/gateway/
 - [x] Installer seeds plugins, lib, and gateway config into host config directory
 - [x] Docker compose mounts extensions from host config directory into containers
 - [x] Gateway container mounts intake agent config (opencode-gateway) as read-only volume
@@ -85,7 +85,7 @@
 
 ## XDG Base Directory compliance
 - [x] All volume mounts use OPENPALM_DATA_HOME / OPENPALM_CONFIG_HOME / OPENPALM_STATE_HOME
-- [x] scripts/install.sh resolves XDG_DATA_HOME / XDG_CONFIG_HOME / XDG_STATE_HOME with standard fallbacks
-- [x] scripts/install.sh seeds default configs from repo into XDG config home (preserving existing edits)
-- [x] assets/system.env documents the three XDG path variables
+- [x] assets/state/scripts/install.sh resolves XDG_DATA_HOME / XDG_CONFIG_HOME / XDG_STATE_HOME with standard fallbacks
+- [x] assets/state/scripts/install.sh seeds default configs from repo into XDG config home (preserving existing edits)
+- [x] assets/config/system.env documents the three XDG path variables
 - [x] All services, channels, and apps conform to the data/config/state separation pattern

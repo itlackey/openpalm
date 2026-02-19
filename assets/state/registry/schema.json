@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/itlackey/openpalm/registry/schema.json",
+  "$id": "https://github.com/itlackey/openpalm/assets/state/registry/schema.json",
   "title": "OpenPalm Registry Entry",
   "description": "Schema for a single OpenPalm extension registry entry",
   "type": "object",

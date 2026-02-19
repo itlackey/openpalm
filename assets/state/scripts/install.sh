@@ -38,7 +38,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./scripts/install.sh [--runtime docker|podman|orbstack] [--no-open]
+Usage: ./assets/state/scripts/install.sh [--runtime docker|podman|orbstack] [--no-open]
 
 Options:
   --runtime   Force a container runtime platform selection.
@@ -49,7 +49,7 @@ HELP
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Run ./scripts/install.sh --help for usage."
+      echo "Run ./assets/state/scripts/install.sh --help for usage."
       exit 1
       ;;
   esac
@@ -93,20 +93,20 @@ fi
 if [ "$OS_NAME" = "windows-bash" ]; then
   echo "This installer is for Linux/macOS shells."
   echo "On Windows, run the PowerShell installer instead:"
-  echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"'
+  echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"'
   exit 1
 fi
 
 bootstrap_install_assets() {
-  if [ -f "$ASSETS_DIR/docker-compose.yml" ] \
-    && [ -f "$ASSETS_DIR/system.env" ] \
-    && [ -f "$ASSETS_DIR/user.env" ] \
-    && [ -f "$ASSETS_DIR/uninstall.sh" ] \
-    && [ -f "$ASSETS_DIR/caddy/Caddyfile" ] \
-    && [ -f "$ASSETS_DIR/opencode/core/opencode.jsonc" ] \
-    && [ -d "$ASSETS_DIR/opencode/core/plugins" ] \
-    && [ -f "$ASSETS_DIR/opencode/gateway/opencode.jsonc" ] \
-    && [ -f "$ASSETS_DIR/config/channel-env/channel-chat.env" ]; then
+  if [ -f "$ASSETS_DIR/shared/docker-compose.yml" ] \
+    && [ -f "$ASSETS_DIR/config/system.env" ] \
+    && [ -f "$ASSETS_DIR/config/user.env" ] \
+    && [ -f "$ASSETS_DIR/state/scripts/uninstall.sh" ] \
+    && [ -f "$ASSETS_DIR/shared/caddy/Caddyfile" ] \
+    && [ -f "$ASSETS_DIR/config/opencode/opencode.jsonc" ] \
+    && [ -d "$ASSETS_DIR/config/opencode/plugins" ] \
+    && [ -f "$ASSETS_DIR/shared/gateway/opencode.jsonc" ] \
+    && [ -f "$ASSETS_DIR/config/channels/chat.env" ]; then
     INSTALL_ASSETS_DIR="$ASSETS_DIR"
     return
   fi
@@ -307,7 +307,7 @@ echo "Selected container runtime: $OPENPALM_CONTAINER_PLATFORM"
 echo "Compose command: ${COMPOSE_CMD[*]}"
 
 bootstrap_install_assets
-if [ ! -f "$INSTALL_ASSETS_DIR/docker-compose.yml" ]; then
+if [ ! -f "$INSTALL_ASSETS_DIR/shared/docker-compose.yml" ]; then
   echo "Compose file not found in installer assets."
   exit 1
 fi
@@ -330,7 +330,7 @@ echo "  State  → $OPENPALM_STATE_HOME"
 
 # ── Generate .env if missing ───────────────────────────────────────────────
 if [ ! -f .env ]; then
-  cp "$INSTALL_ASSETS_DIR/system.env" .env
+  cp "$INSTALL_ASSETS_DIR/config/system.env" .env
   upsert_env_var ADMIN_TOKEN "$(generate_token)"
   upsert_env_var CONTROLLER_TOKEN "$(generate_token)"
   upsert_env_var POSTGRES_PASSWORD "$(generate_token)"
@@ -367,7 +367,7 @@ mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
 
 COMPOSE_FILE_PATH="$OPENPALM_STATE_HOME/docker-compose.yml"
-cp "$INSTALL_ASSETS_DIR/docker-compose.yml" "$COMPOSE_FILE_PATH"
+cp "$INSTALL_ASSETS_DIR/shared/docker-compose.yml" "$COMPOSE_FILE_PATH"
 cp .env "$OPENPALM_STATE_HOME/.env"
 
 # ── Seed default configs into XDG config home ─────────────────────────────
@@ -385,32 +385,32 @@ seed_dir() {
 
 # opencode-core config (extensions are no longer baked into the container image;
 # they live here and are volume-mounted into the container at runtime)
-seed_file "$INSTALL_ASSETS_DIR/opencode/core/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/opencode/core/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
-seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/plugins"        "$OPENPALM_CONFIG_HOME/opencode-core/plugins"
-seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/lib"            "$OPENPALM_CONFIG_HOME/opencode-core/lib"
-seed_dir  "$INSTALL_ASSETS_DIR/opencode/core/ssh"            "$OPENPALM_CONFIG_HOME/opencode-core/ssh"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-core/opencode.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/config/opencode/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-core/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode/skills"         "$OPENPALM_CONFIG_HOME/opencode-core/skills"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode/plugins"        "$OPENPALM_CONFIG_HOME/opencode-core/plugins"
+seed_dir  "$INSTALL_ASSETS_DIR/config/opencode/lib"            "$OPENPALM_CONFIG_HOME/opencode-core/lib"
+seed_dir  "$INSTALL_ASSETS_DIR/config/ssh"                     "$OPENPALM_CONFIG_HOME/opencode-core/ssh"
 
 # opencode-gateway config (intake agent extensions, mounted into the gateway container)
-seed_file "$INSTALL_ASSETS_DIR/opencode/gateway/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-gateway/opencode.jsonc"
-seed_file "$INSTALL_ASSETS_DIR/opencode/gateway/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-gateway/AGENTS.md"
-seed_dir  "$INSTALL_ASSETS_DIR/opencode/gateway/skills"         "$OPENPALM_CONFIG_HOME/opencode-gateway/skills"
+seed_file "$INSTALL_ASSETS_DIR/shared/gateway/opencode.jsonc" "$OPENPALM_CONFIG_HOME/opencode-gateway/opencode.jsonc"
+seed_file "$INSTALL_ASSETS_DIR/shared/gateway/AGENTS.md"      "$OPENPALM_CONFIG_HOME/opencode-gateway/AGENTS.md"
+seed_dir  "$INSTALL_ASSETS_DIR/shared/gateway/skills"         "$OPENPALM_CONFIG_HOME/opencode-gateway/skills"
 
 # Caddy config
-seed_file "$INSTALL_ASSETS_DIR/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
+seed_file "$INSTALL_ASSETS_DIR/shared/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
 # Channel env files
-for env_file in "$INSTALL_ASSETS_DIR"/config/channel-env/*.env; do
+for env_file in "$INSTALL_ASSETS_DIR"/config/channels/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
 
 # Runtime secrets and user overrides for opencode-core
-seed_file "$INSTALL_ASSETS_DIR/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
-seed_file "$INSTALL_ASSETS_DIR/user.env" "$OPENPALM_CONFIG_HOME/user.env"
+seed_file "$INSTALL_ASSETS_DIR/config/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
+seed_file "$INSTALL_ASSETS_DIR/config/user.env" "$OPENPALM_CONFIG_HOME/user.env"
 
 # Copy uninstall scripts to state directory for easy access
-cp "$INSTALL_ASSETS_DIR/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
+cp "$INSTALL_ASSETS_DIR/state/scripts/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
 chmod +x "$OPENPALM_STATE_HOME/uninstall.sh"
 
 echo ""

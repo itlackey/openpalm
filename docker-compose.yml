@@ -2,8 +2,8 @@ services:
   opencode-core:
     build: ./opencode
     # Extensions (plugins, skills, lib) are not baked into the image.
-    # For local dev, layer this over assets/docker-compose.yml which
-    # volume-mounts assets/opencode/core/ into /config.
+    # For local dev, layer this over assets/shared/docker-compose.yml which
+    # volume-mounts assets/config/opencode/ into /config.
     environment:
       # OpenMemory HTTP API plugin configuration
       OPENPALM_MEMORY_MODE: "api"

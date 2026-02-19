@@ -17,9 +17,9 @@ import {
   containsSecret,
   isSaveWorthy,
   OpenMemoryClient,
-} from "../lib/openmemory-client.ts";
+} from "./openmemory-client.ts";
 
-import type { MemoryHit } from "../lib/openmemory-client.ts";
+import type { MemoryHit } from "./openmemory-client.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers

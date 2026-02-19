@@ -98,7 +98,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `postgres` | `postgres:16-alpine` | assistant_net | Structured data storage |
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
-| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (plugins, skills, lib) are volume-mounted from `assets/opencode/core/`, not baked into the image |
+| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (plugins, skills, lib) are volume-mounted from `assets/config/opencode/`, not baked into the image |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
 | `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |

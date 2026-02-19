@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Default permissions — all gated behind approval
+  "permission": {
+    "bash": "ask",
+    "edit": "ask",
+    "webfetch": "ask"
+  },
+
+
+  // Globally disable MCP tools; the openmemory-http plugin handles memory
+  // via direct REST API calls for deterministic behaviour. MCP is available
+  // as a fallback if needed.
+  "mcp": {
+    "openmemory": {
+      "type": "remote",
+      "url": "http://openmemory:8765/mcp/gateway/sse/default-user",
+      "enabled": true
+    }
+  }
+}

@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 if (-not $IsWindows) {
   Write-Host "This installer is for Windows PowerShell."
   Write-Host "On Linux/macOS, run the shell installer instead:"
-  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.sh | bash"
+  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash"
   exit 1
 }
 
@@ -67,13 +67,13 @@ function Upsert-EnvVar {
 function Bootstrap-InstallAssets {
   $required = @(
     (Join-Path $AssetsDir "docker-compose.yml"),
-    (Join-Path $AssetsDir "system.env"),
-    (Join-Path $AssetsDir "user.env"),
-    (Join-Path $AssetsDir "uninstall.ps1"),
-    (Join-Path $AssetsDir "caddy/Caddyfile"),
-    (Join-Path $AssetsDir "opencode/core/opencode.jsonc"),
-    (Join-Path $AssetsDir "opencode/gateway/opencode.jsonc"),
-    (Join-Path $AssetsDir "config/channel-env/channel-chat.env")
+    (Join-Path $AssetsDir "config/system.env"),
+    (Join-Path $AssetsDir "config/user.env"),
+    (Join-Path $AssetsDir "state/scripts/uninstall.ps1"),
+    (Join-Path $AssetsDir "shared/caddy/Caddyfile"),
+    (Join-Path $AssetsDir "config/opencode/opencode.jsonc"),
+    (Join-Path $AssetsDir "shared/gateway/opencode.jsonc"),
+    (Join-Path $AssetsDir "config/channels/chat.env")
   )
 
   $missing = $required | Where-Object { -not (Test-Path $_) }
@@ -202,7 +202,7 @@ try {
   Write-Host "Compose command: $OpenPalmComposeBin $OpenPalmComposeSubcommand"
 
   if (-not (Test-Path ".env")) {
-    Copy-Item (Join-Path $InstallAssetsDir "system.env") ".env"
+    Copy-Item (Join-Path $InstallAssetsDir "config/system.env") ".env"
     Upsert-EnvVar ADMIN_TOKEN (New-Token)
     Upsert-EnvVar CONTROLLER_TOKEN (New-Token)
     Upsert-EnvVar POSTGRES_PASSWORD (New-Token)
@@ -275,29 +275,29 @@ try {
 
   # opencode-core config (extensions are no longer baked into the container image;
   # they live here and are volume-mounted into the container at runtime)
-  Seed-File (Join-Path $InstallAssetsDir "opencode/core/opencode.jsonc") "$OpenPalmConfigHome/opencode-core/opencode.jsonc"
-  Seed-File (Join-Path $InstallAssetsDir "opencode/core/AGENTS.md") "$OpenPalmConfigHome/opencode-core/AGENTS.md"
-  Seed-Dir (Join-Path $InstallAssetsDir "opencode/core/skills") "$OpenPalmConfigHome/opencode-core/skills"
-  Seed-Dir (Join-Path $InstallAssetsDir "opencode/core/plugins") "$OpenPalmConfigHome/opencode-core/plugins"
-  Seed-Dir (Join-Path $InstallAssetsDir "opencode/core/lib") "$OpenPalmConfigHome/opencode-core/lib"
-  Seed-Dir (Join-Path $InstallAssetsDir "opencode/core/ssh") "$OpenPalmConfigHome/opencode-core/ssh"
+  Seed-File (Join-Path $InstallAssetsDir "config/opencode/opencode.jsonc") "$OpenPalmConfigHome/opencode-core/opencode.jsonc"
+  Seed-File (Join-Path $InstallAssetsDir "config/opencode/AGENTS.md") "$OpenPalmConfigHome/opencode-core/AGENTS.md"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode/skills") "$OpenPalmConfigHome/opencode-core/skills"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode/plugins") "$OpenPalmConfigHome/opencode-core/plugins"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/opencode/lib") "$OpenPalmConfigHome/opencode-core/lib"
+  Seed-Dir (Join-Path $InstallAssetsDir "config/ssh") "$OpenPalmConfigHome/opencode-core/ssh"
 
   # opencode-gateway config (intake agent extensions, mounted into the gateway container)
-  Seed-File (Join-Path $InstallAssetsDir "opencode/gateway/opencode.jsonc") "$OpenPalmConfigHome/opencode-gateway/opencode.jsonc"
-  Seed-File (Join-Path $InstallAssetsDir "opencode/gateway/AGENTS.md") "$OpenPalmConfigHome/opencode-gateway/AGENTS.md"
-  Seed-Dir (Join-Path $InstallAssetsDir "opencode/gateway/skills") "$OpenPalmConfigHome/opencode-gateway/skills"
+  Seed-File (Join-Path $InstallAssetsDir "shared/gateway/opencode.jsonc") "$OpenPalmConfigHome/opencode-gateway/opencode.jsonc"
+  Seed-File (Join-Path $InstallAssetsDir "shared/gateway/AGENTS.md") "$OpenPalmConfigHome/opencode-gateway/AGENTS.md"
+  Seed-Dir (Join-Path $InstallAssetsDir "shared/gateway/skills") "$OpenPalmConfigHome/opencode-gateway/skills"
 
-  Seed-File (Join-Path $InstallAssetsDir "caddy/Caddyfile") "$OpenPalmConfigHome/caddy/Caddyfile"
+  Seed-File (Join-Path $InstallAssetsDir "shared/caddy/Caddyfile") "$OpenPalmConfigHome/caddy/Caddyfile"
 
-  Get-ChildItem (Join-Path $InstallAssetsDir "config/channel-env") -Filter "*.env" | ForEach-Object {
+  Get-ChildItem (Join-Path $InstallAssetsDir "config/channels") -Filter "*.env" | ForEach-Object {
     Seed-File $_.FullName "$OpenPalmConfigHome/channels/$($_.Name)"
   }
 
-  Seed-File (Join-Path $InstallAssetsDir "secrets.env") "$OpenPalmConfigHome/secrets.env"
-  Seed-File (Join-Path $InstallAssetsDir "user.env") "$OpenPalmConfigHome/user.env"
+  Seed-File (Join-Path $InstallAssetsDir "config/secrets.env") "$OpenPalmConfigHome/secrets.env"
+  Seed-File (Join-Path $InstallAssetsDir "config/user.env") "$OpenPalmConfigHome/user.env"
 
   # Copy uninstall script to state directory for easy access
-  Copy-Item (Join-Path $InstallAssetsDir "uninstall.ps1") "$OpenPalmStateHome/uninstall.ps1" -Force
+  Copy-Item (Join-Path $InstallAssetsDir "state/scripts/uninstall.ps1") "$OpenPalmStateHome/uninstall.ps1" -Force
 
   Write-Host ""
   Write-Host "Directory structure created. Config seeded from defaults."

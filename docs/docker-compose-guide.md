@@ -1,23 +1,23 @@
 # Hosting in a Single Compose Stack + Extending with Channels/Tools
 *Extension guide: run everything in one compose file and safely grow the system.*
 
-## A) Single `assets/docker-compose.yml` stack
+## A) Single `assets/shared/docker-compose.yml` stack
 
 ### 1) Recommended layout
 ```
 openpalm/
   assets/
-    system.env
-    user.env
-    docker-compose.yml
-    caddy/
     config/
-      opencode-core/     Core agent extensions (plugins, skills, lib)
-      opencode-gateway/  Intake agent extensions (skills)
-      channel-env/       Channel-specific env files
+      system.env
+      user.env
+      opencode/          Core agent extensions (plugins, skills, lib)
+      channels/          Channel-specific env files
+    shared/
+      docker-compose.yml
+      caddy/
   .env
-  scripts/install.sh     Linux/macOS installer
-  scripts/install.ps1    Windows PowerShell installer
+  assets/state/scripts/install.sh     Linux/macOS installer
+  assets/state/scripts/install.ps1    Windows PowerShell installer
 
   opencode/              OpenCode Core Dockerfile + entrypoint (no baked-in extensions)
   gateway/               Gateway service (Bun)
@@ -29,7 +29,7 @@ openpalm/
     voice/               Voice/STT adapter
     telegram/            Telegram adapter
   docker-compose.yml     Local override for source builds
-  scripts/               CLI tools (extensions-cli.ts)
+  assets/state/scripts/  CLI tools (extensions-cli.ts)
   docs/                  Architecture, API reference, guides
 ```
 
@@ -37,17 +37,17 @@ openpalm/
 > All host mounts follow the XDG Base Directory layout — data, config, and state
 > are separated into `~/.local/share/openpalm`, `~/.config/openpalm`, and
 > `~/.local/state/openpalm` respectively. The three `OPENPALM_*` env vars are
-> resolved by `scripts/install.sh` / `scripts/install.ps1` and written into `.env`.
+> resolved by `assets/state/scripts/install.sh` / `assets/state/scripts/install.ps1` and written into `.env`.
 
 The installer also persists container runtime settings in `.env` so lifecycle actions stay consistent:
 - `OPENPALM_CONTAINER_PLATFORM` (`docker`, `podman`, `orbstack`)
 - `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
 - `OPENPALM_CONTAINER_SOCKET_PATH` + `OPENPALM_CONTAINER_SOCKET_URI`
 
-For local development, start by copying `assets/system.env` to `.env`.
-Treat `system.env` as installer/system-managed (advanced users only), and put user-specific overrides in `assets/user.env`.
+For local development, start by copying `assets/config/system.env` to `.env`.
+Treat `system.env` as installer/system-managed (advanced users only), and put user-specific overrides in `assets/config/user.env`.
 
-The full `assets/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.yml` on top. Key design points:
+The full `assets/shared/docker-compose.yml` file defines all services using published OpenPalm images. For local development builds, layer `docker-compose.yml` on top. Key design points:
 
 - **Single OpenCode runtime** — `opencode-core` (port 4096) hosts both the full agent (approval gates) and the `channel-intake` agent (all tools denied). Agent-level permissions provide isolation without requiring a separate runtime. Extensions (plugins, skills, lib) are volume-mounted from the host config directory, not baked into the container image.
 - **Gateway** connects to `opencode-core` via `OPENCODE_CORE_BASE_URL` and uses the `channel-intake` agent for intake validation.
@@ -56,7 +56,7 @@ The full `assets/docker-compose.yml` file defines all services using published O
 - **Admin-app** manages extensions, config, and containers via the controller.
 - **Controller** is the only service with container engine socket access and runs compose commands using the persisted runtime settings.
 
-See `assets/docker-compose.yml` for install/runtime defaults and `docker-compose.yml` for local build overrides.
+See `assets/shared/docker-compose.yml` for install/runtime defaults and `docker-compose.yml` for local build overrides.
 
 ---
 
@@ -72,7 +72,7 @@ RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs &&
 WORKDIR /work
 
 # Extensions (plugins, skills, agents, lib) are NOT baked into the image.
-# They are kept in assets/opencode/core/, copied to the host config
+# They are kept in assets/config/opencode/, copied to the host config
 # directory during install, and volume-mounted into /config at runtime.
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
@@ -84,7 +84,7 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 **Operational tips**
 - Pin `opencode-ai` version after validation.
 - Keep OpenCode on a private network; only expose the Gateway.
-- Extensions are managed via the `assets/opencode/core/` directory and seeded into the host config home by the installer. This keeps the container image lean and allows extensions to be updated without rebuilding the image.
+- Extensions are managed via the `assets/config/opencode/` directory and seeded into the host config home by the installer. This keeps the container image lean and allows extensions to be updated without rebuilding the image.
 
 ---
 

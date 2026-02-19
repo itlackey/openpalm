@@ -12,7 +12,7 @@
   "agent": {
     "channel-intake": {
       "description": "Validates, summarizes, and dispatches inbound channel requests",
-      "prompt": "Follow the skills/ChannelIntake.SKILL.md and skills/RecallFirst.SKILL.md behavioral rules. Follow the safety rules in AGENTS.md.",
+      "prompt": "Follow the skills/channel-intake/SKILL.md behavioral rules. Follow the safety rules in AGENTS.md.",
       "tools": {
         "bash": false,
         "edit": false,

@@ -9,7 +9,7 @@ function arg(name: string) {
 
 async function run() {
   if (!cmd) {
-    console.log("Usage: bun run scripts/extensions-cli.ts <install|uninstall|list> [--plugin <id>]");
+    console.log("Usage: bun run assets/state/scripts/extensions-cli.ts <install|uninstall|list> [--plugin <id>]");
     process.exit(1);
   }
 

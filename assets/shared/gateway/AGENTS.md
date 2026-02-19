@@ -1,4 +1,5 @@
-# ActionGating
+# Safety Rules (immutable)
+
 
 Classify actions by risk:
 - Safe: can run automatically.

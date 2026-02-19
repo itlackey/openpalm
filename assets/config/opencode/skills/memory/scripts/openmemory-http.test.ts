@@ -4,9 +4,9 @@ import {
   isSaveWorthy,
   loadConfig,
   OpenMemoryClient,
-} from "../assets/opencode/core/lib/openmemory-client.ts";
-import { formatRecallBlock } from "../assets/opencode/core/plugins/openmemory-http.ts";
-import type { MemoryHit } from "../assets/opencode/core/lib/openmemory-client.ts";
+} from "./openmemory-client.ts";
+import { formatRecallBlock } from "./openmemory-http.ts";
+import type { MemoryHit } from "./openmemory-client.ts";
 
 // ---------------------------------------------------------------------------
 // Secret detection

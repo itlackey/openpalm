@@ -309,7 +309,7 @@ export function listGalleryCategories(): { category: GalleryCategory; count: num
 
 const DEFAULT_REGISTRY_URL =
   process.env.OPENPALM_REGISTRY_URL ??
-  "https://raw.githubusercontent.com/itlackey/openpalm/main/registry/index.json";
+  "https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/registry/index.json";
 
 // Simple in-memory cache — refreshes every 10 minutes
 let _registryCache: { items: GalleryItem[]; fetchedAt: number } | null = null;

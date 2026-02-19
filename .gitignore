@@ -68,8 +68,8 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!assets/system.env
-!assets/user.env
+!assets/config/system.env
+!assets/config/user.env
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

@@ -151,7 +151,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-chat.env
+      - ${OPENPALM_CONFIG_HOME}/channels/chat.env
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
@@ -164,7 +164,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-discord.env
+      - ${OPENPALM_CONFIG_HOME}/channels/discord.env
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
@@ -177,7 +177,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-voice.env
+      - ${OPENPALM_CONFIG_HOME}/channels/voice.env
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
@@ -190,7 +190,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/channel-telegram.env
+      - ${OPENPALM_CONFIG_HOME}/channels/telegram.env
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080

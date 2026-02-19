@@ -10,36 +10,41 @@ Everything else (channels/services/UI panels) is derived from that.
 
 ### Extension directory layout
 
-Extensions are **not baked into the container image**. They live in `assets/opencode/` and are organized by which opencode instance they serve:
+Extensions are **not baked into the container image**. They live in `assets/config/opencode/` and `assets/shared/gateway/` and are organized by which opencode instance they serve:
 
 | Directory | Container | Purpose |
 |---|---|---|
-| `assets/opencode/core/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (ActionGating, MemoryPolicy, RecallFirst, ChannelIntake), lib (openmemory-client), AGENTS.md |
-| `assets/opencode/gateway/` | gateway | Intake agent: skills (ChannelIntake, RecallFirst), AGENTS.md |
+| `assets/config/opencode/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (memory/SKILL.md), lib (openmemory-client), AGENTS.md |
+| `assets/shared/gateway/` | gateway | Intake agent: skills (channel-intake/SKILL.md), AGENTS.md |
 
 The installer seeds these into `~/.config/openpalm/opencode-core/` and `~/.config/openpalm/opencode-gateway/` respectively. Docker compose volume-mounts them into the containers at runtime.
 
-### Recommended structure in `assets/opencode/`
+### Recommended structure in `assets/config/opencode/` and `assets/shared/gateway/`
 
 ```text
 assets/
-  opencode/
-    core/
+  config/
+    opencode/
       opencode.jsonc
       AGENTS.md
       plugins/
       skills/
+        memory/
+          SKILL.md
       lib/
       ssh/
+  shared/
     gateway/
       opencode.jsonc
       AGENTS.md
       skills/
+        channel-intake/
+          SKILL.md
 ```
 
 ### Extension authoring rule
 
-All new assistant features should be implemented as OpenCode extensions (plugin, skill, or shared `lib/` module) under `assets/opencode/` first, then enabled via `plugin[]` in `opencode.jsonc`.
+All new assistant features should be implemented as OpenCode extensions (plugin, skill, or shared `lib/` module) under `assets/config/opencode/` first, then enabled via `plugin[]` in `opencode.jsonc`.
 
 ### Naming conventions
 
@@ -48,9 +53,9 @@ All new assistant features should be implemented as OpenCode extensions (plugin,
 - Shared helpers in `lib/`: `kebab-case.ts` matching the plugin domain
 - Keep plugin IDs stable (`@scope/name` or `name`) so admin/API/CLI operations remain deterministic
 
-### Quick scaffold: add a local extension in `assets/opencode/core/`
+### Quick scaffold: add a local extension in `assets/config/opencode/`
 
-1. Create plugin file `assets/opencode/core/plugins/calendar-sync.ts`:
+1. Create plugin file `assets/config/opencode/plugins/calendar-sync.ts`:
 
 ```ts
 export default {
@@ -63,7 +68,7 @@ export default {
 };
 ```
 
-2. (Optional) Add a skill file `assets/opencode/core/skills/CalendarOps.SKILL.md`:
+2. (Optional) Add a skill file `assets/config/opencode/skills/CalendarOps.SKILL.md`:
 
 ```md
 # CalendarOps
@@ -71,7 +76,7 @@ export default {
 Use `calendar.ping` before running calendar actions to verify plugin health.
 ```
 
-3. Register the extension in `assets/opencode/core/opencode.jsonc`:
+3. Register the extension in `assets/config/opencode/opencode.jsonc`:
 
 ```jsonc
 {
@@ -100,8 +105,8 @@ Use `calendar.ping` before running calendar actions to verify plugin health.
 ### Reference architecture (brief)
 
 - `assets/` is the canonical source for install-time defaults.
-- `assets/opencode/core/` drives the `opencode-core` container (full assistant runtime).
-- `assets/opencode/gateway/` provides the restricted intake-agent config used by the gateway.
+- `assets/config/opencode/` drives the `opencode-core` container (full assistant runtime).
+- `assets/shared/gateway/` provides the restricted intake-agent config used by the gateway.
 - Gateway handles signature verification/rate limits and forwards validated work to `opencode-core`.
 - Admin manages config/extensions and invokes the controller for lifecycle actions.
 - Controller is the only container-control plane component and executes compose operations.
@@ -113,7 +118,7 @@ Use `calendar.ping` before running calendar actions to verify plugin health.
 ### Add extension
 - **Gallery** — browse curated plugins, skills, and container services
 - **npm search** — search the npm registry for OpenCode plugins
-- **CLI** — use `bun run scripts/extensions-cli.ts install --plugin <id>`
+- **CLI** — use `bun run assets/state/scripts/extensions-cli.ts install --plugin <id>`
 
 ### Source types
 - **npm package** (recommended): `name` or `@scope/name`
@@ -238,12 +243,12 @@ Your channel container is a dumb adapter:
 
 ## 8) Community Extension Registry
 
-OpenPalm maintains a **public community registry** in the `registry/` folder of this repository. The admin dashboard fetches this registry at runtime — no Docker image rebuild required to discover new extensions.
+OpenPalm maintains a **public community registry** in the `assets/state/registry/` folder of this repository. The admin dashboard fetches this registry at runtime — no Docker image rebuild required to discover new extensions.
 
 ### How it works
 
-- `registry/*.json` — one JSON file per community extension entry
-- `registry/index.json` — auto-generated aggregated list (rebuilt by CI on every merge to `main`)
+- `assets/state/registry/*.json` — one JSON file per community extension entry
+- `assets/state/registry/index.json` — auto-generated aggregated list (rebuilt by CI on every merge to `main`)
 - The admin fetches `index.json` from GitHub at runtime and caches results for 10 minutes
 
 ### Admin API endpoints
@@ -258,19 +263,19 @@ OpenPalm maintains a **public community registry** in the `registry/` folder of 
 By default the admin fetches from the main OpenPalm repository. To point to your own fork or a private registry, set the `OPENPALM_REGISTRY_URL` environment variable:
 
 ```env
-OPENPALM_REGISTRY_URL=https://raw.githubusercontent.com/your-org/your-fork/main/registry/index.json
+OPENPALM_REGISTRY_URL=https://raw.githubusercontent.com/your-org/your-fork/main/assets/state/registry/index.json
 ```
 
 ### Submitting an extension to the community registry
 
-See [`registry/README.md`](../registry/README.md) for the full contribution guide. The short version:
+See [`assets/state/registry/README.md`](../assets/state/registry/README.md) for the full contribution guide. The short version:
 
 1. Fork the repository
-2. Add a new `registry/<your-extension-id>.json` file
+2. Add a new `assets/state/registry/<your-extension-id>.json` file
 3. Open a pull request — CI validates your entry automatically
-4. After merge, `registry/index.json` is auto-regenerated and the extension becomes discoverable
+4. After merge, `assets/state/registry/index.json` is auto-regenerated and the extension becomes discoverable
 
-> Updating registry entries **never triggers a Docker image rebuild** — the CI workflow for building images explicitly excludes the `registry/` folder.
+> Updating registry entries **never triggers a Docker image rebuild** — the CI workflow for building images explicitly excludes the `assets/state/registry/` folder.
 
 ---
 
@@ -278,13 +283,13 @@ See [`registry/README.md`](../registry/README.md) for the full contribution guid
 
 ```bash
 # Install a plugin
-bun run scripts/extensions-cli.ts install --plugin @scope/plugin
+bun run assets/state/scripts/extensions-cli.ts install --plugin @scope/plugin
 
 # List installed plugins
-bun run scripts/extensions-cli.ts list
+bun run assets/state/scripts/extensions-cli.ts list
 
 # Uninstall a plugin
-bun run scripts/extensions-cli.ts uninstall --plugin @scope/plugin
+bun run assets/state/scripts/extensions-cli.ts uninstall --plugin @scope/plugin
 ```
 
 Set `ADMIN_TOKEN` in your environment to authenticate CLI requests.

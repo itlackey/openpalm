@@ -11,12 +11,12 @@ mkdir -p "$CRON_DIR"
 
 # Extensions (plugins, skills, lib, AGENTS.md) are mounted from the host
 # config directory — they are NOT baked into the image.  The installer seeds
-# default extensions from assets/opencode/core/ into the host config
+# default extensions from assets/config/opencode/ into the host config
 # home at install time, and docker-compose mounts that directory here.
 if [[ ! -f "$CONFIG_DIR/opencode.jsonc" ]]; then
   echo "ERROR: $CONFIG_DIR/opencode.jsonc not found."
   echo "The opencode config directory must be volume-mounted from the host."
-  echo "Run the installer or seed assets/opencode/core/ into the host config home."
+  echo "Run the installer or seed assets/config/opencode/ into the host config home."
   exit 1
 fi
 
