@@ -56,6 +56,7 @@ EOF
   /usr/sbin/sshd
 fi
 
-mkdir /work && cd /work 
+cd /work
+export HOME=/work
 
 exec opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs

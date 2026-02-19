@@ -71,6 +71,13 @@ if [[ ! -f "$DEV_DIR/config/opencode-core/opencode.jsonc" ]]; then
   echo '{}' > "$DEV_DIR/config/opencode-core/opencode.jsonc"
 fi
 
+# Seed a default project in the workspace so OpenCode's web UI has something to open.
+# OpenCode discovers projects by their git root, so we initialize a bare repo.
+if [[ ! -d "$DEV_DIR/state/workspace/default/.git" ]]; then
+  mkdir -p "$DEV_DIR/state/workspace/default"
+  git init "$DEV_DIR/state/workspace/default" >/dev/null 2>&1
+fi
+
 echo ""
 echo "Done. Directory layout:"
 echo "  .dev/config/  — CONFIG_HOME (caddy, opencode-core, channels, cron, ssh, secrets.env, user.env)"
