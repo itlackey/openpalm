@@ -8,6 +8,17 @@ OpenCode loads plugins via the top-level `plugin` array in `opencode.json`/`open
 **Your rule:** the Admin UI manages extensions by editing `opencode.jsonc -> plugin[]`.
 Everything else (channels/services/UI panels) is derived from that.
 
+### Extension directory layout
+
+Extensions are **not baked into the container image**. They live in `assets/config/` and are organized by which opencode instance they serve:
+
+| Directory | Container | Purpose |
+|---|---|---|
+| `assets/config/opencode-core/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (ActionGating, MemoryPolicy, RecallFirst, ChannelIntake), lib (openmemory-client), AGENTS.md |
+| `assets/config/opencode-gateway/` | gateway | Intake agent: skills (ChannelIntake, RecallFirst), AGENTS.md |
+
+The installer seeds these into `~/.config/openpalm/opencode-core/` and `~/.config/openpalm/opencode-gateway/` respectively. Docker compose volume-mounts them into the containers at runtime.
+
 ---
 
 ## 2) Admin UI: Extensions page UX
