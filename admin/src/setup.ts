@@ -1,6 +1,11 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+export type SmallModelConfig = {
+  endpoint: string;
+  modelId: string;
+};
+
 export type SetupState = {
   completed: boolean;
   completedAt?: string;
@@ -10,6 +15,7 @@ export type SetupState = {
     psql: string;
     qdrant: string;
   };
+  smallModel: SmallModelConfig;
   steps: {
     welcome: boolean;
     accessScope: boolean;
@@ -30,6 +36,10 @@ const DEFAULT_STATE: SetupState = {
     openmemory: "",
     psql: "",
     qdrant: ""
+  },
+  smallModel: {
+    endpoint: "",
+    modelId: ""
   },
   steps: {
     welcome: false,
@@ -62,6 +72,14 @@ function sanitizeServiceInstances(value: unknown): SetupState["serviceInstances"
   };
 }
 
+function sanitizeSmallModel(value: unknown): SmallModelConfig {
+  const source = (value && typeof value === "object") ? value as Partial<SmallModelConfig> : {};
+  return {
+    endpoint: typeof source.endpoint === "string" ? source.endpoint : "",
+    modelId: typeof source.modelId === "string" ? source.modelId : "",
+  };
+}
+
 function sanitizeSteps(value: unknown): SetupState["steps"] {
   const source = (value && typeof value === "object") ? value as Partial<SetupState["steps"]> : {};
   return {
@@ -82,6 +100,7 @@ function normalizeState(parsed: Partial<SetupState>): SetupState {
     completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
     accessScope,
     serviceInstances: sanitizeServiceInstances(parsed.serviceInstances),
+    smallModel: sanitizeSmallModel(parsed.smallModel),
     steps: sanitizeSteps(parsed.steps),
     enabledChannels: sanitizeStringArray(parsed.enabledChannels),
     installedExtensions: sanitizeStringArray(parsed.installedExtensions),
@@ -102,7 +121,7 @@ export class SetupManager {
       const parsed = JSON.parse(readFileSync(this.path, "utf8")) as Partial<SetupState>;
       return normalizeState(parsed);
     } catch {
-      return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps }, serviceInstances: { ...DEFAULT_STATE.serviceInstances } };
+      return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps }, serviceInstances: { ...DEFAULT_STATE.serviceInstances }, smallModel: { ...DEFAULT_STATE.smallModel } };
     }
   }
 
@@ -129,6 +148,16 @@ export class SetupManager {
     state.serviceInstances = {
       ...state.serviceInstances,
       ...serviceInstances
+    };
+    this.save(state);
+    return state;
+  }
+
+  setSmallModel(smallModel: Partial<SmallModelConfig>) {
+    const state = this.getState();
+    state.smallModel = {
+      ...state.smallModel,
+      ...smallModel
     };
     this.save(state);
     return state;

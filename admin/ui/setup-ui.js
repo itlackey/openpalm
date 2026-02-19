@@ -6,6 +6,7 @@
   let accessScope = "host";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
   let openmemoryProvider = { openaiBaseUrl: "", openaiApiKeyConfigured: false };
+  let smallModelProvider = { endpoint: "", modelId: "", apiKeyConfigured: false };
   let enabledChannels = [];
   let api;
   let esc;
@@ -39,6 +40,7 @@
     accessScope = setupState.accessScope || "host";
     serviceInstances = setupState.serviceInstances || { openmemory: "", psql: "", qdrant: "" };
     openmemoryProvider = setupState.openmemoryProvider || { openaiBaseUrl: "", openaiApiKeyConfigured: false };
+    smallModelProvider = setupState.smallModelProvider || { endpoint: "", modelId: "", apiKeyConfigured: false };
     enabledChannels = Array.isArray(setupState.enabledChannels) ? setupState.enabledChannels : [];
     if (!setupState.completed) runSetup();
   }
@@ -102,7 +104,18 @@
           + '<input id="wiz-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">OpenAI-compatible API key for OpenMemory</label>'
           + '<input id="wiz-openmemory-openai-key" type="password" placeholder="sk-..." value="" />'
-          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if OpenMemory should not use OpenAI-compatible model calls.") + '</div>';
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (openmemoryProvider.openaiApiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if OpenMemory should not use OpenAI-compatible model calls.") + '</div>'
+          + '<hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)" />'
+          + '<p style="margin:.5rem 0"><strong>Small / Fast Model for OpenCode</strong></p>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Configure a lightweight model for system tasks like summaries and title generation. This sets the <code>small_model</code> in the OpenCode configuration. Use an OpenAI-compatible endpoint — for example, a local <a href="https://ollama.com/" target="_blank" rel="noopener">Ollama</a> instance at <code>http://localhost:11434/v1</code>.</div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model endpoint (OpenAI-compatible)</label>'
+          + '<input id="wiz-small-model-endpoint" placeholder="http://localhost:11434/v1" value="' + esc(smallModelProvider.endpoint || "") + '" />'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model API key</label>'
+          + '<input id="wiz-small-model-key" type="password" placeholder="sk-... (leave blank if not required)" value="" />'
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (smallModelProvider.apiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if your endpoint does not require authentication (e.g. local Ollama).") + '</div>'
+          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model name</label>'
+          + '<input id="wiz-small-model-id" placeholder="ollama/tinyllama:latest" value="' + esc(smallModelProvider.modelId || "") + '" />'
+          + '<div class="muted" style="font-size:12px;margin-top:.2rem">Format: <code>provider/model-name</code>. Examples: <code>ollama/tinyllama:latest</code>, <code>openai/gpt-4o-mini</code></div>';
       case "security":
         return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
           + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Enter the admin password from your .env file to manage the platform.</div></div>'
@@ -188,8 +201,12 @@
       const qdrant = document.getElementById("wiz-svc-qdrant")?.value || "";
       const openaiBaseUrl = document.getElementById("wiz-openmemory-openai-base")?.value || "";
       const openaiApiKey = document.getElementById("wiz-openmemory-openai-key")?.value || "";
-      const servicePayload = { openmemory, psql, qdrant, openaiBaseUrl };
+      const smallModelEndpoint = document.getElementById("wiz-small-model-endpoint")?.value || "";
+      const smallModelApiKey = document.getElementById("wiz-small-model-key")?.value || "";
+      const smallModelId = document.getElementById("wiz-small-model-id")?.value || "";
+      const servicePayload = { openmemory, psql, qdrant, openaiBaseUrl, smallModelEndpoint, smallModelId };
       if (openaiApiKey.trim()) servicePayload.openaiApiKey = openaiApiKey.trim();
+      if (smallModelApiKey.trim()) servicePayload.smallModelApiKey = smallModelApiKey.trim();
       const serviceResult = await api("/admin/setup/service-instances", {
         method: "POST",
         body: JSON.stringify(servicePayload)
@@ -200,6 +217,7 @@
       }
       serviceInstances = serviceResult.data?.state?.serviceInstances || { openmemory, psql, qdrant };
       openmemoryProvider = serviceResult.data?.openmemoryProvider || openmemoryProvider;
+      smallModelProvider = serviceResult.data?.smallModelProvider || smallModelProvider;
     }
     await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
     wizardStep++;

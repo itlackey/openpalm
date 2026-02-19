@@ -91,4 +91,60 @@ describe("SetupManager service instance configuration", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("defaults small model values for first boot state", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      const state = manager.getState();
+      expect(state.smallModel).toEqual({ endpoint: "", modelId: "" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists updated small model values", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      manager.setSmallModel({ endpoint: "http://localhost:11434/v1", modelId: "ollama/tinyllama:latest" });
+      const state = manager.getState();
+      expect(state.smallModel).toEqual({
+        endpoint: "http://localhost:11434/v1",
+        modelId: "ollama/tinyllama:latest",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("partially updates small model fields", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      manager.setSmallModel({ endpoint: "http://localhost:11434/v1" });
+      manager.setSmallModel({ modelId: "ollama/tinyllama:latest" });
+      const state = manager.getState();
+      expect(state.smallModel).toEqual({
+        endpoint: "http://localhost:11434/v1",
+        modelId: "ollama/tinyllama:latest",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sanitizes malformed small model values from persisted state", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      writeFileSync(join(dir, "setup-state.json"), JSON.stringify({
+        smallModel: { endpoint: 123, modelId: ["bad"] }
+      }, null, 2), "utf8");
+      const state = manager.getState();
+      expect(state.smallModel).toEqual({ endpoint: "", modelId: "" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
