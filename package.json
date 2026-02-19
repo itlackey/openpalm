@@ -27,6 +27,7 @@
     "dev:ps": "docker compose --project-directory . --env-file .env -f assets/state/docker-compose.yml -f docker-compose.yml ps -a",
     "dev:config": "docker compose --project-directory . --env-file .env -f assets/state/docker-compose.yml -f docker-compose.yml config",
     "dev:fresh": "./dev-setup.sh --clean && docker compose --project-directory . --env-file .env -f assets/state/docker-compose.yml -f docker-compose.yml up -d --build",
+    "create:channel": "bun run scripts/create-channel.ts",
     "admin:extensions": "bun run assets/state/scripts/extensions-cli.ts",
     "test:unit": "bun test --filter '!integration|contract|security|compose|ui'",
     "test:integration": "bun test --filter integration",
