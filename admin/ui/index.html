@@ -365,7 +365,7 @@ function renderGallery() {
     h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + categoryLabel(item.category) + ' by ' + esc(item.author) + '</div>';
     h += '<p style="font-size:14px;margin:.4rem 0">' + esc(item.description).substring(0, 120) + '</p>';
     h += '<div>';
-    var tags = item.tags.slice(0, 4);
+    var tags = (item.tags || []).slice(0, 4);
     for (var ti = 0; ti < tags.length; ti++) h += '<span class="tag">' + esc(tags[ti]) + '</span>';
     h += '</div></div>';
   }
@@ -431,10 +431,12 @@ async function showDetail(id) {
   h += '<div style="font-size:14px;margin:.5rem 0"><strong>Security notes:</strong> ' + esc(item.securityNotes) + '</div>';
   h += '<div class="sec-title" style="margin-top:.6rem">Permissions Required</div>';
   h += '<ul class="perm-list">';
-  for (var pi = 0; pi < item.permissions.length; pi++) h += '<li>' + esc(item.permissions[pi]) + '</li>';
+  var perms = item.permissions || [];
+  for (var pi = 0; pi < perms.length; pi++) h += '<li>' + esc(perms[pi]) + '</li>';
   h += '</ul></div>';
   h += '<div class="mb">';
-  for (var ti = 0; ti < item.tags.length; ti++) h += '<span class="tag">' + esc(item.tags[ti]) + '</span>';
+  var itemTags = item.tags || [];
+  for (var ti = 0; ti < itemTags.length; ti++) h += '<span class="tag">' + esc(itemTags[ti]) + '</span>';
   h += '</div>';
   h += '<div class="sec-box">';
   h += '<div class="sec-title">Defense in Depth</div>';
