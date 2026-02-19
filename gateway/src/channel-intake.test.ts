@@ -34,4 +34,18 @@ describe("channel intake", () => {
     expect(decision.valid).toBe(false);
     expect(decision.reason).toBe("unsafe");
   });
+
+  it("rejects empty responses and truncated json", () => {
+    expect(() => parseIntakeDecision("")).toThrow();
+    expect(() => parseIntakeDecision('{"valid": true, "summary": "ok"')).toThrow();
+  });
+
+  it("rejects responses missing braces", () => {
+    expect(() => parseIntakeDecision('"valid":true,"summary":"ok"')).toThrow();
+  });
+
+  it("rejects double-encoded json strings", () => {
+    const doubleEncoded = JSON.stringify('{"valid":true,"summary":"ok","reason":""}');
+    expect(() => parseIntakeDecision(doubleEncoded)).toThrow();
+  });
 });

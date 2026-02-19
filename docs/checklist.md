@@ -88,3 +88,13 @@
 - [x] assets/state/scripts/install.sh seeds default configs from repo into XDG config home (preserving existing edits)
 - [x] assets/config/system.env documents the three XDG path variables
 - [x] All services, channels, and apps conform to the data/config/state separation pattern
+
+
+## Testing implementation status
+- [x] Gateway unit tests expanded (`rate-limit`, `audit`, intake/security/client edge cases)
+- [x] Controller route-level unit tests added with compose runner mocking
+- [x] Channel adapter unit tests added for chat/discord/telegram/voice
+- [x] Shared integration test suites added (`test/integration/*`)
+- [x] Contract test suites added (`test/contracts/*`)
+- [x] Security test suites added (`test/security/*`)
+- [ ] Full admin UI Playwright coverage completed (currently scaffolded in `admin/ui/tests/`)

@@ -9,18 +9,17 @@ function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });
 }
 
-function signPayload(secret: string, body: string) {
+export function signPayload(secret: string, body: string) {
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
-Bun.serve({
-  port: PORT,
-  async fetch(req) {
+export function createTelegramFetch(gatewayUrl: string, sharedSecret: string, webhookSecret: string, forwardFetch: typeof fetch = fetch) {
+  return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/health") return json(200, { ok: true });
     if (url.pathname !== "/telegram/webhook" || req.method !== "POST") return json(404, { error: "not_found" });
 
-    if (TELEGRAM_WEBHOOK_SECRET && req.headers.get("x-telegram-bot-api-secret-token") !== TELEGRAM_WEBHOOK_SECRET) {
+    if (webhookSecret && req.headers.get("x-telegram-bot-api-secret-token") !== webhookSecret) {
       return json(401, { error: "invalid_telegram_secret" });
     }
 
@@ -45,15 +44,18 @@ Bun.serve({
     };
 
     const serialized = JSON.stringify(payload);
-    const sig = signPayload(SHARED_SECRET, serialized);
-    const resp = await fetch(`${GATEWAY_URL}/channel/inbound`, {
+    const sig = signPayload(sharedSecret, serialized);
+    const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-channel-signature": sig },
       body: serialized
     });
 
     return new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } });
-  }
-});
+  };
+}
 
-console.log(`telegram channel listening on ${PORT}`);
+if (import.meta.main) {
+  Bun.serve({ port: PORT, fetch: createTelegramFetch(GATEWAY_URL, SHARED_SECRET, TELEGRAM_WEBHOOK_SECRET) });
+  console.log(`telegram channel listening on ${PORT}`);
+}

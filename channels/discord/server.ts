@@ -3,10 +3,8 @@ import { createHmac } from "node:crypto";
 const PORT = Number(Bun.env.PORT ?? 8184);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const SHARED_SECRET = Bun.env.CHANNEL_DISCORD_SECRET ?? "";
-const DISCORD_BOT_TOKEN = Bun.env.DISCORD_BOT_TOKEN ?? "";
-const DISCORD_PUBLIC_KEY = Bun.env.DISCORD_PUBLIC_KEY ?? "";
 
-function signPayload(secret: string, body: string) {
+export function signPayload(secret: string, body: string) {
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
@@ -14,7 +12,14 @@ function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });
 }
 
-async function forwardToGateway(userId: string, text: string, metadata: Record<string, unknown>) {
+async function forwardToGateway(
+  gatewayUrl: string,
+  sharedSecret: string,
+  forwardFetch: typeof fetch,
+  userId: string,
+  text: string,
+  metadata: Record<string, unknown>
+) {
   const payload = {
     userId,
     channel: "discord",
@@ -24,24 +29,22 @@ async function forwardToGateway(userId: string, text: string, metadata: Record<s
     timestamp: Date.now()
   };
   const serialized = JSON.stringify(payload);
-  const sig = signPayload(SHARED_SECRET, serialized);
+  const sig = signPayload(sharedSecret, serialized);
 
-  const resp = await fetch(`${GATEWAY_URL}/channel/inbound`, {
+  const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-channel-signature": sig },
     body: serialized
   });
 
-  return { status: resp.status, body: await resp.json() };
+  return { status: resp.status, body: await resp.json() as Record<string, unknown> };
 }
 
-Bun.serve({
-  port: PORT,
-  async fetch(req) {
+export function createDiscordFetch(gatewayUrl: string, sharedSecret: string, forwardFetch: typeof fetch = fetch) {
+  return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/health") return json(200, { ok: true, service: "channel-discord" });
 
-    // Discord interactions endpoint (webhook-based)
     if (url.pathname === "/discord/interactions" && req.method === "POST") {
       const body = await req.json() as {
         type?: number;
@@ -52,19 +55,15 @@ Bun.serve({
         guild_id?: string;
       };
 
-      // Type 1: PING (Discord verification)
-      if (body.type === 1) {
-        return json(200, { type: 1 });
-      }
+      if (body.type === 1) return json(200, { type: 1 });
 
-      // Type 2: APPLICATION_COMMAND
       if (body.type === 2) {
         const user = body.member?.user ?? body.user;
         const userId = user?.id ? `discord:${user.id}` : "discord:unknown";
         const text = body.data?.options?.[0]?.value ?? body.data?.name ?? "";
         if (!text) return json(200, { type: 4, data: { content: "No message provided." } });
 
-        const result = await forwardToGateway(userId, text, {
+        const result = await forwardToGateway(gatewayUrl, sharedSecret, forwardFetch, userId, text, {
           channelId: body.channel_id,
           guildId: body.guild_id,
           username: user?.username
@@ -77,7 +76,6 @@ Bun.serve({
       return json(200, { type: 1 });
     }
 
-    // Simple webhook inbound (for bot message forwarding)
     if (url.pathname === "/discord/webhook" && req.method === "POST") {
       const body = await req.json() as {
         userId?: string;
@@ -89,7 +87,7 @@ Bun.serve({
       if (!body.text) return json(400, { error: "text_required" });
 
       const userId = body.userId ? `discord:${body.userId}` : "discord:unknown";
-      const result = await forwardToGateway(userId, body.text, {
+      const result = await forwardToGateway(gatewayUrl, sharedSecret, forwardFetch, userId, body.text, {
         channelId: body.channelId,
         guildId: body.guildId,
         username: body.username
@@ -99,7 +97,10 @@ Bun.serve({
     }
 
     return json(404, { error: "not_found" });
-  }
-});
+  };
+}
 
-console.log(`discord channel listening on ${PORT}`);
+if (import.meta.main) {
+  Bun.serve({ port: PORT, fetch: createDiscordFetch(GATEWAY_URL, SHARED_SECRET) });
+  console.log(`discord channel listening on ${PORT}`);
+}
