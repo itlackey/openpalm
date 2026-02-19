@@ -90,6 +90,8 @@ The extension gallery lets users discover, install, and uninstall extensions wit
 
 ### Connections management
 
+> **Implementation Status:** Connections management is planned but not yet fully implemented as a unified UI. Currently, credentials are managed per-feature: AI provider keys via the System > Providers section, channel tokens in per-channel `.env` files, and other secrets directly in `secrets.env`. The unified Connections page described below is planned for a future release.
+
 The admin UI provides a Connections page for managing named credential/endpoint configurations:
 
 - **What users see**: Each connection is displayed with a friendly name, a status indicator (connected / error / unchecked), and "Used by" information listing which extensions reference it.

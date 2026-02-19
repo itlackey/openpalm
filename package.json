@@ -9,7 +9,9 @@
     "channels/chat",
     "channels/discord",
     "channels/voice",
-    "channels/telegram"
+    "channels/telegram",
+    "channels/webhook",
+    "shared"
   ],
   "scripts": {
     "test": "bun test",

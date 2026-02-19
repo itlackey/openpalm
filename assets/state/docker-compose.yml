@@ -91,6 +91,12 @@ services:
     working_dir: /work
     networks: [assistant_net]
     depends_on: [openmemory]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
 
   gateway:
@@ -110,6 +116,12 @@ services:
       # Gateway opencode config is baked into the image; no host override needed.
     networks: [assistant_net]
     depends_on: [opencode-core]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
@@ -137,6 +149,12 @@ services:
       - ${OPENPALM_STATE_HOME}:/workspace
     networks: [assistant_net]
     depends_on: [controller]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   controller:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/controller:${OPENPALM_IMAGE_TAG:-latest}

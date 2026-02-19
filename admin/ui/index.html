@@ -147,7 +147,8 @@ const CHANNEL_FRIENDLY = {
   'channel-chat': 'Chat',
   'channel-discord': 'Discord',
   'channel-voice': 'Voice',
-  'channel-telegram': 'Telegram'
+  'channel-telegram': 'Telegram',
+  'channel-webhook': 'Webhook'
 };
 
 function friendlyServiceName(svc) {
@@ -324,6 +325,18 @@ async function loadGallery() {
   const qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
   const r = await api(qs);
   galleryItems = r.ok ? r.data.items : [];
+  // Also load community extensions
+  try {
+    const cr = await api('/admin/gallery/community');
+    if (cr.ok && cr.data.items) {
+      var communityItems = cr.data.items.filter(function(ci) {
+        return !galleryItems.some(function(g) { return g.id === ci.id; });
+      });
+      if (communityItems.length > 0) {
+        galleryItems = galleryItems.concat(communityItems.map(function(ci) { ci._community = true; return ci; }));
+      }
+    }
+  } catch(e) { /* community registry unavailable */ }
   renderGallery();
 }
 
@@ -393,6 +406,7 @@ function renderGallery() {
     h += '<div>';
     const tags = (item.tags || []).slice(0, 4);
     for (let ti = 0; ti < tags.length; ti++) h += '<span class="tag">' + esc(tags[ti]) + '</span>';
+    if (item._community) h += '<span class="tag" style="background:#e8f0fe;color:#1a73e8;border:1px solid #c5d9f7">Community</span>';
     h += '</div></div>';
   }
   h += '</div>';

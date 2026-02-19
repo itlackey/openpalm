@@ -10,6 +10,14 @@ import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, 
 import type { GalleryCategory } from "./gallery.ts";
 import type { ModelAssignment } from "./types.ts";
 
+// TODO: Split this file into route modules as it grows:
+//   routes/setup.ts       - Setup wizard endpoints (/admin/setup/*)
+//   routes/gallery.ts     - Extension gallery endpoints (/admin/gallery/*)
+//   routes/channels.ts    - Channel management endpoints (/admin/channels/*)
+//   routes/automations.ts - Automation CRUD endpoints (/admin/automations/*)
+//   routes/providers.ts   - Provider management endpoints (/admin/providers/*)
+//   routes/system.ts      - System/config endpoints (/admin/containers/*, /admin/config/*)
+
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
 const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/config/opencode.jsonc";
@@ -26,18 +34,19 @@ const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
-const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
+const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram", "channel-webhook"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const KNOWN_SERVICES = new Set<string>([
   "gateway", "controller", "opencode-core", "openmemory", "openmemory-ui",
   "admin", "caddy",
-  "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
+  "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "channel-webhook"
 ]);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
   "channel-voice": [],
-  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
+  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
+  "channel-webhook": ["WEBHOOK_INBOUND_TOKEN"]
 };
 
 const setupManager = new SetupManager(DATA_DIR);
@@ -86,27 +95,31 @@ function snapshotFile(path: string) {
 
 
 
-function channelRewritePath(channel: "chat" | "voice" | "discord" | "telegram") {
+type ChannelName = "chat" | "voice" | "discord" | "telegram" | "webhook";
+
+function channelRewritePath(channel: ChannelName) {
   if (channel === "chat") return "/chat";
   if (channel === "voice") return "/voice/transcription";
   if (channel === "discord") return "/discord/webhook";
+  if (channel === "webhook") return "/webhook/inbound";
   return "/telegram/webhook";
 }
 
-function channelPort(channel: "chat" | "voice" | "discord" | "telegram") {
+function channelPort(channel: ChannelName) {
   if (channel === "chat") return "8181";
   if (channel === "voice") return "8183";
   if (channel === "discord") return "8184";
+  if (channel === "webhook") return "8185";
   return "8182";
 }
 
-function detectChannelAccess(channel: "chat" | "voice" | "discord" | "telegram"): "lan" | "public" {
+function detectChannelAccess(channel: ChannelName): "lan" | "public" {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
   const block = raw.match(new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m"))?.[0] ?? "";
   return block.includes("abort @not_lan") ? "lan" : "public";
 }
 
-function setChannelAccess(channel: "chat" | "voice" | "discord" | "telegram", access: "lan" | "public") {
+function setChannelAccess(channel: ChannelName, access: "lan" | "public") {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
   const blockRegex = new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m");
   const replacement = access === "lan"
@@ -335,6 +348,7 @@ const server = Bun.serve({
             "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
             "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
             "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
+            "channel-webhook": { label: "Webhook Channel", description: "Receive messages from external services" },
             caddy: { label: "Web Server", description: "Handles secure connections" }
           },
           channelFields: {
@@ -349,6 +363,9 @@ const server = Bun.serve({
             "channel-telegram": [
               { key: "TELEGRAM_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Get a bot token from @BotFather on Telegram" },
               { key: "TELEGRAM_WEBHOOK_SECRET", label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" }
+            ],
+            "channel-webhook": [
+              { key: "WEBHOOK_INBOUND_TOKEN", label: "Inbound Token", type: "password", required: false, helpText: "Token to authenticate incoming webhook requests" }
             ]
           }
         }));
@@ -634,7 +651,7 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, {
           channels: CHANNEL_SERVICES.map((service) => {
-            const channelName = service.replace("channel-", "") as "chat" | "voice" | "discord" | "telegram";
+            const channelName = service.replace("channel-", "") as ChannelName;
             return {
               service,
               label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
@@ -653,8 +670,8 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/channels/access" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { channel: "chat" | "voice" | "discord" | "telegram"; access: "lan" | "public" };
-        if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
+        const body = (await req.json()) as { channel: ChannelName; access: "lan" | "public" };
+        if (!["chat", "voice", "discord", "telegram", "webhook"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
         if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
         setChannelAccess(body.channel, body.access);
         await controllerAction("restart", "caddy", `channel ${body.channel} access ${body.access}`);

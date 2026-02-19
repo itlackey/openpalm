@@ -77,6 +77,8 @@ The configuration directory mount is the key architectural element. It means the
 
 ## Connections
 
+> **Implementation Status:** The Connections concept is partially implemented. Credentials are currently managed per-feature (AI provider keys in `secrets.env`, channel tokens in channel `.env` files, and provider settings via the admin UI's System > Providers section). The unified Connections management UI described below is planned for a future release.
+
 ### What the user sees
 
 Connections are where you manage the accounts and credentials your assistant uses to interact with external services. If you want your assistant to use a specific AI model provider, connect to your GitHub account, or access an API, you set that up as a connection. Each connection has a friendly name (like "Anthropic" or "GitHub"), shows whether it's configured, and lets you enter or update credentials. Once a connection is set up, it becomes available wherever it's needed -- you might use the same OpenAI connection for both the assistant's memory system and an extension that needs embeddings.
