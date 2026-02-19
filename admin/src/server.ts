@@ -11,7 +11,7 @@ import type { GalleryCategory } from "./gallery.ts";
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
 const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/config/opencode.jsonc";
-const DATA_DIR = "/app/data";
+const DATA_DIR = Bun.env.DATA_DIR ?? "/app/data";
 const CONTROLLER_URL = Bun.env.CONTROLLER_URL;
 const CONTROLLER_TOKEN = Bun.env.CONTROLLER_TOKEN ?? "";
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -23,6 +23,7 @@ const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/confi
 const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
+const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
@@ -637,18 +638,21 @@ const server = Bun.serve({
 
       // ── Static UI ─────────────────────────────────────────────────
       if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
-        if (!existsSync("/app/ui/index.html")) return cors(json(500, { error: "admin ui missing" }));
-        return new Response(Bun.file("/app/ui/index.html"), { headers: { "content-type": "text/html" } });
+        const indexPath = `${UI_DIR}/index.html`;
+        if (!existsSync(indexPath)) return cors(json(500, { error: "admin ui missing" }));
+        return new Response(Bun.file(indexPath), { headers: { "content-type": "text/html" } });
       }
 
       if (url.pathname === "/setup-ui.js" && req.method === "GET") {
-        if (!existsSync("/app/ui/setup-ui.js")) return cors(json(404, { error: "setup ui missing" }));
-        return new Response(Bun.file("/app/ui/setup-ui.js"), { headers: { "content-type": "application/javascript" } });
+        const jsPath = `${UI_DIR}/setup-ui.js`;
+        if (!existsSync(jsPath)) return cors(json(404, { error: "setup ui missing" }));
+        return new Response(Bun.file(jsPath), { headers: { "content-type": "application/javascript" } });
       }
 
       if (url.pathname === "/logo.png" && req.method === "GET") {
-        if (!existsSync("/app/ui/logo.png")) return cors(json(404, { error: "logo missing" }));
-        return new Response(Bun.file("/app/ui/logo.png"), { headers: { "content-type": "image/png" } });
+        const logoPath = `${UI_DIR}/logo.png`;
+        if (!existsSync(logoPath)) return cors(json(404, { error: "logo missing" }));
+        return new Response(Bun.file(logoPath), { headers: { "content-type": "image/png" } });
       }
 
       return cors(json(404, { error: "not_found" }));

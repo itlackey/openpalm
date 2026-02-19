@@ -300,7 +300,7 @@ try {
 
   Write-Host "If you want channel adapters too: $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath --profile channels up -d"
 
-  $adminReadyUrl = "http://localhost/admin/setup/status"
+  $adminReadyUrl = "http://localhost/admin/api/setup/status"
   $setupUrl = "http://localhost/admin"
   $ready = $false
 
