@@ -9,9 +9,9 @@ This document is a technical review of how OpenPalm implements its extension sys
 | Sub-type | Risk | Directory | Description |
 |---|---|---|---|
 | Skill | lowest | `skills/<name>/SKILL.md` | Markdown behavioral directive injected into prompt context |
-| Command | low | `commands/<name>.md` (currently `command/` in codebase, migration to plural planned) | Slash command definition |
+| Command | low | `commands/<name>.md` | Slash command definition |
 | Agent | medium | `agents/<name>.md` | Specialized assistant persona |
-| Custom Tool | medium-high | `tools/<name>.ts` (currently `tool/` in codebase, migration to plural planned) | TypeScript LLM-callable function |
+| Custom Tool | medium-high | `tools/<name>.ts` | TypeScript LLM-callable function |
 | Plugin | highest | `plugins/<name>.ts` | TypeScript lifecycle hooks |
 
 OpenCode auto-discovers each sub-type from its respective subdirectory under `OPENCODE_CONFIG_DIR`. The `plugin[]` array in `opencode.jsonc` is specifically for registering Plugin-type extensions and npm packages; it does not cover Skills, Commands, Agents, or Custom Tools.
@@ -34,11 +34,11 @@ git history for implementation details.
 | R5  | Done   | MCP disabled in opencode.jsonc |
 | R6  | Done   | Entrypoint config layering fixed with cp -rn merge |
 | R7  | Done   | Plugin type signatures adopted |
-| R8  | Done   | Custom tools created in tools/ directory (currently tool/ in codebase, migration to plural planned) |
+| R8  | Done   | Custom tools created in tools/ directory |
 | R9  | Done   | Model and provider config added |
 | R10 | Done   | extensionManifest documentation removed |
 | R11 | Done   | Channel-intake agent moved to agent/ markdown file |
-| R12 | Done   | Slash commands created in commands/ directory (currently command/ in codebase, migration to plural planned) |
+| R12 | Done   | Slash commands created in commands/ directory |
 
 ---
 
@@ -102,7 +102,7 @@ MCP is explicitly disabled in `opencode.jsonc` (`"enabled": false`). The `openme
 The `extensionManifest` convention has been removed from documentation.
 
 ### 8. Custom Tools (R8) — RESOLVED
-Custom Tools (medium-high risk extension sub-type) are now implemented in `opencode/extensions/tools/` (currently `tool/` in codebase, migration to plural planned) with Zod-validated parameters: `memory-query.ts`, `memory-save.ts`, `health-check.ts`.
+Custom Tools (medium-high risk extension sub-type) are now implemented in `opencode/extensions/tools/` with Zod-validated parameters: `memory-query.ts`, `memory-save.ts`, `health-check.ts`.
 
 ### 9. Model and Provider Configuration (R9) — RESOLVED
 `opencode.jsonc` now specifies `model: "anthropic/claude-sonnet-4-5"` and provider configuration with env-based API key. Provider credentials are managed as Connections in `secrets.env`.
@@ -114,7 +114,7 @@ The `channel-intake` agent (an Agent-type extension, medium risk) is now defined
 The entrypoint uses `cp -rn` (no-clobber recursive copy) to merge baked-in defaults into `/config/`, ensuring baked-in extensions are available even when the host provides an `opencode.jsonc` override.
 
 ### 12. Slash Commands (R12) — RESOLVED
-Default slash commands (Command-type extension, low risk) ship in `opencode/extensions/commands/` (currently `command/` in codebase, migration to plural planned) for memory recall, memory save, and health check operations.
+Default slash commands (Command-type extension, low risk) ship in `opencode/extensions/commands/` for memory recall, memory save, and health check operations.
 
 ---
 
@@ -204,7 +204,7 @@ Refactor plugins to use the standard `Plugin` type from `@opencode-ai/plugin`, e
 
 ### R8. Add Custom Tools for Core Operations (Medium Impact, Medium Effort)
 
-Create `opencode/extensions/tools/` (canonical plural form; currently `tool/` in codebase, migration to plural planned) with typed Custom Tool extensions (medium-high risk) for memory search, memory save, health checks, and cron/Automation status.
+Create `opencode/extensions/tools/` with typed Custom Tool extensions (medium-high risk) for memory search, memory save, health checks, and cron/Automation status.
 
 ### R9. Specify Model and Provider in Config (Medium Impact, Low Effort)
 
@@ -231,7 +231,7 @@ Create `gateway/opencode/agent/channel-intake.md` with frontmatter, remove the i
 
 ### R12. Add Commands for Common Operations (Low Impact, Medium Effort)
 
-Ship default slash commands (Command-type extensions, low risk) under `opencode/extensions/commands/` (currently `command/` in codebase, migration to plural planned) for common operator tasks. Consider adding a command for listing active Automations.
+Ship default slash commands (Command-type extensions, low risk) under `opencode/extensions/commands/` for common operator tasks. Consider adding a command for listing active Automations.
 
 ---
 

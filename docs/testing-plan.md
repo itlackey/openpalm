@@ -219,7 +219,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Search by text | type query + Enter → cards filtered; empty results shows message |
 | Category filter tabs | Category filters for Skills, Commands, Agents, Tools, and Plugins; click any category → only matching cards; click "All" → all cards back |
 | Card content | each card shows name, risk badge, category, author, description (truncated), tags (max 4) |
-| Risk badge colors | low=green, medium=yellow, high=red, critical=purple |
+| Risk badge colors | lowest=gray (#8e8e93), low=green (#34c759), medium=yellow (#ff9500), medium-high=orange (#ff6b35), highest=red (#ff3b30) |
 | Detail modal opens | click card → modal overlay appears with full item details |
 | Detail modal content | modal shows: name, category, version, author, risk badge, risk description, security notes, permissions list, defense-in-depth section |
 | Detail modal close | click X or overlay background → modal closes |
@@ -259,14 +259,14 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Test | Assertions |
 |------|------------|
 | Empty state | no automations → shows empty message or empty list |
-| Create automation | fill name, schedule, prompt → click Create → automation appears in list; calls `POST /admin/crons` |
+| Create automation | fill name, schedule, prompt → click Create → automation appears in list; calls `POST /admin/automations` |
 | Automation card content | shows name, enabled/disabled badge, schedule in `<code>`, prompt preview (truncated 120 chars) |
 | Validation: missing fields | submit with empty name → "All fields are required" error |
 | Validation: invalid schedule | submit with bad expression → server error shown |
-| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /admin/crons/update` |
-| Delete automation | click Delete → confirm → automation removed from list; calls `POST /admin/crons/delete` |
-| Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /admin/crons/update` |
-| Run Now | click Run Now → calls `POST /admin/crons/trigger` → success message |
+| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /admin/automations/update` |
+| Delete automation | click Delete → confirm → automation removed from list; calls `POST /admin/automations/delete` |
+| Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /admin/automations/update` |
+| Run Now | click Run Now → calls `POST /admin/automations/trigger` → success message |
 | Multiple automations | create 3 automations → all 3 visible in list |
 | Persistence | create automation → reload page → automation still listed (re-fetched from API) |
 

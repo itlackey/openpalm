@@ -10,11 +10,11 @@ This document provides a complete end-to-end reference for how extensions are au
 
 **Skill** (lowest risk) — A Markdown file that defines behavioral standard operating procedures. Injected into the agent's prompt context to guide how the LLM reasons and responds. Skills have no code execution capability — they are pure behavioral rules. Skills can include a `scripts/` subdirectory with supporting code. Located at `skills/<name>/SKILL.md`.
 
-**Command** (low risk) — A Markdown file with YAML frontmatter that defines a slash command the agent recognizes. Commands instruct the agent to invoke tools or perform specific actions when the user types a `/command`. Located at `commands/<name>.md` (currently `command/` in codebase, migration to plural planned).
+**Command** (low risk) — A Markdown file with YAML frontmatter that defines a slash command the agent recognizes. Commands instruct the agent to invoke tools or perform specific actions when the user types a `/command`. Located at `commands/<name>.md`.
 
 **Agent** (medium risk) — A Markdown file with YAML frontmatter that defines a specialized assistant persona with its own tool configuration, skills, and behavioral rules. Located at `agents/<name>.md`.
 
-**Custom Tool** (medium-high risk) — A TypeScript file defining a Zod-validated, LLM-callable function that OpenCode auto-discovers and exposes to the agent. Located at `tools/<name>.ts` (currently `tool/` in codebase, migration to plural planned).
+**Custom Tool** (medium-high risk) — A TypeScript file defining a Zod-validated, LLM-callable function that OpenCode auto-discovers and exposes to the agent. Located at `tools/<name>.ts`.
 
 **Plugin** (highest risk) — A TypeScript file that hooks into the OpenCode runtime event system. Plugins execute code at defined lifecycle points (before tool calls, after responses, on session idle, during compaction) and can inspect, block, or augment agent behavior programmatically. Located at `plugins/<name>.ts`.
 
@@ -77,11 +77,11 @@ opencode/extensions/
 ├── skills/
 │   └── memory/
 │       └── SKILL.md                        # Memory policy + recall-first behavioral rules
-├── tools/                                  # (currently tool/ in codebase, migration to plural planned)
+├── tools/
 │   ├── memory-query.ts                     # LLM-callable tool: search OpenMemory
 │   ├── memory-save.ts                      # LLM-callable tool: save to OpenMemory
 │   └── health-check.ts                     # LLM-callable tool: check service health
-└── commands/                               # (currently command/ in codebase, migration to plural planned)
+└── commands/
     ├── memory-recall.md                    # Slash command: /memory-recall
     ├── memory-save.md                      # Slash command: /memory-save
     └── health.md                           # Slash command: /health
@@ -164,7 +164,7 @@ The entrypoint uses `cp -rn` (no-clobber recursive copy), which merges baked-in 
 
 OpenCode discovers and loads plugins through two mechanisms:
 
-**Auto-discovery** — Any `.ts` file in `$OPENCODE_CONFIG_DIR/plugins/` is automatically discovered and loaded. Custom tools in `tools/` (currently `tool/` in codebase) and slash commands in `commands/` (currently `command/` in codebase) are also auto-discovered from their respective subdirectories.
+**Auto-discovery** — Any `.ts` file in `$OPENCODE_CONFIG_DIR/plugins/` is automatically discovered and loaded. Custom tools in `tools/` and slash commands in `commands/` are also auto-discovered from their respective subdirectories.
 
 **Explicit registration** — Plugins listed in the `plugin[]` array of `opencode.jsonc` are loaded by identifier. These can be npm packages (`@scope/name`) or local paths (`./plugins/my-plugin.ts`). The `plugin[]` array is specifically for registering Plugin-type extensions and npm packages — it does not cover Skills, Commands, Agents, or Custom Tools, which are discovered from their respective directories under `OPENCODE_CONFIG_DIR`. When a plugin is an npm package, OpenCode runs `bun install` at startup to resolve dependencies.
 
@@ -307,7 +307,7 @@ Both patterns return an object whose keys are event hooks (`tool.execute.before`
 
 ## Custom Tools (`tools/`)
 
-The `tools/` directory (currently `tool/` in codebase, migration to plural planned) contains Zod-validated, LLM-callable functions that OpenCode auto-discovers and exposes to the agent. Custom Tools are a medium-high risk extension sub-type.
+The `tools/` directory contains Zod-validated, LLM-callable functions that OpenCode auto-discovers and exposes to the agent. Custom Tools are a medium-high risk extension sub-type.
 
 ### `memory-query.ts`
 
@@ -325,7 +325,7 @@ Checks the health of core OpenPalm services (gateway, openmemory, admin) by hitt
 
 ## Slash Commands (`commands/`)
 
-The `commands/` directory (currently `command/` in codebase, migration to plural planned) contains Markdown files that define slash commands the agent recognizes. Commands are a low-risk extension sub-type. Each file has YAML frontmatter declaring the command name, description, and arguments.
+The `commands/` directory contains Markdown files that define slash commands the agent recognizes. Commands are a low-risk extension sub-type. Each file has YAML frontmatter declaring the command name, description, and arguments.
 
 ### `memory-recall.md` — `/memory-recall`
 

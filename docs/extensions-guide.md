@@ -45,12 +45,12 @@ opencode/
     skills/
       memory/
         SKILL.md
-    commands/                         # (currently command/ in codebase, migration to plural planned)
+    commands/
       memory-recall.md
       memory-save.md
       health.md
     agents/
-    tools/                            # (currently tool/ in codebase, migration to plural planned)
+    tools/
       memory-query.ts
       memory-save.ts
       health-check.ts

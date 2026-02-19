@@ -1,5 +1,7 @@
 # Documentation vs Implementation Discrepancy Report
 
+> **Historical Snapshot (2026-02-19):** This report was generated before the alignment fixes on this branch were applied. Many issues listed below have since been resolved. See `docs/ux-cohesion-review.md` for current status.
+
 **Date:** February 19, 2026  
 **Scope:** End-to-end review of `/docs` directory comparing documentation to implementation
 

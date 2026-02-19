@@ -53,14 +53,14 @@ jobs:
 
             # 3. Enum fields
             CATEGORY=$(jq -r '.category // ""' "$f")
-            if [[ "$CATEGORY" != "plugin" && "$CATEGORY" != "skill" && "$CATEGORY" != "container" ]]; then
-              ENTRY_ERRORS="${ENTRY_ERRORS}\n- \`category\` must be one of: plugin, skill, container"
+            if [[ "$CATEGORY" != "plugin" && "$CATEGORY" != "skill" && "$CATEGORY" != "command" && "$CATEGORY" != "agent" && "$CATEGORY" != "tool" && "$CATEGORY" != "channel" ]]; then
+              ENTRY_ERRORS="${ENTRY_ERRORS}\n- \`category\` must be one of: plugin, skill, command, agent, tool, channel"
               ERRORS=$((ERRORS + 1))
             fi
 
             RISK=$(jq -r '.risk // ""' "$f")
-            if [[ "$RISK" != "low" && "$RISK" != "medium" && "$RISK" != "high" && "$RISK" != "critical" ]]; then
-              ENTRY_ERRORS="${ENTRY_ERRORS}\n- \`risk\` must be one of: low, medium, high, critical"
+            if [[ "$RISK" != "lowest" && "$RISK" != "low" && "$RISK" != "medium" && "$RISK" != "medium-high" && "$RISK" != "highest" ]]; then
+              ENTRY_ERRORS="${ENTRY_ERRORS}\n- \`risk\` must be one of: lowest, low, medium, medium-high, highest"
               ERRORS=$((ERRORS + 1))
             fi
 

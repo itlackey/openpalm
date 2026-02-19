@@ -210,7 +210,7 @@ Directory names are **plural** by convention.
 
 | Source Directory | Container | Contents |
 |---|---|---|
-| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/ (currently singular `tool/` in codebase, migration to plural planned), commands/ (currently singular `command/` in codebase, migration to plural planned), skills/memory/ |
+| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/, commands/, skills/memory/ |
 | `gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, agent/channel-intake.md, skills/channel-intake/ |
 
 | Store | Used by | Purpose |

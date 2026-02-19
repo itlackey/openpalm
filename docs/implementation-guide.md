@@ -51,7 +51,7 @@ Even if OpenMemory supports more, standardize on these operations in your assist
 Extensions are baked into the container images at build time:
 - `opencode/extensions/opencode.jsonc` – primary config for the core agent
 - `opencode/extensions/AGENTS.md` – rules (hard constraints)
-- `opencode/extensions/skills/*.SKILL.md` – reusable behavioral SOPs
+- `opencode/extensions/skills/<name>/SKILL.md` – reusable behavioral SOPs
 - `opencode/extensions/skills/memory/scripts/` – shared utility scripts (not an extension sub-type; baked into the image as `OPENCODE_CONFIG_DIR`)
 - `gateway/opencode/` – intake agent config (baked into the gateway container image)
 
@@ -171,9 +171,9 @@ Put immutable constraints here:
 
 ### Skills (SOPs)
 Create skills that the assistant can load:
-- `RecallFirst.SKILL.md` – always query memory for user-specific context
-- `MemoryPolicy.SKILL.md` – when to store; redaction; summarization
-- `ActionGating.SKILL.md` – when to ask; what to refuse
+- `skills/memory/SKILL.md` – always query memory for user-specific context
+- `skills/memory/SKILL.md` – when to store; redaction; summarization (consolidated into skills/memory/SKILL.md)
+- `gateway/opencode/AGENTS.md` – when to ask; what to refuse
 
 ---
 

@@ -24,7 +24,7 @@ An extension is the umbrella term for all types of [OpenCode](https://opencode.a
 | **Custom Tool** | A TypeScript/JavaScript module that exposes a callable function to the assistant using the `tool()` helper from [`@opencode-ai/plugin`](https://opencode.ai/docs/custom-tools/). The TS definition can invoke scripts in any language (Python, bash, etc.) via `Bun.$`. Tools receive session context (`agent`, `sessionID`, `directory`, `worktree`) and can make network requests, read files, and interact with services. Multiple tools can be exported from a single file. | `tools/<n>.ts` | Medium to high -- executes code at runtime |
 | **Plugin** | A TypeScript module that hooks into the [OpenCode lifecycle](https://opencode.ai/docs/plugins/) via event subscriptions (e.g., `tool.execute.before`, `session.idle`, `experimental.session.compacting`). Plugins can intercept, modify, or block tool execution, create additional custom tools via the `tool` helper, inject environment variables, send notifications, and integrate with external services. Plugins can be loaded from local files *or* from npm packages listed in the [`plugin` config array](https://opencode.ai/docs/config/#plugins) -- npm plugins are auto-installed by Bun at startup and cached in `~/.cache/opencode/node_modules/`. | `plugins/<n>.ts` or npm package in config | Highest -- can observe and modify all tool calls |
 
-> **Note on directory naming:** OpenCode uses [plural directory names](https://opencode.ai/docs/config/#custom-directory) (`skills/`, `agents/`, `commands/`, `tools/`, `plugins/`, `modes/`, `themes/`) as the standard convention. Singular names (e.g., `agent/`, `command/`, `tool/`) are supported for backward compatibility. The current OpenPalm codebase uses a mix -- `skills/` (plural) but `command/` and `tool/` (singular). These work but should be migrated to plural for consistency with upstream conventions.
+> **Note on directory naming:** OpenCode uses [plural directory names](https://opencode.ai/docs/config/#custom-directory) (`skills/`, `agents/`, `commands/`, `tools/`, `plugins/`, `modes/`, `themes/`) as the standard convention. All OpenPalm extension directories use the plural form.
 
 The admin UI and API never expose these type distinctions as primary navigation. Instead, each extension in the gallery has a risk badge and a plain-language description of what permissions it needs. The type is available as metadata for users who want it, but it's not required to make decisions.
 
@@ -119,6 +119,8 @@ The lifecycle:
    OPENPALM_CONN_OPENAI_API_KEY=sk-...
    OPENPALM_CONN_OPENAI_ENDPOINT=https://api.openai.com/v1
    ```
+
+   > **Note (current vs. planned):** The `OPENPALM_CONN_*` prefix is the **planned standardization** for a future admin-managed secrets layer. In the current implementation, secrets use the standard provider names that the underlying tools expect directly (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). OpenCode's env var interpolation in `opencode.jsonc` therefore references these unprefixed names (e.g., `"{env:ANTHROPIC_API_KEY}"`). The `OPENPALM_CONN_*` convention will be adopted once the admin service's credential management layer is implemented.
 
 3. **Admin maintains a connection registry** (a JSON metadata file) that tracks which connections exist, their types, display names, and which stack components reference them. This registry is what the UI reads to render the connections list with status indicators.
 

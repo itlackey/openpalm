@@ -1,5 +1,7 @@
 # Concept Drift Report
 
+> **Historical Snapshot (2026-02-19):** This report was generated before the alignment fixes on this branch were applied. Many issues listed below have since been resolved. See `docs/ux-cohesion-review.md` for current status.
+
 Source of truth: `docs/admin-concepts.md` (technical) and `docs/user-concepts.md` (user-facing).
 
 22 project documentation files were reviewed against the five canonical concepts (Extensions, Connections, Channels, Automations, Gateway). This report lists every instance where documentation drifts from, contradicts, or is incomplete relative to the source of truth.

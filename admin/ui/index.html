@@ -690,7 +690,7 @@ const HOUR_OPTIONS = [];
   }
 })();
 
-function cronFromPreset(presetLabel, hour) {
+function automationFromPreset(presetLabel, hour) {
   if (presetLabel === 'Every hour') return '0 * * * *';
   if (presetLabel === 'Every day') return '0 ' + hour + ' * * *';
   if (presetLabel === 'Every weekday') return '0 ' + hour + ' * * 1-5';
@@ -730,21 +730,21 @@ function renderAutomations() {
 
   h += '<div class="field-group">';
   h += '<label>Name</label>';
-  h += '<input id="cron-name" placeholder="e.g. Daily summary" value="' + esc(editing ? editing.name : '') + '" />';
+  h += '<input id="automation-name" placeholder="e.g. Daily summary" value="' + esc(editing ? editing.name : '') + '" />';
   h += '</div>';
 
   /* Frequency picker */
   h += '<div class="field-group">';
   h += '<label>Frequency</label>';
   h += '<div class="freq-row">';
-  h += '<select id="cron-freq-preset" onchange="updateCronFromPreset()">';
+  h += '<select id="automation-freq-preset" onchange="updateAutomationFromPreset()">';
   h += '<option value="">Choose a preset...</option>';
   for (let fi = 0; fi < FREQ_PRESETS.length; fi++) {
     h += '<option value="' + esc(FREQ_PRESETS[fi].label) + '">' + esc(FREQ_PRESETS[fi].label) + '</option>';
   }
   h += '</select>';
   h += '<span class="muted" style="font-size:13px">at</span>';
-  h += '<select id="cron-freq-hour" onchange="updateCronFromPreset()">';
+  h += '<select id="automation-freq-hour" onchange="updateAutomationFromPreset()">';
   for (let hi = 0; hi < HOUR_OPTIONS.length; hi++) {
     const sel = HOUR_OPTIONS[hi].value === 9 ? ' selected' : '';
     h += '<option value="' + HOUR_OPTIONS[hi].value + '"' + sel + '>' + esc(HOUR_OPTIONS[hi].label) + '</option>';
@@ -753,18 +753,18 @@ function renderAutomations() {
   h += '</div>';
   h += '<div style="margin:.5rem 0;font-size:13px;color:var(--muted)">&mdash; or &mdash;</div>';
   h += '<label style="font-size:13px">Custom schedule (cron expression)</label>';
-  h += '<input id="cron-schedule" placeholder="e.g. 0 9 * * *  (every day at 9 AM)" value="' + esc(editing ? editing.schedule : '') + '" />';
+  h += '<input id="automation-schedule" placeholder="e.g. 0 9 * * *  (every day at 9 AM)" value="' + esc(editing ? editing.schedule : '') + '" />';
   h += '<div class="help-text">Format: minute hour day-of-month month day-of-week. Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * 1-5</code> (weekdays 9 AM)</div>';
   h += '</div>';
 
   h += '<div class="field-group">';
   h += '<label>What should the assistant do?</label>';
-  h += '<textarea id="cron-prompt" rows="3" placeholder="e.g. Write a summary of today\'s events and send it to the team Discord channel">' + esc(editing ? editing.prompt : '') + '</textarea>';
+  h += '<textarea id="automation-prompt" rows="3" placeholder="e.g. Write a summary of today\'s events and send it to the team Discord channel">' + esc(editing ? editing.prompt : '') + '</textarea>';
   h += '</div>';
 
   h += '<div style="display:flex;gap:.5rem">';
-  h += '<button onclick="saveCron()">' + (automationEditId ? 'Update' : 'Create') + '</button>';
-  if (automationEditId) h += '<button class="secondary" onclick="cancelEditCron()">Cancel</button>';
+  h += '<button onclick="saveAutomation()">' + (automationEditId ? 'Update' : 'Create') + '</button>';
+  if (automationEditId) h += '<button class="secondary" onclick="cancelEditAutomation()">Cancel</button>';
   h += '</div></div>';
 
   /* list */
@@ -784,31 +784,31 @@ function renderAutomations() {
     h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
-    h += '<button class="sm" onclick="confirmTriggerCron(\'' + jsStr(job.id) + '\',' + ji + ')">Run Now</button>';
-    h += '<button class="sm secondary" onclick="toggleCron(\'' + jsStr(job.id) + '\',\'' + (job.status === "enabled" ? "disabled" : "enabled") + '\')">' + (job.status === "enabled" ? 'Disable' : 'Enable') + '</button>';
-    h += '<button class="sm secondary" onclick="editCron(\'' + jsStr(job.id) + '\')">Edit</button>';
-    h += '<button class="sm danger" onclick="confirmDeleteCron(\'' + jsStr(job.id) + '\',' + ji + ')">Delete</button>';
+    h += '<button class="sm" onclick="confirmTriggerAutomation(\'' + jsStr(job.id) + '\',' + ji + ')">Run Now</button>';
+    h += '<button class="sm secondary" onclick="toggleAutomation(\'' + jsStr(job.id) + '\',\'' + (job.status === "enabled" ? "disabled" : "enabled") + '\')">' + (job.status === "enabled" ? 'Disable' : 'Enable') + '</button>';
+    h += '<button class="sm secondary" onclick="editAutomation(\'' + jsStr(job.id) + '\')">Edit</button>';
+    h += '<button class="sm danger" onclick="confirmDeleteAutomation(\'' + jsStr(job.id) + '\',' + ji + ')">Delete</button>';
     h += '</div></div>';
-    h += '<div id="cron-action-confirm-' + ji + '"></div>';
+    h += '<div id="automation-action-confirm-' + ji + '"></div>';
     h += '</div>';
   }
   el.innerHTML = h;
 }
 
-function updateCronFromPreset() {
-  const preset = document.getElementById('cron-freq-preset').value;
-  const hour = document.getElementById('cron-freq-hour').value;
+function updateAutomationFromPreset() {
+  const preset = document.getElementById('automation-freq-preset').value;
+  const hour = document.getElementById('automation-freq-hour').value;
   if (!preset) return;
-  const expr = cronFromPreset(preset, hour);
+  const expr = automationFromPreset(preset, hour);
   if (expr) {
-    document.getElementById('cron-schedule').value = expr;
+    document.getElementById('automation-schedule').value = expr;
   }
 }
 
-async function saveCron() {
-  const name = document.getElementById('cron-name').value.trim();
-  const schedule = document.getElementById('cron-schedule').value.trim();
-  const prompt = document.getElementById('cron-prompt').value.trim();
+async function saveAutomation() {
+  const name = document.getElementById('automation-name').value.trim();
+  const schedule = document.getElementById('automation-schedule').value.trim();
+  const prompt = document.getElementById('automation-prompt').value.trim();
   if (!name || !schedule || !prompt) { showToast('All fields are required.', 'error'); return; }
 
   if (automationEditId) {
@@ -823,47 +823,47 @@ async function saveCron() {
   loadAutomations();
 }
 
-function editCron(id) {
+function editAutomation(id) {
   automationEditId = id;
   renderAutomations();
-  document.getElementById('cron-name').focus();
+  document.getElementById('automation-name').focus();
 }
 
-function cancelEditCron() {
+function cancelEditAutomation() {
   automationEditId = null;
   renderAutomations();
 }
 
-async function toggleCron(id, newStatus) {
+async function toggleAutomation(id, newStatus) {
   const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: id, status: newStatus }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
   showToast(newStatus === 'enabled' ? 'Automation enabled.' : 'Automation disabled.', 'success');
   loadAutomations();
 }
 
-function confirmDeleteCron(id, index) {
-  showInlineConfirm('cron-action-confirm-' + index,
+function confirmDeleteAutomation(id, index) {
+  showInlineConfirm('automation-action-confirm-' + index,
     'Delete this automation? Your assistant will restart to apply the new schedule.',
-    function() { doDeleteCron(id); }
+    function() { doDeleteAutomation(id); }
   );
 }
 
-async function doDeleteCron(id) {
+async function doDeleteAutomation(id) {
   const r = await api('/admin/automations/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
   showToast('Automation deleted.', 'success');
   loadAutomations();
 }
 
-function confirmTriggerCron(id, index) {
+function confirmTriggerAutomation(id, index) {
   const job = automations.find(function(j) { return j.id === id; });
-  showInlineConfirm('cron-action-confirm-' + index,
+  showInlineConfirm('automation-action-confirm-' + index,
     'Run "' + (job ? job.name : 'this automation') + '" now?',
-    function() { doTriggerCron(id); }
+    function() { doTriggerAutomation(id); }
   );
 }
 
-async function doTriggerCron(id) {
+async function doTriggerAutomation(id) {
   const r = await api('/admin/automations/trigger', { method: 'POST', body: JSON.stringify({ id: id }) });
   if (r.ok) {
     showToast('Task sent to your assistant.', 'success');

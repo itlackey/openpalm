@@ -118,13 +118,13 @@ Health status for the admin app.
 - `GET /admin/installed` — returns currently installed extensions (including skills, commands, agents, tools, and plugins) and active services
 
 ### Automations
-Automations are scheduled prompts. Each automation has an ID (UUID), Name, Prompt, Schedule, and Status. The API routes use `/admin/crons` for implementation reasons.
+Automations are scheduled prompts. Each automation has an ID (UUID), Name, Prompt, Schedule, and Status. The API routes use `/admin/automations`.
 
-- `GET /admin/crons` — list all automations (auth required)
-- `POST /admin/crons` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "prompt": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Triggers an `opencode-core` restart.
-- `POST /admin/crons/update` — update an automation `{ "id": "...", "name?": "...", "schedule?": "...", "prompt?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Triggers an `opencode-core` restart.
-- `POST /admin/crons/delete` — delete an automation `{ "id": "..." }` (auth required). Triggers an `opencode-core` restart.
-- `POST /admin/crons/trigger` — "Run Now": immediately trigger an automation `{ "id": "..." }` (auth required). Fires the automation's prompt against `opencode-core` without waiting for the schedule.
+- `GET /admin/automations` — list all automations (auth required)
+- `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "prompt": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Triggers an `opencode-core` restart.
+- `POST /admin/automations/update` — update an automation `{ "id": "...", "name?": "...", "schedule?": "...", "prompt?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Triggers an `opencode-core` restart.
+- `POST /admin/automations/delete` — delete an automation `{ "id": "..." }` (auth required). Triggers an `opencode-core` restart.
+- `POST /admin/automations/trigger` — "Run Now": immediately trigger an automation `{ "id": "..." }` (auth required). Fires the automation's prompt against `opencode-core` without waiting for the schedule.
 
 ---
 
