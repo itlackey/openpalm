@@ -81,13 +81,20 @@ let setupState = null;
 let currentPage = 'gallery';
 
 const BASE = ''; // same-origin via Caddy
+const ADMIN_PREFIX = '/admin/';
+const ADMIN_API_PREFIX = '/admin/api/';
+
+function normalizeAdminApiPath(path) {
+  if (path.startsWith(ADMIN_API_PREFIX)) return path;
+  if (!path.startsWith(ADMIN_PREFIX)) return path;
+  return ADMIN_API_PREFIX + path.slice(ADMIN_PREFIX.length);
+}
 
 /* ── API helper ───────────────────────────────────────── */
 async function api(path, opts = {}) {
   const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
   if (adminToken) headers['x-admin-token'] = adminToken;
-  const requestPath = path.startsWith('/admin/api/') ? path
-    : (path.startsWith('/admin/') ? '/admin/api/' + path.slice('/admin/'.length) : path);
+  const requestPath = normalizeAdminApiPath(path);
   const res = await fetch(BASE + requestPath, { ...opts, headers });
   const text = await res.text();
   try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
