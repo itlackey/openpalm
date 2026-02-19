@@ -170,7 +170,8 @@ describe("setup wizard", () => {
       body: JSON.stringify({ step: "welcome" }),
     });
     expect(r.ok).toBe(true);
-    expect((r.data as any).state?.steps?.welcome).toBe(true);
+    const state = r.data as Record<string, unknown>;
+    expect(((state.state as Record<string, unknown>)?.steps as Record<string, boolean>)?.welcome).toBe(true);
   });
 
   it("POST /admin/setup/access-scope validates scope", async () => {
@@ -261,7 +262,7 @@ describe("gallery", () => {
   it("GET /admin/gallery/item/:id returns item detail", async () => {
     const r = await apiJson("/admin/gallery/item/plugin-policy-telemetry");
     expect(r.ok).toBe(true);
-    expect((r.data.item as any).name).toBe("Policy & Telemetry");
+    expect((r.data.item as Record<string, unknown>).name).toBe("Policy & Telemetry");
     expect(r.data).toHaveProperty("riskBadge");
   });
 
