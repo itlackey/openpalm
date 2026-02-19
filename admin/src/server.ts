@@ -266,6 +266,9 @@ function applyProviderAssignment(role: ModelAssignment, providerUrl: string, pro
 }
 
 async function fetchModelsFromProvider(url: string, apiKey: string): Promise<{ id: string; object?: string }[]> {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { throw new Error("invalid provider URL"); }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("provider URL must use http or https");
   const modelsUrl = url.replace(/\/+$/, "") + "/models";
   const headers: Record<string, string> = { "accept": "application/json" };
   if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
