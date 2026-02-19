@@ -127,6 +127,8 @@ The gateway is intentionally thin. It verifies HMAC signatures, applies rate lim
 
 This approach uses OpenCode's built-in agent permission model for isolation — the `channel-intake` agent has all tools denied, while the default agent uses approval gates — without requiring a separate container or runtime process.
 
+The `channel-intake` agent is defined in a standalone Markdown file at `gateway/opencode/agent/channel-intake.md` with frontmatter that disables all tools (`"*": false`). The gateway invokes this agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`). OpenCode loads the agent definition from the `agent/` directory in its config path, applying the frontmatter settings (tool restrictions, description) and the prompt body (which references the `channel-intake` skill and `AGENTS.md`).
+
 ### Admin operations
 ```
 Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Controller -> Compose Runtime
@@ -164,14 +166,31 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 | **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (opencode-core/, opencode-gateway/), Caddyfile, channel env files, user overrides, secrets |
 | **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, workspace |
 
+### Controller Maintenance Cron Jobs
+
+The controller container runs 8 scheduled maintenance tasks via cron (defined in `controller/entrypoint.sh`):
+
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| `pull-and-restart` | Daily at 03:15 | Pull updated images and recreate services when updates are available |
+| `log-rotate` | Hourly at :17 | Rotate and compress maintenance logs |
+| `prune-images` | Weekly (Sunday) at 03:45 | Prune unused container images |
+| `health-check` | Every 10 minutes | System health check with auto-restart for failed services |
+| `security-scan` | Daily at 02:40 | Best-effort security scan (logs capability if scanner unavailable) |
+| `db-maintenance` | Daily at 02:20 | PostgreSQL database maintenance (vacuum, analyze) |
+| `filesystem-cleanup` | Daily at 04:10 | Filesystem and resource cleanup |
+| `metrics-report` | Every 5 minutes | Scrape lightweight runtime metrics for observability |
+
+Logs are written to `$OPENPALM_STATE_HOME/observability/maintenance/`.
+
 ### Extension directory layout
 
 Extensions (plugins, skills, agents, lib) are **baked into container images** at build time. The canonical sources are `opencode/extensions/` (core) and `gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
 
 | Source Directory | Container | Contents |
 |---|---|---|
-| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, skills/, skills/memory/scripts/ (plugins + lib) |
-| `gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, skills/ (ChannelIntake, RecallFirst) |
+| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tool/, command/, skills/memory/ |
+| `gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, agent/channel-intake.md, skills/channel-intake/ |
 
 | Store | Used by | Purpose |
 |---|---|---|
@@ -186,8 +205,8 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 1. **Caddy** — Network-level access control. LAN-only restriction for admin/dashboard URLs. TLS termination. Non-LAN requests to restricted paths are TCP-aborted.
 2. **Gateway** — Thin auth and routing layer. HMAC signature verification, lightweight rate limiting (120 req/min/user), and audit logging. Routes requests to the OpenCode runtime.
 3. **OpenCode agent isolation** — The `channel-intake` agent runs with deny-by-default permissions (all tools denied); the default agent uses approval gates. Both run on the same OpenCode Core runtime but are isolated by OpenCode's agent permission model.
-4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call. The `openmemory-http` plugin provides automatic memory recall, write-back, and session-compaction preservation via OpenMemory's HTTP API (no MCP in the runtime path). All plugins are baked into the container image from `opencode/extensions/skills/memory/scripts/`; host config overrides are volume-mounted and take precedence when present.
+4. **OpenCode plugins** — Runtime tool-call interception. The `policy-and-telemetry` plugin detects secrets in tool arguments and blocks the call. The `openmemory-http` plugin provides automatic memory recall, write-back, and session-compaction preservation via OpenMemory's HTTP API (no MCP in the runtime path). All plugins are baked into the container image from `opencode/extensions/plugins/`; host config overrides are volume-mounted and take precedence when present.
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
-6. **Skills** — Standardized operating procedures: `ChannelIntake` (validate/summarize/dispatch), `RecallFirst`, `MemoryPolicy`, `ActionGating`.
+6. **Skills** — Standardized operating procedures: `channel-intake` (validate/summarize/dispatch in the gateway) and `memory` (recall-first behavior and memory policy in the core agent).
 7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.
 8. **Controller isolation** — Only the controller container has access to the container engine socket.

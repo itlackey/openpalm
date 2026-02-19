@@ -133,6 +133,20 @@ export OPENCODE_CONFIG_DIR="$CONFIG_DIR"
 
 **`OPENCODE_CONFIG_DIR`** tells OpenCode where to auto-discover extensions. OpenCode scans this directory for standard subdirectories: `plugins/`, `skills/`, `agents/`, `commands/`, `tools/`, `modes/`, and `themes/`.
 
+**Extension discovery path in detail:**
+
+```
+opencode/extensions/                    (source in repository)
+    ↓ COPY in Dockerfile
+/root/.config/opencode/                 (baked into container image)
+    ↓ entrypoint: cp -rn to /config/
+/config/                                (runtime config directory = OPENCODE_CONFIG_DIR)
+    ↑ host volume mount (optional override layer)
+~/.config/openpalm/opencode-core/       (user overrides on host)
+```
+
+The entrypoint uses `cp -rn` (no-clobber recursive copy), which merges baked-in defaults into `/config/` without overwriting any files the operator has placed there. This means host-side overrides always take precedence over image defaults.
+
 ### Plugin Loading
 
 OpenCode discovers and loads plugins through two mechanisms:
@@ -145,15 +159,7 @@ OpenCode discovers and loads plugins through two mechanisms:
 
 Skills follow the `skill/<name>/SKILL.md` directory structure. OpenCode loads skills from `$OPENCODE_CONFIG_DIR/skills/`. The core agent has one skill (`memory`) and the gateway has one skill (`channel-intake`).
 
-Skills are referenced in agent prompt configurations. The gateway's `channel-intake` agent explicitly references its skill:
-
-```jsonc
-"agent": {
-  "channel-intake": {
-    "prompt": "Follow the skills/channel-intake/SKILL.md behavioral rules. Follow the safety rules in AGENTS.md."
-  }
-}
-```
+Skills are loaded automatically from their directories. The gateway's `channel-intake` agent references its skill in its own definition file at `gateway/opencode/agent/channel-intake.md`, not inline in `opencode.jsonc`. The gateway invokes the agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`), which loads the agent definition from the `agent/` directory.
 
 ### AGENTS.md Loading
 
@@ -179,17 +185,33 @@ The gateway's `AGENTS.md` defines action gating: classify actions by risk tier, 
 {
   "$schema": "https://opencode.ai/config.json",
 
+  "model": "anthropic/claude-sonnet-4-5",
+  "provider": {
+    "anthropic": {
+      "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" }
+    }
+  },
+
+  // Default permissions — all gated behind approval
   "permission": {
     "bash": "ask",
     "edit": "ask",
     "webfetch": "ask"
   },
 
+  // Plugins loaded from the plugins/ directory
+  "plugin": [
+    "plugins/openmemory-http.ts",
+    "plugins/policy-and-telemetry.ts"
+  ],
+
+  // MCP disabled — the openmemory-http plugin handles memory via direct
+  // REST API calls for deterministic behaviour.
   "mcp": {
     "openmemory": {
       "type": "remote",
       "url": "http://openmemory:8765/mcp/gateway/sse/default-user",
-      "enabled": true
+      "enabled": false
     }
   }
 }
@@ -200,26 +222,14 @@ The gateway's `AGENTS.md` defines action gating: classify actions by risk tier, 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-
   "permission": {
     "*": "deny"
   },
-
-  "instructions": ["AGENTS.md"],
-
-  "agent": {
-    "channel-intake": {
-      "description": "Validates, summarizes, and dispatches inbound channel requests",
-      "prompt": "Follow the skills/channel-intake/SKILL.md behavioral rules. Follow the safety rules in AGENTS.md.",
-      "tools": {
-        "*": false
-      }
-    }
-  }
+  "instructions": ["AGENTS.md"]
 }
 ```
 
-The gateway uses wildcard permission denial (`"*": "deny"`) and wildcard tool disabling (`"*": false`) to ensure the intake agent has no capabilities beyond text processing. It also explicitly uses the `instructions` array to load `AGENTS.md`.
+The gateway uses wildcard permission denial (`"*": "deny"`) to ensure the intake agent has no capabilities beyond text processing. It also explicitly uses the `instructions` array to load `AGENTS.md`. The `channel-intake` agent is defined separately in `gateway/opencode/agent/channel-intake.md`, where it disables all tools via `"*": false` in its frontmatter and references the `channel-intake` skill and `AGENTS.md` for behavioral rules.
 
 ---
 
@@ -254,6 +264,29 @@ Intercepts every tool call via `tool.execute.before`. Scans arguments for secret
 ### Shared Library (`lib/openmemory-client.ts`)
 
 Provides the `OpenMemoryClient` REST class, `loadConfig()` for env-driven configuration, `containsSecret()` for secret detection, and `isSaveWorthy()` for writeback classification.
+
+### Plugin Type Signatures
+
+The built-in plugins define local `Plugin` types rather than importing from `@opencode-ai/plugin`. There are two patterns used:
+
+**With context parameter** (for plugins that need the OpenCode client):
+
+```typescript
+type PluginContext = { client?: any; $?: any; [key: string]: unknown };
+type Plugin = (ctx: PluginContext) => Promise<Record<string, unknown>>;
+
+export const OpenMemoryHTTP: Plugin = async ({ client }) => { /* ... */ };
+```
+
+**Without context parameter** (for standalone plugins):
+
+```typescript
+type Plugin = () => Promise<Record<string, unknown>>;
+
+export const PolicyAndTelemetry: Plugin = async () => { /* ... */ };
+```
+
+Both patterns return an object whose keys are event hooks (`tool.execute.before`, `experimental.chat.system.transform`, `event`, etc.) and whose values are async handler functions.
 
 ---
 
@@ -290,6 +323,16 @@ Invokes `memory-save` to persist content and confirms the saved memory ID.
 ### `health.md` — `/health`
 
 Invokes `health-check` and presents service status and latency in a table.
+
+### How Commands Invoke Tools
+
+Slash commands are Markdown files with YAML frontmatter declaring command metadata. When a user types a command (e.g., `/memory-recall some query`), OpenCode loads the corresponding `command/` file and injects its content into the agent's prompt. The command content instructs the agent to call the appropriate tool. For example, `command/memory-recall.md` contains:
+
+```
+Use the `memory-query` tool to search OpenMemory for facts matching "$ARGUMENTS".
+```
+
+This causes the agent to invoke the `memory-query` custom tool from `tool/memory-query.ts`, which executes the actual OpenMemory REST API call and returns results.
 
 ---
 

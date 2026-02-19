@@ -13,9 +13,9 @@ export default {
   async execute(params: { services?: (typeof SERVICES)[number][] }) {
     const targets = params.services ?? [...SERVICES];
     const portMap: Record<string, number> = {
-      gateway: 4097,
+      gateway: 8080,
       openmemory: 8765,
-      admin: 3111,
+      admin: 8100,
     };
     const results: Record<string, { status: string; latencyMs?: number }> = {};
     await Promise.all(

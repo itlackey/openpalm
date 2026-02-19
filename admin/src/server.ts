@@ -658,7 +658,11 @@ const server = Bun.serve({
 
       return cors(json(404, { error: "not_found" }));
     } catch (error) {
-      return cors(json(500, { error: "internal_error", requestId }));
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("not found") || message.includes("missing") ? 400 : 500;
+      const errorCode = status === 400 ? "validation_error" : "internal_error";
+      console.error(`[${requestId}] ${errorCode}:`, error);
+      return cors(json(status, { error: errorCode, message, requestId }));
     }
   }
 });

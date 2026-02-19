@@ -5,6 +5,8 @@
 
 OpenCode loads plugins via the top-level `plugin` array in `opencode.json`/`opencode.jsonc`, and auto-discovers local plugins under `plugins/` in the directory specified by `OPENCODE_CONFIG_DIR` (or `.opencode/plugins/` by default).
 
+**Container path resolution:** In the OpenPalm stack, extensions live in `opencode/extensions/` in the repository, are `COPY`'d into the container image at `/root/.config/opencode/`, and then merged into `/config/` at startup via `cp -rn` (no-clobber recursive copy). The `OPENCODE_CONFIG_DIR` environment variable is set to `/config/`, so plugins in `/config/plugins/` are auto-discovered. Host-side overrides mounted at `/config` take precedence over baked-in defaults.
+
 **Your rule:** the Admin UI manages extensions by editing `opencode.jsonc -> plugin[]`.
 Everything else (channels/services/UI panels) is derived from that.
 
@@ -48,7 +50,7 @@ All new assistant features should be implemented as OpenCode extensions (plugin,
 ### Naming conventions
 
 - Plugin files: `kebab-case.ts` (example: `calendar-sync.ts`)
-- Skill files: `PascalCase.SKILL.md` (example: `CalendarOps.SKILL.md`)
+- Skill directories: `kebab-case/` containing `SKILL.md` (example: `memory/SKILL.md`)
 - Shared helpers in `lib/`: `kebab-case.ts` matching the plugin domain
 - Keep plugin IDs stable (`@scope/name` or `name`) so admin/API/CLI operations remain deterministic
 
@@ -174,7 +176,7 @@ to the OpenPalm gateway. Each adapter is a thin service that:
 ### Registering a new channel adapter
 
 1. Add the service to `docker-compose.yml` with a unique service name.
-2. Set `GATEWAY_URL=http://gateway:4097` in the service's environment.
+2. Set `GATEWAY_URL=http://gateway:8080` in the service's environment.
 3. Add the service name to `OPENPALM_EXTRA_SERVICES` so the controller
    can manage it (see the controller's dynamic allowlist).
 4. Add a gallery entry in `admin/src/gallery.ts` under the `container`

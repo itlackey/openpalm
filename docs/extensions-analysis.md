@@ -56,129 +56,45 @@ Several recommendations from the initial analysis have been partially or fully a
 
 ---
 
-## Remaining Issues
+## Resolved Issues (Details)
 
-### 1. Skills Still Lack YAML Frontmatter
+The following issues were identified during the initial analysis and have all been resolved. Details are preserved here for historical context.
 
-The directory restructuring adopted the `skill/<name>/SKILL.md` path pattern, which is good. But the skill files still don't include YAML frontmatter:
+### 1. Skills YAML Frontmatter (R1) — RESOLVED
+Skills now include YAML frontmatter with `name`, `description`, and `denied-tools` fields, enabling OpenCode auto-discovery and per-skill permission scoping.
 
-```markdown
-# Memory Policy
+### 2. Plugin Location (R2, R4) — RESOLVED
+Plugins moved from `skills/memory/scripts/` to `opencode/extensions/plugins/`, the standard auto-discovery path. They are also explicitly registered in the `plugin[]` array in `opencode.jsonc`.
 
-## Record
+### 3. Plugin Type Signatures (R7) — RESOLVED
+Plugins now define local `Plugin` types. Two patterns are used: with context parameter (`PluginContext`) for plugins needing the OpenCode client, and without for standalone plugins. Both return event-hook handler objects.
 
-Store memory only when user intent is explicit...
-```
+### 4. Phantom Gallery Entries (R2) — RESOLVED
+Non-existent gallery entries have been removed. The `skill-memory` entry was added for the consolidated memory skill.
 
-OpenCode's skill spec expects:
+### 5. Controller Dynamic Allowlist (R3) — RESOLVED
+The controller now reads `OPENPALM_EXTRA_SERVICES` from the environment, allowing community container extensions to be managed without code changes.
 
-```markdown
----
-name: memory
-description: Governs memory storage and recall behavior
-denied-tools:
-  - bash
-  - write
----
+### 6. MCP Disabled (R5) — RESOLVED
+MCP is explicitly disabled in `opencode.jsonc` (`"enabled": false`). The `openmemory-http` plugin handles all memory operations via direct REST API calls.
 
-# Memory Policy
-...
-```
+### 7. extensionManifest Documentation (R10) — RESOLVED
+The `extensionManifest` convention has been removed from documentation.
 
-Without frontmatter, OpenCode cannot auto-discover skills by name, enforce per-skill tool permissions, or integrate with the `skill` permission gate. Skills currently only work because agent prompts hardcode file paths.
+### 8. Custom Tools (R8) — RESOLVED
+Custom tools are now implemented in `opencode/extensions/tool/` (`memory-query.ts`, `memory-save.ts`, `health-check.ts`) with Zod-validated parameters.
 
-### 2. Plugins Are Located Inside a Skill Directory
+### 9. Model and Provider Configuration (R9) — RESOLVED
+`opencode.jsonc` now specifies `model: "anthropic/claude-sonnet-4-5"` and provider configuration with env-based API key.
 
-The plugin files (`openmemory-http.ts`, `policy-and-telemetry.ts`) and the shared library (`openmemory-client.ts`) now live at `opencode/extensions/skills/memory/scripts/`. This is an unusual location — plugins are not conventionally children of skills.
+### 10. Agent Markdown Files (R11) — RESOLVED
+The `channel-intake` agent is now defined in `gateway/opencode/agent/channel-intake.md` with frontmatter (description, tools), replacing the inline definition in `opencode.jsonc`.
 
-OpenCode auto-discovers plugins from `$OPENCODE_CONFIG_DIR/plugins/`. Files under `skills/memory/scripts/` are not in the auto-discovery path. This means either:
-- The plugins are loaded through some other mechanism (explicit `plugin[]` registration or import from the skill), or
-- They are not loaded as OpenCode plugins at all and only function as library code imported by the skill.
+### 11. Config Layering (R6) — RESOLVED
+The entrypoint uses `cp -rn` (no-clobber recursive copy) to merge baked-in defaults into `/config/`, ensuring baked-in extensions are available even when the host provides an `opencode.jsonc` override.
 
-If these are meant to be active OpenCode plugins with lifecycle hooks (`tool.execute.before`, `experimental.chat.system.transform`, `event`, etc.), they should be in `plugins/` or explicitly registered in `plugin[]`. If they're script utilities that the skill references, the current location makes sense but the extensions guide's description of them as "plugins" is misleading.
-
-### 3. Plugins Don't Use the OpenCode Plugin Type Signature
-
-The plugin files still export ad-hoc objects rather than using the standard `Plugin` async factory from `@opencode-ai/plugin`:
-
-```typescript
-// Current (openmemory-http.ts)
-export const OpenMemoryHTTP = async (ctx: {
-  client?: any;
-  [key: string]: unknown;
-}) => { ... }
-
-// Current (policy-and-telemetry.ts)
-export const PolicyAndTelemetry = async () => { ... }
-```
-
-The standard pattern:
-
-```typescript
-import type { Plugin } from "@opencode-ai/plugin"
-
-export const OpenMemoryHTTP: Plugin = async ({ client, $ }) => { ... }
-```
-
-The `openmemory-http` plugin accesses `ctx.client` as an optional property rather than receiving it as a guaranteed context parameter. This is fragile.
-
-### 4. The Curated Gallery Still Lists Phantom Extensions
-
-The curated gallery in `gallery.ts` still includes entries for files that don't exist:
-
-- `plugin-opencode-memory-guard` → `./plugins/memory-guard.ts` — **doesn't exist**
-- `plugin-rate-limit-enforcer` → `./plugins/rate-limit-enforcer.ts` — **doesn't exist**
-- `plugin-response-sanitizer` → `./plugins/response-sanitizer.ts` — **doesn't exist**
-- `skill-code-review` → `skills/CodeReview.SKILL.md` — **doesn't exist**
-- `skill-summarize-context` → `skills/SummarizeContext.SKILL.md` — **doesn't exist**
-
-Installing these creates broken references.
-
-### 5. Controller Allowlist Still Prevents Community Container Extensions
-
-The controller's `ALLOWED` set remains hardcoded:
-
-```typescript
-const ALLOWED = new Set([
-  "opencode-core", "gateway", "openmemory", "admin",
-  "channel-chat", "channel-discord", "channel-voice",
-  "channel-telegram", "caddy"
-]);
-```
-
-The gallery advertises `n8n`, `ollama`, and `searxng`, and the community registry supports arbitrary `compose-service` targets, but the controller rejects operations for any unlisted service. Installing a community container extension appears to succeed from the admin API but silently fails at the controller.
-
-### 6. MCP Still Enabled Alongside the REST Plugin
-
-The core `opencode.jsonc` still enables MCP for OpenMemory while the `openmemory-http` plugin uses direct REST calls. The agent can see and use MCP memory tools, bypassing the plugin's secret detection and save-worthiness checks.
-
-### 7. The `extensionManifest` Convention Is Still Documented but Not Implemented
-
-The extensions guide still describes a convention where plugins export `extensionManifest` objects and the admin service processes them. No code in the admin service reads or processes these manifests.
-
-### 8. Custom Tools Are Unused
-
-OpenCode's `.opencode/tool/` system (Zod-validated, LLM-callable functions) is not used. Memory operations, health checks, and cron management are all candidates for typed custom tools.
-
-### 9. No Model or Provider Configuration
-
-Neither `opencode.jsonc` specifies a `model`, `provider`, or `small_model`. The model selection is implicit, depending on environment variables.
-
-### 10. No Agent Markdown Files
-
-The `channel-intake` agent is still defined inline in `opencode.jsonc` rather than as a standalone `.md` file with rich frontmatter (model, temperature, mode, tools, permissions).
-
-### 11. Baked-In Extensions Make the Override Story Complex
-
-While baking extensions into images is cleaner for upgrades, it creates a subtle interaction with the host override layer. If an operator mounts a volume at `/config` with just an `opencode.jsonc` (which is what the installer seeds), the entrypoint finds the config file and uses `/config` as the config directory. But the baked-in skills and plugins at `/root/.config/opencode/` are no longer in the active config path.
-
-The entrypoint only copies baked-in defaults when `opencode.jsonc` is **missing** from `/config`. If it's present (even as an empty `{}`), no copying occurs. This means:
-- Host has `opencode.jsonc` → OpenCode uses `/config` → baked-in `skills/`, `AGENTS.md` are NOT in the config path
-- Host has nothing → entrypoint copies everything → all baked-in extensions are available
-
-The installer seeds an empty `opencode.jsonc`, which triggers the first case. The baked-in extensions would not be available unless the operator also copies them to the host, or unless OpenCode's config merging combines the baked-in global config (`/root/.config/opencode/`) with the project-level config (`/config/`).
-
-This needs verification: does OpenCode merge `~/.config/opencode/` (global) with `$OPENCODE_CONFIG_DIR` (project), or does `$OPENCODE_CONFIG_DIR` replace global discovery entirely?
+### 12. Slash Commands (R12) — RESOLVED
+Default slash commands ship in `opencode/extensions/command/` for memory recall, memory save, and health check operations.
 
 ---
 

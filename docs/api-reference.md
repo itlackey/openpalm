@@ -75,9 +75,11 @@ Health status for the admin app.
 - `GET /admin/config` — read `opencode.jsonc` (returns text/plain)
 - `POST /admin/config` — write config `{ "config": "...", "restart": true }` (denies permission widening to `allow`)
 
+**Policy lint rule:** The config editor parses the submitted JSONC and inspects the `permission` object. If any permission value is set to `"allow"`, the request is rejected with `400 policy lint failed: permission widening blocked`. Only `"ask"` and `"deny"` are permitted permission values. This prevents operators from accidentally removing approval gates on sensitive tool operations.
+
 ### Setup wizard
 - `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag), current service-instance overrides, and OpenMemory provider setup (`openmemoryProvider.openaiBaseUrl`, `openmemoryProvider.openaiApiKeyConfigured`)
-- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "healthCheck" | "security" | "channels" | "extensions" }`
+- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions" }`
 - `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
 - `POST /admin/setup/service-instances` — update service instance overrides and OpenMemory OpenAI-compatible provider settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "..." }` (`openaiApiKey` is optional; leave empty to keep current key)
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
@@ -113,6 +115,13 @@ Health status for the admin app.
 
 ### Installed status
 - `GET /admin/installed` — returns currently installed extensions, active services, and loaded skills
+
+### Cron jobs
+- `GET /admin/crons` — list all scheduled cron jobs (auth required)
+- `POST /admin/crons` — create a cron job `{ "name": "...", "schedule": "*/30 * * * *", "prompt": "..." }` (auth required). Returns `201` with the created job. Validates cron expression syntax. Triggers an `opencode-core` restart.
+- `POST /admin/crons/update` — update a cron job `{ "id": "...", "name?": "...", "schedule?": "...", "prompt?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Triggers an `opencode-core` restart.
+- `POST /admin/crons/delete` — delete a cron job `{ "id": "..." }` (auth required). Triggers an `opencode-core` restart.
+- `POST /admin/crons/trigger` — immediately trigger a cron job `{ "id": "..." }` (auth required). Fires the job's prompt against `opencode-core` without waiting for the cron schedule.
 
 ---
 
@@ -154,6 +163,20 @@ Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-ch
 ## Channel Adapter APIs
 
 All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /admin/channels/access`).
+
+### Channel Environment Variables
+
+Each channel adapter reads the following environment variables at startup:
+
+| Channel | Port | Env Var: `PORT` | Env Var: `GATEWAY_URL` | Env Var: Shared Secret | Env Var: Additional |
+|---------|------|----------------|----------------------|----------------------|---------------------|
+| chat | 8181 | `PORT` (default `8181`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_CHAT_SECRET` | `CHAT_INBOUND_TOKEN` — optional bearer token for inbound requests |
+| discord | 8184 | `PORT` (default `8184`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_DISCORD_SECRET` | `DISCORD_BOT_TOKEN` — Discord bot token |
+| voice | 8183 | `PORT` (default `8183`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_VOICE_SECRET` | — |
+| telegram | 8182 | `PORT` (default `8182`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_TELEGRAM_SECRET` | `TELEGRAM_WEBHOOK_SECRET` — Telegram webhook verification secret |
+| webhook | 8181 | `PORT` (default `8181`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_WEBHOOK_SECRET` | `WEBHOOK_INBOUND_TOKEN` — optional bearer token for inbound requests |
+
+All adapters default `GATEWAY_URL` to `http://gateway:8080` (the gateway's internal Docker network address).
 
 ### Chat (channel-chat, :8181)
 - Caddy ingress route: `/channels/chat*` (rewrites to `/chat`)
