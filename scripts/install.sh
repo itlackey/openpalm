@@ -413,7 +413,7 @@ echo "Starting core services..."
 
 echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH --profile channels up -d"
 
-ADMIN_READY_URL="http://localhost/admin/setup/status"
+ADMIN_READY_URL="http://localhost/admin/api/setup/status"
 SETUP_URL="http://localhost/admin"
 SPIN='|/-\\'
 READY=0
