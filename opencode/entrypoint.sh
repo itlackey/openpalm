@@ -14,10 +14,17 @@ mkdir -p "$CRON_DIR"
 DEFAULT_CONFIG="$CONFIG_DIR/opencode.jsonc"
 
 [[ -f "$CONFIG_DIR/AGENTS.md" ]] || cp /opt/opencode-defaults/AGENTS.md "$CONFIG_DIR/AGENTS.md"
-[[ -d "$CONFIG_DIR/skills" ]] || cp -r /opt/opencode-defaults/skills "$CONFIG_DIR/skills"
-[[ -d "$CONFIG_DIR/.opencode" ]] || cp -r /opt/opencode-defaults/.opencode "$CONFIG_DIR/.opencode"
+[[ -d "$CONFIG_DIR/skills" ]]    || cp -r /opt/opencode-defaults/skills "$CONFIG_DIR/skills"
+[[ -d "$CONFIG_DIR/plugins" ]]   || cp -r /opt/opencode-defaults/plugins "$CONFIG_DIR/plugins"
+[[ -d "$CONFIG_DIR/lib" ]]       || cp -r /opt/opencode-defaults/lib "$CONFIG_DIR/lib"
 
+# Tell OpenCode where the config file lives.
 export OPENCODE_CONFIG="${OPENCODE_CONFIG:-$DEFAULT_CONFIG}"
+
+# Tell OpenCode where to discover plugins, skills, agents, etc.
+# OPENCODE_CONFIG_DIR is searched the same way as .opencode/ — it looks for
+# plugins/, skills/, agents/, commands/, tools/, modes/, and themes/ subdirs.
+export OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-$CONFIG_DIR}"
 
 # Install crontab managed by admin (if present) and start cron daemon.
 if [[ -f "$CRON_DIR/crontab" ]]; then

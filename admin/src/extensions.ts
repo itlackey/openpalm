@@ -6,7 +6,7 @@ const NPM_RE = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
 
 export function validatePluginIdentifier(id: string) {
   if (!id) return false;
-  if (id.startsWith("./.opencode/plugins/")) return !/[\s;&|`$]/.test(id);
+  if (id.startsWith("./plugins/")) return !/[\s;&|`$]/.test(id);
   return NPM_RE.test(id);
 }
 

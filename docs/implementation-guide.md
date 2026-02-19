@@ -52,8 +52,8 @@ Keep these co-located with your project:
 - `opencode.jsonc` – primary config
 - `AGENTS.md` – rules (hard constraints)
 - `skills/*.SKILL.md` – reusable behavioral SOPs
-- `.opencode/plugins/*` – local plugins
-- `.opencode/tools/*` – local tools
+- `plugins/*` – local plugins (in `OPENCODE_CONFIG_DIR`)
+- `tools/*` – local tools (in `OPENCODE_CONFIG_DIR`)
 
 ---
 
@@ -85,10 +85,9 @@ Keep these co-located with your project:
     }
   },
 
-  "plugin": [
-    "./.opencode/plugins/policy-and-telemetry.ts",
-    "./.opencode/plugins/openmemory-http.ts"
-  ]
+  // Plugins are auto-discovered from OPENCODE_CONFIG_DIR/plugins/
+  // No need to list them explicitly in opencode.jsonc when using
+  // OPENCODE_CONFIG_DIR — they are loaded automatically at startup.
 }
 ```
 
