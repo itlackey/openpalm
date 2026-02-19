@@ -46,7 +46,6 @@
 
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
   opencode-core/               — core agent extensions (plugins, skills, lib, AGENTS.md)
-  opencode-gateway/            — intake agent extensions (skills, AGENTS.md)
   caddy/Caddyfile
   channels/
   cron/                        — user-editable crontab and payload files

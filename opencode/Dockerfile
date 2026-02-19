@@ -6,9 +6,9 @@ RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs gi
 WORKDIR /work
 
 # Extensions (skills/, commands/, agents/, tools/, plugins/) are baked into the image from
-# opencode/extensions/ and installed to /root/.config/opencode/ at build time.
+# opencode/extensions/ and installed to /opt/openpalm/opencode-defaults/ at build time.
 # At runtime, a host config volume may be mounted at /config to override defaults.
-COPY extensions/ /root/.config/opencode/
+COPY extensions/ /opt/openpalm/opencode-defaults/
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

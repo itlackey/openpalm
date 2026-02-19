@@ -10,10 +10,10 @@ mkdir -p "$CONFIG_DIR"
 mkdir -p "$CRON_DIR"
 mkdir -p "$CRON_DIR/cron-payloads"
 
-# Default extensions are baked into the image at /root/.config/opencode/.
+# Default extensions are baked into the image at /opt/openpalm/opencode-defaults/.
 # If a host config volume is mounted at /config, it takes priority.
 # If /config is empty or missing opencode.jsonc, fall back to the baked-in defaults.
-BAKED_IN_DIR="/root/.config/opencode"
+BAKED_IN_DIR="/opt/openpalm/opencode-defaults"
 
 # Always merge baked-in extension directories into the active config dir.
 # cp -rn copies without overwriting, so host overrides are preserved.

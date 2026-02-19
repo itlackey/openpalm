@@ -208,7 +208,6 @@ try {
     Upsert-EnvVar CHANNEL_DISCORD_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_VOICE_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_TELEGRAM_SECRET (New-Token)
-    Upsert-EnvVar CHANNEL_WEBHOOK_SECRET (New-Token)
     Write-Host "Created .env with generated secure defaults."
     Write-Host ""
     Write-Host "  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup."
@@ -244,7 +243,6 @@ try {
     "$OpenPalmDataHome/caddy",
     "$OpenPalmDataHome/admin",
     "$OpenPalmConfigHome/opencode-core",
-    "$OpenPalmConfigHome/opencode-gateway",
     "$OpenPalmConfigHome/caddy",
     "$OpenPalmConfigHome/channels",
     "$OpenPalmConfigHome/cron",
@@ -274,16 +272,6 @@ try {
     }
   }
 
-  # Seed a minimal opencode.jsonc so users can customize the opencode-core container.
-  # Extensions are baked into the container image; this file serves as a user override layer.
-  $OpencodeCoreDir = Join-Path $OpenPalmConfigHome "opencode-core"
-  New-Item -ItemType Directory -Path $OpencodeCoreDir -Force | Out-Null
-  $OpencodeJsoncPath = Join-Path $OpencodeCoreDir "opencode.jsonc"
-  if (-not (Test-Path $OpencodeJsoncPath)) {
-      Set-Content -Path $OpencodeJsoncPath -Value "{}"
-      Write-Host "Seeded empty opencode.jsonc -> $OpencodeJsoncPath"
-  }
-
   Seed-File (Join-Path $InstallAssetsDir "state/caddy/Caddyfile") "$OpenPalmConfigHome/caddy/Caddyfile"
 
   Get-ChildItem (Join-Path $InstallAssetsDir "config/channels") -Filter "*.env" | ForEach-Object {
@@ -300,10 +288,16 @@ try {
   Write-Host "Directory structure created. Config seeded from defaults."
   Write-Host ""
 
-  Write-Host "Starting core services..."
-  & $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file "$OpenPalmStateHome/.env" -f $composeFilePath up -d
+  Write-Host "Pulling latest images..."
+  & $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file "$OpenPalmStateHome/.env" -f $composeFilePath pull
   if ($LASTEXITCODE -ne 0) {
-    throw "Failed to start services with '$OpenPalmComposeBin $OpenPalmComposeSubcommand up -d'."
+    throw "Failed to pull images with '$OpenPalmComposeBin $OpenPalmComposeSubcommand pull'."
+  }
+
+  Write-Host "Starting core services..."
+  & $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file "$OpenPalmStateHome/.env" -f $composeFilePath up -d --pull always
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to start services with '$OpenPalmComposeBin $OpenPalmComposeSubcommand up -d --pull always'."
   }
 
   Write-Host "If you want channel adapters too: $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath --profile channels up -d"

@@ -38,7 +38,7 @@ The flow is:
 ```
 Repository source directories        (canonical extension code)
         ↓ COPY in Dockerfile
-Container image /root/.config/opencode/   (baked into image)
+Container image /opt/openpalm/opencode-defaults/   (baked into image)
         ↓ entrypoint fallback copy
 Container /config                     (runtime config directory)
         ↑ host volume mount (override layer)
@@ -49,8 +49,8 @@ Two separate OpenCode instances consume extensions:
 
 | Instance | Source Directory | Image Copy Target | Host Override | Role |
 |----------|----------------|-------------------|---------------|------|
-| **opencode-core** | `opencode/extensions/` | `/root/.config/opencode/` | `~/.config/openpalm/opencode-core/` → `/config` | Full agent — all tools enabled, approval-gated |
-| **gateway** | `gateway/opencode/` | `/root/.config/opencode/` | None (fully baked) | Restricted intake agent — all tools disabled |
+| **opencode-core** | `opencode/extensions/` | `/opt/openpalm/opencode-defaults/` | `~/.config/openpalm/opencode-core/` → `/config` | Full agent — all tools enabled, approval-gated |
+| **gateway** | `gateway/opencode/` | `/opt/openpalm/opencode-defaults/` | None (fully baked) | Restricted intake agent — all tools disabled |
 
 ### The Entrypoint Fallback Mechanism
 
@@ -58,7 +58,7 @@ The `opencode-core` container's entrypoint implements a layered config resolutio
 
 1. Check if `/config/opencode.jsonc` exists (host volume mount).
 2. If yes — use `/config` as the config directory. Host files take precedence.
-3. If no — copy baked-in defaults from `/root/.config/opencode/` into `/config/`, then use `/config`.
+3. If no — copy baked-in defaults from `/opt/openpalm/opencode-defaults/` into `/config/`, then use `/config`.
 
 This means the container always works out of the box (baked-in defaults), but operators can override any file by placing it in `~/.config/openpalm/opencode-core/` on the host.
 
@@ -156,7 +156,7 @@ export OPENCODE_CONFIG_DIR="$CONFIG_DIR"
 ```
 opencode/extensions/                    (source in repository)
     ↓ COPY in Dockerfile
-/root/.config/opencode/                 (baked into container image)
+/opt/openpalm/opencode-defaults/                 (baked into container image)
     ↓ entrypoint: cp -rn to /config/
 /config/                                (runtime config directory = OPENCODE_CONFIG_DIR)
     ↑ host volume mount (optional override layer)
