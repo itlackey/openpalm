@@ -1,259 +1,299 @@
 # OpenPalm Host System Reference
 
-This document details every directory and file that the OpenPalm installer creates and manages on the host machine. OpenPalm follows the XDG Base Directory Specification, spreading its footprint across three root directories that separate persistent data, user-editable configuration, and ephemeral runtime state.
+This document describes the on-disk file structure of an installed OpenPalm stack, the directory layout on the host, and the relationship between host paths, container volume mounts, and runtime configuration.
 
 ---
 
-## XDG Directory Layout at a Glance
+## XDG Base Directory Layout
 
-| Purpose | Default Path | Override Env Var |
-|---------|-------------|------------------|
-| **Data** — databases, vector stores, blobs | `~/.local/share/openpalm` | `OPENPALM_DATA_HOME` |
-| **Config** — agent configs, Caddyfile, channel envs, secrets | `~/.config/openpalm` | `OPENPALM_CONFIG_HOME` |
-| **State** — runtime state, compose file, logs, workspace | `~/.local/state/openpalm` | `OPENPALM_STATE_HOME` |
+OpenPalm follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/) to organize host-side files into three top-level directories with distinct semantics:
 
-All three paths respect the standard `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME` variables if they are set, and fall back to the defaults shown above.
+| Directory | Default Path | XDG Override | OpenPalm Override | Semantics |
+|-----------|-------------|-------------|-------------------|-----------|
+| **Data** | `~/.local/share/openpalm` | `$XDG_DATA_HOME` | `$OPENPALM_DATA_HOME` | Persistent storage — databases, vector stores, blobs. Back this up. |
+| **Config** | `~/.config/openpalm` | `$XDG_CONFIG_HOME` | `$OPENPALM_CONFIG_HOME` | User-editable configuration — agent overrides, Caddyfile, channel envs, secrets. |
+| **State** | `~/.local/state/openpalm` | `$XDG_STATE_HOME` | `$OPENPALM_STATE_HOME` | Runtime state — compose file, workspace, audit logs. Disposable on reinstall. |
 
-In addition to these three trees, the installer creates a `.env` file in the working directory where the install script was run.
+Override precedence: `OPENPALM_*_HOME` > `XDG_*_HOME` > hardcoded defaults.
 
 ---
 
-## Working Directory
+## Working Directory (`.env`)
 
-The directory from which `install.sh` (or `install.ps1`) is executed serves as the project root. After installation it contains:
+The installer creates a `.env` file in the current working directory from `assets/config/system.env`. This file is the root of all runtime configuration and is copied into the state directory alongside the compose file.
 
-### `.env`
+### Generated `.env` Contents
 
-The master environment file. Generated from `assets/config/system.env` on first install, then enriched with auto-generated secrets and resolved paths. It is the single source of truth for every variable referenced by `assets/state/docker-compose.yml`. Key categories of variables:
+```env
+# XDG paths (resolved at install time)
+OPENPALM_DATA_HOME=/home/user/.local/share/openpalm
+OPENPALM_CONFIG_HOME=/home/user/.config/openpalm
+OPENPALM_STATE_HOME=/home/user/.local/state/openpalm
 
-**XDG paths** — `OPENPALM_DATA_HOME`, `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`
+# Container runtime (detected at install time)
+OPENPALM_CONTAINER_PLATFORM=docker
+OPENPALM_COMPOSE_BIN=docker
+OPENPALM_COMPOSE_SUBCOMMAND=compose
+OPENPALM_CONTAINER_SOCKET_PATH=/var/run/docker.sock
+OPENPALM_CONTAINER_SOCKET_IN_CONTAINER=/var/run/openpalm-container.sock
+OPENPALM_CONTAINER_SOCKET_URI=unix:///var/run/openpalm-container.sock
+OPENPALM_IMAGE_NAMESPACE=openpalm
+OPENPALM_IMAGE_TAG=latest-amd64
 
-**Container runtime** — `OPENPALM_CONTAINER_PLATFORM` (docker | podman | orbstack), `OPENPALM_COMPOSE_BIN`, `OPENPALM_COMPOSE_SUBCOMMAND`, `OPENPALM_CONTAINER_SOCKET_PATH`, `OPENPALM_CONTAINER_SOCKET_IN_CONTAINER`, `OPENPALM_CONTAINER_SOCKET_URI`, `OPENPALM_IMAGE_TAG`
+# Auto-generated secrets
+ADMIN_TOKEN=<64-char random token>
+CONTROLLER_TOKEN=<64-char random token>
+POSTGRES_PASSWORD=<64-char random token>
+CHANNEL_CHAT_SECRET=<64-char random token>
+CHANNEL_DISCORD_SECRET=<64-char random token>
+CHANNEL_VOICE_SECRET=<64-char random token>
+CHANNEL_TELEGRAM_SECRET=<64-char random token>
 
-**Generated secrets** — `ADMIN_TOKEN`, `CONTROLLER_TOKEN`, `POSTGRES_PASSWORD`, `CHANNEL_CHAT_SECRET`, `CHANNEL_DISCORD_SECRET`, `CHANNEL_VOICE_SECRET`, `CHANNEL_TELEGRAM_SECRET`
+# Channels to enable
+OPENPALM_ENABLED_CHANNELS=
+```
 
-**Optional overrides** — bind addresses, database name/user, OpenCode timeout, SSH settings, channel-specific bot tokens
-
-The installer is idempotent with respect to `.env`: it only creates the file if absent and uses upsert logic so manually added keys are preserved.
+The `.env` is generated once. Subsequent installer runs update path and runtime variables idempotently via `upsert_env_var()` but never overwrite existing secrets.
 
 ---
 
 ## Data Directory (`~/.local/share/openpalm`)
 
-Holds persistent storage that should be backed up. Nothing here is user-edited directly; it is owned by the running containers.
+Persistent storage for databases, vector stores, and shared volumes. Directories are created by the installer and populated by containers at first startup.
 
 ```
 ~/.local/share/openpalm/
-├── admin/              # Admin service persistent data (setup state, preferences)
-├── caddy/              # Caddy TLS certificates and persistent data (/data volume)
-├── openmemory/         # OpenMemory MCP server data files
-├── postgres/           # PostgreSQL data directory (pgdata)
-├── qdrant/             # Qdrant vector database storage
-└── shared/             # Shared volume accessible by opencode-core and openmemory
+├── postgres/          # PostgreSQL data directory
+├── qdrant/            # Qdrant vector database storage
+├── openmemory/        # OpenMemory persistent data
+├── shared/            # Shared volume between opencode-core, admin, and openmemory
+├── caddy/             # Caddy TLS certificates and persistent data
+└── admin/             # Admin service persistent state (setup wizard, cron store)
 ```
 
-**Container volume mounts:**
+### Volume Mount Map (Data)
 
-| Host Path | Container | Mount Point |
-|-----------|-----------|-------------|
-| `admin/` | admin | `/app/data` |
-| `caddy/` | caddy | `/data` |
-| `openmemory/` | openmemory | `/data` |
-| `postgres/` | postgres | `/var/lib/postgresql/data` |
-| `qdrant/` | qdrant | `/qdrant/storage` |
-| `shared/` | openmemory | `/shared` |
-| `shared/` | opencode-core | `/shared` |
-| `shared/` | admin | `/shared` |
-
-The `shared/` directory acts as a cross-service file exchange area, accessible to the core agent, memory service, and admin panel simultaneously.
+| Host Path | Container | Mount Point | Mode |
+|-----------|-----------|-------------|------|
+| `postgres/` | postgres | `/var/lib/postgresql/data` | rw |
+| `qdrant/` | qdrant | `/qdrant/storage` | rw |
+| `openmemory/` | openmemory | `/data` | rw |
+| `shared/` | opencode-core | `/shared` | rw |
+| `shared/` | admin | `/shared` | rw |
+| `shared/` | openmemory | `/shared` | rw |
+| `caddy/` | caddy | `/data` | rw |
+| `admin/` | admin | `/app/data` | rw |
 
 ---
 
 ## Config Directory (`~/.config/openpalm`)
 
-Holds user-editable configuration. The installer seeds defaults here on first run but never overwrites existing files, so manual edits are preserved across upgrades.
+User-editable configuration files. The installer seeds defaults but never overwrites existing files.
 
 ```
 ~/.config/openpalm/
-├── caddy/
-│   └── Caddyfile              # Reverse proxy routing rules
-├── channels/
-│   ├── chat.env               # Chat channel overrides
-│   ├── discord.env            # Discord bot token & public key
-│   ├── telegram.env           # Telegram bot token & webhook secret
-│   └── voice.env              # Voice channel configuration
-├── cron/                      # Cron job definitions (mounted into opencode-core)
 ├── opencode-core/
-│   ├── opencode.jsonc         # Core agent OpenCode configuration
-│   ├── AGENTS.md              # Safety rules and behavioral constraints
-│   ├── lib/
-│   │   └── openmemory-client.ts   # OpenMemory REST client library
-│   ├── plugins/
-│   │   ├── openmemory-http.ts     # Memory recall/writeback pipeline plugin
-│   │   └── policy-and-telemetry.ts # Policy enforcement and audit plugin
-│   ├── skills/
-│   │   ├── ActionGating.SKILL.md   # Risk classification for agent actions
-│   │   ├── ChannelIntake.SKILL.md  # Inbound channel request handling
-│   │   ├── MemoryPolicy.SKILL.md   # Memory storage policy rules
-│   │   └── RecallFirst.SKILL.md    # Memory recall-before-answer behavior
-│   └── ssh/
-│       └── authorized_keys         # SSH public keys (if SSH access enabled)
-├── opencode-gateway/
-│   ├── opencode.jsonc         # Gateway intake agent configuration (read-only tools)
-│   ├── AGENTS.md              # Safety rules for gateway agent
-│   └── skills/
-│       ├── ChannelIntake.SKILL.md  # Channel intake behavior for gateway
-│       └── RecallFirst.SKILL.md    # Recall-first behavior for gateway
-├── secrets.env                # API keys and secrets (OPENAI_BASE_URL, OPENAI_API_KEY)
-└── user.env                   # User-specific bind address and runtime overrides
+│   └── opencode.jsonc     # User override config (seeded as empty {})
+├── caddy/
+│   └── Caddyfile          # Reverse proxy configuration
+├── channels/
+│   ├── chat.env           # Chat channel credentials
+│   ├── discord.env        # Discord channel credentials
+│   ├── telegram.env       # Telegram channel credentials
+│   └── voice.env          # Voice channel credentials
+├── cron/                  # Cron job definitions managed by admin
+│   └── crontab            # (created by admin when cron jobs are added)
+├── secrets.env            # API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+└── user.env               # User-level environment overrides
 ```
 
-### Key Config Files Explained
+### Key Config Files
 
-**`caddy/Caddyfile`** — Defines all HTTP routing. By default it listens on ports 80 and 443, restricts admin and channel paths to LAN-only access (private IP ranges), and proxies to internal services. Routes include `/channels/{chat,voice,discord,telegram}` for channel ingress, `/admin/*` for the admin UI and API, `/admin/opencode*` for the core agent, and `/admin/openmemory*` for the memory UI.
+**`opencode-core/opencode.jsonc`** — User override layer for the opencode-core container. Seeded as an empty JSON object `{}`. Extensions are baked into the container image at build time; this file exists so operators can add npm plugins, change permissions, or configure MCP connections without rebuilding images. Mounted at `/config/opencode.jsonc` inside the container.
 
-**`opencode-core/opencode.jsonc`** — The primary agent configuration. Sets default permissions (bash, edit, webfetch all require approval), defines the `channel-intake` agent profile with all tools disabled (read-only), and configures the OpenMemory MCP connection. Extensions (plugins, skills, lib) are baked into the container image at build time from `opencode/extensions/`. Files placed in this config directory serve as optional host overrides; they are merged at container startup and take effect on container restart without rebuilding.
+**`caddy/Caddyfile`** — Reverse proxy rules. Routes `/channels/*` to channel adapters, `/admin/*` to the admin service, and enforces LAN-only access via IP matchers.
 
-**`opencode-gateway/opencode.jsonc`** — The gateway's intake agent configuration. All permissions are set to `never`; the gateway agent is strictly read-only and used for channel message validation before messages reach the core agent. Gateway extensions are baked into the gateway container image, so this config home entry is no longer required for standard deployments. Files here act as optional overrides only.
+**`channels/*.env`** — Per-channel credential files (e.g., `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`).
 
-**`secrets.env`** — Consumed as an `env_file` by the `openmemory` and `opencode-core` containers. Contains API keys for OpenAI-compatible endpoints that power memory features. This file is the appropriate place for any secret that needs to reach the core agent or memory service.
+**`secrets.env`** — API keys consumed by opencode-core and openmemory. Operators populate this with their provider keys.
 
-**`user.env`** — Also consumed as an `env_file` by `openmemory` and `opencode-core`. Intended for optional runtime tuning like bind address overrides without touching the system-managed `.env`.
+**`user.env`** — User-level environment variable overrides.
 
-**`channels/*.env`** — Each channel adapter reads its own env file. These are managed through the admin UI but can be edited directly. They contain channel-specific credentials (Discord bot tokens, Telegram secrets, etc.).
-
-**Container volume mounts:**
+### Volume Mount Map (Config)
 
 | Host Path | Container | Mount Point | Mode |
 |-----------|-----------|-------------|------|
-| `caddy/Caddyfile` | caddy | `/etc/caddy/Caddyfile` | ro |
 | `opencode-core/` | opencode-core | `/config` | rw |
 | `opencode-core/` | admin | `/app/config/opencode-core` | rw |
-| `opencode-gateway/` | gateway | `/app/opencode-config` | ro | *(optional override — gateway extensions are baked in)* |
+| `caddy/Caddyfile` | caddy | `/etc/caddy/Caddyfile` | ro |
 | `caddy/` | admin | `/app/config/caddy` | rw |
 | `channels/` | admin | `/app/channel-env` | rw |
-| (config root) | admin | `/app/config-root` | rw |
 | `channels/chat.env` | channel-chat | env_file | — |
 | `channels/discord.env` | channel-discord | env_file | — |
 | `channels/telegram.env` | channel-telegram | env_file | — |
 | `channels/voice.env` | channel-voice | env_file | — |
-| `secrets.env` | opencode-core, openmemory | env_file | — |
-| `user.env` | opencode-core, openmemory | env_file | — |
 | `cron/` | opencode-core | `/cron` | rw |
+| `secrets.env` | opencode-core | env_file | — |
+| `secrets.env` | openmemory | env_file | — |
+| `user.env` | opencode-core | env_file | — |
+| `user.env` | openmemory | env_file | — |
+| (entire config home) | admin | `/app/config-root` | rw |
 
 ---
 
 ## State Directory (`~/.local/state/openpalm`)
 
-Holds runtime state, logs, and ephemeral working data. Safe to delete if you want a fresh start (containers will recreate what they need), though you'll lose audit logs and any in-progress workspace files.
+Runtime state, disposable on reinstall.
 
 ```
 ~/.local/state/openpalm/
-├── .env                       # Copy of the master .env (used by compose)
-├── docker-compose.yml         # Active compose file (copied from assets at install)
-├── uninstall.sh               # Convenience copy of the uninstall script
-├── backups/                   # Backup storage
-├── caddy/                     # Caddy runtime config state
-├── gateway/                   # Gateway runtime data
-├── observability/             # Maintenance logs, metrics snapshots, tmp files
-├── opencode-core/             # Core agent runtime state
-└── workspace/                 # Agent working directory (mounted as /work)
+├── docker-compose.yml     # Active compose file (copied from assets/state/)
+├── .env                   # Copy of the working directory .env
+├── opencode-core/         # OpenCode runtime state
+├── gateway/               # Gateway audit logs and runtime data
+├── caddy/                 # Caddy runtime config state
+├── workspace/             # OpenCode working directory (mounted as /work)
+├── observability/         # Logs and metrics (future)
+├── backups/               # Backup storage (future)
+└── uninstall.sh           # Uninstall script (copied from assets/state/scripts/)
 ```
 
-### Key State Files Explained
+### Volume Mount Map (State)
 
-**`docker-compose.yml`** — The operative compose file. Copied from the repo's `assets/state/docker-compose.yml` during installation. This is the file that `docker compose` actually reads. It defines all services: caddy, postgres, qdrant, openmemory, opencode-core, gateway, admin, controller, and the optional channel adapters (chat, discord, voice, telegram) behind the `channels` profile.
-
-**`.env`** — A copy of the working directory's `.env`, placed here so the compose file and controller have a local reference. The controller mounts the entire state directory as `/workspace`.
-
-**`uninstall.sh`** — A copy of the uninstall script placed here for easy access. Supports `--remove-all` (deletes all three XDG directories and the local `.env`), `--remove-images`, and `--yes` flags.
-
-**`workspace/`** — The agent's working directory, mounted into `opencode-core` at `/work`. This is where the core agent writes files, runs code, and performs tasks.
-
-**`observability/`** — The controller's `maintenance.sh` script writes log-rotated maintenance logs, metrics snapshots (container stats in JSONL), and temporary files here. Logs older than 14 days are auto-pruned, and temp files older than 7 days are cleaned up.
-
-**Container volume mounts:**
-
-| Host Path | Container | Mount Point |
-|-----------|-----------|-------------|
-| `docker-compose.yml` + `.env` | controller | `/workspace` (parent dir) |
-| (state root) | controller | `/workspace` |
-| (state root) | admin | `/workspace` |
-| `caddy/` | caddy | `/config` |
-| `gateway/` | gateway | `/app/data` |
-| `opencode-core/` | opencode-core | `/state` |
-| `workspace/` | opencode-core | `/work` |
+| Host Path | Container | Mount Point | Mode |
+|-----------|-----------|-------------|------|
+| (entire state home) | controller | `/workspace` | rw |
+| (entire state home) | admin | `/workspace` | rw |
+| `opencode-core/` | opencode-core | `/state` | rw |
+| `gateway/` | gateway | `/app/data` | rw |
+| `caddy/` | caddy | `/config` | rw |
+| `workspace/` | opencode-core | `/work` | rw |
 
 ---
 
-## Container Socket
+## Container Socket Mounting
 
-The controller container needs access to the host's container runtime socket to manage the compose stack (pull images, restart services, run maintenance). The socket is bind-mounted into the controller:
+The controller needs access to the host container runtime socket. The installer detects the runtime and configures the socket path.
 
-| Runtime | Default Host Socket Path | In-Container Path |
-|---------|-------------------------|-------------------|
+| Runtime | Host Socket Path | Container Mount Point |
+|---------|-----------------|----------------------|
 | Docker | `/var/run/docker.sock` | `/var/run/openpalm-container.sock` |
-| Podman (Linux) | `/run/user/<uid>/podman/podman.sock` | `/var/run/openpalm-container.sock` |
+| Podman (Linux) | `/run/user/$UID/podman/podman.sock` | `/var/run/openpalm-container.sock` |
+| Podman (macOS) | `/var/run/docker.sock` | `/var/run/openpalm-container.sock` |
 | OrbStack (macOS) | `~/.orbstack/run/docker.sock` | `/var/run/openpalm-container.sock` |
 
-The in-container path is always `/var/run/openpalm-container.sock` regardless of runtime, abstracted via the `OPENPALM_CONTAINER_SOCKET_URI` variable.
+Inside the controller, `OPENPALM_CONTAINER_SOCKET_URI` is always `unix:///var/run/openpalm-container.sock`. The controller sets both `DOCKER_HOST` and `CONTAINER_HOST` to this URI when spawning compose commands.
 
 ---
 
-## Network Ports
+## Network Ports and Bind Addresses
 
-| Port | Service | Default Bind Address | Purpose |
-|------|---------|---------------------|---------|
-| 80 | caddy | `0.0.0.0` | HTTP ingress (admin UI, channels) |
-| 443 | caddy | `0.0.0.0` | HTTPS ingress |
-| 8765 | openmemory | `0.0.0.0` | OpenMemory API (direct access) |
-| 3000 | openmemory-ui | `0.0.0.0` | OpenMemory dashboard UI |
-| 4096 | opencode-core | `127.0.0.1` | OpenCode agent API (localhost only) |
-| 2222 | opencode-core | `127.0.0.1` | SSH access (disabled by default) |
+| Port | Service | Default Bind | Override Variable |
+|------|---------|-------------|-------------------|
+| 80 | Caddy HTTP | `0.0.0.0` | `OPENPALM_INGRESS_BIND_ADDRESS` |
+| 443 | Caddy HTTPS | `0.0.0.0` | `OPENPALM_INGRESS_BIND_ADDRESS` |
+| 3000 | OpenMemory UI | `0.0.0.0` | `OPENPALM_OPENMEMORY_UI_BIND_ADDRESS` |
+| 4096 | OpenCode Core | `127.0.0.1` | `OPENCODE_CORE_BIND_ADDRESS` |
+| 8765 | OpenMemory API | `0.0.0.0` | `OPENPALM_OPENMEMORY_BIND_ADDRESS` |
+| 2222 | OpenCode SSH | `127.0.0.1` | `OPENCODE_CORE_SSH_BIND_ADDRESS` |
 
-All bind addresses are configurable via `*_BIND_ADDRESS` variables in `.env` or `user.env`.
+Internal-only ports (not exposed to host): gateway (8080), admin (8100), controller (8090), channel adapters (8181–8184), postgres (5432), qdrant (6333/6334).
 
 ---
 
-## Service Architecture
+## Service Architecture and Dependencies
 
-The compose stack defines these services and their interdependencies:
+```
+caddy ──→ gateway ──→ opencode-core ──→ openmemory ──→ qdrant
+  │                                            │
+  │                                            └──→ postgres
+  ├──→ admin ──→ controller
+  │
+  └──→ openmemory-ui ──→ openmemory
 
-**Infrastructure layer:** `postgres` (relational DB), `qdrant` (vector DB)
+channel-chat ──→ gateway     (profile: channels)
+channel-discord ──→ gateway  (profile: channels)
+channel-voice ──→ gateway    (profile: channels)
+channel-telegram ──→ gateway (profile: channels)
+```
 
-**Core layer:** `openmemory` (memory MCP server, depends on qdrant), `openmemory-ui` (memory dashboard, depends on openmemory), `opencode-core` (primary AI agent, depends on openmemory)
+Channel adapters are in the `channels` compose profile and are not started by default. Enable with `--profile channels`.
 
-**Routing layer:** `gateway` (channel message routing and intake validation, depends on opencode-core), `controller` (container lifecycle management), `admin` (web UI and setup wizard, depends on controller)
+---
 
-**Edge layer:** `caddy` (reverse proxy, depends on gateway, admin, and openmemory-ui)
+## Extensions: Baked-In with Host Override
 
-**Channel layer (optional, `--profile channels`):** `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram` (all depend on gateway)
+Extensions follow a layered model:
+
+1. **Baked into images at build time** — `opencode/extensions/` is COPY'd to `/root/.config/opencode/` in the `opencode-core` image. `gateway/opencode/` is COPY'd to `/root/.config/opencode/` in the `gateway` image.
+
+2. **Host override layer (opencode-core only)** — `~/.config/openpalm/opencode-core/` is mounted at `/config`. If `/config/opencode.jsonc` exists, the entrypoint uses `/config` as the config directory. If missing, it copies baked-in defaults from `/root/.config/opencode/` into `/config`.
+
+3. **Gateway has no host override** — the gateway's config is fully baked into its image with no host volume mount.
+
+The installer does not seed extension files (plugins, skills, AGENTS.md). It seeds only an empty `opencode.jsonc` for user-level overrides.
+
+---
+
+## Repository Asset Structure
+
+```
+assets/
+├── config/                    # User-editable config templates
+│   ├── channels/
+│   │   ├── chat.env
+│   │   ├── discord.env
+│   │   ├── telegram.env
+│   │   └── voice.env
+│   ├── secrets.env
+│   ├── ssh/
+│   │   └── authorized_keys
+│   ├── system.env
+│   └── user.env
+└── state/                     # Runtime state templates
+    ├── caddy/
+    │   └── Caddyfile
+    ├── content/
+    │   └── banner.png
+    ├── docker-compose.yml
+    ├── registry/              # Community extension registry
+    │   ├── README.md
+    │   ├── index.json
+    │   ├── openpalm-slack-channel.json
+    │   └── schema.json
+    └── scripts/
+        ├── extensions-cli.ts
+        ├── install.sh
+        ├── install.ps1
+        ├── uninstall.ps1
+        └── uninstall.sh
+```
+
+Extension source code lives in service directories (not in `assets/`):
+- `opencode/extensions/` — Core agent extensions
+- `gateway/opencode/` — Gateway agent extensions
+
+---
+
+## Installation Flow
+
+1. Detect OS, CPU architecture, and container runtime.
+2. Bootstrap install assets from local `assets/` or download tarball from GitHub.
+3. Generate `.env` from `assets/config/system.env` with auto-generated secrets.
+4. Write resolved XDG paths and runtime config into `.env`.
+5. Create XDG directory trees.
+6. Copy `docker-compose.yml` and `.env` into the state directory.
+7. Seed default configs (seed-not-overwrite): empty `opencode.jsonc`, Caddyfile, channel envs, `secrets.env`, `user.env`.
+8. Copy uninstall script into state directory.
+9. Start core services via compose.
+10. Wait for admin health check, open setup UI in browser.
 
 ---
 
 ## Uninstallation
 
-The uninstall script (`uninstall.sh` or `uninstall.ps1`) reads paths from `.env` and supports three modes:
-
-**Default** — stops and removes containers and the compose network.
-
-**`--remove-images`** — also removes all container images used by the stack.
-
-**`--remove-all`** — removes all three XDG directories (`data`, `config`, `state`) and the working directory `.env`. This is a complete wipe.
-
----
-
-## Maintenance
-
-The controller container includes `maintenance.sh` which provides scheduled operations that write to the `observability/` subdirectory under the state home:
-
-| Task | What It Does |
-|------|-------------|
-| `pull-and-restart` | Pulls latest images and recreates services |
-| `log-rotate` | Compresses logs > 5MB, deletes compressed logs > 14 days |
-| `prune-images` | Removes unused images older than 7 days |
-| `health-check` | Probes service endpoints, restarts non-running services |
-| `security-scan` | Runs Docker Scout vulnerability scan on stack images |
-| `db-maintenance` | Runs PostgreSQL vacuum/analyze |
-| `filesystem-cleanup` | Deletes temp files older than 7 days |
-| `metrics-report` | Captures container stats snapshot as JSONL |
+| Mode | Command | What It Does |
+|------|---------|-------------|
+| Default | `./uninstall.sh` | Stops containers, removes compose project |
+| Remove images | `./uninstall.sh --remove-images` | Also removes pulled/built images |
+| Remove all | `./uninstall.sh --remove-all` | Also removes all XDG directories |
