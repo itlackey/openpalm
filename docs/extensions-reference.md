@@ -1,5 +1,10 @@
 # OpenPalm Extensions: Installation, Configuration, and Management
 
+> **Related extension docs:**
+> - [extensions-guide.md](extensions-guide.md) -- How to build and install extensions (developer tutorial)
+> - **extensions-reference.md** (this file) -- Technical reference for all extension types (API/schema details)
+> - [extensions-analysis.md](extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
+
 This document provides a complete end-to-end reference for how extensions are authored, distributed, installed, configured, loaded at runtime, and removed in an OpenPalm stack.
 
 ---
@@ -172,7 +177,7 @@ OpenCode discovers and loads plugins through two mechanisms:
 
 Skills are an extension sub-type and follow the `skills/<name>/SKILL.md` directory structure. OpenCode loads skills automatically from `$OPENCODE_CONFIG_DIR/skills/`. The core agent has one skill (`memory`) and the gateway has one skill (`channel-intake`).
 
-The gateway's `channel-intake` agent references its skill in its own definition file at `gateway/opencode/agent/channel-intake.md`, not inline in `opencode.jsonc`. The gateway invokes the agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`), which loads the agent definition from the `agents/` directory.
+The gateway's `channel-intake` agent references its skill in its own definition file at `gateway/opencode/agents/channel-intake.md`, not inline in `opencode.jsonc`. The gateway invokes the agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`), which loads the agent definition from the `agents/` directory.
 
 ### AGENTS.md Loading
 
@@ -244,7 +249,7 @@ The gateway's `AGENTS.md` defines action gating: classify actions by risk tier, 
 }
 ```
 
-The gateway uses wildcard permission denial (`"*": "deny"`) to ensure the intake agent has no capabilities beyond text processing. It also explicitly uses the `instructions` array to load `AGENTS.md`. The `channel-intake` agent is defined separately in `gateway/opencode/agent/channel-intake.md`, where it disables all tools via `"*": false` in its frontmatter and references the `channel-intake` skill and `AGENTS.md` for behavioral rules.
+The gateway uses wildcard permission denial (`"*": "deny"`) to ensure the intake agent has no capabilities beyond text processing. It also explicitly uses the `instructions` array to load `AGENTS.md`. The `channel-intake` agent is defined separately in `gateway/opencode/agents/channel-intake.md`, where it disables all tools via `"*": false` in its frontmatter and references the `channel-intake` skill and `AGENTS.md` for behavioral rules.
 
 ---
 

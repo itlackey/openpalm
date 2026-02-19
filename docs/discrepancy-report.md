@@ -70,7 +70,7 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 
 **Documentation:** `architecture.md:58` mentions "channel-intake agent" running on opencode-core
 
-**Implementation:** The intake agent is invoked by the gateway but the actual agent definition is loaded from `gateway/opencode/skills/channel-intake/SKILL.md` and `gateway/opencode/agent/channel-intake.md`
+**Implementation:** The intake agent is invoked by the gateway but the actual agent definition is loaded from `gateway/opencode/skills/channel-intake/SKILL.md` and `gateway/opencode/agents/channel-intake.md`
 
 **Status:** MINOR AMBIGUITY - Documentation doesn't clearly explain that the gateway sends requests to opencode-core with `agent: "channel-intake"` parameter, which loads the skill from the gateway's baked-in config.
 
@@ -110,7 +110,7 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 - `opencode/extensions/opencode.jsonc:4-9` now includes model and provider configuration
 
 ### 2.7 R11 - Channel-Intake Agent ✅ FIXED
-- `gateway/opencode/agent/channel-intake.md` now exists
+- `gateway/opencode/agents/channel-intake.md` now exists
 
 ---
 

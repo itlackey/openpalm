@@ -97,7 +97,7 @@ Outdated, incomplete, or inconsistent terminology that should be updated.
 | 72 | `docs/discrepancy-report.md` | Conflates infrastructure maintenance cron (controller) with user Automations (opencode-core) |
 | 73 | `docs/discrepancy-report.md` | "Cron job" used as concept name instead of "Automations" |
 | 74 | `CONTRIBUTING.md` | Channel env file naming: `channels/discord.env` vs canonical `channel-discord.env` |
-| 75 | `gateway/opencode/agent/channel-intake.md` | Uses "agent team" instead of "assistant"; memory recall step not in canonical pipeline |
+| 75 | `gateway/opencode/agents/channel-intake.md` | Uses "agent team" instead of "assistant"; memory recall step not in canonical pipeline |
 | 76 | `opencode/extensions/command/memory-recall.md` | Singular `command/` directory violates plural `commands/` convention |
 | 77 | `opencode/extensions/command/memory-save.md` | Singular `command/` directory violates plural `commands/` convention |
 | 78 | `opencode/extensions/command/health.md` | Singular `command/` directory violates plural `commands/` convention |
@@ -150,7 +150,7 @@ The 6-step pipeline (HMAC verification, payload validation, rate limiting, intak
 | `docs/checklist.md` | 3 | 3 | 1 |
 | `docs/discrepancy-report.md` | 1 | 2 | 0 |
 | `assets/state/registry/README.md` | 3 | 2 | 1 |
-| `gateway/opencode/agent/channel-intake.md` | 0 | 1 | 2 |
+| `gateway/opencode/agents/channel-intake.md` | 0 | 1 | 2 |
 | `gateway/opencode/skills/channel-intake/SKILL.md` | 2 | 1 | 1 |
 | `opencode/extensions/AGENTS.md` | 0 | 0 | 1 |
 | `gateway/opencode/AGENTS.md` | 0 | 0 | 1 |

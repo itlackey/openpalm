@@ -1,5 +1,10 @@
 # OpenPalm Extensions: Critical Analysis and Recommendations
 
+> **Related extension docs:**
+> - [extensions-guide.md](extensions-guide.md) -- How to build and install extensions (developer tutorial)
+> - [extensions-reference.md](extensions-reference.md) -- Technical reference for all extension types (API/schema details)
+> - **extensions-analysis.md** (this file) -- Architecture analysis of the extension system (design rationale)
+
 This document is a technical review of how OpenPalm implements its extension system, evaluated against the capabilities of the OpenCode runtime it depends on. It identifies gaps, structural issues, and concrete recommendations for improvement. It has been updated to reflect recent repository changes.
 
 ## Extension System Overview
@@ -108,7 +113,7 @@ Custom Tools (medium-high risk extension sub-type) are now implemented in `openc
 `opencode.jsonc` now specifies `model: "anthropic/claude-sonnet-4-5"` and provider configuration with env-based API key. Provider credentials are managed as Connections in `secrets.env`.
 
 ### 10. Agent Markdown Files (R11) — RESOLVED
-The `channel-intake` agent (an Agent-type extension, medium risk) is now defined in `gateway/opencode/agent/channel-intake.md` with frontmatter (description, tools), replacing the inline definition in `opencode.jsonc`.
+The `channel-intake` agent (an Agent-type extension, medium risk) is now defined in `gateway/opencode/agents/channel-intake.md` with frontmatter (description, tools), replacing the inline definition in `opencode.jsonc`.
 
 ### 11. Config Layering (R6) — RESOLVED
 The entrypoint uses `cp -rn` (no-clobber recursive copy) to merge baked-in defaults into `/config/`, ensuring baked-in extensions are available even when the host provides an `opencode.jsonc` override.
@@ -227,7 +232,7 @@ Either build the manifest processing or remove it from docs.
 
 ### R11. Move Channel-Intake Agent to a Markdown File (Low Impact, Low Effort)
 
-Create `gateway/opencode/agent/channel-intake.md` with frontmatter, remove the inline definition from `opencode.jsonc`. This Agent-type extension (medium risk) should follow the canonical `agents/<name>.md` directory convention.
+Create `gateway/opencode/agents/channel-intake.md` with frontmatter, remove the inline definition from `opencode.jsonc`. This Agent-type extension (medium risk) should follow the canonical `agents/<name>.md` directory convention.
 
 ### R12. Add Commands for Common Operations (Low Impact, Medium Effort)
 

@@ -1,6 +1,11 @@
 # Extensions Guide: Installing & Enabling Extensions (Skills, Commands, Agents, Tools, and Plugins) + Channels
 *Install OpenCode extensions via Admin UI, API, or CLI. Manage optional stack add-ons (channels) without inventing a new config system.*
 
+> **Related extension docs:**
+> - **extensions-guide.md** (this file) -- How to build and install extensions (developer tutorial)
+> - [extensions-reference.md](extensions-reference.md) -- Technical reference for all extension types (API/schema details)
+> - [extensions-analysis.md](extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
+
 ## 1) Concept: Extensions and the `OPENCODE_CONFIG_DIR`
 
 **Extension** is the umbrella term for all modular components that add behavior or capability to the OpenPalm stack. There are five sub-types:

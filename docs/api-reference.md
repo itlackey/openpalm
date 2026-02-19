@@ -157,7 +157,7 @@ Runtime behavior:
 - `GET /containers` — list running containers (via configured compose runtime `ps`)
 - `POST /restart/:service` — restart a service
 - `POST /up/:service` — start a service
-- `POST /down/:service` — stop a service
+- `POST /down/:service` — stop a service (Note: despite the endpoint name, this runs `docker compose stop`, not `docker compose down`. The container is halted but not removed, which preserves container state and is safer for single-service operations.)
 
 Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `channel-webhook`, `caddy`
 

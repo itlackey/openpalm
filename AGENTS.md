@@ -120,7 +120,7 @@ import * as foo from "./foo";
 
 ### Naming Conventions
 
-- **Files**: camelCase (e.g., `channel-intake.ts`, `opencode-client.ts`)
+- **Files**: kebab-case (e.g., `channel-intake.ts`, `opencode-client.ts`)
 - **Types/Interfaces**: PascalCase (e.g., `ChannelMessage`, `IntakeDecision`)
 - **Functions**: camelCase (e.g., `buildIntakeCommand`, `parseIntakeDecision`)
 - **Classes**: PascalCase (e.g., `OpenCodeClient`, `SetupManager`)

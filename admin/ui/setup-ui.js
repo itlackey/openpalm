@@ -24,7 +24,7 @@
       .wizard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:640px;width:95%}
       .wizard h2{margin:0 0 .3rem}
       .wizard .steps{display:flex;gap:.5rem;margin:1rem 0}
-      .wizard .step-dot{width:12px;height:12px;border-radius:50%;background:var(--border)}
+      .wizard .step-dot{width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--border)}
       .wizard .step-dot.done{background:var(--green)}
       .wizard .step-dot.current{background:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.3)}
       .wizard .body{min-height:180px;margin:1rem 0}
@@ -73,6 +73,7 @@
     else if (wizardStep === STEPS.length - 2) h += '<button onclick="window.openPalmSetup.finishSetup()">Finish Setup</button>';
     h += '</div></div>';
     ov.innerHTML = h;
+    if (window.trapFocus) window.trapFocus(ov);
   }
 
   function wizardBody() {
@@ -215,7 +216,7 @@
     const svcNames = window.SERVICE_NAMES || {};
     for (const [name, info] of Object.entries(r.data.services)) {
       const friendly = (svcNames[name] && svcNames[name].label) ? svcNames[name].label : esc(name);
-      h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? "dot-ok" : "dot-err") + '"></span><strong>' + friendly + '</strong> — ' + (info.ok ? "Healthy" : esc(info.error || "Unreachable")) + '</div>';
+      h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? "dot-ok" : "dot-err") + '"></span><span class="sr-only">' + (info.ok ? "Healthy" : "Error") + '</span><strong>' + friendly + '</strong> — ' + (info.ok ? "Healthy" : esc(info.error || "Unreachable")) + '</div>';
     }
     el.innerHTML = h;
   }
@@ -315,7 +316,9 @@
   }
 
   function continueToAdmin() {
-    document.getElementById("setup-overlay")?.classList.add("hidden");
+    var ov = document.getElementById("setup-overlay");
+    if (window.releaseFocus && ov) window.releaseFocus(ov);
+    if (ov) ov.classList.add("hidden");
     showPage("extensions");
   }
 

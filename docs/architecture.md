@@ -136,7 +136,7 @@ The gateway is stateless. It verifies HMAC signatures, applies rate limiting (12
 
 This approach uses OpenCode's built-in agent permission model for isolation — the `channel-intake` agent has all tools denied, while the default agent uses approval gates — without requiring a separate container or runtime process.
 
-The `channel-intake` agent is defined in a standalone Markdown file at `gateway/opencode/agent/channel-intake.md` with frontmatter that disables all tools (`"*": false`). The gateway invokes this agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`). OpenCode loads the agent definition from the `agent/` directory in its config path, applying the frontmatter settings (tool restrictions, description) and the prompt body (which references the `channel-intake` skill and `AGENTS.md`).
+The `channel-intake` agent is defined in a standalone Markdown file at `gateway/opencode/agents/channel-intake.md` with frontmatter that disables all tools (`"*": false`). The gateway invokes this agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`). OpenCode loads the agent definition from the `agents/` directory in its config path, applying the frontmatter settings (tool restrictions, description) and the prompt body (which references the `channel-intake` skill and `AGENTS.md`).
 
 ### Admin operations
 ```

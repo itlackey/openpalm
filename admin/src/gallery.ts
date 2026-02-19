@@ -118,7 +118,7 @@ const REGISTRY: GalleryItem[] = [
 
   // ── Channels ──────────────────────────────────────────────────────
   {
-    id: "container-channel-chat",
+    id: "channel-chat",
     name: "Chat Channel",
     description: "HTTP-based chat adapter. Accepts JSON messages and routes them securely to your assistant. Ideal for web chat widgets and custom frontends.",
     category: "channel",
@@ -133,7 +133,7 @@ const REGISTRY: GalleryItem[] = [
     installTarget: "channel-chat"
   },
   {
-    id: "container-channel-discord",
+    id: "channel-discord",
     name: "Discord Channel",
     description: "Discord bot adapter supporting slash commands and webhook-based message forwarding. All messages are verified and filtered for security.",
     category: "channel",
@@ -149,7 +149,7 @@ const REGISTRY: GalleryItem[] = [
     docUrl: "https://discord.com/developers/docs"
   },
   {
-    id: "container-channel-voice",
+    id: "channel-voice",
     name: "Voice Channel",
     description: "Voice/speech-to-text adapter. Accepts transcribed text and routes it securely to your assistant. WebSocket streaming endpoint planned.",
     category: "channel",
@@ -164,7 +164,7 @@ const REGISTRY: GalleryItem[] = [
     installTarget: "channel-voice"
   },
   {
-    id: "container-channel-telegram",
+    id: "channel-telegram",
     name: "Telegram Channel",
     description: "Telegram bot adapter. Receives webhook updates from Telegram's Bot API and forwards text messages securely to your assistant.",
     category: "channel",

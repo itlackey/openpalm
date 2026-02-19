@@ -4,7 +4,7 @@ description: Validates, summarizes, and dispatches inbound channel requests
 ---
 
 <!-- NOTE: This skill is loaded BY the channel-intake agent defined in
-     gateway/opencode/agent/channel-intake.md. It provides behavioral
+     gateway/opencode/agents/channel-intake.md. It provides behavioral
      guidance for how that agent evaluates messages. This skill file is
      not the agent itself. Tool access is controlled entirely by the agent
      definition ("*": false -- all tools denied), not by this skill. -->

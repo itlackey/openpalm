@@ -38,6 +38,7 @@ nav .logo{font-weight:700;font-size:18px;color:var(--accent2);margin-right:auto;
 nav .logo img{width:24px;height:24px;border-radius:6px}
 nav button{background:transparent;color:var(--muted);padding:.3rem .8rem;border:1px solid transparent;font-size:14px}
 nav button.active{color:var(--text);border-color:var(--accent);background:var(--surface2)}
+@media(max-width:480px){nav{flex-wrap:wrap}nav .logo{width:100%;margin-bottom:.3rem}nav button{flex:1;font-size:12px;padding:.3rem .4rem}}
 /* detail modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:90}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:560px;width:95%;max-height:80vh;overflow-y:auto}
@@ -72,11 +73,13 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 .field-group{margin-bottom:.7rem}
 .field-group label{display:block;font-size:13px;font-weight:600;margin-bottom:.2rem}
 /* Access toggle */
-.access-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:13px;cursor:pointer;padding:.3rem .6rem;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border)}
+.access-toggle{display:inline-flex;align-items:center;gap:.5rem;font-size:13px;padding:.3rem .6rem;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border)}
 .access-toggle .toggle-dot{width:8px;height:8px;border-radius:50%}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 </style>
 </head>
 <body>
+<a href="#main-content" class="sr-only" style="position:absolute;top:-40px;left:0;background:var(--accent);color:#fff;padding:.5rem 1rem;z-index:1000;transition:top .2s" onfocus="this.style.top='0'" onblur="this.style.top='-40px'">Skip to content</a>
 
 <nav>
   <span class="logo"><img src="logo.png" alt="OpenPalm logo" />OpenPalm</span>
@@ -86,7 +89,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <button id="nav-system" onclick="showPage('system')">System</button>
 </nav>
 
-<div class="container">
+<div class="container" id="main-content">
   <div id="page-extensions" class="page"></div>
   <div id="page-channels" class="page hidden"></div>
   <div id="page-automations" class="page hidden"></div>
@@ -94,9 +97,9 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 </div>
 
 <!-- setup wizard overlay, rendered by JS -->
-<div id="setup-overlay" class="wizard-overlay hidden"></div>
+<div id="setup-overlay" class="wizard-overlay hidden" role="dialog" aria-modal="true"></div>
 <!-- detail modal, rendered by JS -->
-<div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()"></div>
+<div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if(event.target===this)closeModal()"></div>
 
 <script src="setup-ui.js"></script>
 <script>
@@ -189,6 +192,8 @@ function showToast(message, type) {
   }
   const toast = document.createElement('div');
   toast.className = 'toast toast-' + type;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
   toast.textContent = message;
   toast.style.cursor = 'pointer';
   toast.onclick = function() { toast.remove(); };
@@ -202,9 +207,9 @@ function showPage(name) {
   window.location.hash = name;
   document.querySelectorAll('.page').forEach(function(p) { p.classList.add('hidden'); });
   document.getElementById('page-' + name).classList.remove('hidden');
-  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); b.removeAttribute('aria-current'); });
   const nb = document.getElementById('nav-' + name);
-  if (nb) nb.classList.add('active');
+  if (nb) { nb.classList.add('active'); nb.setAttribute('aria-current', 'page'); }
   const existing = document.getElementById('iframe-overlay');
   if (existing) existing.remove();
   document.querySelector('.container').style.display = '';
@@ -499,9 +504,11 @@ async function showDetail(id) {
   h += '</div>';
   ov.innerHTML = h;
   ov.classList.remove('hidden');
+  trapFocus(ov);
 }
 
 function closeModal() {
+  releaseFocus(document.getElementById('modal-overlay'));
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
@@ -631,22 +638,23 @@ function renderChannels() {
     h += '<div class="channel-header">';
     h += '<div class="channel-status">';
     h += '<span class="dot ' + (c.access !== 'disabled' ? 'dot-ok' : 'dot-err') + '"></span>';
+    h += '<span class="sr-only">' + (c.access !== 'disabled' ? 'Healthy' : 'Error') + '</span>';
     h += '<strong style="font-size:16px">' + esc(friendly) + '</strong>';
     h += '</div>';
     /* Access toggle */
     if (adminToken && svc.startsWith('channel-')) {
       if (c.access === 'public') {
-        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'lan\')" title="Currently accessible from the internet. Click to restrict to local network.">';
+        h += '<button class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'lan\')" title="Currently accessible from the internet. Click to restrict to local network.">';
         h += '<span class="toggle-dot" style="background:var(--green)"></span> Public';
-        h += '</span>';
+        h += '</button>';
       } else if (c.access === 'lan') {
-        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'public\')" title="Currently accessible on local network. Click to make accessible from the internet.">';
+        h += '<button class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'public\')" title="Currently accessible on local network. Click to make accessible from the internet.">';
         h += '<span class="toggle-dot" style="background:var(--yellow)"></span> Local Network';
-        h += '</span>';
+        h += '</button>';
       } else {
-        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'public\')" title="Currently disabled. Click to make accessible from the internet.">';
+        h += '<button class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'public\')" title="Currently disabled. Click to make accessible from the internet.">';
         h += '<span class="toggle-dot" style="background:var(--muted)"></span> Disabled';
-        h += '</span>';
+        h += '</button>';
       }
     } else {
       if (c.access === 'public') {
@@ -665,7 +673,7 @@ function renderChannels() {
         const f = fields[fi];
         const val = cfg[f.key] || '';
         h += '<div class="field-group">';
-        h += '<label>' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
+        h += '<label for="ch-' + esc(svc) + '-' + esc(f.key) + '">' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
         h += '<input id="ch-' + esc(svc) + '-' + esc(f.key) + '" type="' + f.type + '" placeholder="' + esc(f.helpText || '') + '" value="' + esc(val) + '" />';
         h += '<div class="help-text">' + esc(f.helpText || '') + '</div>';
         h += '</div>';
@@ -780,13 +788,13 @@ function renderAutomations() {
   const editing = automationEditId ? automations.find(function(j) { return j.id === automationEditId; }) : null;
 
   h += '<div class="field-group">';
-  h += '<label>Name</label>';
+  h += '<label for="automation-name">Name</label>';
   h += '<input id="automation-name" placeholder="e.g. Daily summary" value="' + esc(editing ? editing.name : '') + '" />';
   h += '</div>';
 
   /* Frequency picker */
   h += '<div class="field-group">';
-  h += '<label>Frequency</label>';
+  h += '<label for="automation-freq-preset">Frequency</label>';
   h += '<div class="freq-row">';
   h += '<select id="automation-freq-preset" onchange="updateAutomationFromPreset()">';
   h += '<option value="">Choose a preset...</option>';
@@ -794,22 +802,24 @@ function renderAutomations() {
     h += '<option value="' + esc(FREQ_PRESETS[fi].cron) + '">' + esc(FREQ_PRESETS[fi].label) + '</option>';
   }
   h += '</select>';
-  h += '<span class="muted" style="font-size:13px">at</span>';
+  h += '<span id="automation-hour-group">';
+  h += '<span class="muted" style="font-size:13px">at</span> ';
   h += '<select id="automation-freq-hour" onchange="updateAutomationFromPreset()">';
   for (let hi = 0; hi < HOUR_OPTIONS.length; hi++) {
     const sel = HOUR_OPTIONS[hi].value === 9 ? ' selected' : '';
     h += '<option value="' + HOUR_OPTIONS[hi].value + '"' + sel + '>' + esc(HOUR_OPTIONS[hi].label) + '</option>';
   }
   h += '</select>';
+  h += '</span>';
   h += '</div>';
   h += '<div style="margin:.5rem 0;font-size:13px;color:var(--muted)">&mdash; or &mdash;</div>';
-  h += '<label style="font-size:13px">Custom schedule (cron expression)</label>';
+  h += '<label for="automation-schedule" style="font-size:13px">Custom schedule (cron expression)</label>';
   h += '<input id="automation-schedule" placeholder="e.g. 0 9 * * *  (every day at 9 AM)" value="' + esc(editing ? editing.schedule : '') + '" />';
   h += '<div class="help-text">Format: minute hour day-of-month month day-of-week. Examples: <code>*/5 * * * *</code> (every 5 min), <code>0 9 * * 1-5</code> (weekdays 9 AM)</div>';
   h += '</div>';
 
   h += '<div class="field-group">';
-  h += '<label>What should the assistant do?</label>';
+  h += '<label for="automation-prompt">What should the assistant do?</label>';
   h += '<textarea id="automation-prompt" rows="3" placeholder="e.g. Write a summary of today\'s events and send it to the team Discord channel">' + esc(editing ? editing.prompt : '') + '</textarea>';
   h += '</div>';
 
@@ -849,6 +859,8 @@ function renderAutomations() {
 function updateAutomationFromPreset() {
   const presetCron = document.getElementById('automation-freq-preset').value;
   const hour = document.getElementById('automation-freq-hour').value;
+  var hourGroup = document.getElementById('automation-hour-group');
+  if (hourGroup) hourGroup.style.display = presetCron === '0 * * * *' ? 'none' : '';
   if (!presetCron) return;
   // Replace the hour in the preset cron with the selected hour
   // For 'every hour' preset (0 * * * *), keep as-is
@@ -963,6 +975,7 @@ async function loadSystem() {
       const friendly = friendlyServiceName(name);
       h += '<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem">';
       h += '<span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span>';
+      h += '<span class="sr-only">' + (info.ok ? 'Healthy' : 'Error') + '</span>';
       h += '<div><strong style="font-size:14px">' + esc(friendly) + '</strong>';
       h += '<div class="muted" style="font-size:12px">' + (info.ok ? 'Healthy' : esc(friendlyError(info.error || 'Unreachable'))) + '</div></div>';
       h += '</div>';
@@ -977,7 +990,7 @@ async function loadSystem() {
   h += '<div class="card"><h3>Authentication</h3>';
   h += '<p class="muted" style="font-size:13px">This is the password you use to manage your assistant.</p>';
   h += '<div class="field-group">';
-  h += '<label>Admin Password</label>';
+  h += '<label for="set-admin">Admin Password</label>';
   h += '<input type="password" id="set-admin" value="' + esc(adminToken) + '" />';
   h += '</div>';
   h += '<button onclick="saveSettings()">Save</button>';
@@ -1250,8 +1263,17 @@ async function assignModel(modelId, role) {
 }
 
 /* ── Settings (Authentication) ────────────────────────── */
-function saveSettings() {
-  adminToken = document.getElementById('set-admin').value;
+async function saveSettings() {
+  var token = document.getElementById('set-admin').value;
+  var testHeaders = { 'content-type': 'application/json', 'x-admin-token': token };
+  try {
+    var res = await fetch(BASE + normalizeAdminApiPath('/admin/installed'), { headers: testHeaders });
+    if (res.status === 401) {
+      showToast('Invalid admin password. Please check and try again.', 'error');
+      return;
+    }
+  } catch(e) { /* server unreachable, save anyway */ }
+  adminToken = token;
   localStorage.setItem('op_admin', adminToken);
   showToast('Password saved.', 'success');
 }
@@ -1310,6 +1332,21 @@ loadMeta().then(function() {
   window.openPalmSetup?.init({ api: api, esc: esc, riskBadge: riskBadge, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
   checkSetup();
 });
+
+function trapFocus(overlayEl) {
+  overlayEl._focusTrap = function(e) {
+    if (e.key !== 'Tab') return;
+    var focusable = overlayEl.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  overlayEl.addEventListener('keydown', overlayEl._focusTrap);
+}
+function releaseFocus(overlayEl) {
+  if (overlayEl._focusTrap) overlayEl.removeEventListener('keydown', overlayEl._focusTrap);
+}
 
 window.addEventListener('hashchange', function() {
   var page = window.location.hash.replace('#', '');
