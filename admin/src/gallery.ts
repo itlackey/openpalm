@@ -35,12 +35,12 @@ const REGISTRY: GalleryItem[] = [
     risk: "low",
     author: "OpenPalm",
     version: "built-in",
-    source: "./.opencode/plugins/policy-and-telemetry.ts",
+    source: "./plugins/policy-and-telemetry.ts",
     tags: ["security", "audit", "built-in"],
-    permissions: ["onToolCall hook"],
+    permissions: ["tool.execute.before hook"],
     securityNotes: "Read-only hook — inspects tool calls but cannot modify responses. Logs to stdout only.",
     installAction: "plugin",
-    installTarget: "./.opencode/plugins/policy-and-telemetry.ts"
+    installTarget: "./plugins/policy-and-telemetry.ts"
   },
   {
     id: "plugin-opencode-memory-guard",
@@ -50,12 +50,12 @@ const REGISTRY: GalleryItem[] = [
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
-    source: "./.opencode/plugins/memory-guard.ts",
+    source: "./plugins/memory-guard.ts",
     tags: ["security", "memory", "pii"],
-    permissions: ["onToolCall hook", "memory write interception"],
+    permissions: ["tool.execute.before hook", "memory write interception"],
     securityNotes: "Intercepts memory_write tool calls. Cannot exfiltrate data — runs inside OpenCode sandbox with no network access.",
     installAction: "plugin",
-    installTarget: "./.opencode/plugins/memory-guard.ts"
+    installTarget: "./plugins/memory-guard.ts"
   },
   {
     id: "plugin-rate-limit-enforcer",
@@ -65,12 +65,12 @@ const REGISTRY: GalleryItem[] = [
     risk: "low",
     author: "OpenPalm",
     version: "1.0.0",
-    source: "./.opencode/plugins/rate-limit-enforcer.ts",
+    source: "./plugins/rate-limit-enforcer.ts",
     tags: ["security", "rate-limiting"],
-    permissions: ["onToolCall hook"],
+    permissions: ["tool.execute.before hook"],
     securityNotes: "Read-only counting — denies calls that exceed threshold but cannot modify tool behavior.",
     installAction: "plugin",
-    installTarget: "./.opencode/plugins/rate-limit-enforcer.ts"
+    installTarget: "./plugins/rate-limit-enforcer.ts"
   },
   {
     id: "plugin-response-sanitizer",
@@ -80,12 +80,12 @@ const REGISTRY: GalleryItem[] = [
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
-    source: "./.opencode/plugins/response-sanitizer.ts",
+    source: "./plugins/response-sanitizer.ts",
     tags: ["security", "output-safety", "pii"],
-    permissions: ["onResponse hook"],
+    permissions: ["tool.execute.after hook"],
     securityNotes: "Inspects outbound responses. Can redact content but cannot make external calls.",
     installAction: "plugin",
-    installTarget: "./.opencode/plugins/response-sanitizer.ts"
+    installTarget: "./plugins/response-sanitizer.ts"
   },
 
   // ── Skills ────────────────────────────────────────────────────────

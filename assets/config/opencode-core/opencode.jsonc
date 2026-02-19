@@ -11,10 +11,10 @@
   // Specialized agent profiles
   "agent": {
     // Channel intake: restricted agent for processing inbound channel requests.
-    // No shell, no editing, no web — read-only memory only.
+    // No shell, no editing, no writing — read-only memory only.
     "channel-intake": {
       "description": "Validates, summarizes, and dispatches inbound channel requests",
-      "prompt": "Follow skills/ChannelIntake.SKILL.md and skills/RecallFirst.SKILL.md for behavior rules.",
+      "prompt": "Follow the skills/ChannelIntake.SKILL.md and skills/RecallFirst.SKILL.md behavioral rules. Follow the safety rules in AGENTS.md.",
       "tools": {
         "bash": false,
         "edit": false,
@@ -23,6 +23,9 @@
     }
   },
 
+  // Globally disable MCP tools; the openmemory-http plugin handles memory
+  // via direct REST API calls for deterministic behaviour. MCP is available
+  // as a fallback if needed.
   "mcp": {
     "openmemory": {
       "type": "remote",

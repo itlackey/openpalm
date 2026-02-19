@@ -67,7 +67,7 @@ Each entry must be a valid JSON object matching this structure:
   "version": "1.0.0",
   "source": "@example/my-opencode-plugin",
   "tags": ["productivity", "example"],
-  "permissions": ["onToolCall hook"],
+  "permissions": ["tool.execute.before hook"],
   "securityNotes": "Read-only hook. No network access, no side effects.",
   "installAction": "plugin",
   "installTarget": "@example/my-opencode-plugin",

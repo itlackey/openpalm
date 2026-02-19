@@ -3,7 +3,7 @@
 
 ## 1) Concept: OpenCode `plugin[]` is the canonical extension registry
 
-OpenCode loads plugins via the top-level `plugin` array in `opencode.json`/`opencode.jsonc`, and supports local plugins under `.opencode/plugins/`.
+OpenCode loads plugins via the top-level `plugin` array in `opencode.json`/`opencode.jsonc`, and auto-discovers local plugins under `plugins/` in the directory specified by `OPENCODE_CONFIG_DIR` (or `.opencode/plugins/` by default).
 
 **Your rule:** the Admin UI manages extensions by editing `opencode.jsonc -> plugin[]`.
 Everything else (channels/services/UI panels) is derived from that.
@@ -19,7 +19,7 @@ Everything else (channels/services/UI panels) is derived from that.
 
 ### Source types
 - **npm package** (recommended): `name` or `@scope/name`
-- **local plugin file** (advanced): `.opencode/plugins/my-plugin.ts`
+- **local plugin file** (advanced): `plugins/my-plugin.ts` (in `OPENCODE_CONFIG_DIR`)
 
 ### Install flow
 Extensions install directly — no staging or approval queue required. The admin password (set during install) is the only credential needed.
@@ -110,7 +110,7 @@ export const extensionManifest = {
 If OpenCode does not natively accept URL/Git in `plugin[]`, implement a **resolver**:
 - Admin inputs URL/Git
 - Resolver clones/builds to a local plugin file:
-  - writes to `.opencode/plugins/<resolved>.ts`
+  - writes to `plugins/<resolved>.ts` (in `OPENCODE_CONFIG_DIR`)
   - adds that local path to `plugin[]`
 
 ---

@@ -10,7 +10,7 @@
 - [x] Observability/audit event logging
 - [x] Rules + skills for recall-first + memory policy + action gating
 
-## OpenMemory HTTP API integration (opencode/.opencode/plugins/)
+## OpenMemory HTTP API integration (opencode/plugins/ and opencode/lib/)
 - [x] openmemory-client.ts — REST client (queryMemory, addMemory, addTemporalFact)
 - [x] openmemory-http.ts — pipeline plugin (pre-turn recall, post-turn write-back, compaction)
 - [x] Secret detection prevents persisting sensitive data
