@@ -459,15 +459,15 @@ assets/state/registry/
 | `id` | string | Unique identifier (kebab-case, 3–100 chars) |
 | `name` | string | Display name (max 80 chars) |
 | `description` | string | 1–2 sentences (10–500 chars) |
-| `category` | `plugin` \| `skill` \| `command` \| `agent` \| `tool` \| `channel` | Extension sub-type (or `channel` for channel services) |
-| `risk` | `lowest` \| `low` \| `medium` \| `medium-high` \| `highest` | Risk level matching sub-type (Skill=lowest, Command=low, Agent=medium, Custom Tool=medium-high, Plugin=highest) |
+| `category` | `plugin` \| `skill` \| `command` \| `agent` \| `tool` \| `channel` \| `service` | Extension category (OpenCode sub-types plus gallery-managed channel/service compose extensions) |
+| `risk` | `lowest` \| `low` \| `medium` \| `medium-high` \| `highest` | Risk level matching capability (Skill=lowest, Command=low, Agent/Channel=medium, Custom Tool/Service=medium-high, Plugin=highest) |
 | `author` | string | Author or GitHub handle |
 | `version` | string | Semantic version |
 | `source` | string | npm package, Docker image, or GitHub URL |
 | `tags` | string[] | Search keywords |
 | `permissions` | string[] | Plain-English capability list |
 | `securityNotes` | string | Security description |
-| `installAction` | `plugin` \| `skill-file` \| `compose-service` | Install mechanism |
+| `installAction` | `plugin` \| `skill-file` \| `command-file` \| `agent-file` \| `tool-file` \| `compose-service` | Install mechanism |
 | `installTarget` | string | Package name, skill path, or compose service |
 
 ### Submission Process
