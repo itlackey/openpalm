@@ -4,5 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/server.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
   }
 }
