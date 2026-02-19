@@ -31,7 +31,7 @@ const REGISTRY: GalleryItem[] = [
   {
     id: "plugin-policy-telemetry",
     name: "Policy & Telemetry",
-    description: "Built-in plugin that blocks secrets from tool arguments and logs every tool call as structured JSON. Ships with OpenPalm by default.",
+    description: "Built-in security plugin that blocks secrets from leaking to memory and logs all tool calls. Ships by default as part of OpenPalm's defense-in-depth.",
     category: "plugin",
     risk: "highest",
     author: "OpenPalm",
@@ -39,7 +39,7 @@ const REGISTRY: GalleryItem[] = [
     source: "plugins/policy-and-telemetry.ts",
     tags: ["security", "audit", "built-in"],
     permissions: ["Monitors tool activity"],
-    securityNotes: "Read-only — inspects actions but cannot modify responses. Logs activity for auditing.",
+    securityNotes: "Rated 'highest' because plugins CAN observe and modify all tool calls — but this specific plugin is read-only and protective. It blocks secrets from reaching memory and logs tool usage for audit. It cannot modify assistant responses.",
     installAction: "plugin",
     installTarget: "plugins/policy-and-telemetry.ts"
   },

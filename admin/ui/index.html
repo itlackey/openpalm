@@ -166,10 +166,14 @@ async function api(path, opts = {}) {
   const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
   if (adminToken) headers['x-admin-token'] = adminToken;
   const requestPath = normalizeAdminApiPath(path);
-  const res = await fetch(BASE + requestPath, { ...opts, headers });
-  const text = await res.text();
-  try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
-  catch { return { ok: res.ok, status: res.status, data: text }; }
+  try {
+    const res = await fetch(BASE + requestPath, { ...opts, headers });
+    const text = await res.text();
+    try { return { ok: res.ok, status: res.status, data: JSON.parse(text) }; }
+    catch { return { ok: res.ok, status: res.status, data: text }; }
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: 'Server unreachable. Check that OpenPalm is running.' } };
+  }
 }
 
 /* ── toast notifications ──────────────────────────────── */
@@ -194,6 +198,7 @@ function showToast(message, type) {
 /* ── pages ────────────────────────────────────────────── */
 function showPage(name) {
   currentPage = name;
+  window.location.hash = name;
   document.querySelectorAll('.page').forEach(function(p) { p.classList.add('hidden'); });
   document.getElementById('page-' + name).classList.remove('hidden');
   document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
@@ -247,6 +252,30 @@ function friendlyError(msg) {
   return s;
 }
 
+function cronToHuman(expr) {
+  if (!expr) return '';
+  var PRESETS = {
+    '0 * * * *': 'Every hour',
+    '0 0 * * *': 'Every day at midnight',
+    '0 9 * * *': 'Every day at 9:00 AM',
+    '0 0 * * 1-5': 'Every weekday at midnight',
+    '0 9 * * 1-5': 'Every weekday at 9:00 AM',
+    '0 0 * * 1': 'Every Monday at midnight',
+    '0 9 * * 1': 'Every Monday at 9:00 AM',
+    '0 0 1 * *': 'Every month (1st) at midnight',
+    '0 9 1 * *': 'Every month (1st) at 9:00 AM'
+  };
+  // Check exact preset matches
+  if (PRESETS[expr]) return PRESETS[expr];
+  // Try to parse "0 H * * *" pattern (daily at hour H)
+  var m = expr.match(/^0 (\d{1,2}) \* \* \*$/);
+  if (m) { var h = parseInt(m[1],10); return 'Every day at ' + (h === 0 ? '12:00 AM' : h < 12 ? h + ':00 AM' : h === 12 ? '12:00 PM' : (h-12) + ':00 PM'); }
+  // Try "0 H * * 1-5" (weekdays at H)
+  m = expr.match(/^0 (\d{1,2}) \* \* 1-5$/);
+  if (m) { var h = parseInt(m[1],10); return 'Every weekday at ' + (h === 0 ? '12:00 AM' : h < 12 ? h + ':00 AM' : h === 12 ? '12:00 PM' : (h-12) + ':00 PM'); }
+  return expr;
+}
+
 function toggleCollapse(el) {
   const body = el.parentElement.querySelector('.collapse-body');
   if (body) body.classList.toggle('hidden');
@@ -291,6 +320,7 @@ function renderExtensionsToggle() {
 }
 
 async function loadGallery() {
+  document.getElementById('page-extensions').innerHTML = renderExtensionsToggle() + '<p class="muted">Loading...</p>';
   const qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
   const r = await api(qs);
   galleryItems = r.ok ? r.data.items : [];
@@ -508,7 +538,12 @@ async function loadMyExtensions() {
     h += '<h3>Installed Extensions</h3>';
     for (let ei = 0; ei < d.setupState.installedExtensions.length; ei++) {
       const extId = d.setupState.installedExtensions[ei];
-      h += '<div class="card"><span class="tag">' + esc(extId) + '</span></div>';
+      var info = galleryItems.find(function(g) { return g.id === extId; });
+      h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
+      h += '<div><strong>' + esc(info ? info.name : extId) + '</strong> <span class="tag">Extension</span>';
+      if (info && info.description) h += '<div class="muted" style="font-size:13px;margin-top:.2rem">' + esc(info.description) + '</div>';
+      h += '</div>';
+      h += '</div>';
     }
   }
   el.innerHTML = h;
@@ -537,6 +572,7 @@ let channelConfigs = {};
 
 async function loadChannels() {
   const el = document.getElementById('page-channels');
+  el.innerHTML = '<h2>Channels</h2><p class="muted">Loading...</p>';
   let h = '<h2>Channels</h2>';
   h += '<p class="muted">Connect your assistant to different messaging platforms.</p>';
 
@@ -701,6 +737,7 @@ function automationFromPreset(presetLabel, hour) {
 
 async function loadAutomations() {
   const el = document.getElementById('page-automations');
+  el.innerHTML = '<h2>Automations</h2><p class="muted">Loading...</p>';
   let h = '<h2>Automations</h2>';
   h += '<p class="muted">Schedule recurring tasks for your assistant. Changes will restart your assistant to apply the new schedule.</p>';
   if (!adminToken) {
@@ -740,7 +777,7 @@ function renderAutomations() {
   h += '<select id="automation-freq-preset" onchange="updateAutomationFromPreset()">';
   h += '<option value="">Choose a preset...</option>';
   for (let fi = 0; fi < FREQ_PRESETS.length; fi++) {
-    h += '<option value="' + esc(FREQ_PRESETS[fi].label) + '">' + esc(FREQ_PRESETS[fi].label) + '</option>';
+    h += '<option value="' + esc(FREQ_PRESETS[fi].cron) + '">' + esc(FREQ_PRESETS[fi].label) + '</option>';
   }
   h += '</select>';
   h += '<span class="muted" style="font-size:13px">at</span>';
@@ -780,7 +817,7 @@ function renderAutomations() {
     h += job.status === "enabled"
       ? '<span class="badge badge-low" style="font-size:11px">Enabled</span>'
       : '<span class="badge" style="font-size:11px;background:var(--muted)">Disabled</span>';
-    h += '<div class="muted" style="font-size:13px;margin:.2rem 0"><code>' + esc(job.schedule) + '</code></div>';
+    h += '<div class="muted" style="font-size:13px;margin:.2rem 0">' + cronToHuman(job.schedule) + ' <span class="muted" style="font-size:12px">(' + esc(job.schedule) + ')</span></div>';
     h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
@@ -796,13 +833,18 @@ function renderAutomations() {
 }
 
 function updateAutomationFromPreset() {
-  const preset = document.getElementById('automation-freq-preset').value;
+  const presetCron = document.getElementById('automation-freq-preset').value;
   const hour = document.getElementById('automation-freq-hour').value;
-  if (!preset) return;
-  const expr = automationFromPreset(preset, hour);
-  if (expr) {
-    document.getElementById('automation-schedule').value = expr;
+  if (!presetCron) return;
+  // Replace the hour in the preset cron with the selected hour
+  // For 'every hour' preset (0 * * * *), keep as-is
+  if (presetCron === '0 * * * *') {
+    document.getElementById('automation-schedule').value = presetCron;
+    return;
   }
+  // Replace the hour field (second token) with selected hour
+  var expr = presetCron.replace(/^0 \d{1,2} /, '0 ' + hour + ' ');
+  document.getElementById('automation-schedule').value = expr;
 }
 
 async function saveAutomation() {
@@ -827,6 +869,23 @@ function editAutomation(id) {
   automationEditId = id;
   renderAutomations();
   document.getElementById('automation-name').focus();
+  // Auto-populate preset picker
+  var job = automations.find(function(j) { return j.id === id; });
+  var presetEl = document.getElementById('automation-freq-preset');
+  var hourEl = document.getElementById('automation-freq-hour');
+  if (presetEl && hourEl && job) {
+    var matched = false;
+    for (var i = 0; i < FREQ_PRESETS.length; i++) {
+      var p = FREQ_PRESETS[i];
+      if (p.cron === job.schedule) { presetEl.value = p.cron; matched = true; break; }
+      // Check if it matches the pattern with a different hour
+      var m = job.schedule.match(/^0 (\d{1,2}) (.*)$/);
+      if (m && p.cron.match(/^0 \d{1,2} (.*)$/) && m[2] === p.cron.match(/^0 \d{1,2} (.*)$/)[1]) {
+        presetEl.value = p.cron; hourEl.value = m[1]; matched = true; break;
+      }
+    }
+    if (!matched) presetEl.value = '';
+  }
 }
 
 function cancelEditAutomation() {
@@ -875,6 +934,7 @@ async function doTriggerAutomation(id) {
 /* ── SYSTEM PAGE ──────────────────────────────────────── */
 async function loadSystem() {
   const el = document.getElementById('page-system');
+  el.innerHTML = '<h2>System</h2><p class="muted">Loading...</p>';
   let h = '<h2>System</h2>';
 
   /* Health Status */
@@ -1230,9 +1290,18 @@ function runSetup() {
 
 /* ── init ─────────────────────────────────────────────── */
 loadMeta().then(function() {
-  showPage('extensions');
+  var initPage = window.location.hash.replace('#', '');
+  if (['extensions','channels','automations','system'].indexOf(initPage) === -1) initPage = 'extensions';
+  showPage(initPage);
   window.openPalmSetup?.init({ api: api, esc: esc, riskBadge: riskBadge, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
   checkSetup();
+});
+
+window.addEventListener('hashchange', function() {
+  var page = window.location.hash.replace('#', '');
+  if (['extensions','channels','automations','system'].indexOf(page) !== -1 && page !== currentPage) {
+    showPage(page);
+  }
 });
 </script>
 </body>

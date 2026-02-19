@@ -8,7 +8,7 @@ OpenPalm is built around five ideas: Extensions, Connections, Channels, Automati
 
 Extensions give your assistant new abilities. An extension might teach the assistant a new behavior ("always check memory before answering"), give it a new tool ("search the web"), add a custom slash command, or change how it processes requests.
 
-You browse extensions in the **Extension Gallery**, where each one has a name, a short description, and a risk badge that tells you how much access it needs. To add one, click to enable it. To remove it, click to disable it. You never need to worry about whether something is technically a "plugin," "skill," "tool," or "agent" — it's just an extension that does what the description says.
+You browse extensions in the **Extension Gallery**, where each one has a name, a short description, and a risk badge that tells you how much access it needs. To add one, click to enable it. To remove it, click to disable it. You don't need to understand the technical differences between extension types to use them. The gallery groups extensions by type (like Behaviors, Commands, and Custom Tools) to help you browse, but you can simply search or use the 'All' tab to see everything.
 
 ### Where extensions come from
 
