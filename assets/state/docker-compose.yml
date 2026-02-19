@@ -15,7 +15,7 @@ services:
       - ${OPENPALM_DATA_HOME}/caddy:/data
       - ${OPENPALM_STATE_HOME}/caddy:/config
     networks: [assistant_net]
-    depends_on: [gateway, admin]
+    depends_on: [gateway, admin, openmemory-ui]
 
   # ============================================================
   # Storage Layer
@@ -42,7 +42,7 @@ services:
   # Core Application Layer
   # ============================================================
   openmemory:
-    image: skpassegna/openmemory-mcp:latest
+    image: mem0/openmemory-mcp:latest
     restart: unless-stopped
     env_file:
       - ${OPENPALM_CONFIG_HOME}/user.env
@@ -54,6 +54,17 @@ services:
       - ${OPENPALM_DATA_HOME}/shared:/shared
     networks: [assistant_net]
     depends_on: [qdrant]
+
+  openmemory-ui:
+    image: mem0/openmemory-ui:latest
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}
+      - NEXT_PUBLIC_USER_ID=${OPENMEMORY_USER_ID:-default-user}
+    ports:
+      - "${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-0.0.0.0}:3000:3000"
+    networks: [assistant_net]
+    depends_on: [openmemory]
 
   opencode-core:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/opencode-core:${OPENPALM_IMAGE_TAG:-latest}

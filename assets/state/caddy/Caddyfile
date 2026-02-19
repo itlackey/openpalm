@@ -45,7 +45,7 @@
 			}
 
 			handle_path /admin/openmemory* {
-				reverse_proxy openmemory:8765
+				reverse_proxy openmemory-ui:3000
 			}
 
 			# Admin service serves UI/assets from root paths.
@@ -54,8 +54,11 @@
 		}
 	}
 
-	# Explicitly reject other URLs at edge
+	# Default: proxy to opencode-core web UI.
+	# This allows the OpenCode SPA (which uses root-relative asset paths)
+	# to load correctly when accessed directly or embedded in an iframe.
 	handle {
-		respond "not_found" 404
+		abort @not_lan
+		reverse_proxy opencode-core:4096
 	}
 }

@@ -45,6 +45,8 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 .sec-box .sec-title{font-weight:600;font-size:13px;text-transform:uppercase;color:var(--muted);margin-bottom:.3rem}
 .perm-list{list-style:none;padding:0;margin:.3rem 0}
 .perm-list li::before{content:">";margin-right:6px;color:var(--accent)}
+.iframe-wrap{position:fixed;top:49px;left:0;right:0;bottom:0}
+.iframe-wrap iframe{width:100%;height:100%;border:none}
 </style>
 </head>
 <body>
@@ -55,6 +57,8 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <button id="nav-installed" onclick="showPage('installed')">Installed</button>
   <button id="nav-services" onclick="showPage('services')">Services</button>
   <button id="nav-crons" onclick="showPage('crons')">Cron Jobs</button>
+  <button id="nav-opencode" onclick="showPage('opencode')">OpenCode</button>
+  <button id="nav-openmemory" onclick="showPage('openmemory')">OpenMemory</button>
   <button id="nav-settings" onclick="showPage('settings')">Settings</button>
 </nav>
 
@@ -64,6 +68,8 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <div id="page-installed" class="page hidden"></div>
   <div id="page-services" class="page hidden"></div>
   <div id="page-crons" class="page hidden"></div>
+  <div id="page-opencode" class="page hidden"></div>
+  <div id="page-openmemory" class="page hidden"></div>
   <div id="page-settings" class="page hidden"></div>
 </div>
 
@@ -107,6 +113,8 @@ async function api(path, opts = {}) {
 }
 
 /* ── pages ────────────────────────────────────────────── */
+const IFRAME_PAGES = { opencode: '/admin/opencode/', openmemory: window.location.protocol + '//' + window.location.hostname + ':3000' };
+
 function showPage(name) {
   currentPage = name;
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
@@ -114,6 +122,19 @@ function showPage(name) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   const nb = document.getElementById('nav-' + name);
   if (nb) nb.classList.add('active');
+  // Remove any existing iframe overlay
+  const existing = document.getElementById('iframe-overlay');
+  if (existing) existing.remove();
+  document.querySelector('.container').style.display = '';
+  if (IFRAME_PAGES[name]) {
+    document.querySelector('.container').style.display = 'none';
+    const wrap = document.createElement('div');
+    wrap.id = 'iframe-overlay';
+    wrap.className = 'iframe-wrap';
+    wrap.innerHTML = '<iframe src="' + IFRAME_PAGES[name] + '"></iframe>';
+    document.body.appendChild(wrap);
+    return;
+  }
   if (name === 'gallery') loadGallery();
   if (name === 'installed') loadInstalled();
   if (name === 'services') loadServices();
@@ -355,7 +376,7 @@ async function loadServices() {
     h += '</div>';
   }
 
-  const known = ['gateway','opencode-core','openmemory','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+  const known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
   h += '<h3>Container Actions</h3>';
   if (!adminToken) {
     h += '<p class="muted">Set your admin password in Settings to manage containers.</p>';

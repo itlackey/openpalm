@@ -97,7 +97,8 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `caddy` | `caddy:2-alpine` | assistant_net | Reverse proxy, URL routing, LAN restriction |
 | `postgres` | `postgres:16-alpine` | assistant_net | Structured data storage |
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
-| `openmemory` | `skpassegna/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
+| `openmemory` | `mem0/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
+| `openmemory-ui` | `mem0/openmemory-ui:latest` | assistant_net | OpenMemory dashboard (Next.js, port 3000) |
 | `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (plugins, skills, lib) are baked into the image from `opencode/extensions/`; host config provides optional overrides |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
@@ -146,7 +147,7 @@ The admin app provides the API for all admin functions:
 | `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
 | `/admin/api*` | admin:8100 | prefix stripped to `/admin/*` | LAN only |
 | `/admin/opencode*` | opencode-core:4096 | prefix stripped to `/*` | LAN only |
-| `/admin/openmemory*` | openmemory:8765 | prefix stripped to `/*` | LAN only |
+| `/admin/openmemory*` | openmemory-ui:3000 | prefix stripped to `/*` | LAN only |
 | `/admin*` (catch-all) | admin:8100 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.

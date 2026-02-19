@@ -207,6 +207,7 @@ The in-container path is always `/var/run/openpalm-container.sock` regardless of
 | 80 | caddy | `0.0.0.0` | HTTP ingress (admin UI, channels) |
 | 443 | caddy | `0.0.0.0` | HTTPS ingress |
 | 8765 | openmemory | `0.0.0.0` | OpenMemory API (direct access) |
+| 3000 | openmemory-ui | `0.0.0.0` | OpenMemory dashboard UI |
 | 4096 | opencode-core | `127.0.0.1` | OpenCode agent API (localhost only) |
 | 2222 | opencode-core | `127.0.0.1` | SSH access (disabled by default) |
 
@@ -220,11 +221,11 @@ The compose stack defines these services and their interdependencies:
 
 **Infrastructure layer:** `postgres` (relational DB), `qdrant` (vector DB)
 
-**Core layer:** `openmemory` (memory MCP server, depends on qdrant), `opencode-core` (primary AI agent, depends on openmemory)
+**Core layer:** `openmemory` (memory MCP server, depends on qdrant), `openmemory-ui` (memory dashboard, depends on openmemory), `opencode-core` (primary AI agent, depends on openmemory)
 
 **Routing layer:** `gateway` (channel message routing and intake validation, depends on opencode-core), `controller` (container lifecycle management), `admin` (web UI and setup wizard, depends on controller)
 
-**Edge layer:** `caddy` (reverse proxy, depends on gateway and admin)
+**Edge layer:** `caddy` (reverse proxy, depends on gateway, admin, and openmemory-ui)
 
 **Channel layer (optional, `--profile channels`):** `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram` (all depend on gateway)
 

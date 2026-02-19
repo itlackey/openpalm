@@ -220,10 +220,11 @@ function getConfiguredOpenmemoryProvider() {
   };
 }
 
-async function checkServiceHealth(url: string): Promise<{ ok: boolean; time?: string; error?: string }> {
+async function checkServiceHealth(url: string, expectJson = true): Promise<{ ok: boolean; time?: string; error?: string }> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
     if (!resp.ok) return { ok: false, error: `status ${resp.status}` };
+    if (!expectJson) return { ok: true, time: new Date().toISOString() };
     const body = await resp.json() as { ok?: boolean; time?: string };
     return { ok: body.ok ?? true, time: body.time };
   } catch (e) {
@@ -332,8 +333,8 @@ const server = Bun.serve({
         const [gateway, controller, opencodeCore, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
           CONTROLLER_URL ? checkServiceHealth(`${CONTROLLER_URL}/health`) : Promise.resolve({ ok: false, error: "not configured" }),
-          checkServiceHealth(`${OPENCODE_CORE_URL}/health`),
-          checkServiceHealth(`${openmemoryBaseUrl}/health`)
+          checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
+          checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
         ]);
         return cors(json(200, {
           services: {

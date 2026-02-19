@@ -87,3 +87,7 @@ bun run typecheck
 ```
 
 Workspaces: `gateway`, `admin`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
+
+### OpenMemory Dashboard
+
+The `openmemory-ui` service (`mem0/openmemory-ui:latest`) provides a Next.js dashboard for browsing memories, stats, and search. It is exposed on port 3000 and embedded in the admin UI via iframe. The dashboard is stateless — no volumes are required.
