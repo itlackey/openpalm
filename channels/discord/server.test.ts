@@ -11,11 +11,11 @@ describe("discord adapter", () => {
 
   it("forwards command interactions with normalized metadata", async () => {
     let forwarded = "";
-    const mockFetch: typeof fetch = async (_input, init) => {
+    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
       forwarded = String(init?.body);
       return new Response(JSON.stringify({ answer: "ok" }), { status: 200 });
     };
-    const fetchHandler = createDiscordFetch("http://gateway", "secret", mockFetch);
+    const fetchHandler = createDiscordFetch("http://gateway", "secret", mockFetch as typeof fetch);
     const resp = await fetchHandler(new Request("http://discord/discord/interactions", {
       method: "POST",
       body: JSON.stringify({

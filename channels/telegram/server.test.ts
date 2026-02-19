@@ -18,13 +18,13 @@ describe("telegram adapter", () => {
   it("forwards text updates with signed payload", async () => {
     let signature = "";
     let body = "";
-    const mockFetch: typeof fetch = async (_input, init) => {
+    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
       signature = String((init?.headers as Record<string, string>)["x-channel-signature"]);
       body = String(init?.body);
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     };
 
-    const fetchHandler = createTelegramFetch("http://gateway", "secret", "", mockFetch);
+    const fetchHandler = createTelegramFetch("http://gateway", "secret", "", mockFetch as typeof fetch);
     const resp = await fetchHandler(new Request("http://telegram/telegram/webhook", {
       method: "POST",
       body: JSON.stringify({ message: { text: "hi", from: { id: 99, username: "u" }, chat: { id: 123 } } })

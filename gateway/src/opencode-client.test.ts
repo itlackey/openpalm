@@ -82,7 +82,7 @@ describe("OpenCodeClient", () => {
 
   it("maps abort errors to timeout errors", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (() => Promise.reject(new DOMException("aborted", "AbortError"))) as typeof fetch;
+    globalThis.fetch = (() => Promise.reject(new DOMException("aborted", "AbortError"))) as unknown as typeof fetch;
 
     try {
       const client = new OpenCodeClient("http://localhost:9999");
