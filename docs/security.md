@@ -64,4 +64,4 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 
 ---
 
-For architecture and route details, see [architecture.md](./architecture.md). For API controls, see [API.md](./API.md).
+For architecture and route details, see [architecture.md](./architecture.md). For API controls, see [api-reference.md](./api-reference.md).

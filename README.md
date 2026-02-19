@@ -129,7 +129,7 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | Guide | What's inside |
 |---|---|
 | [Architecture](docs/architecture.md) | Container inventory, data flow diagrams, URL routing |
-| [API Reference](docs/API.md) | All service endpoints: gateway, admin, controller, channels |
+| [API Reference](docs/api-reference.md) | All service endpoints: gateway, admin, controller, channels |
 | [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |
 | [Extensions Guide](docs/extensions-guide.md) | Plugin system, gallery, building channel plugins |
 | [Docker Compose Guide](docs/docker-compose-guide.md) | Hosting, observability, extending the stack |
