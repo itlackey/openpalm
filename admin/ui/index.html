@@ -55,6 +55,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <span class="logo"><img src="logo.png" alt="OpenPalm logo" />OpenPalm</span>
   <button id="nav-gallery" onclick="showPage('gallery')">Gallery</button>
   <button id="nav-installed" onclick="showPage('installed')">Installed</button>
+  <button id="nav-providers" onclick="showPage('providers')">Providers</button>
   <button id="nav-services" onclick="showPage('services')">Services</button>
   <button id="nav-crons" onclick="showPage('crons')">Cron Jobs</button>
   <button id="nav-opencode" onclick="showPage('opencode')">OpenCode</button>
@@ -66,6 +67,7 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
   <!-- PAGES -->
   <div id="page-gallery" class="page"></div>
   <div id="page-installed" class="page hidden"></div>
+  <div id="page-providers" class="page hidden"></div>
   <div id="page-services" class="page hidden"></div>
   <div id="page-crons" class="page hidden"></div>
   <div id="page-opencode" class="page hidden"></div>
@@ -137,6 +139,7 @@ function showPage(name) {
   }
   if (name === 'gallery') loadGallery();
   if (name === 'installed') loadInstalled();
+  if (name === 'providers') loadProviders();
   if (name === 'services') loadServices();
   if (name === 'crons') loadCrons();
   if (name === 'settings') renderSettings();
@@ -553,6 +556,166 @@ async function triggerCron(id) {
   } else {
     alert('Failed: ' + (r.data.error || r.status));
   }
+}
+
+/* ── providers ─────────────────────────────────────────── */
+let providersList = [];
+let providerAssignments = {};
+let providerModels = [];
+let selectedProviderId = '';
+
+async function loadProviders() {
+  const r = await api('/admin/providers');
+  if (r.ok) {
+    providersList = r.data.providers || [];
+    providerAssignments = r.data.assignments || {};
+  }
+  renderProviders();
+}
+
+function renderProviders() {
+  const el = document.getElementById('page-providers');
+  let h = '<h2>Model Providers</h2>';
+  h += '<p class="muted">Manage AI provider connections and assign models to roles in the stack.</p>';
+
+  // Add provider form
+  h += '<div class="card"><h3>Add Provider</h3>';
+  h += '<div class="grid3">';
+  h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">Name</label>';
+  h += '<input id="prov-name" placeholder="e.g. OpenAI, Ollama" /></div>';
+  h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">Base URL</label>';
+  h += '<input id="prov-url" placeholder="https://api.openai.com/v1" /></div>';
+  h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">API Key</label>';
+  h += '<input id="prov-key" type="password" placeholder="sk-..." /></div>';
+  h += '</div>';
+  h += '<div style="margin-top:.7rem"><button onclick="addProvider()">Add Provider</button></div>';
+  h += '</div>';
+
+  // Provider list
+  if (providersList.length === 0) {
+    h += '<p class="muted">No providers configured yet. Add one above to get started.</p>';
+  } else {
+    h += '<div class="grid2">';
+    for (const p of providersList) {
+      const isSmall = providerAssignments.small?.providerId === p.id;
+      const isOpenmemory = providerAssignments.openmemory?.providerId === p.id;
+      h += '<div class="card">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:start">';
+      h += '<h3 style="margin:0">' + esc(p.name) + '</h3>';
+      h += '<button class="danger sm" onclick="deleteProvider(\'' + esc(p.id) + '\')">Delete</button>';
+      h += '</div>';
+      h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + esc(p.url || 'No URL') + '</div>';
+      h += '<div class="muted" style="font-size:12px">Key: ' + (p.apiKey ? '••••••' : 'none') + '</div>';
+      if (isSmall) h += '<div style="margin-top:.3rem"><span class="badge badge-low">Small Model</span> ' + esc(providerAssignments.small.modelId) + '</div>';
+      if (isOpenmemory) h += '<div style="margin-top:.3rem"><span class="badge badge-medium">OpenMemory</span> ' + esc(providerAssignments.openmemory.modelId) + '</div>';
+      h += '<div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap">';
+      h += '<button class="secondary sm" onclick="fetchModels(\'' + esc(p.id) + '\')">Fetch Models</button>';
+      h += '<button class="secondary sm" onclick="editProvider(\'' + esc(p.id) + '\')">Edit</button>';
+      h += '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  // Model selection area (shown after fetching models)
+  h += '<div id="provider-models-section"></div>';
+
+  el.innerHTML = h;
+}
+
+async function addProvider() {
+  const name = document.getElementById('prov-name')?.value?.trim();
+  const url = document.getElementById('prov-url')?.value?.trim();
+  const apiKey = document.getElementById('prov-key')?.value?.trim();
+  if (!name) { alert('Provider name is required.'); return; }
+  const r = await api('/admin/providers', { method: 'POST', body: JSON.stringify({ name, url, apiKey }) });
+  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  loadProviders();
+}
+
+async function deleteProvider(id) {
+  if (!confirm('Delete this provider? Any model assignments will be removed.')) return;
+  const r = await api('/admin/providers/delete', { method: 'POST', body: JSON.stringify({ id }) });
+  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  loadProviders();
+}
+
+function editProvider(id) {
+  const p = providersList.find(x => x.id === id);
+  if (!p) return;
+  const el = document.getElementById('modal-overlay');
+  let h = '<div class="modal">';
+  h += '<h3>Edit Provider: ' + esc(p.name) + '</h3>';
+  h += '<label style="display:block;font-size:13px;margin:.5rem 0 .2rem">Name</label>';
+  h += '<input id="edit-prov-name" value="' + esc(p.name) + '" />';
+  h += '<label style="display:block;font-size:13px;margin:.5rem 0 .2rem">Base URL</label>';
+  h += '<input id="edit-prov-url" value="' + esc(p.url) + '" />';
+  h += '<label style="display:block;font-size:13px;margin:.5rem 0 .2rem">API Key</label>';
+  h += '<input id="edit-prov-key" type="password" placeholder="Leave blank to keep current" />';
+  h += '<div style="margin-top:1rem;display:flex;gap:.5rem">';
+  h += '<button onclick="saveProviderEdit(\'' + esc(id) + '\')">Save</button>';
+  h += '<button class="secondary" onclick="closeModal()">Cancel</button>';
+  h += '</div></div>';
+  el.innerHTML = h;
+  el.classList.remove('hidden');
+}
+
+async function saveProviderEdit(id) {
+  const name = document.getElementById('edit-prov-name')?.value?.trim();
+  const url = document.getElementById('edit-prov-url')?.value?.trim();
+  const apiKey = document.getElementById('edit-prov-key')?.value?.trim();
+  const payload = { id };
+  if (name) payload.name = name;
+  if (url !== undefined) payload.url = url;
+  if (apiKey) payload.apiKey = apiKey;
+  const r = await api('/admin/providers/update', { method: 'POST', body: JSON.stringify(payload) });
+  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  closeModal();
+  loadProviders();
+}
+
+async function fetchModels(providerId) {
+  selectedProviderId = providerId;
+  const section = document.getElementById('provider-models-section');
+  section.innerHTML = '<div class="card"><p class="muted">Fetching models...</p></div>';
+  const r = await api('/admin/providers/models', { method: 'POST', body: JSON.stringify({ providerId }) });
+  if (!r.ok) {
+    section.innerHTML = '<div class="card" style="border-color:var(--red)"><p style="color:var(--red)">Failed to fetch models: ' + esc(r.data?.message || r.data?.error || 'Unknown error') + '</p></div>';
+    return;
+  }
+  providerModels = r.data.models || [];
+  renderModelSelection();
+}
+
+function renderModelSelection() {
+  const section = document.getElementById('provider-models-section');
+  const p = providersList.find(x => x.id === selectedProviderId);
+  if (!p || !providerModels.length) {
+    section.innerHTML = '<div class="card"><p class="muted">No models found for this provider.</p></div>';
+    return;
+  }
+  let h = '<div class="card"><h3>Available Models from ' + esc(p.name) + '</h3>';
+  h += '<p class="muted" style="font-size:13px">Select a model and assign it to a role.</p>';
+  h += '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin:.5rem 0">';
+  for (const m of providerModels) {
+    h += '<div style="padding:.4rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
+    h += '<span style="font-size:14px">' + esc(m.id) + '</span>';
+    h += '<span style="display:flex;gap:.3rem">';
+    h += '<button class="sm" onclick="assignModel(\'' + esc(m.id) + '\',\'small\')">Set Small</button>';
+    h += '<button class="secondary sm" onclick="assignModel(\'' + esc(m.id) + '\',\'openmemory\')">Set OpenMemory</button>';
+    h += '</span>';
+    h += '</div>';
+  }
+  h += '</div></div>';
+  section.innerHTML = h;
+}
+
+async function assignModel(modelId, role) {
+  const r = await api('/admin/providers/assign', { method: 'POST', body: JSON.stringify({ role, providerId: selectedProviderId, modelId }) });
+  if (!r.ok) { alert('Failed: ' + (r.data?.error || 'Unknown error')); return; }
+  providerAssignments = r.data.assignments || {};
+  alert('Model "' + modelId + '" assigned as ' + role + '. OpenCode will restart to apply changes.');
+  renderProviders();
 }
 
 /* ── settings ─────────────────────────────────────────── */

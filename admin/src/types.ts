@@ -40,3 +40,13 @@ export type AuditEvent = {
   details?: Record<string, unknown>;
 };
 
+export type ProviderConnection = {
+  id: string;
+  name: string;
+  url: string;
+  apiKey: string;
+  createdAt: string;
+};
+
+export type ModelAssignment = "small" | "openmemory";
+
