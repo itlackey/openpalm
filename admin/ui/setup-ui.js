@@ -15,14 +15,6 @@
   let getAdminToken;
   let setAdminToken;
 
-  const FRIENDLY_SERVICE_NAMES = {
-    gateway: "Message Router",
-    controller: "System Manager",
-    opencodeCore: "AI Assistant",
-    openmemory: "Memory",
-    admin: "Admin Panel"
-  };
-
   function ensureStyles() {
     if (document.getElementById("setup-ui-style")) return;
     const style = document.createElement("style");
@@ -92,7 +84,7 @@
           + '<ul><li>Make sure everything is working</li><li>Set up security</li><li>Choose how to connect</li><li>Add starter features</li></ul>'
           + '<p class="muted" style="font-size:13px">During setup, choose who can access your assistant.</p>';
       case "healthCheck":
-        return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div>';
+        return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div><div id="wiz-step-error" class="error-text" style="display:none"></div>';
       case "accessScope":
         return '<p>Choose who can access your assistant.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
@@ -210,8 +202,9 @@
     if (!el) return;
     if (!r.ok) { el.textContent = "Could not reach admin API."; return; }
     let h = "";
+    const svcNames = window.SERVICE_NAMES || {};
     for (const [name, info] of Object.entries(r.data.services)) {
-      const friendly = FRIENDLY_SERVICE_NAMES[name] || esc(name);
+      const friendly = (svcNames[name] && svcNames[name].label) ? svcNames[name].label : esc(name);
       h += '<div style="margin:.3rem 0"><span class="dot ' + (info.ok ? "dot-ok" : "dot-err") + '"></span><strong>' + friendly + '</strong> — ' + (info.ok ? "Healthy" : esc(info.error || "Unreachable")) + '</div>';
     }
     el.innerHTML = h;
@@ -275,12 +268,6 @@
 
   async function finishSetup() {
     clearStepError();
-    const channelsResult = await api("/admin/setup/channels", { method: "POST", body: JSON.stringify({ channels: enabledChannels }) });
-    if (!channelsResult.ok) {
-      showStepError("Could not save your channel choices. Please try again.");
-      return;
-    }
-    enabledChannels = channelsResult.data?.state?.enabledChannels || [];
 
     const boxes = document.querySelectorAll(".wiz-ext:checked");
     for (const b of boxes) {

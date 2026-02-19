@@ -103,7 +103,6 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 /* ── state ────────────────────────────────────────────── */
 let adminToken = localStorage.getItem('op_admin') || '';
 let galleryItems = [];
-let setupState = null;
 let currentPage = 'extensions';
 
 /* Extensions page state */
@@ -128,42 +127,27 @@ const ADMIN_PREFIX = '/admin/';
 const ADMIN_API_PREFIX = '/admin/api/';
 const BEHIND_CADDY = window.location.pathname.startsWith('/admin');
 
-/* ── service name mapping ─────────────────────────────── */
-const SERVICE_NAMES = {
-  'gateway': { label: 'Message Router', desc: 'Routes messages between channels and your assistant' },
-  'opencode-core': { label: 'AI Assistant', desc: 'The core assistant engine' },
-  'opencodeCore': { label: 'AI Assistant', desc: 'The core assistant engine' },
-  'openmemory': { label: 'Memory', desc: 'Stores conversation history and context' },
-  'openmemory-ui': { label: 'Memory Dashboard', desc: 'Visual interface for memory data' },
-  'admin': { label: 'Admin Panel', desc: 'This management interface' },
-  'controller': { label: 'System Manager', desc: 'Manages background services' },
-  'channel-chat': { label: 'Chat Channel', desc: 'Web chat interface' },
-  'channel-discord': { label: 'Discord Channel', desc: 'Discord bot connection' },
-  'channel-voice': { label: 'Voice Channel', desc: 'Voice input interface' },
-  'channel-telegram': { label: 'Telegram Channel', desc: 'Telegram bot connection' },
-  'caddy': { label: 'Web Server', desc: 'Handles secure connections' }
-};
+/* ── service name mapping (populated from /admin/meta) ── */
+let SERVICE_NAMES = {};
+let CHANNEL_FIELDS = {};
+
+async function loadMeta() {
+  try {
+    const r = await api('/admin/meta');
+    if (r.ok && r.data) {
+      if (r.data.serviceNames) SERVICE_NAMES = r.data.serviceNames;
+      if (r.data.channelFields) CHANNEL_FIELDS = r.data.channelFields;
+    }
+  } catch (e) {
+    // meta not available; SERVICE_NAMES and CHANNEL_FIELDS remain empty objects
+  }
+}
 
 const CHANNEL_FRIENDLY = {
   'channel-chat': 'Chat',
   'channel-discord': 'Discord',
   'channel-voice': 'Voice',
   'channel-telegram': 'Telegram'
-};
-
-const CHANNEL_FIELDS = {
-  'channel-chat': [
-    { key: 'CHAT_INBOUND_TOKEN', label: 'Inbound Token', type: 'password', helpText: 'Token for authenticating incoming chat messages' }
-  ],
-  'channel-discord': [
-    { key: 'DISCORD_BOT_TOKEN', label: 'Bot Token', type: 'password', helpText: 'Create a bot at discord.com/developers and copy the token', required: true },
-    { key: 'DISCORD_PUBLIC_KEY', label: 'Public Key', type: 'text', helpText: 'Found on the same page as your bot token', required: true }
-  ],
-  'channel-voice': [],
-  'channel-telegram': [
-    { key: 'TELEGRAM_BOT_TOKEN', label: 'Bot Token', type: 'password', helpText: 'Get a bot token from @BotFather on Telegram', required: true },
-    { key: 'TELEGRAM_WEBHOOK_SECRET', label: 'Webhook Secret', type: 'password', helpText: 'A secret string to verify incoming webhook requests' }
-  ]
 };
 
 function friendlyServiceName(svc) {
@@ -191,16 +175,18 @@ async function api(path, opts = {}) {
 /* ── toast notifications ──────────────────────────────── */
 function showToast(message, type) {
   if (!type) type = 'info';
-  var container = document.getElementById('toast-container');
+  let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
     container.id = 'toast-container';
     container.className = 'toast-container';
     document.body.appendChild(container);
   }
-  var toast = document.createElement('div');
+  const toast = document.createElement('div');
   toast.className = 'toast toast-' + type;
   toast.textContent = message;
+  toast.style.cursor = 'pointer';
+  toast.onclick = function() { toast.remove(); };
   container.appendChild(toast);
   setTimeout(function() { toast.remove(); }, 4000);
 }
@@ -211,9 +197,9 @@ function showPage(name) {
   document.querySelectorAll('.page').forEach(function(p) { p.classList.add('hidden'); });
   document.getElementById('page-' + name).classList.remove('hidden');
   document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
-  var nb = document.getElementById('nav-' + name);
+  const nb = document.getElementById('nav-' + name);
   if (nb) nb.classList.add('active');
-  var existing = document.getElementById('iframe-overlay');
+  const existing = document.getElementById('iframe-overlay');
   if (existing) existing.remove();
   document.querySelector('.container').style.display = '';
   if (name === 'extensions') loadExtensions();
@@ -224,33 +210,30 @@ function showPage(name) {
 
 /* ── risk badge ───────────────────────────────────────── */
 function riskBadge(r) {
-  return '<span class="badge badge-' + r + '">' + r.charAt(0).toUpperCase() + r.slice(1) + ' Risk</span>';
+  const safe = esc(r);
+  return '<span class="badge badge-' + safe + '">' + safe.charAt(0).toUpperCase() + safe.slice(1) + ' Risk</span>';
 }
-function riskDesc(r) {
-  var m = { low:'Safe. No network access or side effects.', medium:'Limited capabilities. Review before installing.', high:'Significant capabilities. Requires careful review.', critical:'Maximum capability. Review thoroughly.' };
-  return m[r] || '';
-}
-function categoryIcon(c) {
-  return c === 'plugin' ? 'P' : c === 'skill' ? 'S' : 'C';
-}
+
 function categoryLabel(c) {
   return c === 'plugin' ? 'Capability' : c === 'skill' ? 'Behavior' : 'Service';
-}
-function categoryLabelPlural(c) {
-  return c === 'plugin' ? 'Capabilities' : c === 'skill' ? 'Behaviors' : 'Services';
 }
 
 /* ── utils ────────────────────────────────────────────── */
 function esc(s) {
   if (!s) return '';
-  var d = document.createElement('div');
+  const d = document.createElement('div');
   d.textContent = String(s);
   return d.innerHTML;
 }
 
+function jsStr(s) {
+  if (!s) return '';
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
 function friendlyError(msg) {
   if (!msg) return 'An unexpected error occurred';
-  var s = String(msg);
+  const s = String(msg);
   if (s.indexOf('admin token required') !== -1) return 'Please enter your admin password in Settings to continue';
   if (s.indexOf('invalid jsonc') !== -1) return 'The configuration file has a syntax error';
   if (s.indexOf('policy lint failed') !== -1 && s.indexOf('permission widening blocked') !== -1) return 'This change would weaken security protections and was blocked';
@@ -258,22 +241,24 @@ function friendlyError(msg) {
 }
 
 function toggleCollapse(el) {
-  var body = el.parentElement.querySelector('.collapse-body');
+  const body = el.parentElement.querySelector('.collapse-body');
   if (body) body.classList.toggle('hidden');
-  var arrow = el.querySelector('.arrow');
+  const arrow = el.querySelector('.arrow');
   if (arrow) arrow.textContent = arrow.textContent === '\u25B6' ? '\u25BC' : '\u25B6';
 }
 
 /* ── inline confirm helper ────────────────────────────── */
 function showInlineConfirm(containerId, message, onYes) {
-  var container = document.getElementById(containerId);
+  const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = '<div class="inline-confirm"><p style="margin:0 0 .5rem;font-size:14px">' + esc(message) + '</p>' +
     '<div style="display:flex;gap:.4rem"><button class="sm danger" id="' + containerId + '-yes">Yes, continue</button>' +
     '<button class="sm secondary" id="' + containerId + '-no">Cancel</button></div></div>';
   document.getElementById(containerId + '-yes').onclick = function() {
     container.innerHTML = '';
-    onYes();
+    Promise.resolve(onYes()).catch(function(err) {
+      showToast('Operation failed: ' + friendlyError(err.message), 'error');
+    });
   };
   document.getElementById(containerId + '-no').onclick = function() {
     container.innerHTML = '';
@@ -290,7 +275,7 @@ async function loadExtensions() {
 }
 
 function renderExtensionsToggle() {
-  var h = '<h2>Extensions</h2>';
+  let h = '<h2>Extensions</h2>';
   h += '<div class="view-toggle">';
   h += '<button class="' + (extensionsView === 'browse' ? 'active' : '') + '" onclick="extensionsView=\'browse\';loadExtensions()">Browse</button>';
   h += '<button class="' + (extensionsView === 'my' ? 'active' : '') + '" onclick="extensionsView=\'my\';loadExtensions()">My Extensions</button>';
@@ -299,15 +284,15 @@ function renderExtensionsToggle() {
 }
 
 async function loadGallery() {
-  var qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
-  var r = await api(qs);
+  const qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
+  const r = await api(qs);
   galleryItems = r.ok ? r.data.items : [];
   renderGallery();
 }
 
 function renderGallery() {
-  var el = document.getElementById('page-extensions');
-  var h = renderExtensionsToggle();
+  const el = document.getElementById('page-extensions');
+  let h = renderExtensionsToggle();
   h += '<p class="muted">Search for extensions to add new capabilities, behaviors, and services to your assistant.</p>';
   h += '<div class="mb" style="display:flex;gap:.5rem;flex-wrap:wrap">';
   h += '<input id="gal-search" style="flex:1;min-width:200px" placeholder="Search extensions..." value="' + esc(galleryFilter) + '" onkeyup="if(event.key===\'Enter\'){galleryFilter=this.value;loadGallery()}" />';
@@ -327,14 +312,14 @@ function renderGallery() {
     h += '<div class="card">';
     h += '<h3 style="font-size:14px">Install from npm registry</h3>';
     h += '<div style="display:flex;gap:.5rem">';
-    h += '<input id="npm-search-input" style="flex:1" placeholder="Search npm for OpenCode plugins..." />';
+    h += '<input id="npm-search-input" style="flex:1" placeholder="Search npm for OpenCode extensions..." />';
     h += '<button class="sm" onclick="doNpmSearch()">Search</button>';
     h += '<button class="sm secondary" onclick="npmSearchVisible=false;npmSearchResults=[];renderGallery()">Close</button>';
     h += '</div>';
     if (npmSearchResults.length > 0) {
       h += '<div style="margin-top:.7rem">';
-      for (var i = 0; i < npmSearchResults.length; i++) {
-        var pkg = npmSearchResults[i];
+      for (let i = 0; i < npmSearchResults.length; i++) {
+        const pkg = npmSearchResults[i];
         h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:.7rem">';
         h += '<div>';
         h += '<strong style="font-size:14px">' + esc(pkg.name) + '</strong> <span class="muted" style="font-size:12px">v' + esc(pkg.version) + '</span>';
@@ -355,9 +340,9 @@ function renderGallery() {
     h += '<p class="muted">No extensions found.</p>';
   }
   h += '<div class="grid2">';
-  for (var gi = 0; gi < galleryItems.length; gi++) {
-    var item = galleryItems[gi];
-    h += '<div class="card" style="cursor:pointer" onclick="showDetail(\'' + esc(item.id) + '\')">';
+  for (let gi = 0; gi < galleryItems.length; gi++) {
+    const item = galleryItems[gi];
+    h += '<div class="card" style="cursor:pointer" onclick="showDetail(\'' + jsStr(item.id) + '\')">';
     h += '<div style="display:flex;justify-content:space-between;align-items:start">';
     h += '<h3 style="margin:0">' + esc(item.name) + '</h3>';
     h += riskBadge(item.risk);
@@ -365,8 +350,8 @@ function renderGallery() {
     h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + categoryLabel(item.category) + ' by ' + esc(item.author) + '</div>';
     h += '<p style="font-size:14px;margin:.4rem 0">' + esc(item.description).substring(0, 120) + '</p>';
     h += '<div>';
-    var tags = (item.tags || []).slice(0, 4);
-    for (var ti = 0; ti < tags.length; ti++) h += '<span class="tag">' + esc(tags[ti]) + '</span>';
+    const tags = (item.tags || []).slice(0, 4);
+    for (let ti = 0; ti < tags.length; ti++) h += '<span class="tag">' + esc(tags[ti]) + '</span>';
     h += '</div></div>';
   }
   h += '</div>';
@@ -374,14 +359,14 @@ function renderGallery() {
 }
 
 function catTab(val, label) {
-  var cls = galleryCat === val ? 'sm' : 'secondary sm';
+  const cls = galleryCat === val ? 'sm' : 'secondary sm';
   return '<button class="' + cls + '" onclick="galleryCat=\'' + val + '\';loadGallery()">' + label + '</button>';
 }
 
 async function doNpmSearch() {
-  var q = document.getElementById('npm-search-input').value.trim();
+  const q = document.getElementById('npm-search-input').value.trim();
   if (!q) return;
-  var r = await api('/admin/gallery/npm-search?q=' + encodeURIComponent(q));
+  const r = await api('/admin/gallery/npm-search?q=' + encodeURIComponent(q));
   if (!r.ok || !r.data.results || !r.data.results.length) {
     showToast('No results found.', 'info');
     npmSearchResults = [];
@@ -393,7 +378,7 @@ async function doNpmSearch() {
 }
 
 function confirmNpmInstall(index) {
-  var pkg = npmSearchResults[index];
+  const pkg = npmSearchResults[index];
   if (!pkg) return;
   showInlineConfirm('npm-install-confirm-' + index,
     'Install "' + pkg.name + '" from npm? This is an unreviewed package (high risk).',
@@ -402,23 +387,23 @@ function confirmNpmInstall(index) {
 }
 
 async function doNpmInstall(pkgName, index) {
-  var r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ pluginId: pkgName }) });
+  const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ pluginId: pkgName }) });
   if (r.ok) {
     showToast('Installed "' + pkgName + '" successfully.', 'success');
   } else {
-    showToast('Install failed: ' + friendlyError(r.data.error || r.status), 'error');
+    showToast('Install failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
   renderGallery();
 }
 
 /* ── detail modal ─────────────────────────────────────── */
 async function showDetail(id) {
-  var r = await api('/admin/gallery/item/' + id);
+  const r = await api('/admin/gallery/item/' + id);
   if (!r.ok) return;
-  var item = r.data.item;
-  var badge = r.data.riskBadge;
-  var ov = document.getElementById('modal-overlay');
-  var h = '<div class="modal">';
+  const item = r.data.item;
+  const badge = r.data.riskBadge;
+  const ov = document.getElementById('modal-overlay');
+  let h = '<div class="modal">';
   h += '<div style="display:flex;justify-content:space-between;align-items:start">';
   h += '<h3>' + esc(item.name) + '</h3>';
   h += '<button class="secondary sm" onclick="closeModal()">Close</button>';
@@ -431,12 +416,12 @@ async function showDetail(id) {
   h += '<div style="font-size:14px;margin:.5rem 0"><strong>Security notes:</strong> ' + esc(item.securityNotes) + '</div>';
   h += '<div class="sec-title" style="margin-top:.6rem">Permissions Required</div>';
   h += '<ul class="perm-list">';
-  var perms = item.permissions || [];
-  for (var pi = 0; pi < perms.length; pi++) h += '<li>' + esc(perms[pi]) + '</li>';
+  const perms = item.permissions || [];
+  for (let pi = 0; pi < perms.length; pi++) h += '<li>' + esc(perms[pi]) + '</li>';
   h += '</ul></div>';
   h += '<div class="mb">';
-  var itemTags = item.tags || [];
-  for (var ti = 0; ti < itemTags.length; ti++) h += '<span class="tag">' + esc(itemTags[ti]) + '</span>';
+  const itemTags = item.tags || [];
+  for (let ti = 0; ti < itemTags.length; ti++) h += '<span class="tag">' + esc(itemTags[ti]) + '</span>';
   h += '</div>';
   h += '<div class="sec-box">';
   h += '<div class="sec-title">Defense in Depth</div>';
@@ -453,7 +438,7 @@ async function showDetail(id) {
     h += '<p class="muted" style="font-size:13px">Set your admin password in System settings to enable installation.</p>';
   } else {
     h += '<div style="margin-top:1rem" id="gallery-install-confirm-' + esc(item.id) + '">';
-    h += '<button onclick="confirmInstallGallery(\'' + esc(item.id) + '\',\'' + esc(item.name) + '\')">Install ' + esc(item.name) + '</button>';
+    h += '<button onclick="confirmInstallGallery(\'' + jsStr(item.id) + '\',\'' + jsStr(item.name) + '\')">Install ' + esc(item.name) + '</button>';
     h += '</div>';
   }
   h += '</div>';
@@ -473,45 +458,45 @@ function confirmInstallGallery(id, name) {
 }
 
 async function doInstallGallery(id) {
-  var r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
+  const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
   if (r.ok) {
     showToast('Installed successfully.', 'success');
     closeModal();
   } else {
-    showToast('Install failed: ' + friendlyError(r.data.error || r.status), 'error');
+    showToast('Install failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
 }
 
 /* ── My Extensions ────────────────────────────────────── */
 async function loadMyExtensions() {
-  var el = document.getElementById('page-extensions');
-  var h = renderExtensionsToggle();
+  const el = document.getElementById('page-extensions');
+  let h = renderExtensionsToggle();
   h += '<p class="muted">Extensions currently active on your assistant.</p>';
   if (!adminToken) {
     h += '<p class="muted">Please enter your admin password in System settings to view installed extensions.</p>';
     el.innerHTML = h;
     return;
   }
-  var r = await api('/admin/installed');
+  const r = await api('/admin/installed');
   if (!r.ok) {
-    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data.error || String(r.status))) + '</p>';
+    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data?.error || r.data?.message || 'Request failed')) + '</p>';
     el.innerHTML = h;
     return;
   }
-  var d = r.data;
+  const d = r.data;
   h += '<h3>Active Capabilities</h3>';
   if (!d.plugins.length) h += '<p class="muted">No capabilities installed.</p>';
-  for (var pi = 0; pi < d.plugins.length; pi++) {
-    var p = d.plugins[pi];
+  for (let pi = 0; pi < d.plugins.length; pi++) {
+    const p = d.plugins[pi];
     h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
     h += '<div><strong>' + esc(p) + '</strong> <span class="tag">Capability</span></div>';
-    h += '<div id="uninstall-confirm-' + pi + '"><button class="danger sm" onclick="confirmUninstall(\'' + esc(p) + '\',' + pi + ')">Remove</button></div>';
+    h += '<div id="uninstall-confirm-' + pi + '"><button class="danger sm" onclick="confirmUninstall(\'' + jsStr(p) + '\',' + pi + ')">Remove</button></div>';
     h += '</div>';
   }
   if (d.setupState && d.setupState.installedExtensions && d.setupState.installedExtensions.length) {
-    h += '<h3>Gallery Installations</h3>';
-    for (var ei = 0; ei < d.setupState.installedExtensions.length; ei++) {
-      var extId = d.setupState.installedExtensions[ei];
+    h += '<h3>Installed Extensions</h3>';
+    for (let ei = 0; ei < d.setupState.installedExtensions.length; ei++) {
+      const extId = d.setupState.installedExtensions[ei];
       h += '<div class="card"><span class="tag">' + esc(extId) + '</span></div>';
     }
   }
@@ -526,11 +511,11 @@ function confirmUninstall(pluginId, index) {
 }
 
 async function doUninstall(pluginId) {
-  var r = await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
+  const r = await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
   if (r.ok) {
     showToast('Extension removed. Your assistant will restart to apply changes.', 'success');
   } else {
-    showToast('Failed to remove: ' + friendlyError(r.data ? r.data.error : String(r.status)), 'error');
+    showToast('Failed to remove: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
   loadMyExtensions();
 }
@@ -540,11 +525,11 @@ let channelsData = [];
 let channelConfigs = {};
 
 async function loadChannels() {
-  var el = document.getElementById('page-channels');
-  var h = '<h2>Channels</h2>';
+  const el = document.getElementById('page-channels');
+  let h = '<h2>Channels</h2>';
   h += '<p class="muted">Connect your assistant to different messaging platforms.</p>';
 
-  var ch = await api('/admin/channels');
+  const ch = await api('/admin/channels');
   if (!ch.ok) {
     h += '<p class="muted">Could not load channels.</p>';
     el.innerHTML = h;
@@ -553,8 +538,8 @@ async function loadChannels() {
   channelsData = ch.data.channels || [];
 
   /* Use config data already included in the channels response */
-  for (var ci = 0; ci < channelsData.length; ci++) {
-    var c = channelsData[ci];
+  for (let ci = 0; ci < channelsData.length; ci++) {
+    const c = channelsData[ci];
     if (c.service && c.config) {
       channelConfigs[c.service] = c.config;
     }
@@ -564,8 +549,8 @@ async function loadChannels() {
 }
 
 function renderChannels() {
-  var el = document.getElementById('page-channels');
-  var h = '<h2>Channels</h2>';
+  const el = document.getElementById('page-channels');
+  let h = '<h2>Channels</h2>';
   h += '<p class="muted">Connect your assistant to different messaging platforms.</p>';
 
   if (!channelsData.length) {
@@ -574,13 +559,12 @@ function renderChannels() {
     return;
   }
 
-  for (var ci = 0; ci < channelsData.length; ci++) {
-    var c = channelsData[ci];
-    var svc = c.service;
-    var friendly = CHANNEL_FRIENDLY[svc] || svc;
-    var isEnabled = c.access === 'public' || (channelConfigs[svc] && Object.keys(channelConfigs[svc]).length > 0);
-    var fields = CHANNEL_FIELDS[svc] || [];
-    var cfg = channelConfigs[svc] || {};
+  for (let ci = 0; ci < channelsData.length; ci++) {
+    const c = channelsData[ci];
+    const svc = c.service;
+    const friendly = CHANNEL_FRIENDLY[svc] || svc;
+    const fields = CHANNEL_FIELDS[svc] || [];
+    const cfg = channelConfigs[svc] || {};
 
     h += '<div class="channel-card">';
     h += '<div class="channel-header">';
@@ -591,24 +575,34 @@ function renderChannels() {
     /* Access toggle */
     if (adminToken && svc.startsWith('channel-')) {
       if (c.access === 'public') {
-        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + esc(svc) + '\',\'lan\')" title="Currently accessible from the internet. Click to make private.">';
+        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'lan\')" title="Currently accessible from the internet. Click to restrict to local network.">';
         h += '<span class="toggle-dot" style="background:var(--green)"></span> Public';
         h += '</span>';
+      } else if (c.access === 'lan') {
+        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'public\')" title="Currently accessible on local network. Click to make accessible from the internet.">';
+        h += '<span class="toggle-dot" style="background:var(--yellow)"></span> Local Network';
+        h += '</span>';
       } else {
-        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + esc(svc) + '\',\'public\')" title="Currently private. Click to make accessible from the internet.">';
-        h += '<span class="toggle-dot" style="background:var(--muted)"></span> Private';
+        h += '<span class="access-toggle" onclick="toggleChannelAccess(\'' + jsStr(svc) + '\',\'public\')" title="Currently disabled. Click to make accessible from the internet.">';
+        h += '<span class="toggle-dot" style="background:var(--muted)"></span> Disabled';
         h += '</span>';
       }
     } else {
-      h += '<span class="tag">' + (c.access === 'public' ? 'Public' : 'Private') + '</span>';
+      if (c.access === 'public') {
+        h += '<span class="tag">Public</span>';
+      } else if (c.access === 'lan') {
+        h += '<span class="tag">Local Network</span>';
+      } else {
+        h += '<span class="tag">Disabled</span>';
+      }
     }
     h += '</div>';
 
     /* Inline config form */
     if (adminToken && fields.length > 0) {
-      for (var fi = 0; fi < fields.length; fi++) {
-        var f = fields[fi];
-        var val = cfg[f.key] || '';
+      for (let fi = 0; fi < fields.length; fi++) {
+        const f = fields[fi];
+        const val = cfg[f.key] || '';
         h += '<div class="field-group">';
         h += '<label>' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
         h += '<input id="ch-' + esc(svc) + '-' + esc(f.key) + '" type="' + f.type + '" placeholder="' + esc(f.helpText || '') + '" value="' + esc(val) + '" />';
@@ -616,8 +610,7 @@ function renderChannels() {
         h += '</div>';
       }
       h += '<div style="display:flex;gap:.5rem;align-items:center">';
-      h += '<button class="sm" onclick="saveChannelConfig(\'' + esc(svc) + '\')">Save</button>';
-      h += '<div id="channel-save-status-' + esc(svc) + '"></div>';
+      h += '<button class="sm" onclick="saveChannelConfig(\'' + jsStr(svc) + '\')">Save</button>';
       h += '</div>';
     } else if (!adminToken) {
       h += '<p class="muted" style="font-size:12px">Please enter your admin password in System settings to edit channel configuration.</p>';
@@ -633,38 +626,38 @@ function renderChannels() {
 }
 
 function toggleChannelAccess(service, newAccess) {
-  var channel = service === 'channel-chat' ? 'chat' : service === 'channel-voice' ? 'voice' : service === 'channel-discord' ? 'discord' : service === 'channel-telegram' ? 'telegram' : '';
+  const channel = service === 'channel-chat' ? 'chat' : service === 'channel-voice' ? 'voice' : service === 'channel-discord' ? 'discord' : service === 'channel-telegram' ? 'telegram' : '';
   if (!channel) return;
-  var msg = newAccess === 'public' ? 'Make accessible from the internet?' : 'Make private?';
+  const msg = newAccess === 'public' ? 'Make accessible from the internet?' : newAccess === 'lan' ? 'Restrict to local network?' : 'Disable this channel?';
   showInlineConfirm('channel-access-confirm-' + service, msg, function() {
     doSetChannelAccess(service, channel, newAccess);
   });
 }
 
 async function doSetChannelAccess(service, channel, access) {
-  var r = await api('/admin/channels/access', { method: 'POST', body: JSON.stringify({ channel: channel, access: access }) });
+  const r = await api('/admin/channels/access', { method: 'POST', body: JSON.stringify({ channel: channel, access: access }) });
   if (r.ok) {
     showToast('Access updated.', 'success');
   } else {
-    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+    showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
   loadChannels();
 }
 
 async function saveChannelConfig(service) {
-  var fields = CHANNEL_FIELDS[service] || [];
-  var out = {};
-  for (var fi = 0; fi < fields.length; fi++) {
-    var f = fields[fi];
-    var el = document.getElementById('ch-' + service + '-' + f.key);
+  const fields = CHANNEL_FIELDS[service] || [];
+  const out = {};
+  for (let fi = 0; fi < fields.length; fi++) {
+    const f = fields[fi];
+    const el = document.getElementById('ch-' + service + '-' + f.key);
     if (el) out[f.key] = el.value;
   }
-  var r = await api('/admin/channels/config', { method: 'POST', body: JSON.stringify({ service: service, config: out, restart: true }) });
+  const r = await api('/admin/channels/config', { method: 'POST', body: JSON.stringify({ service: service, config: out, restart: true }) });
   if (r.ok) {
     showToast('Channel configuration saved.', 'success');
     channelConfigs[service] = out;
   } else {
-    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+    showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
 }
 
@@ -679,9 +672,9 @@ const FREQ_PRESETS = [
 
 const HOUR_OPTIONS = [];
 (function() {
-  for (var hr = 0; hr < 24; hr++) {
-    var ampm = hr < 12 ? 'AM' : 'PM';
-    var h12 = hr === 0 ? 12 : hr > 12 ? hr - 12 : hr;
+  for (let hr = 0; hr < 24; hr++) {
+    const ampm = hr < 12 ? 'AM' : 'PM';
+    const h12 = hr === 0 ? 12 : hr > 12 ? hr - 12 : hr;
     HOUR_OPTIONS.push({ label: h12 + ':00 ' + ampm, value: hr });
   }
 })();
@@ -696,17 +689,17 @@ function cronFromPreset(presetLabel, hour) {
 }
 
 async function loadAutomations() {
-  var el = document.getElementById('page-automations');
-  var h = '<h2>Automations</h2>';
+  const el = document.getElementById('page-automations');
+  let h = '<h2>Automations</h2>';
   h += '<p class="muted">Schedule recurring tasks for your assistant. Changes will restart your assistant to apply the new schedule.</p>';
   if (!adminToken) {
     h += '<p class="muted">Please enter your admin password in System settings to manage automations.</p>';
     el.innerHTML = h;
     return;
   }
-  var r = await api('/admin/crons');
+  const r = await api('/admin/crons');
   if (!r.ok) {
-    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data.error || String(r.status))) + '</p>';
+    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data?.error || r.data?.message || 'Request failed')) + '</p>';
     el.innerHTML = h;
     return;
   }
@@ -715,14 +708,14 @@ async function loadAutomations() {
 }
 
 function renderAutomations() {
-  var el = document.getElementById('page-automations');
-  var h = '<h2>Automations</h2>';
+  const el = document.getElementById('page-automations');
+  let h = '<h2>Automations</h2>';
   h += '<p class="muted">Schedule recurring tasks for your assistant. Changes will restart your assistant to apply the new schedule.</p>';
 
   /* create / edit form */
   h += '<div class="card">';
   h += '<h3>' + (cronEditId ? 'Edit Automation' : 'New Automation') + '</h3>';
-  var editing = cronEditId ? cronJobs.find(function(j) { return j.id === cronEditId; }) : null;
+  const editing = cronEditId ? cronJobs.find(function(j) { return j.id === cronEditId; }) : null;
 
   h += '<div class="field-group">';
   h += '<label>Name</label>';
@@ -735,14 +728,14 @@ function renderAutomations() {
   h += '<div class="freq-row">';
   h += '<select id="cron-freq-preset" onchange="updateCronFromPreset()">';
   h += '<option value="">Choose a preset...</option>';
-  for (var fi = 0; fi < FREQ_PRESETS.length; fi++) {
+  for (let fi = 0; fi < FREQ_PRESETS.length; fi++) {
     h += '<option value="' + esc(FREQ_PRESETS[fi].label) + '">' + esc(FREQ_PRESETS[fi].label) + '</option>';
   }
   h += '</select>';
   h += '<span class="muted" style="font-size:13px">at</span>';
   h += '<select id="cron-freq-hour" onchange="updateCronFromPreset()">';
-  for (var hi = 0; hi < HOUR_OPTIONS.length; hi++) {
-    var sel = HOUR_OPTIONS[hi].value === 9 ? ' selected' : '';
+  for (let hi = 0; hi < HOUR_OPTIONS.length; hi++) {
+    const sel = HOUR_OPTIONS[hi].value === 9 ? ' selected' : '';
     h += '<option value="' + HOUR_OPTIONS[hi].value + '"' + sel + '>' + esc(HOUR_OPTIONS[hi].label) + '</option>';
   }
   h += '</select>';
@@ -767,8 +760,8 @@ function renderAutomations() {
   if (!cronJobs.length) {
     h += '<p class="muted">No automations configured yet.</p>';
   }
-  for (var ji = 0; ji < cronJobs.length; ji++) {
-    var job = cronJobs[ji];
+  for (let ji = 0; ji < cronJobs.length; ji++) {
+    const job = cronJobs[ji];
     h += '<div class="card">';
     h += '<div style="display:flex;justify-content:space-between;align-items:start">';
     h += '<div>';
@@ -780,10 +773,10 @@ function renderAutomations() {
     h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
-    h += '<button class="sm" onclick="confirmTriggerCron(\'' + esc(job.id) + '\',' + ji + ')">Run Now</button>';
-    h += '<button class="sm secondary" onclick="toggleCron(\'' + esc(job.id) + '\',' + !job.enabled + ')">' + (job.enabled ? 'Disable' : 'Enable') + '</button>';
-    h += '<button class="sm secondary" onclick="editCron(\'' + esc(job.id) + '\')">Edit</button>';
-    h += '<button class="sm danger" onclick="confirmDeleteCron(\'' + esc(job.id) + '\',' + ji + ')">Delete</button>';
+    h += '<button class="sm" onclick="confirmTriggerCron(\'' + jsStr(job.id) + '\',' + ji + ')">Run Now</button>';
+    h += '<button class="sm secondary" onclick="toggleCron(\'' + jsStr(job.id) + '\',' + !job.enabled + ')">' + (job.enabled ? 'Disable' : 'Enable') + '</button>';
+    h += '<button class="sm secondary" onclick="editCron(\'' + jsStr(job.id) + '\')">Edit</button>';
+    h += '<button class="sm danger" onclick="confirmDeleteCron(\'' + jsStr(job.id) + '\',' + ji + ')">Delete</button>';
     h += '</div></div>';
     h += '<div id="cron-action-confirm-' + ji + '"></div>';
     h += '</div>';
@@ -792,28 +785,28 @@ function renderAutomations() {
 }
 
 function updateCronFromPreset() {
-  var preset = document.getElementById('cron-freq-preset').value;
-  var hour = document.getElementById('cron-freq-hour').value;
+  const preset = document.getElementById('cron-freq-preset').value;
+  const hour = document.getElementById('cron-freq-hour').value;
   if (!preset) return;
-  var expr = cronFromPreset(preset, hour);
+  const expr = cronFromPreset(preset, hour);
   if (expr) {
     document.getElementById('cron-schedule').value = expr;
   }
 }
 
 async function saveCron() {
-  var name = document.getElementById('cron-name').value.trim();
-  var schedule = document.getElementById('cron-schedule').value.trim();
-  var prompt = document.getElementById('cron-prompt').value.trim();
+  const name = document.getElementById('cron-name').value.trim();
+  const schedule = document.getElementById('cron-schedule').value.trim();
+  const prompt = document.getElementById('cron-prompt').value.trim();
   if (!name || !schedule || !prompt) { showToast('All fields are required.', 'error'); return; }
 
   if (cronEditId) {
-    var r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: cronEditId, name: name, schedule: schedule, prompt: prompt }) });
-    if (!r.ok) { showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error'); return; }
+    const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: cronEditId, name: name, schedule: schedule, prompt: prompt }) });
+    if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
     cronEditId = null;
   } else {
-    var r2 = await api('/admin/crons', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, prompt: prompt }) });
-    if (!r2.ok) { showToast('Failed: ' + friendlyError(r2.data.error || r2.status), 'error'); return; }
+    const r2 = await api('/admin/crons', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, prompt: prompt }) });
+    if (!r2.ok) { showToast('Failed: ' + friendlyError(r2.data?.error || r2.data?.message || 'Request failed'), 'error'); return; }
   }
   showToast('Automation saved.', 'success');
   loadAutomations();
@@ -831,8 +824,8 @@ function cancelEditCron() {
 }
 
 async function toggleCron(id, enabled) {
-  var r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: id, enabled: enabled }) });
-  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error'); return; }
+  const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: id, enabled: enabled }) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
   showToast(enabled ? 'Automation enabled.' : 'Automation disabled.', 'success');
   loadAutomations();
 }
@@ -845,14 +838,14 @@ function confirmDeleteCron(id, index) {
 }
 
 async function doDeleteCron(id) {
-  var r = await api('/admin/crons/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
-  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error'); return; }
+  const r = await api('/admin/crons/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
   showToast('Automation deleted.', 'success');
   loadAutomations();
 }
 
 function confirmTriggerCron(id, index) {
-  var job = cronJobs.find(function(j) { return j.id === id; });
+  const job = cronJobs.find(function(j) { return j.id === id; });
   showInlineConfirm('cron-action-confirm-' + index,
     'Run "' + (job ? job.name : 'this automation') + '" now?',
     function() { doTriggerCron(id); }
@@ -860,29 +853,29 @@ function confirmTriggerCron(id, index) {
 }
 
 async function doTriggerCron(id) {
-  var r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id: id }) });
+  const r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id: id }) });
   if (r.ok) {
     showToast('Task sent to your assistant.', 'success');
   } else {
-    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+    showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
 }
 
 /* ── SYSTEM PAGE ──────────────────────────────────────── */
 async function loadSystem() {
-  var el = document.getElementById('page-system');
-  var h = '<h2>System</h2>';
+  const el = document.getElementById('page-system');
+  let h = '<h2>System</h2>';
 
   /* Health Status */
   h += '<div class="card"><h3>Health Status</h3>';
-  var hc = await api('/admin/setup/health-check');
+  const hc = await api('/admin/setup/health-check');
   if (hc.ok) {
-    var s = hc.data.services;
+    const s = hc.data.services;
     h += '<div class="grid3">';
-    for (var name in s) {
+    for (const name in s) {
       if (!s.hasOwnProperty(name)) continue;
-      var info = s[name];
-      var friendly = friendlyServiceName(name);
+      const info = s[name];
+      const friendly = friendlyServiceName(name);
       h += '<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem">';
       h += '<span class="dot ' + (info.ok ? 'dot-ok' : 'dot-err') + '"></span>';
       h += '<div><strong style="font-size:14px">' + esc(friendly) + '</strong>';
@@ -917,11 +910,11 @@ async function loadSystem() {
   h += '</div>';
 
   /* Advanced Configuration (collapsed) */
-  var status = await api('/admin/setup/status');
-  var svc = status.ok && status.data && status.data.serviceInstances
+  const status = await api('/admin/setup/status');
+  const svc = status.ok && status.data && status.data.serviceInstances
     ? status.data.serviceInstances
     : { openmemory: '', psql: '', qdrant: '' };
-  var openmemoryProvider = status.ok && status.data && status.data.openmemoryProvider
+  const openmemoryProvider = status.ok && status.data && status.data.openmemoryProvider
     ? status.data.openmemoryProvider
     : { openaiBaseUrl: '', openaiApiKeyConfigured: false };
 
@@ -963,8 +956,8 @@ async function loadSystem() {
   h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
   h += '<span class="arrow">&#9654;</span> Developer Tools</h3>';
   h += '<div class="collapse-body hidden">';
-  var opencodeUrl = '/admin/opencode/';
-  var openmemoryUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
+  const opencodeUrl = '/admin/opencode/';
+  const openmemoryUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
   h += '<div style="display:flex;flex-direction:column;gap:.5rem">';
   h += '<a href="' + esc(opencodeUrl) + '" target="_blank">Open OpenCode UI</a>';
   h += '<a href="' + esc(openmemoryUrl) + '" target="_blank">Open Memory Dashboard</a>';
@@ -980,13 +973,13 @@ async function loadSystem() {
   if (!adminToken) {
     h += '<p class="muted">Please enter your admin password above to manage services.</p>';
   } else {
-    var known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
-    for (var ki = 0; ki < known.length; ki++) {
-      var svcName = known[ki];
+    const known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+    for (let ki = 0; ki < known.length; ki++) {
+      const svcName = known[ki];
       h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--border)">';
       h += '<span style="font-size:14px">' + esc(friendlyServiceName(svcName)) + '</span>';
       h += '<div id="svc-action-confirm-' + ki + '" style="display:inline-flex;gap:.3rem;align-items:center">';
-      h += '<button class="sm secondary" onclick="confirmSvcRestart(\'' + esc(svcName) + '\',' + ki + ')">Restart</button>';
+      h += '<button class="sm secondary" onclick="confirmSvcRestart(\'' + jsStr(svcName) + '\',' + ki + ')">Restart</button>';
       h += '</div>';
       h += '</div>';
     }
@@ -1001,19 +994,19 @@ async function loadSystem() {
 
 /* ── Providers (embedded in System) ───────────────────── */
 async function loadProvidersData() {
-  var r = await api('/admin/providers');
+  const r = await api('/admin/providers');
   if (r.ok) {
     providersList = r.data.providers || [];
     providerAssignments = r.data.assignments || {};
   }
-  var section = document.getElementById('providers-section');
+  const section = document.getElementById('providers-section');
   if (section) {
     section.innerHTML = renderProvidersSection();
   }
 }
 
 function renderProvidersSection() {
-  var h = '<h3>Providers</h3>';
+  let h = '<h3>Providers</h3>';
   h += '<p class="muted" style="font-size:13px">Manage AI provider connections and assign models to roles.</p>';
 
   h += '<div style="margin-bottom:1rem;padding:.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">';
@@ -1033,22 +1026,22 @@ function renderProvidersSection() {
     h += '<p class="muted" style="font-size:13px">No providers configured yet. Add one above to get started.</p>';
   } else {
     h += '<div class="grid2">';
-    for (var pi = 0; pi < providersList.length; pi++) {
-      var p = providersList[pi];
-      var isSmall = providerAssignments.small && providerAssignments.small.providerId === p.id;
-      var isOpenmemory = providerAssignments.openmemory && providerAssignments.openmemory.providerId === p.id;
+    for (let pi = 0; pi < providersList.length; pi++) {
+      const p = providersList[pi];
+      const isSmall = providerAssignments.small && providerAssignments.small.providerId === p.id;
+      const isOpenmemory = providerAssignments.openmemory && providerAssignments.openmemory.providerId === p.id;
       h += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem">';
       h += '<div style="display:flex;justify-content:space-between;align-items:start">';
       h += '<strong>' + esc(p.name) + '</strong>';
-      h += '<button class="danger sm" onclick="deleteProvider(\'' + esc(p.id) + '\')">Delete</button>';
+      h += '<button class="danger sm" onclick="deleteProvider(\'' + jsStr(p.id) + '\')">Delete</button>';
       h += '</div>';
       h += '<div class="muted" style="font-size:12px;margin:.2rem 0">' + esc(p.url || 'No URL') + '</div>';
       h += '<div class="muted" style="font-size:12px">Key: ' + (p.apiKey ? '------' : 'none') + '</div>';
       if (isSmall) h += '<div style="margin-top:.3rem"><span class="badge badge-low">Small Model</span> ' + esc(providerAssignments.small.modelId) + '</div>';
       if (isOpenmemory) h += '<div style="margin-top:.3rem"><span class="badge badge-medium">Memory Model</span> ' + esc(providerAssignments.openmemory.modelId) + '</div>';
       h += '<div style="margin-top:.4rem;display:flex;gap:.3rem;flex-wrap:wrap">';
-      h += '<button class="secondary sm" onclick="fetchModels(\'' + esc(p.id) + '\')">Fetch Models</button>';
-      h += '<button class="secondary sm" onclick="editProvider(\'' + esc(p.id) + '\')">Edit</button>';
+      h += '<button class="secondary sm" onclick="fetchModels(\'' + jsStr(p.id) + '\')">Fetch Models</button>';
+      h += '<button class="secondary sm" onclick="editProvider(\'' + jsStr(p.id) + '\')">Edit</button>';
       h += '</div>';
       h += '<div id="provider-delete-confirm-' + esc(p.id) + '"></div>';
       h += '</div>';
@@ -1061,11 +1054,11 @@ function renderProvidersSection() {
 }
 
 async function addProvider() {
-  var name = document.getElementById('prov-name') ? document.getElementById('prov-name').value.trim() : '';
-  var url = document.getElementById('prov-url') ? document.getElementById('prov-url').value.trim() : '';
-  var apiKey = document.getElementById('prov-key') ? document.getElementById('prov-key').value.trim() : '';
+  const name = document.getElementById('prov-name') ? document.getElementById('prov-name').value.trim() : '';
+  const url = document.getElementById('prov-url') ? document.getElementById('prov-url').value.trim() : '';
+  const apiKey = document.getElementById('prov-key') ? document.getElementById('prov-key').value.trim() : '';
   if (!name) { showToast('Provider name is required.', 'error'); return; }
-  var r = await api('/admin/providers', { method: 'POST', body: JSON.stringify({ name: name, url: url, apiKey: apiKey }) });
+  const r = await api('/admin/providers', { method: 'POST', body: JSON.stringify({ name: name, url: url, apiKey: apiKey }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   showToast('Provider added.', 'success');
   await loadProvidersData();
@@ -1075,7 +1068,7 @@ async function deleteProvider(id) {
   showInlineConfirm('provider-delete-confirm-' + id,
     'Delete this provider? Any model assignments will be removed.',
     async function() {
-      var r = await api('/admin/providers/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+      const r = await api('/admin/providers/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
       if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
       showToast('Provider deleted.', 'success');
       await loadProvidersData();
@@ -1084,10 +1077,10 @@ async function deleteProvider(id) {
 }
 
 function editProvider(id) {
-  var p = providersList.find(function(x) { return x.id === id; });
+  const p = providersList.find(function(x) { return x.id === id; });
   if (!p) return;
-  var el = document.getElementById('modal-overlay');
-  var h = '<div class="modal">';
+  const el = document.getElementById('modal-overlay');
+  let h = '<div class="modal">';
   h += '<h3>Edit Provider: ' + esc(p.name) + '</h3>';
   h += '<div class="field-group">';
   h += '<label>Name</label>';
@@ -1102,7 +1095,7 @@ function editProvider(id) {
   h += '<input id="edit-prov-key" type="password" placeholder="Leave blank to keep current" />';
   h += '</div>';
   h += '<div style="margin-top:1rem;display:flex;gap:.5rem">';
-  h += '<button onclick="saveProviderEdit(\'' + esc(id) + '\')">Save</button>';
+  h += '<button onclick="saveProviderEdit(\'' + jsStr(id) + '\')">Save</button>';
   h += '<button class="secondary" onclick="closeModal()">Cancel</button>';
   h += '</div></div>';
   el.innerHTML = h;
@@ -1110,14 +1103,14 @@ function editProvider(id) {
 }
 
 async function saveProviderEdit(id) {
-  var name = document.getElementById('edit-prov-name') ? document.getElementById('edit-prov-name').value.trim() : '';
-  var url = document.getElementById('edit-prov-url') ? document.getElementById('edit-prov-url').value.trim() : '';
-  var apiKey = document.getElementById('edit-prov-key') ? document.getElementById('edit-prov-key').value.trim() : '';
-  var payload = { id: id };
+  const name = document.getElementById('edit-prov-name') ? document.getElementById('edit-prov-name').value.trim() : '';
+  const url = document.getElementById('edit-prov-url') ? document.getElementById('edit-prov-url').value.trim() : '';
+  const apiKey = document.getElementById('edit-prov-key') ? document.getElementById('edit-prov-key').value.trim() : '';
+  const payload = { id: id };
   if (name) payload.name = name;
   if (url !== undefined) payload.url = url;
   if (apiKey) payload.apiKey = apiKey;
-  var r = await api('/admin/providers/update', { method: 'POST', body: JSON.stringify(payload) });
+  const r = await api('/admin/providers/update', { method: 'POST', body: JSON.stringify(payload) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   closeModal();
   showToast('Provider updated.', 'success');
@@ -1126,10 +1119,10 @@ async function saveProviderEdit(id) {
 
 async function fetchModels(providerId) {
   selectedProviderId = providerId;
-  var section = document.getElementById('provider-models-section');
+  const section = document.getElementById('provider-models-section');
   if (!section) return;
   section.innerHTML = '<div style="padding:.5rem"><p class="muted">Fetching models...</p></div>';
-  var r = await api('/admin/providers/models', { method: 'POST', body: JSON.stringify({ providerId: providerId }) });
+  const r = await api('/admin/providers/models', { method: 'POST', body: JSON.stringify({ providerId: providerId }) });
   if (!r.ok) {
     section.innerHTML = '<div style="padding:.5rem;border:1px solid var(--red);border-radius:var(--radius)"><p style="color:var(--red);font-size:13px">Failed to fetch models: ' + esc(friendlyError(r.data ? (r.data.message || r.data.error) : 'Unknown error')) + '</p></div>';
     return;
@@ -1139,23 +1132,23 @@ async function fetchModels(providerId) {
 }
 
 function renderModelSelection() {
-  var section = document.getElementById('provider-models-section');
+  const section = document.getElementById('provider-models-section');
   if (!section) return;
-  var p = providersList.find(function(x) { return x.id === selectedProviderId; });
+  const p = providersList.find(function(x) { return x.id === selectedProviderId; });
   if (!p || !providerModels.length) {
     section.innerHTML = '<div style="padding:.5rem"><p class="muted">No models found for this provider.</p></div>';
     return;
   }
-  var h = '<div style="margin-top:.8rem"><strong>Available Models from ' + esc(p.name) + '</strong>';
+  let h = '<div style="margin-top:.8rem"><strong>Available Models from ' + esc(p.name) + '</strong>';
   h += '<p class="muted" style="font-size:13px">Select a model and assign it to a role.</p>';
   h += '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin:.5rem 0">';
-  for (var mi = 0; mi < providerModels.length; mi++) {
-    var m = providerModels[mi];
+  for (let mi = 0; mi < providerModels.length; mi++) {
+    const m = providerModels[mi];
     h += '<div style="padding:.4rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
     h += '<span style="font-size:14px">' + esc(m.id) + '</span>';
     h += '<span style="display:flex;gap:.3rem">';
-    h += '<button class="sm" onclick="assignModel(\'' + esc(m.id) + '\',\'small\')">Set Small</button>';
-    h += '<button class="secondary sm" onclick="assignModel(\'' + esc(m.id) + '\',\'openmemory\')">Set Memory</button>';
+    h += '<button class="sm" onclick="assignModel(\'' + jsStr(m.id) + '\',\'small\')">Set Small</button>';
+    h += '<button class="secondary sm" onclick="assignModel(\'' + jsStr(m.id) + '\',\'openmemory\')">Set Memory</button>';
     h += '</span>';
     h += '</div>';
   }
@@ -1164,7 +1157,7 @@ function renderModelSelection() {
 }
 
 async function assignModel(modelId, role) {
-  var r = await api('/admin/providers/assign', { method: 'POST', body: JSON.stringify({ role: role, providerId: selectedProviderId, modelId: modelId }) });
+  const r = await api('/admin/providers/assign', { method: 'POST', body: JSON.stringify({ role: role, providerId: selectedProviderId, modelId: modelId }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   providerAssignments = r.data.assignments || {};
   showToast('Model "' + modelId + '" assigned as ' + role + '. Your assistant will restart to apply changes.', 'success');
@@ -1186,14 +1179,14 @@ function confirmSaveServiceInstances() {
 }
 
 async function saveServiceInstances() {
-  var openmemory = document.getElementById('set-openmemory-url') ? document.getElementById('set-openmemory-url').value : '';
-  var psql = document.getElementById('set-psql-url') ? document.getElementById('set-psql-url').value : '';
-  var qdrant = document.getElementById('set-qdrant-url') ? document.getElementById('set-qdrant-url').value : '';
-  var openaiBaseUrl = document.getElementById('set-openmemory-openai-base') ? document.getElementById('set-openmemory-openai-base').value : '';
-  var openaiApiKey = document.getElementById('set-openmemory-openai-key') ? document.getElementById('set-openmemory-openai-key').value : '';
-  var payload = { openmemory: openmemory, psql: psql, qdrant: qdrant, openaiBaseUrl: openaiBaseUrl };
+  const openmemory = document.getElementById('set-openmemory-url') ? document.getElementById('set-openmemory-url').value : '';
+  const psql = document.getElementById('set-psql-url') ? document.getElementById('set-psql-url').value : '';
+  const qdrant = document.getElementById('set-qdrant-url') ? document.getElementById('set-qdrant-url').value : '';
+  const openaiBaseUrl = document.getElementById('set-openmemory-openai-base') ? document.getElementById('set-openmemory-openai-base').value : '';
+  const openaiApiKey = document.getElementById('set-openmemory-openai-key') ? document.getElementById('set-openmemory-openai-key').value : '';
+  const payload = { openmemory: openmemory, psql: psql, qdrant: qdrant, openaiBaseUrl: openaiBaseUrl };
   if (openaiApiKey.trim()) payload.openaiApiKey = openaiApiKey.trim();
-  var r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify(payload) });
+  const r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify(payload) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   showToast('Configuration saved.', 'success');
 }
@@ -1207,11 +1200,11 @@ function confirmSvcRestart(svc, index) {
 }
 
 async function doSvcAction(action, svc) {
-  var r = await api('/admin/containers/' + action, { method: 'POST', body: JSON.stringify({ service: svc }) });
+  const r = await api('/admin/containers/' + action, { method: 'POST', body: JSON.stringify({ service: svc }) });
   if (r.ok) {
     showToast(friendlyServiceName(svc) + ' is restarting.', 'success');
   } else {
-    showToast('Failed: ' + friendlyError(r.data.error || r.status), 'error');
+    showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
 }
 
@@ -1225,9 +1218,11 @@ function runSetup() {
 }
 
 /* ── init ─────────────────────────────────────────────── */
-showPage('extensions');
-window.openPalmSetup?.init({ api: api, esc: esc, riskBadge: riskBadge, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
-checkSetup();
+loadMeta().then(function() {
+  showPage('extensions');
+  window.openPalmSetup?.init({ api: api, esc: esc, riskBadge: riskBadge, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
+  checkSetup();
+});
 </script>
 </body>
 </html>

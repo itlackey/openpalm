@@ -209,8 +209,13 @@ describe("setup wizard", () => {
   it("POST /admin/setup/complete marks setup as complete", async () => {
     const r = await apiJson("/admin/setup/complete", { method: "POST" });
     expect(r.ok).toBe(true);
-    const status = await apiJson("/admin/setup/status");
+    const status = await authed("/admin/setup/status");
     expect(status.data.completed).toBe(true);
+  });
+
+  it("after completion, /admin/setup/status requires auth", async () => {
+    const r = await apiJson("/admin/setup/status");
+    expect(r.status).toBe(401);
   });
 
   it("after completion, write endpoints require auth", async () => {

@@ -28,11 +28,16 @@ const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.e
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
+const KNOWN_SERVICES = new Set<string>([
+  "gateway", "controller", "opencode-core", "openmemory", "openmemory-ui",
+  "admin", "caddy",
+  "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
+]);
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
   "channel-voice": [],
-  "channel-telegram": ["TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_TOKEN"]
+  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
 };
 
 const setupManager = new SetupManager(DATA_DIR);
@@ -59,14 +64,18 @@ function auth(req: Request) {
 
 async function controllerAction(action: string, service: string, reason: string) {
   if (!CONTROLLER_URL) return;
-  await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-controller-token": CONTROLLER_TOKEN
-    },
-    body: JSON.stringify({ reason })
-  });
+  try {
+    await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-controller-token": CONTROLLER_TOKEN
+      },
+      body: JSON.stringify({ reason })
+    });
+  } catch (err) {
+    console.error(`[controllerAction] ${action}/${service} failed:`, err);
+  }
 }
 
 function snapshotFile(path: string) {
@@ -254,14 +263,14 @@ function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
 function applyProviderAssignment(role: ModelAssignment, providerUrl: string, providerApiKey: string, modelId: string) {
   if (role === "small") {
     const secretKey = "OPENPALM_SMALL_MODEL_API_KEY";
-    if (providerApiKey) updateSecretsEnv({ [secretKey]: providerApiKey });
+    updateSecretsEnv({ [secretKey]: providerApiKey || undefined });
     applySmallModelToOpencodeConfig(providerUrl, modelId);
     setupManager.setSmallModel({ endpoint: providerUrl, modelId });
   } else if (role === "openmemory") {
-    const entries: Record<string, string | undefined> = {};
-    if (providerUrl) entries.OPENAI_BASE_URL = providerUrl;
-    if (providerApiKey) entries.OPENAI_API_KEY = providerApiKey;
-    updateSecretsEnv(entries);
+    updateSecretsEnv({
+      OPENAI_BASE_URL: providerUrl || undefined,
+      OPENAI_API_KEY: providerApiKey || undefined,
+    });
   }
 }
 
@@ -348,6 +357,7 @@ const server = Bun.serve({
       // ── Setup wizard ──────────────────────────────────────────────
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
+        if (state.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, {
           ...state,
           serviceInstances: getConfiguredServiceInstances(),
@@ -382,6 +392,8 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/complete" && req.method === "POST") {
+        const current = setupManager.getState();
+        if (current.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const state = setupManager.completeSetup();
         return cors(json(200, { ok: true, state }));
       }
@@ -591,6 +603,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
+        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await controllerAction("up", body.service, "admin action");
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
@@ -598,6 +611,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/down" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
+        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await controllerAction("down", body.service, "admin action");
         return cors(json(200, { ok: true, action: "down", service: body.service }));
       }
@@ -605,6 +619,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
+        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await controllerAction("restart", body.service, "admin action");
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
@@ -769,8 +784,22 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
+        // Capture which roles used this provider before removal
+        const stateBefore = providerStore.getState();
+        const affectedRoles = Object.entries(stateBefore.assignments)
+          .filter(([, assignment]) => assignment.providerId === body.id)
+          .map(([role]) => role);
         const removed = providerStore.removeProvider(body.id);
         if (!removed) return cors(json(404, { error: "provider not found" }));
+        // Restart services that depended on the deleted provider
+        for (const role of affectedRoles) {
+          if (role === "small" || role === "openmemory") {
+            await controllerAction("restart", "opencode-core", `provider deleted: ${role} assignment cleared`);
+          }
+          if (role === "openmemory") {
+            await controllerAction("restart", "openmemory", `provider deleted: openmemory assignment cleared`);
+          }
+        }
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
@@ -842,12 +871,17 @@ const server = Bun.serve({
       return cors(json(404, { error: "not_found" }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const status = message.includes("not found") || message.includes("missing") ? 400 : 500;
-      const errorCode = status === 400 ? "validation_error" : "internal_error";
+      const isNotFound = message.includes("not found") || message.includes("missing");
+      const status = isNotFound ? 404 : 500;
+      const errorCode = isNotFound ? "not_found" : "internal_error";
       console.error(`[${requestId}] ${errorCode}:`, error);
-      return cors(json(status, { error: errorCode, message, requestId }));
+      const clientMessage = status === 500 ? "An internal error occurred" : message;
+      return cors(json(status, { error: errorCode, message: clientMessage, requestId }));
     }
   }
 });
 
 console.log(JSON.stringify({ kind: "startup", service: "admin", port: server.port }));
+if (ADMIN_TOKEN === "change-me-admin-token") {
+  console.warn("[WARN] Using default admin token. Set ADMIN_TOKEN environment variable for security.");
+}
