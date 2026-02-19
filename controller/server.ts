@@ -13,7 +13,7 @@ const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean
 const CORE_SERVICES = new Set([
   "opencode-core", "gateway", "openmemory", "admin",
   "channel-chat", "channel-discord", "channel-voice",
-  "channel-telegram", "caddy"
+  "channel-telegram", "channel-webhook", "caddy"
 ]);
 const EXTRA_SERVICES = (Bun.env.OPENPALM_EXTRA_SERVICES ?? "")
   .split(",")
@@ -86,7 +86,7 @@ export function createControllerFetch(controllerToken: string, compose: ComposeR
       if (!ALLOWED.has(service)) return json(400, { error: "service not allowed" });
       const result = await compose(["stop", service]);
       if (!result.ok) return json(500, { ok: false, error: result.stderr });
-      return json(200, { ok: true, action: "down", service, stdout: result.stdout });
+      return json(200, { ok: true, action: "stop", service, stdout: result.stdout });
     }
 
     return json(404, { error: "not found" });

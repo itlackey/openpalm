@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_DIR="${OPENCODE_CONFIGURATION_DIRECTORY:-/config}"
+CONFIG_DIR="${OPENCODE_CONFIG_DIR:-/config}"
 CRON_DIR="${CRON_DIR:-/cron}"
 PORT="${OPENCODE_PORT:-4096}"
 ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$CRON_DIR"
+mkdir -p "$CRON_DIR/cron-payloads"
 
 # Default extensions are baked into the image at /root/.config/opencode/.
 # If a host config volume is mounted at /config, it takes priority.

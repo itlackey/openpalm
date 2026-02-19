@@ -252,9 +252,9 @@ describe("gallery", () => {
   });
 
   it("gallery search filters by category", async () => {
-    const r = await apiJson("/admin/gallery/search?q=&category=container");
+    const r = await apiJson("/admin/gallery/search?q=&category=channel");
     const items = r.data.items as Array<{ category: string }>;
-    expect(items.every((i) => i.category === "container")).toBe(true);
+    expect(items.every((i) => i.category === "channel")).toBe(true);
     expect(items.length).toBeGreaterThan(0);
   });
 
@@ -303,15 +303,15 @@ describe("auth-protected endpoints", () => {
     expect(Array.isArray(r.data.channels)).toBe(true);
   });
 
-  it("GET /admin/crons requires auth", async () => {
-    const r = await apiJson("/admin/crons");
+  it("GET /admin/automations requires auth", async () => {
+    const r = await apiJson("/admin/automations");
     expect(r.status).toBe(401);
   });
 
-  it("GET /admin/crons returns job list with auth", async () => {
-    const r = await authed("/admin/crons");
+  it("GET /admin/automations returns automation list with auth", async () => {
+    const r = await authed("/admin/automations");
     expect(r.ok).toBe(true);
-    expect(Array.isArray(r.data.jobs)).toBe(true);
+    expect(Array.isArray(r.data.automations)).toBe(true);
   });
 
   it("GET /admin/config requires auth", async () => {

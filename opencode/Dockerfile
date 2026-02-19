@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs gi
 
 WORKDIR /work
 
-# Extensions (plugins, skills, agents, lib) are baked into the image from
+# Extensions (skills/, commands/, agents/, tools/, plugins/) are baked into the image from
 # opencode/extensions/ and installed to /root/.config/opencode/ at build time.
 # At runtime, a host config volume may be mounted at /config to override defaults.
 COPY extensions/ /root/.config/opencode/

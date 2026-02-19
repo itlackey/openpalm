@@ -25,7 +25,7 @@ textarea{resize:vertical}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
 @media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
 .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;color:#fff}
-.badge-low{background:var(--green)}.badge-medium{background:var(--yellow);color:#000}.badge-high{background:var(--red)}.badge-critical{background:var(--purple)}
+.badge-lowest{background:var(--green)}.badge-low{background:#30d158}.badge-medium{background:var(--yellow);color:#000}.badge-medium-high{background:#ff6b35}.badge-highest{background:var(--red)}
 .tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;background:var(--surface2);color:var(--muted);margin:0 3px 3px 0}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
 .dot-ok{background:var(--green)}.dot-err{background:var(--red)}.dot-warn{background:var(--yellow)}
@@ -113,8 +113,8 @@ let npmSearchVisible = false;
 let npmSearchResults = [];
 
 /* Cron / Automations state */
-let cronJobs = [];
-let cronEditId = null;
+let automations = [];
+let automationEditId = null;
 
 /* Providers state */
 let providersList = [];
@@ -215,7 +215,14 @@ function riskBadge(r) {
 }
 
 function categoryLabel(c) {
-  return c === 'plugin' ? 'Capability' : c === 'skill' ? 'Behavior' : 'Service';
+  if (c === 'plugin') return 'Capability';
+  if (c === 'skill') return 'Behavior';
+  if (c === 'command') return 'Command';
+  if (c === 'agent') return 'Agent';
+  if (c === 'tool') return 'Custom Tool';
+  if (c === 'channel') return 'Channel';
+  if (c === 'service') return 'Service';
+  return c;
 }
 
 /* ── utils ────────────────────────────────────────────── */
@@ -302,7 +309,11 @@ function renderGallery() {
   h += catTab('', 'All');
   h += catTab('plugin', 'Capabilities');
   h += catTab('skill', 'Behaviors');
-  h += catTab('container', 'Services');
+  h += catTab('command', 'Commands');
+  h += catTab('agent', 'Agents');
+  h += catTab('tool', 'Tools');
+  h += catTab('channel', 'Channels');
+  h += catTab('service', 'Services');
   h += '</div>';
   /* npm registry link */
   h += '<div class="mb">';
@@ -697,13 +708,13 @@ async function loadAutomations() {
     el.innerHTML = h;
     return;
   }
-  const r = await api('/admin/crons');
+  const r = await api('/admin/automations');
   if (!r.ok) {
     h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data?.error || r.data?.message || 'Request failed')) + '</p>';
     el.innerHTML = h;
     return;
   }
-  cronJobs = r.data.jobs || [];
+  automations = r.data.automations || [];
   renderAutomations();
 }
 
@@ -714,8 +725,8 @@ function renderAutomations() {
 
   /* create / edit form */
   h += '<div class="card">';
-  h += '<h3>' + (cronEditId ? 'Edit Automation' : 'New Automation') + '</h3>';
-  const editing = cronEditId ? cronJobs.find(function(j) { return j.id === cronEditId; }) : null;
+  h += '<h3>' + (automationEditId ? 'Edit Automation' : 'New Automation') + '</h3>';
+  const editing = automationEditId ? automations.find(function(j) { return j.id === automationEditId; }) : null;
 
   h += '<div class="field-group">';
   h += '<label>Name</label>';
@@ -752,21 +763,21 @@ function renderAutomations() {
   h += '</div>';
 
   h += '<div style="display:flex;gap:.5rem">';
-  h += '<button onclick="saveCron()">' + (cronEditId ? 'Update' : 'Create') + '</button>';
-  if (cronEditId) h += '<button class="secondary" onclick="cancelEditCron()">Cancel</button>';
+  h += '<button onclick="saveCron()">' + (automationEditId ? 'Update' : 'Create') + '</button>';
+  if (automationEditId) h += '<button class="secondary" onclick="cancelEditCron()">Cancel</button>';
   h += '</div></div>';
 
   /* list */
-  if (!cronJobs.length) {
+  if (!automations.length) {
     h += '<p class="muted">No automations configured yet.</p>';
   }
-  for (let ji = 0; ji < cronJobs.length; ji++) {
-    const job = cronJobs[ji];
+  for (let ji = 0; ji < automations.length; ji++) {
+    const job = automations[ji];
     h += '<div class="card">';
     h += '<div style="display:flex;justify-content:space-between;align-items:start">';
     h += '<div>';
     h += '<strong>' + esc(job.name) + '</strong> ';
-    h += job.enabled
+    h += job.status === "enabled"
       ? '<span class="badge badge-low" style="font-size:11px">Enabled</span>'
       : '<span class="badge" style="font-size:11px;background:var(--muted)">Disabled</span>';
     h += '<div class="muted" style="font-size:13px;margin:.2rem 0"><code>' + esc(job.schedule) + '</code></div>';
@@ -774,7 +785,7 @@ function renderAutomations() {
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
     h += '<button class="sm" onclick="confirmTriggerCron(\'' + jsStr(job.id) + '\',' + ji + ')">Run Now</button>';
-    h += '<button class="sm secondary" onclick="toggleCron(\'' + jsStr(job.id) + '\',' + !job.enabled + ')">' + (job.enabled ? 'Disable' : 'Enable') + '</button>';
+    h += '<button class="sm secondary" onclick="toggleCron(\'' + jsStr(job.id) + '\',\'' + (job.status === "enabled" ? "disabled" : "enabled") + '\')">' + (job.status === "enabled" ? 'Disable' : 'Enable') + '</button>';
     h += '<button class="sm secondary" onclick="editCron(\'' + jsStr(job.id) + '\')">Edit</button>';
     h += '<button class="sm danger" onclick="confirmDeleteCron(\'' + jsStr(job.id) + '\',' + ji + ')">Delete</button>';
     h += '</div></div>';
@@ -800,12 +811,12 @@ async function saveCron() {
   const prompt = document.getElementById('cron-prompt').value.trim();
   if (!name || !schedule || !prompt) { showToast('All fields are required.', 'error'); return; }
 
-  if (cronEditId) {
-    const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: cronEditId, name: name, schedule: schedule, prompt: prompt }) });
+  if (automationEditId) {
+    const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: automationEditId, name: name, schedule: schedule, prompt: prompt }) });
     if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
-    cronEditId = null;
+    automationEditId = null;
   } else {
-    const r2 = await api('/admin/crons', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, prompt: prompt }) });
+    const r2 = await api('/admin/automations', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, prompt: prompt }) });
     if (!r2.ok) { showToast('Failed: ' + friendlyError(r2.data?.error || r2.data?.message || 'Request failed'), 'error'); return; }
   }
   showToast('Automation saved.', 'success');
@@ -813,20 +824,20 @@ async function saveCron() {
 }
 
 function editCron(id) {
-  cronEditId = id;
+  automationEditId = id;
   renderAutomations();
   document.getElementById('cron-name').focus();
 }
 
 function cancelEditCron() {
-  cronEditId = null;
+  automationEditId = null;
   renderAutomations();
 }
 
-async function toggleCron(id, enabled) {
-  const r = await api('/admin/crons/update', { method: 'POST', body: JSON.stringify({ id: id, enabled: enabled }) });
+async function toggleCron(id, newStatus) {
+  const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: id, status: newStatus }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
-  showToast(enabled ? 'Automation enabled.' : 'Automation disabled.', 'success');
+  showToast(newStatus === 'enabled' ? 'Automation enabled.' : 'Automation disabled.', 'success');
   loadAutomations();
 }
 
@@ -838,14 +849,14 @@ function confirmDeleteCron(id, index) {
 }
 
 async function doDeleteCron(id) {
-  const r = await api('/admin/crons/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+  const r = await api('/admin/automations/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
   showToast('Automation deleted.', 'success');
   loadAutomations();
 }
 
 function confirmTriggerCron(id, index) {
-  const job = cronJobs.find(function(j) { return j.id === id; });
+  const job = automations.find(function(j) { return j.id === id; });
   showInlineConfirm('cron-action-confirm-' + index,
     'Run "' + (job ? job.name : 'this automation') + '" now?',
     function() { doTriggerCron(id); }
@@ -853,7 +864,7 @@ function confirmTriggerCron(id, index) {
 }
 
 async function doTriggerCron(id) {
-  const r = await api('/admin/crons/trigger', { method: 'POST', body: JSON.stringify({ id: id }) });
+  const r = await api('/admin/automations/trigger', { method: 'POST', body: JSON.stringify({ id: id }) });
   if (r.ok) {
     showToast('Task sent to your assistant.', 'success');
   } else {

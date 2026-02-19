@@ -164,10 +164,10 @@
 
   function starterExtensions() {
     const starters = [
-      { id: "plugin-policy-telemetry", name: "Policy & Telemetry", risk: "low", desc: "Built-in: blocks secrets, logs tool calls" },
-      { id: "skill-recall-first", name: "Recall First", risk: "low", desc: "Always check memory before answering" },
-      { id: "skill-memory-policy", name: "Memory Policy", risk: "low", desc: "Governs when and how to store memory" },
-      { id: "skill-action-gating", name: "Action Gating", risk: "low", desc: "Require approval for risky actions" }
+      { id: "plugin-policy-telemetry", name: "Policy & Telemetry", risk: "highest", desc: "Built-in: blocks secrets, logs tool calls" },
+      { id: "skill-recall-first", name: "Recall First", risk: "lowest", desc: "Always check memory before answering" },
+      { id: "skill-memory-policy", name: "Memory Policy", risk: "lowest", desc: "Governs when and how to store memory" },
+      { id: "skill-action-gating", name: "Action Gating", risk: "lowest", desc: "Require approval for risky actions" }
     ];
     let h = "";
     for (const s of starters) {

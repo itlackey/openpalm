@@ -1,7 +1,7 @@
 // ── Gallery item types ──────────────────────────────────────────────
 
-export type GalleryCategory = "plugin" | "skill" | "container";
-export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type GalleryCategory = "plugin" | "skill" | "command" | "agent" | "tool" | "channel" | "service";
+export type RiskLevel = "lowest" | "low" | "medium" | "medium-high" | "highest";
 
 export type GalleryItem = {
   id: string;
@@ -15,7 +15,7 @@ export type GalleryItem = {
   tags?: string[];
   permissions?: string[];
   securityNotes?: string;
-  installAction?: "plugin" | "skill-file" | "compose-service";
+  installAction?: "plugin" | "skill-file" | "command-file" | "agent-file" | "tool-file" | "compose-service";
   installTarget: string; // npm package, skill file path, or compose service name
   docUrl?: string;
   builtIn?: boolean;
@@ -33,7 +33,7 @@ const REGISTRY: GalleryItem[] = [
     name: "Policy & Telemetry",
     description: "Built-in plugin that blocks secrets from tool arguments and logs every tool call as structured JSON. Ships with OpenPalm by default.",
     category: "plugin",
-    risk: "low",
+    risk: "highest",
     author: "OpenPalm",
     version: "built-in",
     source: "plugins/policy-and-telemetry.ts",
@@ -49,8 +49,8 @@ const REGISTRY: GalleryItem[] = [
     id: "skill-memory",
     name: "Memory Policy",
     description: "Governs memory storage and recall behavior for the assistant",
-    category: "skill" as GalleryCategory,
-    risk: "low" as RiskLevel,
+    category: "skill",
+    risk: "lowest",
     author: "OpenPalm",
     version: "built-in",
     source: "skills/memory/SKILL.md",
@@ -62,12 +62,66 @@ const REGISTRY: GalleryItem[] = [
     builtIn: true,
   },
 
-  // ── Containers ────────────────────────────────────────────────────
+  // ── Commands ──────────────────────────────────────────────────────
+  {
+    id: "command-health",
+    name: "Health Check Command",
+    description: "Slash command that reports the health status of all connected services.",
+    category: "command" as GalleryCategory,
+    risk: "low" as RiskLevel,
+    author: "OpenPalm",
+    version: "1.0.0",
+    source: "bundled",
+    tags: ["health", "status", "monitoring"],
+    permissions: ["None — sends a predefined prompt"],
+    securityNotes: "Triggers a prompt; cannot execute code or access external services.",
+    installAction: "command-file",
+    installTarget: "commands/health.md",
+    builtIn: true,
+  },
+
+  // ── Agents ────────────────────────────────────────────────────────
+  {
+    id: "agent-channel-intake",
+    name: "Channel Intake Agent",
+    description: "Restricted agent that validates inbound channel messages for safety and correctness. Has zero tool access.",
+    category: "agent" as GalleryCategory,
+    risk: "medium" as RiskLevel,
+    author: "OpenPalm",
+    version: "1.0.0",
+    source: "bundled",
+    tags: ["security", "gateway", "validation"],
+    permissions: ["Controls tool access policy (denies all tools)"],
+    securityNotes: "Has no tool access. Can only reason about incoming text. Cannot make network requests, read files, or execute code.",
+    installAction: "agent-file",
+    installTarget: "agents/channel-intake.md",
+    builtIn: true,
+  },
+
+  // ── Custom Tools ──────────────────────────────────────────────────
+  {
+    id: "tool-health-check",
+    name: "Health Check Tool",
+    description: "Custom tool that checks the health of configured services and returns structured status data.",
+    category: "tool" as GalleryCategory,
+    risk: "medium-high" as RiskLevel,
+    author: "OpenPalm",
+    version: "1.0.0",
+    source: "bundled",
+    tags: ["health", "monitoring", "services"],
+    permissions: ["Network access to internal services", "Can execute health check scripts"],
+    securityNotes: "Executes code to probe service endpoints. Only checks services on the internal Docker network.",
+    installAction: "tool-file",
+    installTarget: "tools/health-check.ts",
+    builtIn: true,
+  },
+
+  // ── Channels ──────────────────────────────────────────────────────
   {
     id: "container-channel-chat",
     name: "Chat Channel",
     description: "HTTP-based chat adapter. Accepts JSON messages and routes them securely to your assistant. Ideal for web chat widgets and custom frontends.",
-    category: "container",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
@@ -82,7 +136,7 @@ const REGISTRY: GalleryItem[] = [
     id: "container-channel-discord",
     name: "Discord Channel",
     description: "Discord bot adapter supporting slash commands and webhook-based message forwarding. All messages are verified and filtered for security.",
-    category: "container",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
@@ -98,7 +152,7 @@ const REGISTRY: GalleryItem[] = [
     id: "container-channel-voice",
     name: "Voice Channel",
     description: "Voice/speech-to-text adapter. Accepts transcribed text and routes it securely to your assistant. WebSocket streaming endpoint planned.",
-    category: "container",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
@@ -113,7 +167,7 @@ const REGISTRY: GalleryItem[] = [
     id: "container-channel-telegram",
     name: "Telegram Channel",
     description: "Telegram bot adapter. Receives webhook updates from Telegram's Bot API and forwards text messages securely to your assistant.",
-    category: "container",
+    category: "channel",
     risk: "medium",
     author: "OpenPalm",
     version: "1.0.0",
@@ -129,8 +183,8 @@ const REGISTRY: GalleryItem[] = [
     id: "container-n8n",
     name: "n8n Workflow Automation",
     description: "Self-hosted workflow automation tool. Connect OpenPalm to hundreds of services via visual workflows. Runs as a separate service with API access.",
-    category: "container",
-    risk: "high",
+    category: "service",
+    risk: "medium-high",
     author: "n8n.io",
     version: "latest",
     source: "docker.io/n8nio/n8n",
@@ -144,7 +198,7 @@ const REGISTRY: GalleryItem[] = [
     id: "container-ollama",
     name: "Ollama (Local LLM)",
     description: "Run local LLM models alongside OpenCode. Useful for offline inference, private data processing, or cost reduction on simple tasks.",
-    category: "container",
+    category: "service",
     risk: "medium",
     author: "Ollama",
     version: "latest",
@@ -159,7 +213,7 @@ const REGISTRY: GalleryItem[] = [
     id: "container-searxng",
     name: "SearXNG (Private Search)",
     description: "Privacy-respecting metasearch engine. Provides web search capabilities to the assistant without sending queries to commercial search APIs.",
-    category: "container",
+    category: "service",
     risk: "medium",
     author: "SearXNG",
     version: "latest",
@@ -291,9 +345,10 @@ export async function searchNpm(query: string): Promise<Array<{ name: string; de
 
 export function getRiskBadge(risk: RiskLevel): { label: string; color: string; description: string } {
   switch (risk) {
-    case "low": return { label: "Low Risk", color: "#34c759", description: "Safe to install. No network access, no side effects." };
-    case "medium": return { label: "Medium Risk", color: "#ff9500", description: "Limited capabilities. Review permissions before installing." };
-    case "high": return { label: "High Risk", color: "#ff3b30", description: "Significant capabilities. Review carefully before installing." };
-    case "critical": return { label: "Critical Risk", color: "#af52de", description: "Maximum capability. Can execute code, access network, or modify system state. Review thoroughly." };
+    case "lowest": return { label: "Lowest Risk", color: "#8e8e93", description: "Text-only behavioral directive. Cannot execute code or access tools." };
+    case "low": return { label: "Low Risk", color: "#34c759", description: "Sends a predefined prompt. No code execution." };
+    case "medium": return { label: "Medium Risk", color: "#ff9500", description: "Can control which tools the assistant has access to." };
+    case "medium-high": return { label: "Medium-High Risk", color: "#ff6b35", description: "Can execute code, make network requests, and interact with services." };
+    case "highest": return { label: "Highest Risk", color: "#ff3b30", description: "Can observe and modify all tool calls and assistant behavior." };
   }
 }

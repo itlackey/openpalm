@@ -4,7 +4,7 @@ import { updatePluginListAtomically, validatePluginIdentifier } from "./extensio
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
-import { CronStore, validateCron } from "./cron-store.ts";
+import { AutomationStore, validateCron } from "./automation-store.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import type { GalleryCategory } from "./gallery.ts";
@@ -41,7 +41,7 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
 };
 
 const setupManager = new SetupManager(DATA_DIR);
-const cronStore = new CronStore(DATA_DIR, CRON_DIR);
+const automationStore = new AutomationStore(DATA_DIR, CRON_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
 
 function json(status: number, payload: unknown) {
@@ -671,13 +671,13 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, service: body.service }));
       }
 
-      // ── Cron jobs ──────────────────────────────────────────────────
-      if (url.pathname === "/admin/crons" && req.method === "GET") {
+      // ── Automations ────────────────────────────────────────────────
+      if (url.pathname === "/admin/automations" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        return cors(json(200, { jobs: cronStore.list() }));
+        return cors(json(200, { automations: automationStore.list() }));
       }
 
-      if (url.pathname === "/admin/crons" && req.method === "POST") {
+      if (url.pathname === "/admin/automations" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { name?: string; schedule?: string; prompt?: string };
         if (!body.name || !body.schedule || !body.prompt) {
@@ -685,53 +685,53 @@ const server = Bun.serve({
         }
         const cronError = validateCron(body.schedule);
         if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
-        const job = {
+        const automation = {
           id: randomUUID(),
           name: body.name,
           schedule: body.schedule,
           prompt: body.prompt,
-          enabled: true,
+          status: "enabled" as const,
           createdAt: new Date().toISOString(),
         };
-        cronStore.add(job);
-        cronStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", `cron job created: ${job.name}`);
-        return cors(json(201, { ok: true, job }));
+        automationStore.add(automation);
+        automationStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", `automation created: ${automation.name}`);
+        return cors(json(201, { ok: true, automation }));
       }
 
-      if (url.pathname === "/admin/crons/update" && req.method === "POST") {
+      if (url.pathname === "/admin/automations/update" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; prompt?: string; enabled?: boolean };
+        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; prompt?: string; status?: "enabled" | "disabled" };
         if (!body.id) return cors(json(400, { error: "id is required" }));
         if (body.schedule) {
           const cronError = validateCron(body.schedule);
           if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
         }
         const { id, ...fields } = body;
-        const updated = cronStore.update(id, fields);
-        if (!updated) return cors(json(404, { error: "cron job not found" }));
-        cronStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", `cron job updated: ${updated.name}`);
-        return cors(json(200, { ok: true, job: updated }));
+        const updated = automationStore.update(id, fields);
+        if (!updated) return cors(json(404, { error: "automation not found" }));
+        automationStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", `automation updated: ${updated.name}`);
+        return cors(json(200, { ok: true, automation: updated }));
       }
 
-      if (url.pathname === "/admin/crons/delete" && req.method === "POST") {
+      if (url.pathname === "/admin/automations/delete" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const removed = cronStore.remove(body.id);
-        if (!removed) return cors(json(404, { error: "cron job not found" }));
-        cronStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", "cron job deleted");
+        const removed = automationStore.remove(body.id);
+        if (!removed) return cors(json(404, { error: "automation not found" }));
+        automationStore.writeCrontab();
+        await controllerAction("restart", "opencode-core", "automation deleted");
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
-      if (url.pathname === "/admin/crons/trigger" && req.method === "POST") {
+      if (url.pathname === "/admin/automations/trigger" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const job = cronStore.get(body.id);
-        if (!job) return cors(json(404, { error: "cron job not found" }));
+        const job = automationStore.get(body.id);
+        if (!job) return cors(json(404, { error: "automation not found" }));
         // Fire directly against opencode-core without waiting for cron
         fetch(`${OPENCODE_CORE_URL}/chat`, {
           method: "POST",
@@ -740,7 +740,7 @@ const server = Bun.serve({
             message: job.prompt,
             session_id: `cron-${job.id}`,
             user_id: "cron-scheduler",
-            metadata: { source: "cron", cronJobId: job.id, cronJobName: job.name },
+            metadata: { source: "automation", automationId: job.id, automationName: job.name },
           }),
           signal: AbortSignal.timeout(120_000),
         }).catch(() => {});
