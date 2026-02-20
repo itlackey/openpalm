@@ -1,13 +1,14 @@
 import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
-import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
 import { AutomationStore, validateCron } from "./automation-store.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "./lib/stack-manager.ts";
+import { composeAction, composeList } from "./lib/compose-runner.ts";
 import type { GalleryCategory } from "./gallery.ts";
 import type { ModelAssignment } from "./types.ts";
 
@@ -23,8 +24,6 @@ const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
 const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/config/opencode.jsonc";
 const DATA_DIR = Bun.env.DATA_DIR ?? "/app/data";
-const CONTROLLER_URL = Bun.env.CONTROLLER_URL;
-const CONTROLLER_TOKEN = Bun.env.CONTROLLER_TOKEN ?? "";
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
@@ -34,11 +33,15 @@ const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/confi
 const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
+const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? "/app/config-root/stack-spec.json";
+const CHANNEL_SECRET_DIR = Bun.env.CHANNEL_SECRET_DIR ?? "/app/config-root/secrets/channels";
+const GATEWAY_CHANNEL_SECRETS_PATH = Bun.env.GATEWAY_CHANNEL_SECRETS_PATH ?? "/app/config-root/secrets/gateway/channels.env";
+const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? "/workspace/docker-compose.yml";
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const KNOWN_SERVICES = new Set<string>([
-  "gateway", "controller", "opencode-core", "openmemory", "openmemory-ui",
+  "gateway", "opencode-core", "openmemory", "openmemory-ui",
   "admin", "caddy",
   "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
 ]);
@@ -52,6 +55,16 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
 const setupManager = new SetupManager(DATA_DIR);
 const automationStore = new AutomationStore(DATA_DIR, CRON_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
+const stackManager = new StackManager({
+  caddyfilePath: CADDYFILE_PATH,
+  secretsEnvPath: SECRETS_ENV_PATH,
+  stackSpecPath: STACK_SPEC_PATH,
+  channelSecretDir: CHANNEL_SECRET_DIR,
+  gatewayChannelSecretsPath: GATEWAY_CHANNEL_SECRETS_PATH,
+  channelEnvDir: CHANNEL_ENV_DIR,
+  composeFilePath: COMPOSE_FILE_PATH,
+  opencodeConfigPath: OPENCODE_CONFIG_PATH,
+});
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -71,22 +84,6 @@ function auth(req: Request) {
   return req.headers.get("x-admin-token") === ADMIN_TOKEN;
 }
 
-async function controllerAction(action: string, service: string, reason: string) {
-  if (!CONTROLLER_URL) return;
-  try {
-    await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-controller-token": CONTROLLER_TOKEN
-      },
-      body: JSON.stringify({ reason })
-    });
-  } catch (err) {
-    console.error(`[controllerAction] ${action}/${service} failed:`, err);
-  }
-}
-
 function snapshotFile(path: string) {
   const backup = `${path}.${Date.now()}.bak`;
   copyFileSync(path, backup);
@@ -103,94 +100,30 @@ function ensureOpencodeConfigPath() {
 
 
 
-type ChannelName = "chat" | "voice" | "discord" | "telegram";
-
-function channelRewritePath(channel: ChannelName) {
-  if (channel === "chat") return "/chat";
-  if (channel === "voice") return "/voice/transcription";
-  if (channel === "discord") return "/discord/webhook";
-  return "/telegram/webhook";
-}
-
-function channelPort(channel: ChannelName) {
-  if (channel === "chat") return "8181";
-  if (channel === "voice") return "8183";
-  if (channel === "discord") return "8184";
-  return "8182";
-}
+type ChannelName = StackManagerChannelName;
 
 function detectChannelAccess(channel: ChannelName): "lan" | "public" {
-  const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const block = raw.match(new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m"))?.[0] ?? "";
-  return block.includes("abort @not_lan") ? "lan" : "public";
+  return stackManager.getChannelAccess(channel);
 }
 
 function setChannelAccess(channel: ChannelName, access: "lan" | "public") {
-  const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const blockRegex = new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m");
-  const replacement = access === "lan"
-    ? [
-      `handle /channels/${channel}* {`,
-      `		abort @not_lan`,
-      `		rewrite * ${channelRewritePath(channel)}`,
-      `		reverse_proxy channel-${channel}:${channelPort(channel)}`,
-      `	}`
-    ].join("\n")
-    : [
-      `handle /channels/${channel}* {`,
-      `		rewrite * ${channelRewritePath(channel)}`,
-      `		reverse_proxy channel-${channel}:${channelPort(channel)}`,
-      `	}`
-    ].join("\n");
-
-  if (!blockRegex.test(raw)) throw new Error(`missing_${channel}_route_block`);
-  writeFileSync(CADDYFILE_PATH, raw.replace(blockRegex, replacement), "utf8");
-}
-
-function channelEnvPath(service: string) {
-  return `${CHANNEL_ENV_DIR}/${service}.env`;
-}
-
-function readChannelConfig(service: string) {
-  const keys = CHANNEL_ENV_KEYS[service] ?? [];
-  const path = channelEnvPath(service);
-  const cfg: Record<string, string> = {};
-  for (const k of keys) cfg[k] = "";
-  if (!existsSync(path)) return cfg;
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    if (!line || line.startsWith("#") || !line.includes("=")) continue;
-    const [k, ...rest] = line.split("=");
-    if (keys.includes(k.trim())) cfg[k.trim()] = rest.join("=").trim();
-  }
-  return cfg;
-}
-
-function writeChannelConfig(service: string, values: Record<string, string>) {
-  const keys = CHANNEL_ENV_KEYS[service] ?? [];
-  const lines = ["# Channel-specific overrides managed by admin UI"];
-  for (const k of keys) {
-    const v = String(values[k] ?? "").replace(/\n/g, "").trim();
-    lines.push(`${k}=${v}`);
-  }
-  writeFileSync(channelEnvPath(service), lines.join("\n") + "\n", "utf8");
+  stackManager.setChannelAccess(channel, access);
 }
 
 function setAccessScope(scope: "host" | "lan") {
-  const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const lanRanges = "127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8";
-  const hostRanges = "127.0.0.0/8 ::1";
-  const lanMatcher = scope === "host"
-    ? `@lan remote_ip ${hostRanges}`
-    : `@lan remote_ip ${lanRanges}`;
-  const notLanMatcher = scope === "host"
-    ? `@not_lan not remote_ip ${hostRanges}`
-    : `@not_lan not remote_ip ${lanRanges}`;
+  stackManager.setAccessScope(scope);
+}
 
-  const next = raw
-    .replace(/^\s*@lan remote_ip .+$/m, `\t${lanMatcher}`)
-    .replace(/^\s*@not_lan not remote_ip .+$/m, `\t${notLanMatcher}`);
-  writeFileSync(CADDYFILE_PATH, next, "utf8");
+function channelNameFromService(service: string): ChannelName {
+  return service.replace("channel-", "") as ChannelName;
+}
+
+function readChannelConfig(service: string) {
+  return stackManager.getChannelConfig(channelNameFromService(service));
+}
+
+function writeChannelConfig(service: string, values: Record<string, string>) {
+  stackManager.setChannelConfig(channelNameFromService(service), values);
 }
 
 function setRuntimeBindScope(scope: "host" | "lan") {
@@ -344,7 +277,6 @@ const server = Bun.serve({
         return cors(json(200, {
           serviceNames: {
             gateway: { label: "Message Router", description: "Routes messages between channels and your assistant" },
-            controller: { label: "System Manager", description: "Manages background services" },
             opencodeCore: { label: "AI Assistant", description: "The core assistant engine" },
             "opencode-core": { label: "AI Assistant", description: "The core assistant engine" },
             openmemory: { label: "Memory", description: "Stores conversation history and context" },
@@ -369,7 +301,8 @@ const server = Bun.serve({
               { key: "TELEGRAM_BOT_TOKEN", label: "Bot Token", type: "password", required: true, helpText: "Get a bot token from @BotFather on Telegram" },
               { key: "TELEGRAM_WEBHOOK_SECRET", label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" }
             ]
-          }
+          },
+          requiredCoreSecrets: CoreSecretRequirements
         }));
       }
 
@@ -404,9 +337,9 @@ const server = Bun.serve({
         setAccessScope(body.scope);
         setRuntimeBindScope(body.scope);
         await Promise.all([
-          controllerAction("up", "caddy", `setup scope: ${body.scope}`),
-          controllerAction("up", "openmemory", `setup scope: ${body.scope}`),
-          controllerAction("up", "opencode-core", `setup scope: ${body.scope}`),
+          composeAction("up", "caddy"),
+          composeAction("up", "openmemory"),
+          composeAction("up", "opencode-core"),
         ]);
         const state = setupManager.setAccessScope(body.scope);
         return cors(json(200, { ok: true, state }));
@@ -468,19 +401,159 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, state }));
       }
 
+      // ── Stack spec + generator (phase 1 scaffolding) ─────────────
+      if (url.pathname === "/admin/stack/spec" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const spec = stackManager.getSpec();
+        return cors(json(200, { ok: true, spec }));
+      }
+
+      if (url.pathname === "/admin/stack/spec" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { spec?: unknown };
+        if (!body.spec) return cors(json(400, { error: "spec is required" }));
+        const spec = stackManager.setSpec(body.spec);
+        return cors(json(200, { ok: true, spec }));
+      }
+
+      if (url.pathname === "/admin/stack/render" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const generated = stackManager.renderPreview();
+        return cors(json(200, { ok: true, generated }));
+      }
+
+      if (url.pathname === "/admin/stack/apply" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { apply?: boolean };
+        const generated = stackManager.renderArtifacts();
+        const secretErrors = stackManager.validateEnabledChannelSecrets();
+        const impact = { reload: ["caddy"], restart: [] as string[] };
+        if (secretErrors.length > 0) {
+          return cors(json(400, { error: "secret_validation_failed", details: secretErrors, impact }));
+        }
+        if (body.apply ?? true) await composeAction("restart", "caddy");
+        return cors(json(200, { ok: true, generated, impact }));
+      }
+
+      if (url.pathname === "/admin/secrets/map" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const spec = stackManager.getSpec();
+        return cors(json(200, { ok: true, secrets: spec.secrets }));
+      }
+
+      if (url.pathname === "/admin/secrets" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        return cors(json(200, { ok: true, ...stackManager.listSecretManagerState() }));
+      }
+
+      if (url.pathname === "/admin/secrets" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { name?: string; value?: string };
+        try {
+          const name = stackManager.upsertSecret(body.name, body.value);
+          return cors(json(200, { ok: true, name }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === "invalid_secret_name") return cors(json(400, { error: message }));
+          throw error;
+        }
+      }
+
+      if (url.pathname === "/admin/secrets/delete" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { name?: string };
+        try {
+          const deleted = stackManager.deleteSecret(body.name);
+          return cors(json(200, { ok: true, deleted }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === "invalid_secret_name" || message === "secret_in_use") return cors(json(400, { error: message }));
+          throw error;
+        }
+      }
+
+      if (url.pathname === "/admin/secrets/mappings/channel" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { channel?: ChannelName; target?: "gateway" | "channel"; secretName?: string };
+        if (!body.channel || !["chat", "discord", "voice", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
+        if (body.target !== "gateway" && body.target !== "channel") return cors(json(400, { error: "invalid target" }));
+        try {
+          const mapped = stackManager.mapChannelSecret(body.channel, body.target, body.secretName);
+          return cors(json(200, { ok: true, ...mapped }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === "invalid_channel" || message === "invalid_target" || message === "invalid_secret_name" || message === "unknown_secret_name") {
+            return cors(json(400, { error: message }));
+          }
+          throw error;
+        }
+      }
+
+      if (url.pathname === "/admin/connections" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        return cors(json(200, { ok: true, connections: stackManager.listConnections() }));
+      }
+
+      if (url.pathname === "/admin/connections" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string; name?: string; type?: string; env?: Record<string, string> };
+        try {
+          const connection = stackManager.upsertConnection(body);
+          return cors(json(200, { ok: true, connection }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (
+            message === "invalid_connection_id" ||
+            message === "invalid_connection_name" ||
+            message === "invalid_connection_type" ||
+            message === "missing_connection_env" ||
+            message === "invalid_connection_env_key" ||
+            message === "invalid_connection_env_value"
+          ) {
+            return cors(json(400, { error: message }));
+          }
+          throw error;
+        }
+      }
+
+      if (url.pathname === "/admin/connections/delete" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string };
+        try {
+          const deleted = stackManager.deleteConnection(body.id);
+          return cors(json(200, { ok: true, deleted }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === "invalid_connection_id" || message === "connection_not_found" || message === "connection_in_use") {
+            return cors(json(400, { error: message }));
+          }
+          throw error;
+        }
+      }
+
+      if (url.pathname === "/admin/channels/shared-secret" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { channel?: ChannelName; secret?: string };
+        if (!body.channel || !["chat", "discord", "voice", "telegram"].includes(body.channel)) {
+          return cors(json(400, { error: "invalid channel" }));
+        }
+        const secret = sanitizeEnvScalar(body.secret);
+        if (secret.length > 0 && secret.length < 32) return cors(json(400, { error: "secret must be at least 32 characters" }));
+        stackManager.setChannelSharedSecret(body.channel, secret);
+        return cors(json(200, { ok: true, channel: body.channel }));
+      }
+
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
         const serviceInstances = getConfiguredServiceInstances();
         const openmemoryBaseUrl = serviceInstances.openmemory || OPENMEMORY_URL;
-        const [gateway, controller, opencodeCore, openmemory] = await Promise.all([
+        const [gateway, opencodeCore, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
-          CONTROLLER_URL ? checkServiceHealth(`${CONTROLLER_URL}/health`) : Promise.resolve({ ok: false, error: "not configured" }),
           checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
           checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
         ]);
         return cors(json(200, {
           services: {
             gateway,
-            controller,
             opencodeCore,
             openmemory,
             admin: { ok: true, time: new Date().toISOString() }
@@ -537,24 +610,33 @@ const server = Bun.serve({
         const body = (await req.json()) as { galleryId?: string; pluginId?: string };
 
         if (body.galleryId) {
-          // Look up in curated gallery first, then fall back to community registry
           const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
           if (!item) return cors(json(404, { error: "gallery item not found" }));
 
           if (item.installAction === "plugin") {
-            const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, true);
-            await controllerAction("restart", "opencode-core", `gallery install: ${item.name}`);
+            const result = stackManager.setExtensionInstalled({
+              extensionId: item.id,
+              type: "plugin",
+              enabled: true,
+              pluginId: item.installTarget,
+            });
+            await composeAction("restart", "opencode-core");
             setupManager.addExtension(item.id);
             return cors(json(200, { ok: true, installed: item.id, type: "plugin", result }));
           }
 
           if (item.installAction === "skill-file") {
+            const result = stackManager.setExtensionInstalled({
+              extensionId: item.id,
+              type: "skill",
+              enabled: true,
+            });
             setupManager.addExtension(item.id);
-            return cors(json(200, { ok: true, installed: item.id, type: "skill", note: "Skill files ship with OpenPalm. Marked as enabled." }));
+            return cors(json(200, { ok: true, installed: item.id, type: "skill", note: "Skill files ship with OpenPalm. Marked as enabled.", result }));
           }
 
           if (item.installAction === "compose-service") {
-            await controllerAction("up", item.installTarget, `gallery install: ${item.name}`);
+            await composeAction("up", item.installTarget);
             setupManager.addExtension(item.id);
             setupManager.addChannel(item.installTarget);
             return cors(json(200, { ok: true, installed: item.id, type: "container", service: item.installTarget }));
@@ -564,10 +646,20 @@ const server = Bun.serve({
         }
 
         if (body.pluginId) {
-          if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
-          const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, true);
-          await controllerAction("restart", "opencode-core", `npm plugin install: ${body.pluginId}`);
-          return cors(json(200, { ok: true, pluginId: body.pluginId, result }));
+          try {
+            const result = stackManager.setExtensionInstalled({
+              extensionId: body.pluginId,
+              type: "plugin",
+              enabled: true,
+              pluginId: body.pluginId,
+            });
+            await composeAction("restart", "opencode-core");
+            return cors(json(200, { ok: true, pluginId: body.pluginId, result }));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message === "invalid_plugin_id") return cors(json(400, { error: "invalid plugin id" }));
+            throw error;
+          }
         }
 
         return cors(json(400, { error: "galleryId or pluginId required" }));
@@ -578,26 +670,45 @@ const server = Bun.serve({
         const body = (await req.json()) as { galleryId?: string; pluginId?: string };
 
         if (body.galleryId) {
-          // Look up in curated gallery first, then fall back to community registry
           const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
           if (!item) return cors(json(404, { error: "gallery item not found" }));
           if (item.installAction === "plugin") {
-            const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, false);
-            await controllerAction("restart", "opencode-core", `gallery uninstall: ${item.name}`);
+            const result = stackManager.setExtensionInstalled({
+              extensionId: item.id,
+              type: "plugin",
+              enabled: false,
+              pluginId: item.installTarget,
+            });
+            await composeAction("restart", "opencode-core");
             return cors(json(200, { ok: true, uninstalled: item.id, type: "plugin", result }));
           }
           if (item.installAction === "compose-service") {
-            await controllerAction("down", item.installTarget, `gallery uninstall: ${item.name}`);
+            await composeAction("down", item.installTarget);
             return cors(json(200, { ok: true, uninstalled: item.id, type: "container", service: item.installTarget }));
           }
+          stackManager.setExtensionInstalled({
+            extensionId: item.id,
+            type: "skill",
+            enabled: false,
+          });
           return cors(json(200, { ok: true, uninstalled: item.id, type: item.installAction }));
         }
 
         if (body.pluginId) {
-          if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
-          const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, false);
-          await controllerAction("restart", "opencode-core", `plugin uninstall: ${body.pluginId}`);
-          return cors(json(200, { ok: true, action: "disabled", result }));
+          try {
+            const result = stackManager.setExtensionInstalled({
+              extensionId: body.pluginId,
+              type: "plugin",
+              enabled: false,
+              pluginId: body.pluginId,
+            });
+            await composeAction("restart", "opencode-core");
+            return cors(json(200, { ok: true, action: "disabled", result }));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message === "invalid_plugin_id") return cors(json(400, { error: "invalid plugin id" }));
+            throw error;
+          }
         }
 
         return cors(json(400, { error: "galleryId or pluginId required" }));
@@ -607,11 +718,10 @@ const server = Bun.serve({
       if (url.pathname === "/admin/installed" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const state = setupManager.getState();
-        ensureOpencodeConfigPath();
-        const configRaw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
-        const config = parseJsonc(configRaw) as { plugin?: string[] };
+        const installed = stackManager.listInstalled();
         return cors(json(200, {
-          plugins: config.plugin ?? [],
+          plugins: installed.plugins,
+          extensions: installed.extensions,
           setupState: state
         }));
       }
@@ -619,18 +729,16 @@ const server = Bun.serve({
       // ── Container management ──────────────────────────────────────
       if (url.pathname === "/admin/containers/list" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!CONTROLLER_URL) return cors(json(503, { error: "controller not configured" }));
-        const resp = await fetch(`${CONTROLLER_URL}/containers`, {
-          headers: { "x-controller-token": CONTROLLER_TOKEN }
-        });
-        return cors(new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } }));
+        const result = await composeList();
+        if (!result.ok) return cors(json(500, { ok: false, error: result.stderr }));
+        return cors(json(200, { ok: true, containers: result.stdout }));
       }
 
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await controllerAction("up", body.service, "admin action");
+        await composeAction("up", body.service);
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
 
@@ -638,7 +746,7 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await controllerAction("down", body.service, "admin action");
+        await composeAction("down", body.service);
         return cors(json(200, { ok: true, action: "down", service: body.service }));
       }
 
@@ -646,13 +754,15 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await controllerAction("restart", body.service, "admin action");
+        await composeAction("restart", body.service);
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
 
       if (url.pathname === "/admin/channels" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const spec = stackManager.getSpec();
         return cors(json(200, {
+          secretOptions: spec.secrets.available,
           channels: CHANNEL_SERVICES.map((service) => {
             const channelName = service.replace("channel-", "") as ChannelName;
             return {
@@ -660,6 +770,9 @@ const server = Bun.serve({
               label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
               access: detectChannelAccess(channelName),
               config: readChannelConfig(service),
+              secretMappings: {
+                ...stackManager.getChannelSecretMappings(channelName),
+              },
               fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => ({
                 key,
                 label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
@@ -677,7 +790,7 @@ const server = Bun.serve({
         if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
         if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
         setChannelAccess(body.channel, body.access);
-        await controllerAction("restart", "caddy", `channel ${body.channel} access ${body.access}`);
+        await composeAction("restart", "caddy");
         return cors(json(200, { ok: true, channel: body.channel, access: body.access }));
       }
 
@@ -693,7 +806,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { service: string; config: Record<string, string>; restart?: boolean };
         if (!CHANNEL_SERVICES.includes(body.service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
         writeChannelConfig(body.service, body.config ?? {});
-        if (body.restart ?? true) await controllerAction("restart", body.service, "channel config update");
+        if (body.restart ?? true) await composeAction("restart", body.service);
         return cors(json(200, { ok: true, service: body.service }));
       }
 
@@ -721,7 +834,7 @@ const server = Bun.serve({
         };
         automationStore.add(automation);
         automationStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", `automation created: ${automation.name}`);
+        await composeAction("restart", "opencode-core");
         return cors(json(201, { ok: true, automation }));
       }
 
@@ -737,7 +850,7 @@ const server = Bun.serve({
         const updated = automationStore.update(id, fields);
         if (!updated) return cors(json(404, { error: "automation not found" }));
         automationStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", `automation updated: ${updated.name}`);
+        await composeAction("restart", "opencode-core");
         return cors(json(200, { ok: true, automation: updated }));
       }
 
@@ -748,7 +861,7 @@ const server = Bun.serve({
         const removed = automationStore.remove(body.id);
         if (!removed) return cors(json(404, { error: "automation not found" }));
         automationStore.writeCrontab();
-        await controllerAction("restart", "opencode-core", "automation deleted");
+        await composeAction("restart", "opencode-core");
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
@@ -820,10 +933,10 @@ const server = Bun.serve({
         // Restart services that depended on the deleted provider
         for (const role of affectedRoles) {
           if (role === "small" || role === "openmemory") {
-            await controllerAction("restart", "opencode-core", `provider deleted: ${role} assignment cleared`);
+            await composeAction("restart", "opencode-core");
           }
           if (role === "openmemory") {
-            await controllerAction("restart", "openmemory", `provider deleted: openmemory assignment cleared`);
+            await composeAction("restart", "openmemory");
           }
         }
         return cors(json(200, { ok: true, deleted: body.id }));
@@ -852,7 +965,7 @@ const server = Bun.serve({
         if (!provider) return cors(json(404, { error: "provider not found" }));
         const state = providerStore.assignModel(body.role as ModelAssignment, body.providerId, body.modelId);
         applyProviderAssignment(body.role as ModelAssignment, provider.url, provider.apiKey, body.modelId);
-        await controllerAction("restart", "opencode-core", `provider assignment: ${body.role}=${body.modelId}`);
+        await composeAction("restart", "opencode-core");
         return cors(json(200, { ok: true, assignments: state.assignments }));
       }
 
@@ -873,7 +986,7 @@ const server = Bun.serve({
         ensureOpencodeConfigPath();
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
-        if (body.restart ?? true) await controllerAction("restart", "opencode-core", "config update");
+        if (body.restart ?? true) await composeAction("restart", "opencode-core");
         return cors(json(200, { ok: true, backup }));
       }
 

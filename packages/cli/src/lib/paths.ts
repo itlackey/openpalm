@@ -35,7 +35,7 @@ export async function createDirectoryTree(xdg: XDGPaths): Promise<void> {
   }
 
   // Config subdirectories
-  const configDirs = ["opencode-core", "caddy", "channels", "cron"];
+  const configDirs = ["opencode-core", "caddy", "channels", "cron", "secrets", "secrets/gateway", "secrets/channels"];
   for (const dir of configDirs) {
     await mkdir(join(xdg.config, dir), { recursive: true });
   }

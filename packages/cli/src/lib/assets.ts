@@ -160,4 +160,35 @@ export async function seedConfigFiles(
     join(assetsDir, "config/user.env"),
     join(configHome, "user.env")
   );
+
+  // Seed scoped secret env files
+  const gatewaySecretsDir = join(assetsDir, "config/secrets/gateway");
+  try {
+    const gatewayFiles = await readdir(gatewaySecretsDir);
+    for (const file of gatewayFiles) {
+      if (file.endsWith(".env")) {
+        await seedFile(
+          join(gatewaySecretsDir, file),
+          join(configHome, "secrets", "gateway", file)
+        );
+      }
+    }
+  } catch {
+    // optional in older assets
+  }
+
+  const channelSecretsDir = join(assetsDir, "config/secrets/channels");
+  try {
+    const channelSecretFiles = await readdir(channelSecretsDir);
+    for (const file of channelSecretFiles) {
+      if (file.endsWith(".env")) {
+        await seedFile(
+          join(channelSecretsDir, file),
+          join(configHome, "secrets", "channels", file)
+        );
+      }
+    }
+  } catch {
+    // optional in older assets
+  }
 }

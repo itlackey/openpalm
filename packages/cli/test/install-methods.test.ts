@@ -121,7 +121,6 @@ describe("install methods verification", () => {
     it("bash fallback generates secure tokens", () => {
       expect(installSh).toContain("generate_token");
       expect(installSh).toContain("ADMIN_TOKEN");
-      expect(installSh).toContain("CONTROLLER_TOKEN");
       expect(installSh).toContain("POSTGRES_PASSWORD");
     });
 

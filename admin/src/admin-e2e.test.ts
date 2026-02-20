@@ -41,11 +41,14 @@ beforeAll(async () => {
   const uiDir = join(tmpDir, "ui");
   const configDir = join(tmpDir, "config");
   opencodeConfigPath = join(configDir, "opencode.jsonc");
+  const stackSpecPath = join(configDir, "stack-spec.json");
   const caddyDir = join(tmpDir, "caddy");
   const channelEnvDir = join(tmpDir, "channel-env");
+  const channelSecretDir = join(tmpDir, "secrets", "channels");
+  const gatewaySecretDir = join(tmpDir, "secrets", "gateway");
   const cronDir = join(tmpDir, "cron");
 
-  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, cronDir]) mkdirSync(d, { recursive: true });
+  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir]) mkdirSync(d, { recursive: true });
 
   // Copy UI files
   for (const f of ["index.html", "setup-ui.js", "logo.png"]) {
@@ -63,6 +66,11 @@ beforeAll(async () => {
   // Create channel env files
   for (const ch of ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"]) {
     writeFileSync(join(channelEnvDir, `${ch}.env`), "", "utf8");
+  }
+
+  writeFileSync(join(gatewaySecretDir, "channels.env"), "", "utf8");
+  for (const ch of ["chat", "discord", "voice", "telegram"]) {
+    writeFileSync(join(channelSecretDir, `${ch}.env`), "", "utf8");
   }
 
   // Pick a random port
@@ -83,6 +91,9 @@ beforeAll(async () => {
       CRON_DIR: cronDir,
       RUNTIME_ENV_PATH: join(tmpDir, ".env"),
       SECRETS_ENV_PATH: join(tmpDir, "secrets.env"),
+      STACK_SPEC_PATH: stackSpecPath,
+      CHANNEL_SECRET_DIR: channelSecretDir,
+      GATEWAY_CHANNEL_SECRETS_PATH: join(gatewaySecretDir, "channels.env"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -372,6 +383,114 @@ describe("meta endpoint", () => {
     const fields = r.data.channelFields as Record<string, Array<{ key: string; label: string }>>;
     expect(fields["channel-discord"].length).toBe(2);
     expect(fields["channel-discord"][0].label).toBe("Bot Token");
+    expect(Array.isArray(r.data.requiredCoreSecrets)).toBe(true);
+  });
+});
+
+describe("stack spec endpoints", () => {
+  it("GET /admin/stack/spec returns default spec with auth", async () => {
+    const r = await authed("/admin/stack/spec");
+    expect(r.ok).toBe(true);
+    expect((r.data.spec as Record<string, unknown>).version).toBe(1);
+  });
+
+  it("POST /admin/stack/spec validates and saves custom spec", async () => {
+    const current = await authed("/admin/stack/spec");
+    const spec = current.data.spec as Record<string, unknown>;
+    const r = await authed("/admin/stack/spec", {
+      method: "POST",
+      body: JSON.stringify({
+        spec: {
+          ...spec,
+          accessScope: "host",
+          channels: {
+            chat: { enabled: true, exposure: "public" },
+            discord: { enabled: false, exposure: "lan" },
+            voice: { enabled: false, exposure: "lan" },
+            telegram: { enabled: false, exposure: "lan" },
+          },
+        }
+      }),
+    });
+    expect(r.ok).toBe(true);
+    const check = await authed("/admin/stack/spec");
+    expect((check.data.spec as Record<string, unknown>).accessScope).toBe("host");
+  });
+
+  it("GET /admin/stack/render returns generated caddyfile", async () => {
+    const r = await authed("/admin/stack/render");
+    expect(r.ok).toBe(true);
+    const generated = r.data.generated as Record<string, unknown>;
+    expect(typeof generated.caddyfile).toBe("string");
+    expect(generated.caddyfile as string).toContain(":80 {");
+  });
+});
+
+describe("scoped channel secrets", () => {
+  it("POST /admin/channels/shared-secret writes channel and gateway scoped secret files", async () => {
+    const r = await authed("/admin/channels/shared-secret", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", secret: "x".repeat(32) }),
+    });
+    expect(r.ok).toBe(true);
+
+    const apply = await authed("/admin/stack/apply", {
+      method: "POST",
+      body: JSON.stringify({ apply: false }),
+    });
+    expect(apply.ok).toBe(true);
+    expect(apply.status).toBe(200);
+    expect(apply.data).toHaveProperty("impact");
+  });
+
+
+  it("supports global connections CRUD via stack manager", async () => {
+    const create = await authed("/admin/connections", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "openai-primary",
+        type: "ai_provider",
+        name: "OpenAI Primary",
+        env: { OPENPALM_CONN_OPENAI_API_KEY: "sk-test" },
+      }),
+    });
+    expect(create.status).toBe(200);
+
+    const list = await authed("/admin/connections");
+    expect(list.status).toBe(200);
+    expect(Array.isArray(list.data.connections)).toBe(true);
+    expect((list.data.connections as Array<{ id: string }>).some((entry) => entry.id === "openai-primary")).toBe(true);
+
+    const del = await authed("/admin/connections/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: "openai-primary" }),
+    });
+    expect(del.status).toBe(200);
+  });
+  it("supports github-style secret manager CRUD and channel mapping", async () => {
+    const create = await authed("/admin/secrets", {
+      method: "POST",
+      body: JSON.stringify({ name: "my_custom_secret", value: "secret-value" }),
+    });
+    expect(create.ok).toBe(true);
+
+    const list = await authed("/admin/secrets");
+    expect(list.ok).toBe(true);
+    const available = list.data.available as string[];
+    expect(available).toContain("MY_CUSTOM_SECRET");
+
+    const map = await authed("/admin/secrets/mappings/channel", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", target: "gateway", secretName: "MY_CUSTOM_SECRET" }),
+    });
+    expect(map.ok).toBe(true);
+
+    const del = await authed("/admin/secrets/delete", {
+      method: "POST",
+      body: JSON.stringify({ name: "MY_CUSTOM_SECRET" }),
+    });
+    expect(del.status).toBe(400);
+    expect(del.data.error).toBe("secret_in_use");
   });
 });
 

@@ -92,7 +92,7 @@ services:
     networks: [assistant_net]
     depends_on: [openmemory]
     healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-fs", "http://localhost:4096/"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -106,10 +106,8 @@ services:
       - PORT=8080
       - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
       - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
-      - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
-      - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
-      - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
-      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
+    env_file:
+      - ${OPENPALM_CONFIG_HOME}/secrets/gateway/channels.env
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
       # Gateway opencode config is baked into the image; no host override needed.
@@ -129,8 +127,6 @@ services:
       - PORT=8100
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
       - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc
-      - CONTROLLER_URL=http://controller:8090
-      - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
       - GATEWAY_URL=http://gateway:8080
       - OPENCODE_CORE_URL=http://opencode-core:4096
       - CADDYFILE_PATH=/app/config/caddy/Caddyfile
@@ -138,6 +134,10 @@ services:
       - CRON_DIR=/app/config-root/cron
       - RUNTIME_ENV_PATH=/workspace/.env
       - SECRETS_ENV_PATH=/app/config-root/secrets.env
+      - COMPOSE_PROJECT_PATH=/workspace
+      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}
+      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
+      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
     volumes:
       - ${OPENPALM_CONFIG_HOME}/opencode-core:/app/config/opencode-core
       - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
@@ -146,30 +146,15 @@ services:
       - ${OPENPALM_DATA_HOME}/admin:/app/data
       - ${OPENPALM_DATA_HOME}/shared:/shared
       - ${OPENPALM_STATE_HOME}:/workspace
+      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}
     networks: [assistant_net]
-    depends_on: [controller]
+    depends_on: [gateway, opencode-core]
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8100/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  controller:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/controller:${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      - PORT=8090
-      - CONTROLLER_TOKEN=${CONTROLLER_TOKEN:-change-me-controller}
-      - COMPOSE_PROJECT_PATH=/workspace
-      - OPENPALM_CONTAINER_PLATFORM=${OPENPALM_CONTAINER_PLATFORM:-docker}
-      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}
-      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
-      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/openpalm-container.sock}
-    volumes:
-      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/openpalm-container.sock}
-      - ${OPENPALM_STATE_HOME}:/workspace
-    networks: [assistant_net]
 
   # ============================================================
   # Channel Layer (optional — enable via --profile channels)
@@ -181,10 +166,10 @@ services:
     profiles: ["channels"]
     env_file:
       - ${OPENPALM_CONFIG_HOME}/channels/chat.env
+      - ${OPENPALM_CONFIG_HOME}/secrets/channels/chat.env
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_CHAT_SECRET=${CHANNEL_CHAT_SECRET:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -194,10 +179,10 @@ services:
     profiles: ["channels"]
     env_file:
       - ${OPENPALM_CONFIG_HOME}/channels/discord.env
+      - ${OPENPALM_CONFIG_HOME}/secrets/channels/discord.env
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_DISCORD_SECRET=${CHANNEL_DISCORD_SECRET:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -207,10 +192,10 @@ services:
     profiles: ["channels"]
     env_file:
       - ${OPENPALM_CONFIG_HOME}/channels/voice.env
+      - ${OPENPALM_CONFIG_HOME}/secrets/channels/voice.env
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_VOICE_SECRET=${CHANNEL_VOICE_SECRET:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
@@ -220,10 +205,10 @@ services:
     profiles: ["channels"]
     env_file:
       - ${OPENPALM_CONFIG_HOME}/channels/telegram.env
+      - ${OPENPALM_CONFIG_HOME}/secrets/channels/telegram.env
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
-      - CHANNEL_TELEGRAM_SECRET=${CHANNEL_TELEGRAM_SECRET:-}
     networks: [assistant_net]
     depends_on: [gateway]
 
