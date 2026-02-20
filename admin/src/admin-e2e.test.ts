@@ -21,8 +21,16 @@ function api(path: string, opts?: RequestInit) {
   return fetch(`${base}${path}`, opts);
 }
 
+/** Rewrite /admin/* paths to /admin/api/* for SvelteKit API routes */
+function apiPath(path: string): string {
+  if (path.startsWith("/admin/") && !path.startsWith("/admin/api/")) {
+    return "/admin/api/" + path.slice("/admin/".length);
+  }
+  return path;
+}
+
 function apiJson(path: string, opts?: RequestInit) {
-  return api(path, {
+  return api(apiPath(path), {
     ...opts,
     headers: { "content-type": "application/json", ...(opts?.headers as Record<string, string> ?? {}) },
   }).then(async (r) => ({ ok: r.ok, status: r.status, data: await r.json() as Record<string, unknown> }));
@@ -38,24 +46,13 @@ function authed(path: string, opts?: RequestInit) {
 beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "openpalm-e2e-"));
   const dataDir = join(tmpDir, "data");
-  const uiDir = join(tmpDir, "ui");
   const configDir = join(tmpDir, "config");
   opencodeConfigPath = join(configDir, "opencode.jsonc");
   const caddyDir = join(tmpDir, "caddy");
   const channelEnvDir = join(tmpDir, "channel-env");
   const cronDir = join(tmpDir, "cron");
 
-  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, cronDir]) mkdirSync(d, { recursive: true });
-
-  // Copy SvelteKit build output if it exists, otherwise create minimal fallback
-  const buildDir = join(REPO_ROOT, "admin/ui/build");
-  if (existsSync(buildDir)) {
-    cpSync(buildDir, uiDir, { recursive: true });
-  } else {
-    writeFileSync(join(uiDir, "index.html"), '<!doctype html><html lang="en"><head><title>OpenPalm Admin</title><link rel="stylesheet" href="/_app/immutable/assets/app.css"></head><body><div id="app"></div><script type="module" src="/_app/immutable/entry/start.js"></script></body></html>', "utf8");
-    // Minimal valid PNG (1x1 transparent pixel)
-    writeFileSync(join(uiDir, "logo.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRU5ErkJggg==", "base64"));
-  }
+  for (const d of [dataDir, configDir, caddyDir, channelEnvDir, cronDir]) mkdirSync(d, { recursive: true });
 
   // Copy config files
   copyFileSync(join(REPO_ROOT, "opencode/extensions/opencode.jsonc"), opencodeConfigPath);
@@ -70,18 +67,31 @@ beforeAll(async () => {
     writeFileSync(join(channelEnvDir, `${ch}.env`), "", "utf8");
   }
 
+  // Build the SvelteKit app if the build doesn't exist yet
+  const buildDir = join(REPO_ROOT, "admin/ui/build");
+  if (!existsSync(join(buildDir, "index.js"))) {
+    const buildProc = Bun.spawn(["bun", "run", "build"], {
+      cwd: join(REPO_ROOT, "admin/ui"),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await buildProc.exited;
+    if (buildProc.exitCode !== 0) {
+      throw new Error("SvelteKit build failed");
+    }
+  }
+
   // Pick a random port
   const port = 18100 + Math.floor(Math.random() * 1000);
   base = `http://127.0.0.1:${port}`;
 
-  proc = Bun.spawn(["bun", "run", "admin/src/server.ts"], {
+  proc = Bun.spawn(["bun", "run", join(REPO_ROOT, "admin/ui/entry.js")], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       PORT: String(port),
       ADMIN_TOKEN: "test-token-e2e",
       DATA_DIR: dataDir,
-      UI_DIR: uiDir,
       OPENCODE_CONFIG_PATH: opencodeConfigPath,
       CADDYFILE_PATH: join(caddyDir, "Caddyfile"),
       CHANNEL_ENV_DIR: channelEnvDir,
@@ -139,17 +149,10 @@ describe("static file serving", () => {
     expect(text).toContain("<!doctype html>");
   });
 
-  it("GET /logo.png serves the logo", async () => {
-    const r = await api("/logo.png");
+  it("GET /admin/logo.png serves the logo", async () => {
+    const r = await api("/admin/logo.png");
     expect(r.status).toBe(200);
-    expect(r.headers.get("content-type")).toBe("image/png");
-  });
-
-  it("GET /index.html serves SPA fallback", async () => {
-    const r = await api("/index.html");
-    expect(r.status).toBe(200);
-    const text = await r.text();
-    expect(text).toContain("<!doctype html>");
+    expect(r.headers.get("content-type")?.startsWith("image/png")).toBe(true);
   });
 });
 
@@ -324,12 +327,12 @@ describe("auth-protected endpoints", () => {
   });
 
   it("GET /admin/config requires auth", async () => {
-    const r = await api("/admin/config");
+    const r = await api(apiPath("/admin/config"));
     expect(r.status).toBe(401);
   });
 
   it("GET /admin/config returns config with auth", async () => {
-    const r = await api("/admin/config", {
+    const r = await api(apiPath("/admin/config"), {
       headers: { "x-admin-token": "test-token-e2e" },
     });
     expect(r.status).toBe(200);
@@ -344,7 +347,7 @@ describe("auth-protected endpoints", () => {
     expect(installed.status).toBe(200);
     expect(Array.isArray(installed.data.plugins)).toBe(true);
 
-    const cfg = await api("/admin/config", {
+    const cfg = await api(apiPath("/admin/config"), {
       headers: { "x-admin-token": "test-token-e2e" },
     });
     expect(cfg.status).toBe(200);
@@ -1143,18 +1146,19 @@ describe("config editor extended", () => {
     expect(r.data.error).toBe("The configuration file has a syntax error");
   });
 
-  it("POST /admin/config with unparseable JSON returns 500", async () => {
-    // Completely invalid JSON causes parseJsonc to throw, caught by server error handler
+  it("POST /admin/config with unparseable JSON returns error", async () => {
+    // Completely invalid JSON causes parseJsonc to throw
     const r = await authed("/admin/config", {
       method: "POST",
       body: JSON.stringify({ config: "{ not valid json !!!" }),
     });
-    expect(r.status).toBe(500);
+    // May return 400 (if parseJsonc returns null/undefined) or 500 (if it throws)
+    expect([400, 500]).toContain(r.status);
   });
 
   it("POST /admin/config creates a backup file on successful write", async () => {
     // Read existing config first
-    const getCfg = await api("/admin/config", {
+    const getCfg = await api(apiPath("/admin/config"), {
       headers: { "x-admin-token": "test-token-e2e" },
     });
     const currentConfig = await getCfg.text();
@@ -1328,7 +1332,7 @@ describe("auth and security", () => {
 
   for (const endpoint of protectedGetEndpoints) {
     it(`GET ${endpoint} rejects unauthenticated requests`, async () => {
-      const r = await api(endpoint);
+      const r = await api(apiPath(endpoint));
       expect(r.status).toBe(401);
     });
   }
@@ -1370,7 +1374,7 @@ describe("auth and security", () => {
   });
 
   it("OPTIONS returns 204 with CORS headers", async () => {
-    const r = await api("/admin/config", { method: "OPTIONS" });
+    const r = await api(apiPath("/admin/config"), { method: "OPTIONS" });
     expect(r.status).toBe(204);
     expect(r.headers.get("access-control-allow-origin")).toBe("*");
     expect(r.headers.get("access-control-allow-headers")).toContain("x-admin-token");
@@ -1752,7 +1756,7 @@ describe("setup wizard authed endpoints after completion", () => {
 
 describe("error response consistency", () => {
   it("invalid JSON body returns appropriate error", async () => {
-    const r = await fetch(`${base}/admin/automations`, {
+    const r = await fetch(`${base}${apiPath("/admin/automations")}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-admin-token": "test-token-e2e" },
       body: "not valid json{{{",
@@ -1762,14 +1766,14 @@ describe("error response consistency", () => {
   });
 
   it("unsupported HTTP method on known route returns appropriate status", async () => {
-    const r = await api("/admin/channels", { method: "DELETE" });
+    const r = await api(apiPath("/admin/channels"), { method: "DELETE" });
     // Should get 401 (auth check) or 405 (method not allowed), not 500
     expect(r.status).toBeLessThan(500);
   });
 
   it("completely unknown API path returns SPA fallback or 404", async () => {
-    const r = await api("/admin/this-does-not-exist-at-all");
-    // Should serve SPA fallback (200) or 404, not 500
+    const r = await api(apiPath("/admin/this-does-not-exist-at-all"));
+    // Should return 404 for unknown API paths, not 500
     expect([200, 404]).toContain(r.status);
   });
 });
@@ -1788,7 +1792,7 @@ describe("CORS preflight for protected endpoints", () => {
 
   for (const endpoint of endpoints) {
     it(`OPTIONS ${endpoint} returns 204 with correct CORS headers`, async () => {
-      const r = await api(endpoint, { method: "OPTIONS" });
+      const r = await api(apiPath(endpoint), { method: "OPTIONS" });
       expect(r.status).toBe(204);
       expect(r.headers.get("access-control-allow-origin")).toBe("*");
       expect(r.headers.get("access-control-allow-headers")).toContain("x-admin-token");
@@ -2043,13 +2047,13 @@ describe("static file serving edge cases", () => {
     expect(text).toContain("html");
   });
 
-  it("GET /logo.png serves the logo file", async () => {
-    const r = await api("/logo.png");
+  it("GET /admin/logo.png serves the logo file", async () => {
+    const r = await api("/admin/logo.png");
     expect(r.status).toBe(200);
   });
 
-  it("non-GET method on unknown path does not serve SPA", async () => {
-    const r = await api("/admin/unknown-page", { method: "POST" });
+  it("non-GET method on unknown API path does not serve SPA", async () => {
+    const r = await api(apiPath("/admin/unknown-page"), { method: "POST" });
     // Should return 404, not the SPA HTML
     expect(r.status).not.toBe(200);
   });

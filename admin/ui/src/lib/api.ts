@@ -2,12 +2,6 @@ import { get } from 'svelte/store';
 import { authToken, clearToken } from './stores/auth';
 import type { ApiResult } from './types';
 
-/** Detect if we're served behind Caddy at /admin */
-function isBehindCaddy(): boolean {
-	if (typeof window === 'undefined') return false;
-	return window.location.pathname.startsWith('/admin');
-}
-
 /** Handle 401 responses by clearing the token and reloading to show login */
 function handle401() {
 	clearToken();
@@ -17,16 +11,18 @@ function handle401() {
 }
 
 /**
- * When behind Caddy, API calls use /admin/api/* prefix.
- * Caddy rewrites /admin/api/* → /admin/* before proxying to admin:8100.
- * When accessed directly, API calls go to /admin/* on the same host.
+ * Build the API path. All API routes live under /admin/api/*.
+ * Callers pass the old-style path (e.g. '/admin/setup/status')
+ * and we rewrite it to '/admin/api/setup/status'.
  */
 function buildApiPath(path: string): string {
-	if (!isBehindCaddy()) return path;
+	// Already has /api/ prefix
 	if (path.startsWith('/admin/api/')) return path;
+	// Rewrite /admin/* to /admin/api/*
 	if (path.startsWith('/admin/')) {
 		return '/admin/api/' + path.slice('/admin/'.length);
 	}
+	// For paths like /health that are outside /admin
 	return path;
 }
 

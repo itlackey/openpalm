@@ -5,6 +5,7 @@
   "workspaces": [
     "gateway",
     "admin",
+    "admin/ui",
     "controller",
     "channels/chat",
     "channels/discord",
