@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, s
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { channelEnvSecretVariable, ensureStackSpec, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
-import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { validatePluginIdentifier } from "./extensions.ts";
 import type { ConnectionType, ExtensionType, StackSpec } from "./stack-spec.ts";
@@ -26,7 +25,6 @@ export type StackManagerPaths = {
   openmemorySecretsPath: string;
   postgresSecretsPath: string;
   opencodeProviderSecretsPath: string;
-  opencodeConfigPath: string;
 };
 
 export const CoreSecretRequirements = [
@@ -100,7 +98,6 @@ export class StackManager {
     }
 
     writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
-    this.mergeOpencodePluginConfig(generated.opencodePluginIds);
 
     mkdirSync(dirname(this.paths.gatewayChannelSecretsPath), { recursive: true });
     writeFileSync(this.paths.gatewayChannelSecretsPath, generated.gatewayChannelSecretsEnv, "utf8");
@@ -362,14 +359,6 @@ export class StackManager {
     mkdirSync(dirname(this.paths.stackSpecPath), { recursive: true });
     writeFileSync(tempPath, content, "utf8");
     renameSync(tempPath, this.paths.stackSpecPath);
-  }
-
-  private mergeOpencodePluginConfig(pluginIds: string[]) {
-    if (!existsSync(this.paths.opencodeConfigPath)) return;
-    const raw = readFileSync(this.paths.opencodeConfigPath, "utf8");
-    const parsed = parseJsonc(raw) as Record<string, unknown>;
-    parsed.plugin = pluginIds;
-    writeFileSync(this.paths.opencodeConfigPath, stringifyPretty(parsed), "utf8");
   }
 
   private readSecretsEnv() {

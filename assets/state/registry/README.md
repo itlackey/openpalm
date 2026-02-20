@@ -53,7 +53,7 @@ Risk levels map directly to Extension sub-types:
 
 | `installAction` | `installTarget` example | What happens |
 |---|---|---|
-| `plugin` | `@myorg/my-opencode-plugin` | Added to `plugin[]` in `opencode.jsonc`; OpenCode core restarts |
+| `plugin` | `@myorg/my-opencode-plugin` | Added to `plugin[]` in `opencode.json`; OpenCode core restarts |
 | `skill-file` | `skills/MySkill.SKILL.md` | Skill file copied into `skills/` and enabled in agent config |
 | `command-file` | `commands/my-command.md` | Command file copied into `commands/` |
 | `agent-file` | `agents/my-agent.md` | Agent file copied into `agents/` |

@@ -23,7 +23,7 @@ import type { ModelAssignment } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
-const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/config/opencode.jsonc";
+const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/home/.config/opencode/opencode.json";
 const DATA_DIR = Bun.env.DATA_DIR ?? "/app/data";
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
@@ -31,7 +31,6 @@ const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? "/app/config/caddy/routes";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
-const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/config/opencode-core";
 const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
@@ -70,7 +69,6 @@ const stackManager = new StackManager({
   opencodeProviderSecretsPath: Bun.env.OPENCODE_PROVIDER_SECRETS_PATH ?? "/app/config-root/secrets/opencode/providers.env",
   channelEnvDir: CHANNEL_ENV_DIR,
   composeFilePath: COMPOSE_FILE_PATH,
-  opencodeConfigPath: OPENCODE_CONFIG_PATH,
 });
 
 function json(status: number, payload: unknown) {
@@ -102,7 +100,19 @@ function snapshotFile(path: string) {
 function ensureOpencodeConfigPath() {
   if (existsSync(OPENCODE_CONFIG_PATH)) return;
   mkdirSync(dirname(OPENCODE_CONFIG_PATH), { recursive: true });
-  writeFileSync(OPENCODE_CONFIG_PATH, "{}\n", "utf8");
+  writeFileSync(OPENCODE_CONFIG_PATH, "{\n  \"plugin\": []\n}\n", "utf8");
+}
+
+function setOpencodePluginEnabled(pluginId: string, enabled: boolean) {
+  ensureOpencodeConfigPath();
+  const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
+  const doc = parseJsonc(raw) as Record<string, unknown>;
+  const current = Array.isArray(doc.plugin) ? doc.plugin.filter((value): value is string => typeof value === "string") : [];
+  const next = enabled
+    ? (current.includes(pluginId) ? current : [...current, pluginId])
+    : current.filter((value) => value !== pluginId);
+  doc.plugin = next;
+  writeFileSync(OPENCODE_CONFIG_PATH, stringifyPretty(doc), "utf8");
 }
 
 
@@ -644,6 +654,7 @@ const server = Bun.serve({
               enabled: true,
               pluginId: item.installTarget,
             });
+            setOpencodePluginEnabled(item.installTarget, true);
             await composeAction("restart", "opencode-core");
             setupManager.addExtension(item.id);
             return cors(json(200, { ok: true, installed: item.id, type: "plugin", result }));
@@ -677,6 +688,7 @@ const server = Bun.serve({
               enabled: true,
               pluginId: body.pluginId,
             });
+            setOpencodePluginEnabled(body.pluginId, true);
             await composeAction("restart", "opencode-core");
             return cors(json(200, { ok: true, pluginId: body.pluginId, result }));
           } catch (error) {
@@ -703,6 +715,7 @@ const server = Bun.serve({
               enabled: false,
               pluginId: item.installTarget,
             });
+            setOpencodePluginEnabled(item.installTarget, false);
             await composeAction("restart", "opencode-core");
             return cors(json(200, { ok: true, uninstalled: item.id, type: "plugin", result }));
           }
@@ -726,6 +739,7 @@ const server = Bun.serve({
               enabled: false,
               pluginId: body.pluginId,
             });
+            setOpencodePluginEnabled(body.pluginId, false);
             await composeAction("restart", "opencode-core");
             return cors(json(200, { ok: true, action: "disabled", result }));
           } catch (error) {

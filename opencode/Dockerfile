@@ -3,12 +3,14 @@ FROM oven/bun:1.1.42
 RUN bun add -g opencode-ai@latest
 RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs git && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /work
+# Core OpenPalm-managed OpenCode extensions (immutable).
+COPY extensions/ /opt/opencode/
 
-# Extensions (skills/, commands/, agents/, tools/, plugins/) are baked into the image from
-# opencode/extensions/ and installed to /opt/openpalm/opencode-defaults/ at build time.
-# At runtime, a host config volume may be mounted at /config to override defaults.
-COPY extensions/ /opt/openpalm/opencode-defaults/
+# Stable HOME mountpoint for user-global state.
+RUN mkdir -p /home/opencode /work \
+  && chmod 755 /home/opencode /work
+
+WORKDIR /work
 
 COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

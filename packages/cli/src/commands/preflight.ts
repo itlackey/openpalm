@@ -6,11 +6,11 @@ const envFile = ".env";
 
 const requiredDirs = [
   "config/caddy",
-  "config/opencode-core",
   "config/channels",
   "data/postgres",
   "data/qdrant",
   "data/openmemory",
+  "data/home",
   "state/workspace",
   "state/gateway",
 ];

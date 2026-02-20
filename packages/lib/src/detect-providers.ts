@@ -154,8 +154,11 @@ export function detectOpenAIKey(): DetectedProvider {
 export async function findExistingOpenCodeConfig(): Promise<string | null> {
   const home = homedir();
   const paths = [
+    `${home}/.config/opencode/opencode.json`,
     `${home}/.config/opencode/opencode.jsonc`,
+    `${home}/.opencode/opencode.json`,
     `${home}/.opencode/opencode.jsonc`,
+    "./opencode.json",
     "./opencode.jsonc",
   ];
 
