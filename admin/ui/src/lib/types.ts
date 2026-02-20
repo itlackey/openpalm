@@ -1,3 +1,8 @@
+// Shared types from @openpalm/lib
+export type { ProviderConnection, ModelAssignment } from "@openpalm/lib";
+
+// UI-specific types
+
 export type GalleryCategory =
 	| 'plugin' | 'skill' | 'command' | 'agent'
 	| 'tool' | 'channel' | 'service';
@@ -64,16 +69,6 @@ export type Automation = {
 	status: 'enabled' | 'disabled';
 	createdAt: string;
 };
-
-export type ProviderConnection = {
-	id: string;
-	name: string;
-	url: string;
-	apiKey: string;
-	createdAt: string;
-};
-
-export type ModelAssignment = 'small' | 'openmemory';
 
 export type HealthResult = {
 	ok: boolean;

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ProviderConnection, ModelAssignment } from "./types.ts";
+import type { ProviderConnection, ModelAssignment } from "@openpalm/lib";
 
 export type ProviderState = {
   providers: ProviderConnection[];

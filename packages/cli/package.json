@@ -26,6 +26,9 @@
   "engines": {
     "bun": ">=1.0.0"
   },
+  "dependencies": {
+    "@openpalm/lib": "workspace:*"
+  },
   "scripts": {
     "start": "bun run src/main.ts",
     "test": "bun test",

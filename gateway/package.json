@@ -2,6 +2,9 @@
   "name": "@openpalm/gateway",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@openpalm/lib": "workspace:*"
+  },
   "scripts": {
     "start": "bun run src/server.ts",
     "test": "bun test"

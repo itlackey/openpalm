@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { JsonStore } from "./admin-store.ts";
+import { JsonStore } from "@openpalm/lib";
 
 export type Automation = {
   id: string;

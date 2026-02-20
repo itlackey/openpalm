@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { parseJsonc, stringifyPretty } from "./jsonc.ts";
+import { parseJsonc, stringifyPretty } from "@openpalm/lib";
 
 const NPM_RE = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
 

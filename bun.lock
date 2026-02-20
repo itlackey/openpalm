@@ -10,6 +10,9 @@
     },
     "admin": {
       "name": "@openpalm/admin",
+      "dependencies": {
+        "@openpalm/lib": "workspace:*",
+      },
       "devDependencies": {
         "@playwright/test": "^1.40.0",
       },
@@ -34,6 +37,9 @@
     },
     "gateway": {
       "name": "@openpalm/gateway",
+      "dependencies": {
+        "@openpalm/lib": "workspace:*",
+      },
     },
     "packages/cli": {
       "name": "openpalm",
@@ -41,6 +47,13 @@
       "bin": {
         "openpalm": "./src/main.ts",
       },
+      "dependencies": {
+        "@openpalm/lib": "workspace:*",
+      },
+    },
+    "packages/lib": {
+      "name": "@openpalm/lib",
+      "version": "0.0.1",
     },
     "shared": {
       "name": "@openpalm/shared",
@@ -63,6 +76,8 @@
     "@openpalm/controller": ["@openpalm/controller@workspace:controller"],
 
     "@openpalm/gateway": ["@openpalm/gateway@workspace:gateway"],
+
+    "@openpalm/lib": ["@openpalm/lib@workspace:packages/lib"],
 
     "@openpalm/shared": ["@openpalm/shared@workspace:shared"],
 

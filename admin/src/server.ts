@@ -2,14 +2,14 @@ import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync, statS
 import { randomUUID } from "node:crypto";
 import { dirname, join, extname } from "node:path";
 import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
-import { parseJsonc, stringifyPretty } from "./jsonc.ts";
+import { parseJsonc, stringifyPretty } from "@openpalm/lib";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
 import { AutomationStore, validateCron } from "./automation-store.ts";
 import { ProviderStore } from "./provider-store.ts";
-import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "@openpalm/lib";
 import type { GalleryCategory } from "./gallery.ts";
-import type { ModelAssignment } from "./types.ts";
+import type { ModelAssignment } from "@openpalm/lib";
 
 // TODO: Split this file into route modules as it grows:
 //   routes/setup.ts       - Setup wizard endpoints (/admin/setup/*)

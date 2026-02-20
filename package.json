@@ -12,6 +12,7 @@
     "channels/telegram",
     "channels/webhook",
     "shared",
+    "packages/lib",
     "packages/cli"
   ],
   "scripts": {

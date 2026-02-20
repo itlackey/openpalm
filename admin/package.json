@@ -8,6 +8,9 @@
     "dev:ui": "cd ui && bun run dev",
     "check:ui": "cd ui && bun run check"
   },
+  "dependencies": {
+    "@openpalm/lib": "workspace:*"
+  },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
   }
