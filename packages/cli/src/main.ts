@@ -9,6 +9,8 @@ import { restart } from "./commands/restart.ts";
 import { logs } from "./commands/logs.ts";
 import { status } from "./commands/status.ts";
 import { extensions } from "./commands/extensions.ts";
+import { preflight } from "./commands/preflight.ts";
+import { createChannel } from "./commands/create-channel.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 
 const VERSION = "0.0.5";
@@ -29,6 +31,7 @@ function printHelp(): void {
   log("  logs           View container logs");
   log("  status         Show container status");
   log("  extensions     Manage extensions (install, uninstall, list)");
+  log("  dev            Development helpers (preflight, create-channel)");
   log("  version        Print version");
   log("  help           Show this help");
   log("");
@@ -167,6 +170,24 @@ async function main(): Promise<void> {
         }
         await extensions(subcommand, extArgs);
         break;
+      }
+
+      case "dev": {
+        const [subcommand, ...devArgs] = args;
+        if (!subcommand) {
+          error("Missing subcommand. Usage: openpalm dev <preflight|create-channel>");
+          process.exit(1);
+        }
+        if (subcommand === "preflight") {
+          preflight();
+          break;
+        }
+        if (subcommand === "create-channel") {
+          createChannel(devArgs);
+          break;
+        }
+        error(`Unknown dev subcommand: ${subcommand}`);
+        process.exit(1);
       }
 
       default: {

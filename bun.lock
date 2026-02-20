@@ -45,10 +45,6 @@
       "name": "@openpalm/lib",
       "version": "0.0.1",
     },
-    "shared": {
-      "name": "@openpalm/shared",
-      "version": "0.0.1",
-    },
   },
   "packages": {
     "@openpalm/admin": ["@openpalm/admin@workspace:admin"],
@@ -66,8 +62,6 @@
     "@openpalm/gateway": ["@openpalm/gateway@workspace:gateway"],
 
     "@openpalm/lib": ["@openpalm/lib@workspace:packages/lib"],
-
-    "@openpalm/shared": ["@openpalm/shared@workspace:shared"],
 
     "@playwright/test": ["@playwright/test@1.58.2", "", { "dependencies": { "playwright": "1.58.2" }, "bin": { "playwright": "cli.js" } }, "sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA=="],
 

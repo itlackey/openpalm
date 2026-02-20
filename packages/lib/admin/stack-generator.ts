@@ -1,4 +1,4 @@
-import { stringifyPretty } from "../jsonc.ts";
+import { stringifyPretty } from "./jsonc.ts";
 import { channelEnvSecretVariable } from "./stack-spec.ts";
 import type { StackChannelName, StackSpec } from "./stack-spec.ts";
 

@@ -34,7 +34,7 @@ openpalm/
     voice/               Voice/STT adapter
     telegram/            Telegram adapter
   docker-compose.yml     Local override for source builds
-  assets/state/scripts/  CLI tools (extensions-cli.ts)
+  assets/state/scripts/  Installer scripts (+ legacy extensions wrapper)
   docs/                  Architecture, API reference, guides
 ```
 

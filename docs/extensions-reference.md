@@ -394,12 +394,12 @@ The admin dashboard at `http://localhost/admin` provides a gallery-based interfa
 
 All mutating endpoints require `x-admin-token` header.
 
-### 3. CLI (`assets/state/scripts/extensions-cli.ts`)
+### 3. CLI (`openpalm extensions`)
 
 ```bash
-bun run assets/state/scripts/extensions-cli.ts install --plugin @scope/plugin-name
-bun run assets/state/scripts/extensions-cli.ts list
-bun run assets/state/scripts/extensions-cli.ts uninstall --plugin @scope/plugin-name
+openpalm extensions install --plugin @scope/plugin-name
+openpalm extensions list
+openpalm extensions uninstall --plugin @scope/plugin-name
 ```
 
 Requires `ADMIN_TOKEN` in the environment.
@@ -509,7 +509,7 @@ vim ~/.config/openpalm/opencode-core/plugins/calendar-sync.ts
 ### npm Plugin (Via Admin)
 
 ```bash
-ADMIN_TOKEN=your-token bun run assets/state/scripts/extensions-cli.ts install --plugin @yourorg/calendar-sync
+ADMIN_TOKEN=your-token openpalm extensions install --plugin @yourorg/calendar-sync
 ```
 
 The admin adds it to `plugin[]` in the host override config and restarts the container.

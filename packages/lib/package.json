@@ -6,6 +6,8 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./*.ts": "./src/*.ts"
+    "./*.ts": "./src/*.ts",
+    "./admin/*.ts": "./admin/*.ts",
+    "./shared/*.ts": "./src/shared/*.ts"
   }
 }

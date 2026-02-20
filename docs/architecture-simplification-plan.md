@@ -80,7 +80,7 @@ Reusable runtime/compose/path/env/provider-detection/CLI UI helpers lived under 
 
 ## Phase 1 — Safety baseline and transactionality
 
-1. Add `StackApplyEngine` in `admin/src/lib`:
+1. Add `StackApplyEngine` in `packages/lib/admin`:
    - render into temp workspace
    - validate compose (`compose config`) and caddy (`caddy validate`)
    - atomically replace managed files

@@ -265,7 +265,7 @@ assets/
     │   ├── openpalm-slack-channel.json
     │   └── schema.json
     └── scripts/
-        ├── extensions-cli.ts
+        ├── extensions-cli.ts (wrapper to `openpalm extensions`)
         ├── install.sh
         ├── install.ps1
         ├── uninstall.ps1

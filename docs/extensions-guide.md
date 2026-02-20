@@ -176,7 +176,7 @@ Use the `calendar.ping` tool to verify that the calendar-sync plugin is ready.
 ### Add extension
 - **Gallery** — browse curated plugins, skills, commands, agents, custom tools, and channel services
 - **npm search** — search the npm registry for OpenCode plugins
-- **CLI** — use `bun run assets/state/scripts/extensions-cli.ts install --plugin <id>`
+- **CLI** — use `openpalm extensions install --plugin <id>`
 
 ### Source types
 - **npm package** (recommended): `name` or `@scope/name`
@@ -316,13 +316,13 @@ See [`assets/state/registry/README.md`](../assets/state/registry/README.md) for 
 
 ```bash
 # Install a plugin
-bun run assets/state/scripts/extensions-cli.ts install --plugin @scope/plugin
+openpalm extensions install --plugin @scope/plugin
 
 # List installed plugins
-bun run assets/state/scripts/extensions-cli.ts list
+openpalm extensions list
 
 # Uninstall a plugin
-bun run assets/state/scripts/extensions-cli.ts uninstall --plugin @scope/plugin
+openpalm extensions uninstall --plugin @scope/plugin
 ```
 
 Set `ADMIN_TOKEN` in your environment to authenticate CLI requests.

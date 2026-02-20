@@ -1,3 +1,6 @@
+export * from "./channel.ts";
+export * from "./crypto.ts";
+export * from "./http.ts";
 export * from "./assets.ts";
 export * from "./compose.ts";
 export * from "./config.ts";

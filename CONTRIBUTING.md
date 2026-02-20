@@ -57,7 +57,6 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 │   ├── postgres/
 │   ├── qdrant/
 │   ├── openmemory/
-│   ├── shared/
 │   └── admin/
 └── state/           ← OPENPALM_STATE_HOME
     ├── caddy/

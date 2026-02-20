@@ -7,9 +7,9 @@ import { SetupManager } from "./setup.ts";
 import { AutomationStore, validateCron } from "./automation-store.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
-import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "./lib/stack-manager.ts";
-import { composeAction, composeList, composeLogs, composePull, composeServiceNames } from "./lib/compose-runner.ts";
-import { applyStack, previewComposeOperations } from "./lib/stack-apply-engine.ts";
+import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
+import { composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
+import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import type { GalleryCategory } from "./gallery.ts";
 import type { ModelAssignment } from "./types.ts";
 

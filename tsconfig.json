@@ -17,6 +17,9 @@
       ],
       "@openpalm/lib/*": [
         "packages/lib/src/*"
+      ],
+      "@openpalm/lib/admin/*": [
+        "packages/lib/admin/*"
       ]
     }
   },
@@ -24,9 +27,10 @@
     "admin/src/**/*.ts",
     "gateway/src/**/*.ts",
     "channels/**/*.ts",
-    "assets/state/scripts/extensions-cli.ts",
     "packages/cli/src/**/*.ts",
-    "packages/lib/src/**/*.ts"
+    "packages/lib/src/**/*.ts",
+    "scripts/**/*.ts",
+    "packages/lib/admin/**/*.ts"
   ],
   "exclude": [
     "node_modules"

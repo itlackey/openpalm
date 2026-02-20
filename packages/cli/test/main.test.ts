@@ -81,6 +81,7 @@ describe("CLI entry point", () => {
       "logs",
       "status",
       "extensions",
+      "dev",
       "version",
       "help"
     ];
@@ -117,6 +118,13 @@ describe("CLI entry point", () => {
     expect(stderr).toContain("Missing subcommand");
   });
 
+
+  it("supports dev command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("dev");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
   it("prints version with -v flag", async () => {
     const { stdout, exitCode } = await runCli("-v");
 
