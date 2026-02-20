@@ -1,95 +1,45 @@
 # OpenPalm Host System Reference
 
-This document describes host directories, how they are created, and how they map into containers.
+OpenPalm uses a deterministic 3-root contract plus one user workdir mount.
 
-## XDG layout and overrides
-
-OpenPalm uses XDG-style roots with this precedence:
-
-`OPENPALM_*_HOME` → `XDG_*_HOME/openpalm` → defaults.
+## Canonical roots
 
 | Kind | Default | Env override | Purpose |
 |---|---|---|---|
-| Data | `~/.local/share/openpalm` | `OPENPALM_DATA_HOME` | Persistent service data + OpenCode user home |
-| Config | `~/.config/openpalm` | `OPENPALM_CONFIG_HOME` | User-editable config/env files |
-| State | `~/.local/state/openpalm` | `OPENPALM_STATE_HOME` | Runtime compose/workspace/state |
+| Data | `~/.local/share/openpalm` | `OPENPALM_DATA_HOME` | Persistent service data |
+| Config | `~/.config/openpalm` | `OPENPALM_CONFIG_HOME` | User-edited source-of-truth inputs |
+| State | `~/.local/state/openpalm` | `OPENPALM_STATE_HOME` | Rendered stack artifacts + runtime state |
 
-## Directory trees created by installers
+## Inputs (human-edited)
 
-### Data (`$OPENPALM_DATA_HOME`)
+Only these files are edited directly:
 
-- `postgres/`
-- `qdrant/`
-- `openmemory/`
-- `shared/`
-- `caddy/`
-- `admin/`
-- `home/` (mounted as OpenCode HOME)
+- `${OPENPALM_CONFIG_HOME}/stack-spec.json`
+- `${OPENPALM_CONFIG_HOME}/secrets.env`
 
-### Config (`$OPENPALM_CONFIG_HOME`)
+## Generated outputs
 
-- `caddy/`
-- `channels/`
-- `cron/`
-- `secrets/`
-- `secrets/gateway/`
-- `secrets/channels/`
-- plus root files like `secrets.env`, `user.env`
+Admin renders and maintains generated stack outputs under:
 
-### State (`$OPENPALM_STATE_HOME`)
+- `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`
+- `${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile`
+- `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/*.caddy`
+- `${OPENPALM_STATE_HOME}/rendered/env/*.env`
 
-- `opencode-core/`
-- `gateway/`
-- `caddy/`
-- `workspace/`
-- `observability/`
-- `backups/`
-- root files like `docker-compose.yml`, `.env`, uninstall script
+## Persistent data
 
-## Volume mount normalization
+- `${OPENPALM_DATA_HOME}/postgres`
+- `${OPENPALM_DATA_HOME}/qdrant`
+- `${OPENPALM_DATA_HOME}/openmemory`
+- `${OPENPALM_DATA_HOME}/opencode` (OpenCode HOME)
 
-### OpenCode + Admin
+## OpenCode special cases
 
-| Host path | Container | Mount |
-|---|---|---|
-| `${OPENPALM_DATA_HOME}/home` | `opencode-core` | `/home/opencode` |
-| `${OPENPALM_DATA_HOME}/home` | `admin` | `/app/home` |
-| `${OPENPALM_CONFIG_HOME}/cron` | `opencode-core` | `/cron` |
-| `${OPENPALM_STATE_HOME}/workspace` | `opencode-core` | `/work` |
-| `${OPENPALM_STATE_HOME}/opencode-core` | `opencode-core` | `/state` |
+- OpenCode home mount: `${OPENPALM_DATA_HOME}/opencode -> /home/opencode`
+- OpenCode workdir mount: `${HOME}/openpalm -> /work`
 
-### Other core services
+## Compose invariant
 
-| Host path | Container | Mount |
-|---|---|---|
-| `${OPENPALM_DATA_HOME}/postgres` | `postgres` | `/var/lib/postgresql/data` |
-| `${OPENPALM_DATA_HOME}/qdrant` | `qdrant` | `/qdrant/storage` |
-| `${OPENPALM_DATA_HOME}/openmemory` | `openmemory` | `/data` |
-| `${OPENPALM_DATA_HOME}/shared` | `openmemory`, `opencode-core`, `admin` | `/shared` |
-| `${OPENPALM_DATA_HOME}/caddy` | `caddy` | `/data` |
-| `${OPENPALM_STATE_HOME}/caddy` | `caddy` | `/config` |
+OpenPalm always applies compose using the rendered file:
 
-## OpenCode config model
-
-- Core extensions are image-baked under `/opt/opencode`.
-- `OPENCODE_CONFIG_DIR=/opt/opencode` loads immutable OpenPalm-managed core extensions.
-- User-global OpenCode state persists in mounted HOME:
-  - `/home/opencode/.config/opencode/opencode.json`
-  - `/home/opencode/.config/opencode/plugins/`
-  - `/home/opencode/.cache/opencode/`
-  - `/home/opencode/.local/share/opencode/`
-
-So the host location for user-global OpenCode state is:
-
-`${OPENPALM_DATA_HOME}/home/`
-
-## Installer behavior
-
-Installers seed config templates without overwriting existing files:
-
-- Caddyfile
-- channel env files
-- secrets env templates
-- user env template
-
-They do **not** create or manage a legacy `config/opencode-core` override directory.
+- `docker compose -f ${OPENPALM_STATE_HOME}/rendered/docker-compose.yml up -d`

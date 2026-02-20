@@ -116,9 +116,9 @@ All data is organized following standard conventions:
 
 | What | Where | Purpose |
 |---|---|---|
-| Databases & storage | `~/.local/share/openpalm/` | PostgreSQL, vector store, shared files |
-| Configuration | `~/.config/openpalm/` | Agent config, channel settings, secrets |
-| Runtime state | `~/.local/state/openpalm/` | Logs, audit trail, workspace |
+| Databases & storage | `~/.local/share/openpalm/` | PostgreSQL, Qdrant, OpenMemory, OpenCode home data |
+| Configuration | `~/.config/openpalm/` | `stack-spec.json` and `secrets.env` (source-of-truth inputs) |
+| Runtime state | `~/.local/state/openpalm/` | Rendered compose/Caddy/env artifacts, logs, runtime state (`~/openpalm` is workdir) |
 
 The installer sets these up automatically. Override the paths with environment variables if you prefer a different location.
 

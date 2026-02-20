@@ -24,7 +24,7 @@ Extensions are managed via OpenCode precedence. OpenPalm sets `OPENCODE_CONFIG_D
 
 > **Note on `lib/`:** The `lib/` directory is a shared library directory, not an extension sub-type. Files in `lib/` are imported by plugins and tools as internal utilities — they are not auto-discovered by OpenCode.
 
-**Container path resolution:** In the OpenPalm stack, extensions live in `opencode/extensions/` in the repository and are copied into the container image at `/opt/opencode/` (immutable core). User-global OpenCode state is persisted by mounting `${OPENPALM_DATA_HOME}/home` at `/home/opencode` (for example `/home/opencode/.config/opencode/opencode.json` and `/home/opencode/.config/opencode/plugins/`).
+**Container path resolution:** In the OpenPalm stack, extensions live in `opencode/extensions/` in the repository and are copied into the container image at `/opt/opencode/` (immutable core). User-global OpenCode state is persisted by mounting `${OPENPALM_DATA_HOME}/openpalm` at `/home/opencode` (for example `/home/opencode/.config/opencode/opencode.json` and `/home/opencode/.config/opencode/plugins/`).
 
 **Your rule:** the Admin UI manages Plugin-type extensions and npm packages by editing `opencode.json -> plugin[]`. Skills, Commands, Agents, and Custom Tools are managed by placing files in the appropriate subdirectory under `OPENCODE_CONFIG_DIR`.
 
@@ -37,7 +37,7 @@ Extensions are **baked into the container image**. They live in `opencode/extens
 | `opencode/extensions/` | opencode-core | Core agent: plugins (openmemory-http, policy-and-telemetry), skills (memory/SKILL.md), tools (memory-query, memory-save, health-check), commands (memory-recall, memory-save, health), lib (openmemory-client), AGENTS.md |
 | `gateway/opencode/` | gateway | Intake agent: skills (channel-intake/SKILL.md), agents (channel-intake.md), AGENTS.md |
 
-Extensions ship inside the container images. Core extensions are immutable. User-global additions/overrides are managed in `${OPENPALM_DATA_HOME}/home/.config/opencode/`.
+Extensions ship inside the container images. Core extensions are immutable. User-global additions/overrides are managed in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/`.
 
 ### Recommended structure in `opencode/extensions/` and `gateway/opencode/`
 
@@ -164,7 +164,7 @@ Use the `calendar.ping` tool to verify that the calendar-sync plugin is ready.
 - `opencode/extensions/` is the canonical source for core agent extensions, baked into the `opencode-core` container image at build time.
 - `gateway/opencode/` is the canonical source for gateway agent extensions, baked into the `gateway` container image at build time.
 - Users can override or supplement baked-in extensions by mounting a volume at `/home/opencode` inside the container — files present there take precedence over image defaults.
-- The installer leaves `${OPENPALM_DATA_HOME}/home/.config/opencode/` empty by default. The opencode-core entrypoint populates missing defaults at runtime without overwriting user files.
+- The installer leaves `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/` empty by default. The opencode-core entrypoint populates missing defaults at runtime without overwriting user files.
 - The Gateway is the security/routing layer: it runs a 6-step pipeline (HMAC verification, payload validation, rate limiting at 120 req/min per user, intake validation via restricted agent, forward to assistant, audit log).
 - Admin manages config/extensions and invokes the admin for lifecycle actions.
 - Admin is the only container-control plane component and executes compose operations.

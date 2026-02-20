@@ -21,7 +21,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
     const composeValidate = await composeConfigValidate();
     if (!composeValidate.ok) throw new Error(`compose_validation_failed:${composeValidate.stderr}`);
 
-    const caddyConfig = Bun.env.CADDYFILE_PATH ?? "/app/config/caddy/Caddyfile";
+    const caddyConfig = Bun.env.CADDYFILE_PATH ?? "/state/rendered/caddy/Caddyfile";
     const caddyValidate = Bun.spawn(["caddy", "validate", "--config", caddyConfig, "--adapter", "caddyfile"], {
       stdout: "pipe",
       stderr: "pipe",

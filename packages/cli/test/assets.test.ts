@@ -88,172 +88,35 @@ describe("seedFile", () => {
 });
 
 describe("seedConfigFiles", () => {
-  it("seeds Caddyfile from state/caddy/Caddyfile", async () => {
+  it("seeds stack-spec.json and secrets.env only", async () => {
     const assetsDir = await createTempDir();
     const configHome = await createTempDir();
-    const caddyfileContent = "example.com {\n  respond 'Hello'\n}";
+    await mkdir(join(assetsDir, "config"), { recursive: true });
+    await writeFile(join(assetsDir, "config/stack-spec.json"), '{"version":1}');
+    await writeFile(join(assetsDir, "config/secrets.env"), "API_SECRET=supersecret");
 
-    // Create mock assets structure
-    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
-    await writeFile(
-      join(assetsDir, "state/caddy/Caddyfile"),
-      caddyfileContent
-    );
-
-    // Create empty channels dir to avoid readdir error
-    await mkdir(join(assetsDir, "config/channels"), { recursive: true });
-    await writeFile(join(assetsDir, "config/secrets.env"), "");
-    await writeFile(join(assetsDir, "config/user.env"), "");
-
-    // Create destination directory
-    await mkdir(join(configHome, "caddy"), { recursive: true });
-
-    // Seed config files
     await seedConfigFiles(assetsDir, configHome);
 
-    // Verify Caddyfile was copied
-    const copiedContent = await readFile(
-      join(configHome, "caddy/Caddyfile"),
-      "utf-8"
-    );
-    expect(copiedContent).toBe(caddyfileContent);
+    const spec = await readFile(join(configHome, "stack-spec.json"), "utf-8");
+    expect(spec).toContain('"version":1');
+    const secrets = await readFile(join(configHome, "secrets.env"), "utf-8");
+    expect(secrets).toContain("API_SECRET=supersecret");
   });
 
-  it("seeds channel env files from config/channels/", async () => {
+  it("does not overwrite existing config inputs", async () => {
     const assetsDir = await createTempDir();
     const configHome = await createTempDir();
-    const chatEnvContent = "CHAT_API_KEY=secret1";
-    const discordEnvContent = "DISCORD_TOKEN=secret2";
+    await mkdir(join(assetsDir, "config"), { recursive: true });
+    await writeFile(join(assetsDir, "config/stack-spec.json"), '{"version":1,"new":true}');
+    await writeFile(join(assetsDir, "config/secrets.env"), "NEW_SECRET=value");
 
-    // Create mock assets structure
-    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
-    await writeFile(join(assetsDir, "state/caddy/Caddyfile"), "");
-    await mkdir(join(assetsDir, "config/channels"), { recursive: true });
-    await writeFile(
-      join(assetsDir, "config/channels/chat.env"),
-      chatEnvContent
-    );
-    await writeFile(
-      join(assetsDir, "config/channels/discord.env"),
-      discordEnvContent
-    );
-    await writeFile(join(assetsDir, "config/secrets.env"), "");
-    await writeFile(join(assetsDir, "config/user.env"), "");
+    await writeFile(join(configHome, "stack-spec.json"), '{"version":1,"keep":true}');
+    await writeFile(join(configHome, "secrets.env"), "ORIGINAL_SECRET=value");
 
-    // Create destination directories
-    await mkdir(join(configHome, "caddy"), { recursive: true });
-    await mkdir(join(configHome, "channels"), { recursive: true });
-
-    // Seed config files
     await seedConfigFiles(assetsDir, configHome);
 
-    // Verify both channel files were copied
-    const chatContent = await readFile(
-      join(configHome, "channels/chat.env"),
-      "utf-8"
-    );
-    expect(chatContent).toBe(chatEnvContent);
-
-    const discordContent = await readFile(
-      join(configHome, "channels/discord.env"),
-      "utf-8"
-    );
-    expect(discordContent).toBe(discordEnvContent);
-  });
-
-  it("seeds secrets.env", async () => {
-    const assetsDir = await createTempDir();
-    const configHome = await createTempDir();
-    const secretsContent = "API_SECRET=supersecret";
-
-    // Create mock assets structure
-    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
-    await writeFile(join(assetsDir, "state/caddy/Caddyfile"), "");
-    await mkdir(join(assetsDir, "config/channels"), { recursive: true });
-    await writeFile(join(assetsDir, "config/secrets.env"), secretsContent);
-    await writeFile(join(assetsDir, "config/user.env"), "");
-
-    // Create destination directory
-    await mkdir(join(configHome, "caddy"), { recursive: true });
-
-    // Seed config files
-    await seedConfigFiles(assetsDir, configHome);
-
-    // Verify secrets.env was copied
-    const copiedContent = await readFile(
-      join(configHome, "secrets.env"),
-      "utf-8"
-    );
-    expect(copiedContent).toBe(secretsContent);
-  });
-
-  it("seeds user.env", async () => {
-    const assetsDir = await createTempDir();
-    const configHome = await createTempDir();
-    const userEnvContent = "USER_NAME=testuser";
-
-    // Create mock assets structure
-    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
-    await writeFile(join(assetsDir, "state/caddy/Caddyfile"), "");
-    await mkdir(join(assetsDir, "config/channels"), { recursive: true });
-    await writeFile(join(assetsDir, "config/secrets.env"), "");
-    await writeFile(join(assetsDir, "config/user.env"), userEnvContent);
-
-    // Create destination directory
-    await mkdir(join(configHome, "caddy"), { recursive: true });
-
-    // Seed config files
-    await seedConfigFiles(assetsDir, configHome);
-
-    // Verify user.env was copied
-    const copiedContent = await readFile(
-      join(configHome, "user.env"),
-      "utf-8"
-    );
-    expect(copiedContent).toBe(userEnvContent);
-  });
-
-  it("does not overwrite existing config files", async () => {
-    const assetsDir = await createTempDir();
-    const configHome = await createTempDir();
-    const originalCaddyfile = "original caddy config";
-    const originalSecrets = "ORIGINAL_SECRET=value";
-    const newCaddyfile = "new caddy config";
-    const newSecrets = "NEW_SECRET=value";
-
-    // Create mock assets structure with new content
-    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
-    await writeFile(
-      join(assetsDir, "state/caddy/Caddyfile"),
-      newCaddyfile
-    );
-    await mkdir(join(assetsDir, "config/channels"), { recursive: true });
-    await writeFile(join(assetsDir, "config/secrets.env"), newSecrets);
-    await writeFile(join(assetsDir, "config/user.env"), "");
-
-    // Create existing files in configHome with original content
-    await mkdir(join(configHome, "caddy"), { recursive: true });
-    await writeFile(
-      join(configHome, "caddy/Caddyfile"),
-      originalCaddyfile
-    );
-    await writeFile(join(configHome, "secrets.env"), originalSecrets);
-
-    // Seed config files (should not overwrite)
-    await seedConfigFiles(assetsDir, configHome);
-
-    // Verify original content is preserved
-    const caddyContent = await readFile(
-      join(configHome, "caddy/Caddyfile"),
-      "utf-8"
-    );
-    expect(caddyContent).toBe(originalCaddyfile);
-
-    const secretsContent = await readFile(
-      join(configHome, "secrets.env"),
-      "utf-8"
-    );
-    expect(secretsContent).toBe(originalSecrets);
+    expect(await readFile(join(configHome, "stack-spec.json"), "utf-8")).toContain('"keep":true');
+    expect(await readFile(join(configHome, "secrets.env"), "utf-8")).toContain("ORIGINAL_SECRET=value");
   });
 });
 
@@ -315,28 +178,19 @@ describe("resolveAssets", () => {
   });
 });
 
-describe("seedConfigFiles with missing channels dir", () => {
-  it("does not throw when channels directory is missing from assets", async () => {
+describe("seedConfigFiles with minimal config assets", () => {
+  it("does not throw when optional files are missing", async () => {
     const assetsDir = await createTempDir();
     const configHome = await createTempDir();
 
-    // Create minimal assets structure WITHOUT channels dir
-    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
-    await writeFile(join(assetsDir, "state/caddy/Caddyfile"), "test");
     await mkdir(join(assetsDir, "config"), { recursive: true });
-    // NO config/channels directory created
     await writeFile(join(assetsDir, "config/secrets.env"), "");
-    await writeFile(join(assetsDir, "config/user.env"), "");
+    await writeFile(join(assetsDir, "config/stack-spec.json"), "{}");
 
-    // Create destination directories
-    await mkdir(join(configHome, "caddy"), { recursive: true });
-
-    // Should not throw
     await seedConfigFiles(assetsDir, configHome);
 
-    // Verify Caddyfile was still seeded
-    const caddyContent = await readFile(join(configHome, "caddy/Caddyfile"), "utf-8");
-    expect(caddyContent).toBe("test");
+    const spec = await readFile(join(configHome, "stack-spec.json"), "utf-8");
+    expect(spec).toBe("{}");
   });
 });
 

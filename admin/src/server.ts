@@ -25,20 +25,21 @@ import type { ModelAssignment } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
-const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/home/.config/opencode/opencode.json";
-const DATA_DIR = Bun.env.DATA_DIR ?? "/app/data";
+const DATA_ROOT = Bun.env.OPENPALM_DATA_ROOT ?? "/data";
+const CONFIG_ROOT = Bun.env.OPENPALM_CONFIG_ROOT ?? "/config";
+const STATE_ROOT = Bun.env.OPENPALM_STATE_ROOT ?? "/state";
+
+const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/openpalm/.config/opencode/opencode.json`;
+const DATA_DIR = Bun.env.DATA_DIR ?? `${DATA_ROOT}/admin`;
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
-const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
-const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? "/app/config/caddy/routes";
-const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
+const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? `${STATE_ROOT}/rendered/caddy/Caddyfile`;
+const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? `${STATE_ROOT}/rendered/caddy/snippets`;
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
-const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
-const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
-const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? "/app/config-root/stack-spec.json";
-const CHANNEL_SECRET_DIR = Bun.env.CHANNEL_SECRET_DIR ?? "/app/config-root/secrets/channels";
-const GATEWAY_CHANNEL_SECRETS_PATH = Bun.env.GATEWAY_CHANNEL_SECRETS_PATH ?? "/app/config-root/secrets/gateway/channels.env";
-const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? "/workspace/docker-compose.yml";
+const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
+const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
+const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/stack-spec.json`;
+const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
@@ -61,13 +62,12 @@ const stackManager = new StackManager({
   caddyRoutesDir: CADDY_ROUTES_DIR,
   secretsEnvPath: SECRETS_ENV_PATH,
   stackSpecPath: STACK_SPEC_PATH,
-  channelSecretDir: CHANNEL_SECRET_DIR,
-  gatewayChannelSecretsPath: GATEWAY_CHANNEL_SECRETS_PATH,
-  gatewayRuntimeSecretsPath: Bun.env.GATEWAY_RUNTIME_SECRETS_PATH ?? "/app/config-root/secrets/gateway/gateway.env",
-  openmemorySecretsPath: Bun.env.OPENMEMORY_SECRETS_PATH ?? "/app/config-root/secrets/openmemory/openmemory.env",
-  postgresSecretsPath: Bun.env.POSTGRES_SECRETS_PATH ?? "/app/config-root/secrets/db/postgres.env",
-  opencodeProviderSecretsPath: Bun.env.OPENCODE_PROVIDER_SECRETS_PATH ?? "/app/config-root/secrets/opencode/providers.env",
-  channelEnvDir: CHANNEL_ENV_DIR,
+  gatewayEnvPath: Bun.env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/rendered/env/gateway.env`,
+  openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/rendered/env/openmemory.env`,
+  postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/rendered/env/postgres.env`,
+  qdrantEnvPath: Bun.env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/rendered/env/qdrant.env`,
+  opencodeEnvPath: Bun.env.OPENCODE_ENV_PATH ?? `${STATE_ROOT}/rendered/env/opencode.env`,
+  channelsEnvPath: Bun.env.CHANNELS_ENV_PATH ?? `${STATE_ROOT}/rendered/env/channels.env`,
   composeFilePath: COMPOSE_FILE_PATH,
 });
 

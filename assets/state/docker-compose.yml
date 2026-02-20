@@ -1,9 +1,4 @@
 services:
-  # ============================================================
-  # Reverse Proxy — Caddy (front door)
-  # Routes channel ingress and LAN-only admin/dashboard URLs:
-  # /channels/* and /admin/* (including /admin/opencode* and /admin/openmemory*)
-  # ============================================================
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -11,18 +6,18 @@ services:
       - "${OPENPALM_INGRESS_BIND_ADDRESS:-0.0.0.0}:80:80"
       - "${OPENPALM_INGRESS_BIND_ADDRESS:-0.0.0.0}:443:443"
     volumes:
-      - ${OPENPALM_CONFIG_HOME}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${OPENPALM_DATA_HOME}/caddy:/data
-      - ${OPENPALM_STATE_HOME}/caddy:/config
+      - ${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${OPENPALM_STATE_HOME}/rendered/caddy/snippets:/etc/caddy/snippets:ro
+      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy
+      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy
     networks: [assistant_net]
     depends_on: [gateway, admin, openmemory-ui]
 
-  # ============================================================
-  # Storage Layer
-  # ============================================================
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    env_file:
+      - ${OPENPALM_STATE_HOME}/rendered/env/postgres.env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-openpalm}
       POSTGRES_USER: ${POSTGRES_USER:-openpalm}
@@ -34,24 +29,21 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
+    env_file:
+      - ${OPENPALM_STATE_HOME}/rendered/env/qdrant.env
     volumes:
       - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage
     networks: [assistant_net]
 
-  # ============================================================
-  # Core Application Layer
-  # ============================================================
   openmemory:
     image: mem0/openmemory-mcp:latest
     restart: unless-stopped
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/user.env
-      - ${OPENPALM_CONFIG_HOME}/secrets.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/openmemory.env
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME}/openmemory:/data
-      - ${OPENPALM_DATA_HOME}/shared:/shared
     networks: [assistant_net]
     depends_on: [qdrant]
 
@@ -70,22 +62,18 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/opencode-core:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/user.env
-      - ${OPENPALM_CONFIG_HOME}/secrets.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/opencode.env
     environment:
       - OPENCODE_CONFIG_DIR=/opt/opencode
       - OPENCODE_PORT=4096
       - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}
       - HOME=/home/opencode
-    # Bind addresses default to localhost; set *_BIND_ADDRESS=0.0.0.0 to allow LAN access.
     ports:
       - "${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096"
       - "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22"
     volumes:
-      - ${OPENPALM_DATA_HOME}/home:/home/opencode
-      - ${OPENPALM_STATE_HOME}/opencode-core:/state
-      - ${OPENPALM_STATE_HOME}/workspace:/work
-      - ${OPENPALM_DATA_HOME}/shared:/shared
+      - ${OPENPALM_DATA_HOME}/opencode:/home/opencode
+      - ${HOME}/openpalm:/work
     working_dir: /work
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [assistant_net]
@@ -97,7 +85,6 @@ services:
       retries: 5
       start_period: 30s
 
-
   gateway:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -106,10 +93,9 @@ services:
       - OPENCODE_CORE_BASE_URL=http://opencode-core:4096
       - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/secrets/gateway/channels.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/gateway.env
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
-      # Gateway opencode config is baked into the image; no host override needed.
     networks: [assistant_net]
     depends_on: [opencode-core]
     healthcheck:
@@ -125,26 +111,16 @@ services:
     environment:
       - PORT=8100
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
-      - OPENCODE_CONFIG_PATH=/app/home/.config/opencode/opencode.json
       - GATEWAY_URL=http://gateway:8080
       - OPENCODE_CORE_URL=http://opencode-core:4096
-      - CADDYFILE_PATH=/app/config/caddy/Caddyfile
-      - CHANNEL_ENV_DIR=/app/channel-env
-      - CRON_DIR=/app/config-root/cron
-      - RUNTIME_ENV_PATH=/workspace/.env
-      - SECRETS_ENV_PATH=/app/config-root/secrets.env
-      - COMPOSE_PROJECT_PATH=/workspace
       - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}
       - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
       - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
     volumes:
-      - ${OPENPALM_DATA_HOME}/home:/app/home
-      - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
-      - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env
-      - ${OPENPALM_CONFIG_HOME}:/app/config-root
-      - ${OPENPALM_DATA_HOME}/admin:/app/data
-      - ${OPENPALM_DATA_HOME}/shared:/shared
-      - ${OPENPALM_STATE_HOME}:/workspace
+      - ${OPENPALM_DATA_HOME}:/data
+      - ${OPENPALM_CONFIG_HOME}:/config
+      - ${OPENPALM_STATE_HOME}:/state
+      - ${HOME}/openpalm:/work
       - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}
     networks: [assistant_net]
     depends_on: [gateway, opencode-core]
@@ -155,17 +131,12 @@ services:
       retries: 3
       start_period: 10s
 
-  # ============================================================
-  # Channel Layer (optional — enable via --profile channels)
-  # Channels are exposed via Caddy under /channels/*; adapters forward normalized payloads to gateway internally
-  # ============================================================
   channel-chat:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-chat:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/chat.env
-      - ${OPENPALM_CONFIG_HOME}/secrets/channels/chat.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
@@ -177,8 +148,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/discord.env
-      - ${OPENPALM_CONFIG_HOME}/secrets/channels/discord.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
@@ -190,8 +160,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/voice.env
-      - ${OPENPALM_CONFIG_HOME}/secrets/channels/voice.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
@@ -203,8 +172,7 @@ services:
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_CONFIG_HOME}/channels/telegram.env
-      - ${OPENPALM_CONFIG_HOME}/secrets/channels/telegram.env
+      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080

@@ -58,7 +58,6 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 ## 6) Secrets and configuration partitioning
 
 - `system.env`: installer-managed system template (advanced edits only).
-- `user.env`: user-specific overrides (in config home).
 - `secrets.env`: runtime secrets for core integrations (in config home).
 
 **Why:** separate generated system settings, user overrides, and secrets to reduce accidental misconfiguration and leakage.
@@ -79,7 +78,7 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 
 ### SSH Setup Steps
 
-1. Set `OPENCODE_ENABLE_SSH=1` in your environment or `user.env`.
+1. Set `OPENCODE_ENABLE_SSH=1` in your environment or generated `rendered/env/opencode.env` override flow.
 2. Place your public key in `~/.config/openpalm/opencode-core/ssh/authorized_keys`.
 3. Restart `opencode-core` for changes to take effect.
 4. Connect via `ssh -p ${OPENCODE_CORE_SSH_PORT} root@localhost` (default port 2222).

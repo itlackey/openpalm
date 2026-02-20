@@ -49,7 +49,7 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `admi
 **Symptoms:** Messages sent via Discord, Telegram, or other channels get no response.
 
 **Steps:**
-1. Verify the channel env file has correct credentials: check `~/.config/openpalm/channels/<channel>.env`
+1. Verify the channel env file has correct credentials: check `~/.local/state/openpalm/rendered/env/channels.env`
 2. Check channel container logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs channel-<name> --tail=50`
 3. Verify the gateway is healthy: `docker compose -f ~/.local/state/openpalm/docker-compose.yml ps gateway`
 4. Check that the channel secret matches between the channel env and the gateway environment (e.g., `CHANNEL_DISCORD_SECRET`).
