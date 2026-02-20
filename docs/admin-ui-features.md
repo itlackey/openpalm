@@ -21,9 +21,9 @@ Completely rebuild the admin UI from the ground up using SvelteKit. The current 
 
 ## Feature List
 
-The admin UI serves as the sole management interface for OpenPalm. It is served by the `admin` service on `:8100`, routed through Caddy at `/admin/*`, and restricted to LAN access. All protected operations require the `x-admin-token` header ([API Reference](docs/api-reference.md)).
+The admin UI serves as the sole management interface for OpenPalm. It is served by the `admin` service on `:8100`, routed through Caddy at `/admin/*`, and restricted to LAN access. All protected operations require the `x-admin-token` header ([API Reference](api-reference.md)).
 
-The five core user-facing concepts are **Extensions**, **Connections**, **Channels**, **Automations**, and the **Gateway** ([User Concepts](docs/user-concepts.md), [Admin Concepts](docs/admin-concepts.md)).
+The five core user-facing concepts are **Extensions**, **Connections**, **Channels**, **Automations**, and the **Gateway** ([User Concepts](user-concepts.md), [Admin Concepts](admin-concepts.md)).
 
 ---
 
@@ -45,10 +45,11 @@ A guided 7-step onboarding flow that runs on the first visit to the admin UI.
 - `POST /admin/setup/step` — mark a step complete
 - `POST /admin/setup/access-scope` — set host vs LAN scope
 - `POST /admin/setup/service-instances` — set external service URLs and OpenMemory provider
+- `POST /admin/setup/channels` — save channel selection (enabled channel adapters)
 - `POST /admin/setup/complete` — finalize setup
 - `GET /admin/setup/health-check` — probe gateway and OpenCode health
 
-**References:** [Admin Guide §1](docs/admin-guide.md), [API Reference — Setup Wizard](docs/api-reference.md), [Architecture — URL Routing](docs/architecture.md)
+**References:** [Admin Guide §1](admin-guide.md), [API Reference — Setup Wizard](api-reference.md), [Architecture — URL Routing](architecture.md)
 
 ---
 
@@ -61,7 +62,7 @@ A landing page showing the health and operational state of all services.
 - [ ] Health indicators for enabled channel adapters (chat, discord, voice, telegram)
 - [ ] Container status list via `GET /admin/containers/list`
 
-**References:** [Architecture — Container Inventory](docs/architecture.md), [Admin Guide §2](docs/admin-guide.md)
+**References:** [Architecture — Container Inventory](architecture.md), [Admin Guide §2](admin-guide.md)
 
 ---
 
@@ -107,7 +108,7 @@ Browse, install, and uninstall extensions that add capabilities to the assistant
 - `POST /admin/gallery/uninstall`
 - `GET /admin/installed`
 
-**References:** [Extensions Guide](docs/extensions-guide.md), [Extensions Reference](docs/extensions-reference.md), [Admin Concepts — Extensions](docs/admin-concepts.md), [User Concepts — Extensions](docs/user-concepts.md), [API Reference — Gallery](docs/api-reference.md), [OpenCode Plugin Docs](https://opencode.ai/docs/plugins/), [OpenCode Skills Docs](https://opencode.ai/docs/skills/)
+**References:** [Extensions Guide](extensions-guide.md), [Extensions Reference](extensions-reference.md), [Admin Concepts — Extensions](admin-concepts.md), [User Concepts — Extensions](user-concepts.md), [API Reference — Gallery](api-reference.md), [OpenCode Plugin Docs](https://opencode.ai/docs/plugins/), [OpenCode Skills Docs](https://opencode.ai/docs/skills/)
 
 ---
 
@@ -138,7 +139,7 @@ Configure and control the messaging channel adapters that bridge external platfo
 
 **Security:** All channel messages pass through the Gateway's 6-step security pipeline (HMAC verification → payload validation → rate limiting → intake validation → forward → audit). Access defaults to LAN-only.
 
-**References:** [User Concepts — Channels](docs/user-concepts.md), [Admin Concepts — Channels](docs/admin-concepts.md), [Architecture — URL Routing](docs/architecture.md), [API Reference — Channel Adapters](docs/api-reference.md), [Security Guide §2](docs/security.md)
+**References:** [User Concepts — Channels](user-concepts.md), [Admin Concepts — Channels](admin-concepts.md), [Architecture — URL Routing](architecture.md), [API Reference — Channel Adapters](api-reference.md), [Security Guide §2](security.md)
 
 ---
 
@@ -164,7 +165,7 @@ Create and manage scheduled prompts that let the assistant act proactively on a 
 - `POST /admin/automations/delete` — delete automation
 - `POST /admin/automations/trigger` — "Run Now" immediate trigger
 
-**References:** [User Concepts — Automations](docs/user-concepts.md), [Admin Concepts — Automations](docs/admin-concepts.md), [Architecture — Automations](docs/architecture.md), [API Reference — Automations](docs/api-reference.md)
+**References:** [User Concepts — Automations](user-concepts.md), [Admin Concepts — Automations](admin-concepts.md), [Architecture — Automations](architecture.md), [API Reference — Automations](api-reference.md)
 
 ---
 
@@ -188,7 +189,7 @@ Add, configure, and assign AI provider endpoints for the assistant and memory sy
 - `POST /admin/providers/models` — list models from a provider
 - `POST /admin/providers/assign` — assign a provider+model to a role
 
-**References:** [API Reference — Providers](docs/api-reference.md), [OpenCode Providers Docs](https://opencode.ai/docs/providers/)
+**References:** [API Reference — Providers](api-reference.md), [OpenCode Providers Docs](https://opencode.ai/docs/providers/)
 
 ---
 
@@ -208,7 +209,7 @@ View and edit the `opencode.jsonc` agent configuration file with schema awarenes
 - `GET /admin/config` — read current config (text/plain)
 - `POST /admin/config` — write config with policy lint and optional restart
 
-**References:** [Admin Guide §2 — Safe Config Editing](docs/admin-guide.md), [API Reference — Config Editor](docs/api-reference.md), [OpenCode Config Docs](https://opencode.ai/docs/config/), [OpenCode Permissions Docs](https://opencode.ai/docs/permissions/)
+**References:** [Admin Guide §2 — Safe Config Editing](admin-guide.md), [API Reference — Config Editor](api-reference.md), [OpenCode Config Docs](https://opencode.ai/docs/config/), [OpenCode Permissions Docs](https://opencode.ai/docs/permissions/)
 
 ---
 
@@ -232,7 +233,7 @@ Start, stop, and restart individual services in the Docker Compose stack.
 
 **Note:** The admin service delegates all lifecycle operations to the Controller (`:8090`), which is the only container with Docker socket access.
 
-**References:** [Architecture — Container Inventory](docs/architecture.md), [API Reference — Container Management](docs/api-reference.md), [Security Guide §5](docs/security.md)
+**References:** [Architecture — Container Inventory](architecture.md), [API Reference — Container Management](api-reference.md), [Security Guide §5](security.md)
 
 ---
 
@@ -244,7 +245,7 @@ The admin dashboard embeds two external UIs via Caddy reverse proxy routes.
 - [ ] **OpenCode UI** — embedded at `/admin/opencode*` → `opencode-core:4096` ([OpenCode Web/Server Mode](https://opencode.ai/docs/web/))
 - [ ] **OpenMemory UI** — embedded at `/admin/openmemory*` → `openmemory-ui:3000`
 
-**References:** [Architecture — URL Routing via Caddy](docs/architecture.md), [API Reference — LAN Web UIs](docs/api-reference.md)
+**References:** [Architecture — URL Routing via Caddy](architecture.md), [API Reference — LAN Web UIs](api-reference.md)
 
 ---
 
@@ -258,7 +259,7 @@ All admin write operations are protected by password-based authentication.
 - [ ] Unauthenticated access allowed only for: `/health`, `/admin/setup/*`, gallery read endpoints, and static assets
 - [ ] Admin panel only accessible from local network (enforced by Caddy LAN matchers)
 
-**References:** [Admin Guide §3 — Access Protection](docs/admin-guide.md), [Security Guide](docs/security.md), [Architecture — Security Model](docs/architecture.md)
+**References:** [Admin Guide §3 — Access Protection](admin-guide.md), [Security Guide](security.md), [Architecture — Security Model](architecture.md)
 
 ---
 
@@ -270,7 +271,7 @@ The admin service serves static files for the SPA.
 - [ ] Serve `index.html`, JavaScript bundles, CSS, and static assets (logo, etc.)
 - [ ] SPA routing — all unmatched `/admin*` routes serve `index.html`
 
-**References:** [Architecture — URL Routing](docs/architecture.md)
+**References:** [Architecture — URL Routing](architecture.md)
 
 ---
 
@@ -298,18 +299,18 @@ The admin service serves static files for the SPA.
 
 | Document | Description |
 |---|---|
-| [User Concepts](docs/user-concepts.md) | End-user guide to Extensions, Connections, Channels, Automations, Gateway |
-| [Admin Concepts](docs/admin-concepts.md) | Architecture concepts with full technical detail |
-| [Admin Guide](docs/admin-guide.md) | Installer flow, admin console pages, maintenance, hardening |
-| [Architecture](docs/architecture.md) | Container inventory, data flow, URL routing, storage, security model |
-| [API Reference](docs/api-reference.md) | All service endpoints: gateway, admin, controller, channels |
-| [Extensions Guide](docs/extensions-guide.md) | Extension types, install/uninstall flows, channel authoring, community registry |
-| [Extensions Reference](docs/extensions-reference.md) | Technical reference for all extension types |
-| [Security Guide](docs/security.md) | Defense-in-depth security layers |
-| [Host System Reference](docs/host-system-reference.md) | Host paths, env vars, network ports |
-| [Backup & Restore](docs/backup-restore.md) | Backup/restore procedures |
-| [Upgrade Guide](docs/upgrade-guide.md) | Upgrade procedures |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues and resolutions |
+| [User Concepts](user-concepts.md) | End-user guide to Extensions, Connections, Channels, Automations, Gateway |
+| [Admin Concepts](admin-concepts.md) | Architecture concepts with full technical detail |
+| [Admin Guide](admin-guide.md) | Installer flow, admin console pages, maintenance, hardening |
+| [Architecture](architecture.md) | Container inventory, data flow, URL routing, storage, security model |
+| [API Reference](api-reference.md) | All service endpoints: gateway, admin, controller, channels |
+| [Extensions Guide](extensions-guide.md) | Extension types, install/uninstall flows, channel authoring, community registry |
+| [Extensions Reference](extensions-reference.md) | Technical reference for all extension types |
+| [Security Guide](security.md) | Defense-in-depth security layers |
+| [Host System Reference](host-system-reference.md) | Host paths, env vars, network ports |
+| [Backup & Restore](backup-restore.md) | Backup/restore procedures |
+| [Upgrade Guide](upgrade-guide.md) | Upgrade procedures |
+| [Troubleshooting](troubleshooting.md) | Common issues and resolutions |
 
 **OpenCode documentation:**
 | Topic | URL |
