@@ -108,7 +108,7 @@ Admin Dashboard --> Admin --> Docker Compose
 
 Every component runs in its own container on a private network. The gateway verifies message signatures and validates input before anything reaches your assistant. The admin dashboard manages the system lifecycle.
 
-For the full architecture, container inventory, and routing details, see the [Architecture Guide](docs/architecture.md).
+For the full architecture, container inventory, and routing details, see the [Architecture Guide](docs/development/architecture.md).
 
 ## Configuration
 
@@ -146,14 +146,17 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | [User Concepts](docs/user-concepts.md) | What OpenPalm is and how end users interact with it |
 | [Admin Concepts](docs/admin-concepts.md) | Key concepts for administrators |
 | [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |
-| [Architecture](docs/architecture.md) | Container inventory, data flow diagrams, URL routing |
-| [API Reference](docs/api-reference.md) | All service endpoints: gateway, admin, channels |
+| [Architecture](docs/development/architecture.md) | Container inventory, data flow diagrams, URL routing |
+| [API Reference](docs/development/api-reference.md) | All service endpoints: gateway, admin, channels |
 | [Extensions Guide](docs/extensions-guide.md) | Plugin system, gallery, building channel plugins |
-| [Extensions Analysis](docs/extensions-analysis.md) | Architecture analysis of the extension system (design rationale) |
-| [Plugin Authoring](docs/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
-| [Implementation Guide](docs/implementation-guide.md) | Design rationale and build order |
+| [Extensions Reference](docs/refenence/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
+| [Extensions Analysis](docs/draft/extensions-analysis.md) | Architecture analysis of the extension system (design rationale) |
+| [Plugin Authoring](docs/development/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
+| [Docker Compose Guide](docs/docker-compose-guide.md) | Hosting, observability, extending the stack |
+| [Host System Reference](docs/refenence/host-system-reference.md) | Host paths, environment variables, system requirements |
+| [Implementation Guide](docs/draft/implementation-guide.md) | Design rationale and build order |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
-| [Testing Plan](docs/testing-plan.md) | Test strategy, coverage goals, and test categories |
+| [Testing Plan](docs/development/testing-plan.md) | Test strategy, coverage goals, and test categories |
 | [Backup & Restore](docs/backup-restore.md) | How to back up and restore OpenPalm data |
 | [Upgrade Guide](docs/upgrade-guide.md) | How to upgrade OpenPalm to a new version |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and how to resolve them |
