@@ -52,8 +52,9 @@ beforeAll(async () => {
   if (existsSync(buildDir)) {
     cpSync(buildDir, uiDir, { recursive: true });
   } else {
-    writeFileSync(join(uiDir, "index.html"), '<!doctype html><html lang="en"><head><title>OpenPalm Admin</title></head><body></body></html>', "utf8");
-    writeFileSync(join(uiDir, "logo.png"), "", "utf8");
+    writeFileSync(join(uiDir, "index.html"), '<!doctype html><html lang="en"><head><title>OpenPalm Admin</title><link rel="stylesheet" href="/_app/immutable/assets/app.css"></head><body><div id="app"></div><script type="module" src="/_app/immutable/entry/start.js"></script></body></html>', "utf8");
+    // Minimal valid PNG (1x1 transparent pixel)
+    writeFileSync(join(uiDir, "logo.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRU5ErkJggg==", "base64"));
   }
 
   // Copy config files
