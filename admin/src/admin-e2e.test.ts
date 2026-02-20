@@ -1912,7 +1912,7 @@ describe("provider openmemory role assignment", () => {
       body: JSON.stringify({ name: "OpenMem Provider", url: "http://localhost:11435/v1", apiKey: "test-key" }),
     });
     expect(r.ok).toBe(true);
-    testProviderId = r.data.provider?.id as string;
+    testProviderId = (r.data.provider as Record<string, unknown>)?.id as string;
     expect(testProviderId).toBeTruthy();
   });
 
@@ -1923,7 +1923,8 @@ describe("provider openmemory role assignment", () => {
     });
     expect(r.ok).toBe(true);
     expect(r.data.assignments).toHaveProperty("openmemory");
-    const assignment = r.data.assignments.openmemory as { providerId: string; modelId: string };
+    const assignments = r.data.assignments as Record<string, { providerId: string; modelId: string }>;
+    const assignment = assignments.openmemory;
     expect(assignment.providerId).toBe(testProviderId);
     expect(assignment.modelId).toBe("llama3:8b");
   });
@@ -1931,7 +1932,8 @@ describe("provider openmemory role assignment", () => {
   it("GET /admin/providers reflects openmemory assignment", async () => {
     const r = await authed("/admin/providers");
     expect(r.ok).toBe(true);
-    const assignment = r.data.assignments?.openmemory as { providerId: string; modelId: string } | undefined;
+    const assignments = r.data.assignments as Record<string, { providerId: string; modelId: string }> | undefined;
+    const assignment = assignments?.openmemory;
     expect(assignment?.modelId).toBe("llama3:8b");
   });
 });
