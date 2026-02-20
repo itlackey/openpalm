@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync, statSync, renameSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join, extname } from "node:path";
 import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
@@ -49,6 +49,15 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
 };
 
+/** Explicit field metadata — avoids heuristic misclassifications */
+const CHANNEL_FIELD_META: Record<string, { label: string; type: "text" | "password"; required: boolean; helpText?: string }> = {
+  CHAT_INBOUND_TOKEN: { label: "Inbound Token", type: "password", required: false, helpText: "Token for authenticating incoming chat messages" },
+  DISCORD_BOT_TOKEN: { label: "Bot Token", type: "password", required: true, helpText: "Create a bot at discord.com/developers and copy the token" },
+  DISCORD_PUBLIC_KEY: { label: "Public Key", type: "text", required: true, helpText: "Found on the same page as your bot token" },
+  TELEGRAM_BOT_TOKEN: { label: "Bot Token", type: "password", required: true, helpText: "Get a bot token from @BotFather on Telegram" },
+  TELEGRAM_WEBHOOK_SECRET: { label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" },
+};
+
 const setupManager = new SetupManager(DATA_DIR);
 const automationStore = new AutomationStore(DATA_DIR, CRON_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
@@ -71,10 +80,10 @@ function auth(req: Request) {
   return req.headers.get("x-admin-token") === ADMIN_TOKEN;
 }
 
-async function controllerAction(action: string, service: string, reason: string) {
-  if (!CONTROLLER_URL) return;
+async function controllerAction(action: string, service: string, reason: string): Promise<{ ok: boolean; error?: string }> {
+  if (!CONTROLLER_URL) return { ok: false, error: "controller not configured" };
   try {
-    await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
+    const resp = await fetch(`${CONTROLLER_URL}/${action}/${service}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -82,8 +91,17 @@ async function controllerAction(action: string, service: string, reason: string)
       },
       body: JSON.stringify({ reason })
     });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({})) as Record<string, unknown>;
+      const errMsg = typeof body.error === "string" ? body.error : `controller returned ${resp.status}`;
+      console.error(`[controllerAction] ${action}/${service}: ${errMsg}`);
+      return { ok: false, error: errMsg };
+    }
+    return { ok: true };
   } catch (err) {
-    console.error(`[controllerAction] ${action}/${service} failed:`, err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[controllerAction] ${action}/${service} failed:`, msg);
+    return { ok: false, error: msg };
   }
 }
 
@@ -91,6 +109,13 @@ function snapshotFile(path: string) {
   const backup = `${path}.${Date.now()}.bak`;
   copyFileSync(path, backup);
   return backup;
+}
+
+/** Atomic write: write to temp file then rename, preventing partial writes */
+function atomicWriteFileSync(filePath: string, content: string) {
+  const tmp = join(dirname(filePath), `.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  writeFileSync(tmp, content, "utf8");
+  renameSync(tmp, filePath);
 }
 
 
@@ -120,12 +145,14 @@ function channelPort(channel: ChannelName) {
 }
 
 function detectChannelAccess(channel: ChannelName): "lan" | "public" {
+  if (!existsSync(CADDYFILE_PATH)) return "public";
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const block = raw.match(new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m"))?.[0] ?? "";
+  const block = raw.match(new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n[ \\t]*\\}`, "m"))?.[0] ?? "";
   return block.includes("abort @not_lan") ? "lan" : "public";
 }
 
 function setChannelAccess(channel: ChannelName, access: "lan" | "public") {
+  if (!existsSync(CADDYFILE_PATH)) throw new Error("Caddyfile not found");
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
   const blockRegex = new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n[ \\t]*\\}`, "m");
   const replacement = access === "lan"
@@ -144,11 +171,13 @@ function setChannelAccess(channel: ChannelName, access: "lan" | "public") {
     ].join("\n");
 
   if (!blockRegex.test(raw)) throw new Error(`missing_${channel}_route_block`);
-  writeFileSync(CADDYFILE_PATH, raw.replace(blockRegex, replacement), "utf8");
+  atomicWriteFileSync(CADDYFILE_PATH, raw.replace(blockRegex, replacement));
 }
 
 function channelEnvPath(service: string) {
-  return `${CHANNEL_ENV_DIR}/${service}.env`;
+  // Compose env_file uses short names (chat.env, discord.env, etc.)
+  const shortName = service.replace(/^channel-/, "");
+  return `${CHANNEL_ENV_DIR}/${shortName}.env`;
 }
 
 function readChannelConfig(service: string) {
@@ -177,6 +206,7 @@ function writeChannelConfig(service: string, values: Record<string, string>) {
 }
 
 function setAccessScope(scope: "host" | "lan") {
+  if (!existsSync(CADDYFILE_PATH)) throw new Error("Caddyfile not found");
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
   const lanRanges = "127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8";
   const hostRanges = "127.0.0.0/8 ::1";
@@ -187,10 +217,13 @@ function setAccessScope(scope: "host" | "lan") {
     ? `@not_lan not remote_ip ${hostRanges}`
     : `@not_lan not remote_ip ${lanRanges}`;
 
+  if (!/@lan remote_ip/.test(raw)) throw new Error("Caddyfile missing @lan matcher");
+  if (!/@not_lan not remote_ip/.test(raw)) throw new Error("Caddyfile missing @not_lan matcher");
+
   const next = raw
     .replace(/^\s*@lan remote_ip .+$/m, `\t${lanMatcher}`)
     .replace(/^\s*@not_lan not remote_ip .+$/m, `\t${notLanMatcher}`);
-  writeFileSync(CADDYFILE_PATH, next, "utf8");
+  atomicWriteFileSync(CADDYFILE_PATH, next);
 }
 
 function setRuntimeBindScope(scope: "host" | "lan") {
@@ -276,7 +309,7 @@ function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
     doc.provider = providers;
   }
   const next = stringifyPretty(doc);
-  writeFileSync(OPENCODE_CONFIG_PATH, next, "utf8");
+  atomicWriteFileSync(OPENCODE_CONFIG_PATH, next);
 }
 
 function applyProviderAssignment(role: ModelAssignment, providerUrl: string, providerApiKey: string, modelId: string) {
@@ -297,7 +330,9 @@ async function fetchModelsFromProvider(url: string, apiKey: string): Promise<{ i
   let parsed: URL;
   try { parsed = new URL(url); } catch { throw new Error("invalid provider URL"); }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("provider URL must use http or https");
-  const modelsUrl = url.replace(/\/+$/, "") + "/models";
+  // Append /v1/models unless the URL already contains /v1
+  const normalized = url.replace(/\/+$/, "");
+  const modelsUrl = normalized.endsWith("/v1") ? `${normalized}/models` : `${normalized}/v1/models`;
   const headers: Record<string, string> = { "accept": "application/json" };
   if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
   const resp = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(10_000) });
@@ -389,6 +424,8 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
+        const current = setupManager.getState();
+        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { step: string };
         const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions"];
         if (!validSteps.includes(body.step)) return cors(json(400, { error: "invalid step" }));
@@ -403,12 +440,15 @@ const server = Bun.serve({
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         setAccessScope(body.scope);
         setRuntimeBindScope(body.scope);
+        // Use "restart" for Caddy so it reloads the updated Caddyfile
+        // Use "up" for services so they pick up new env_file values
         await Promise.all([
-          controllerAction("up", "caddy", `setup scope: ${body.scope}`),
+          controllerAction("restart", "caddy", `setup scope: ${body.scope}`),
           controllerAction("up", "openmemory", `setup scope: ${body.scope}`),
           controllerAction("up", "opencode-core", `setup scope: ${body.scope}`),
         ]);
-        const state = setupManager.setAccessScope(body.scope);
+        setupManager.setAccessScope(body.scope);
+        const state = setupManager.completeStep("accessScope");
         return cors(json(200, { ok: true, state }));
       }
 
@@ -440,14 +480,15 @@ const server = Bun.serve({
         const secretEntries: Record<string, string | undefined> = {
           OPENAI_BASE_URL: openaiBaseUrl || undefined
         };
-        if (openaiApiKey.length > 0) {
-          secretEntries.OPENAI_API_KEY = openaiApiKey;
+        // Allow clearing keys by setting to undefined when explicitly provided as empty
+        if (body.openaiApiKey !== undefined) {
+          secretEntries.OPENAI_API_KEY = openaiApiKey || undefined;
         }
-        if (anthropicApiKey.length > 0) {
-          secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
+        if (body.anthropicApiKey !== undefined) {
+          secretEntries.ANTHROPIC_API_KEY = anthropicApiKey || undefined;
         }
-        if (smallModelApiKey.length > 0) {
-          secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
+        if (body.smallModelApiKey !== undefined) {
+          secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey || undefined;
         }
         updateSecretsEnv(secretEntries);
         const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
@@ -538,8 +579,16 @@ const server = Bun.serve({
 
         if (body.galleryId) {
           // Look up in curated gallery first, then fall back to community registry
+          const isCurated = !!getGalleryItem(body.galleryId);
           const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
           if (!item) return cors(json(404, { error: "gallery item not found" }));
+
+          // Validate installTarget from community registry items to prevent path traversal
+          if (!isCurated && item.installAction === "plugin") {
+            if (!validatePluginIdentifier(item.installTarget)) {
+              return cors(json(400, { error: "community registry item has invalid installTarget" }));
+            }
+          }
 
           if (item.installAction === "plugin") {
             const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, true);
@@ -548,15 +597,19 @@ const server = Bun.serve({
             return cors(json(200, { ok: true, installed: item.id, type: "plugin", result }));
           }
 
-          if (item.installAction === "skill-file") {
+          if (item.installAction === "skill-file" || item.installAction === "command-file" || item.installAction === "agent-file" || item.installAction === "tool-file") {
+            // Built-in file-based extensions ship with OpenPalm — just mark as enabled
             setupManager.addExtension(item.id);
-            return cors(json(200, { ok: true, installed: item.id, type: "skill", note: "Skill files ship with OpenPalm. Marked as enabled." }));
+            return cors(json(200, { ok: true, installed: item.id, type: item.installAction, note: "Built-in extension. Marked as enabled." }));
           }
 
           if (item.installAction === "compose-service") {
             await controllerAction("up", item.installTarget, `gallery install: ${item.name}`);
             setupManager.addExtension(item.id);
-            setupManager.addChannel(item.installTarget);
+            // Only track as channel if it's actually a channel service
+            if (CHANNEL_SERVICE_SET.has(item.installTarget)) {
+              setupManager.addChannel(item.installTarget);
+            }
             return cors(json(200, { ok: true, installed: item.id, type: "container", service: item.installTarget }));
           }
 
@@ -567,6 +620,7 @@ const server = Bun.serve({
           if (!validatePluginIdentifier(body.pluginId)) return cors(json(400, { error: "invalid plugin id" }));
           const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, body.pluginId, true);
           await controllerAction("restart", "opencode-core", `npm plugin install: ${body.pluginId}`);
+          setupManager.addExtension(body.pluginId);
           return cors(json(200, { ok: true, pluginId: body.pluginId, result }));
         }
 
@@ -584,12 +638,18 @@ const server = Bun.serve({
           if (item.installAction === "plugin") {
             const result = updatePluginListAtomically(OPENCODE_CONFIG_PATH, item.installTarget, false);
             await controllerAction("restart", "opencode-core", `gallery uninstall: ${item.name}`);
+            setupManager.removeExtension(item.id);
             return cors(json(200, { ok: true, uninstalled: item.id, type: "plugin", result }));
           }
           if (item.installAction === "compose-service") {
             await controllerAction("down", item.installTarget, `gallery uninstall: ${item.name}`);
+            setupManager.removeExtension(item.id);
+            if (CHANNEL_SERVICE_SET.has(item.installTarget)) {
+              setupManager.removeChannel(item.installTarget);
+            }
             return cors(json(200, { ok: true, uninstalled: item.id, type: "container", service: item.installTarget }));
           }
+          setupManager.removeExtension(item.id);
           return cors(json(200, { ok: true, uninstalled: item.id, type: item.installAction }));
         }
 
@@ -630,7 +690,8 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await controllerAction("up", body.service, "admin action");
+        const result = await controllerAction("up", body.service, "admin action");
+        if (!result.ok) return cors(json(502, { ok: false, error: result.error, action: "up", service: body.service }));
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
 
@@ -638,7 +699,8 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await controllerAction("down", body.service, "admin action");
+        const result = await controllerAction("down", body.service, "admin action");
+        if (!result.ok) return cors(json(502, { ok: false, error: result.error, action: "down", service: body.service }));
         return cors(json(200, { ok: true, action: "down", service: body.service }));
       }
 
@@ -646,7 +708,8 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await controllerAction("restart", body.service, "admin action");
+        const result = await controllerAction("restart", body.service, "admin action");
+        if (!result.ok) return cors(json(502, { ok: false, error: result.error, action: "restart", service: body.service }));
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
 
@@ -660,12 +723,16 @@ const server = Bun.serve({
               label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
               access: detectChannelAccess(channelName),
               config: readChannelConfig(service),
-              fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => ({
-                key,
-                label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
-                type: key.toLowerCase().includes("token") || key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") ? "password" : "text",
-                required: key.includes("BOT_TOKEN"),
-              }))
+              fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => {
+                const meta = CHANNEL_FIELD_META[key];
+                return {
+                  key,
+                  label: meta?.label ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                  type: meta?.type ?? "text",
+                  required: meta?.required ?? false,
+                  ...(meta?.helpText ? { helpText: meta.helpText } : {}),
+                };
+              })
             };
           })
         }));
@@ -693,7 +760,9 @@ const server = Bun.serve({
         const body = (await req.json()) as { service: string; config: Record<string, string>; restart?: boolean };
         if (!CHANNEL_SERVICES.includes(body.service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
         writeChannelConfig(body.service, body.config ?? {});
-        if (body.restart ?? true) await controllerAction("restart", body.service, "channel config update");
+        // Use "up" (not "restart") so docker compose recreates the container
+        // and re-reads env_file declarations with the new values
+        if (body.restart ?? true) await controllerAction("up", body.service, "channel config update");
         return cors(json(200, { ok: true, service: body.service }));
       }
 
@@ -788,6 +857,10 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { name?: string; url?: string; apiKey?: string };
         if (!body.name) return cors(json(400, { error: "name is required" }));
+        const existing = providerStore.listProviders();
+        if (existing.some((p) => p.name.toLowerCase() === body.name!.toLowerCase())) {
+          return cors(json(409, { error: "a provider with this name already exists" }));
+        }
         const provider = providerStore.addProvider({
           name: body.name,
           url: body.url ?? "",
@@ -817,12 +890,15 @@ const server = Bun.serve({
           .map(([role]) => role);
         const removed = providerStore.removeProvider(body.id);
         if (!removed) return cors(json(404, { error: "provider not found" }));
-        // Restart services that depended on the deleted provider
+        // Clear env vars and restart services that depended on the deleted provider
         for (const role of affectedRoles) {
-          if (role === "small" || role === "openmemory") {
+          if (role === "small") {
+            updateSecretsEnv({ OPENPALM_SMALL_MODEL_API_KEY: undefined });
             await controllerAction("restart", "opencode-core", `provider deleted: ${role} assignment cleared`);
           }
           if (role === "openmemory") {
+            updateSecretsEnv({ OPENAI_BASE_URL: undefined, OPENAI_API_KEY: undefined });
+            await controllerAction("restart", "opencode-core", `provider deleted: ${role} assignment cleared`);
             await controllerAction("restart", "openmemory", `provider deleted: openmemory assignment cleared`);
           }
         }
@@ -868,8 +944,16 @@ const server = Bun.serve({
         const body = (await req.json()) as { config: string; restart?: boolean };
         const parsed = parseJsonc(body.config);
         if (typeof parsed !== "object") return cors(json(400, { error: "The configuration file has a syntax error" }));
-        const permissions = (parsed as Record<string, unknown>).permission as Record<string, string> | undefined;
-        if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
+        // Recursively check for "allow" values in the permission tree
+        function hasAllowValue(obj: unknown): boolean {
+          if (obj === "allow") return true;
+          if (obj && typeof obj === "object") {
+            return Object.values(obj as Record<string, unknown>).some(hasAllowValue);
+          }
+          return false;
+        }
+        const permissions = (parsed as Record<string, unknown>).permission;
+        if (permissions && hasAllowValue(permissions)) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
         ensureOpencodeConfigPath();
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");

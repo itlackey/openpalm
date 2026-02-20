@@ -11,9 +11,10 @@ const CONTAINER_SOCKET_URI = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///v
 const COMPOSE_COMMAND_DISPLAY = [COMPOSE_BIN, COMPOSE_SUBCOMMAND].filter(Boolean).join(" ");
 
 const CORE_SERVICES = new Set([
-  "opencode-core", "gateway", "openmemory", "admin",
+  "opencode-core", "gateway", "openmemory", "openmemory-ui", "admin",
   "channel-chat", "channel-discord", "channel-voice",
-  "channel-telegram", "caddy"
+  "channel-telegram", "caddy", "controller",
+  "n8n", "ollama", "searxng"
 ]);
 const EXTRA_SERVICES = (Bun.env.OPENPALM_EXTRA_SERVICES ?? "")
   .split(",")
@@ -62,7 +63,22 @@ export function createControllerFetch(controllerToken: string, compose: ComposeR
     if (req.method === "GET" && url.pathname === "/containers") {
       const result = await compose(["ps", "--format", "json"]);
       if (!result.ok) return json(500, { ok: false, error: result.stderr });
-      return json(200, { ok: true, containers: result.stdout });
+      // docker compose ps --format json outputs one JSON object per line (NDJSON)
+      // or a JSON array depending on version. Parse both formats.
+      let containers: unknown[];
+      try {
+        const trimmed = result.stdout.trim();
+        if (!trimmed) {
+          containers = [];
+        } else if (trimmed.startsWith("[")) {
+          containers = JSON.parse(trimmed);
+        } else {
+          containers = trimmed.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+        }
+      } catch {
+        containers = [];
+      }
+      return json(200, { ok: true, containers });
     }
 
     if (req.method === "POST" && url.pathname.startsWith("/restart/")) {

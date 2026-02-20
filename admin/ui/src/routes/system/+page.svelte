@@ -71,8 +71,16 @@
 
 	function formatTime(time?: string): string {
 		if (!time) return '';
+		// If it looks like an ISO timestamp, format it as a locale time string
+		if (time.includes('T') || time.includes('-')) {
+			try {
+				const d = new Date(time);
+				if (!isNaN(d.getTime())) return d.toLocaleTimeString();
+			} catch { /* fall through */ }
+		}
+		// Pure numeric string = milliseconds
 		const ms = parseInt(time, 10);
-		if (!isNaN(ms)) return `${ms}ms`;
+		if (!isNaN(ms) && String(ms) === time.trim()) return `${ms}ms`;
 		return time;
 	}
 

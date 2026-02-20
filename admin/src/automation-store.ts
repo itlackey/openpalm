@@ -32,6 +32,8 @@ export class AutomationStore {
     this.crontabDir = crontabDir;
     this.payloadDir = `${crontabDir}/cron-payloads`;
     mkdirSync(this.payloadDir, { recursive: true });
+    // Sync crontab on startup so it matches persisted state
+    this.writeCrontab();
   }
 
   list(): Automation[] {
@@ -93,7 +95,9 @@ export class AutomationStore {
 
       // Add crontab entry (commented out if disabled)
       const prefix = job.status === "enabled" ? "" : "# DISABLED: ";
-      lines.push(`# ${job.name} (${job.id})`);
+      // Sanitize name to prevent crontab injection via newlines
+      const safeName = job.name.replace(/[\r\n]/g, " ");
+      lines.push(`# ${safeName} (${job.id})`);
       lines.push(
         `${prefix}${job.schedule} curl -sf -m 120 -X POST http://localhost:4096/chat -H 'Content-Type: application/json' -d @/cron/cron-payloads/${job.id}.json >/dev/null 2>&1`
       );
@@ -104,20 +108,50 @@ export class AutomationStore {
   }
 }
 
+// Validates a single cron field value against a min/max range.
+function validateCronField(field: string, min: number, max: number, label: string): string | null {
+  for (const part of field.split(",")) {
+    if (!part) return `empty value in ${label} field`;
+    const [base, stepStr] = part.split("/");
+    if (stepStr !== undefined) {
+      const step = parseInt(stepStr, 10);
+      if (isNaN(step) || step < 1) return `invalid step "${stepStr}" in ${label} field`;
+    }
+    if (base === "*") continue;
+    if (base.includes("-")) {
+      const [lo, hi] = base.split("-");
+      const loN = parseInt(lo, 10);
+      const hiN = parseInt(hi, 10);
+      if (isNaN(loN) || isNaN(hiN)) return `invalid range "${base}" in ${label} field`;
+      if (loN < min || loN > max) return `${label} value ${loN} out of range ${min}-${max}`;
+      if (hiN < min || hiN > max) return `${label} value ${hiN} out of range ${min}-${max}`;
+      if (loN > hiN) return `invalid range ${loN}-${hiN} in ${label} field`;
+      continue;
+    }
+    const n = parseInt(base, 10);
+    if (isNaN(n)) return `invalid value "${base}" in ${label} field`;
+    if (n < min || n > max) return `${label} value ${n} out of range ${min}-${max}`;
+  }
+  return null;
+}
+
 /**
- * Basic validation for 5-field cron expressions.
+ * Validates a 5-field cron expression with numeric range checking.
  * Returns null if valid, or an error message string.
  */
 export function validateCron(expr: string): string | null {
+  if (!expr || !expr.trim()) return "cron expression is required";
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return "cron expression must have exactly 5 fields";
-  // Validate each field allows only cron-legal characters: digits, *, /, -, ,
   const fieldPattern = /^[\d*\/\-,]+$/;
   const labels = ["minute", "hour", "day-of-month", "month", "day-of-week"];
+  const ranges: [number, number][] = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]];
   for (let i = 0; i < 5; i++) {
     if (!fieldPattern.test(parts[i])) {
       return `invalid characters in ${labels[i]} field: "${parts[i]}"`;
     }
+    const rangeErr = validateCronField(parts[i], ranges[i][0], ranges[i][1], labels[i]);
+    if (rangeErr) return rangeErr;
   }
   return null;
 }

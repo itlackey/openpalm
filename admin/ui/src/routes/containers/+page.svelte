@@ -10,7 +10,7 @@
 		[key: string]: unknown;
 	};
 
-	type ContainerListResponse = ContainerStatus[] | Record<string, ContainerStatus>;
+	type ContainerListResponse = { ok: boolean; containers: ContainerStatus[] } | ContainerStatus[] | Record<string, ContainerStatus>;
 
 	type ContainerActionResponse = {
 		ok: boolean;
@@ -69,15 +69,21 @@
 		loadContainers();
 	});
 
+	function extractContainers(data: ContainerListResponse): ContainerStatus[] {
+		// Controller returns { ok, containers: [...] }
+		if (data && typeof data === 'object' && 'containers' in data && Array.isArray((data as { containers: unknown }).containers)) {
+			return (data as { containers: ContainerStatus[] }).containers;
+		}
+		if (Array.isArray(data)) return data;
+		if (typeof data === 'object') return Object.values(data);
+		return [];
+	}
+
 	async function loadContainers() {
 		loading = true;
 		const res = await apiGet<ContainerListResponse>('/admin/containers/list');
 		if (res.ok && res.data) {
-			if (Array.isArray(res.data)) {
-				containers = res.data;
-			} else if (typeof res.data === 'object') {
-				containers = Object.values(res.data);
-			}
+			containers = extractContainers(res.data);
 		} else {
 			showToast('Failed to fetch container list', 'error');
 			containers = [];
@@ -89,11 +95,7 @@
 		refreshing = true;
 		const res = await apiGet<ContainerListResponse>('/admin/containers/list');
 		if (res.ok && res.data) {
-			if (Array.isArray(res.data)) {
-				containers = res.data;
-			} else if (typeof res.data === 'object') {
-				containers = Object.values(res.data);
-			}
+			containers = extractContainers(res.data);
 			showToast('Container list refreshed', 'success');
 		} else {
 			showToast('Failed to refresh container list', 'error');
@@ -144,11 +146,7 @@
 				// Refresh the container list after action
 				const listRes = await apiGet<ContainerListResponse>('/admin/containers/list');
 				if (listRes.ok && listRes.data) {
-					if (Array.isArray(listRes.data)) {
-						containers = listRes.data;
-					} else if (typeof listRes.data === 'object') {
-						containers = Object.values(listRes.data);
-					}
+					containers = extractContainers(listRes.data);
 				}
 			} else {
 				const errData = res.data as unknown as { error?: string };

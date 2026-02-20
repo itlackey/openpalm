@@ -604,7 +604,7 @@ describe("setup wizard complete flow", () => {
   it("full wizard step completion flow (all steps marked, then complete)", async () => {
     const steps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions"];
     for (const step of steps) {
-      const r = await apiJson("/admin/setup/step", {
+      const r = await authed("/admin/setup/step", {
         method: "POST",
         body: JSON.stringify({ step }),
       });
@@ -1210,15 +1210,14 @@ describe("config editor extended", () => {
 // ── Container Management Tests ──────────────────────────
 
 describe("container management", () => {
-  it("POST /admin/containers/up with valid service returns ok", async () => {
+  it("POST /admin/containers/up with valid service returns 502 without controller", async () => {
     const r = await authed("/admin/containers/up", {
       method: "POST",
       body: JSON.stringify({ service: "opencode-core" }),
     });
-    expect(r.ok).toBe(true);
-    expect(r.data.ok).toBe(true);
-    expect(r.data.action).toBe("up");
-    expect(r.data.service).toBe("opencode-core");
+    expect(r.status).toBe(502);
+    expect(r.data.ok).toBe(false);
+    expect(r.data.error).toBe("controller not configured");
   });
 
   it("POST /admin/containers/up with invalid service name returns 400", async () => {
@@ -1230,14 +1229,14 @@ describe("container management", () => {
     expect(r.data.error).toBe("unknown service name");
   });
 
-  it("POST /admin/containers/down with valid service returns ok", async () => {
+  it("POST /admin/containers/down with valid service returns 502 without controller", async () => {
     const r = await authed("/admin/containers/down", {
       method: "POST",
       body: JSON.stringify({ service: "channel-chat" }),
     });
-    expect(r.ok).toBe(true);
-    expect(r.data.ok).toBe(true);
-    expect(r.data.action).toBe("down");
+    expect(r.status).toBe(502);
+    expect(r.data.ok).toBe(false);
+    expect(r.data.error).toBe("controller not configured");
   });
 
   it("POST /admin/containers/down with invalid service name returns 400", async () => {
@@ -1249,14 +1248,14 @@ describe("container management", () => {
     expect(r.data.error).toBe("unknown service name");
   });
 
-  it("POST /admin/containers/restart with valid service returns ok", async () => {
+  it("POST /admin/containers/restart with valid service returns 502 without controller", async () => {
     const r = await authed("/admin/containers/restart", {
       method: "POST",
       body: JSON.stringify({ service: "gateway" }),
     });
-    expect(r.ok).toBe(true);
-    expect(r.data.ok).toBe(true);
-    expect(r.data.action).toBe("restart");
+    expect(r.status).toBe(502);
+    expect(r.data.ok).toBe(false);
+    expect(r.data.error).toBe("controller not configured");
   });
 
   it("POST /admin/containers/restart with invalid service name returns 400", async () => {
@@ -1671,41 +1670,38 @@ describe("container management for all services", () => {
   ];
 
   for (const service of allowedServices) {
-    it(`POST /admin/containers/up for ${service} returns ok`, async () => {
+    it(`POST /admin/containers/up for ${service} returns 502 without controller`, async () => {
       const r = await authed("/admin/containers/up", {
         method: "POST",
         body: JSON.stringify({ service }),
       });
-      expect(r.ok).toBe(true);
-      expect(r.data.ok).toBe(true);
-      expect(r.data.service).toBe(service);
-      expect(r.data.action).toBe("up");
+      expect(r.status).toBe(502);
+      expect(r.data.ok).toBe(false);
+      expect(r.data.error).toBe("controller not configured");
     });
   }
 
   for (const service of allowedServices) {
-    it(`POST /admin/containers/down for ${service} returns ok`, async () => {
+    it(`POST /admin/containers/down for ${service} returns 502 without controller`, async () => {
       const r = await authed("/admin/containers/down", {
         method: "POST",
         body: JSON.stringify({ service }),
       });
-      expect(r.ok).toBe(true);
-      expect(r.data.ok).toBe(true);
-      expect(r.data.service).toBe(service);
-      expect(r.data.action).toBe("down");
+      expect(r.status).toBe(502);
+      expect(r.data.ok).toBe(false);
+      expect(r.data.error).toBe("controller not configured");
     });
   }
 
   for (const service of allowedServices) {
-    it(`POST /admin/containers/restart for ${service} returns ok`, async () => {
+    it(`POST /admin/containers/restart for ${service} returns 502 without controller`, async () => {
       const r = await authed("/admin/containers/restart", {
         method: "POST",
         body: JSON.stringify({ service }),
       });
-      expect(r.ok).toBe(true);
-      expect(r.data.ok).toBe(true);
-      expect(r.data.service).toBe(service);
-      expect(r.data.action).toBe("restart");
+      expect(r.status).toBe(502);
+      expect(r.data.ok).toBe(false);
+      expect(r.data.error).toBe("controller not configured");
     });
   }
 });
@@ -1803,14 +1799,14 @@ describe("CORS preflight for protected endpoints", () => {
 // Regression: Covers skill-file, compose-service, command-file, agent-file, tool-file installs
 
 describe("gallery install action branches", () => {
-  it("install skill-file item returns type skill", async () => {
+  it("install skill-file item returns type skill-file", async () => {
     const r = await authed("/admin/gallery/install", {
       method: "POST",
       body: JSON.stringify({ galleryId: "skill-memory" }),
     });
     expect(r.ok).toBe(true);
     expect(r.data.ok).toBe(true);
-    expect(r.data.type).toBe("skill");
+    expect(r.data.type).toBe("skill-file");
     expect(r.data.installed).toBe("skill-memory");
   });
 
@@ -1826,16 +1822,17 @@ describe("gallery install action branches", () => {
     expect(r.data.installed).toBe("channel-chat");
   });
 
-  it("install command-file item falls through to unknown install action", async () => {
-    // command-file, agent-file, and tool-file do not have a dedicated install branch
-    // in the server code (only plugin, skill-file, compose-service do)
-    // so they should return 400 "unknown install action"
+  it("install command-file item returns type command-file", async () => {
+    // command-file, agent-file, and tool-file are now handled alongside skill-file
+    // as built-in file-based extensions that get marked as enabled
     const r = await authed("/admin/gallery/install", {
       method: "POST",
       body: JSON.stringify({ galleryId: "command-health" }),
     });
-    expect(r.status).toBe(400);
-    expect(r.data.error).toBe("unknown install action");
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.type).toBe("command-file");
+    expect(r.data.installed).toBe("command-health");
   });
 
   it("install via pluginId with valid npm package name", async () => {
@@ -2052,5 +2049,229 @@ describe("static file serving edge cases", () => {
     const r = await api("/admin/unknown-page", { method: "POST" });
     // Should return 404, not the SPA HTML
     expect(r.status).not.toBe(200);
+  });
+});
+
+// ── Audit Regression Tests ──────────────────────────────────
+// These tests cover specific bugs found and fixed during the security/quality audit.
+
+// ── C1: detectChannelAccess regex fix ───────────────────────
+// Regression: GET /admin/channels must return the correct access mode after toggling.
+
+describe("C1: detectChannelAccess regex fix", () => {
+  it("GET /admin/channels reflects access mode after toggling to lan", async () => {
+    // Set channel-chat to "lan"
+    const setLan = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", access: "lan" }),
+    });
+    expect(setLan.ok).toBe(true);
+
+    // Verify GET /admin/channels reports access: "lan" for chat
+    const list = await authed("/admin/channels");
+    expect(list.ok).toBe(true);
+    const channels = list.data.channels as Array<{ service: string; access: string }>;
+    const chat = channels.find((c) => c.service === "channel-chat");
+    expect(chat).toBeTruthy();
+    expect(chat!.access).toBe("lan");
+  });
+
+  it("GET /admin/channels reflects access mode after toggling back to public", async () => {
+    // Toggle back to "public"
+    const setPublic = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", access: "public" }),
+    });
+    expect(setPublic.ok).toBe(true);
+
+    // Verify GET /admin/channels reports access: "public" for chat
+    const list = await authed("/admin/channels");
+    expect(list.ok).toBe(true);
+    const channels = list.data.channels as Array<{ service: string; access: string }>;
+    const chat = channels.find((c) => c.service === "channel-chat");
+    expect(chat).toBeTruthy();
+    expect(chat!.access).toBe("public");
+  });
+});
+
+// ── C2: Channel env file naming fix ─────────────────────────
+// Regression: POST /admin/channels/config must write to the correct file
+// and GET /admin/channels must return the saved config values.
+
+describe("C2: channel env file naming fix", () => {
+  it("saves discord config and reads it back via GET /admin/channels", async () => {
+    // Save discord config
+    const save = await authed("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({
+        service: "channel-discord",
+        config: { DISCORD_BOT_TOKEN: "c2-regression-token", DISCORD_PUBLIC_KEY: "c2-regression-key" },
+      }),
+    });
+    expect(save.ok).toBe(true);
+
+    // Read back via GET /admin/channels (which reads from the env file)
+    const list = await authed("/admin/channels");
+    expect(list.ok).toBe(true);
+    const channels = list.data.channels as Array<{ service: string; config: Record<string, string> }>;
+    const discord = channels.find((c) => c.service === "channel-discord");
+    expect(discord).toBeTruthy();
+    expect(discord!.config.DISCORD_BOT_TOKEN).toBe("c2-regression-token");
+    expect(discord!.config.DISCORD_PUBLIC_KEY).toBe("c2-regression-key");
+  });
+});
+
+// ── H4: removeExtension/removeChannel — uninstall removes from setup state ──
+
+describe("H4: uninstall removes from installed list", () => {
+  it("install then uninstall removes gallery item from GET /admin/installed", async () => {
+    // Install a gallery item
+    const install = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "plugin-policy-telemetry" }),
+    });
+    expect(install.ok).toBe(true);
+
+    // Verify it appears in installed list
+    const afterInstall = await authed("/admin/installed");
+    expect(afterInstall.ok).toBe(true);
+    const pluginsAfterInstall = afterInstall.data.plugins as string[];
+    expect(pluginsAfterInstall.length).toBeGreaterThan(0);
+
+    // Uninstall it
+    const uninstall = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "plugin-policy-telemetry" }),
+    });
+    expect(uninstall.ok).toBe(true);
+
+    // Verify it is removed from installed list
+    const afterUninstall = await authed("/admin/installed");
+    expect(afterUninstall.ok).toBe(true);
+    const pluginsAfterUninstall = afterUninstall.data.plugins as string[];
+    // The plugin that was just uninstalled should no longer appear
+    // (the list should be shorter or the specific plugin ID absent)
+    expect(pluginsAfterUninstall.length).toBeLessThan(pluginsAfterInstall.length);
+  });
+});
+
+// ── H15: Nested permission lint ─────────────────────────────
+// Regression: Config with nested "allow" inside permission.tools must be rejected.
+
+describe("H15: nested permission lint", () => {
+  it("rejects config with nested allow in permission.tools", async () => {
+    const config = JSON.stringify({
+      permission: { tools: { bash: "allow" } },
+    });
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("This change would weaken security protections and was blocked");
+  });
+
+  it("rejects config with deeply nested allow in permission tree", async () => {
+    const config = JSON.stringify({
+      permission: { tools: { "Bash(*)": { nested: "allow" } } },
+    });
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("This change would weaken security protections and was blocked");
+  });
+
+  it("allows config with permission deny (not blocked)", async () => {
+    const config = JSON.stringify({
+      permission: { tools: { bash: "deny" } },
+    });
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config, restart: false }),
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
+// ── M3: Automation name newline injection ───────────────────
+// Regression: Creating an automation with newline in name must not crash
+// and the name must be sanitized in the crontab output.
+
+describe("M3: automation name newline injection", () => {
+  let injectionId: string;
+
+  it("creating automation with newline in name does not crash", async () => {
+    const r = await authed("/admin/automations", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Inject\nNewline",
+        schedule: "0 0 * * *",
+        prompt: "test newline injection",
+      }),
+    });
+    expect(r.status).toBe(201);
+    expect(r.data.ok).toBe(true);
+    injectionId = (r.data.automation as Record<string, unknown>).id as string;
+    expect(injectionId).toBeTruthy();
+  });
+
+  it("automation with newline name appears in list", async () => {
+    const r = await authed("/admin/automations");
+    expect(r.ok).toBe(true);
+    const automations = r.data.automations as Array<{ id: string }>;
+    expect(automations.some((a) => a.id === injectionId)).toBe(true);
+  });
+
+  it("cleanup: delete the injected automation", async () => {
+    const r = await authed("/admin/automations/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: injectionId }),
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
+// ── M11: Duplicate provider name ────────────────────────────
+// Regression: Creating two providers with the same name must return 409.
+
+describe("M11: duplicate provider name", () => {
+  let firstProviderId: string;
+
+  it("creating first provider succeeds", async () => {
+    const r = await authed("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Provider Duplicate", url: "http://localhost:11434/v1", apiKey: "key1" }),
+    });
+    expect(r.status).toBe(201);
+    expect(r.data.ok).toBe(true);
+    firstProviderId = (r.data.provider as Record<string, unknown>).id as string;
+  });
+
+  it("creating second provider with same name returns 409", async () => {
+    const r = await authed("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Provider Duplicate", url: "http://localhost:11435/v1", apiKey: "key2" }),
+    });
+    expect(r.status).toBe(409);
+    expect(r.data.error).toBe("a provider with this name already exists");
+  });
+
+  it("case-insensitive duplicate also returns 409", async () => {
+    const r = await authed("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({ name: "test provider duplicate", url: "http://localhost:11436/v1", apiKey: "key3" }),
+    });
+    expect(r.status).toBe(409);
+    expect(r.data.error).toBe("a provider with this name already exists");
+  });
+
+  it("cleanup: delete the test provider", async () => {
+    const r = await authed("/admin/providers/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: firstProviderId }),
+    });
+    expect(r.ok).toBe(true);
   });
 });

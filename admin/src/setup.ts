@@ -194,6 +194,20 @@ export class SetupManager {
     return state;
   }
 
+  removeExtension(extensionId: string) {
+    const state = this.getState();
+    state.installedExtensions = state.installedExtensions.filter((e) => e !== extensionId);
+    this.save(state);
+    return state;
+  }
+
+  removeChannel(channel: string) {
+    const state = this.getState();
+    state.enabledChannels = state.enabledChannels.filter((c) => c !== channel);
+    this.save(state);
+    return state;
+  }
+
   isFirstBoot(): boolean {
     return !existsSync(this.path);
   }

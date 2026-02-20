@@ -92,7 +92,7 @@ services:
     networks: [assistant_net]
     depends_on: [openmemory]
     healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-fs", "http://localhost:4096/"]
       interval: 30s
       timeout: 10s
       retries: 5

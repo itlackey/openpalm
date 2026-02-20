@@ -11,7 +11,12 @@ function ensureConfigFile(configPath: string) {
 
 export function validatePluginIdentifier(id: string) {
   if (!id) return false;
-  if (id.startsWith("./plugins/")) return !/[\s;&|`$]/.test(id);
+  // Accept both ./plugins/ and plugins/ prefixes for local plugin paths
+  if (id.startsWith("./plugins/") || id.startsWith("plugins/")) {
+    // Block path traversal and shell-dangerous characters
+    if (id.includes("..")) return false;
+    return !/[\s;&|`$]/.test(id);
+  }
   return NPM_RE.test(id);
 }
 
