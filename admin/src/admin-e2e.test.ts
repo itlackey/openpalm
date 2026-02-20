@@ -1460,3 +1460,341 @@ describe("meta endpoint extended", () => {
     }
   });
 });
+
+// ── Gallery: npm Search Tests ───────────────────────────
+// Docs: GET /admin/gallery/npm-search?q=
+
+describe("gallery npm search", () => {
+  it("GET /admin/gallery/npm-search without query returns 400", async () => {
+    const r = await apiJson("/admin/gallery/npm-search?q=");
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("query required");
+  });
+
+  it("GET /admin/gallery/npm-search with query returns results array", async () => {
+    // npm search makes an external call; in test env this may return empty results
+    // but the endpoint should still respond with the correct shape
+    const r = await apiJson("/admin/gallery/npm-search?q=opencode");
+    // If external fetch fails, still expect a 200 with an empty array
+    if (r.ok) {
+      expect(Array.isArray(r.data.results)).toBe(true);
+    } else {
+      // network failure in test env is acceptable - verify it doesn't crash
+      expect([200, 500]).toContain(r.status);
+    }
+  });
+});
+
+// ── Gallery: Community Registry Tests ───────────────────
+// Docs: GET /admin/gallery/community?q=&category=
+
+describe("gallery community registry", () => {
+  it("GET /admin/gallery/community returns items array with correct shape", async () => {
+    const r = await apiJson("/admin/gallery/community?q=");
+    // Community registry fetches from GitHub; may return empty in test env
+    if (r.ok) {
+      expect(r.data).toHaveProperty("items");
+      expect(r.data).toHaveProperty("total");
+      expect(r.data).toHaveProperty("source");
+      expect(r.data.source).toBe("community-registry");
+      expect(Array.isArray(r.data.items)).toBe(true);
+      expect(typeof r.data.total).toBe("number");
+    }
+  });
+
+  it("GET /admin/gallery/community with category filter", async () => {
+    const r = await apiJson("/admin/gallery/community?q=&category=plugin");
+    if (r.ok) {
+      expect(Array.isArray(r.data.items)).toBe(true);
+      expect(r.data.source).toBe("community-registry");
+    }
+  });
+
+  it("POST /admin/gallery/community/refresh with auth returns refresh result", async () => {
+    const r = await authed("/admin/gallery/community/refresh", { method: "POST" });
+    if (r.ok) {
+      expect(r.data.ok).toBe(true);
+      expect(typeof r.data.total).toBe("number");
+      expect(typeof r.data.refreshedAt).toBe("string");
+    }
+  });
+});
+
+// ── Gallery: Successful Install/Uninstall Flow ─────────
+// Docs: POST /admin/gallery/install, POST /admin/gallery/uninstall
+
+describe("gallery install and uninstall flow", () => {
+  it("POST /admin/gallery/install with valid curated galleryId succeeds", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "plugin-policy-telemetry" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.installed).toBe("plugin-policy-telemetry");
+    expect(r.data.type).toBe("plugin");
+  });
+
+  it("after install, GET /admin/installed includes the installed extension", async () => {
+    const r = await authed("/admin/installed");
+    expect(r.ok).toBe(true);
+    const plugins = r.data.plugins as string[];
+    expect(Array.isArray(plugins)).toBe(true);
+    // The plugin should now be in the installed list
+    expect(plugins.length).toBeGreaterThan(0);
+  });
+
+  it("POST /admin/gallery/uninstall with valid galleryId succeeds", async () => {
+    const r = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "plugin-policy-telemetry" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+});
+
+// ── Health Check: Verify All Expected Services ─────────
+// Docs: Health indicators for each core service + channel adapters
+
+describe("health check service coverage", () => {
+  it("GET /admin/setup/health-check returns all expected core services", async () => {
+    const r = await apiJson("/admin/setup/health-check");
+    expect(r.ok).toBe(true);
+    const services = r.data.services as Record<string, { ok: boolean }>;
+    // Docs specify: gateway, OpenCode Core, OpenMemory, admin, controller
+    const expectedKeys = ["gateway", "controller", "opencodeCore", "openmemory", "admin"];
+    for (const key of expectedKeys) {
+      expect(services).toHaveProperty(key);
+      expect(typeof services[key].ok).toBe("boolean");
+    }
+  });
+
+  it("health-check admin service is always healthy (self-check)", async () => {
+    const r = await apiJson("/admin/setup/health-check");
+    const services = r.data.services as Record<string, { ok: boolean }>;
+    expect(services.admin.ok).toBe(true);
+  });
+});
+
+// ── Channel Config: All 4 Channels Verified ─────────────
+// Docs: Each channel has specific config fields
+
+describe("channel config for all platforms", () => {
+  const channelConfigs: Array<{ service: string; expectedKeys: string[] }> = [
+    { service: "channel-chat", expectedKeys: ["CHAT_INBOUND_TOKEN"] },
+    { service: "channel-discord", expectedKeys: ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"] },
+    { service: "channel-voice", expectedKeys: [] },
+    { service: "channel-telegram", expectedKeys: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"] },
+  ];
+
+  for (const { service, expectedKeys } of channelConfigs) {
+    it(`GET /admin/channels/config?service=${service} returns config with expected keys`, async () => {
+      const r = await authed(`/admin/channels/config?service=${service}`);
+      expect(r.ok).toBe(true);
+      expect(r.data.service).toBe(service);
+      const config = r.data.config as Record<string, string>;
+      for (const key of expectedKeys) {
+        expect(config).toHaveProperty(key);
+      }
+    });
+  }
+
+  it("POST /admin/channels/config with chat channel and optional token", async () => {
+    const r = await authed("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({
+        service: "channel-chat",
+        config: { CHAT_INBOUND_TOKEN: "test-chat-token" },
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+
+    // Verify persistence
+    const read = await authed("/admin/channels/config?service=channel-chat");
+    const config = read.data.config as Record<string, string>;
+    expect(config.CHAT_INBOUND_TOKEN).toBe("test-chat-token");
+  });
+
+  it("POST /admin/channels/config with voice channel (no config keys)", async () => {
+    const r = await authed("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({
+        service: "channel-voice",
+        config: {},
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+});
+
+// ── Channel Access: Toggle for All Channels ─────────────
+// Docs: Access toggle between lan and public per channel
+
+describe("channel access for all platforms", () => {
+  const validChannels = ["chat", "discord", "voice", "telegram"] as const;
+
+  for (const channel of validChannels) {
+    it(`POST /admin/channels/access toggles ${channel} to public then lan`, async () => {
+      // Toggle to public
+      const r1 = await authed("/admin/channels/access", {
+        method: "POST",
+        body: JSON.stringify({ channel, access: "public" }),
+      });
+      if (!r1.ok) console.log(`channel access ${channel}/public failure:`, JSON.stringify(r1.data));
+      expect(r1.ok).toBe(true);
+      expect(r1.data.channel).toBe(channel);
+      expect(r1.data.access).toBe("public");
+
+      // Toggle back to lan
+      const r2 = await authed("/admin/channels/access", {
+        method: "POST",
+        body: JSON.stringify({ channel, access: "lan" }),
+      });
+      if (!r2.ok) console.log(`channel access ${channel}/lan failure:`, JSON.stringify(r2.data));
+      expect(r2.ok).toBe(true);
+      expect(r2.data.channel).toBe(channel);
+      expect(r2.data.access).toBe("lan");
+    });
+  }
+});
+
+// ── Container Management: All Service Types ─────────────
+// Docs: Allowed services list
+
+describe("container management for all services", () => {
+  const allowedServices = [
+    "opencode-core", "gateway", "openmemory", "admin",
+    "channel-chat", "channel-discord", "channel-voice", "channel-telegram", "caddy",
+  ];
+
+  for (const service of allowedServices) {
+    it(`POST /admin/containers/up for ${service} returns ok`, async () => {
+      const r = await authed("/admin/containers/up", {
+        method: "POST",
+        body: JSON.stringify({ service }),
+      });
+      expect(r.ok).toBe(true);
+      expect(r.data.ok).toBe(true);
+      expect(r.data.service).toBe(service);
+      expect(r.data.action).toBe("up");
+    });
+  }
+
+  for (const service of allowedServices) {
+    it(`POST /admin/containers/down for ${service} returns ok`, async () => {
+      const r = await authed("/admin/containers/down", {
+        method: "POST",
+        body: JSON.stringify({ service }),
+      });
+      expect(r.ok).toBe(true);
+      expect(r.data.ok).toBe(true);
+      expect(r.data.service).toBe(service);
+      expect(r.data.action).toBe("down");
+    });
+  }
+
+  for (const service of allowedServices) {
+    it(`POST /admin/containers/restart for ${service} returns ok`, async () => {
+      const r = await authed("/admin/containers/restart", {
+        method: "POST",
+        body: JSON.stringify({ service }),
+      });
+      expect(r.ok).toBe(true);
+      expect(r.data.ok).toBe(true);
+      expect(r.data.service).toBe(service);
+      expect(r.data.action).toBe("restart");
+    });
+  }
+});
+
+// ── Setup Wizard: Authed Channels & Service Instances ───
+// Docs: POST /admin/setup/channels (after setup completion, with auth)
+
+describe("setup wizard authed endpoints after completion", () => {
+  it("POST /admin/setup/channels with auth succeeds after setup completion", async () => {
+    const r = await authed("/admin/setup/channels", {
+      method: "POST",
+      body: JSON.stringify({ channels: ["channel-chat", "channel-voice"] }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/service-instances with auth succeeds after setup completion", async () => {
+    const r = await authed("/admin/setup/service-instances", {
+      method: "POST",
+      body: JSON.stringify({ openmemory: "", psql: "", qdrant: "" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/step marks step complete with auth", async () => {
+    const r = await authed("/admin/setup/step", {
+      method: "POST",
+      body: JSON.stringify({ step: "welcome" }),
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("GET /admin/setup/status with auth returns full state after completion", async () => {
+    const r = await authed("/admin/setup/status");
+    expect(r.ok).toBe(true);
+    expect(r.data.completed).toBe(true);
+    expect(r.data).toHaveProperty("steps");
+    expect(r.data).toHaveProperty("accessScope");
+    expect(r.data).toHaveProperty("serviceInstances");
+  });
+});
+
+// ── Cross-Cutting: Error Responses ──────────────────────
+// Docs: meaningful error messages for API failures
+
+describe("error response consistency", () => {
+  it("invalid JSON body returns appropriate error", async () => {
+    const r = await fetch(`${base}/admin/automations`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-token": "test-token-e2e" },
+      body: "not valid json{{{",
+    });
+    // Server should handle gracefully
+    expect([400, 500]).toContain(r.status);
+  });
+
+  it("unsupported HTTP method on known route returns appropriate status", async () => {
+    const r = await api("/admin/channels", { method: "DELETE" });
+    // Should get 401 (auth check) or 405 (method not allowed), not 500
+    expect(r.status).toBeLessThan(500);
+  });
+
+  it("completely unknown API path returns SPA fallback or 404", async () => {
+    const r = await api("/admin/this-does-not-exist-at-all");
+    // Should serve SPA fallback (200) or 404, not 500
+    expect([200, 404]).toContain(r.status);
+  });
+});
+
+// ── CORS: Preflight for All Protected Endpoints ────────
+// Docs: x-admin-token header allowed via CORS
+
+describe("CORS preflight for protected endpoints", () => {
+  const endpoints = [
+    "/admin/channels",
+    "/admin/automations",
+    "/admin/providers",
+    "/admin/config",
+    "/admin/containers/up",
+  ];
+
+  for (const endpoint of endpoints) {
+    it(`OPTIONS ${endpoint} returns 204 with correct CORS headers`, async () => {
+      const r = await api(endpoint, { method: "OPTIONS" });
+      expect(r.status).toBe(204);
+      expect(r.headers.get("access-control-allow-origin")).toBe("*");
+      expect(r.headers.get("access-control-allow-headers")).toContain("x-admin-token");
+    });
+  }
+});

@@ -127,7 +127,7 @@ function detectChannelAccess(channel: ChannelName): "lan" | "public" {
 
 function setChannelAccess(channel: ChannelName, access: "lan" | "public") {
   const raw = readFileSync(CADDYFILE_PATH, "utf8");
-  const blockRegex = new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n\\}`, "m");
+  const blockRegex = new RegExp(`handle /channels/${channel}\\* \\{[\\s\\S]*?\\n[ \\t]*\\}`, "m");
   const replacement = access === "lan"
     ? [
       `handle /channels/${channel}* {`,
