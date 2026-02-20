@@ -9,7 +9,10 @@ describe("stack generator", () => {
     expect(out.caddyfile).toContain("handle /channels/chat*");
     expect(out.composeFile).toContain("caddy:");
     expect(out.composeFile).toContain("opencode-core:");
+    expect(out.composeFile).toContain("${OPENPALM_STATE_HOME}/opencode-core:/state");
+    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/shared:/shared");
     expect(out.composeFile).toContain("gateway:");
+    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/admin:/app/data");
     expect(out.composeFile).toContain("channel-discord:");
   });
 
