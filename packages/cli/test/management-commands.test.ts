@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 // Helper function to read source code files
 function readSourceFile(filename: string): string {
-  const path = join("/home/user/openpalm/cli/src/commands", filename);
+  const path = join("/home/user/openpalm/packages/cli/src/commands", filename);
   return readFileSync(path, "utf-8");
 }
 

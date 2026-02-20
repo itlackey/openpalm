@@ -4,7 +4,7 @@ import { describe, expect, it } from "bun:test";
  * Helper function to run the CLI as a subprocess and capture output
  */
 async function runCli(...args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(["bun", "run", "cli/src/main.ts", ...args], {
+  const proc = Bun.spawn(["bun", "run", "packages/cli/src/main.ts", ...args], {
     cwd: "/home/user/openpalm",
     stdout: "pipe",
     stderr: "pipe",

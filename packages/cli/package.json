@@ -1,10 +1,30 @@
 {
-  "name": "openpalm-cli",
+  "name": "openpalm",
   "version": "0.0.5",
-  "private": true,
+  "description": "CLI tool for installing and managing an OpenPalm stack",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/itlackey/openpalm",
+  "keywords": [
+    "openpalm",
+    "ai",
+    "cli",
+    "docker",
+    "installer"
+  ],
   "bin": {
     "openpalm": "./src/main.ts"
+  },
+  "files": [
+    "src/**/*.ts"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "scripts": {
     "start": "bun run src/main.ts",
