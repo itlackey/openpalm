@@ -4,7 +4,9 @@ import { dirname } from "node:path";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
-import { AutomationStore, validateCron } from "./automation-store.ts";
+import { ensureCronDirs, syncAutomations, triggerAutomation } from "./automations.ts";
+import { getLatestRun, readHistory } from "./automation-history.ts";
+import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
@@ -31,7 +33,6 @@ const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? "/app/config/caddy/routes";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
-const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
 const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? "/app/config-root/stack-spec.json";
@@ -54,7 +55,6 @@ const CHANNEL_ENV_KEYS: Record<string, string[]> = {
 };
 
 const setupManager = new SetupManager(DATA_DIR);
-const automationStore = new AutomationStore(DATA_DIR, CRON_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
 const stackManager = new StackManager({
   caddyfilePath: CADDYFILE_PATH,
@@ -70,6 +70,9 @@ const stackManager = new StackManager({
   channelEnvDir: CHANNEL_ENV_DIR,
   composeFilePath: COMPOSE_FILE_PATH,
 });
+
+ensureCronDirs();
+syncAutomations(stackManager.listAutomations());
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -851,55 +854,60 @@ const server = Bun.serve({
       // ── Automations ────────────────────────────────────────────────
       if (url.pathname === "/admin/automations" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        return cors(json(200, { automations: automationStore.list() }));
+        const automations = stackManager.listAutomations().map((automation) => ({
+          ...automation,
+          lastRun: getLatestRun(automation.id),
+        }));
+        return cors(json(200, { automations }));
       }
 
       if (url.pathname === "/admin/automations" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { name?: string; schedule?: string; prompt?: string };
-        if (!body.name || !body.schedule || !body.prompt) {
-          return cors(json(400, { error: "name, schedule, and prompt are required" }));
+        const body = (await req.json()) as { name?: string; schedule?: string; script?: string; enabled?: boolean };
+        if (!body.name || !body.schedule || !body.script) {
+          return cors(json(400, { error: "name, schedule, and script are required" }));
         }
         const cronError = validateCron(body.schedule);
         if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
-        const automation = {
+
+        const automation = stackManager.upsertAutomation({
           id: randomUUID(),
           name: body.name,
           schedule: body.schedule,
-          prompt: body.prompt,
-          status: "enabled" as const,
-          createdAt: new Date().toISOString(),
-        };
-        automationStore.add(automation);
-        automationStore.writeCrontab();
-        await composeAction("restart", "opencode-core");
+          script: body.script,
+          enabled: body.enabled ?? true,
+        });
+        syncAutomations(stackManager.listAutomations());
         return cors(json(201, { ok: true, automation }));
       }
 
       if (url.pathname === "/admin/automations/update" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; prompt?: string; status?: "enabled" | "disabled" };
+        const body = (await req.json()) as { id?: string; name?: string; schedule?: string; script?: string; enabled?: boolean };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        if (body.schedule) {
-          const cronError = validateCron(body.schedule);
-          if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
-        }
-        const { id, ...fields } = body;
-        const updated = automationStore.update(id, fields);
-        if (!updated) return cors(json(404, { error: "automation not found" }));
-        automationStore.writeCrontab();
-        await composeAction("restart", "opencode-core");
-        return cors(json(200, { ok: true, automation: updated }));
+        const existing = stackManager.getAutomation(body.id);
+        if (!existing) return cors(json(404, { error: "automation not found" }));
+
+        const updated = {
+          ...existing,
+          ...body,
+          id: existing.id,
+        };
+        const cronError = validateCron(updated.schedule);
+        if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
+
+        const automation = stackManager.upsertAutomation(updated);
+        syncAutomations(stackManager.listAutomations());
+        return cors(json(200, { ok: true, automation }));
       }
 
       if (url.pathname === "/admin/automations/delete" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const removed = automationStore.remove(body.id);
-        if (!removed) return cors(json(404, { error: "automation not found" }));
-        automationStore.writeCrontab();
-        await composeAction("restart", "opencode-core");
+        const deleted = stackManager.deleteAutomation(body.id);
+        if (!deleted) return cors(json(404, { error: "automation not found" }));
+        syncAutomations(stackManager.listAutomations());
         return cors(json(200, { ok: true, deleted: body.id }));
       }
 
@@ -907,21 +915,19 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const job = automationStore.get(body.id);
-        if (!job) return cors(json(404, { error: "automation not found" }));
-        // Fire directly against opencode-core without waiting for cron
-        fetch(`${OPENCODE_CORE_URL}/chat`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            message: job.prompt,
-            session_id: `cron-${job.id}`,
-            user_id: "cron-scheduler",
-            metadata: { source: "automation", automationId: job.id, automationName: job.name },
-          }),
-          signal: AbortSignal.timeout(120_000),
-        }).catch(() => {});
-        return cors(json(200, { ok: true, triggered: job.id }));
+        if (!stackManager.getAutomation(body.id)) return cors(json(404, { error: "automation not found" }));
+
+        const result = await triggerAutomation(body.id);
+        return cors(json(200, { triggered: body.id, ...result }));
+      }
+
+      if (url.pathname === "/admin/automations/history" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const id = url.searchParams.get("id")?.trim() ?? "";
+        if (!id) return cors(json(400, { error: "id is required" }));
+        const rawLimit = Number(url.searchParams.get("limit") ?? 20);
+        const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20;
+        return cors(json(200, { history: readHistory(id, limit) }));
       }
 
       // ── Providers ─────────────────────────────────────────────

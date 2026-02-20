@@ -303,6 +303,48 @@ export class StackManager {
     return id;
   }
 
+  listAutomations() {
+    return this.getSpec().automations;
+  }
+
+  getAutomation(idRaw: unknown) {
+    const id = sanitizeEnvScalar(idRaw);
+    if (!id) return undefined;
+    return this.getSpec().automations.find((automation) => automation.id === id);
+  }
+
+  upsertAutomation(input: { id?: unknown; name?: unknown; schedule?: unknown; enabled?: unknown; script?: unknown }) {
+    const id = sanitizeEnvScalar(input.id);
+    const name = sanitizeEnvScalar(input.name);
+    const schedule = sanitizeEnvScalar(input.schedule);
+    const scriptRaw = typeof input.script === "string" ? input.script : "";
+    const script = scriptRaw.trim();
+    if (!id) throw new Error("invalid_automation_id");
+    if (!name) throw new Error("invalid_automation_name");
+    if (!schedule) throw new Error("invalid_automation_schedule");
+    if (!script) throw new Error("invalid_automation_script");
+    if (typeof input.enabled !== "boolean") throw new Error("invalid_automation_enabled");
+
+    const spec = this.getSpec();
+    const automation = { id, name, schedule, enabled: input.enabled, script };
+    const index = spec.automations.findIndex((item) => item.id === id);
+    if (index >= 0) spec.automations[index] = automation;
+    else spec.automations.push(automation);
+    this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    return automation;
+  }
+
+  deleteAutomation(idRaw: unknown) {
+    const id = sanitizeEnvScalar(idRaw);
+    if (!id) throw new Error("invalid_automation_id");
+    const spec = this.getSpec();
+    const before = spec.automations.length;
+    spec.automations = spec.automations.filter((automation) => automation.id !== id);
+    if (spec.automations.length === before) return false;
+    this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    return true;
+  }
+
   listInstalled() {
     const spec = this.getSpec();
     const plugins = spec.extensions

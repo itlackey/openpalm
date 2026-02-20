@@ -47,7 +47,7 @@ export type StackAutomation = {
   id: string;
   name: string;
   schedule: string;
-  prompt: string;
+  script: string;
   enabled: boolean;
 };
 
@@ -244,14 +244,14 @@ function parseAutomations(raw: unknown): StackAutomation[] {
     const id = typeof automation.id === "string" ? automation.id.trim() : "";
     const name = typeof automation.name === "string" ? automation.name.trim() : "";
     const schedule = typeof automation.schedule === "string" ? automation.schedule.trim() : "";
-    const prompt = typeof automation.prompt === "string" ? automation.prompt.trim() : "";
+    const script = typeof automation.script === "string" ? automation.script.trim() : "";
     const enabled = automation.enabled;
     if (!id) throw new Error(`invalid_automation_id_${index}`);
     if (!name) throw new Error(`invalid_automation_name_${index}`);
     if (!schedule) throw new Error(`invalid_automation_schedule_${index}`);
-    if (!prompt) throw new Error(`invalid_automation_prompt_${index}`);
+    if (!script) throw new Error(`invalid_automation_script_${index}`);
     if (typeof enabled !== "boolean") throw new Error(`invalid_automation_enabled_${index}`);
-    return { id, name, schedule, prompt, enabled };
+    return { id, name, schedule, script, enabled };
   });
 }
 

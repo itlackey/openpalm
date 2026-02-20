@@ -1,7 +1,7 @@
 FROM oven/bun:1.1.42
 
 RUN bun add -g opencode-ai@latest
-RUN apt-get update && apt-get install -y tini cron curl openssh-server nodejs git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y tini curl openssh-server nodejs git && rm -rf /var/lib/apt/lists/*
 
 # Core OpenPalm-managed OpenCode extensions (immutable).
 COPY extensions/ /opt/opencode/

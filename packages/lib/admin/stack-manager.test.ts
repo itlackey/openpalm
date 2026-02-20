@@ -160,4 +160,76 @@ describe("stack manager", () => {
 
     expect(() => manager.deleteConnection("openai-primary")).toThrow("connection_in_use");
   });
+
+
+  it("preserves multiline automation scripts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = new StackManager({
+      caddyfilePath: join(dir, "Caddyfile"),
+      caddyRoutesDir: join(dir, "routes"),
+      composeFilePath: join(dir, "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      channelSecretDir: join(dir, "channels"),
+      channelEnvDir: join(dir, "channel-config"),
+      gatewayChannelSecretsPath: join(dir, "gateway.env"),
+      gatewayRuntimeSecretsPath: join(dir, "gateway-runtime.env"),
+      openmemorySecretsPath: join(dir, "openmemory.env"),
+      postgresSecretsPath: join(dir, "postgres.env"),
+      opencodeProviderSecretsPath: join(dir, "providers.env"),
+    });
+
+    const multi = "echo first\necho second";
+    manager.upsertAutomation({
+      id: "multi",
+      name: "Multiline",
+      schedule: "0 6 * * *",
+      enabled: true,
+      script: multi,
+    });
+
+    expect(manager.getAutomation("multi")?.script).toBe(multi);
+  });
+
+  it("supports automation CRUD in stack spec", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = new StackManager({
+      caddyfilePath: join(dir, "Caddyfile"),
+      caddyRoutesDir: join(dir, "routes"),
+      composeFilePath: join(dir, "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      channelSecretDir: join(dir, "channels"),
+      channelEnvDir: join(dir, "channel-config"),
+      gatewayChannelSecretsPath: join(dir, "gateway.env"),
+      gatewayRuntimeSecretsPath: join(dir, "gateway-runtime.env"),
+      openmemorySecretsPath: join(dir, "openmemory.env"),
+      postgresSecretsPath: join(dir, "postgres.env"),
+      opencodeProviderSecretsPath: join(dir, "providers.env"),
+    });
+
+    const created = manager.upsertAutomation({
+      id: "daily",
+      name: "Daily Task",
+      schedule: "0 9 * * *",
+      enabled: true,
+      script: "echo hello",
+    });
+
+    expect(created.id).toBe("daily");
+    expect(manager.listAutomations().length).toBe(1);
+
+    const updated = manager.upsertAutomation({
+      id: "daily",
+      name: "Daily Task Updated",
+      schedule: "15 9 * * *",
+      enabled: false,
+      script: "echo updated",
+    });
+
+    expect(updated.enabled).toBe(false);
+    expect(manager.getAutomation("daily")?.script).toBe("echo updated");
+    expect(manager.deleteAutomation("daily")).toBeTrue();
+    expect(manager.listAutomations().length).toBe(0);
+  });
 });

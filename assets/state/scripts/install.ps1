@@ -260,7 +260,6 @@ try {
     "$OpenPalmDataHome/home",
     "$OpenPalmConfigHome/caddy",
     "$OpenPalmConfigHome/channels",
-    "$OpenPalmConfigHome/cron",
     "$OpenPalmConfigHome/secrets",
     "$OpenPalmConfigHome/secrets/gateway",
     "$OpenPalmConfigHome/secrets/channels",

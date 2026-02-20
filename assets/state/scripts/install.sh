@@ -449,7 +449,7 @@ mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
 mkdir -p "$OPENPALM_DATA_HOME"/home
 
-mkdir -p "$OPENPALM_CONFIG_HOME"/{caddy,channels,cron,secrets}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{caddy,channels,secrets}
 mkdir -p "$OPENPALM_CONFIG_HOME"/secrets/{gateway,channels}
 
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
