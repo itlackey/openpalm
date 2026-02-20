@@ -1,7 +1,12 @@
-// Shared types from @openpalm/lib
-export type { ProviderConnection, ModelAssignment } from "@openpalm/lib";
+export type ProviderConnection = {
+	id: string;
+	name: string;
+	url: string;
+	apiKey: string;
+	createdAt: string;
+};
 
-// UI-specific types
+export type ModelAssignment = 'small' | 'openmemory';
 
 export type GalleryCategory =
 	| 'plugin' | 'skill' | 'command' | 'agent'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseJsonc } from "./jsonc.ts";
+import { parseJsonc } from "@openpalm/lib";
 
 describe("parseJsonc (C5 regression)", () => {
   it("parses plain JSON without comments", () => {

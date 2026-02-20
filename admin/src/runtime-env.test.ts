@@ -1,6 +1,6 @@
 // @ts-ignore Bun test types are provided at runtime in Bun-based test execution.
 import { describe, expect, it } from "bun:test";
-import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "@openpalm/lib";
 
 describe("runtime env content helpers", () => {
   it("parses key-value env lines while ignoring comments and blanks", () => {

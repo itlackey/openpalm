@@ -4,7 +4,7 @@ import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 import { verifySignature } from "./channel-security.ts";
 import { allowRequest } from "./rate-limit.ts";
 import { OpenCodeClient } from "./opencode-client.ts";
-import type { ChannelMessage } from "./types.ts";
+import type { ChannelMessage } from "@openpalm/lib";
 
 const PORT = Number(Bun.env.PORT ?? 8080);
 const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://opencode-core:4096";

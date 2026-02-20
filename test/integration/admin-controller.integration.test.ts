@@ -17,9 +17,10 @@ describe("integration: admin -> controller", () => {
 
       const authed = await fetch(`http://localhost:${controller.port}/containers`, { headers: { "x-controller-token": "controller-token" } });
       expect(authed.status).toBe(200);
-      const body = await authed.json() as { ok: boolean; containers: string };
+      const body = await authed.json() as { ok: boolean; containers: Array<{ name: string }> };
       expect(body.ok).toBe(true);
-      expect(body.containers).toContain("gateway");
+      expect(body.containers).toBeArrayOfSize(1);
+      expect(body.containers[0].name).toBe("gateway");
     } finally {
       controller.stop();
     }

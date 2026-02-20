@@ -4,7 +4,7 @@ import type { InstallOptions, ComposeConfig } from "../types.ts";
 import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "../lib/runtime.ts";
 import { resolveXDGPaths, createDirectoryTree } from "../lib/paths.ts";
 import { upsertEnvVar, generateEnvFromTemplate } from "../lib/env.ts";
-import { generateToken } from "../lib/tokens.ts";
+import { generateToken } from "@openpalm/lib";
 import { composePull, composeUp } from "../lib/compose.ts";
 import { resolveAssets, seedFile, seedConfigFiles, cleanupTempAssets } from "../lib/assets.ts";
 import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "../lib/detect-providers.ts";

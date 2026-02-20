@@ -9,7 +9,7 @@ describe("install command source validation", () => {
     expect(installSource).toContain("from \"../lib/runtime.ts\"");
     expect(installSource).toContain("from \"../lib/paths.ts\"");
     expect(installSource).toContain("from \"../lib/env.ts\"");
-    expect(installSource).toContain("from \"../lib/tokens.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib\"");
     expect(installSource).toContain("from \"../lib/compose.ts\"");
     expect(installSource).toContain("from \"../lib/assets.ts\"");
     expect(installSource).toContain("from \"../lib/detect-providers.ts\"");

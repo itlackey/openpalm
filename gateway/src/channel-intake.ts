@@ -1,4 +1,4 @@
-import type { ChannelMessage } from "./types.ts";
+import type { ChannelMessage } from "@openpalm/lib";
 
 export type IntakeDecision = {
   valid: boolean;

@@ -1,6 +1,6 @@
 import { mkdirSync, appendFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { AuditEvent } from "./types.ts";
+import type { AuditEvent } from "@openpalm/lib";
 
 export class AuditLog {
   constructor(private readonly filePath: string) {
