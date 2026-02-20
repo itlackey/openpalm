@@ -41,8 +41,8 @@ describe("install command source validation", () => {
     expect(installSource).toContain("resolveAssets(options.ref)");
   });
 
-  it("generates .env from template with secure tokens", () => {
-    expect(installSource).toContain("generateEnvFromTemplate");
+  it("generates .env with secure tokens", () => {
+    expect(installSource).toContain("writeFile(envPath, envSeed");
     expect(installSource).toContain("ADMIN_TOKEN: generateToken()");
     expect(installSource).toContain("POSTGRES_PASSWORD: generateToken()");
     expect(installSource).toContain("CHANNEL_CHAT_SECRET: generateToken()");

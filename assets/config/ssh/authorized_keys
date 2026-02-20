@@ -1,1 +1,0 @@
-# Add one SSH public key per line to enable LAN SSH access for opencode-core when OPENCODE_ENABLE_SSH=1.

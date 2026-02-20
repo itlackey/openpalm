@@ -133,15 +133,15 @@ describe("findLocalAssets", () => {
       expect(result).toContain("assets");
 
       // Verify the required files exist
-      const composeExists = await Bun.file(
-        join(result, "state/docker-compose.yml")
+      const stackSpecExists = await Bun.file(
+        join(result, "config/stack-spec.json")
       ).exists();
-      const envExists = await Bun.file(
-        join(result, "config/system.env")
+      const secretsExists = await Bun.file(
+        join(result, "config/secrets.env")
       ).exists();
 
-      expect(composeExists).toBe(true);
-      expect(envExists).toBe(true);
+      expect(stackSpecExists).toBe(true);
+      expect(secretsExists).toBe(true);
     } else {
       // If not found, should be null
       expect(result).toBeNull();
@@ -166,15 +166,15 @@ describe("resolveAssets", () => {
     expect(typeof result).toBe("string");
 
     // Verify it contains expected files
-    const composeExists = await Bun.file(
-      join(result, "state/docker-compose.yml")
+    const stackSpecExists = await Bun.file(
+      join(result, "config/stack-spec.json")
     ).exists();
-    const envExists = await Bun.file(
-      join(result, "config/system.env")
+    const secretsExists = await Bun.file(
+      join(result, "config/secrets.env")
     ).exists();
 
-    expect(composeExists).toBe(true);
-    expect(envExists).toBe(true);
+    expect(stackSpecExists).toBe(true);
+    expect(secretsExists).toBe(true);
   });
 });
 

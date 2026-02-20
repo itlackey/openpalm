@@ -6,7 +6,7 @@ export const StackSpecVersion = 1;
 export type StackAccessScope = "host" | "lan";
 export type ChannelExposure = "lan" | "public";
 export type StackChannelName = "chat" | "discord" | "voice" | "telegram";
-export type ExtensionType = "plugin" | "skill" | "command" | "agent" | "tool";
+export type ExtensionType = "plugin";
 export type ConnectionType = "ai_provider" | "platform" | "api_service";
 
 export type StackChannelConfig = {
@@ -64,7 +64,7 @@ export type StackSpec = {
 
 const ChannelNames: StackChannelName[] = ["chat", "discord", "voice", "telegram"];
 const ConnectionTypes: ConnectionType[] = ["ai_provider", "platform", "api_service"];
-const ExtensionTypes: ExtensionType[] = ["plugin", "skill", "command", "agent", "tool"];
+const ExtensionTypes: ExtensionType[] = ["plugin"];
 
 const ChannelConfigKeys: Record<StackChannelName, string[]> = {
   chat: ["CHAT_INBOUND_TOKEN"],

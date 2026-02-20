@@ -1,7 +1,7 @@
 (() => {
   let setupState = null;
-  const STEPS = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions", "complete"];
-  const STEP_TITLES = ["Welcome", "Access", "Services", "Health Check", "Security", "Channels", "Extensions", "Complete"];
+  const STEPS = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "complete"];
+  const STEP_TITLES = ["Welcome", "Access", "Services", "Health Check", "Security", "Channels", "Complete"];
   let wizardStep = 0;
   let accessScope = "host";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
@@ -10,7 +10,6 @@
   let enabledChannels = [];
   let api;
   let esc;
-  let riskBadge;
   let showPage;
   let getAdminToken;
   let setAdminToken;
@@ -82,7 +81,7 @@
       case "welcome":
         return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
           + '<p>This wizard will walk you through initial configuration:</p>'
-          + '<ul><li>Make sure everything is working</li><li>Set up security</li><li>Choose how to connect</li><li>Add starter features</li></ul>'
+          + '<ul><li>Make sure everything is working</li><li>Set up security</li><li>Choose how to connect</li></ul>'
           + '<p class="muted" style="font-size:13px">During setup, choose who can access your assistant.</p>';
       case "healthCheck":
         return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div><div id="wiz-step-error" class="error-text" style="display:none"></div>';
@@ -146,9 +145,6 @@
         return '<p>Choose how you want to talk to your assistant.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
           + channelCheckboxes();
-      case "extensions":
-        return '<div id="wiz-step-error" class="wiz-error"></div>'
-          + '<p>Recommended starter extensions:</p>' + starterExtensions();
       case "complete":
         return '<p>Finalizing setup and starting your assistant...</p><div id="wiz-complete-status">Loading...</div>';
     }
@@ -167,24 +163,6 @@
       h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
       h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" ' + (enabledChannels.includes(c.id) ? "checked" : "") + ' style="width:auto;margin-top:4px" />';
       h += '<div><strong>' + c.name + '</strong><div class="muted" style="font-size:13px">' + c.desc + '</div></div>';
-      h += "</label>";
-    }
-    return h;
-  }
-
-  function starterExtensions() {
-    const starters = [
-      { id: "plugin-policy-telemetry", name: "Policy & Telemetry", risk: "highest", desc: "Built-in: blocks secrets, logs tool calls" },
-      { id: "skill-recall-first", name: "Recall First", risk: "lowest", desc: "Always check memory before answering" },
-      { id: "skill-memory-policy", name: "Memory Policy", risk: "lowest", desc: "Governs when and how to store memory" },
-      { id: "skill-action-gating", name: "Action Gating", risk: "lowest", desc: "Require approval for risky actions" }
-    ];
-    let h = "";
-    for (const s of starters) {
-      h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
-      h += '<input type="checkbox" class="wiz-ext" value="' + s.id + '" checked style="width:auto;margin-top:4px" />';
-      h += '<div><strong>' + s.name + '</strong> ' + riskBadge(s.risk);
-      h += '<div class="muted" style="font-size:13px">' + s.desc + '</div></div>';
       h += "</label>";
     }
     return h;
@@ -281,10 +259,6 @@
   async function finishSetup() {
     clearStepError();
 
-    const boxes = document.querySelectorAll(".wiz-ext:checked");
-    for (const b of boxes) {
-      await api("/admin/gallery/install", { method: "POST", body: JSON.stringify({ galleryId: b.value }) });
-    }
     for (const channel of enabledChannels) {
       await api("/admin/containers/up", { method: "POST", body: JSON.stringify({ service: channel }) });
     }
@@ -324,7 +298,6 @@
   function init(deps) {
     api = deps.api;
     esc = deps.esc;
-    riskBadge = deps.riskBadge;
     showPage = deps.showPage;
     getAdminToken = deps.getAdminToken;
     setAdminToken = deps.setAdminToken;

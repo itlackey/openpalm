@@ -17,18 +17,18 @@ export async function cleanupTempAssets(): Promise<void> {
 
 export async function findLocalAssets(): Promise<string | null> {
   const cwdAssets = join(process.cwd(), "assets");
-  const composeFile = join(cwdAssets, "state/docker-compose.yml");
-  const envFile = join(cwdAssets, "config/system.env");
+  const stackSpec = join(cwdAssets, "config/stack-spec.json");
+  const secretsEnv = join(cwdAssets, "config/secrets.env");
   try {
-    if (await Bun.file(composeFile).exists() && await Bun.file(envFile).exists()) return cwdAssets;
+    if (await Bun.file(stackSpec).exists() && await Bun.file(secretsEnv).exists()) return cwdAssets;
   } catch {}
 
   const binDir = join(Bun.main, "..");
   const binAssets = join(binDir, "assets");
-  const binComposeFile = join(binAssets, "state/docker-compose.yml");
-  const binEnvFile = join(binAssets, "config/system.env");
+  const binStackSpec = join(binAssets, "config/stack-spec.json");
+  const binSecretsEnv = join(binAssets, "config/secrets.env");
   try {
-    if (await Bun.file(binComposeFile).exists() && await Bun.file(binEnvFile).exists()) return binAssets;
+    if (await Bun.file(binStackSpec).exists() && await Bun.file(binSecretsEnv).exists()) return binAssets;
   } catch {}
 
   return null;
@@ -53,7 +53,7 @@ export async function downloadAssets(ref: string, owner = "itlackey", repo = "op
   if (extractProc.exitCode !== 0) throw new Error(`Failed to extract tarball: ${await new Response(extractProc.stderr).text()}`);
 
   const assetsDir = join(tempDir, `${repo}-${ref}`, "assets");
-  if (!await Bun.file(join(assetsDir, "state/docker-compose.yml")).exists()) {
+  if (!await Bun.file(join(assetsDir, "config/stack-spec.json")).exists()) {
     throw new Error(`Assets directory not found in downloaded archive at ${assetsDir}`);
   }
   return assetsDir;

@@ -400,3 +400,8 @@ The relationships between concepts:
 | Web / Server mode | https://opencode.ai/docs/web/ |
 | MCP Servers | https://opencode.ai/docs/mcp-servers/ |
 | Ecosystem | https://opencode.ai/docs/ecosystem/ |
+## Extension management simplification
+
+OpenPalm admin now manages only OpenCode plugins (the `plugin[]` list in user `opencode.json`).
+
+Skills, agents, commands, and tools are still supported by OpenCode but are managed manually in `${OPENPALM_DATA_HOME}/opencode/.config/opencode/` by advanced users.

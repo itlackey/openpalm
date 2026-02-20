@@ -144,17 +144,17 @@ describe("extensions command source validation", () => {
     expect(extensionsSource).toContain("??");
   });
 
-  it("install subcommand POSTs to /admin/gallery/install", () => {
+  it("install subcommand POSTs to /admin/plugins/install", () => {
     // Validates install endpoint and method
     expect(extensionsSource).toContain('case "install"');
-    expect(extensionsSource).toContain('`${base}/admin/gallery/install`');
+    expect(extensionsSource).toContain('`${base}/admin/plugins/install`');
     expect(extensionsSource).toContain('method: "POST"');
   });
 
-  it("uninstall subcommand POSTs to /admin/gallery/uninstall", () => {
+  it("uninstall subcommand POSTs to /admin/plugins/uninstall", () => {
     // Validates uninstall endpoint and method
     expect(extensionsSource).toContain('case "uninstall"');
-    expect(extensionsSource).toContain('`${base}/admin/gallery/uninstall`');
+    expect(extensionsSource).toContain('`${base}/admin/plugins/uninstall`');
     expect(extensionsSource).toContain('method: "POST"');
   });
 

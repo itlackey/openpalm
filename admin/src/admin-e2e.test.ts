@@ -250,47 +250,30 @@ describe("setup wizard", () => {
 
 // ── Gallery ─────────────────────────────────────────────
 
-describe("gallery", () => {
-  it("GET /admin/gallery/search returns items without auth", async () => {
-    const r = await apiJson("/admin/gallery/search?q=");
+describe("plugin management", () => {
+  it("POST /admin/plugins/install requires auth", async () => {
+    const r = await apiJson("/admin/plugins/install", { method: "POST", body: JSON.stringify({ pluginId: "@scope/test" }) });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/plugins/install installs plugin with auth", async () => {
+    const r = await apiJson("/admin/plugins/install", {
+      method: "POST",
+      headers: { "x-admin-token": "test-token-e2e" },
+      body: JSON.stringify({ pluginId: "@scope/test" })
+    });
     expect(r.ok).toBe(true);
-    expect(Array.isArray(r.data.items)).toBe(true);
-    expect((r.data.total as number) > 0).toBe(true);
   });
 
-  it("gallery search filters by query", async () => {
-    const r = await apiJson("/admin/gallery/search?q=policy");
-    const items = r.data.items as Array<{ id: string }>;
-    expect(items.some((i) => i.id === "plugin-policy-telemetry")).toBe(true);
-  });
-
-  it("gallery search filters by category", async () => {
-    const r = await apiJson("/admin/gallery/search?q=&category=channel");
-    const items = r.data.items as Array<{ category: string }>;
-    expect(items.every((i) => i.category === "channel")).toBe(true);
-    expect(items.length).toBeGreaterThan(0);
-  });
-
-  it("GET /admin/gallery/categories lists categories", async () => {
-    const r = await apiJson("/admin/gallery/categories");
+  it("POST /admin/plugins/uninstall uninstalls plugin with auth", async () => {
+    const r = await apiJson("/admin/plugins/uninstall", {
+      method: "POST",
+      headers: { "x-admin-token": "test-token-e2e" },
+      body: JSON.stringify({ pluginId: "@scope/test" })
+    });
     expect(r.ok).toBe(true);
-    expect(Array.isArray(r.data.categories)).toBe(true);
-  });
-
-  it("GET /admin/gallery/item/:id returns item detail", async () => {
-    const r = await apiJson("/admin/gallery/item/plugin-policy-telemetry");
-    expect(r.ok).toBe(true);
-    expect((r.data.item as Record<string, unknown>).name).toBe("Policy & Telemetry");
-    expect(r.data).toHaveProperty("riskBadge");
-  });
-
-  it("GET /admin/gallery/item/:id returns 404 for missing", async () => {
-    const r = await apiJson("/admin/gallery/item/nonexistent");
-    expect(r.status).toBe(404);
   });
 });
-
-// ── Auth-protected endpoints ─────────────────────────────
 
 describe("auth-protected endpoints", () => {
   it("GET /admin/installed requires auth", async () => {

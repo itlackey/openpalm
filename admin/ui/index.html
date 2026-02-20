@@ -105,15 +105,9 @@ nav button.active{color:var(--text);border-color:var(--accent);background:var(--
 <script>
 /* ── state ────────────────────────────────────────────── */
 let adminToken = localStorage.getItem('op_admin') || '';
-let galleryItems = [];
 let currentPage = 'extensions';
 
 /* Extensions page state */
-let extensionsView = 'browse'; // 'browse' or 'my'
-let galleryFilter = '';
-let galleryCat = '';
-let npmSearchVisible = false;
-let npmSearchResults = [];
 
 /* Cron / Automations state */
 let automations = [];
@@ -218,23 +212,6 @@ function showPage(name) {
   if (name === 'system') loadSystem();
 }
 
-/* ── risk badge ───────────────────────────────────────── */
-function riskBadge(r) {
-  const safe = esc(r);
-  return '<span class="badge badge-' + safe + '">' + safe.charAt(0).toUpperCase() + safe.slice(1) + ' Risk</span>';
-}
-
-function categoryLabel(c) {
-  if (c === 'plugin') return 'Capability';
-  if (c === 'skill') return 'Behavior';
-  if (c === 'command') return 'Command';
-  if (c === 'agent') return 'Agent';
-  if (c === 'tool') return 'Custom Tool';
-  if (c === 'channel') return 'Channel';
-  if (c === 'service') return 'Service';
-  return c;
-}
-
 /* ── utils ────────────────────────────────────────────── */
 function esc(s) {
   if (!s) return '';
@@ -308,278 +285,76 @@ function showInlineConfirm(containerId, message, onYes) {
 
 /* ── EXTENSIONS PAGE ──────────────────────────────────── */
 async function loadExtensions() {
-  if (extensionsView === 'browse') {
-    await loadGallery();
-  } else {
-    await loadMyExtensions();
-  }
+  await loadMyExtensions();
 }
 
-function renderExtensionsToggle() {
-  let h = '<h2>Extensions</h2>';
-  h += '<div class="view-toggle">';
-  h += '<button class="' + (extensionsView === 'browse' ? 'active' : '') + '" onclick="extensionsView=\'browse\';loadExtensions()">Browse</button>';
-  h += '<button class="' + (extensionsView === 'my' ? 'active' : '') + '" onclick="extensionsView=\'my\';loadExtensions()">My Extensions</button>';
-  h += '</div>';
-  return h;
-}
-
-async function loadGallery() {
-  document.getElementById('page-extensions').innerHTML = renderExtensionsToggle() + '<p class="muted">Loading...</p>';
-  const qs = '/admin/gallery/search?q=' + encodeURIComponent(galleryFilter) + (galleryCat ? '&category=' + galleryCat : '');
-  const r = await api(qs);
-  galleryItems = r.ok ? r.data.items : [];
-  // Also load community extensions
-  try {
-    const cr = await api('/admin/gallery/community');
-    if (cr.ok && cr.data.items) {
-      var communityItems = cr.data.items.filter(function(ci) {
-        return !galleryItems.some(function(g) { return g.id === ci.id; });
-      });
-      if (communityItems.length > 0) {
-        galleryItems = galleryItems.concat(communityItems.map(function(ci) { ci._community = true; return ci; }));
-      }
-    }
-  } catch(e) { /* community registry unavailable */ }
-  renderGallery();
-}
-
-function renderGallery() {
-  const el = document.getElementById('page-extensions');
-  let h = renderExtensionsToggle();
-  h += '<p class="muted">Search for extensions to add new capabilities, behaviors, and services to your assistant.</p>';
-  h += '<div class="mb" style="display:flex;gap:.5rem;flex-wrap:wrap">';
-  h += '<input id="gal-search" style="flex:1;min-width:200px" placeholder="Search extensions..." value="' + esc(galleryFilter) + '" onkeyup="if(event.key===\'Enter\'){galleryFilter=this.value;loadGallery()}" />';
-  h += '<button class="sm" onclick="galleryFilter=document.getElementById(\'gal-search\').value;loadGallery()">Search</button>';
-  h += '</div>';
-  h += '<div class="mb" style="display:flex;gap:.4rem;flex-wrap:wrap">';
-  h += catTab('', 'All');
-  h += catTab('plugin', 'Capabilities');
-  h += catTab('skill', 'Behaviors');
-  h += catTab('command', 'Commands');
-  h += catTab('agent', 'Agents');
-  h += catTab('tool', 'Tools');
-  h += catTab('channel', 'Channels');
-  h += catTab('service', 'Services');
-  h += '</div>';
-  /* npm registry link */
-  h += '<div class="mb">';
-  if (!npmSearchVisible) {
-    h += '<a href="#" style="font-size:13px" onclick="event.preventDefault();npmSearchVisible=true;renderGallery()">Advanced: Install from registry</a>';
-  } else {
-    h += '<div class="card">';
-    h += '<h3 style="font-size:14px">Install from npm registry</h3>';
-    h += '<div style="display:flex;gap:.5rem">';
-    h += '<input id="npm-search-input" style="flex:1" placeholder="Search npm for OpenCode extensions..." />';
-    h += '<button class="sm" onclick="doNpmSearch()">Search</button>';
-    h += '<button class="sm secondary" onclick="npmSearchVisible=false;npmSearchResults=[];renderGallery()">Close</button>';
-    h += '</div>';
-    if (npmSearchResults.length > 0) {
-      h += '<div style="margin-top:.7rem">';
-      for (let i = 0; i < npmSearchResults.length; i++) {
-        const pkg = npmSearchResults[i];
-        h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:.7rem">';
-        h += '<div>';
-        h += '<strong style="font-size:14px">' + esc(pkg.name) + '</strong> <span class="muted" style="font-size:12px">v' + esc(pkg.version) + '</span>';
-        h += '<div class="muted" style="font-size:13px">' + esc((pkg.description || '').substring(0, 100)) + '</div>';
-        h += '</div>';
-        h += '<div id="npm-install-confirm-' + i + '">';
-        h += '<button class="sm" onclick="confirmNpmInstall(' + i + ')">Install</button>';
-        h += '</div>';
-        h += '</div>';
-      }
-      h += '</div>';
-    }
-    h += '</div>';
-  }
-  h += '</div>';
-  /* gallery items */
-  if (!galleryItems.length) {
-    h += '<p class="muted">No extensions found.</p>';
-  }
-  h += '<div class="grid2">';
-  for (let gi = 0; gi < galleryItems.length; gi++) {
-    const item = galleryItems[gi];
-    h += '<div class="card" style="cursor:pointer" onclick="showDetail(\'' + jsStr(item.id) + '\')">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:start">';
-    h += '<h3 style="margin:0">' + esc(item.name) + '</h3>';
-    h += riskBadge(item.risk);
-    h += '</div>';
-    h += '<div class="muted" style="font-size:13px;margin:.3rem 0">' + categoryLabel(item.category) + ' by ' + esc(item.author) + '</div>';
-    h += '<p style="font-size:14px;margin:.4rem 0">' + esc(item.description).substring(0, 120) + '</p>';
-    h += '<div>';
-    const tags = (item.tags || []).slice(0, 4);
-    for (let ti = 0; ti < tags.length; ti++) h += '<span class="tag">' + esc(tags[ti]) + '</span>';
-    if (item._community) h += '<span class="tag" style="background:#e8f0fe;color:#1a73e8;border:1px solid #c5d9f7">Community</span>';
-    h += '</div></div>';
-  }
-  h += '</div>';
-  el.innerHTML = h;
-}
-
-function catTab(val, label) {
-  const cls = galleryCat === val ? 'sm' : 'secondary sm';
-  return '<button class="' + cls + '" onclick="galleryCat=\'' + val + '\';loadGallery()">' + label + '</button>';
-}
-
-async function doNpmSearch() {
-  const q = document.getElementById('npm-search-input').value.trim();
-  if (!q) return;
-  const r = await api('/admin/gallery/npm-search?q=' + encodeURIComponent(q));
-  if (!r.ok || !r.data.results || !r.data.results.length) {
-    showToast('No results found.', 'info');
-    npmSearchResults = [];
-    renderGallery();
+async function installPlugin() {
+  const input = document.getElementById('plugin-install-id');
+  const pluginId = input ? input.value.trim() : '';
+  if (!pluginId) {
+    showToast('Enter a plugin id.', 'error');
     return;
   }
-  npmSearchResults = r.data.results.slice(0, 10);
-  renderGallery();
-}
-
-function confirmNpmInstall(index) {
-  const pkg = npmSearchResults[index];
-  if (!pkg) return;
-  showInlineConfirm('npm-install-confirm-' + index,
-    'Install "' + pkg.name + '" from npm? This is an unreviewed package (high risk).',
-    function() { doNpmInstall(pkg.name, index); }
-  );
-}
-
-async function doNpmInstall(pkgName, index) {
-  const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ pluginId: pkgName }) });
-  if (r.ok) {
-    showToast('Installed "' + pkgName + '" successfully.', 'success');
-  } else {
+  const r = await api('/admin/plugins/install', { method: 'POST', body: JSON.stringify({ pluginId }) });
+  if (!r.ok) {
     showToast('Install failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
+    return;
   }
-  renderGallery();
+  if (input) input.value = '';
+  showToast('Plugin installed.', 'success');
+  await loadMyExtensions();
 }
 
-/* ── detail modal ─────────────────────────────────────── */
-async function showDetail(id) {
-  const r = await api('/admin/gallery/item/' + id);
-  if (!r.ok) return;
-  const item = r.data.item;
-  const badge = r.data.riskBadge;
-  const ov = document.getElementById('modal-overlay');
-  let h = '<div class="modal">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:start">';
-  h += '<h3>' + esc(item.name) + '</h3>';
-  h += '<button class="secondary sm" onclick="closeModal()">Close</button>';
-  h += '</div>';
-  h += '<div class="muted" style="font-size:13px">' + categoryLabel(item.category) + ' &middot; v' + esc(item.version) + ' &middot; by ' + esc(item.author) + '</div>';
-  h += '<p>' + esc(item.description) + '</p>';
-  h += '<div class="sec-box">';
-  h += '<div class="sec-title">Security Assessment</div>';
-  h += '<div style="margin-bottom:.4rem">' + riskBadge(item.risk) + ' <span class="muted" style="font-size:13px;margin-left:.5rem">' + esc(badge.description) + '</span></div>';
-  h += '<div style="font-size:14px;margin:.5rem 0"><strong>Security notes:</strong> ' + esc(item.securityNotes) + '</div>';
-  h += '<div class="sec-title" style="margin-top:.6rem">Permissions Required</div>';
-  h += '<ul class="perm-list">';
-  const perms = item.permissions || [];
-  for (let pi = 0; pi < perms.length; pi++) h += '<li>' + esc(perms[pi]) + '</li>';
-  h += '</ul></div>';
-  h += '<div class="mb">';
-  const itemTags = item.tags || [];
-  for (let ti = 0; ti < itemTags.length; ti++) h += '<span class="tag">' + esc(itemTags[ti]) + '</span>';
-  h += '</div>';
-  h += '<div class="sec-box">';
-  h += '<div class="sec-title">Defense in Depth</div>';
-  h += '<div style="font-size:13px">';
-  if (item.category === 'plugin') {
-    h += 'Capabilities run inside the sandbox. They can hook into tool calls but cannot make network requests or access the filesystem outside the sandbox. A tool firewall provides a second layer of enforcement.';
-  } else if (item.category === 'skill') {
-    h += 'Behaviors are behavioral SOPs (markdown files). They have zero tool access and cannot execute code. They only influence how the assistant reasons and responds.';
-  } else {
-    h += 'Services run on an isolated network. All inbound messages pass through signature verification, rate limiting, and the tool firewall before reaching your assistant.';
-  }
-  h += '</div></div>';
-  if (!adminToken) {
-    h += '<p class="muted" style="font-size:13px">Set your admin password in System settings to enable installation.</p>';
-  } else {
-    h += '<div style="margin-top:1rem" id="gallery-install-confirm-' + esc(item.id) + '">';
-    h += '<button onclick="confirmInstallGallery(\'' + jsStr(item.id) + '\',\'' + jsStr(item.name) + '\')">Install ' + esc(item.name) + '</button>';
-    h += '</div>';
-  }
-  h += '</div>';
-  ov.innerHTML = h;
-  ov.classList.remove('hidden');
-  trapFocus(ov);
-}
-
-function closeModal() {
-  releaseFocus(document.getElementById('modal-overlay'));
-  document.getElementById('modal-overlay').classList.add('hidden');
-}
-
-function confirmInstallGallery(id, name) {
-  showInlineConfirm('gallery-install-confirm-' + id,
-    'Install "' + name + '"? Your assistant will restart to apply changes.',
-    function() { doInstallGallery(id); }
-  );
-}
-
-async function doInstallGallery(id) {
-  const r = await api('/admin/gallery/install', { method: 'POST', body: JSON.stringify({ galleryId: id }) });
-  if (r.ok) {
-    showToast('Installed successfully.', 'success');
-    closeModal();
-  } else {
-    showToast('Install failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
-  }
-}
-
-/* ── My Extensions ────────────────────────────────────── */
 async function loadMyExtensions() {
   const el = document.getElementById('page-extensions');
-  let h = renderExtensionsToggle();
-  h += '<p class="muted">Extensions currently active on your assistant.</p>';
+  let h = '<h2>Plugins</h2>';
+  h += '<p class="muted">OpenPalm MVP plugin management: add or remove entries in the mounted OpenCode <code>plugin[]</code> list.</p>';
+  h += '<div class="card" style="margin-bottom:1rem">';
+  h += '<h3>Add Plugin</h3>';
+  h += '<div style="display:flex;gap:.5rem">';
+  h += '<input id="plugin-install-id" style="flex:1" placeholder="@scope/plugin or ./plugins/local.ts" />';
+  h += '<button onclick="installPlugin()">Install</button>';
+  h += '</div></div>';
+
   if (!adminToken) {
-    h += '<p class="muted">Please enter your admin password in System settings to view installed extensions.</p>';
+    h += '<p class="muted">Please enter your admin password in System settings.</p>';
     el.innerHTML = h;
     return;
   }
+
   const r = await api('/admin/installed');
   if (!r.ok) {
-    h += '<p class="muted">Could not load: ' + esc(friendlyError(r.data?.error || r.data?.message || 'Request failed')) + '</p>';
+    h += '<p class="muted">Could not load plugins: ' + esc(friendlyError(r.data?.error || r.data?.message || 'Request failed')) + '</p>';
     el.innerHTML = h;
     return;
   }
-  const d = r.data;
-  h += '<h3>Active Capabilities</h3>';
-  if (!d.plugins.length) h += '<p class="muted">No capabilities installed.</p>';
-  for (let pi = 0; pi < d.plugins.length; pi++) {
-    const p = d.plugins[pi];
+
+  const plugins = Array.isArray(r.data.plugins) ? r.data.plugins : [];
+  h += '<h3>Installed Plugins</h3>';
+  if (!plugins.length) h += '<p class="muted">No plugins installed.</p>';
+  for (let i = 0; i < plugins.length; i++) {
+    const pluginId = plugins[i];
     h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
-    h += '<div><strong>' + esc(p) + '</strong> <span class="tag">Capability</span></div>';
-    h += '<div id="uninstall-confirm-' + pi + '"><button class="danger sm" onclick="confirmUninstall(\'' + jsStr(p) + '\',' + pi + ')">Remove</button></div>';
+    h += '<div><strong>' + esc(pluginId) + '</strong></div>';
+    h += '<div id="uninstall-confirm-' + i + '"><button class="danger sm" onclick="confirmUninstall(\'' + jsStr(pluginId) + '\',' + i + ')">Remove</button></div>';
     h += '</div>';
   }
-  if (d.setupState && d.setupState.installedExtensions && d.setupState.installedExtensions.length) {
-    h += '<h3>Installed Extensions</h3>';
-    for (let ei = 0; ei < d.setupState.installedExtensions.length; ei++) {
-      const extId = d.setupState.installedExtensions[ei];
-      var info = galleryItems.find(function(g) { return g.id === extId; });
-      h += '<div class="card" style="display:flex;justify-content:space-between;align-items:center">';
-      h += '<div><strong>' + esc(info ? info.name : extId) + '</strong> <span class="tag">Extension</span>';
-      if (info && info.description) h += '<div class="muted" style="font-size:13px;margin-top:.2rem">' + esc(info.description) + '</div>';
-      h += '</div>';
-      h += '</div>';
-    }
-  }
+
+  h += '<div class="card" style="margin-top:1rem"><strong>Manual OpenCode customization</strong><div class="muted" style="font-size:13px;margin-top:.3rem">Manage skills, agents, commands, and tools manually under OPENPALM_DATA_HOME/opencode/.config/opencode/.</div></div>';
   el.innerHTML = h;
 }
 
 function confirmUninstall(pluginId, index) {
   showInlineConfirm('uninstall-confirm-' + index,
-    'Are you sure? Your assistant will restart to apply changes.',
+    'Remove plugin "' + pluginId + '" and restart opencode-core?',
     function() { doUninstall(pluginId); }
   );
 }
 
 async function doUninstall(pluginId) {
-  const r = await api('/admin/gallery/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
+  const r = await api('/admin/plugins/uninstall', { method: 'POST', body: JSON.stringify({ pluginId: pluginId }) });
   if (r.ok) {
-    showToast('Extension removed. Your assistant will restart to apply changes.', 'success');
+    showToast('Plugin removed.', 'success');
   } else {
     showToast('Failed to remove: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
   }
@@ -1373,7 +1148,7 @@ loadMeta().then(function() {
   var initPage = window.location.hash.replace('#', '');
   if (['extensions','channels','automations','system'].indexOf(initPage) === -1) initPage = 'extensions';
   showPage(initPage);
-  window.openPalmSetup?.init({ api: api, esc: esc, riskBadge: riskBadge, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
+  window.openPalmSetup?.init({ api: api, esc: esc, showPage: showPage, getAdminToken: function() { return adminToken; }, setAdminToken: function(v) { adminToken = v; localStorage.setItem('op_admin', v); } });
   checkSetup();
 });
 

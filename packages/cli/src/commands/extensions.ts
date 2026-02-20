@@ -66,7 +66,7 @@ export async function extensions(
           process.exit(1);
         }
 
-        const response = await fetch(`${base}/admin/gallery/install`, {
+        const response = await fetch(`${base}/admin/plugins/install`, {
           method: "POST",
           headers,
           body: JSON.stringify({ pluginId }),
@@ -86,7 +86,7 @@ export async function extensions(
           process.exit(1);
         }
 
-        const response = await fetch(`${base}/admin/gallery/uninstall`, {
+        const response = await fetch(`${base}/admin/plugins/uninstall`, {
           method: "POST",
           headers,
           body: JSON.stringify({ pluginId }),
