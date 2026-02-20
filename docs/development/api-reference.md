@@ -64,6 +64,43 @@ Headers for all protected admin endpoints:
 ### GET /health
 Health status for the admin app.
 
+### Standard admin error shape
+All admin endpoints should return errors in the shape:
+
+```json
+{
+  "error": "machine_readable_error_code",
+  "details": "optional human-readable or structured details",
+  "code": "optional stable subcode"
+}
+```
+
+This keeps the UI implementation simple and predictable for non-technical users by avoiding endpoint-specific parsing rules.
+
+### Secrets + connection contract (canonical)
+The secret manager is the source of truth for both raw secret keys and connection mappings.
+
+- `GET /admin/secrets` — list available secret keys and where each key is used.
+- `POST /admin/secrets` — create or update a secret key/value `{ "name": "OPENAI_API_KEY_MAIN", "value": "..." }`.
+- `POST /admin/secrets/delete` — delete a secret key if not referenced `{ "name": "OPENAI_API_KEY_MAIN" }`.
+- `GET /admin/secrets/map` — read stack-level channel secret mappings.
+- `POST /admin/secrets/mappings/channel` — map channel gateway/channel secret refs `{ "channel": "chat", "target": "gateway" | "channel", "secretName": "CHANNEL_CHAT_SECRET" }`.
+
+Connection lifecycle:
+- `GET /admin/connections` — list saved connection definitions.
+- `POST /admin/connections/validate` — validate a connection payload against current secret inventory without saving.
+- `POST /admin/connections` — create/update a saved connection definition.
+- `GET /admin/compose/capabilities` — returns allowed service names, log tail constraints, and explicit reload semantics per service.
+- `POST /admin/connections/delete` — remove a saved connection definition.
+
+The UI must always derive secret dropdown options from live `GET /admin/secrets` output.
+
+### Common connection env-var conventions
+- OpenAI-compatible providers: `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`
+- Anthropic: `ANTHROPIC_API_KEY`
+- GitHub: `GITHUB_TOKEN`
+- Generic webhook/API auth: `API_KEY` or `BEARER_TOKEN`
+
 ### Container management
 - `GET /admin/containers/list` — list running containers
 - `POST /admin/containers/up` — start a service `{ "service": "channel-discord" }`
@@ -84,6 +121,7 @@ Health status for the admin app.
 
 ### Setup wizard
 - `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag), current service-instance overrides, and OpenMemory provider setup (`openmemoryProvider.openaiBaseUrl`, `openmemoryProvider.openaiApiKeyConfigured`)
+- `GET /admin/system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows.
 - `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions" }`
 - `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
 - `POST /admin/setup/service-instances` — update service instance overrides and OpenMemory OpenAI-compatible provider settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "..." }` (`openaiApiKey` is optional; leave empty to keep current key)

@@ -244,34 +244,15 @@ export class StackManager {
     return this.getSpec().connections;
   }
 
+  validateConnection(input: { id?: unknown; name?: unknown; type?: unknown; env?: unknown }) {
+    return this.normalizeConnection(input);
+  }
+
   upsertConnection(input: { id?: unknown; name?: unknown; type?: unknown; env?: unknown }) {
-    const id = sanitizeEnvScalar(input.id);
-    const name = sanitizeEnvScalar(input.name);
-    const type = sanitizeEnvScalar(input.type) as ConnectionType;
-    if (!id) throw new Error("invalid_connection_id");
-    if (!name) throw new Error("invalid_connection_name");
-    if (!ConnectionTypes.includes(type)) throw new Error("invalid_connection_type");
-    const rawEnv = typeof input.env === "object" && input.env !== null ? input.env as Record<string, unknown> : {};
-    const envEntries = Object.entries(rawEnv);
-    if (envEntries.length === 0) throw new Error("missing_connection_env");
-
-    const normalizedEnv: Record<string, string> = {};
-    for (const [rawKey, rawValue] of envEntries) {
-      const key = sanitizeEnvScalar(rawKey).toUpperCase();
-      const value = sanitizeEnvScalar(rawValue).toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("invalid_connection_env_key");
-      if (!value || !this.isValidSecretName(value)) throw new Error("invalid_connection_env_value");
-      normalizedEnv[key] = value;
-    }
-
-    const available = new Set(Object.keys(this.readSecretsEnv()));
-    for (const secretRef of Object.values(normalizedEnv)) {
-      if (!available.has(secretRef)) throw new Error("unknown_secret_name");
-    }
+    const nextConnection = this.normalizeConnection(input);
 
     const spec = this.getSpec();
-    const nextConnection = { id, name, type, env: normalizedEnv };
-    const index = spec.connections.findIndex((connection) => connection.id === id);
+    const index = spec.connections.findIndex((connection) => connection.id === nextConnection.id);
     if (index >= 0) spec.connections[index] = nextConnection;
     else spec.connections.push(nextConnection);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
@@ -352,6 +333,34 @@ export class StackManager {
 
   private isValidSecretName(name: string) {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
+  }
+
+  private normalizeConnection(input: { id?: unknown; name?: unknown; type?: unknown; env?: unknown }) {
+    const id = sanitizeEnvScalar(input.id);
+    const name = sanitizeEnvScalar(input.name);
+    const type = sanitizeEnvScalar(input.type) as ConnectionType;
+    if (!id) throw new Error("invalid_connection_id");
+    if (!name) throw new Error("invalid_connection_name");
+    if (!ConnectionTypes.includes(type)) throw new Error("invalid_connection_type");
+    const rawEnv = typeof input.env === "object" && input.env !== null ? input.env as Record<string, unknown> : {};
+    const envEntries = Object.entries(rawEnv);
+    if (envEntries.length === 0) throw new Error("missing_connection_env");
+
+    const normalizedEnv: Record<string, string> = {};
+    for (const [rawKey, rawValue] of envEntries) {
+      const key = sanitizeEnvScalar(rawKey).toUpperCase();
+      const value = sanitizeEnvScalar(rawValue).toUpperCase();
+      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("invalid_connection_env_key");
+      if (!value || !this.isValidSecretName(value)) throw new Error("invalid_connection_env_value");
+      normalizedEnv[key] = value;
+    }
+
+    const available = new Set(Object.keys(this.readSecretsEnv()));
+    for (const secretRef of Object.values(normalizedEnv)) {
+      if (!available.has(secretRef)) throw new Error("unknown_secret_name");
+    }
+
+    return { id, name, type, env: normalizedEnv };
   }
 
   private removeStaleRouteFiles(nextRoutes: Record<string, string>) {

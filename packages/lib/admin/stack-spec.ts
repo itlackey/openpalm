@@ -182,6 +182,10 @@ function parseAutomations(raw: unknown): StackAutomation[] {
 
 export function parseStackSpec(raw: unknown): StackSpec {
   const doc = assertRecord(raw, "invalid_stack_spec");
+  const allowedKeys = new Set(["version", "accessScope", "channels", "secrets", "connections", "automations"]);
+  for (const key of Object.keys(doc)) {
+    if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
+  }
   const version = doc.version;
   if (version !== 1 && version !== 2) throw new Error("invalid_stack_spec_version");
   if (doc.accessScope !== "host" && doc.accessScope !== "lan") throw new Error("invalid_access_scope");

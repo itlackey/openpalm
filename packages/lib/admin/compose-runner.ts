@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
-const CoreServices = [
+export const CoreServices = [
   "opencode-core", "gateway", "openmemory", "admin",
   "channel-chat", "channel-discord", "channel-voice",
   "channel-telegram", "caddy", "openmemory-ui", "postgres", "qdrant"
@@ -70,7 +70,7 @@ function parseServiceNamesFromComposeFile(): string[] {
   return names;
 }
 
-function allowedServiceSet(): Set<string> {
+export function allowedServiceSet(): Set<string> {
   const fromCompose = parseServiceNamesFromComposeFile();
   const declared = [...CoreServices, ...extraServices, ...fromCompose];
   return new Set<string>(declared);

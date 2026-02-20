@@ -9,16 +9,9 @@ import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
-import { composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
+import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import type { ModelAssignment } from "./types.ts";
-
-// TODO: Split this file into route modules as it grows:
-//   routes/setup.ts       - Setup wizard endpoints (/admin/setup/*)
-//   routes/channels.ts    - Channel management endpoints (/admin/channels/*)
-//   routes/automations.ts - Automation CRUD endpoints (/admin/automations/*)
-//   routes/providers.ts   - Provider management endpoints (/admin/providers/*)
-//   routes/system.ts      - System/config endpoints (/admin/containers/*, /admin/config/*)
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
@@ -40,11 +33,7 @@ const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/d
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
-const KNOWN_SERVICES = new Set<string>([
-  "gateway", "opencode-core", "openmemory", "openmemory-ui",
-  "admin", "caddy",
-  "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
-]);
+const KNOWN_SERVICES = allowedServiceSet();
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
@@ -338,6 +327,31 @@ const server = Bun.serve({
         }));
       }
 
+      if (url.pathname === "/admin/system/state" && req.method === "GET") {
+        const setup = setupManager.getState();
+        if (setup.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        const secrets = stackManager.listSecretManagerState();
+        return cors(json(200, {
+          setup: {
+            ...setup,
+            firstBoot: setupManager.isFirstBoot(),
+            serviceInstances: getConfiguredServiceInstances(),
+            openmemoryProvider: getConfiguredOpenmemoryProvider(),
+            smallModelProvider: getConfiguredSmallModel(),
+          },
+          stack: {
+            accessScope: stackManager.getSpec().accessScope,
+            channels: stackManager.getSpec().channels,
+            connections: stackManager.listConnections(),
+            automations: stackManager.listAutomations(),
+          },
+          secrets: {
+            available: secrets.available,
+            usedBy: secrets.usedBy,
+          },
+        }));
+      }
+
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
         const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels"];
@@ -526,6 +540,29 @@ const server = Bun.serve({
       if (url.pathname === "/admin/connections" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, { ok: true, connections: stackManager.listConnections() }));
+      }
+
+      if (url.pathname === "/admin/connections/validate" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string; name?: string; type?: string; env?: Record<string, string> };
+        try {
+          const connection = stackManager.validateConnection(body);
+          return cors(json(200, { ok: true, connection }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (
+            message === "invalid_connection_id" ||
+            message === "invalid_connection_name" ||
+            message === "invalid_connection_type" ||
+            message === "missing_connection_env" ||
+            message === "invalid_connection_env_key" ||
+            message === "invalid_connection_env_value" ||
+            message === "unknown_secret_name"
+          ) {
+            return cors(json(400, { error: message }));
+          }
+          throw error;
+        }
       }
 
       if (url.pathname === "/admin/connections" && req.method === "POST") {
