@@ -19,14 +19,10 @@ If you are new to OpenPalm, read the docs in this order:
 | [Admin Concepts](admin-concepts.md) | Key concepts for administrators |
 | [Admin Guide](admin-guide.md) | Installer details, admin console, authentication |
 | [Architecture](architecture.md) | Container inventory, data flow diagrams, URL routing |
-| [Architecture Simplification Plan](architecture-simplification-plan.md) | Gap analysis and phased plan to complete stack-spec/generator simplification work |
 | [API Reference](api-reference.md) | Service endpoints and payloads for gateway, admin, and channels |
 | [Extensions Guide](extensions-guide.md) | How to build and install extensions (developer tutorial) |
-| [Extensions Reference](extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 | [Extensions Analysis](extensions-analysis.md) | Architecture analysis of the extension system (design rationale) |
 | [Plugin Authoring](plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
-| [Docker Compose Guide](docker-compose-guide.md) | Hosting, observability, extending the stack |
-| [Host System Reference](host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Implementation Guide](implementation-guide.md) | Design rationale and build order |
 | [Security](security.md) | Security controls by layer and why they exist |
 | [Testing Plan](testing-plan.md) | Test strategy, coverage goals, and test categories |

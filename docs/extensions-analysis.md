@@ -2,7 +2,6 @@
 
 > **Related extension docs:**
 > - [extensions-guide.md](extensions-guide.md) -- How to build and install extensions (developer tutorial)
-> - [extensions-reference.md](extensions-reference.md) -- Technical reference for all extension types (API/schema details)
 > - **extensions-analysis.md** (this file) -- Architecture analysis of the extension system (design rationale)
 
 This document is a technical review of how OpenPalm implements its extension system, evaluated against the capabilities of the OpenCode runtime it depends on. It identifies gaps, structural issues, and concrete recommendations for improvement. It has been updated to reflect recent repository changes.
