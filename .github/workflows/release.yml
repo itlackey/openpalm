@@ -1,0 +1,125 @@
+name: Release
+
+# Automated release workflow.
+# Bumps the version in versions.json and related files, commits the change,
+# creates a git tag, and pushes. The tag push then triggers the existing
+# publish-images and/or publish-cli workflows.
+#
+# IMPORTANT: This workflow requires the RELEASE_TOKEN secret (a PAT or GitHub
+# App token with "contents: write" scope). Tags pushed by the default
+# GITHUB_TOKEN do NOT trigger downstream workflows (publish-images,
+# publish-cli), so a separate token is required for the push step.
+#
+# Supports two modes:
+#   "platform" — bumps every component + the platform version, creates a v* tag
+#   "<component>" — bumps only that component, creates a <component>/v* tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "What to release"
+        required: true
+        type: choice
+        options:
+          - platform
+          - opencode-core
+          - gateway
+          - admin
+          - channel-chat
+          - channel-discord
+          - channel-voice
+          - channel-telegram
+          - cli
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+# Minimal top-level permissions; the job uses RELEASE_TOKEN for push.
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate token
+        run: |
+          if [ -z "${{ secrets.RELEASE_TOKEN }}" ]; then
+            echo "::error::RELEASE_TOKEN secret is not configured. Tags pushed by GITHUB_TOKEN do not trigger downstream workflows. See docs/VERSIONING.md for setup instructions."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use RELEASE_TOKEN so the subsequent push triggers downstream workflows.
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        run: bun run scripts/version.ts bump ${{ inputs.component }} ${{ inputs.bump }}
+
+      - name: Read new version
+        id: version
+        run: |
+          if [ "${{ inputs.component }}" = "platform" ]; then
+            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).platform)")
+            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
+          else
+            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).components['${{ inputs.component }}'])")
+            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ inputs.component }}/v${VER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit version bump
+        run: |
+          git add -A
+          if [ "${{ inputs.component }}" = "platform" ]; then
+            git commit -m "release: bump platform to v${{ steps.version.outputs.version }}"
+          else
+            git commit -m "release(${{ inputs.component }}): bump to v${{ steps.version.outputs.version }}"
+          fi
+
+      - name: Create tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+
+      - name: Push commit and tag
+        run: |
+          git push origin HEAD
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Summary
+        run: |
+          echo "## Release created" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Component:** ${{ inputs.component }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Bump:** ${{ inputs.bump }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** ${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag:** \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.component }}" = "platform" ]; then
+            echo "The \`v*\` tag will trigger **publish-images** and **publish-cli** workflows." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ inputs.component }}" = "cli" ]; then
+            echo "The \`cli/v*\` tag will trigger the **publish-cli** workflow." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The \`${{ inputs.component }}/v*\` tag will trigger the **publish-images** workflow for this component." >> "$GITHUB_STEP_SUMMARY"
+          fi
