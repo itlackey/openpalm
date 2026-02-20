@@ -5,8 +5,11 @@
 	import LoadingSpinner from '$lib/components/LoadingSpinner.svelte';
 	import type { ChannelInfo } from '$lib/types';
 
+	type HealthResult = { ok: boolean; time?: string; error?: string };
+
 	let loading = $state(true);
 	let channels = $state<ChannelInfo[]>([]);
+	let channelHealth = $state<Record<string, HealthResult>>({});
 
 	/** Track which cards have their config section expanded */
 	let expandedCards = $state<Record<string, boolean>>({});
@@ -29,9 +32,12 @@
 
 	async function loadChannels() {
 		loading = true;
-		const res = await apiGet<{ channels: ChannelInfo[] }>('/admin/channels');
-		if (res.ok && res.data?.channels) {
-			channels = res.data.channels;
+		const [channelsRes, healthRes] = await Promise.all([
+			apiGet<{ channels: ChannelInfo[] }>('/admin/channels'),
+			apiGet<{ services: Record<string, HealthResult> }>('/admin/setup/health-check', { noAuth: true })
+		]);
+		if (channelsRes.ok && channelsRes.data?.channels) {
+			channels = channelsRes.data.channels;
 			// Initialize edited configs from current values
 			for (const ch of channels) {
 				if (!editedConfigs[ch.service]) {
@@ -43,6 +49,9 @@
 			}
 		} else {
 			showToast('Failed to load channels', 'error');
+		}
+		if (healthRes.ok && healthRes.data?.services) {
+			channelHealth = healthRes.data.services;
 		}
 		loading = false;
 	}
@@ -172,7 +181,10 @@
 					<!-- Header -->
 					<div class="channel-header">
 						<div class="channel-info">
-							<h2 class="channel-name">{channel.label}</h2>
+							<div class="channel-name-row">
+								<h2 class="channel-name">{channel.label}</h2>
+								<HealthBadge ok={channelHealth[svc]?.ok ?? null} />
+							</div>
 							<span class="channel-service muted">{svc}</span>
 						</div>
 
@@ -361,6 +373,12 @@
 		flex-direction: column;
 		gap: 0.15rem;
 		min-width: 0;
+	}
+
+	.channel-name-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.channel-name {

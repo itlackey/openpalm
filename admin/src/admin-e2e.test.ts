@@ -1798,3 +1798,259 @@ describe("CORS preflight for protected endpoints", () => {
     });
   }
 });
+
+// ── Gallery: All Install Action Types ──────────────────
+// Regression: Covers skill-file, compose-service, command-file, agent-file, tool-file installs
+
+describe("gallery install action branches", () => {
+  it("install skill-file item returns type skill", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "skill-memory" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.type).toBe("skill");
+    expect(r.data.installed).toBe("skill-memory");
+  });
+
+  it("install compose-service item returns type container", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "channel-chat" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.type).toBe("container");
+    expect(r.data.service).toBe("channel-chat");
+    expect(r.data.installed).toBe("channel-chat");
+  });
+
+  it("install command-file item falls through to unknown install action", async () => {
+    // command-file, agent-file, and tool-file do not have a dedicated install branch
+    // in the server code (only plugin, skill-file, compose-service do)
+    // so they should return 400 "unknown install action"
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "command-health" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("unknown install action");
+  });
+
+  it("install via pluginId with valid npm package name", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ pluginId: "@openpalm/test-plugin" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.pluginId).toBe("@openpalm/test-plugin");
+  });
+
+  it("install via pluginId with invalid identifier returns 400", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ pluginId: "../etc/passwd" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid plugin id");
+  });
+});
+
+// ── Gallery: All Uninstall Action Types ─────────────────
+// Regression: Covers plugin, compose-service, skill-file, and pluginId uninstalls
+
+describe("gallery uninstall action branches", () => {
+  it("uninstall compose-service item returns type container", async () => {
+    const r = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "channel-chat" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.type).toBe("container");
+    expect(r.data.service).toBe("channel-chat");
+  });
+
+  it("uninstall skill-file item returns its installAction type", async () => {
+    const r = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "skill-memory" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.type).toBe("skill-file");
+  });
+
+  it("uninstall via pluginId with valid identifier", async () => {
+    const r = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ pluginId: "@openpalm/test-plugin" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.action).toBe("disabled");
+  });
+
+  it("uninstall via pluginId with invalid identifier returns 400", async () => {
+    const r = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ pluginId: "../../bad" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid plugin id");
+  });
+});
+
+// ── Providers: OpenMemory Role Assignment ───────────────
+// Regression: Ensures openmemory role assignment works (not just small)
+
+describe("provider openmemory role assignment", () => {
+  let testProviderId: string;
+
+  it("create provider for openmemory assignment", async () => {
+    const r = await authed("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({ name: "OpenMem Provider", url: "http://localhost:11435/v1", apiKey: "test-key" }),
+    });
+    expect(r.ok).toBe(true);
+    testProviderId = r.data.provider?.id as string;
+    expect(testProviderId).toBeTruthy();
+  });
+
+  it("assign openmemory role to provider", async () => {
+    const r = await authed("/admin/providers/assign", {
+      method: "POST",
+      body: JSON.stringify({ role: "openmemory", providerId: testProviderId, modelId: "llama3:8b" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.assignments).toHaveProperty("openmemory");
+    const assignment = r.data.assignments.openmemory as { providerId: string; modelId: string };
+    expect(assignment.providerId).toBe(testProviderId);
+    expect(assignment.modelId).toBe("llama3:8b");
+  });
+
+  it("GET /admin/providers reflects openmemory assignment", async () => {
+    const r = await authed("/admin/providers");
+    expect(r.ok).toBe(true);
+    const assignment = r.data.assignments?.openmemory as { providerId: string; modelId: string } | undefined;
+    expect(assignment?.modelId).toBe("llama3:8b");
+  });
+});
+
+// ── Automations: Missing ID Validation ──────────────────
+// Regression: Ensures missing ID returns 400 for update, delete, trigger
+
+describe("automations missing ID validation", () => {
+  it("POST /admin/automations/update without id returns 400", async () => {
+    const r = await authed("/admin/automations/update", {
+      method: "POST",
+      body: JSON.stringify({ name: "no-id" }),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("POST /admin/automations/delete without id returns 400", async () => {
+    const r = await authed("/admin/automations/delete", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("POST /admin/automations/trigger without id returns 400", async () => {
+    const r = await authed("/admin/automations/trigger", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(400);
+  });
+});
+
+// ── Setup: Re-completion Auth Gate ──────────────────────
+// Regression: After setup is complete, POST /admin/setup/complete requires auth
+
+describe("setup re-completion auth gate", () => {
+  it("POST /admin/setup/complete without auth after completion returns 401", async () => {
+    const r = await apiJson("/admin/setup/complete", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/setup/complete with auth after completion succeeds", async () => {
+    const r = await authed("/admin/setup/complete", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+});
+
+// ── Provider Models: Error Handling ─────────────────────
+// Regression: Ensures models endpoint handles various error states
+
+describe("provider models edge cases", () => {
+  it("POST /admin/providers/models with unknown provider returns 404", async () => {
+    const r = await authed("/admin/providers/models", {
+      method: "POST",
+      body: JSON.stringify({ providerId: "nonexistent-provider-id" }),
+    });
+    expect(r.status).toBe(404);
+  });
+
+  it("POST /admin/providers/models without providerId returns 400", async () => {
+    const r = await authed("/admin/providers/models", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(400);
+  });
+});
+
+// ── Channel Access: Invalid Inputs ──────────────────────
+// Regression: Ensures edge cases in channel access handling
+
+describe("channel access edge cases", () => {
+  it("POST /admin/channels/access with empty channel returns 400", async () => {
+    const r = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "", access: "lan" }),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("POST /admin/channels/access with empty access returns 400", async () => {
+    const r = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", access: "" }),
+    });
+    expect(r.status).toBe(400);
+  });
+});
+
+// ── Static File Serving: Edge Cases ─────────────────────
+// Regression: SPA fallback and asset serving edge cases
+
+describe("static file serving edge cases", () => {
+  it("GET /admin/ with trailing slash serves SPA", async () => {
+    const r = await api("/admin/");
+    expect(r.status).toBe(200);
+    const text = await r.text();
+    expect(text).toContain("html");
+  });
+
+  it("GET /logo.png serves the logo file", async () => {
+    const r = await api("/logo.png");
+    expect(r.status).toBe(200);
+  });
+
+  it("non-GET method on unknown path does not serve SPA", async () => {
+    const r = await api("/admin/unknown-page", { method: "POST" });
+    // Should return 404, not the SPA HTML
+    expect(r.status).not.toBe(200);
+  });
+});

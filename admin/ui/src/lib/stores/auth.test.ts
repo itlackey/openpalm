@@ -72,4 +72,33 @@ describe('auth store', () => {
 		expect(get(authToken)).toBe('second');
 		expect(localStorage.getItem('op_admin')).toBe('second');
 	});
+
+	it('setToken with empty string stores empty string (different from clearToken)', async () => {
+		const { authToken, setToken } = await import('./auth');
+		setToken('some-token');
+		expect(get(authToken)).toBe('some-token');
+
+		// setToken('') stores an empty string, not null
+		setToken('');
+		expect(get(authToken)).toBe('');
+		// localStorage should have an empty string entry, not be removed
+		expect(localStorage.getItem('op_admin')).toBe('');
+	});
+
+	it('clearToken after setToken removes key entirely from localStorage', async () => {
+		const { authToken, setToken, clearToken } = await import('./auth');
+		setToken('my-token');
+		clearToken();
+		// localStorage.getItem returns null when key is removed
+		expect(localStorage.getItem('op_admin')).toBeNull();
+		expect(get(authToken)).toBe('');
+	});
+
+	it('clearToken is safe to call when no token is set', async () => {
+		const { authToken, clearToken } = await import('./auth');
+		// No token set - clearToken should not throw
+		clearToken();
+		expect(get(authToken)).toBe('');
+		expect(localStorage.getItem('op_admin')).toBeNull();
+	});
 });
