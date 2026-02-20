@@ -9,7 +9,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: bun run typecheck
-      - run: bun test
+      - run: bun run test
 
   integration:
     runs-on: ubuntu-latest

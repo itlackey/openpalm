@@ -16,7 +16,7 @@
     "packages/cli"
   ],
   "scripts": {
-    "test": "bun test",
+    "test": "bun test admin/src/ controller/ gateway/ channels/ shared/ packages/ opencode/ test/",
     "typecheck": "bunx tsc",
     "preflight": "bun run scripts/preflight.ts",
     "dev:setup": "./dev-setup.sh",
