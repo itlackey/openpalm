@@ -324,7 +324,7 @@ fi
 OPENPALM_COMPOSE_BIN=""
 OPENPALM_COMPOSE_SUBCOMMAND=""
 OPENPALM_CONTAINER_SOCKET_PATH=""
-OPENPALM_CONTAINER_SOCKET_IN_CONTAINER="/var/run/openpalm-container.sock"
+OPENPALM_CONTAINER_SOCKET_IN_CONTAINER="/var/run/docker.sock"
 OPENPALM_CONTAINER_SOCKET_URI=""
 
 case "$OPENPALM_CONTAINER_PLATFORM" in
@@ -421,7 +421,6 @@ echo "  State  → $OPENPALM_STATE_HOME"
 if [ ! -f .env ]; then
   cp "$INSTALL_ASSETS_DIR/config/system.env" .env
   upsert_env_var ADMIN_TOKEN "$(generate_token)"
-  upsert_env_var CONTROLLER_TOKEN "$(generate_token)"
   upsert_env_var POSTGRES_PASSWORD "$(generate_token)"
   upsert_env_var CHANNEL_CHAT_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_DISCORD_SECRET "$(generate_token)"
@@ -449,7 +448,8 @@ upsert_env_var OPENPALM_ENABLED_CHANNELS "${OPENPALM_ENABLED_CHANNELS:-}"
 mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
 
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,cron}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,cron,secrets}
+mkdir -p "$OPENPALM_CONFIG_HOME"/secrets/{gateway,channels}
 
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
@@ -473,6 +473,14 @@ seed_file "$INSTALL_ASSETS_DIR/state/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/cad
 
 for env_file in "$INSTALL_ASSETS_DIR"/config/channels/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
+done
+
+for env_file in "$INSTALL_ASSETS_DIR"/config/secrets/gateway/*.env; do
+  [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/secrets/gateway/$(basename "$env_file")"
+done
+
+for env_file in "$INSTALL_ASSETS_DIR"/config/secrets/channels/*.env; do
+  [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/secrets/channels/$(basename "$env_file")"
 done
 
 seed_file "$INSTALL_ASSETS_DIR/config/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"

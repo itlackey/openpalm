@@ -44,7 +44,6 @@ describe("install command source validation", () => {
   it("generates .env from template with secure tokens", () => {
     expect(installSource).toContain("generateEnvFromTemplate");
     expect(installSource).toContain("ADMIN_TOKEN: generateToken()");
-    expect(installSource).toContain("CONTROLLER_TOKEN: generateToken()");
     expect(installSource).toContain("POSTGRES_PASSWORD: generateToken()");
     expect(installSource).toContain("CHANNEL_CHAT_SECRET: generateToken()");
     expect(installSource).toContain("CHANNEL_DISCORD_SECRET: generateToken()");
@@ -99,8 +98,8 @@ describe("install command source validation", () => {
 });
 
 describe("staged install flow - Phase 2: Early UI access", () => {
-  it("starts ONLY core services first (caddy, postgres, admin, controller)", () => {
-    expect(installSource).toContain("const coreServices = [\"caddy\", \"postgres\", \"admin\", \"controller\"]");
+  it("starts ONLY core services first (caddy, postgres, admin)", () => {
+    expect(installSource).toContain("const coreServices = [\"caddy\", \"postgres\", \"admin\"]");
     expect(installSource).toContain("composePull(composeConfig, coreServices)");
   });
 
@@ -209,16 +208,16 @@ describe("staged flow ordering", () => {
 
   it("core services are a minimal subset", () => {
     // Verify the exact core services list
-    expect(installSource).toContain("const coreServices = [\"caddy\", \"postgres\", \"admin\", \"controller\"]");
+    expect(installSource).toContain("const coreServices = [\"caddy\", \"postgres\", \"admin\"]");
 
-    // Count the number of services (should be exactly 4)
+    // Count the number of services (should be exactly 3)
     const coreServicesMatch = installSource.match(/const coreServices = \[(.*?)\]/);
     expect(coreServicesMatch).toBeTruthy();
 
     if (coreServicesMatch) {
       const servicesList = coreServicesMatch[1];
       const servicesCount = (servicesList.match(/"/g) || []).length / 2; // Count pairs of quotes
-      expect(servicesCount).toBe(4);
+      expect(servicesCount).toBe(3);
     }
   });
 });

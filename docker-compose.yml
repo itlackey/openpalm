@@ -19,9 +19,6 @@ services:
   admin:
     build: ./admin
 
-  controller:
-    build: ./controller
-
   channel-chat:
     build: ./channels/chat
 

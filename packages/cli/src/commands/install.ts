@@ -83,7 +83,6 @@ export async function install(options: InstallOptions): Promise<void> {
     const templatePath = join(assetsDir, "config", "system.env");
     const overrides: Record<string, string> = {
       ADMIN_TOKEN: generateToken(),
-      CONTROLLER_TOKEN: generateToken(),
       POSTGRES_PASSWORD: generateToken(),
       CHANNEL_CHAT_SECRET: generateToken(),
       CHANNEL_DISCORD_SECRET: generateToken(),
@@ -108,8 +107,8 @@ export async function install(options: InstallOptions): Promise<void> {
   await upsertEnvVar(envPath, "OPENPALM_COMPOSE_BIN", bin);
   await upsertEnvVar(envPath, "OPENPALM_COMPOSE_SUBCOMMAND", subcommand);
   await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_PATH", socketPath);
-  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", "/var/run/openpalm-container.sock");
-  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_URI", "unix:///var/run/openpalm-container.sock");
+  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", "/var/run/docker.sock");
+  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_URI", "unix:///var/run/docker.sock");
   await upsertEnvVar(envPath, "OPENPALM_IMAGE_TAG", `latest-${arch}`);
   await upsertEnvVar(envPath, "OPENPALM_ENABLED_CHANNELS", "");
 
@@ -197,7 +196,7 @@ export async function install(options: InstallOptions): Promise<void> {
   };
 
   // 2. Pull + start minimal services
-  const coreServices = ["caddy", "postgres", "admin", "controller"];
+  const coreServices = ["caddy", "postgres", "admin"];
 
   const spin6 = spinner("Pulling core service images...");
   await composePull(composeConfig, coreServices);

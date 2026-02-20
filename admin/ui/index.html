@@ -589,6 +589,7 @@ async function doUninstall(pluginId) {
 /* ── CHANNELS PAGE ────────────────────────────────────── */
 let channelsData = [];
 let channelConfigs = {};
+let channelSecretOptions = [];
 
 async function loadChannels() {
   const el = document.getElementById('page-channels');
@@ -603,6 +604,7 @@ async function loadChannels() {
     return;
   }
   channelsData = ch.data.channels || [];
+  channelSecretOptions = ch.data.secretOptions || [];
 
   /* Use config data already included in the channels response */
   for (let ci = 0; ci < channelsData.length; ci++) {
@@ -632,6 +634,7 @@ function renderChannels() {
     const friendly = CHANNEL_FRIENDLY[svc] || svc;
     const fields = CHANNEL_FIELDS[svc] || [];
     const cfg = channelConfigs[svc] || {};
+    const mappings = c.secretMappings || {};
 
     h += '<div class="channel-card">';
     h += '<div class="channel-header">';
@@ -686,6 +689,30 @@ function renderChannels() {
       h += '<p class="muted" style="font-size:13px">No configuration needed for voice channel.</p>';
     }
 
+    if (adminToken && svc.startsWith('channel-')) {
+      const secretLabel = mappings.requiredEnvKey || 'CHANNEL_SECRET';
+      h += '<div class="field-group" style="margin-top:.6rem">';
+      h += '<label>Secret mapping for <code>' + esc(secretLabel) + '</code></label>';
+      h += '<div style="display:flex;gap:.5rem;align-items:center">';
+      h += '<select id="ch-secret-gw-' + esc(svc) + '">';
+      for (let si = 0; si < channelSecretOptions.length; si++) {
+        const opt = channelSecretOptions[si];
+        const selected = mappings.gateway === opt ? ' selected' : '';
+        h += '<option value="' + esc(opt) + '"' + selected + '>Gateway: ' + esc(opt) + '</option>';
+      }
+      h += '</select>';
+      h += '<select id="ch-secret-ch-' + esc(svc) + '">';
+      for (let si = 0; si < channelSecretOptions.length; si++) {
+        const opt = channelSecretOptions[si];
+        const selected = mappings.channel === opt ? ' selected' : '';
+        h += '<option value="' + esc(opt) + '"' + selected + '>Channel: ' + esc(opt) + '</option>';
+      }
+      h += '</select>';
+      h += '<button class="sm secondary" onclick="saveChannelSecretMapping(\'' + jsStr(svc) + '\')">Map secrets</button>';
+      h += '</div>';
+      h += '</div>';
+    }
+
     h += '<div id="channel-access-confirm-' + esc(svc) + '" style="margin-top:.3rem"></div>';
     h += '</div>';
   }
@@ -726,6 +753,24 @@ async function saveChannelConfig(service) {
     channelConfigs[service] = out;
   } else {
     showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error');
+  }
+}
+
+async function saveChannelSecretMapping(service) {
+  const channel = service === 'channel-chat' ? 'chat' : service === 'channel-voice' ? 'voice' : service === 'channel-discord' ? 'discord' : service === 'channel-telegram' ? 'telegram' : '';
+  if (!channel) return;
+  const gatewayEl = document.getElementById('ch-secret-gw-' + service);
+  const channelEl = document.getElementById('ch-secret-ch-' + service);
+  if (!gatewayEl || !channelEl) return;
+  const gatewaySecret = gatewayEl.value;
+  const channelSecret = channelEl.value;
+  const r1 = await api('/admin/secrets/mappings/channel', { method: 'POST', body: JSON.stringify({ channel: channel, target: 'gateway', secretName: gatewaySecret }) });
+  const r2 = await api('/admin/secrets/mappings/channel', { method: 'POST', body: JSON.stringify({ channel: channel, target: 'channel', secretName: channelSecret }) });
+  if (r1.ok && r2.ok) {
+    showToast('Secret mappings updated.', 'success');
+    loadChannels();
+  } else {
+    showToast('Failed to update mappings.', 'error');
   }
 }
 
@@ -1070,7 +1115,7 @@ async function loadSystem() {
   if (!adminToken) {
     h += '<p class="muted">Please enter your admin password above to manage services.</p>';
   } else {
-    const known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','controller','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+    const known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
     for (let ki = 0; ki < known.length; ki++) {
       const svcName = known[ki];
       h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--border)">';

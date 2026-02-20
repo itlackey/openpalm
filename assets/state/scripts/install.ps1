@@ -176,7 +176,7 @@ try {
 
   $OpenPalmComposeBin = ""
   $OpenPalmComposeSubcommand = ""
-  $OpenPalmContainerSocketInContainer = "/var/run/openpalm-container.sock"
+  $OpenPalmContainerSocketInContainer = "/var/run/docker.sock"
   $OpenPalmContainerSocketPath = ""
 
   switch ($OpenPalmContainerPlatform) {
@@ -218,7 +218,6 @@ try {
   if (-not (Test-Path ".env")) {
     Copy-Item (Join-Path $InstallAssetsDir "config/system.env") ".env"
     Upsert-EnvVar ADMIN_TOKEN (New-Token)
-    Upsert-EnvVar CONTROLLER_TOKEN (New-Token)
     Upsert-EnvVar POSTGRES_PASSWORD (New-Token)
     Upsert-EnvVar CHANNEL_CHAT_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_DISCORD_SECRET (New-Token)
@@ -262,6 +261,9 @@ try {
     "$OpenPalmConfigHome/caddy",
     "$OpenPalmConfigHome/channels",
     "$OpenPalmConfigHome/cron",
+    "$OpenPalmConfigHome/secrets",
+    "$OpenPalmConfigHome/secrets/gateway",
+    "$OpenPalmConfigHome/secrets/channels",
     "$OpenPalmStateHome/opencode-core",
     "$OpenPalmStateHome/gateway",
     "$OpenPalmStateHome/caddy",
@@ -292,6 +294,14 @@ try {
 
   Get-ChildItem (Join-Path $InstallAssetsDir "config/channels") -Filter "*.env" | ForEach-Object {
     Seed-File $_.FullName "$OpenPalmConfigHome/channels/$($_.Name)"
+  }
+
+  Get-ChildItem (Join-Path $InstallAssetsDir "config/secrets/gateway") -Filter "*.env" | ForEach-Object {
+    Seed-File $_.FullName "$OpenPalmConfigHome/secrets/gateway/$($_.Name)"
+  }
+
+  Get-ChildItem (Join-Path $InstallAssetsDir "config/secrets/channels") -Filter "*.env" | ForEach-Object {
+    Seed-File $_.FullName "$OpenPalmConfigHome/secrets/channels/$($_.Name)"
   }
 
   Seed-File (Join-Path $InstallAssetsDir "config/secrets.env") "$OpenPalmConfigHome/secrets.env"
