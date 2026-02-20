@@ -76,7 +76,6 @@ services:
       - OPENCODE_CONFIG_DIR=/opt/opencode
       - OPENCODE_PORT=4096
       - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}
-      - CRON_DIR=/cron
       - HOME=/home/opencode
     # Bind addresses default to localhost; set *_BIND_ADDRESS=0.0.0.0 to allow LAN access.
     ports:
@@ -84,7 +83,6 @@ services:
       - "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22"
     volumes:
       - ${OPENPALM_DATA_HOME}/home:/home/opencode
-      - ${OPENPALM_CONFIG_HOME}/cron:/cron
       - ${OPENPALM_STATE_HOME}/opencode-core:/state
       - ${OPENPALM_STATE_HOME}/workspace:/work
       - ${OPENPALM_DATA_HOME}/shared:/shared

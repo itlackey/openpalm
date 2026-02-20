@@ -88,13 +88,29 @@ describe("stack spec", () => {
           id: "daily",
           name: "Daily",
           schedule: "0 9 * * *",
-          prompt: "summarize",
+          script: "echo summarize",
           enabled: true,
         },
       ],
     });
     expect(parsed.gateway.rateLimitPerMinute).toBe(240);
     expect(parsed.automations.length).toBe(1);
+  });
+
+
+  it("rejects automations without script", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      automations: [
+        {
+          id: "invalid",
+          name: "Invalid",
+          schedule: "0 9 * * *",
+          enabled: true,
+        },
+      ],
+    })).toThrow("invalid_automation_script_0");
   });
 
   it("writes valid stack spec content", () => {

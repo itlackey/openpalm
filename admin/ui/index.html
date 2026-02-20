@@ -863,8 +863,8 @@ function renderAutomations() {
   h += '</div>';
 
   h += '<div class="field-group">';
-  h += '<label for="automation-prompt">What should the assistant do?</label>';
-  h += '<textarea id="automation-prompt" rows="3" placeholder="e.g. Write a summary of today\'s events and send it to the team Discord channel">' + esc(editing ? editing.prompt : '') + '</textarea>';
+  h += '<label for="automation-script">Script to run</label>';
+  h += '<textarea id="automation-script" rows="3" placeholder="e.g. Write a summary of today\'s events and send it to the team Discord channel">' + esc(editing ? editing.script : '') + '</textarea>';
   h += '</div>';
 
   h += '<div style="display:flex;gap:.5rem">';
@@ -882,15 +882,15 @@ function renderAutomations() {
     h += '<div style="display:flex;justify-content:space-between;align-items:start">';
     h += '<div>';
     h += '<strong>' + esc(job.name) + '</strong> ';
-    h += job.status === "enabled"
+    h += job.enabled
       ? '<span class="badge badge-low" style="font-size:11px">Enabled</span>'
       : '<span class="badge" style="font-size:11px;background:var(--muted)">Disabled</span>';
     h += '<div class="muted" style="font-size:13px;margin:.2rem 0">' + cronToHuman(job.schedule) + ' <span class="muted" style="font-size:12px">(' + esc(job.schedule) + ')</span></div>';
-    h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.prompt.length > 120 ? job.prompt.substring(0, 120) + '...' : job.prompt) + '</div>';
+    h += '<div style="font-size:13px;margin:.2rem 0">' + esc(job.script.length > 120 ? job.script.substring(0, 120) + '...' : job.script) + '</div>';
     h += '</div>';
     h += '<div style="display:flex;gap:.3rem;flex-shrink:0">';
     h += '<button class="sm" onclick="confirmTriggerAutomation(\'' + jsStr(job.id) + '\',' + ji + ')">Run Now</button>';
-    h += '<button class="sm secondary" onclick="toggleAutomation(\'' + jsStr(job.id) + '\',\'' + (job.status === "enabled" ? "disabled" : "enabled") + '\')">' + (job.status === "enabled" ? 'Disable' : 'Enable') + '</button>';
+    h += '<button class="sm secondary" onclick="toggleAutomation(\'' + jsStr(job.id) + '\',' + (!job.enabled) + ')">' + (job.enabled ? 'Disable' : 'Enable') + '</button>';
     h += '<button class="sm secondary" onclick="editAutomation(\'' + jsStr(job.id) + '\')">Edit</button>';
     h += '<button class="sm danger" onclick="confirmDeleteAutomation(\'' + jsStr(job.id) + '\',' + ji + ')">Delete</button>';
     h += '</div></div>';
@@ -920,15 +920,15 @@ function updateAutomationFromPreset() {
 async function saveAutomation() {
   const name = document.getElementById('automation-name').value.trim();
   const schedule = document.getElementById('automation-schedule').value.trim();
-  const prompt = document.getElementById('automation-prompt').value.trim();
-  if (!name || !schedule || !prompt) { showToast('All fields are required.', 'error'); return; }
+  const script = document.getElementById('automation-script').value.trim();
+  if (!name || !schedule || !script) { showToast('All fields are required.', 'error'); return; }
 
   if (automationEditId) {
-    const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: automationEditId, name: name, schedule: schedule, prompt: prompt }) });
+    const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: automationEditId, name: name, schedule: schedule, script: script }) });
     if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
     automationEditId = null;
   } else {
-    const r2 = await api('/admin/automations', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, prompt: prompt }) });
+    const r2 = await api('/admin/automations', { method: 'POST', body: JSON.stringify({ name: name, schedule: schedule, script: script }) });
     if (!r2.ok) { showToast('Failed: ' + friendlyError(r2.data?.error || r2.data?.message || 'Request failed'), 'error'); return; }
   }
   showToast('Automation saved.', 'success');
@@ -964,15 +964,15 @@ function cancelEditAutomation() {
 }
 
 async function toggleAutomation(id, newStatus) {
-  const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: id, status: newStatus }) });
+  const r = await api('/admin/automations/update', { method: 'POST', body: JSON.stringify({ id: id, enabled: newStatus }) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data?.error || r.data?.message || 'Request failed'), 'error'); return; }
-  showToast(newStatus === 'enabled' ? 'Automation enabled.' : 'Automation disabled.', 'success');
+  showToast(newStatus ? 'Automation enabled.' : 'Automation disabled.', 'success');
   loadAutomations();
 }
 
 function confirmDeleteAutomation(id, index) {
   showInlineConfirm('automation-action-confirm-' + index,
-    'Delete this automation? Your assistant will restart to apply the new schedule.',
+    'Delete this automation?',
     function() { doDeleteAutomation(id); }
   );
 }
