@@ -14,6 +14,7 @@ If you are new to OpenPalm, read the docs in this order:
 
 | Guide | What's inside |
 |---|---|
+| [CLI](cli.md) | Install methods, commands, flags, and building from source |
 | [User Concepts](user-concepts.md) | What OpenPalm is and how end users interact with it |
 | [Admin Concepts](admin-concepts.md) | Key concepts for administrators |
 | [Admin Guide](admin-guide.md) | Installer details, admin console, authentication |
