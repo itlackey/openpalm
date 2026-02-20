@@ -542,7 +542,8 @@ const server = Bun.serve({
             message === "invalid_connection_type" ||
             message === "missing_connection_env" ||
             message === "invalid_connection_env_key" ||
-            message === "invalid_connection_env_value"
+            message === "invalid_connection_env_value" ||
+            message === "unknown_secret_name"
           ) {
             return cors(json(400, { error: message }));
           }
@@ -558,7 +559,7 @@ const server = Bun.serve({
           return cors(json(200, { ok: true, deleted }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_connection_id" || message === "connection_not_found" || message === "connection_in_use") {
+          if (message === "invalid_connection_id" || message === "connection_not_found") {
             return cors(json(400, { error: message }));
           }
           throw error;
@@ -665,7 +666,7 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const spec = stackManager.getSpec();
         return cors(json(200, {
-          secretOptions: spec.secrets.available,
+          secretOptions: stackManager.listSecretManagerState().available,
           channels: CHANNEL_SERVICES.map((service) => {
             const channelName = service.replace("channel-", "") as ChannelName;
             return {

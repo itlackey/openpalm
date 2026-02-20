@@ -541,7 +541,7 @@ The admin adds it to `plugin[]` in the host override config and restarts the con
 
 ## Automations
 
-Automations are scheduled prompts managed via Unix cron. Each Automation has an ID (UUID), Name, Prompt, Schedule (cron expression), and Status. Crontab entries are stored in the volume mount at `~/.config/openpalm/cron/` and managed via the admin UI and API. Automations allow operators to trigger recurring agent tasks without manual intervention.
+Automations are scheduled prompts managed via Unix cron in the `admin` container. Each Automation has an ID (UUID), Name, Prompt, Schedule (cron expression), and Status. Crontab entries are stored in admin-managed config/state mounts and managed via the admin UI/API. Automations allow operators to trigger recurring agent tasks without manual intervention.
 
 ---
 
@@ -557,7 +557,7 @@ Config backups from admin edits accumulate next to the global config at `${OPENP
 |-----------|-----------|-------------|------|----------|
 | `${OPENPALM_DATA_HOME}/openpalm/` | opencode-core | `/home/opencode` | rw | User-global OpenCode config/plugins/cache/auth |
 | `${OPENPALM_DATA_HOME}/openpalm/` | admin | `/data/openpalm` | rw | Admin reads/writes global OpenCode config |
-| `~/.config/openpalm/cron/` | opencode-core | `/cron` | rw | Crontab managed by admin (Automations) |
+| `~/.config/openpalm/cron/` | admin | `/app/cron` | rw | Crontab + payloads managed by admin (Automations) |
 | `~/.local/state/openpalm/rendered/env/channels.env` | channel-* | env_file | — | Generated channel env (config + mapped secrets) |
 | `~/.local/state/openpalm/rendered/env/*.env` | gateway/opencode/openmemory/postgres/qdrant | env_file | — | Generated service env from stack spec + secrets |
 | `~/.config/openpalm/secrets.env` | admin input | source file | — | Source-of-truth credentials managed via admin API |
@@ -581,4 +581,4 @@ Note: The gateway has **no** host config volume. Its extensions are fully baked 
 | Remove plugin via admin | Removed from `plugin[]`, auto-restarted | Automatic |
 | Edit `AGENTS.md` in image | Requires rebuild | Yes — rebuild + restart |
 | Edit `secrets.env` (Connections) | New env vars on next startup | Yes — restart opencode-core |
-| Create/edit Automation | Crontab updated in `/cron` volume | No — cron picks up changes automatically |
+| Create/edit Automation | Crontab updated in admin cron volume (`/app/cron`) | No — cron picks up changes automatically |

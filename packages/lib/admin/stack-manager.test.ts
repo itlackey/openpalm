@@ -29,12 +29,6 @@ describe("stack manager", () => {
     manager.upsertSecret("MY_NEW_SECRET", "abc123");
     manager.mapChannelSecret("chat", "gateway", "MY_NEW_SECRET");
     manager.setChannelConfig("chat", { CHAT_INBOUND_TOKEN: "abc" });
-    manager.setExtensionInstalled({
-      extensionId: "policy-plugin",
-      type: "plugin",
-      enabled: true,
-      pluginId: "@openpalm/policy-plugin",
-    });
     manager.renderArtifacts();
 
     expect(readFileSync(join(caddyDir, "routes", "channels", "chat.caddy"), "utf8")).toContain("handle /channels/chat*");
@@ -79,12 +73,13 @@ describe("stack manager", () => {
       channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
     });
 
+    manager.upsertSecret("OPENAI_API_KEY_MAIN", "test-key");
     const connection = manager.upsertConnection({
       id: "openai-primary",
       type: "ai_provider",
       name: "OpenAI Primary",
       env: {
-        OPENPALM_CONN_OPENAI_API_KEY: "test-key",
+        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
       },
     });
 
@@ -118,7 +113,7 @@ describe("stack manager", () => {
     expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeFalse();
   });
 
-  it("prevents deleting a connection referenced by an extension", () => {
+  it("deletes connection without mutating referenced secrets", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = new StackManager({
       caddyfilePath: join(dir, "Caddyfile"),
@@ -134,22 +129,43 @@ describe("stack manager", () => {
       channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
     });
 
+    manager.upsertSecret("OPENAI_API_KEY_MAIN", "test-key");
     manager.upsertConnection({
       id: "openai-primary",
       type: "ai_provider",
       name: "OpenAI Primary",
       env: {
-        OPENPALM_CONN_OPENAI_API_KEY: "test-key",
+        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
       },
     });
-    manager.setExtensionInstalled({
-      extensionId: "assistant-agent",
-      type: "agent",
-      enabled: true,
-      connectionIds: ["openai-primary"],
+    expect(manager.deleteConnection("openai-primary")).toBe("openai-primary");
+    expect(readFileSync(join(dir, "secrets.env"), "utf8")).toContain("OPENAI_API_KEY_MAIN=test-key");
+  });
+
+  it("rejects connections that reference unknown secret keys", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = new StackManager({
+      caddyfilePath: join(dir, "Caddyfile"),
+      caddyRoutesDir: join(dir, "routes"),
+      composeFilePath: join(dir, "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
+      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
+      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
+      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
+      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
+      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
     });
 
-    expect(() => manager.deleteConnection("openai-primary")).toThrow("connection_in_use");
+    expect(() => manager.upsertConnection({
+      id: "openai-primary",
+      type: "ai_provider",
+      name: "OpenAI Primary",
+      env: {
+        OPENAI_API_KEY: "MISSING_SECRET",
+      },
+    })).toThrow("unknown_secret_name");
   });
 
 

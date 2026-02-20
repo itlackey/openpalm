@@ -11,9 +11,7 @@ describe("stack spec", () => {
     const spec = ensureStackSpec(path);
     expect(spec.version).toBe(1);
     expect(spec.channels.chat.enabled).toBe(true);
-    expect(spec.secrets.available.length).toBeGreaterThan(0);
     expect(spec.channels.chat.config).toHaveProperty("CHAT_INBOUND_TOKEN");
-    expect(spec.gateway.rateLimitPerMinute).toBe(120);
     expect(Array.isArray(spec.automations)).toBe(true);
     expect(readFileSync(path, "utf8")).toContain('"version": 1');
   });
@@ -27,17 +25,6 @@ describe("stack spec", () => {
         webhook: { enabled: true, exposure: "lan" },
       },
     })).toThrow("unknown_channel_webhook");
-  });
-
-  it("requires mapped secrets to be listed as available", () => {
-    const base = createDefaultStackSpec();
-    expect(() => parseStackSpec({
-      ...base,
-      secrets: {
-        ...base.secrets,
-        available: ["CHANNEL_CHAT_SECRET"],
-      },
-    })).toThrow("unknown_secret_reference_CHANNEL_DISCORD_SECRET");
   });
 
   it("accepts legacy version 2 stack specs and normalizes to version 1", () => {
@@ -56,15 +43,6 @@ describe("stack spec", () => {
     expect(migrated.secrets.gatewayChannelSecrets.chat).toBe("CHANNEL_CHAT_SECRET");
   });
 
-  it("validates extension connection references", () => {
-    const base = createDefaultStackSpec();
-    expect(() => parseStackSpec({
-      ...base,
-      extensions: [{ id: "x", type: "plugin", enabled: true, pluginId: "@scope/test", connectionIds: ["missing"] }],
-    })).toThrow("unknown_extension_connection_missing");
-  });
-
-
   it("parses channel config from spec", () => {
     const base = createDefaultStackSpec();
     const parsed = parseStackSpec({
@@ -78,11 +56,10 @@ describe("stack spec", () => {
   });
 
 
-  it("parses gateway and automations settings", () => {
+  it("parses automations settings", () => {
     const base = createDefaultStackSpec();
     const parsed = parseStackSpec({
       ...base,
-      gateway: { rateLimitPerMinute: 240, intakeValidation: false },
       automations: [
         {
           id: "daily",
@@ -93,8 +70,24 @@ describe("stack spec", () => {
         },
       ],
     });
-    expect(parsed.gateway.rateLimitPerMinute).toBe(240);
     expect(parsed.automations.length).toBe(1);
+  });
+
+  it("rejects connection env entries that are not secret key references", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      connections: [
+        {
+          id: "openai",
+          type: "ai_provider",
+          name: "OpenAI",
+          env: {
+            OPENAI_API_KEY: "not-a-secret-name",
+          },
+        },
+      ],
+    })).toThrow("invalid_connection_secret_ref_OPENAI_API_KEY");
   });
 
 
@@ -126,7 +119,6 @@ describe("stack spec", () => {
 
 function baseSecrets() {
   return {
-    available: ["CHANNEL_CHAT_SECRET", "CHANNEL_DISCORD_SECRET", "CHANNEL_VOICE_SECRET", "CHANNEL_TELEGRAM_SECRET"],
     gatewayChannelSecrets: {
       chat: "CHANNEL_CHAT_SECRET",
       discord: "CHANNEL_DISCORD_SECRET",

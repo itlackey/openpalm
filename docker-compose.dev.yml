@@ -1,3 +1,5 @@
+# Development-only compose overlay.
+# Runtime orchestration is generated into assets/state/docker-compose.yml (and rendered state paths at install/runtime).
 services:
   opencode-core:
     build: ./opencode

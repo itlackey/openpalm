@@ -12,6 +12,11 @@ If you are new to OpenPalm, read the docs in this order:
 
 ## All documentation
 
+## Compose files at a glance
+
+- Runtime compose source of truth: `assets/state/docker-compose.yml`.
+- Dev-only root overlay: `docker-compose.dev.yml`.
+
 | Guide | What's inside |
 |---|---|
 | [CLI](cli.md) | Install methods, commands, flags, and building from source |

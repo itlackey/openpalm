@@ -6,7 +6,6 @@ export const StackSpecVersion = 1;
 export type StackAccessScope = "host" | "lan";
 export type ChannelExposure = "lan" | "public";
 export type StackChannelName = "chat" | "discord" | "voice" | "telegram";
-export type ExtensionType = "plugin";
 export type ConnectionType = "ai_provider" | "platform" | "api_service";
 
 export type StackChannelConfig = {
@@ -18,7 +17,6 @@ export type StackChannelConfig = {
 export type ChannelSecretMap = Record<StackChannelName, string>;
 
 export type StackSecretsConfig = {
-  available: string[];
   gatewayChannelSecrets: ChannelSecretMap;
   channelServiceSecrets: ChannelSecretMap;
 };
@@ -28,19 +26,6 @@ export type StackConnection = {
   type: ConnectionType;
   name: string;
   env: Record<string, string>;
-};
-
-export type StackExtension = {
-  id: string;
-  type: ExtensionType;
-  enabled: boolean;
-  pluginId?: string;
-  connectionIds?: string[];
-};
-
-export type StackGatewayConfig = {
-  rateLimitPerMinute: number;
-  intakeValidation: boolean;
 };
 
 export type StackAutomation = {
@@ -57,14 +42,11 @@ export type StackSpec = {
   channels: Record<StackChannelName, StackChannelConfig>;
   secrets: StackSecretsConfig;
   connections: StackConnection[];
-  extensions: StackExtension[];
-  gateway: StackGatewayConfig;
   automations: StackAutomation[];
 };
 
 const ChannelNames: StackChannelName[] = ["chat", "discord", "voice", "telegram"];
 const ConnectionTypes: ConnectionType[] = ["ai_provider", "platform", "api_service"];
-const ExtensionTypes: ExtensionType[] = ["plugin"];
 
 const ChannelConfigKeys: Record<StackChannelName, string[]> = {
   chat: ["CHAT_INBOUND_TOKEN"],
@@ -82,17 +64,6 @@ const DefaultChannelSecrets: ChannelSecretMap = {
 
 function defaultConnections(): StackConnection[] {
   return [];
-}
-
-function defaultExtensions(): StackExtension[] {
-  return [];
-}
-
-function defaultGatewayConfig(): StackGatewayConfig {
-  return {
-    rateLimitPerMinute: 120,
-    intakeValidation: true,
-  };
 }
 
 function defaultAutomations(): StackAutomation[] {
@@ -116,13 +87,10 @@ export function createDefaultStackSpec(): StackSpec {
       telegram: { enabled: true, exposure: "lan", config: defaultChannelConfig("telegram") },
     },
     secrets: {
-      available: [...Object.values(DefaultChannelSecrets)],
       gatewayChannelSecrets: { ...DefaultChannelSecrets },
       channelServiceSecrets: { ...DefaultChannelSecrets },
     },
     connections: defaultConnections(),
-    extensions: defaultExtensions(),
-    gateway: defaultGatewayConfig(),
     automations: defaultAutomations(),
   };
 }
@@ -182,58 +150,15 @@ function parseConnections(raw: unknown): StackConnection[] {
     const env: Record<string, string> = {};
     for (const [envKey, envValue] of envEntries) {
       const key = envKey.trim();
-      if (!/^OPENPALM_CONN_[A-Z0-9_]+$/.test(key)) throw new Error(`invalid_connection_env_key_${key}`);
+      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error(`invalid_connection_env_key_${key}`);
       if (typeof envValue !== "string" || envValue.trim().length === 0) throw new Error(`invalid_connection_env_value_${key}`);
-      env[key] = envValue.trim();
+      const secretRef = envValue.trim();
+      if (!/^[A-Z][A-Z0-9_]*$/.test(secretRef)) throw new Error(`invalid_connection_secret_ref_${key}`);
+      env[key] = secretRef;
     }
     if (Object.keys(env).length === 0) throw new Error(`missing_connection_env_${id}`);
     return { id, type: type as ConnectionType, name, env };
   });
-}
-
-function parseExtensions(raw: unknown, connectionIds: Set<string>): StackExtension[] {
-  if (raw === undefined) return defaultExtensions();
-  if (!Array.isArray(raw)) throw new Error("invalid_extensions");
-  const unique = new Set<string>();
-  return raw.map((value, index) => {
-    const item = assertRecord(value, `invalid_extension_${index}`);
-    const id = typeof item.id === "string" ? item.id.trim() : "";
-    const type = item.type;
-    const enabled = item.enabled;
-    const pluginId = typeof item.pluginId === "string" ? item.pluginId.trim() : undefined;
-    if (!id) throw new Error(`invalid_extension_id_${index}`);
-    if (!ExtensionTypes.includes(type as ExtensionType)) throw new Error(`invalid_extension_type_${index}`);
-    if (typeof enabled !== "boolean") throw new Error(`invalid_extension_enabled_${index}`);
-    if (unique.has(id)) throw new Error(`duplicate_extension_id_${id}`);
-    unique.add(id);
-    const connectionIdsRaw = Array.isArray(item.connectionIds) ? item.connectionIds : [];
-    const normalizedConnectionIds = connectionIdsRaw
-      .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-      .map((entry) => entry.trim());
-    for (const connectionId of normalizedConnectionIds) {
-      if (!connectionIds.has(connectionId)) throw new Error(`unknown_extension_connection_${connectionId}`);
-    }
-    return {
-      id,
-      type: type as ExtensionType,
-      enabled,
-      pluginId,
-      connectionIds: normalizedConnectionIds,
-    };
-  });
-}
-
-
-function parseGateway(raw: unknown): StackGatewayConfig {
-  if (raw === undefined) return defaultGatewayConfig();
-  const gateway = assertRecord(raw, "invalid_gateway");
-  const rateLimitPerMinute = gateway.rateLimitPerMinute;
-  const intakeValidation = gateway.intakeValidation;
-  if (typeof rateLimitPerMinute !== "number" || !Number.isFinite(rateLimitPerMinute) || rateLimitPerMinute <= 0) {
-    throw new Error("invalid_gateway_rate_limit_per_minute");
-  }
-  if (typeof intakeValidation !== "boolean") throw new Error("invalid_gateway_intake_validation");
-  return { rateLimitPerMinute, intakeValidation };
 }
 
 function parseAutomations(raw: unknown): StackAutomation[] {
@@ -274,23 +199,10 @@ export function parseStackSpec(raw: unknown): StackSpec {
   }
 
   const secretsDoc = assertRecord(doc.secrets ?? {}, "missing_secrets");
-  const available = Array.isArray(secretsDoc.available)
-    ? secretsDoc.available.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim())
-    : [...Object.values(DefaultChannelSecrets)];
-  if (available.length === 0) throw new Error("missing_available_secrets");
-
   const gatewayChannelSecrets = parseChannelSecretMap(secretsDoc.gatewayChannelSecrets ?? DefaultChannelSecrets, "gatewayChannelSecrets");
   const channelServiceSecrets = parseChannelSecretMap(secretsDoc.channelServiceSecrets ?? DefaultChannelSecrets, "channelServiceSecrets");
 
-  const allRefs = [...Object.values(gatewayChannelSecrets), ...Object.values(channelServiceSecrets)];
-  for (const ref of allRefs) {
-    if (!available.includes(ref)) throw new Error(`unknown_secret_reference_${ref}`);
-  }
-
   const connections = parseConnections(doc.connections);
-  const connectionIds = new Set(connections.map((connection) => connection.id));
-  const extensions = parseExtensions(doc.extensions, connectionIds);
-  const gateway = parseGateway(doc.gateway);
   const automations = parseAutomations(doc.automations);
 
   return {
@@ -298,13 +210,10 @@ export function parseStackSpec(raw: unknown): StackSpec {
     accessScope: doc.accessScope,
     channels,
     secrets: {
-      available,
       gatewayChannelSecrets,
       channelServiceSecrets,
     },
     connections,
-    extensions,
-    gateway,
     automations,
   };
 }

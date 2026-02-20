@@ -31,7 +31,7 @@ graph TB
         OpenCodeCore["OpenCode Core<br/><small>:4096 — agent runtime<br/>(includes channel-intake agent)</small>"]
         OpenMemory["Open Memory<br/><small>:8765 — MCP</small>"]
         AdminApp["Admin App<br/><small>:8100 — admin API</small>"]
-        Admin Compose Runner["Admin Compose Runner<br/><small>:8090 — container lifecycle</small>"]
+        AdminOps["Admin Compose Ops<br/><small>allowlisted lifecycle + cron host</small>"]
     end
 
     subgraph Storage["Storage + Config (Layer 3)"]
@@ -66,8 +66,8 @@ graph TB
     OpenCodeCore --> OpenMemory
 
     %% Admin flow
-    AdminApp --> Admin Compose Runner
-    Admin Compose Runner -->|compose runtime| Apps
+    AdminApp --> AdminOps
+    AdminOps -->|compose runtime| Apps
 
     %% Storage connections
     OpenMemory --> Qdrant
@@ -88,7 +88,7 @@ graph TB
     classDef ui fill:#8e8e93,color:#fff,stroke:#636366
 
     class Discord,Voice,Chat,Telegram channel
-    class Gateway,OpenCodeCore,OpenMemory,AdminApp,Admin Compose Runner app
+    class Gateway,OpenCodeCore,OpenMemory,AdminApp,AdminOps app
     class PSQL,Qdrant,SharedFS storage
     class Public,LAN,GW_Route proxy
     class AdminUI,OpenMemoryUI,OpenCodeUI ui
@@ -107,8 +107,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `openmemory-ui` | `mem0/openmemory-ui:latest` | assistant_net | OpenMemory dashboard (Next.js, port 3000) |
 | `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `opencode/extensions/`; host config provides optional overrides |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
-| `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
-| `admin` | `./admin` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
+| `admin` | `./admin` (build) | assistant_net | Admin API, stack apply executor (allowlisted compose ops), and automation cron host |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
 | `channel-discord` | `./channels/discord` (build) | assistant_net | Discord adapter (profile: channels) |
 | `channel-voice` | `./channels/voice` (build) | assistant_net | Voice/STT adapter (profile: channels) |
@@ -146,7 +145,7 @@ The `channel-intake` agent is defined in a standalone Markdown file at `gateway/
 
 ### Admin operations
 ```
-Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Admin Compose Runner -> Compose Runtime
+Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Compose Runtime
 ```
 
 The admin app provides the API for all admin functions:
@@ -165,9 +164,12 @@ The admin app provides the API for all admin functions:
 | `/admin/api*` | admin:8100 | prefix stripped to `/admin/*` | LAN only |
 | `/admin/opencode*` | opencode-core:4096 | prefix stripped to `/*` | LAN only |
 | `/admin/openmemory*` | openmemory-ui:3000 | prefix stripped to `/*` | LAN only |
-| `/admin*` (catch-all) | admin:8100 | pass-through | LAN only |
+| `/admin*` (catch-all) | admin:8100 | `/admin` prefix stripped before proxy | LAN only |
+| `/*` (default route) | opencode-core:4096 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
+
+Caddy runtime configuration is mounted from rendered state paths (`${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile` and `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/`).
 
 During first-boot setup, users can choose `host` vs `lan` scope. `host` scope rewrites Caddy LAN matchers to localhost-only and sets compose bind addresses to `127.0.0.1` for ingress and exposed service ports.
 
@@ -181,7 +183,7 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 | **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (opencode-core/), Caddyfile, channel env files, user overrides, secrets |
 | **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, compose artifacts (workdir is ~/openpalm) |
 
-### Admin Compose Runner Maintenance Cron Jobs
+### Admin Maintenance Cron Jobs
 
 The admin container runs 8 scheduled maintenance tasks via cron (defined in `admin/entrypoint.sh`):
 
@@ -230,7 +232,7 @@ Connections are named credential/endpoint configurations for external services. 
 
 - **Storage**: Defined in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`), managed via the admin API.
 - **Types**: AI Provider (e.g. OpenAI, Anthropic), Platform (e.g. Discord, Telegram), API Service (generic REST/webhook credentials).
-- **Env var naming**: All connection env vars use the `OPENPALM_CONN_*` prefix (e.g. `OPENPALM_CONN_OPENAI_API_KEY`).
+- **Env var naming**: Connection env vars are standard uppercase env names (e.g. `OPENAI_API_KEY`) mapped to secret keys in Stack Spec.
 - **Config interpolation**: Extensions reference connections in `opencode.jsonc` using `{env:VAR_NAME}` syntax, which is resolved at runtime.
 - **Validation**: Connection validation is optional. When triggered (e.g. via the admin UI), the admin API performs a lightweight probe against the endpoint to confirm the credentials are accepted.
 
@@ -239,7 +241,7 @@ Connections are named credential/endpoint configurations for external services. 
 Automations are user-defined scheduled prompts, distinct from the admin's system-level maintenance cron jobs. They allow users to configure proactive assistant behavior (e.g. daily summaries, nightly data pulls) without writing code.
 
 - **Properties**: Each automation has an ID (UUID), Name, Prompt (the text sent to the assistant), Schedule (standard Unix cron expression), and Status (enabled/disabled).
-- **Implementation**: Automations run inside `opencode-core` via a cron daemon. Each job executes a `curl` call against `localhost:4096/chat` with the configured prompt.
+- **Implementation**: Automations run inside `admin` via a cron daemon (`cron && bun run src/server.ts`). Jobs call gateway/admin endpoints or local scripts under `/work`.
 - **Payload storage**: Automation payloads are stored as JSON files in `cron-payloads/` (under `$OPENPALM_CONFIG_HOME/cron/`).
 - **Session isolation**: Each automation run executes in its own session, identified as `cron-<job-id>`, so runs do not bleed context into each other.
 - **Manual trigger**: Automations can be triggered immediately via a "Run Now" action in the admin UI, independent of the schedule.
@@ -257,4 +259,4 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `channel-intake` (validate/summarize/dispatch in the gateway) and `memory` (recall-first behavior and memory policy in the core agent).
 7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.
-8. **Admin Compose Runner isolation** — Only the admin container has access to the container engine socket.
+8. **Admin socket isolation** — Only the admin container has access to the container engine socket.

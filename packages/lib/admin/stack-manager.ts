@@ -3,14 +3,12 @@ import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { channelEnvSecretVariable, ensureStackSpec, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
-import { validatePluginIdentifier } from "./extensions.ts";
-import type { ConnectionType, ExtensionType, StackSpec } from "./stack-spec.ts";
+import type { ConnectionType, StackSpec } from "./stack-spec.ts";
 
 export type ChannelName = "chat" | "discord" | "voice" | "telegram";
 
 const Channels: ChannelName[] = ["chat", "discord", "voice", "telegram"];
 const ConnectionTypes: ConnectionType[] = ["ai_provider", "platform", "api_service"];
-const ExtensionTypes: ExtensionType[] = ["plugin", "skill", "command", "agent", "tool"];
 
 export type StackManagerPaths = {
   caddyfilePath: string;
@@ -33,6 +31,10 @@ export const CoreSecretRequirements = [
 
 export class StackManager {
   constructor(private readonly paths: StackManagerPaths) {}
+
+  getPaths(): StackManagerPaths {
+    return { ...this.paths };
+  }
 
   getSpec(): StackSpec {
     return ensureStackSpec(this.paths.stackSpecPath);
@@ -150,10 +152,10 @@ export class StackManager {
     }
 
     for (const connection of spec.connections) {
-      for (const envKey of Object.keys(connection.env)) {
-        const list = usedBy.get(envKey) ?? [];
+      for (const secretRef of Object.values(connection.env)) {
+        const list = usedBy.get(secretRef) ?? [];
         list.push(`connection:${connection.id}`);
-        usedBy.set(envKey, list);
+        usedBy.set(secretRef, list);
       }
     }
 
@@ -165,7 +167,13 @@ export class StackManager {
       }
     }
 
-    const uniqueNames = Array.from(new Set([...spec.secrets.available, ...Object.keys(secretValues)])).sort();
+    const uniqueNames = Array.from(new Set([
+      ...Object.keys(secretValues),
+      ...Object.values(spec.secrets.gatewayChannelSecrets),
+      ...Object.values(spec.secrets.channelServiceSecrets),
+      ...spec.connections.flatMap((connection) => Object.values(connection.env)),
+      ...CoreSecretRequirements.map((item) => item.key),
+    ])).sort();
     return {
       available: uniqueNames,
       mappings: spec.secrets,
@@ -189,12 +197,6 @@ export class StackManager {
     if (!this.isValidSecretName(name)) throw new Error("invalid_secret_name");
     const value = sanitizeEnvScalar(valueRaw);
     this.updateSecretsEnv({ [name]: value || undefined });
-    const spec = this.getSpec();
-    if (!spec.secrets.available.includes(name)) {
-      spec.secrets.available.push(name);
-      spec.secrets.available.sort();
-      this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    }
     this.renderArtifacts();
     return name;
   }
@@ -205,10 +207,8 @@ export class StackManager {
     const spec = this.getSpec();
     const usedByChannel = Channels.some((channel) => spec.secrets.gatewayChannelSecrets[channel] === name || spec.secrets.channelServiceSecrets[channel] === name);
     const usedByCore = CoreSecretRequirements.some((item) => item.key === name);
-    const usedByConnection = spec.connections.some((connection) => Object.keys(connection.env).includes(name));
+    const usedByConnection = spec.connections.some((connection) => Object.values(connection.env).includes(name));
     if (usedByChannel || usedByCore || usedByConnection) throw new Error("secret_in_use");
-    spec.secrets.available = spec.secrets.available.filter((value) => value !== name);
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
     this.updateSecretsEnv({ [name]: undefined });
     return name;
   }
@@ -222,7 +222,8 @@ export class StackManager {
     if (!this.isValidSecretName(secretName)) throw new Error("invalid_secret_name");
 
     const spec = this.getSpec();
-    if (!spec.secrets.available.includes(secretName)) throw new Error("unknown_secret_name");
+    const available = new Set(Object.keys(this.readSecretsEnv()));
+    if (!available.has(secretName)) throw new Error("unknown_secret_name");
     if (target === "gateway") spec.secrets.gatewayChannelSecrets[channel] = secretName;
     else spec.secrets.channelServiceSecrets[channel] = secretName;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
@@ -255,28 +256,25 @@ export class StackManager {
     if (envEntries.length === 0) throw new Error("missing_connection_env");
 
     const normalizedEnv: Record<string, string> = {};
-    const secretEntries: Record<string, string | undefined> = {};
     for (const [rawKey, rawValue] of envEntries) {
       const key = sanitizeEnvScalar(rawKey).toUpperCase();
-      const value = sanitizeEnvScalar(rawValue);
-      if (!/^OPENPALM_CONN_[A-Z0-9_]+$/.test(key)) throw new Error("invalid_connection_env_key");
-      if (!value) throw new Error("invalid_connection_env_value");
+      const value = sanitizeEnvScalar(rawValue).toUpperCase();
+      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("invalid_connection_env_key");
+      if (!value || !this.isValidSecretName(value)) throw new Error("invalid_connection_env_value");
       normalizedEnv[key] = value;
-      secretEntries[key] = value;
     }
 
-    this.updateSecretsEnv(secretEntries);
-    const spec = this.getSpec();
-    for (const key of Object.keys(normalizedEnv)) {
-      if (!spec.secrets.available.includes(key)) spec.secrets.available.push(key);
+    const available = new Set(Object.keys(this.readSecretsEnv()));
+    for (const secretRef of Object.values(normalizedEnv)) {
+      if (!available.has(secretRef)) throw new Error("unknown_secret_name");
     }
-    spec.secrets.available.sort();
+
+    const spec = this.getSpec();
     const nextConnection = { id, name, type, env: normalizedEnv };
     const index = spec.connections.findIndex((connection) => connection.id === id);
     if (index >= 0) spec.connections[index] = nextConnection;
     else spec.connections.push(nextConnection);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.renderArtifacts();
     return nextConnection;
   }
 
@@ -284,13 +282,11 @@ export class StackManager {
     const id = sanitizeEnvScalar(idRaw);
     if (!id) throw new Error("invalid_connection_id");
     const spec = this.getSpec();
-    if (spec.extensions.some((extension) => (extension.connectionIds ?? []).includes(id))) {
-      throw new Error("connection_in_use");
-    }
     const index = spec.connections.findIndex((connection) => connection.id === id);
     if (index < 0) throw new Error("connection_not_found");
     spec.connections.splice(index, 1);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.renderArtifacts();
     return id;
   }
 
@@ -334,57 +330,6 @@ export class StackManager {
     if (spec.automations.length === before) return false;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     return true;
-  }
-
-  listInstalled() {
-    const spec = this.getSpec();
-    const plugins = spec.extensions
-      .filter((item) => item.type === "plugin" && item.enabled && item.pluginId)
-      .map((item) => item.pluginId as string);
-    return {
-      plugins,
-      extensions: spec.extensions,
-    };
-  }
-
-  setExtensionInstalled(input: { extensionId?: unknown; type?: unknown; enabled?: unknown; pluginId?: unknown; connectionIds?: unknown }) {
-    const extensionId = sanitizeEnvScalar(input.extensionId);
-    const type = sanitizeEnvScalar(input.type) as ExtensionType;
-    const enabled = Boolean(input.enabled);
-    const pluginId = sanitizeEnvScalar(input.pluginId);
-    const rawConnectionIds = Array.isArray(input.connectionIds) ? input.connectionIds : [];
-    if (!extensionId) throw new Error("invalid_extension_id");
-    if (!ExtensionTypes.includes(type)) throw new Error("invalid_extension_type");
-
-    const spec = this.getSpec();
-    const connectionIds = rawConnectionIds
-      .map((value) => sanitizeEnvScalar(value))
-      .filter((value) => value.length > 0);
-
-    for (const connectionId of connectionIds) {
-      if (!spec.connections.find((connection) => connection.id === connectionId)) {
-        throw new Error("unknown_extension_connection");
-      }
-    }
-
-    if (type === "plugin" && pluginId.length > 0 && !validatePluginIdentifier(pluginId)) {
-      throw new Error("invalid_plugin_identifier");
-    }
-
-    const record = {
-      id: extensionId,
-      type,
-      enabled,
-      pluginId: pluginId || undefined,
-      connectionIds,
-    };
-
-    const index = spec.extensions.findIndex((item) => item.id === extensionId);
-    if (index >= 0) spec.extensions[index] = record;
-    else spec.extensions.push(record);
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.renderArtifacts();
-    return record;
   }
 
   private writeStackSpecAtomically(content: string) {

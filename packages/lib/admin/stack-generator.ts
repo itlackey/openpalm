@@ -262,8 +262,16 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     ...channelRoutes,
   };
 
+  const connectionEnv: Record<string, string> = {};
+  for (const connection of spec.connections) {
+    for (const [targetKey, secretRef] of Object.entries(connection.env)) {
+      connectionEnv[targetKey] = secrets[secretRef] ?? "";
+    }
+  }
+
   const gatewayEnv = envWithHeader("# Generated gateway env", {
-    ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_CONN_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
+    ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
+    ...connectionEnv,
     ...Object.fromEntries(Channels.map((channel) => {
       const ref = spec.secrets.gatewayChannelSecrets[channel];
       const envVar = channelEnvSecretVariable(channel);
@@ -288,7 +296,10 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     openmemoryEnv: envWithHeader("# Generated openmemory env", pickEnvByKeys(secrets, ["OPENAI_BASE_URL", "OPENAI_API_KEY"])),
     postgresEnv: envWithHeader("# Generated postgres env", pickEnvByKeys(secrets, ["POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"])),
     qdrantEnv: envWithHeader("# Generated qdrant env", {}),
-    opencodeEnv: envWithHeader("# Generated opencode env", pickEnvByPrefixes(secrets, ["OPENPALM_CONN_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"])),
+    opencodeEnv: envWithHeader("# Generated opencode env", {
+      ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
+      ...connectionEnv,
+    }),
     channelsEnv,
   };
 }

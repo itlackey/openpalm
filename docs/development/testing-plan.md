@@ -283,18 +283,18 @@ Run: `bun run test:ui` — target < 30 seconds.
 
 ### 5h. Connections
 
-Connections are named credential sets stored in `secrets.env` and managed via the admin API. Keys use the `OPENPALM_CONN_*` naming prefix. Types: AI Provider, Platform, API Service.
+Connections are named credential sets stored in `secrets.env` and managed via the admin API. Connection mappings use standard env var names that reference secret keys. Types: AI Provider, Platform, API Service.
 
 | Test | Assertions |
 |------|------------|
 | List connections | `GET /admin/connections` returns all stored connections with name, type, and masked value |
-| Create connection | POST with name, type (AI Provider / Platform / API Service), and value → connection appears in list; key written to `secrets.env` with `OPENPALM_CONN_*` prefix |
+| Create connection | POST with name, type (AI Provider / Platform / API Service), and env mappings to secret keys → connection appears in list |
 | Update connection | POST update with new value → `secrets.env` entry updated |
 | Delete connection | POST delete → connection removed from list; key removed from `secrets.env` |
 | Connection type filter | filter by "AI Provider" → only AI Provider connections shown; same for Platform and API Service |
 | Credential validation | submit connection with empty name or empty value → error shown |
 | "Used by" tracking | connection used by an extension → "Used by" count shown on connection entry |
-| Secrets storage | after creating connection, verify `secrets.env` contains `OPENPALM_CONN_<NAME>=<value>` |
+| Secrets storage | after creating/updating secrets, verify `secrets.env` contains user-defined keys and values |
 | Requires auth | all connection CRUD operations without admin token → 401 |
 
 ### 5i. Error Handling (cross-cutting)
@@ -325,7 +325,7 @@ admin/ui/tests/
 ├── installed.ui.test.ts
 ├── services.ui.test.ts
 ├── automations.ui.test.ts      # Automations page (cron-store backend)
-├── connections.ui.test.ts      # Connections CRUD (secrets.env / OPENPALM_CONN_*)
+├── connections.ui.test.ts      # Connections CRUD (stack spec env var -> secret key refs)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
 ├── auth-flow.ui.test.ts
@@ -392,7 +392,7 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 |-------|---------------|
 | Allowed channels in gateway match docs | test reads `ALLOWED_CHANNELS` from source and compares to `docs/API.md` |
 | Allowed services in admin match docs | test reads `ALLOWED` set from source and compares to `docs/API.md` |
-| Docker compose services match architecture | test parses `docker-compose.yml` service names and compares to `docs/architecture.md` |
+| Docker compose services match architecture | test parses `docker-compose.dev.yml` service names and compares to `docs/architecture.md` |
 | Channel adapter ports match docs | test reads each adapter's `PORT` default and compares to `docs/API.md` |
 | Admin UI nav tabs match implemented pages | test parses nav buttons in `index.html` and compares to `#page-*` divs |
 
@@ -485,7 +485,7 @@ admin/ui/tests/                     # admin UI tests (Layer 5)
 ├── installed.ui.test.ts
 ├── services.ui.test.ts
 ├── automations.ui.test.ts          # Automations page (cron-store backend)
-├── connections.ui.test.ts          # Connections CRUD (secrets.env / OPENPALM_CONN_*)
+├── connections.ui.test.ts          # Connections CRUD (stack spec env var -> secret key refs)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
 ├── auth-flow.ui.test.ts
