@@ -1,6 +1,22 @@
+# OpenPalm PowerShell Installer for Windows
+#
+# This installer performs a full in-place PowerShell installation of OpenPalm.
+# Unlike the Linux/macOS installer which supports binary-first installation mode,
+# this Windows installer does not support binary mode because compiled binaries
+# are not available for Windows (Bun build targets are Linux and macOS only).
+#
+# Usage:
+#   ./install.ps1 [-Runtime docker|podman] [-Ref <git-ref>] [-NoOpen]
+#
+# Parameters:
+#   -Runtime: Container runtime to use (docker or podman)
+#   -Ref: Git reference (branch/tag) to install from (default: main)
+#   -NoOpen: Skip auto-opening the setup UI in browser
+
 param(
   [ValidateSet("docker", "podman")]
   [string]$Runtime,
+  [string]$Ref,
   [switch]$NoOpen
 )
 
@@ -22,7 +38,7 @@ $AssetsTmpDir = $null
 
 $OpenPalmRepoOwner = if ($env:OPENPALM_REPO_OWNER) { $env:OPENPALM_REPO_OWNER } else { "itlackey" }
 $OpenPalmRepoName = if ($env:OPENPALM_REPO_NAME) { $env:OPENPALM_REPO_NAME } else { "openpalm" }
-$OpenPalmInstallRef = if ($env:OPENPALM_INSTALL_REF) { $env:OPENPALM_INSTALL_REF } else { "main" }
+$OpenPalmInstallRef = if ($Ref) { $Ref } elseif ($env:OPENPALM_INSTALL_REF) { $env:OPENPALM_INSTALL_REF } else { "main" }
 
 function Normalize-EnvPath([string]$PathValue) {
   return ($PathValue -replace "\\", "/")
