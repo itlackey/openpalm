@@ -47,6 +47,15 @@ export async function extensions(
     "x-admin-token": adminToken,
   };
 
+  /** Check HTTP response status and throw on failure. */
+  function checkResponse(response: Response, action: string): void {
+    if (!response.ok) {
+      throw new Error(
+        `${action} failed: HTTP ${response.status} ${response.statusText}`
+      );
+    }
+  }
+
   try {
     switch (subcommand) {
       case "install": {
@@ -63,6 +72,7 @@ export async function extensions(
           body: JSON.stringify({ pluginId }),
         });
 
+        checkResponse(response, "Extension install");
         const text = await response.text();
         info(text);
         break;
@@ -82,6 +92,7 @@ export async function extensions(
           body: JSON.stringify({ pluginId }),
         });
 
+        checkResponse(response, "Extension uninstall");
         const text = await response.text();
         info(text);
         break;
@@ -93,6 +104,7 @@ export async function extensions(
           headers,
         });
 
+        checkResponse(response, "Extension list");
         const text = await response.text();
         info(text);
         break;

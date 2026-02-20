@@ -1,6 +1,21 @@
-import { mkdtemp, readdir } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+/** Track temp directories created by downloadAssets so they can be cleaned up. */
+const tempDirs: string[] = [];
+
+/** Remove all temp directories created during asset downloads. */
+export async function cleanupTempAssets(): Promise<void> {
+  for (const dir of tempDirs) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+    } catch {
+      // best-effort cleanup
+    }
+  }
+  tempDirs.length = 0;
+}
 
 export async function findLocalAssets(): Promise<string | null> {
   // Check relative to CWD
@@ -59,6 +74,7 @@ export async function downloadAssets(
 
   // Create temp directory for extraction
   const tempDir = await mkdtemp(join(tmpdir(), "openpalm-"));
+  tempDirs.push(tempDir);
   const tarballPath = join(tempDir, "archive.tar.gz");
 
   // Write tarball to temp file
@@ -117,17 +133,20 @@ export async function seedConfigFiles(
     join(configHome, "caddy/Caddyfile")
   );
 
-  // Seed channel env files
+  // Seed channel env files (skip if channels directory doesn't exist in assets)
   const channelsDir = join(assetsDir, "config/channels");
-  const channelFiles = await readdir(channelsDir);
-
-  for (const file of channelFiles) {
-    if (file.endsWith(".env")) {
-      await seedFile(
-        join(channelsDir, file),
-        join(configHome, "channels", file)
-      );
+  try {
+    const channelFiles = await readdir(channelsDir);
+    for (const file of channelFiles) {
+      if (file.endsWith(".env")) {
+        await seedFile(
+          join(channelsDir, file),
+          join(configHome, "channels", file)
+        );
+      }
     }
+  } catch {
+    // channels directory may not exist in downloaded assets — skip
   }
 
   // Seed secrets.env

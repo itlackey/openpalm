@@ -79,6 +79,17 @@ describe("install command source validation", () => {
     expect(installSource).toContain("detected-providers.json");
   });
 
+  it("cleans up temp assets after install completes", () => {
+    expect(installSource).toContain("cleanupTempAssets");
+    expect(installSource).toContain("import");
+    // cleanup should happen at the end, after full stack is started
+    const fullUpIdx = installSource.indexOf("composeUp(composeConfig, undefined");
+    const cleanupIdx = installSource.indexOf("cleanupTempAssets()");
+    expect(fullUpIdx).toBeGreaterThan(-1);
+    expect(cleanupIdx).toBeGreaterThan(-1);
+    expect(cleanupIdx).toBeGreaterThan(fullUpIdx);
+  });
+
   it("offers small model selection when candidates available", () => {
     expect(installSource).toContain("getSmallModelCandidates");
     expect(installSource).toContain("select(");

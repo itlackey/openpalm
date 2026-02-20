@@ -8,6 +8,7 @@ import {
   findLocalAssets,
   resolveAssets,
   downloadAssets,
+  cleanupTempAssets,
 } from "../src/lib/assets";
 
 // Track temp directories for cleanup
@@ -311,6 +312,42 @@ describe("resolveAssets", () => {
 
     expect(composeExists).toBe(true);
     expect(envExists).toBe(true);
+  });
+});
+
+describe("seedConfigFiles with missing channels dir", () => {
+  it("does not throw when channels directory is missing from assets", async () => {
+    const assetsDir = await createTempDir();
+    const configHome = await createTempDir();
+
+    // Create minimal assets structure WITHOUT channels dir
+    await mkdir(join(assetsDir, "state/caddy"), { recursive: true });
+    await writeFile(join(assetsDir, "state/caddy/Caddyfile"), "test");
+    await mkdir(join(assetsDir, "config"), { recursive: true });
+    // NO config/channels directory created
+    await writeFile(join(assetsDir, "config/secrets.env"), "");
+    await writeFile(join(assetsDir, "config/user.env"), "");
+
+    // Create destination directories
+    await mkdir(join(configHome, "caddy"), { recursive: true });
+
+    // Should not throw
+    await seedConfigFiles(assetsDir, configHome);
+
+    // Verify Caddyfile was still seeded
+    const caddyContent = await readFile(join(configHome, "caddy/Caddyfile"), "utf-8");
+    expect(caddyContent).toBe("test");
+  });
+});
+
+describe("cleanupTempAssets", () => {
+  it("is exported and callable", () => {
+    expect(typeof cleanupTempAssets).toBe("function");
+  });
+
+  it("does not throw when no temp dirs exist", async () => {
+    // Should be a no-op
+    await cleanupTempAssets();
   });
 });
 

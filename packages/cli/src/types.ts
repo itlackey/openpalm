@@ -22,20 +22,6 @@ export type XDGPaths = {
   state: string;
 };
 
-/** Runtime configuration resolved during install or loaded from .env. */
-export type RuntimeConfig = {
-  os: HostOS;
-  arch: HostArch;
-  platform: ContainerPlatform;
-  composeBin: string;
-  composeSubcommand: string;
-  socketPath: string;
-  socketInContainer: string;
-  socketUri: string;
-  imageTag: string;
-  xdg: XDGPaths;
-};
-
 /** Result from a provider detection probe. */
 export type DetectedProvider = {
   name: string;
@@ -69,8 +55,3 @@ export type UninstallOptions = {
   yes?: boolean;
 };
 
-/** Generic command result. */
-export type CommandResult = {
-  success: boolean;
-  message?: string;
-};

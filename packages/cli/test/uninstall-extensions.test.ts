@@ -198,6 +198,14 @@ describe("extensions command source validation", () => {
     expect(extensionsSource).toContain("body: JSON.stringify({ pluginId })");
   });
 
+  it("validates HTTP response status before printing result", () => {
+    // Validates that response.ok is checked via checkResponse
+    expect(extensionsSource).toContain("checkResponse(response");
+    expect(extensionsSource).toContain("if (!response.ok)");
+    expect(extensionsSource).toContain("response.status");
+    expect(extensionsSource).toContain("response.statusText");
+  });
+
   it("prints error for unknown subcommand", () => {
     // Validates default case handling
     expect(extensionsSource).toContain("default:");

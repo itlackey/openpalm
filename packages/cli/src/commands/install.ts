@@ -6,7 +6,7 @@ import { resolveXDGPaths, createDirectoryTree } from "../lib/paths.ts";
 import { upsertEnvVar, generateEnvFromTemplate } from "../lib/env.ts";
 import { generateToken } from "../lib/tokens.ts";
 import { composePull, composeUp } from "../lib/compose.ts";
-import { resolveAssets, seedFile, seedConfigFiles } from "../lib/assets.ts";
+import { resolveAssets, seedFile, seedConfigFiles, cleanupTempAssets } from "../lib/assets.ts";
 import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "../lib/detect-providers.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, select } from "../lib/ui.ts";
 
@@ -294,4 +294,7 @@ export async function install(options: InstallOptions): Promise<void> {
 
   info("If you want channel adapters: openpalm start --profile channels");
   log("");
+
+  // Clean up any temp directories created during asset downloads
+  await cleanupTempAssets();
 }
