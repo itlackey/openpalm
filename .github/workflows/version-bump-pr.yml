@@ -4,6 +4,12 @@ name: Version bump PR
 # After the PR merges, manually push the tag (or use the Release workflow for
 # direct tagging).
 #
+# IMPORTANT: This workflow requires the RELEASE_TOKEN secret (a PAT or GitHub
+# App token with "contents: write" and "pull-requests: write" scopes). PRs
+# created by the default GITHUB_TOKEN do NOT trigger pull_request workflows
+# (e.g. test.yml), so the PR would lack CI checks unless a separate token is
+# used.
+#
 # This is the "safe" path — use the Release workflow for a faster direct release.
 
 on:
@@ -32,18 +38,26 @@ on:
           - minor
           - major
 
-permissions:
-  contents: write
-  pull-requests: write
+# Minimal top-level permissions; the job uses RELEASE_TOKEN.
+permissions: {}
 
 jobs:
   create-pr:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate token
+        run: |
+          if [ -z "${{ secrets.RELEASE_TOKEN }}" ]; then
+            echo "::error::RELEASE_TOKEN secret is not configured. PRs created by GITHUB_TOKEN do not trigger CI checks. See docs/VERSIONING.md for setup instructions."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Use RELEASE_TOKEN so the branch push and PR trigger CI workflows.
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -86,7 +100,8 @@ jobs:
 
       - name: Create pull request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use RELEASE_TOKEN for gh so the PR triggers pull_request workflows.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           COMPONENT="${{ inputs.component }}"
           VER="${{ steps.version.outputs.version }}"

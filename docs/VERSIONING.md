@@ -121,8 +121,11 @@ All workflows live in `.github/workflows/`.
 - **component** — `platform` or any individual component name
 - **bump** — `patch`, `minor`, or `major`
 
+**Requires:** `RELEASE_TOKEN` secret (tags pushed by `GITHUB_TOKEN` don't
+trigger downstream workflows).
+
 **What it does:**
-1. Checks out the repo
+1. Checks out the repo (using `RELEASE_TOKEN`)
 2. Runs `bun run scripts/version.ts bump <component> <bump>`
 3. Commits the version changes
 4. Creates the appropriate git tag (`v*` or `<component>/v*`)
@@ -139,10 +142,13 @@ version bump itself.
 
 **Inputs:** Same as the Release workflow.
 
+**Requires:** `RELEASE_TOKEN` secret (PRs created by `GITHUB_TOKEN` don't
+trigger CI checks like `test.yml`).
+
 **What it does:**
 1. Creates a `release/<component>/v<version>` branch
 2. Bumps the version and commits
-3. Opens a pull request targeting your default branch
+3. Opens a pull request targeting your default branch (CI runs automatically)
 
 **After merge:** Create and push the tag manually:
 ```bash
@@ -176,7 +182,8 @@ publishing.
 
 **What it does:**
 - Runs tests and typechecks
-- Publishes to npm as `openpalm`
+- Publishes to npm as `openpalm` via trusted publishing (OIDC — no token
+  secret needed, see setup below)
 - Cross-compiles standalone binaries (linux-x64, linux-arm64, darwin-x64,
   darwin-arm64)
 - Creates a GitHub Release with the binaries attached
@@ -344,7 +351,61 @@ single compose stack.
 
 | Name | Type | Used by | Purpose |
 |------|------|---------|---------|
+| `RELEASE_TOKEN` | Secret | release, version-bump-pr | PAT or GitHub App token (see below) |
 | `DOCKERHUB_USERNAME` | Secret | publish-images | Docker Hub login |
 | `DOCKERHUB_TOKEN` | Secret | publish-images | Docker Hub access token |
-| `NPM_TOKEN` | Secret | publish-cli | npm publish token |
 | `DOCKERHUB_NAMESPACE` | Variable | publish-images | Image namespace (default: `openpalm`) |
+
+> **`NPM_TOKEN` is no longer needed.** The CLI is published via npm trusted
+> publishers (OIDC). See the setup section below.
+
+### Setting up `RELEASE_TOKEN`
+
+The Release and Version bump PR workflows need a token **other than**
+`GITHUB_TOKEN` to push commits/tags and create PRs. This is a GitHub
+limitation: events created by `GITHUB_TOKEN` [do not trigger other
+workflows](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow).
+
+Without `RELEASE_TOKEN`:
+- Tags pushed by `release.yml` won't trigger `publish-images.yml` /
+  `publish-cli.yml`
+- PRs created by `version-bump-pr.yml` won't trigger `test.yml`
+
+**Option A — Personal Access Token (PAT):**
+1. Go to GitHub Settings → Developer settings → Fine-grained tokens
+2. Create a token scoped to the `itlackey/openpalm` repo with permissions:
+   - **Contents:** Read and write
+   - **Pull requests:** Read and write
+3. Add it as a repository secret named `RELEASE_TOKEN`
+
+**Option B — GitHub App (recommended for orgs):**
+1. Create a GitHub App with the same permissions
+2. Install it on the repository
+3. Use [actions/create-github-app-token](https://github.com/actions/create-github-app-token)
+   in the workflow, or store the app's installation token as `RELEASE_TOKEN`
+
+### Setting up npm trusted publishing
+
+The CLI is published to npm using [trusted publishing
+(OIDC)](https://docs.npmjs.com/trusted-publishers/) instead of a long-lived
+`NPM_TOKEN`. This eliminates secret rotation and reduces supply-chain risk.
+
+**One-time setup on npmjs.com:**
+1. Go to https://www.npmjs.com/package/openpalm/access
+2. Under **Trusted Publisher**, select **GitHub Actions**
+3. Fill in:
+   - **Owner:** `itlackey`
+   - **Repository:** `openpalm`
+   - **Workflow filename:** `publish-cli.yml`
+4. Save
+
+**How it works:** During CI, the `publish-npm` job requests a short-lived OIDC
+token from GitHub (`id-token: write` permission), which npm verifies against
+your trusted publisher config. No stored secret is involved. The package is
+also published with `--provenance`, adding a signed attestation linking the
+published version to its source commit.
+
+**Requirements:**
+- Node.js >= 22.14.0 (the workflow uses Node 22)
+- npm >= 11.5.1 (the workflow runs `npm install -g npm@latest`)
+- GitHub-hosted runners only (OIDC tokens are not available on self-hosted)
