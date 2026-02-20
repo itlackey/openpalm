@@ -73,22 +73,23 @@ services:
       - ${OPENPALM_CONFIG_HOME}/user.env
       - ${OPENPALM_CONFIG_HOME}/secrets.env
     environment:
-      - OPENCODE_CONFIG_DIR=/config
-      - OPENCODE_CONFIG=/config/opencode.jsonc
+      - OPENCODE_CONFIG_DIR=/opt/opencode
       - OPENCODE_PORT=4096
       - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}
       - CRON_DIR=/cron
+      - HOME=/home/opencode
     # Bind addresses default to localhost; set *_BIND_ADDRESS=0.0.0.0 to allow LAN access.
     ports:
       - "${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096"
       - "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22"
     volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-core:/config
+      - ${OPENPALM_DATA_HOME}/home:/home/opencode
       - ${OPENPALM_CONFIG_HOME}/cron:/cron
       - ${OPENPALM_STATE_HOME}/opencode-core:/state
       - ${OPENPALM_STATE_HOME}/workspace:/work
       - ${OPENPALM_DATA_HOME}/shared:/shared
     working_dir: /work
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [assistant_net]
     depends_on: [openmemory]
     healthcheck:
@@ -126,7 +127,7 @@ services:
     environment:
       - PORT=8100
       - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}
-      - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc
+      - OPENCODE_CONFIG_PATH=/app/home/.config/opencode/opencode.json
       - GATEWAY_URL=http://gateway:8080
       - OPENCODE_CORE_URL=http://opencode-core:4096
       - CADDYFILE_PATH=/app/config/caddy/Caddyfile
@@ -139,7 +140,7 @@ services:
       - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
       - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
     volumes:
-      - ${OPENPALM_CONFIG_HOME}/opencode-core:/app/config/opencode-core
+      - ${OPENPALM_DATA_HOME}/home:/app/home
       - ${OPENPALM_CONFIG_HOME}/caddy:/app/config/caddy
       - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env
       - ${OPENPALM_CONFIG_HOME}:/app/config-root

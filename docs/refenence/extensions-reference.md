@@ -38,29 +38,28 @@ The flow is:
 ```
 Repository source directories        (canonical extension code)
         ↓ COPY in Dockerfile
-Container image /opt/openpalm/opencode-defaults/   (baked into image)
-        ↓ entrypoint fallback copy
-Container /config                     (runtime config directory)
-        ↑ host volume mount (override layer)
-Host ~/.config/openpalm/opencode-core/    (user overrides only)
+Container image /opt/opencode/   (baked into image)
+        ↓ OpenCode loads via OPENCODE_CONFIG_DIR=/opt/opencode
+Container /home/opencode          (user-global OpenCode state)
+        ↑ host volume mount (persistent user layer)
+Host ${OPENPALM_DATA_HOME}/home/ (user-global state)
 ```
 
 Two separate OpenCode instances consume extensions:
 
 | Instance | Source Directory | Image Copy Target | Host Override | Role |
 |----------|----------------|-------------------|---------------|------|
-| **opencode-core** | `opencode/extensions/` | `/opt/openpalm/opencode-defaults/` | `~/.config/openpalm/opencode-core/` → `/config` | Full agent — all tools enabled, approval-gated |
-| **gateway** | `gateway/opencode/` | `/opt/openpalm/opencode-defaults/` | None (fully baked) | Restricted intake agent — all tools disabled |
+| **opencode-core** | `opencode/extensions/` | `/opt/opencode/` | `${OPENPALM_DATA_HOME}/home/` → `/home/opencode` | Full agent — all tools enabled, approval-gated |
+| **gateway** | `gateway/opencode/` | `/opt/opencode/` | None (fully baked) | Restricted intake agent — all tools disabled |
 
-### The Entrypoint Fallback Mechanism
+### Runtime precedence model
 
-The `opencode-core` container's entrypoint implements a layered config resolution:
+The `opencode-core` container uses:
 
-1. Check if `/config/opencode.jsonc` exists (host volume mount).
-2. If yes — use `/config` as the config directory. Host files take precedence.
-3. If no — copy baked-in defaults from `/opt/openpalm/opencode-defaults/` into `/config/`, then use `/config`.
+1. Immutable OpenPalm-managed core extensions at `/opt/opencode` (via `OPENCODE_CONFIG_DIR=/opt/opencode`).
+2. User-global OpenCode home persisted at `/home/opencode` (host-mounted from `${OPENPALM_DATA_HOME}/home`).
 
-This means the container always works out of the box (baked-in defaults), but operators can override any file by placing it in `~/.config/openpalm/opencode-core/` on the host.
+This keeps core extensions deterministic while preserving user-global config/plugins/cache/auth across restarts.
 
 The gateway container has no such fallback — its config is fully baked and not overridable from the host.
 
@@ -126,7 +125,7 @@ The installer no longer seeds extension files. Extensions are baked into contain
 
 | What | Destination | Content |
 |------|------------|---------|
-| User override config | `~/.config/openpalm/opencode-core/opencode.jsonc` | Empty `{}` — a blank canvas for user customizations |
+| User-global OpenCode config | `${OPENPALM_DATA_HOME}/home/.config/opencode/opencode.json` | Created/managed by Admin as needed |
 | Caddyfile | `~/.config/openpalm/caddy/Caddyfile` | Reverse proxy rules |
 | Channel env files | `~/.config/openpalm/channels/*.env` | Empty credential templates |
 | Secrets | `~/.config/openpalm/secrets.env` | Placeholder for API keys (managed via admin API as Connections) |
@@ -140,30 +139,27 @@ The seed-not-overwrite pattern (`seed_file`) ensures manual edits are never over
 
 ### The OpenCode Container Entrypoint
 
-The `opencode-core` container starts via `entrypoint.sh`, which sets two critical environment variables:
+The `opencode-core` container starts via `entrypoint.sh`, while compose sets key OpenCode env vars:
 
 ```bash
-export OPENCODE_CONFIG="$CONFIG_DIR/opencode.jsonc"
-export OPENCODE_CONFIG_DIR="$CONFIG_DIR"
+export OPENCODE_CONFIG_DIR="/opt/opencode"
+export HOME="/home/opencode"
 ```
 
-**`OPENCODE_CONFIG`** tells OpenCode which configuration file to read. This file contains the `plugin[]` array, permission settings, agent profiles, and MCP configuration.
+Global user config lives in `$HOME/.config/opencode/opencode.json` and contains the `plugin[]` array, permissions, and provider configuration.
 
 **`OPENCODE_CONFIG_DIR`** tells OpenCode where to auto-discover extensions. OpenCode scans this directory for standard subdirectories: `plugins/`, `skills/`, `agents/`, `commands/`, `tools/`, `modes/`, and `themes/`.
 
 **Extension discovery path in detail:**
 
 ```
-opencode/extensions/                    (source in repository)
+opencode/extensions/                         (source in repository)
     ↓ COPY in Dockerfile
-/opt/openpalm/opencode-defaults/                 (baked into container image)
-    ↓ entrypoint: cp -rn to /config/
-/config/                                (runtime config directory = OPENCODE_CONFIG_DIR)
-    ↑ host volume mount (optional override layer)
-~/.config/openpalm/opencode-core/       (user overrides on host)
-```
+/opt/opencode/                               (immutable core extensions)
 
-The entrypoint uses `cp -rn` (no-clobber recursive copy), which merges baked-in defaults into `/config/` without overwriting any files the operator has placed there. This means host-side overrides always take precedence over image defaults.
+${OPENPALM_DATA_HOME}/home/         (host persisted user-global OpenCode HOME)
+    ↕ mounted as /home/opencode
+```
 
 ### Plugin Loading
 
@@ -171,7 +167,7 @@ OpenCode discovers and loads plugins through two mechanisms:
 
 **Auto-discovery** — Any `.ts` file in `$OPENCODE_CONFIG_DIR/plugins/` is automatically discovered and loaded. Custom tools in `tools/` and slash commands in `commands/` are also auto-discovered from their respective subdirectories.
 
-**Explicit registration** — Plugins listed in the `plugin[]` array of `opencode.jsonc` are loaded by identifier. These can be npm packages (`@scope/name`) or local paths (`./plugins/my-plugin.ts`). The `plugin[]` array is specifically for registering Plugin-type extensions and npm packages — it does not cover Skills, Commands, Agents, or Custom Tools, which are discovered from their respective directories under `OPENCODE_CONFIG_DIR`. When a plugin is an npm package, OpenCode runs `bun install` at startup to resolve dependencies.
+**Explicit registration** — Plugins listed in the `plugin[]` array of global `opencode.json` are loaded by identifier. These can be npm packages (`@scope/name`) or local paths (`./plugins/my-plugin.ts`). The `plugin[]` array is specifically for registering Plugin-type extensions and npm packages — it does not cover Skills, Commands, Agents, or Custom Tools, which are discovered from their respective directories under `OPENCODE_CONFIG_DIR`. When a plugin is an npm package, OpenCode runs `bun install` at startup to resolve dependencies.
 
 ### Skill Loading
 
@@ -413,7 +409,7 @@ Requires `ADMIN_TOKEN` in the environment.
 1. **Validate identifier.** `validatePluginIdentifier()` accepts npm names (`@scope/name`) and local paths (`./plugins/*.ts`). Rejects shell metacharacters.
 
 2. **Atomic config update.** `updatePluginListAtomically()`:
-   - Reads `opencode.jsonc` from the host config directory (mounted at `/app/config/opencode-core/opencode.jsonc` in the admin container)
+   - Reads `opencode.json` from mounted OpenCode home (mounted at `/app/home/.config/opencode/opencode.json` in the admin container)
    - Parses JSONC, appends to `plugin[]` if not present
    - Creates timestamped `.bak` backup
    - Writes to temp file and atomically renames
@@ -428,7 +424,7 @@ Marks the skill (a lowest-risk extension sub-type) as enabled in setup manager s
 
 ### Channel Service Install (`installAction: "compose-service"`)
 
-Admin calls admin at `POST /up/{service-name}`, which runs `docker compose up -d {service-name}`. The admin only allows operations on a hardcoded allowlist of service names. Note that channels are a separate top-level concept — not an Extension sub-type — so their install action operates on Docker Compose services rather than modifying `opencode.jsonc`.
+Admin calls admin at `POST /up/{service-name}`, which runs `docker compose up -d {service-name}`. The admin only allows operations on a hardcoded allowlist of service names. Note that channels are a separate top-level concept — not an Extension sub-type — so their install action operates on Docker Compose services rather than modifying `opencode.json`.
 
 ---
 
@@ -489,14 +485,14 @@ assets/state/registry/
 
 ### Host-Side Override (No Rebuild)
 
-1. Place files in `~/.config/openpalm/opencode-core/`:
+1. Place files in `${OPENPALM_DATA_HOME}/home/.config/opencode/`:
 
 ```bash
-mkdir -p ~/.config/openpalm/opencode-core/plugins/
-vim ~/.config/openpalm/opencode-core/plugins/calendar-sync.ts
+mkdir -p ${OPENPALM_DATA_HOME}/home/.config/opencode/plugins/
+vim ${OPENPALM_DATA_HOME}/home/.config/opencode/plugins/calendar-sync.ts
 ```
 
-2. If explicit registration is needed (for Plugin-type extensions only), edit the host's `opencode.jsonc`:
+2. If explicit registration is needed (for Plugin-type extensions only), edit the host's `opencode.json`:
 
 ```jsonc
 {
@@ -552,7 +548,7 @@ Automations are scheduled prompts managed via Unix cron. Each Automation has an 
 
 ## Configuration Backup and Rollback
 
-`updatePluginListAtomically()` creates timestamped `.bak` copies before every config write. The admin config editor does the same via `snapshotFile()`. Backups accumulate in `~/.config/openpalm/opencode-core/`.
+Config backups from admin edits accumulate next to the global config at `${OPENPALM_DATA_HOME}/home/.config/opencode/`.
 
 ---
 
@@ -560,8 +556,8 @@ Automations are scheduled prompts managed via Unix cron. Each Automation has an 
 
 | Host Path | Container | Mount Point | Mode | Contents |
 |-----------|-----------|-------------|------|----------|
-| `~/.config/openpalm/opencode-core/` | opencode-core | `/config` | rw | User override: `opencode.jsonc` + any custom plugins/skills |
-| `~/.config/openpalm/opencode-core/` | admin | `/app/config/opencode-core` | rw | Admin reads/writes config for extension management |
+| `${OPENPALM_DATA_HOME}/home/` | opencode-core | `/home/opencode` | rw | User-global OpenCode config/plugins/cache/auth |
+| `${OPENPALM_DATA_HOME}/home/` | admin | `/app/home` | rw | Admin reads/writes global OpenCode config |
 | `~/.config/openpalm/cron/` | opencode-core | `/cron` | rw | Crontab managed by admin (Automations) |
 | `~/.config/openpalm/channels/*.env` | channel-* | env_file | — | Channel credentials (Channels are a separate top-level concept) |
 | `~/.config/openpalm/secrets.env` | opencode-core, openmemory | env_file | — | API keys (managed as Connections via admin API) |
@@ -576,12 +572,12 @@ Note: The gateway has **no** host config volume. Its extensions are fully baked 
 | Action | What Happens | Restart Required? |
 |--------|-------------|-------------------|
 | Add plugin to baked-in image | Modify `opencode/extensions/`, rebuild image | Yes — rebuild + restart |
-| Add plugin to host override | Place file in `~/.config/openpalm/opencode-core/plugins/` | Yes — restart opencode-core |
+| Add plugin to host override | Place file in `${OPENPALM_DATA_HOME}/home/.config/opencode/plugins/` | Yes — restart opencode-core |
 | Add npm plugin via admin | Config updated atomically, auto-restarted | Automatic |
 | Add skill to baked-in image | Modify `opencode/extensions/skills/`, rebuild | Yes — rebuild + restart |
-| Add skill to host override | Place in `~/.config/openpalm/opencode-core/skills/` | Yes — restart opencode-core |
-| Edit `opencode.jsonc` on host | Changes applied on next startup | Yes — restart opencode-core |
-| Edit `opencode.jsonc` via admin | Backup created, auto-restarted | Automatic |
+| Add skill to host override | Place in `${OPENPALM_DATA_HOME}/home/.config/opencode/skills/` | Yes — restart opencode-core |
+| Edit `opencode.json` on host | Changes applied on next startup | Yes — restart opencode-core |
+| Edit `opencode.json` via admin | Backup created, auto-restarted | Automatic |
 | Start/stop channel via admin | Admin runs compose up/stop for channel service | No restart of existing services |
 | Remove plugin via admin | Removed from `plugin[]`, auto-restarted | Automatic |
 | Edit `AGENTS.md` in image | Requires rebuild | Yes — rebuild + restart |

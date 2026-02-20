@@ -1,4 +1,3 @@
-import { stringifyPretty } from "./jsonc.ts";
 import { channelEnvSecretVariable } from "./stack-spec.ts";
 import type { StackChannelName, StackSpec } from "./stack-spec.ts";
 
@@ -22,8 +21,6 @@ export type GeneratedStackArtifacts = {
   caddyfile: string;
   caddyRoutes: Record<string, string>;
   composeFile: string;
-  opencodePluginConfigJsonc: string;
-  opencodePluginIds: string[];
   gatewayChannelSecretsEnv: string;
   gatewayRuntimeSecretsEnv: string;
   openmemorySecretsEnv: string;
@@ -158,19 +155,22 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${OPENPALM_CONFIG_HOME}/user.env",
     "      - ${OPENPALM_CONFIG_HOME}/secrets/opencode/providers.env",
     "    environment:",
-    "      - OPENCODE_CONFIG_DIR=/config",
-    "      - OPENCODE_CONFIG=/config/opencode.jsonc",
+    "      - OPENCODE_CONFIG_DIR=/opt/opencode",
     "      - OPENCODE_PORT=4096",
+    "      - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}",
     "      - CRON_DIR=/cron",
+    "      - HOME=/home/opencode",
     "    ports:",
     "      - \"${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096\"",
+    "      - \"${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22\"",
     "    volumes:",
-    "      - ${OPENPALM_CONFIG_HOME}/opencode-core:/config",
+    "      - ${OPENPALM_DATA_HOME}/home:/home/opencode",
     "      - ${OPENPALM_CONFIG_HOME}/cron:/cron",
     "      - ${OPENPALM_STATE_HOME}/opencode-core:/state",
     "      - ${OPENPALM_DATA_HOME}/shared:/shared",
     "      - ${OPENPALM_STATE_HOME}/workspace:/work",
     "    working_dir: /work",
+    "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
     "    networks: [assistant_net]",
     "    depends_on: [openmemory]",
     "",
@@ -193,13 +193,14 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    environment:",
     "      - PORT=8100",
     "      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}",
-    "      - OPENCODE_CONFIG_PATH=/app/config/opencode-core/opencode.jsonc",
+    "      - OPENCODE_CONFIG_PATH=/app/home/.config/opencode/opencode.json",
     "      - CADDYFILE_PATH=/app/config/caddy/Caddyfile",
     "      - CADDY_ROUTES_DIR=/app/config/caddy/routes",
     "      - CHANNEL_ENV_DIR=/app/channel-env",
     "      - STACK_SPEC_PATH=/app/config-root/stack-spec.json",
     "      - COMPOSE_FILE_PATH=/workspace/docker-compose.yml",
     "    volumes:",
+    "      - ${OPENPALM_DATA_HOME}/home:/app/home",
     "      - ${OPENPALM_CONFIG_HOME}:/app/config-root",
     "      - ${OPENPALM_CONFIG_HOME}/channels:/app/channel-env",
     "      - ${OPENPALM_DATA_HOME}/admin:/app/data",
@@ -214,16 +215,6 @@ function renderFullComposeFile(spec: StackSpec): string {
     "  assistant_net:",
     "",
   ].join("\n");
-}
-
-function renderOpencodePluginConfig(spec: StackSpec) {
-  const plugins = spec.extensions
-    .filter((extension) => extension.type === "plugin" && extension.enabled && typeof extension.pluginId === "string")
-    .map((extension) => extension.pluginId as string);
-  return {
-    opencodePluginIds: plugins,
-    opencodePluginConfigJsonc: stringifyPretty({ plugin: plugins }),
-  };
 }
 
 export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, string>): GeneratedStackArtifacts {
@@ -304,7 +295,6 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     channelConfigEnv[channel] = envWithHeader(`# Generated ${channel} channel config`, spec.channels[channel].config);
   }
 
-  const pluginConfig = renderOpencodePluginConfig(spec);
   const gatewayRuntimeSecretsEnv = envWithHeader("# Generated gateway runtime secrets", pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_"]));
   const openmemorySecretsEnv = envWithHeader("# Generated openmemory secrets", pickEnvByKeys(secrets, ["OPENAI_BASE_URL", "OPENAI_API_KEY"]));
   const postgresSecretsEnv = envWithHeader("# Generated postgres secrets", pickEnvByKeys(secrets, ["POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"]));
@@ -314,7 +304,6 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     caddyfile,
     caddyRoutes,
     composeFile: renderFullComposeFile(spec),
-    ...pluginConfig,
     gatewayChannelSecretsEnv,
     gatewayRuntimeSecretsEnv,
     openmemorySecretsEnv,

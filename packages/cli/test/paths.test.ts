@@ -36,7 +36,7 @@ describe("paths", () => {
         await createDirectoryTree(xdg);
 
         // Verify data subdirectories
-        const dataDirs = ["postgres", "qdrant", "openmemory", "shared", "caddy", "admin"];
+        const dataDirs = ["postgres", "qdrant", "openmemory", "shared", "caddy", "admin", "home"];
         for (const dir of dataDirs) {
           const dirPath = join(xdg.data, dir);
           const stats = await stat(dirPath);
@@ -44,7 +44,7 @@ describe("paths", () => {
         }
 
         // Verify config subdirectories
-        const configDirs = ["opencode-core", "caddy", "channels", "cron"];
+        const configDirs = ["caddy", "channels", "cron"];
         for (const dir of configDirs) {
           const dirPath = join(xdg.config, dir);
           const stats = await stat(dirPath);

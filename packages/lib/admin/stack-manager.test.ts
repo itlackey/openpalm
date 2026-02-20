@@ -15,9 +15,6 @@ describe("stack manager", () => {
     mkdirSync(join(secretsDir, "gateway"), { recursive: true });
     mkdirSync(join(secretsDir, "channels"), { recursive: true });
 
-    const opencodePath = join(dir, "opencode.jsonc");
-    writeFileSync(opencodePath, '{"$schema":"https://example/schema.json","provider":{"x":{}}}\n', "utf8");
-
     const manager = new StackManager({
       caddyfilePath: join(caddyDir, "Caddyfile"),
       caddyRoutesDir,
@@ -31,7 +28,6 @@ describe("stack manager", () => {
       openmemorySecretsPath: join(secretsDir, "openmemory", "openmemory.env"),
       postgresSecretsPath: join(secretsDir, "db", "postgres.env"),
       opencodeProviderSecretsPath: join(secretsDir, "opencode", "providers.env"),
-      opencodeConfigPath: opencodePath,
     });
 
     manager.upsertSecret("MY_NEW_SECRET", "abc123");
@@ -51,10 +47,6 @@ describe("stack manager", () => {
     expect(readFileSync(join(secretsDir, "channels", "chat.env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=");
     expect(readFileSync(join(dir, "channel-config", "chat.env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
 
-    const opencode = readFileSync(opencodePath, "utf8");
-    expect(opencode).toContain('"$schema"');
-    expect(opencode).toContain('"provider"');
-    expect(opencode).toContain("@openpalm/policy-plugin");
   });
 
   it("prevents deleting secrets that are in use", () => {
@@ -73,7 +65,6 @@ describe("stack manager", () => {
       openmemorySecretsPath: join(dir, "openmemory.env"),
       postgresSecretsPath: join(dir, "postgres.env"),
       opencodeProviderSecretsPath: join(dir, "providers.env"),
-      opencodeConfigPath: join(dir, "opencode.jsonc"),
     });
     expect(() => manager.deleteSecret("CHANNEL_CHAT_SECRET")).toThrow("secret_in_use");
   });
@@ -93,7 +84,6 @@ describe("stack manager", () => {
       openmemorySecretsPath: join(dir, "openmemory.env"),
       postgresSecretsPath: join(dir, "postgres.env"),
       opencodeProviderSecretsPath: join(dir, "providers.env"),
-      opencodeConfigPath: join(dir, "opencode.jsonc"),
     });
 
     const connection = manager.upsertConnection({
@@ -124,7 +114,6 @@ describe("stack manager", () => {
       openmemorySecretsPath: join(dir, "openmemory.env"),
       postgresSecretsPath: join(dir, "postgres.env"),
       opencodeProviderSecretsPath: join(dir, "providers.env"),
-      opencodeConfigPath: join(dir, "opencode.jsonc"),
     });
 
     manager.renderArtifacts();
@@ -152,7 +141,6 @@ describe("stack manager", () => {
       openmemorySecretsPath: join(dir, "openmemory.env"),
       postgresSecretsPath: join(dir, "postgres.env"),
       opencodeProviderSecretsPath: join(dir, "providers.env"),
-      opencodeConfigPath: join(dir, "opencode.jsonc"),
     });
 
     manager.upsertConnection({

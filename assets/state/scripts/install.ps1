@@ -257,7 +257,7 @@ try {
     "$OpenPalmDataHome/shared",
     "$OpenPalmDataHome/caddy",
     "$OpenPalmDataHome/admin",
-    "$OpenPalmConfigHome/opencode-core",
+    "$OpenPalmDataHome/home",
     "$OpenPalmConfigHome/caddy",
     "$OpenPalmConfigHome/channels",
     "$OpenPalmConfigHome/cron",

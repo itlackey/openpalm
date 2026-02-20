@@ -447,8 +447,9 @@ upsert_env_var OPENPALM_ENABLED_CHANNELS "${OPENPALM_ENABLED_CHANNELS:-}"
 # ── Create XDG directory trees ─────────────────────────────────────────────
 mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
+mkdir -p "$OPENPALM_DATA_HOME"/home
 
-mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,cron,secrets}
+mkdir -p "$OPENPALM_CONFIG_HOME"/{caddy,channels,cron,secrets}
 mkdir -p "$OPENPALM_CONFIG_HOME"/secrets/{gateway,channels}
 
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
