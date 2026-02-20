@@ -1,8 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# ── Bootstrap wrapper ────────────────────────────────────────────────────────
+#
+# This script installs the OpenPalm stack. It works in two modes:
+#
+#   1. Binary mode (preferred) — downloads the pre-compiled `openpalm` CLI
+#      from GitHub Releases and delegates to `openpalm install`.
+#
+#   2. Bash fallback — if no binary release is available yet (or the download
+#      fails), the full install logic runs right here in pure bash.
+#
+# Users can install via any of these one-liners:
+#
+#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
+#   bunx openpalm install
+#   npx openpalm install
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || pwd)"
 if [ ! -d "$ROOT_DIR/assets" ]; then
   ROOT_DIR="$(pwd)"
 fi
@@ -11,16 +29,21 @@ ASSETS_DIR="$ROOT_DIR/assets"
 ASSETS_TMP_DIR=""
 INSTALL_ASSETS_DIR="$ASSETS_DIR"
 
-cleanup_assets_tmp() {
-  if [ -n "$ASSETS_TMP_DIR" ] && [ -d "$ASSETS_TMP_DIR" ]; then
+cleanup() {
+  if [ -n "${ASSETS_TMP_DIR:-}" ] && [ -d "$ASSETS_TMP_DIR" ]; then
     rm -rf "$ASSETS_TMP_DIR"
   fi
+  if [ -n "${BINARY_TMP:-}" ] && [ -f "$BINARY_TMP" ]; then
+    rm -f "$BINARY_TMP"
+  fi
 }
+trap cleanup EXIT
 
-trap cleanup_assets_tmp EXIT
+# ── Parse arguments ──────────────────────────────────────────────────────────
 
 RUNTIME_OVERRIDE=""
 OPEN_BROWSER=1
+CLI_ARGS=()
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -30,30 +53,46 @@ while [ "$#" -gt 0 ]; do
         exit 1
       fi
       RUNTIME_OVERRIDE="$2"
+      CLI_ARGS+=(--runtime "$2")
       shift 2
       ;;
     --no-open)
       OPEN_BROWSER=0
+      CLI_ARGS+=(--no-open)
       shift
+      ;;
+    --ref)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for --ref."
+        exit 1
+      fi
+      CLI_ARGS+=(--ref "$2")
+      shift 2
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./assets/state/scripts/install.sh [--runtime docker|podman|orbstack] [--no-open]
+Usage: install.sh [--runtime docker|podman|orbstack] [--no-open] [--ref <branch|tag>]
+
+Install the OpenPalm stack. Downloads the pre-compiled CLI binary if
+available, otherwise falls back to a pure-bash installer.
 
 Options:
   --runtime   Force a container runtime platform selection.
   --no-open   Do not auto-open the admin setup URL after services are healthy.
+  --ref       Git ref (branch or tag) for asset download (default: main).
   -h, --help  Show this help.
 HELP
       exit 0
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Run ./assets/state/scripts/install.sh --help for usage."
+      echo "Run install.sh --help for usage."
       exit 1
       ;;
   esac
 done
+
+# ── Detect host platform ────────────────────────────────────────────────────
 
 detect_os() {
   local uname_s
@@ -96,6 +135,65 @@ if [ "$OS_NAME" = "windows-bash" ]; then
   echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"'
   exit 1
 fi
+
+# ── Try binary mode ──────────────────────────────────────────────────────────
+#
+# Attempt to download the pre-compiled openpalm binary from GitHub Releases.
+# If it works, delegate entirely to `openpalm install` and exit.
+
+try_binary_install() {
+  command -v curl >/dev/null 2>&1 || return 1
+
+  # Map host arch to binary suffix
+  local bin_arch
+  case "$OPENPALM_HOST_ARCH" in
+    amd64) bin_arch="x64" ;;
+    arm64) bin_arch="arm64" ;;
+    *) return 1 ;;
+  esac
+
+  # Map OS to binary suffix
+  local bin_os
+  case "$OS_NAME" in
+    linux) bin_os="linux" ;;
+    macos) bin_os="darwin" ;;
+    *) return 1 ;;
+  esac
+
+  local binary_name="openpalm-${bin_os}-${bin_arch}"
+  local download_url="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/latest/download/${binary_name}"
+
+  BINARY_TMP="$(mktemp)"
+
+  echo "Downloading OpenPalm CLI..."
+  if curl -fsSL --connect-timeout 10 --max-time 120 "$download_url" -o "$BINARY_TMP" 2>/dev/null; then
+    chmod +x "$BINARY_TMP"
+
+    # Quick sanity check — the binary should respond to --version
+    if "$BINARY_TMP" version >/dev/null 2>&1; then
+      echo "Running OpenPalm CLI installer..."
+      "$BINARY_TMP" install "${CLI_ARGS[@]+"${CLI_ARGS[@]}"}"
+      return 0
+    fi
+  fi
+
+  # Download failed or binary is invalid — fall through to bash installer
+  rm -f "$BINARY_TMP"
+  BINARY_TMP=""
+  return 1
+}
+
+if try_binary_install; then
+  exit 0
+fi
+
+echo "Pre-compiled binary not available — using bash installer."
+echo ""
+
+# ── Bash fallback installer ──────────────────────────────────────────────────
+#
+# Everything below is the full install logic in pure bash, requiring only
+# curl, tar, and a container runtime (Docker/Podman/OrbStack).
 
 bootstrap_install_assets() {
   if [ -f "$ASSETS_DIR/state/docker-compose.yml" ] \
@@ -310,12 +408,6 @@ if [ ! -f "$INSTALL_ASSETS_DIR/state/docker-compose.yml" ]; then
 fi
 
 # ── Resolve XDG Base Directory paths ───────────────────────────────────────
-# https://specifications.freedesktop.org/basedir-spec/latest/
-#
-#   Data   (~/.local/share/openpalm)  — databases, vector stores, blobs
-#   Config (~/.config/openpalm)       — agent configs, Caddyfile, channel envs
-#   State  (~/.local/state/openpalm)  — runtime state, audit logs, workspace
-#
 OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/openpalm}"
 OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/openpalm}"
 OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/openpalm}"
@@ -354,14 +446,11 @@ upsert_env_var OPENPALM_IMAGE_TAG "$OPENPALM_IMAGE_TAG"
 upsert_env_var OPENPALM_ENABLED_CHANNELS "${OPENPALM_ENABLED_CHANNELS:-}"
 
 # ── Create XDG directory trees ─────────────────────────────────────────────
-# Data — persistent storage (databases, blobs)
 mkdir -p "$OPENPALM_DATA_HOME"/{postgres,qdrant,openmemory,shared,caddy}
 mkdir -p "$OPENPALM_DATA_HOME"/admin
 
-# Config — user-editable configuration
 mkdir -p "$OPENPALM_CONFIG_HOME"/{opencode-core,caddy,channels,cron}
 
-# State — runtime state, logs, workspace
 mkdir -p "$OPENPALM_STATE_HOME"/{opencode-core,gateway,caddy,workspace}
 mkdir -p "$OPENPALM_STATE_HOME"/{observability,backups}
 
@@ -370,8 +459,6 @@ cp "$INSTALL_ASSETS_DIR/state/docker-compose.yml" "$COMPOSE_FILE_PATH"
 cp .env "$OPENPALM_STATE_HOME/.env"
 
 # ── Seed default configs into XDG config home ─────────────────────────────
-# Only copies files that don't already exist so manual edits are preserved.
-
 seed_file() {
   local src="$1" dst="$2"
   [ -f "$dst" ] || cp "$src" "$dst"
@@ -382,19 +469,15 @@ seed_dir() {
   [ -d "$dst" ] || cp -r "$src" "$dst"
 }
 
-# Caddy config
 seed_file "$INSTALL_ASSETS_DIR/state/caddy/Caddyfile" "$OPENPALM_CONFIG_HOME/caddy/Caddyfile"
 
-# Channel env files
 for env_file in "$INSTALL_ASSETS_DIR"/config/channels/*.env; do
   [ -f "$env_file" ] && seed_file "$env_file" "$OPENPALM_CONFIG_HOME/channels/$(basename "$env_file")"
 done
 
-# Runtime secrets and user overrides for opencode-core
 seed_file "$INSTALL_ASSETS_DIR/config/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
 seed_file "$INSTALL_ASSETS_DIR/config/user.env" "$OPENPALM_CONFIG_HOME/user.env"
 
-# Copy uninstall scripts to state directory for easy access
 cp "$INSTALL_ASSETS_DIR/state/scripts/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
 chmod +x "$OPENPALM_STATE_HOME/uninstall.sh"
 

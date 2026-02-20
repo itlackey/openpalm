@@ -1,0 +1,38 @@
+{
+  "name": "openpalm",
+  "version": "0.0.5",
+  "description": "CLI tool for installing and managing an OpenPalm stack",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/itlackey/openpalm",
+  "keywords": [
+    "openpalm",
+    "ai",
+    "cli",
+    "docker",
+    "installer"
+  ],
+  "bin": {
+    "openpalm": "./src/main.ts"
+  },
+  "files": [
+    "src/**/*.ts"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "build": "bun build src/main.ts --compile --outfile dist/openpalm",
+    "build:linux-x64": "bun build src/main.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-linux-x64",
+    "build:linux-arm64": "bun build src/main.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-linux-arm64",
+    "build:darwin-x64": "bun build src/main.ts --compile --target=bun-darwin-x64 --outfile dist/openpalm-darwin-x64",
+    "build:darwin-arm64": "bun build src/main.ts --compile --target=bun-darwin-arm64 --outfile dist/openpalm-darwin-arm64"
+  }
+}

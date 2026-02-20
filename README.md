@@ -19,15 +19,29 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 
 ## Get started
 
+Pick whichever method suits your system:
+
+**Bash** (Linux / macOS — no dependencies beyond curl):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
 ```
 
+**PowerShell** (Windows):
 ```powershell
 pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
-The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit.
+**npx** (any OS with Node.js):
+```bash
+npx openpalm install
+```
+
+**bunx** (any OS with Bun):
+```bash
+bunx openpalm install
+```
+
+The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit. See the [CLI documentation](docs/cli.md) for all available commands.
 
 ## What you get
 
@@ -128,6 +142,7 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 
 | Guide | What's inside |
 |---|---|
+| [CLI](docs/cli.md) | Install methods, commands, flags, and building from source |
 | [User Concepts](docs/user-concepts.md) | What OpenPalm is and how end users interact with it |
 | [Admin Concepts](docs/admin-concepts.md) | Key concepts for administrators |
 | [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |

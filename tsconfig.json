@@ -16,7 +16,8 @@
     "controller/**/*.ts",
     "gateway/src/**/*.ts",
     "channels/**/*.ts",
-    "assets/state/scripts/extensions-cli.ts"
+    "assets/state/scripts/extensions-cli.ts",
+    "packages/cli/src/**/*.ts"
   ],
   "exclude": [
     "node_modules"
