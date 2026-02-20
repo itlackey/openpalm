@@ -169,27 +169,36 @@ Create and manage scheduled prompts that let the assistant act proactively on a 
 
 ---
 
-### 6. Providers Management
+### 6. Connections Management
 
-Add, configure, and assign AI provider endpoints for the assistant and memory system.
+Manage credentials and endpoint configuration for all external services the assistant uses. Connections are one of the five core concepts ([Admin Concepts — Connections](admin-concepts.md)) and serve as the single source of truth for authentication details across the stack.
+
+A connection is a named set of credentials and endpoint configuration (ID, name, type, endpoint URL, credentials, status, "used by"). Connection types:
+
+- **AI Provider** — LLM API endpoints (Anthropic, OpenAI, Ollama, etc.) used by the assistant or memory system
+- **Platform** — Developer platforms (GitHub, GitLab)
+- **API Service** — External services used by extensions or channels
 
 **Features:**
-- [ ] List configured providers (name, endpoint URL, configured status)
-- [ ] Add new provider (name, URL, API key)
-- [ ] Edit provider (update name, URL, API key)
-- [ ] Delete provider (removes associated model assignments)
-- [ ] List available models from a provider endpoint
-- [ ] Assign a provider + model to a role (e.g., `small`, `openmemory`)
+- [ ] List all connections grouped by type, showing name, endpoint, status (configured / not configured / error), and "used by" indicators
+- [ ] Add a new connection (name, type, endpoint URL, API key / credentials)
+- [ ] Edit connection (update name, URL, credentials)
+- [ ] Delete connection (removes associated model assignments for AI providers)
+- [ ] Connection validation — optional endpoint probe on save to verify credentials
+- [ ] For AI Provider connections: list available models from the endpoint
+- [ ] For AI Provider connections: assign a provider + model to a role (e.g., `small`, `openmemory`)
 
-**API Endpoints:**
-- `GET /admin/providers` — list all providers and assignments
-- `POST /admin/providers` — add a provider
-- `POST /admin/providers/update` — update a provider
-- `POST /admin/providers/delete` — delete a provider
-- `POST /admin/providers/models` — list models from a provider
+**API Endpoints (current — AI Provider connections):**
+- `GET /admin/providers` — list all AI provider connections and role assignments
+- `POST /admin/providers` — add an AI provider connection
+- `POST /admin/providers/update` — update an AI provider connection
+- `POST /admin/providers/delete` — delete an AI provider connection
+- `POST /admin/providers/models` — list models from a provider endpoint
 - `POST /admin/providers/assign` — assign a provider+model to a role
 
-**References:** [API Reference — Providers](api-reference.md), [OpenCode Providers Docs](https://opencode.ai/docs/providers/)
+> **Note:** The current API backs the AI Provider connection type via `/admin/providers`. Platform and API Service connection types are planned for future implementation ([Admin Concepts — Connections](admin-concepts.md)).
+
+**References:** [Admin Concepts — Connections](admin-concepts.md), [User Concepts — Connections](user-concepts.md), [API Reference](api-reference.md), [OpenCode Providers Docs](https://opencode.ai/docs/providers/)
 
 ---
 
