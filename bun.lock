@@ -26,11 +26,18 @@
     "channels/voice": {
       "name": "@openpalm/channel-voice",
     },
+    "channels/webhook": {
+      "name": "@openpalm/channel-webhook",
+    },
     "controller": {
       "name": "@openpalm/controller",
     },
     "gateway": {
       "name": "@openpalm/gateway",
+    },
+    "shared": {
+      "name": "@openpalm/shared",
+      "version": "0.0.1",
     },
   },
   "packages": {
@@ -44,9 +51,13 @@
 
     "@openpalm/channel-voice": ["@openpalm/channel-voice@workspace:channels/voice"],
 
+    "@openpalm/channel-webhook": ["@openpalm/channel-webhook@workspace:channels/webhook"],
+
     "@openpalm/controller": ["@openpalm/controller@workspace:controller"],
 
     "@openpalm/gateway": ["@openpalm/gateway@workspace:gateway"],
+
+    "@openpalm/shared": ["@openpalm/shared@workspace:shared"],
 
     "@playwright/test": ["@playwright/test@1.58.2", "", { "dependencies": { "playwright": "1.58.2" }, "bin": { "playwright": "cli.js" } }, "sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA=="],
 

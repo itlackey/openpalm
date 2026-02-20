@@ -1,6 +1,6 @@
-import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { dirname } from "node:path";
+import { dirname, join, extname } from "node:path";
 import { updatePluginListAtomically, validatePluginIdentifier } from "./extensions.ts";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
 import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
@@ -34,7 +34,7 @@ const OPENCODE_CORE_CONFIG_DIR = Bun.env.OPENCODE_CORE_CONFIG_DIR ?? "/app/confi
 const CRON_DIR = Bun.env.CRON_DIR ?? "/app/config-root/cron";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? "/workspace/.env";
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? "/app/config-root/secrets.env";
-const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
+const UI_DIR = Bun.env.UI_DIR ?? "/app/ui/build";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const KNOWN_SERVICES = new Set<string>([
@@ -877,23 +877,62 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, backup }));
       }
 
-      // ── Static UI ─────────────────────────────────────────────────
-      if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
-        const indexPath = `${UI_DIR}/index.html`;
-        if (!existsSync(indexPath)) return cors(json(500, { error: "admin ui missing" }));
-        return new Response(Bun.file(indexPath), { headers: { "content-type": "text/html" } });
-      }
+      // ── Static UI (SvelteKit build output) ───────────────────────
+      if (req.method === "GET") {
+        // Redirect root to /admin/ for direct access (without Caddy)
+        if (url.pathname === "/") {
+          return cors(new Response(null, {
+            status: 302,
+            headers: { location: "/admin/" }
+          }));
+        }
 
-      if (url.pathname === "/setup-ui.js" && req.method === "GET") {
-        const jsPath = `${UI_DIR}/setup-ui.js`;
-        if (!existsSync(jsPath)) return cors(json(404, { error: "setup ui missing" }));
-        return new Response(Bun.file(jsPath), { headers: { "content-type": "application/javascript" } });
-      }
+        // Resolve the file path from the request URL.
+        // Caddy strips /admin prefix, so the server receives paths like /_app/..., /logo.png, etc.
+        // Direct access may include /admin/ prefix, which we strip for file resolution.
+        let filePath = url.pathname;
+        if (filePath.startsWith("/admin/")) filePath = filePath.slice("/admin".length);
+        else if (filePath === "/admin") filePath = "/";
 
-      if (url.pathname === "/logo.png" && req.method === "GET") {
-        const logoPath = `${UI_DIR}/logo.png`;
-        if (!existsSync(logoPath)) return cors(json(404, { error: "logo missing" }));
-        return new Response(Bun.file(logoPath), { headers: { "content-type": "image/png" } });
+        // Try to serve a static file from the UI build directory
+        const resolved = join(UI_DIR, filePath);
+        // Prevent path traversal
+        if (resolved.startsWith(UI_DIR) && existsSync(resolved)) {
+          try {
+            const stat = statSync(resolved);
+            if (stat.isFile()) {
+              const ext = extname(resolved).toLowerCase();
+              const mimeTypes: Record<string, string> = {
+                ".html": "text/html",
+                ".js": "application/javascript",
+                ".css": "text/css",
+                ".json": "application/json",
+                ".png": "image/png",
+                ".svg": "image/svg+xml",
+                ".ico": "image/x-icon",
+                ".woff": "font/woff",
+                ".woff2": "font/woff2",
+                ".webp": "image/webp",
+                ".webmanifest": "application/manifest+json",
+              };
+              const contentType = mimeTypes[ext] ?? "application/octet-stream";
+              const headers: Record<string, string> = { "content-type": contentType };
+              // Cache immutable hashed assets indefinitely
+              if (filePath.includes("/_app/immutable/")) {
+                headers["cache-control"] = "public, max-age=31536000, immutable";
+              }
+              return cors(new Response(Bun.file(resolved), { headers }));
+            }
+          } catch { /* fall through to SPA fallback */ }
+        }
+
+        // SPA fallback: serve index.html for all unmatched GET requests
+        const indexPath = join(UI_DIR, "index.html");
+        if (existsSync(indexPath)) {
+          return cors(new Response(Bun.file(indexPath), {
+            headers: { "content-type": "text/html" }
+          }));
+        }
       }
 
       return cors(json(404, { error: "not_found" }));

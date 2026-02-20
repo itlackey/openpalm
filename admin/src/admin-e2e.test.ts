@@ -5,7 +5,7 @@
  * and verify every page/endpoint the admin UI relies on.
  */
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, copyFileSync, existsSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Subprocess } from "bun";
@@ -47,9 +47,13 @@ beforeAll(async () => {
 
   for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, cronDir]) mkdirSync(d, { recursive: true });
 
-  // Copy UI files
-  for (const f of ["index.html", "setup-ui.js", "logo.png"]) {
-    copyFileSync(join(REPO_ROOT, "admin/ui", f), join(uiDir, f));
+  // Copy SvelteKit build output if it exists, otherwise create minimal fallback
+  const buildDir = join(REPO_ROOT, "admin/ui/build");
+  if (existsSync(buildDir)) {
+    cpSync(buildDir, uiDir, { recursive: true });
+  } else {
+    writeFileSync(join(uiDir, "index.html"), '<!doctype html><html lang="en"><head><title>OpenPalm Admin</title></head><body></body></html>', "utf8");
+    writeFileSync(join(uiDir, "logo.png"), "", "utf8");
   }
 
   // Copy config files
@@ -113,35 +117,38 @@ describe("static file serving", () => {
     expect(r.data.service).toBe("admin");
   });
 
-  it("GET / serves index.html", async () => {
-    const r = await api("/");
+  it("GET / redirects to /admin/", async () => {
+    const r = await api("/", { redirect: "manual" });
+    expect(r.status).toBe(302);
+    expect(r.headers.get("location")).toBe("/admin/");
+  });
+
+  it("GET /admin/ serves SPA index.html", async () => {
+    const r = await api("/admin/");
     expect(r.status).toBe(200);
     const text = await r.text();
     expect(text).toContain("<!doctype html>");
     expect(text).toContain("OpenPalm Admin");
   });
 
-  it("GET /index.html serves index.html", async () => {
-    const r = await api("/index.html");
-    expect(r.status).toBe(200);
-  });
-
-  it("GET /setup-ui.js serves the setup wizard script", async () => {
-    const r = await api("/setup-ui.js");
+  it("GET /admin/extensions serves SPA fallback", async () => {
+    const r = await api("/admin/extensions");
     expect(r.status).toBe(200);
     const text = await r.text();
-    expect(text).toContain("openPalmSetup");
+    expect(text).toContain("<!doctype html>");
   });
 
   it("GET /logo.png serves the logo", async () => {
     const r = await api("/logo.png");
     expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("image/png");
   });
 
-  it("unknown path returns 404", async () => {
-    const r = await apiJson("/unknown/route");
-    expect(r.status).toBe(404);
-    expect(r.data.error).toBe("not_found");
+  it("GET /index.html serves SPA fallback", async () => {
+    const r = await api("/index.html");
+    expect(r.status).toBe(200);
+    const text = await r.text();
+    expect(text).toContain("<!doctype html>");
   });
 });
 
@@ -378,36 +385,27 @@ describe("meta endpoint", () => {
 // ── UI Content Verification ─────────────────────────────
 
 describe("UI content", () => {
-  it("index.html includes normalizeAdminApiPath for Caddy routing", async () => {
-    const r = await api("/");
+  it("SPA index.html includes SvelteKit assets", async () => {
+    const r = await api("/admin/");
     const text = await r.text();
-    expect(text).toContain("normalizeAdminApiPath");
-    expect(text).toContain("ADMIN_API_PREFIX");
-    expect(text).toContain("/admin/api/");
+    expect(text).toContain("<!doctype html>");
+    expect(text).toContain("OpenPalm Admin");
+    // SvelteKit bundles are referenced in the HTML
+    expect(text).toContain("_app/");
   });
 
-  it("index.html includes all page containers", async () => {
-    const r = await api("/");
-    const text = await r.text();
-    expect(text).toContain('id="page-extensions"');
-    expect(text).toContain('id="page-channels"');
-    expect(text).toContain('id="page-automations"');
-    expect(text).toContain('id="page-system"');
-  });
-
-  it("index.html includes setup-ui.js script tag", async () => {
-    const r = await api("/");
-    const text = await r.text();
-    expect(text).toContain('src="setup-ui.js"');
-  });
-
-  it("setup-ui.js includes wizard implementation", async () => {
-    const r = await api("/setup-ui.js");
-    const text = await r.text();
-    expect(text).toContain("wizardStep");
-    expect(text).toContain("checkSetup");
-    expect(text).toContain("finishSetup");
-    expect(text).toContain("pollUntilReady");
+  it("SPA serves consistent content for client-only routes", async () => {
+    // SPA routes that DON'T conflict with any API GET endpoints.
+    // Conflicting paths to avoid: /admin/channels, /admin/automations, /admin/providers,
+    // /admin/config, /admin/installed (all require auth and return 401).
+    // These paths have no matching API route, so the server falls through to SPA fallback:
+    const routes = ["/admin/system", "/admin/extensions", "/admin/setup", "/admin/containers"];
+    for (const route of routes) {
+      const r = await api(route);
+      expect(r.status).toBe(200);
+      const text = await r.text();
+      expect(text).toContain("<!doctype html>");
+    }
   });
 });
 
@@ -519,5 +517,946 @@ describe("providers", () => {
       body: JSON.stringify({ id: "nonexistent" }),
     });
     expect(r.status).toBe(404);
+  });
+});
+
+// ── Setup Wizard Complete Flow ──────────────────────────
+
+describe("setup wizard complete flow", () => {
+  it("POST /admin/setup/access-scope with valid scope 'host' (authed)", async () => {
+    const r = await authed("/admin/setup/access-scope", {
+      method: "POST",
+      body: JSON.stringify({ scope: "host" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/access-scope with valid scope 'lan' (authed)", async () => {
+    const r = await authed("/admin/setup/access-scope", {
+      method: "POST",
+      body: JSON.stringify({ scope: "lan" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/access-scope rejects invalid scope", async () => {
+    const r = await authed("/admin/setup/access-scope", {
+      method: "POST",
+      body: JSON.stringify({ scope: "internet" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid scope");
+  });
+
+  it("POST /admin/setup/channels with channel selection (authed)", async () => {
+    const r = await authed("/admin/setup/channels", {
+      method: "POST",
+      body: JSON.stringify({ channels: ["channel-chat", "channel-discord"] }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/channels with empty selection (authed)", async () => {
+    const r = await authed("/admin/setup/channels", {
+      method: "POST",
+      body: JSON.stringify({ channels: [] }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/service-instances with valid URLs (authed)", async () => {
+    const r = await authed("/admin/setup/service-instances", {
+      method: "POST",
+      body: JSON.stringify({
+        openmemory: "http://openmemory:8765",
+        psql: "postgresql://user:pass@db:5432/openpalm",
+        qdrant: "http://qdrant:6333",
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/setup/service-instances configures small model fields (authed)", async () => {
+    const r = await authed("/admin/setup/service-instances", {
+      method: "POST",
+      body: JSON.stringify({
+        openmemory: "",
+        psql: "",
+        qdrant: "",
+        smallModelEndpoint: "http://ollama:11434/v1",
+        smallModelId: "llama3.2",
+        smallModelApiKey: "test-small-key",
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    const smallModel = r.data.smallModelProvider as Record<string, unknown>;
+    expect(smallModel.modelId).toBe("llama3.2");
+    expect(smallModel.endpoint).toBe("http://ollama:11434/v1");
+    expect(smallModel.apiKeyConfigured).toBe(true);
+  });
+
+  it("full wizard step completion flow (all steps marked, then complete)", async () => {
+    const steps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions"];
+    for (const step of steps) {
+      const r = await apiJson("/admin/setup/step", {
+        method: "POST",
+        body: JSON.stringify({ step }),
+      });
+      expect(r.ok).toBe(true);
+    }
+    // Verify status shows completed (it was already completed earlier, this re-confirms)
+    const status = await authed("/admin/setup/status");
+    expect(status.ok).toBe(true);
+    expect(status.data.completed).toBe(true);
+  });
+});
+
+// ── Gallery Extended Tests ──────────────────────────────
+
+describe("gallery extended", () => {
+  it("GET /admin/gallery/categories returns a non-empty categories array", async () => {
+    const r = await apiJson("/admin/gallery/categories");
+    expect(r.ok).toBe(true);
+    const categories = r.data.categories as Array<{ category: string; count: number }>;
+    expect(Array.isArray(categories)).toBe(true);
+    expect(categories.length).toBeGreaterThan(0);
+    // Should include standard categories
+    const categoryNames = categories.map((c) => c.category);
+    expect(categoryNames).toContain("plugin");
+    expect(categoryNames).toContain("channel");
+    // Each category has a count
+    for (const cat of categories) {
+      expect(typeof cat.category).toBe("string");
+      expect(typeof cat.count).toBe("number");
+      expect(cat.count).toBeGreaterThan(0);
+    }
+  });
+
+  it("GET /admin/gallery/search with category filter returns matching items", async () => {
+    const r = await apiJson("/admin/gallery/search?q=&category=plugin");
+    expect(r.ok).toBe(true);
+    const items = r.data.items as Array<{ category: string }>;
+    expect(items.every((i) => i.category === "plugin")).toBe(true);
+  });
+
+  it("GET /admin/gallery/item/:id returns detail for valid item", async () => {
+    const r = await apiJson("/admin/gallery/item/plugin-policy-telemetry");
+    expect(r.ok).toBe(true);
+    const item = r.data.item as Record<string, unknown>;
+    expect(item).toHaveProperty("id");
+    expect(item).toHaveProperty("name");
+    expect(item).toHaveProperty("risk");
+    expect(r.data).toHaveProperty("riskBadge");
+  });
+
+  it("GET /admin/gallery/item/:id returns 404 for invalid item", async () => {
+    const r = await apiJson("/admin/gallery/item/does-not-exist-at-all");
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("item not found");
+  });
+
+  it("POST /admin/gallery/install with invalid galleryId returns 404", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "nonexistent-gallery-id-xyz" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("gallery item not found");
+  });
+
+  it("POST /admin/gallery/uninstall requires auth", async () => {
+    const r = await apiJson("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "plugin-policy-telemetry" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/gallery/uninstall with missing params returns 400", async () => {
+    const r = await authed("/admin/gallery/uninstall", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("galleryId or pluginId required");
+  });
+
+  it("POST /admin/gallery/community/refresh requires auth", async () => {
+    const r = await apiJson("/admin/gallery/community/refresh", {
+      method: "POST",
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/gallery/install with no galleryId or pluginId returns 400", async () => {
+    const r = await authed("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("galleryId or pluginId required");
+  });
+
+  it("POST /admin/gallery/install requires auth", async () => {
+    const r = await apiJson("/admin/gallery/install", {
+      method: "POST",
+      body: JSON.stringify({ galleryId: "plugin-policy-telemetry" }),
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+// ── Channel Management Extended Tests ───────────────────
+
+describe("channel management extended", () => {
+  it("GET /admin/channels/config with valid service returns config", async () => {
+    const r = await authed("/admin/channels/config?service=channel-discord");
+    expect(r.ok).toBe(true);
+    expect(r.data.service).toBe("channel-discord");
+    const config = r.data.config as Record<string, string>;
+    expect(config).toHaveProperty("DISCORD_BOT_TOKEN");
+    expect(config).toHaveProperty("DISCORD_PUBLIC_KEY");
+  });
+
+  it("GET /admin/channels/config with invalid service returns 400", async () => {
+    const r = await authed("/admin/channels/config?service=invalid-service");
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid service");
+  });
+
+  it("POST /admin/channels/config with valid config saves it", async () => {
+    const r = await authed("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({
+        service: "channel-discord",
+        config: { DISCORD_BOT_TOKEN: "test-token-123", DISCORD_PUBLIC_KEY: "test-key-456" },
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.service).toBe("channel-discord");
+
+    // Verify the config was persisted
+    const read = await authed("/admin/channels/config?service=channel-discord");
+    const config = read.data.config as Record<string, string>;
+    expect(config.DISCORD_BOT_TOKEN).toBe("test-token-123");
+    expect(config.DISCORD_PUBLIC_KEY).toBe("test-key-456");
+  });
+
+  it("POST /admin/channels/config with restart=false does not error", async () => {
+    const r = await authed("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({
+        service: "channel-telegram",
+        config: { TELEGRAM_BOT_TOKEN: "tg-token", TELEGRAM_WEBHOOK_SECRET: "tg-secret" },
+        restart: false,
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/channels/config with invalid service returns 400", async () => {
+    const r = await authed("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({ service: "invalid-svc", config: {} }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid service");
+  });
+
+  it("GET /admin/channels/config requires auth", async () => {
+    const r = await apiJson("/admin/channels/config?service=channel-chat");
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/channels/config requires auth", async () => {
+    const r = await apiJson("/admin/channels/config", {
+      method: "POST",
+      body: JSON.stringify({ service: "channel-chat", config: {} }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/channels/access sets channel access mode", async () => {
+    const r = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", access: "public" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.channel).toBe("chat");
+    expect(r.data.access).toBe("public");
+  });
+
+  it("POST /admin/channels/access rejects invalid channel", async () => {
+    const r = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "invalid", access: "lan" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid channel");
+  });
+
+  it("POST /admin/channels/access rejects invalid access", async () => {
+    const r = await authed("/admin/channels/access", {
+      method: "POST",
+      body: JSON.stringify({ channel: "chat", access: "invalid" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("invalid access");
+  });
+
+  it("GET /admin/channels returns channels with access mode and config", async () => {
+    const r = await authed("/admin/channels");
+    expect(r.ok).toBe(true);
+    const channels = r.data.channels as Array<{ service: string; label: string; access: string; config: Record<string, string>; fields: Array<{ key: string }> }>;
+    expect(channels.length).toBe(4);
+    const services = channels.map((c) => c.service);
+    expect(services).toContain("channel-chat");
+    expect(services).toContain("channel-discord");
+    expect(services).toContain("channel-voice");
+    expect(services).toContain("channel-telegram");
+    // Each channel has a label
+    for (const ch of channels) {
+      expect(ch.label.length).toBeGreaterThan(0);
+      expect(typeof ch.access).toBe("string");
+    }
+  });
+});
+
+// ── Automations Complete CRUD Flow ──────────────────────
+
+describe("automations complete CRUD flow", () => {
+  let createdId: string;
+
+  it("full lifecycle: create → list → update → trigger → delete", async () => {
+    // Create
+    const createResp = await authed("/admin/automations", {
+      method: "POST",
+      body: JSON.stringify({ name: "Test Cron Job", schedule: "0 9 * * 1", prompt: "Weekly status report" }),
+    });
+    expect(createResp.status).toBe(201);
+    expect(createResp.data.ok).toBe(true);
+    const automation = createResp.data.automation as Record<string, unknown>;
+    createdId = automation.id as string;
+    expect(automation.name).toBe("Test Cron Job");
+    expect(automation.schedule).toBe("0 9 * * 1");
+    expect(automation.prompt).toBe("Weekly status report");
+    expect(automation.status).toBe("enabled");
+    expect(automation).toHaveProperty("createdAt");
+
+    // List
+    const listResp = await authed("/admin/automations");
+    expect(listResp.ok).toBe(true);
+    const automations = listResp.data.automations as Array<{ id: string; name: string }>;
+    expect(automations.some((a) => a.id === createdId)).toBe(true);
+
+    // Update
+    const updateResp = await authed("/admin/automations/update", {
+      method: "POST",
+      body: JSON.stringify({ id: createdId, name: "Updated Cron Job", schedule: "30 8 * * *" }),
+    });
+    expect(updateResp.ok).toBe(true);
+    const updated = updateResp.data.automation as Record<string, unknown>;
+    expect(updated.name).toBe("Updated Cron Job");
+    expect(updated.schedule).toBe("30 8 * * *");
+
+    // Trigger
+    const triggerResp = await authed("/admin/automations/trigger", {
+      method: "POST",
+      body: JSON.stringify({ id: createdId }),
+    });
+    expect(triggerResp.ok).toBe(true);
+    expect(triggerResp.data.triggered).toBe(createdId);
+
+    // Delete
+    const deleteResp = await authed("/admin/automations/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: createdId }),
+    });
+    expect(deleteResp.ok).toBe(true);
+    expect(deleteResp.data.deleted).toBe(createdId);
+
+    // Verify deletion
+    const listAfter = await authed("/admin/automations");
+    const remaining = listAfter.data.automations as Array<{ id: string }>;
+    expect(remaining.some((a) => a.id === createdId)).toBe(false);
+  });
+
+  it("creating automation with invalid cron expression returns 400", async () => {
+    const r = await authed("/admin/automations", {
+      method: "POST",
+      body: JSON.stringify({ name: "Bad Cron", schedule: "not a cron", prompt: "test" }),
+    });
+    expect(r.status).toBe(400);
+    expect((r.data.error as string)).toContain("invalid cron expression");
+  });
+
+  it("creating automation with missing fields returns 400", async () => {
+    const r = await authed("/admin/automations", {
+      method: "POST",
+      body: JSON.stringify({ name: "No Schedule" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("name, schedule, and prompt are required");
+  });
+
+  it("updating automation with invalid cron returns 400", async () => {
+    // Create a valid one first
+    const create = await authed("/admin/automations", {
+      method: "POST",
+      body: JSON.stringify({ name: "For Update Test", schedule: "0 0 * * *", prompt: "test" }),
+    });
+    const id = (create.data.automation as Record<string, unknown>).id as string;
+
+    const r = await authed("/admin/automations/update", {
+      method: "POST",
+      body: JSON.stringify({ id, schedule: "bad cron here" }),
+    });
+    expect(r.status).toBe(400);
+    expect((r.data.error as string)).toContain("invalid cron expression");
+
+    // Clean up
+    await authed("/admin/automations/delete", { method: "POST", body: JSON.stringify({ id }) });
+  });
+
+  it("updating non-existent automation returns 404", async () => {
+    const r = await authed("/admin/automations/update", {
+      method: "POST",
+      body: JSON.stringify({ id: "00000000-0000-0000-0000-000000000000", name: "ghost" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("automation not found");
+  });
+
+  it("deleting non-existent automation returns 404", async () => {
+    const r = await authed("/admin/automations/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: "00000000-0000-0000-0000-000000000000" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("automation not found");
+  });
+
+  it("triggering non-existent automation returns 404", async () => {
+    const r = await authed("/admin/automations/trigger", {
+      method: "POST",
+      body: JSON.stringify({ id: "00000000-0000-0000-0000-000000000000" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("automation not found");
+  });
+
+  it("POST /admin/automations requires auth", async () => {
+    const r = await apiJson("/admin/automations", {
+      method: "POST",
+      body: JSON.stringify({ name: "x", schedule: "0 * * * *", prompt: "y" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/automations/update requires auth", async () => {
+    const r = await apiJson("/admin/automations/update", {
+      method: "POST",
+      body: JSON.stringify({ id: "x" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/automations/delete requires auth", async () => {
+    const r = await apiJson("/admin/automations/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: "x" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/automations/trigger requires auth", async () => {
+    const r = await apiJson("/admin/automations/trigger", {
+      method: "POST",
+      body: JSON.stringify({ id: "x" }),
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+// ── Providers Complete CRUD Flow ────────────────────────
+
+describe("providers complete CRUD flow", () => {
+  let providerId: string;
+
+  it("full lifecycle: create → list → update → assign → delete", async () => {
+    // Create
+    const createResp = await authed("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({ name: "CRUDProvider", url: "http://localhost:11434/v1", apiKey: "secret-key-123" }),
+    });
+    expect(createResp.status).toBe(201);
+    const provider = createResp.data.provider as Record<string, unknown>;
+    providerId = provider.id as string;
+    expect(provider.name).toBe("CRUDProvider");
+    expect(provider.apiKey).toBe("••••••");
+
+    // List
+    const listResp = await authed("/admin/providers");
+    expect(listResp.ok).toBe(true);
+    const providers = listResp.data.providers as Array<{ id: string }>;
+    expect(providers.some((p) => p.id === providerId)).toBe(true);
+
+    // Update
+    const updateResp = await authed("/admin/providers/update", {
+      method: "POST",
+      body: JSON.stringify({ id: providerId, name: "UpdatedCRUD", url: "http://new-host:11434/v1" }),
+    });
+    expect(updateResp.ok).toBe(true);
+    expect((updateResp.data.provider as Record<string, unknown>).name).toBe("UpdatedCRUD");
+
+    // Assign
+    const assignResp = await authed("/admin/providers/assign", {
+      method: "POST",
+      body: JSON.stringify({ role: "small", providerId, modelId: "llama3.2:latest" }),
+    });
+    expect(assignResp.ok).toBe(true);
+    const assignments = assignResp.data.assignments as Record<string, { providerId: string; modelId: string }>;
+    expect(assignments.small.providerId).toBe(providerId);
+    expect(assignments.small.modelId).toBe("llama3.2:latest");
+
+    // Delete
+    const deleteResp = await authed("/admin/providers/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: providerId }),
+    });
+    expect(deleteResp.ok).toBe(true);
+
+    // Verify deletion
+    const listAfter = await authed("/admin/providers");
+    const remaining = listAfter.data.providers as Array<{ id: string }>;
+    expect(remaining.some((p) => p.id === providerId)).toBe(false);
+  });
+
+  it("updating non-existent provider returns 404", async () => {
+    const r = await authed("/admin/providers/update", {
+      method: "POST",
+      body: JSON.stringify({ id: "nonexistent-provider-id", name: "ghost" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("provider not found");
+  });
+
+  it("deleting non-existent provider returns 404", async () => {
+    const r = await authed("/admin/providers/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: "nonexistent-provider-id" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("provider not found");
+  });
+
+  it("POST /admin/providers/models with non-existent provider returns 404", async () => {
+    const r = await authed("/admin/providers/models", {
+      method: "POST",
+      body: JSON.stringify({ providerId: "nonexistent-provider-id" }),
+    });
+    expect(r.status).toBe(404);
+    expect(r.data.error).toBe("provider not found");
+  });
+
+  it("POST /admin/providers/assign with invalid role returns 400", async () => {
+    const r = await authed("/admin/providers/assign", {
+      method: "POST",
+      body: JSON.stringify({ role: "invalid-role", providerId: "some-id", modelId: "some-model" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("role must be 'small' or 'openmemory'");
+  });
+
+  it("POST /admin/providers/assign with missing fields returns 400", async () => {
+    const r = await authed("/admin/providers/assign", {
+      method: "POST",
+      body: JSON.stringify({ role: "small" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("role, providerId, and modelId are required");
+  });
+
+  it("POST /admin/providers/models with missing providerId returns 400", async () => {
+    const r = await authed("/admin/providers/models", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("providerId is required");
+  });
+
+  it("POST /admin/providers requires auth", async () => {
+    const r = await apiJson("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify({ name: "x" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/providers/update requires auth", async () => {
+    const r = await apiJson("/admin/providers/update", {
+      method: "POST",
+      body: JSON.stringify({ id: "x" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/providers/delete requires auth", async () => {
+    const r = await apiJson("/admin/providers/delete", {
+      method: "POST",
+      body: JSON.stringify({ id: "x" }),
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+// ── Config Editor Extended Tests ────────────────────────
+
+describe("config editor extended", () => {
+  it("POST /admin/config with policy violation (permission: allow) returns 400", async () => {
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config: JSON.stringify({ permission: { "Bash(*)": "allow" } }) }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("This change would weaken security protections and was blocked");
+  });
+
+  it("POST /admin/config with non-object JSON returns 400", async () => {
+    // A valid JSON string that is not an object triggers the "syntax error" guard
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config: '"just a string"' }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("The configuration file has a syntax error");
+  });
+
+  it("POST /admin/config with unparseable JSON returns 500", async () => {
+    // Completely invalid JSON causes parseJsonc to throw, caught by server error handler
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config: "{ not valid json !!!" }),
+    });
+    expect(r.status).toBe(500);
+  });
+
+  it("POST /admin/config creates a backup file on successful write", async () => {
+    // Read existing config first
+    const getCfg = await api("/admin/config", {
+      headers: { "x-admin-token": "test-token-e2e" },
+    });
+    const currentConfig = await getCfg.text();
+
+    // Write a valid config
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config: currentConfig, restart: false }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    // Server returns the backup path
+    expect(typeof r.data.backup).toBe("string");
+    expect((r.data.backup as string)).toContain(".bak");
+  });
+
+  it("POST /admin/config with valid JSON succeeds", async () => {
+    const validConfig = JSON.stringify({ "$schema": "opencode.schema.json" });
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config: validConfig, restart: false }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+  });
+
+  it("POST /admin/config with permission deny is allowed", async () => {
+    const config = JSON.stringify({ permission: { "Bash(*)": "deny" } });
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config, restart: false }),
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("POST /admin/config with permission ask is allowed", async () => {
+    const config = JSON.stringify({ permission: { "Bash(*)": "ask" } });
+    const r = await authed("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config, restart: false }),
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("POST /admin/config requires auth", async () => {
+    const r = await apiJson("/admin/config", {
+      method: "POST",
+      body: JSON.stringify({ config: "{}" }),
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+// ── Container Management Tests ──────────────────────────
+
+describe("container management", () => {
+  it("POST /admin/containers/up with valid service returns ok", async () => {
+    const r = await authed("/admin/containers/up", {
+      method: "POST",
+      body: JSON.stringify({ service: "opencode-core" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.action).toBe("up");
+    expect(r.data.service).toBe("opencode-core");
+  });
+
+  it("POST /admin/containers/up with invalid service name returns 400", async () => {
+    const r = await authed("/admin/containers/up", {
+      method: "POST",
+      body: JSON.stringify({ service: "nonexistent-service" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("unknown service name");
+  });
+
+  it("POST /admin/containers/down with valid service returns ok", async () => {
+    const r = await authed("/admin/containers/down", {
+      method: "POST",
+      body: JSON.stringify({ service: "channel-chat" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.action).toBe("down");
+  });
+
+  it("POST /admin/containers/down with invalid service name returns 400", async () => {
+    const r = await authed("/admin/containers/down", {
+      method: "POST",
+      body: JSON.stringify({ service: "bad-service" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("unknown service name");
+  });
+
+  it("POST /admin/containers/restart with valid service returns ok", async () => {
+    const r = await authed("/admin/containers/restart", {
+      method: "POST",
+      body: JSON.stringify({ service: "gateway" }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.data.ok).toBe(true);
+    expect(r.data.action).toBe("restart");
+  });
+
+  it("POST /admin/containers/restart with invalid service name returns 400", async () => {
+    const r = await authed("/admin/containers/restart", {
+      method: "POST",
+      body: JSON.stringify({ service: "totally-not-a-service" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("unknown service name");
+  });
+
+  it("POST /admin/containers/up with empty service returns 400", async () => {
+    const r = await authed("/admin/containers/up", {
+      method: "POST",
+      body: JSON.stringify({ service: "" }),
+    });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toBe("unknown service name");
+  });
+
+  it("GET /admin/containers/list requires auth", async () => {
+    const r = await apiJson("/admin/containers/list");
+    expect(r.status).toBe(401);
+  });
+
+  it("GET /admin/containers/list returns 503 without controller", async () => {
+    const r = await authed("/admin/containers/list");
+    expect(r.status).toBe(503);
+    expect(r.data.error).toBe("controller not configured");
+  });
+
+  it("POST /admin/containers/up requires auth", async () => {
+    const r = await apiJson("/admin/containers/up", {
+      method: "POST",
+      body: JSON.stringify({ service: "gateway" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/containers/down requires auth", async () => {
+    const r = await apiJson("/admin/containers/down", {
+      method: "POST",
+      body: JSON.stringify({ service: "gateway" }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("POST /admin/containers/restart requires auth", async () => {
+    const r = await apiJson("/admin/containers/restart", {
+      method: "POST",
+      body: JSON.stringify({ service: "gateway" }),
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+// ── Auth & Security Tests ───────────────────────────────
+
+describe("auth and security", () => {
+  const protectedGetEndpoints = [
+    "/admin/installed",
+    "/admin/channels",
+    "/admin/automations",
+    "/admin/config",
+    "/admin/providers",
+    "/admin/containers/list",
+    "/admin/setup/status",
+  ];
+
+  for (const endpoint of protectedGetEndpoints) {
+    it(`GET ${endpoint} rejects unauthenticated requests`, async () => {
+      const r = await api(endpoint);
+      expect(r.status).toBe(401);
+    });
+  }
+
+  const protectedPostEndpoints = [
+    { path: "/admin/gallery/install", body: { galleryId: "x" } },
+    { path: "/admin/gallery/uninstall", body: { galleryId: "x" } },
+    { path: "/admin/gallery/community/refresh", body: {} },
+    { path: "/admin/containers/up", body: { service: "gateway" } },
+    { path: "/admin/containers/down", body: { service: "gateway" } },
+    { path: "/admin/containers/restart", body: { service: "gateway" } },
+    { path: "/admin/automations", body: { name: "x", schedule: "0 * * * *", prompt: "y" } },
+    { path: "/admin/automations/update", body: { id: "x" } },
+    { path: "/admin/automations/delete", body: { id: "x" } },
+    { path: "/admin/automations/trigger", body: { id: "x" } },
+    { path: "/admin/providers", body: { name: "x" } },
+    { path: "/admin/providers/update", body: { id: "x" } },
+    { path: "/admin/providers/delete", body: { id: "x" } },
+    { path: "/admin/providers/models", body: { providerId: "x" } },
+    { path: "/admin/providers/assign", body: { role: "small", providerId: "x", modelId: "y" } },
+    { path: "/admin/config", body: { config: "{}" } },
+  ];
+
+  for (const { path, body } of protectedPostEndpoints) {
+    it(`POST ${path} rejects unauthenticated requests`, async () => {
+      const r = await apiJson(path, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      expect(r.status).toBe(401);
+    });
+  }
+
+  it("CORS headers are present on responses", async () => {
+    const r = await api("/health");
+    expect(r.headers.get("access-control-allow-origin")).toBe("*");
+    expect(r.headers.get("access-control-allow-headers")).toContain("x-admin-token");
+    expect(r.headers.get("access-control-allow-methods")).toContain("GET");
+  });
+
+  it("OPTIONS returns 204 with CORS headers", async () => {
+    const r = await api("/admin/config", { method: "OPTIONS" });
+    expect(r.status).toBe(204);
+    expect(r.headers.get("access-control-allow-origin")).toBe("*");
+    expect(r.headers.get("access-control-allow-headers")).toContain("x-admin-token");
+    expect(r.headers.get("access-control-allow-headers")).toContain("content-type");
+    expect(r.headers.get("access-control-allow-methods")).toContain("POST");
+  });
+
+  it("wrong token is rejected", async () => {
+    const r = await apiJson("/admin/installed", {
+      headers: { "x-admin-token": "wrong-token" } as Record<string, string>,
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+// ── Meta Endpoint Tests ─────────────────────────────────
+
+describe("meta endpoint extended", () => {
+  it("GET /admin/meta returns serviceNames and channelFields", async () => {
+    const r = await apiJson("/admin/meta");
+    expect(r.ok).toBe(true);
+    expect(r.data).toHaveProperty("serviceNames");
+    expect(r.data).toHaveProperty("channelFields");
+  });
+
+  it("meta response includes all expected core services", async () => {
+    const r = await apiJson("/admin/meta");
+    const names = r.data.serviceNames as Record<string, { label: string; description: string }>;
+    const expectedServices = ["gateway", "controller", "opencodeCore", "opencode-core", "openmemory", "openmemory-ui", "admin", "caddy"];
+    for (const svc of expectedServices) {
+      expect(names).toHaveProperty(svc);
+      expect(names[svc].label.length).toBeGreaterThan(0);
+      expect(names[svc].description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("meta response includes all channel services", async () => {
+    const r = await apiJson("/admin/meta");
+    const names = r.data.serviceNames as Record<string, { label: string }>;
+    const channelServices = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"];
+    for (const svc of channelServices) {
+      expect(names).toHaveProperty(svc);
+      expect(names[svc].label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("meta channelFields includes all channel services with correct structure", async () => {
+    const r = await apiJson("/admin/meta");
+    const fields = r.data.channelFields as Record<string, Array<{ key: string; label: string; type: string; required: boolean; helpText: string }>>;
+    expect(fields).toHaveProperty("channel-chat");
+    expect(fields).toHaveProperty("channel-discord");
+    expect(fields).toHaveProperty("channel-voice");
+    expect(fields).toHaveProperty("channel-telegram");
+
+    // channel-chat has 1 field
+    expect(fields["channel-chat"].length).toBe(1);
+    expect(fields["channel-chat"][0].key).toBe("CHAT_INBOUND_TOKEN");
+
+    // channel-discord has 2 fields
+    expect(fields["channel-discord"].length).toBe(2);
+    expect(fields["channel-discord"][0].key).toBe("DISCORD_BOT_TOKEN");
+    expect(fields["channel-discord"][1].key).toBe("DISCORD_PUBLIC_KEY");
+
+    // channel-voice is empty
+    expect(fields["channel-voice"].length).toBe(0);
+
+    // channel-telegram has 2 fields
+    expect(fields["channel-telegram"].length).toBe(2);
+    expect(fields["channel-telegram"][0].key).toBe("TELEGRAM_BOT_TOKEN");
+    expect(fields["channel-telegram"][1].key).toBe("TELEGRAM_WEBHOOK_SECRET");
+  });
+
+  it("meta channelFields entries have required field properties", async () => {
+    const r = await apiJson("/admin/meta");
+    const fields = r.data.channelFields as Record<string, Array<Record<string, unknown>>>;
+    for (const [, fieldList] of Object.entries(fields)) {
+      for (const field of fieldList) {
+        expect(field).toHaveProperty("key");
+        expect(field).toHaveProperty("label");
+        expect(field).toHaveProperty("type");
+        expect(field).toHaveProperty("required");
+        expect(field).toHaveProperty("helpText");
+        expect(typeof field.key).toBe("string");
+        expect(typeof field.label).toBe("string");
+        expect(["text", "password"]).toContain(field.type as string);
+      }
+    }
   });
 });

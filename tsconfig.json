@@ -19,6 +19,7 @@
     "assets/state/scripts/extensions-cli.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "admin/ui"
   ]
 }

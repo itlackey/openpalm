@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun run src/server.ts"
+    "start": "bun run src/server.ts",
+    "build:ui": "cd ui && bun run build",
+    "dev:ui": "cd ui && bun run dev",
+    "check:ui": "cd ui && bun run check"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
