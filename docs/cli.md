@@ -198,6 +198,28 @@ List all installed extensions.
 openpalm extensions list
 ```
 
+### `dev preflight`
+
+Validate local development prerequisites (`.env` and `.dev/` directory tree).
+
+```bash
+openpalm dev preflight
+```
+
+### `dev create-channel`
+
+Scaffold a new channel adapter in `channels/<name>/`.
+
+```bash
+openpalm dev create-channel <channel-name> [--port <number>]
+```
+
+**Examples:**
+```bash
+openpalm dev create-channel slack
+openpalm dev create-channel matrix --port 8195
+```
+
 ### `version`
 
 Print the OpenPalm CLI version.

@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, s
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { channelEnvSecretVariable, ensureStackSpec, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
-import { parseJsonc, stringifyPretty } from "../jsonc.ts";
-import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "../runtime-env.ts";
-import { validatePluginIdentifier } from "../extensions.ts";
+import { parseJsonc, stringifyPretty } from "./jsonc.ts";
+import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { validatePluginIdentifier } from "./extensions.ts";
 import type { ConnectionType, ExtensionType, StackSpec } from "./stack-spec.ts";
 
 export type ChannelName = "chat" | "discord" | "voice" | "telegram";
