@@ -34,7 +34,6 @@ This checklist captures follow-up areas to simplify architecture/implementation 
 
 ## 6) Docs drift prevention
 
-- Add a docs drift test for connection/secret terminology ("secret key refs" vs legacy wording).
 - Continue pruning stale controller language and duplicate architecture explanations.
 - Add a short “single source of truth” table mapping each concern to file/system of record.
 
