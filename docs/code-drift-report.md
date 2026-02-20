@@ -46,8 +46,8 @@ Direct contradictions or critical omissions relative to the documented concepts.
 | 21 | `admin/ui/tests/` | All test files are stubs with minimal assertions; no coverage for Connections, Automations, risk badges, or gallery category filters |
 | 22 | `channels/chat/server.ts` | Defaults to port 8181 — collides with `channels/webhook/server.ts` which also defaults to 8181 |
 | 23 | `channels/webhook/server.ts` | Defaults to port 8181 — collides with `channels/chat/server.ts` |
-| 24 | `controller/server.ts` | `channel-webhook` missing from `CORE_SERVICES` allowlist — webhook channel cannot be managed by the controller |
-| 25 | `controller/server.ts` | Route `/down/` executes `stop` command — semantic mismatch between route name and action |
+| 24 | `admin/server.ts` | `channel-webhook` missing from `CORE_SERVICES` allowlist — webhook channel cannot be managed by the admin |
+| 25 | `admin/server.ts` | Route `/down/` executes `stop` command — semantic mismatch between route name and action |
 | 26 | `assets/state/registry/schema.json` | `category` enum missing `command`, `agent`, `tool` values |
 | 27 | `assets/state/registry/schema.json` | `risk` enum uses wrong labels (should be `lowest/low/medium/medium-high/highest`) |
 | 28 | `assets/state/registry/schema.json` | `installAction` enum missing values for commands, agents, and custom tools |
@@ -73,7 +73,7 @@ Inconsistent terminology, missing feature implementations, or incomplete alignme
 | 39 | `opencode/Dockerfile` | Comment lists `lib` as extension sub-type and omits `commands/` and `tools/` from the documented directory structure |
 | 40 | `admin/src/server.ts` | "Cron" terminology used in all log messages and internal comments instead of "Automation" |
 | 41 | `admin/ui/setup-ui.js` | Extensions section header says "Plugins" instead of "Extensions" |
-| 42 | `controller/server.ts` | Services list uses internal container names without mapping to the documented Channel concept names |
+| 42 | `admin/server.ts` | Services list uses internal container names without mapping to the documented Channel concept names |
 
 ---
 
@@ -90,7 +90,7 @@ Minor naming inconsistencies or undocumented features that don't break functiona
 | 47 | `admin/ui/setup-ui.js` | Health check display groups services by internal names, not by concept categories |
 | 48 | `channels/chat/server.ts` | No reference to Gateway pipeline in code comments |
 | 49 | `channels/webhook/server.ts` | No reference to Gateway pipeline in code comments |
-| 50 | `controller/server.ts` | Log messages use mixed terminology ("services" / "containers" / "channels") |
+| 50 | `admin/server.ts` | Log messages use mixed terminology ("services" / "containers" / "channels") |
 | 51 | `opencode/entrypoint.sh` | Comment block lists extension directories without using documented plural convention |
 | 52 | `opencode/Dockerfile` | Extension COPY directives use singular paths where plural directories are documented |
 
@@ -111,7 +111,7 @@ No API routes, no type definitions, no UI components, and no env var conventions
 ### 3. "Cron" terminology pervades the entire codebase
 Every code file that deals with scheduled tasks uses "cron" in type names, variable names, route paths, log messages, and comments. The canonical term "Automations" appears nowhere in the code.
 
-**Affected**: `admin/src/server.ts`, `admin/src/cron-store.ts`, `admin/src/types.ts`, `admin/ui/setup-ui.js`, `controller/server.ts`
+**Affected**: `admin/src/server.ts`, `admin/src/cron-store.ts`, `admin/src/types.ts`, `admin/ui/setup-ui.js`, `admin/server.ts`
 
 ### 4. Extension type system is incomplete
 The gallery, registry schema, and admin API only recognize 3 of 5 extension types (plugin, skill, container). Commands, Agents, and Custom Tools are not registered, filterable, or manageable through the admin interface. The "container" category is used where "channel" should be a separate concept.
@@ -142,7 +142,7 @@ The gateway implementation processes payload validation before HMAC verification
 | Admin Service | `server.ts`, `gallery.ts`, `cron-store.ts`, `types.ts` + 11 others | 0 | 6 | 6 | 4 |
 | Admin UI | `setup-ui.js`, `index.html`, test files | 0 | 6 | 4 | 0 |
 | Gateway | `server.ts`, `types.ts`, config files | 3 | 0 | 3 | 3 |
-| Channels + Controller | `chat/server.ts`, `webhook/server.ts`, `controller/server.ts` + 16 others | 0 | 2 | 5 | 4 |
+| Channels + Admin | `chat/server.ts`, `webhook/server.ts`, `admin/server.ts` + 16 others | 0 | 2 | 5 | 4 |
 | Infrastructure Configs | `docker-compose.yml`, `schema.json`, `secrets.env`, Caddyfiles + 15 others | 2 | 3 | 2 | 0 |
 | Extensions + OpenCode | `entrypoint.sh`, `Dockerfile`, extension dirs, test files + 20 others | 2 | 0 | 2 | 3 |
 | **TOTALS** | **~110 files** | **7** | **17** | **22** | **14** |
@@ -155,7 +155,7 @@ The gateway implementation processes payload validation before HMAC verification
 1. **Gateway pipeline order** (`gateway/src/server.ts`) — Move HMAC verification before payload validation
 2. **Env var name** (`assets/state/docker-compose.yml`, `opencode/entrypoint.sh`) — Rename `OPENCODE_CONFIGURATION_DIRECTORY` to `OPENCODE_CONFIG_DIR`
 3. **Port collision** (`channels/chat/server.ts`, `channels/webhook/server.ts`) — Assign distinct default ports
-4. **Controller allowlist** (`controller/server.ts`) — Add `channel-webhook` to `CORE_SERVICES`
+4. **Admin allowlist** (`admin/server.ts`) — Add `channel-webhook` to `CORE_SERVICES`
 
 ### Priority 2 — Schema & Type Alignment
 5. **Registry schema** (`assets/state/registry/schema.json`) — Add all 5 extension type categories, fix risk enum to 5-tier scale, add missing installAction values

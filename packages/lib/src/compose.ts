@@ -1,4 +1,4 @@
-import type { ComposeConfig } from "../types.ts";
+import type { ComposeConfig } from "./types.ts";
 
 export function buildComposeArgs(config: ComposeConfig): string[] {
   return [

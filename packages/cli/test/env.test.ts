@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { readEnvFile, upsertEnvVar, generateEnvFromTemplate, readEnvVar } from "../src/lib/env.ts";
+import { readEnvFile, upsertEnvVar, generateEnvFromTemplate, readEnvVar } from "@openpalm/lib/env.ts";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -1,11 +1,12 @@
 import { rm, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import type { UninstallOptions, ComposeConfig, ContainerPlatform } from "../types.ts";
-import { composeDown } from "../lib/compose.ts";
-import { readEnvFile } from "../lib/env.ts";
-import { resolveXDGPaths } from "../lib/paths.ts";
-import { resolveComposeBin, detectRuntime, detectOS } from "../lib/runtime.ts";
-import { log, info, warn, error, bold, green, red, yellow, confirm } from "../lib/ui.ts";
+import type { UninstallOptions, ContainerPlatform } from "../types.ts";
+import type { ComposeConfig } from "@openpalm/lib/types.ts";
+import { composeDown } from "@openpalm/lib/compose.ts";
+import { readEnvFile } from "@openpalm/lib/env.ts";
+import { resolveXDGPaths } from "@openpalm/lib/paths.ts";
+import { resolveComposeBin, detectRuntime, detectOS } from "@openpalm/lib/runtime.ts";
+import { log, info, warn, error, bold, green, red, yellow, confirm } from "@openpalm/lib/ui.ts";
 
 export async function uninstall(options: UninstallOptions): Promise<void> {
   // 1. Resolve XDG paths

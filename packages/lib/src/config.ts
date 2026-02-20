@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ComposeConfig } from "../types.ts";
+import type { ComposeConfig } from "./types.ts";
 import { readEnvFile } from "./env.ts";
 import { resolveXDGPaths } from "./paths.ts";
 

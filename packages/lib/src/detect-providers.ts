@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import type { DetectedProvider, DetectedModel } from "../types.ts";
+import type { DetectedProvider, DetectedModel } from "./types.ts";
 
 export const OLLAMA_URL = "http://localhost:11434";
 export const LM_STUDIO_URL = "http://localhost:1234";

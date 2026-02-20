@@ -241,7 +241,6 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("Caddy");
       expect(cliDocs).toContain("PostgreSQL");
       expect(cliDocs).toContain("Admin");
-      expect(cliDocs).toContain("Controller");
     });
 
     it("documents Phase 3 (Image Preparation)", () => {

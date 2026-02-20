@@ -94,7 +94,7 @@ Outdated, incomplete, or inconsistent terminology that should be updated.
 | 69 | `docs/testing-plan.md` | Installed Extensions page described as "Lists active plugins" (not all types) |
 | 70 | `docs/checklist.md` | `plugin[]` described as "canonical extension registry" -- excludes non-plugin types |
 | 71 | `docs/checklist.md` | "Automations" never named; only "cron-store" used |
-| 72 | `docs/discrepancy-report.md` | Conflates infrastructure maintenance cron (controller) with user Automations (opencode-core) |
+| 72 | `docs/discrepancy-report.md` | Conflates infrastructure maintenance cron (admin) with user Automations (opencode-core) |
 | 73 | `docs/discrepancy-report.md` | "Cron job" used as concept name instead of "Automations" |
 | 74 | `CONTRIBUTING.md` | Channel env file naming: `channels/discord.env` vs canonical `channel-discord.env` |
 | 75 | `gateway/opencode/agents/channel-intake.md` | Uses "agent team" instead of "assistant"; memory recall step not in canonical pipeline |

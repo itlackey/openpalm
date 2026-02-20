@@ -6,7 +6,7 @@ How to upgrade OpenPalm to a new version.
 
 1. **Back up your data.** Follow the [Backup & Restore guide](backup-restore.md) to create a full backup before upgrading.
 
-2. **Check the release notes** for any breaking changes or migration steps.
+2. **Check the release notes** for any breaking changes or required manual steps.
 
 ## Upgrade steps
 
@@ -52,4 +52,4 @@ If something goes wrong after an upgrade:
 
 ## Automatic updates
 
-The OpenPalm `controller` container includes a system cron job that periodically pulls image updates and restarts services. If automatic updates are enabled, upgrades happen without manual intervention. Check `~/.local/state/openpalm/observability/maintenance/` for update logs.
+The OpenPalm `admin` container includes a system cron job that periodically pulls image updates and restarts services. If automatic updates are enabled, upgrades happen without manual intervention. Check `~/.local/state/openpalm/observability/maintenance/` for update logs.

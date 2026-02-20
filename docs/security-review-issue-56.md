@@ -157,7 +157,7 @@ These should be addressed independently:
 
 3. **Add inbound authentication to the voice channel.** Currently any process on the Docker network can submit transcriptions.
 
-4. **Use timing-safe comparison for all token checks** — admin token, controller token, chat inbound token, and Telegram webhook secret.
+4. **Use timing-safe comparison for all token checks** — admin token, admin token, chat inbound token, and Telegram webhook secret.
 
 5. **Bind OpenMemory to `127.0.0.1` by default** or add authentication.
 

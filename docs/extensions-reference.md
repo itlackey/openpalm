@@ -418,7 +418,7 @@ Requires `ADMIN_TOKEN` in the environment.
    - Creates timestamped `.bak` backup
    - Writes to temp file and atomically renames
 
-3. **Restart opencode-core.** Admin calls controller at `POST /restart/opencode-core`. If the plugin is an npm package, OpenCode's startup runs `bun install` to fetch it.
+3. **Restart opencode-core.** Admin calls admin at `POST /restart/opencode-core`. If the plugin is an npm package, OpenCode's startup runs `bun install` to fetch it.
 
 4. **Track state.** Setup manager records the extension ID.
 
@@ -428,7 +428,7 @@ Marks the skill (a lowest-risk extension sub-type) as enabled in setup manager s
 
 ### Channel Service Install (`installAction: "compose-service"`)
 
-Admin calls controller at `POST /up/{service-name}`, which runs `docker compose up -d {service-name}`. The controller only allows operations on a hardcoded allowlist of service names. Note that channels are a separate top-level concept — not an Extension sub-type — so their install action operates on Docker Compose services rather than modifying `opencode.jsonc`.
+Admin calls admin at `POST /up/{service-name}`, which runs `docker compose up -d {service-name}`. The admin only allows operations on a hardcoded allowlist of service names. Note that channels are a separate top-level concept — not an Extension sub-type — so their install action operates on Docker Compose services rather than modifying `opencode.jsonc`.
 
 ---
 
@@ -436,7 +436,7 @@ Admin calls controller at `POST /up/{service-name}`, which runs `docker compose 
 
 **Plugin:** Removes from `plugin[]` with backup, restarts opencode-core. The npm package remains in `node_modules` but is inactive.
 
-**Channel (compose-service):** Controller runs `docker compose stop {service-name}`.
+**Channel (compose-service):** Admin runs `docker compose stop {service-name}`.
 
 ---
 
@@ -524,7 +524,7 @@ The admin adds it to `plugin[]` in the host override config and restarts the con
 
 **Plugin sandbox** — Plugins run inside the OpenCode process within the container, limited to the `assistant_net` Docker network.
 
-**Controller allowlist** — Only accepts lifecycle operations for hardcoded service names: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`.
+**Admin allowlist** — Only accepts lifecycle operations for hardcoded service names: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`.
 
 **Admin authentication** — All mutating endpoints require `x-admin-token`.
 
@@ -582,7 +582,7 @@ Note: The gateway has **no** host config volume. Its extensions are fully baked 
 | Add skill to host override | Place in `~/.config/openpalm/opencode-core/skills/` | Yes — restart opencode-core |
 | Edit `opencode.jsonc` on host | Changes applied on next startup | Yes — restart opencode-core |
 | Edit `opencode.jsonc` via admin | Backup created, auto-restarted | Automatic |
-| Start/stop channel via admin | Controller runs compose up/stop for channel service | No restart of existing services |
+| Start/stop channel via admin | Admin runs compose up/stop for channel service | No restart of existing services |
 | Remove plugin via admin | Removed from `plugin[]`, auto-restarted | Automatic |
 | Edit `AGENTS.md` in image | Requires rebuild | Yes — rebuild + restart |
 | Edit `secrets.env` or `user.env` (Connections) | New env vars on next startup | Yes — restart opencode-core |

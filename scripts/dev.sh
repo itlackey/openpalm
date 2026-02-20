@@ -9,7 +9,7 @@
 # Prerequisites:
 #   - Bun installed (https://bun.sh)
 #   - Dependencies installed: cd admin && bun install; cd gateway && bun install
-#   - Supporting services running (controller, opencode-core, openmemory) via
+#   - Supporting services running (opencode-core, openmemory) via
 #     docker compose, or point the env vars at your own instances.
 #
 # This script uses bun run --hot for hot reload so you can edit TypeScript
@@ -21,8 +21,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Shared env defaults (override as needed) ─────────────────────────
 export ADMIN_TOKEN="${ADMIN_TOKEN:-dev-admin-token}"
-export CONTROLLER_TOKEN="${CONTROLLER_TOKEN:-change-me-controller}"
-export CONTROLLER_URL="${CONTROLLER_URL:-http://localhost:8090}"
 export GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 export OPENCODE_CORE_URL="${OPENCODE_CORE_URL:-http://localhost:4096}"
 export OPENCODE_CORE_BASE_URL="${OPENCODE_CORE_BASE_URL:-http://localhost:4096}"

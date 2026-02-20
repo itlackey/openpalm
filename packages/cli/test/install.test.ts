@@ -6,14 +6,14 @@ const installSource = readFileSync(join(import.meta.dir, "../src/commands/instal
 
 describe("install command source validation", () => {
   it("imports all required library modules", () => {
-    expect(installSource).toContain("from \"../lib/runtime.ts\"");
-    expect(installSource).toContain("from \"../lib/paths.ts\"");
-    expect(installSource).toContain("from \"../lib/env.ts\"");
-    expect(installSource).toContain("from \"../lib/tokens.ts\"");
-    expect(installSource).toContain("from \"../lib/compose.ts\"");
-    expect(installSource).toContain("from \"../lib/assets.ts\"");
-    expect(installSource).toContain("from \"../lib/detect-providers.ts\"");
-    expect(installSource).toContain("from \"../lib/ui.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/runtime.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/paths.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/env.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/tokens.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/compose.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/assets.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/detect-providers.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/ui.ts\"");
   });
 
   it("detects OS and rejects unknown/windows", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { detectOS, detectArch, resolveSocketPath, resolveComposeBin, detectRuntime, validateRuntime } from "../src/lib/runtime.ts";
+import { detectOS, detectArch, resolveSocketPath, resolveComposeBin, detectRuntime, validateRuntime } from "@openpalm/lib/runtime.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -72,14 +72,14 @@ describe("runtime", () => {
 
   describe("validateRuntime", () => {
     it("source code contains Bun.spawn and exitCode", () => {
-      const sourcePath = join(import.meta.dir, "..", "src", "lib", "runtime.ts");
+      const sourcePath = join(import.meta.dir, "..", "..", "lib", "src", "runtime.ts");
       const source = readFileSync(sourcePath, "utf-8");
       expect(source).toContain("Bun.spawn");
       expect(source).toContain("exitCode");
     });
 
     it("exports validateRuntime function", () => {
-      const sourcePath = join(import.meta.dir, "..", "src", "lib", "runtime.ts");
+      const sourcePath = join(import.meta.dir, "..", "..", "lib", "src", "runtime.ts");
       const source = readFileSync(sourcePath, "utf-8");
       expect(source).toContain("export async function validateRuntime");
     });

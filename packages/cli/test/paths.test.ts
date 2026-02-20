@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveXDGPaths, createDirectoryTree } from "../src/lib/paths.ts";
+import { resolveXDGPaths, createDirectoryTree } from "@openpalm/lib/paths.ts";
 import { stat, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

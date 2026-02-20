@@ -58,7 +58,7 @@ Risk levels map directly to Extension sub-types:
 | `command-file` | `commands/my-command.md` | Command file copied into `commands/` |
 | `agent-file` | `agents/my-agent.md` | Agent file copied into `agents/` |
 | `tool-file` | `tools/my-tool.ts` | Tool file copied into `tools/` |
-| `compose-service` | `my-service` | Docker Compose service started via controller |
+| `compose-service` | `my-service` | Docker Compose service started via admin |
 
 ## Example entry
 

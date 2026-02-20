@@ -88,7 +88,7 @@ bun test
 bun run typecheck
 ```
 
-Workspaces: `gateway`, `admin`, `controller`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
+Workspaces: `gateway`, `admin`, `admin`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
 
 ### OpenMemory Dashboard
 

@@ -6,7 +6,7 @@ import {
   writeProviderSeedFile,
   detectAllProviders,
   findExistingOpenCodeConfig,
-} from "../src/lib/detect-providers.ts";
+} from "@openpalm/lib/detect-providers.ts";
 import type { DetectedProvider } from "../src/types.ts";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

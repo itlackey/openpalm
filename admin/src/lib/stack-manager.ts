@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { channelEnvSecretVariable, ensureStackSpec, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseJsonc, stringifyPretty } from "../jsonc.ts";
@@ -15,12 +15,17 @@ const ExtensionTypes: ExtensionType[] = ["plugin", "skill", "command", "agent", 
 
 export type StackManagerPaths = {
   caddyfilePath: string;
+  caddyRoutesDir: string;
   composeFilePath: string;
   secretsEnvPath: string;
   stackSpecPath: string;
   channelEnvDir: string;
   channelSecretDir: string;
   gatewayChannelSecretsPath: string;
+  gatewayRuntimeSecretsPath: string;
+  openmemorySecretsPath: string;
+  postgresSecretsPath: string;
+  opencodeProviderSecretsPath: string;
   opencodeConfigPath: string;
 };
 
@@ -85,11 +90,27 @@ export class StackManager {
   renderArtifacts() {
     const generated = this.renderPreview();
     writeFileSync(this.paths.caddyfilePath, generated.caddyfile, "utf8");
+    mkdirSync(this.paths.caddyRoutesDir, { recursive: true });
+    for (const [routeFile, content] of Object.entries(generated.caddyRoutes)) {
+      const path = join(this.paths.caddyRoutesDir, routeFile);
+      mkdirSync(dirname(path), { recursive: true });
+      if (routeFile === "extra-user-overrides.caddy" && existsSync(path)) continue;
+      writeFileSync(path, content, "utf8");
+    }
+
     writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
     this.mergeOpencodePluginConfig(generated.opencodePluginIds);
 
     mkdirSync(dirname(this.paths.gatewayChannelSecretsPath), { recursive: true });
     writeFileSync(this.paths.gatewayChannelSecretsPath, generated.gatewayChannelSecretsEnv, "utf8");
+    mkdirSync(dirname(this.paths.gatewayRuntimeSecretsPath), { recursive: true });
+    writeFileSync(this.paths.gatewayRuntimeSecretsPath, generated.gatewayRuntimeSecretsEnv, "utf8");
+    mkdirSync(dirname(this.paths.openmemorySecretsPath), { recursive: true });
+    writeFileSync(this.paths.openmemorySecretsPath, generated.openmemorySecretsEnv, "utf8");
+    mkdirSync(dirname(this.paths.postgresSecretsPath), { recursive: true });
+    writeFileSync(this.paths.postgresSecretsPath, generated.postgresSecretsEnv, "utf8");
+    mkdirSync(dirname(this.paths.opencodeProviderSecretsPath), { recursive: true });
+    writeFileSync(this.paths.opencodeProviderSecretsPath, generated.opencodeProviderSecretsEnv, "utf8");
 
     mkdirSync(this.paths.channelSecretDir, { recursive: true });
     mkdirSync(this.paths.channelEnvDir, { recursive: true });
@@ -164,6 +185,12 @@ export class StackManager {
         name,
         configured: Boolean(secretValues[name]),
         usedBy: usedBy.get(name) ?? [],
+        purpose: name.includes("TOKEN") || name.includes("KEY") || name.includes("SECRET") ? "credential_or_shared_secret" : "runtime_config",
+        constraints: name.includes("SECRET") ? { min_length: 32 } : undefined,
+        rotation: {
+          recommendedDays: 90,
+          lastRotated: null,
+        },
       })),
     };
   }
@@ -260,92 +287,85 @@ export class StackManager {
     if (index >= 0) spec.connections[index] = nextConnection;
     else spec.connections.push(nextConnection);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.renderArtifacts();
     return nextConnection;
   }
 
-  deleteConnection(connectionIdRaw: unknown) {
-    const connectionId = sanitizeEnvScalar(connectionIdRaw);
-    if (!connectionId) throw new Error("invalid_connection_id");
+  deleteConnection(idRaw: unknown) {
+    const id = sanitizeEnvScalar(idRaw);
+    if (!id) throw new Error("invalid_connection_id");
     const spec = this.getSpec();
-    const usedByExtensions = spec.extensions.some((extension) => (extension.connectionIds ?? []).includes(connectionId));
-    if (usedByExtensions) throw new Error("connection_in_use");
-    const connection = spec.connections.find((entry) => entry.id === connectionId);
-    if (!connection) throw new Error("connection_not_found");
-
-    spec.connections = spec.connections.filter((entry) => entry.id !== connectionId);
+    const index = spec.connections.findIndex((connection) => connection.id === id);
+    if (index < 0) throw new Error("connection_not_found");
+    spec.connections.splice(index, 1);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    return connectionId;
+    return id;
   }
 
   listInstalled() {
-    const generated = this.renderPreview();
-    return { plugins: generated.opencodePluginIds, extensions: this.getSpec().extensions };
+    const spec = this.getSpec();
+    const plugins = spec.extensions
+      .filter((item) => item.type === "plugin" && item.enabled && item.pluginId)
+      .map((item) => item.pluginId as string);
+    return {
+      plugins,
+      extensions: spec.extensions,
+    };
   }
 
-  setExtensionInstalled(input: {
-    extensionId: string;
-    type: ExtensionType;
-    enabled: boolean;
-    pluginId?: string;
-    connectionIds?: string[];
-  }) {
-    if (!ExtensionTypes.includes(input.type)) throw new Error("invalid_extension_type");
-    if (!input.extensionId.trim()) throw new Error("invalid_extension_id");
-    if (input.type === "plugin") {
-      if (!input.pluginId || !validatePluginIdentifier(input.pluginId)) throw new Error("invalid_plugin_id");
-    }
+  setExtensionInstalled(input: { extensionId?: unknown; type?: unknown; enabled?: unknown; pluginId?: unknown; connectionIds?: unknown }) {
+    const extensionId = sanitizeEnvScalar(input.extensionId);
+    const type = sanitizeEnvScalar(input.type) as ExtensionType;
+    const enabled = Boolean(input.enabled);
+    const pluginId = sanitizeEnvScalar(input.pluginId);
+    const rawConnectionIds = Array.isArray(input.connectionIds) ? input.connectionIds : [];
+    if (!extensionId) throw new Error("invalid_extension_id");
+    if (!ExtensionTypes.includes(type)) throw new Error("invalid_extension_type");
 
     const spec = this.getSpec();
-    const connectionIdSet = new Set(spec.connections.map((connection) => connection.id));
-    const connectionIds = (input.connectionIds ?? []).filter((entry) => entry.trim().length > 0);
+    const connectionIds = rawConnectionIds
+      .map((value) => sanitizeEnvScalar(value))
+      .filter((value) => value.length > 0);
+
     for (const connectionId of connectionIds) {
-      if (!connectionIdSet.has(connectionId)) throw new Error("unknown_extension_connection");
+      if (!spec.connections.find((connection) => connection.id === connectionId)) {
+        throw new Error("unknown_extension_connection");
+      }
     }
 
-    const next = {
-      id: input.extensionId,
-      type: input.type,
-      enabled: input.enabled,
-      pluginId: input.pluginId,
+    if (type === "plugin" && pluginId.length > 0 && !validatePluginIdentifier(pluginId)) {
+      throw new Error("invalid_plugin_identifier");
+    }
+
+    const record = {
+      id: extensionId,
+      type,
+      enabled,
+      pluginId: pluginId || undefined,
       connectionIds,
     };
 
-    const index = spec.extensions.findIndex((extension) => extension.id === input.extensionId);
-    if (index >= 0) spec.extensions[index] = next;
-    else spec.extensions.push(next);
+    const index = spec.extensions.findIndex((item) => item.id === extensionId);
+    if (index >= 0) spec.extensions[index] = record;
+    else spec.extensions.push(record);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     this.renderArtifacts();
-    return next;
+    return record;
   }
 
-  private mergeOpencodePluginConfig(plugins: string[]) {
-    const config = this.readOpencodeConfig();
-    this.writeOpencodeConfig({ ...config, plugin: plugins });
+  private writeStackSpecAtomically(content: string) {
+    const tempPath = `${this.paths.stackSpecPath}.${Date.now()}.tmp`;
+    mkdirSync(dirname(this.paths.stackSpecPath), { recursive: true });
+    writeFileSync(tempPath, content, "utf8");
+    renameSync(tempPath, this.paths.stackSpecPath);
   }
 
-  private readOpencodeConfig(): Record<string, unknown> & { plugin?: string[] } {
-    mkdirSync(dirname(this.paths.opencodeConfigPath), { recursive: true });
-    if (!existsSync(this.paths.opencodeConfigPath)) writeFileSync(this.paths.opencodeConfigPath, "{}\n", "utf8");
-    return parseJsonc(readFileSync(this.paths.opencodeConfigPath, "utf8")) as Record<string, unknown> & { plugin?: string[] };
-  }
-
-  private writeOpencodeConfig(config: Record<string, unknown> & { plugin?: string[] }) {
-    const tmpPath = `${this.paths.opencodeConfigPath}.${Date.now()}.tmp`;
-    const content = stringifyPretty(config);
-    writeFileSync(tmpPath, content, "utf8");
-    renameSync(tmpPath, this.paths.opencodeConfigPath);
-  }
-
-  private channelSecretEnvPath(channel: ChannelName) {
-    return `${this.paths.channelSecretDir}/${channel}.env`;
-  }
-
-  private channelConfigEnvPath(channel: ChannelName) {
-    return `${this.paths.channelEnvDir}/${channel}.env`;
-  }
-
-  private isValidSecretName(name: string) {
-    return /^[A-Z][A-Z0-9_]{1,127}$/.test(name);
+  private mergeOpencodePluginConfig(pluginIds: string[]) {
+    if (!existsSync(this.paths.opencodeConfigPath)) return;
+    const raw = readFileSync(this.paths.opencodeConfigPath, "utf8");
+    const parsed = parseJsonc(raw) as Record<string, unknown>;
+    parsed.plugin = pluginIds;
+    writeFileSync(this.paths.opencodeConfigPath, stringifyPretty(parsed), "utf8");
   }
 
   private readSecretsEnv() {
@@ -359,10 +379,15 @@ export class StackManager {
     writeFileSync(this.paths.secretsEnvPath, next, "utf8");
   }
 
-  private writeStackSpecAtomically(content: string) {
-    const tmpPath = `${this.paths.stackSpecPath}.${Date.now()}.tmp`;
-    mkdirSync(dirname(this.paths.stackSpecPath), { recursive: true });
-    writeFileSync(tmpPath, content, "utf8");
-    renameSync(tmpPath, this.paths.stackSpecPath);
+  private isValidSecretName(name: string) {
+    return /^[A-Z][A-Z0-9_]*$/.test(name);
+  }
+
+  private channelSecretEnvPath(channel: ChannelName) {
+    return join(this.paths.channelSecretDir, `${channel}.env`);
+  }
+
+  private channelConfigEnvPath(channel: ChannelName) {
+    return join(this.paths.channelEnvDir, `${channel}.env`);
   }
 }

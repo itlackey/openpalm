@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { readEnvFile } from "../lib/env.ts";
-import { resolveXDGPaths } from "../lib/paths.ts";
-import { error, info } from "../lib/ui.ts";
+import { readEnvFile } from "@openpalm/lib/env.ts";
+import { resolveXDGPaths } from "@openpalm/lib/paths.ts";
+import { error, info } from "@openpalm/lib/ui.ts";
 
 /**
  * Implements the extensions command for managing OpenPalm extensions.

@@ -28,7 +28,7 @@
 ## Admin guide (docs/admin-guide.md)
 - [x] Installer script with checks + bootstrap
 - [x] Config edit + safe write + restart flow
-- [x] Container lifecycle management (controller)
+- [x] Container lifecycle management (admin)
 - [x] Admin password authentication for all admin operations
 
 ## Extensions guide (docs/extensions-guide.md)
@@ -42,8 +42,8 @@
 - [x] LAN-only: `/admin/*`, `/admin/opencode*`, `/admin/openmemory*` restricted by Caddy
 - [x] Admin app extracted from gateway into separate container
 - [x] Admin app provides API for all admin functions
-- [x] Admin app can add/remove containers via controller
-- [x] Controller provides up/down/restart capabilities
+- [x] Admin app can add/remove containers via admin
+- [x] Admin provides up/down/restart capabilities
 - [x] All channels processed through gateway (defense in depth)
 - [x] Discord channel adapter added
 - [x] Voice channel adapter added
@@ -101,7 +101,7 @@
 
 ## Testing implementation status
 - [x] Gateway unit tests expanded (`rate-limit`, `audit`, intake/security/client edge cases)
-- [x] Controller route-level unit tests added with compose runner mocking
+- [x] Admin route-level unit tests added with compose runner mocking
 - [x] Channel adapter unit tests added for chat/discord/telegram/voice
 - [x] Shared integration test suites added (`test/integration/*`)
 - [x] Contract test suites added (`test/contracts/*`)

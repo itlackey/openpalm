@@ -63,7 +63,7 @@ openpalm install [options]
    - Detect AI providers
 
 2. **Phase 2: Core Services**
-   - Start core services: Caddy, PostgreSQL, Admin, Controller
+   - Start core services: Caddy, PostgreSQL, Admin
    - Perform health checks
    - Open browser (unless `--no-open` is specified)
 
@@ -136,7 +136,7 @@ openpalm restart [service...]
 **Examples:**
 ```bash
 openpalm restart            # Restart all services
-openpalm restart controller # Restart only Controller service
+openpalm restart admin # Restart only Admin service
 ```
 
 ### `logs`
