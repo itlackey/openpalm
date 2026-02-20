@@ -434,7 +434,7 @@ describe("scoped channel secrets", () => {
         id: "openai-primary",
         type: "ai_provider",
         name: "OpenAI Primary",
-        env: { OPENPALM_CONN_OPENAI_API_KEY: "sk-test" },
+        env: { OPENAI_API_KEY: "OPENAI_API_KEY_MAIN" },
       }),
     });
     expect(create.status).toBe(200);

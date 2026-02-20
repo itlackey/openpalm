@@ -68,6 +68,11 @@ Secrets continue to be managed by the existing secret manager + Stack Spec mappi
   uninstall.sh                 — copied during install for easy access
 ```
 
+### Runtime vs Dev Compose
+
+- **Runtime source of truth**: `assets/state/docker-compose.yml` (rendered/applied to `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`).
+- **Dev-only overlay**: `docker-compose.dev.yml` at the repo root (local builds and overrides only).
+
 ---
 
 ## 2) Settings UI (edit config + restart)
@@ -95,18 +100,18 @@ The extension gallery lets users discover, install, and uninstall extensions wit
 
 ### Connections management
 
-> **Implementation Status:** Connections management is planned but not yet fully implemented as a unified UI. Currently, credentials are managed per-feature: AI provider keys via the System > Providers section, channel tokens in per-channel `.env` files, and other secrets directly in `secrets.env`. The unified Connections page described below is planned for a future release.
+> **Implementation Status:** Connections + secrets are managed through the Stack Spec + Secret Manager APIs. Credentials are stored in `secrets.env` and rendered into generated env artifacts by the shared `packages/lib` stack manager.
 
 The admin UI provides a Connections page for managing named credential/endpoint configurations:
 
 - **What users see**: Each connection is displayed with a friendly name, a status indicator (connected / error / unchecked), and "Used by" information listing which extensions reference it.
 - **Connection types**: AI Provider (e.g. OpenAI, Anthropic), Platform (e.g. Discord, Telegram), API Service (generic REST/webhook credentials).
 - **Validation**: Users can trigger an optional validation check from the UI. The admin API probes the endpoint with the stored credentials and reports success or failure without revealing the raw secret.
-- **Storage**: Connections are stored in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`) using the `OPENPALM_CONN_*` env var prefix. Extensions reference them in `opencode.jsonc` via `{env:VAR_NAME}` interpolation.
+- **Storage**: Secrets are stored as key/value pairs in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`). Connections are stored in Stack Spec as `ENV_VAR_NAME -> SECRET_KEY` references (not raw secret values).
 
 ### Automations management
 
-The admin UI provides an Automations page for managing user-defined scheduled prompts:
+The admin UI provides an Automations page for managing user-defined scheduled prompts. Cron execution is owned by the admin container (`cron && bun run src/server.ts`):
 
 - **Creating an automation**: Users provide a Name, a Prompt (the text sent to the assistant), and a Schedule using a cron expression or schedule picker. The automation is assigned a UUID and stored as a JSON payload file in `cron-payloads/`.
 - **Enable/disable**: Each automation has a Status toggle. Disabled automations remain stored but are not executed by the cron daemon.
@@ -123,11 +128,9 @@ The admin UI provides an Automations page for managing user-defined scheduled pr
 
 If `opencode.jsonc` does not exist yet (for example, first boot with an empty override directory), the admin service bootstraps a minimal `{}` config file automatically before read/write operations so the UI and API remain functional.
 
-### Restart without mounting Docker socket into admin
-Use a restricted "admin" sidecar:
-- Exposes only a tiny HTTP API (restart specific services)
-- Requires shared secret from admin
-- Allowlisted services only
+### Container lifecycle model
+
+Admin is the control-plane executor and performs allowlisted compose operations directly using the mounted container socket.
 
 ---
 

@@ -124,3 +124,9 @@ export async function composeAction(action: "up" | "down" | "restart", service: 
   if (action === "down") return runCompose(["stop", ...services]);
   return runCompose(["restart", ...services]);
 }
+
+export async function composeExec(service: string, args: string[]): Promise<ComposeResult> {
+  const invalid = ensureAllowedServices([service]);
+  if (invalid) return { ok: false, stdout: "", stderr: "service_not_allowed" };
+  return runCompose(["exec", "-T", service, ...args]);
+}

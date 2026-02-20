@@ -83,7 +83,7 @@ The configuration directory mount is the key architectural element. It means the
 
 ## Connections
 
-> **Implementation Status:** The Connections concept is partially implemented. Credentials are currently managed per-feature (AI provider keys in `secrets.env`, channel tokens in channel `.env` files, and provider settings via the admin UI's System > Providers section). The unified Connections management UI described below is planned for a future release.
+> **Implementation Status:** Secrets are managed as key/value entries in `secrets.env`; connections are implemented in Stack Spec as references (`ENV_VAR_NAME` -> secret key name) through `packages/lib` workflows.
 
 ### What the user sees
 
@@ -119,22 +119,20 @@ The lifecycle:
 
 1. **User creates or edits a connection** through the admin UI by filling in labeled fields (endpoint URL, API key, etc.).
 
-2. **Admin service writes the credentials** to `secrets.env` using standardized key naming:
+2. **Admin service writes the credentials** to `secrets.env` using user-selected secret keys:
    ```
-   OPENPALM_CONN_ANTHROPIC_API_KEY=sk-ant-...
-   OPENPALM_CONN_ANTHROPIC_ENDPOINT=https://api.anthropic.com
-   OPENPALM_CONN_GITHUB_TOKEN=ghp_...
-   OPENPALM_CONN_OPENAI_API_KEY=sk-...
-   OPENPALM_CONN_OPENAI_ENDPOINT=https://api.openai.com/v1
+   ANTHROPIC_API_KEY=sk-ant-...
+   ANTHROPIC_ENDPOINT=https://api.anthropic.com
+   GITHUB_TOKEN=ghp_...
+   OPENAI_API_KEY=sk-...
+   OPENAI_ENDPOINT=https://api.openai.com/v1
    ```
-
-   > **Note (current vs. planned):** The `OPENPALM_CONN_*` prefix is the **planned standardization** for a future admin-managed secrets layer. In the current implementation, secrets use the standard provider names that the underlying tools expect directly (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). OpenCode's env var interpolation in `opencode.jsonc` therefore references these unprefixed names (e.g., `"{env:ANTHROPIC_API_KEY}"`). The `OPENPALM_CONN_*` convention will be adopted once the admin service's credential management layer is implemented.
 
 3. **Admin maintains a connection registry** (a JSON metadata file) that tracks which connections exist, their types, display names, and which stack components reference them. This registry is what the UI reads to render the connections list with status indicators.
 
 4. **Other parts of the stack reference connections by name.** When configuring which AI provider the memory system uses, the admin writes the resolved endpoint and API key env vars to the appropriate service configuration (e.g., `OPENAI_BASE_URL` and `OPENAI_API_KEY` for the memory service). The connection registry records this binding so the UI can show "Used by: Memory system."
 
-5. **OpenCode provider configuration** is updated in `opencode.jsonc` to reference the credentials via [env var interpolation](https://opencode.ai/docs/config/#env-vars) (e.g., `"apiKey": "{env:OPENPALM_CONN_ANTHROPIC_API_KEY}"`). This means the actual secret never appears in the config file. OpenCode's config supports `{env:VAR_NAME}` syntax for referencing environment variables and `{file:./path}` syntax for referencing file contents.
+5. **OpenCode provider configuration** is updated in `opencode.jsonc` to reference resolved environment variable names via [env var interpolation](https://opencode.ai/docs/config/#env-vars) (e.g., `"apiKey": "{env:ANTHROPIC_API_KEY}"`). This means the actual secret never appears in the config file. OpenCode's config supports `{env:VAR_NAME}` syntax for referencing environment variables and `{file:./path}` syntax for referencing file contents.
 
 The key design principle: credentials are written to exactly one file and referenced everywhere else by environment variable name. The admin UI provides the abstraction layer that lets users think in terms of "my Anthropic account" rather than "which env var holds my API key."
 
@@ -225,15 +223,15 @@ Automations differ from channels in a key way: channels are reactive (they respo
 
 ### How it works
 
-Automations use standard Unix cron, running inside the `opencode-core` container. The admin service manages the full lifecycle:
+Automations use standard Unix cron, running inside the `admin` container. The admin service owns the full lifecycle:
 
 **Creating or editing an automation:**
 1. User provides a name, schedule (via a friendly frequency picker in the UI, which generates the cron expression), and a prompt describing what the assistant should do.
 2. The admin service validates the cron expression and stores the automation metadata in a JSON data file (`crons.json`).
-3. The admin generates two artifacts:
+3. The admin generates two artifacts in admin-managed state:
    - A **JSON payload file** for the job (`cron-payloads/<id>.json`) containing the prompt, session ID, and metadata. This avoids shell-escaping issues -- cron invokes `curl -d @<file>` to read it directly.
-   - A **crontab entry** that calls `curl` against the assistant's local HTTP endpoint (`http://localhost:4096/chat`) at the scheduled time with the payload file. OpenCode's [web/server mode](https://opencode.ai/docs/web/) exposes this HTTP API.
-4. The admin writes the complete crontab to a shared config volume and tells the admin to restart `opencode-core`, which installs the updated crontab on startup via its entrypoint script.
+   - A **crontab entry** that calls the assistant through the internal network (`gateway`/`admin` endpoint and local scripts under `/work`) at the scheduled time with the payload file.
+4. The admin writes the complete crontab into mounted state/config paths and reloads cron state in-place (no `opencode-core` restart required).
 
 **Execution:**
 - At the scheduled time, cron fires `curl` which sends the prompt to the assistant's HTTP API as a standard chat request.

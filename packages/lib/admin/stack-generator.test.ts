@@ -29,13 +29,24 @@ describe("stack generator", () => {
   it("generates channel env artifacts", () => {
     const spec = createDefaultStackSpec();
     spec.channels.chat.config.CHAT_INBOUND_TOKEN = "chat-token";
+    spec.connections.push({
+      id: "openai",
+      type: "ai_provider",
+      name: "OpenAI",
+      env: {
+        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
+      },
+    });
     const out = generateStackArtifacts(spec, {
       CHANNEL_CHAT_SECRET: "chat-secret",
       CHANNEL_DISCORD_SECRET: "discord-secret",
       CHANNEL_VOICE_SECRET: "voice-secret",
       CHANNEL_TELEGRAM_SECRET: "telegram-secret",
+      OPENAI_API_KEY_MAIN: "provider-secret",
     });
     expect(out.gatewayEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
+    expect(out.gatewayEnv).toContain("OPENAI_API_KEY=provider-secret");
+    expect(out.opencodeEnv).toContain("OPENAI_API_KEY=provider-secret");
     expect(out.channelsEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
     expect(out.channelsEnv).toContain("CHAT_INBOUND_TOKEN=chat-token");
   });

@@ -57,9 +57,8 @@ export type Connection = {
   endpoint: string;
   status: "configured" | "not-configured" | "error";
   usedBy: string[];
-  envPrefix: string; // e.g., "OPENPALM_CONN_ANTHROPIC"
+  envPrefix: string; // e.g., "ANTHROPIC"
   createdAt: string;
 };
 
 export type ModelAssignment = "small" | "openmemory";
-
