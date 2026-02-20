@@ -2,7 +2,6 @@ import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { parseJsonc, stringifyPretty } from "./jsonc.ts";
-import { searchGallery, getGalleryItem, listGalleryCategories, searchNpm, getRiskBadge, searchPublicRegistry, fetchPublicRegistry, getPublicRegistryItem } from "./gallery.ts";
 import { SetupManager } from "./setup.ts";
 import { ensureCronDirs, syncAutomations, triggerAutomation } from "./automations.ts";
 import { getLatestRun, readHistory } from "./automation-history.ts";
@@ -12,12 +11,10 @@ import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, 
 import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
 import { composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
-import type { GalleryCategory } from "./gallery.ts";
 import type { ModelAssignment } from "./types.ts";
 
 // TODO: Split this file into route modules as it grows:
 //   routes/setup.ts       - Setup wizard endpoints (/admin/setup/*)
-//   routes/gallery.ts     - Extension gallery endpoints (/admin/gallery/*)
 //   routes/channels.ts    - Channel management endpoints (/admin/channels/*)
 //   routes/automations.ts - Automation CRUD endpoints (/admin/automations/*)
 //   routes/providers.ts   - Provider management endpoints (/admin/providers/*)
@@ -343,9 +340,9 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
-        const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "extensions"];
+        const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels"];
         if (!validSteps.includes(body.step)) return cors(json(400, { error: "invalid step" }));
-        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions");
+        const state = setupManager.completeStep(body.step as "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels");
         return cors(json(200, { ok: true, state }));
       }
 
@@ -599,170 +596,35 @@ const server = Bun.serve({
         }));
       }
 
-      // ── Gallery ───────────────────────────────────────────────────
-      if (url.pathname === "/admin/gallery/search" && req.method === "GET") {
-        const query = url.searchParams.get("q") ?? "";
-        const category = url.searchParams.get("category") as GalleryCategory | null;
-        const items = searchGallery(query, category ?? undefined);
-        return cors(json(200, { items, total: items.length }));
-      }
-
-      if (url.pathname === "/admin/gallery/categories" && req.method === "GET") {
-        return cors(json(200, { categories: listGalleryCategories() }));
-      }
-
-      if (url.pathname.startsWith("/admin/gallery/item/") && req.method === "GET") {
-        const id = url.pathname.replace("/admin/gallery/item/", "");
-        const item = getGalleryItem(id);
-        if (!item) return cors(json(404, { error: "item not found" }));
-        const badge = getRiskBadge(item.risk);
-        return cors(json(200, { item, riskBadge: badge }));
-      }
-
-      if (url.pathname === "/admin/gallery/npm-search" && req.method === "GET") {
-        const query = url.searchParams.get("q") ?? "";
-        if (!query) return cors(json(400, { error: "query required" }));
-        const results = await searchNpm(query);
-        return cors(json(200, { results }));
-      }
-
-      // Community registry — fetched at runtime from the registry/ folder on GitHub.
-      // No auth required (read-only, public data). Results are cached for 10 minutes.
-      if (url.pathname === "/admin/gallery/community" && req.method === "GET") {
-        const query = url.searchParams.get("q") ?? "";
-        const category = url.searchParams.get("category") as GalleryCategory | null;
-        const items = await searchPublicRegistry(query, category ?? undefined);
-        return cors(json(200, { items, total: items.length, source: "community-registry" }));
-      }
-
-      // Force a cache refresh of the community registry index
-      if (url.pathname === "/admin/gallery/community/refresh" && req.method === "POST") {
+      // ── Plugin management (MVP) ────────────────────────────────────
+      if (url.pathname === "/admin/plugins/install" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const items = await fetchPublicRegistry(true);
-        return cors(json(200, { ok: true, total: items.length, refreshedAt: new Date().toISOString() }));
+        const body = (await req.json()) as { pluginId?: string };
+        if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
+        setOpencodePluginEnabled(body.pluginId.trim(), true);
+        await composeAction("restart", "opencode-core");
+        return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
       }
 
-      if (url.pathname === "/admin/gallery/install" && req.method === "POST") {
+      if (url.pathname === "/admin/plugins/uninstall" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { galleryId?: string; pluginId?: string };
-
-        if (body.galleryId) {
-          const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
-          if (!item) return cors(json(404, { error: "gallery item not found" }));
-
-          if (item.installAction === "plugin") {
-            const result = stackManager.setExtensionInstalled({
-              extensionId: item.id,
-              type: "plugin",
-              enabled: true,
-              pluginId: item.installTarget,
-            });
-            setOpencodePluginEnabled(item.installTarget, true);
-            await composeAction("restart", "opencode-core");
-            setupManager.addExtension(item.id);
-            return cors(json(200, { ok: true, installed: item.id, type: "plugin", result }));
-          }
-
-          if (item.installAction === "skill-file") {
-            const result = stackManager.setExtensionInstalled({
-              extensionId: item.id,
-              type: "skill",
-              enabled: true,
-            });
-            setupManager.addExtension(item.id);
-            return cors(json(200, { ok: true, installed: item.id, type: "skill", note: "Skill files ship with OpenPalm. Marked as enabled.", result }));
-          }
-
-          if (item.installAction === "compose-service") {
-            await composeAction("up", item.installTarget);
-            setupManager.addExtension(item.id);
-            setupManager.addChannel(item.installTarget);
-            return cors(json(200, { ok: true, installed: item.id, type: "container", service: item.installTarget }));
-          }
-
-          return cors(json(400, { error: "unknown install action" }));
-        }
-
-        if (body.pluginId) {
-          try {
-            const result = stackManager.setExtensionInstalled({
-              extensionId: body.pluginId,
-              type: "plugin",
-              enabled: true,
-              pluginId: body.pluginId,
-            });
-            setOpencodePluginEnabled(body.pluginId, true);
-            await composeAction("restart", "opencode-core");
-            return cors(json(200, { ok: true, pluginId: body.pluginId, result }));
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (message === "invalid_plugin_id") return cors(json(400, { error: "invalid plugin id" }));
-            throw error;
-          }
-        }
-
-        return cors(json(400, { error: "galleryId or pluginId required" }));
-      }
-
-      if (url.pathname === "/admin/gallery/uninstall" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { galleryId?: string; pluginId?: string };
-
-        if (body.galleryId) {
-          const item = getGalleryItem(body.galleryId) ?? await getPublicRegistryItem(body.galleryId);
-          if (!item) return cors(json(404, { error: "gallery item not found" }));
-          if (item.installAction === "plugin") {
-            const result = stackManager.setExtensionInstalled({
-              extensionId: item.id,
-              type: "plugin",
-              enabled: false,
-              pluginId: item.installTarget,
-            });
-            setOpencodePluginEnabled(item.installTarget, false);
-            await composeAction("restart", "opencode-core");
-            return cors(json(200, { ok: true, uninstalled: item.id, type: "plugin", result }));
-          }
-          if (item.installAction === "compose-service") {
-            await composeAction("down", item.installTarget);
-            return cors(json(200, { ok: true, uninstalled: item.id, type: "container", service: item.installTarget }));
-          }
-          stackManager.setExtensionInstalled({
-            extensionId: item.id,
-            type: "skill",
-            enabled: false,
-          });
-          return cors(json(200, { ok: true, uninstalled: item.id, type: item.installAction }));
-        }
-
-        if (body.pluginId) {
-          try {
-            const result = stackManager.setExtensionInstalled({
-              extensionId: body.pluginId,
-              type: "plugin",
-              enabled: false,
-              pluginId: body.pluginId,
-            });
-            setOpencodePluginEnabled(body.pluginId, false);
-            await composeAction("restart", "opencode-core");
-            return cors(json(200, { ok: true, action: "disabled", result }));
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (message === "invalid_plugin_id") return cors(json(400, { error: "invalid plugin id" }));
-            throw error;
-          }
-        }
-
-        return cors(json(400, { error: "galleryId or pluginId required" }));
+        const body = (await req.json()) as { pluginId?: string };
+        if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
+        setOpencodePluginEnabled(body.pluginId.trim(), false);
+        await composeAction("restart", "opencode-core");
+        return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
       }
 
       // ── Installed status ──────────────────────────────────────────
       if (url.pathname === "/admin/installed" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const state = setupManager.getState();
-        const installed = stackManager.listInstalled();
+        ensureOpencodeConfigPath();
+        const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
+        const doc = parseJsonc(raw) as { plugin?: string[] };
+        const plugins = Array.isArray(doc.plugin) ? doc.plugin.filter((value): value is string => typeof value === "string") : [];
         return cors(json(200, {
-          plugins: installed.plugins,
-          extensions: installed.extensions,
+          plugins,
           setupState: state
         }));
       }

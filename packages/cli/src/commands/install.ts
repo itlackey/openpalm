@@ -1,13 +1,13 @@
 import { join } from "node:path";
-import { copyFile, chmod } from "node:fs/promises";
+import { copyFile, chmod, writeFile } from "node:fs/promises";
 import type { InstallOptions } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
 import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
 import { resolveXDGPaths, createDirectoryTree } from "@openpalm/lib/paths.ts";
-import { upsertEnvVar, generateEnvFromTemplate } from "@openpalm/lib/env.ts";
+import { upsertEnvVar } from "@openpalm/lib/env.ts";
 import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
-import { resolveAssets, seedFile, seedConfigFiles, cleanupTempAssets } from "@openpalm/lib/assets.ts";
+import { resolveAssets, seedConfigFiles, cleanupTempAssets } from "@openpalm/lib/assets.ts";
 import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "@openpalm/lib/detect-providers.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, select } from "@openpalm/lib/ui.ts";
 
@@ -26,7 +26,7 @@ export async function install(options: InstallOptions): Promise<void> {
   }
   if (os === "windows-bash") {
     error("Windows detected. Please use PowerShell instead:");
-    info('  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"');
+    info('  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"');
     process.exit(1);
   }
 
@@ -60,8 +60,8 @@ export async function install(options: InstallOptions): Promise<void> {
   const assetsDir = await resolveAssets(options.ref);
   spin1.stop(green("Assets resolved"));
 
-  // 7. Verify compose file exists in assets
-  const assetComposeFile = join(assetsDir, "state", "docker-compose.yml");
+  // 7. Verify compose file exists in repository
+  const assetComposeFile = join(process.cwd(), "assets", "state", "docker-compose.yml");
   const composeFileExists = await Bun.file(assetComposeFile).exists();
   if (!composeFileExists) {
     error(`Compose file not found at ${assetComposeFile}`);
@@ -81,7 +81,6 @@ export async function install(options: InstallOptions): Promise<void> {
 
   if (!envExists) {
     const spin2 = spinner("Generating .env file...");
-    const templatePath = join(assetsDir, "config", "system.env");
     const overrides: Record<string, string> = {
       ADMIN_TOKEN: generateToken(),
       POSTGRES_PASSWORD: generateToken(),
@@ -90,7 +89,8 @@ export async function install(options: InstallOptions): Promise<void> {
       CHANNEL_VOICE_SECRET: generateToken(),
       CHANNEL_TELEGRAM_SECRET: generateToken(),
     };
-    await generateEnvFromTemplate(templatePath, envPath, overrides);
+    const envSeed = Object.entries(overrides).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
+    await writeFile(envPath, envSeed, "utf8");
     spin2.stop(green(".env file created"));
     log("");
     info("  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup.");
@@ -129,10 +129,9 @@ export async function install(options: InstallOptions): Promise<void> {
   await seedConfigFiles(assetsDir, xdg.config);
   spin4.stop(green("Configuration files seeded"));
 
-  // 14. Copy uninstall script to state home
-  const uninstallSrc = join(assetsDir, "state", "scripts", "uninstall.sh");
+  // 14. Write uninstall script to state home
   const uninstallDst = join(xdg.state, "uninstall.sh");
-  await seedFile(uninstallSrc, uninstallDst);
+  await writeFile(uninstallDst, "#!/usr/bin/env bash\nopenpalm uninstall\n", "utf8");
   try {
     await chmod(uninstallDst, 0o755);
   } catch {
