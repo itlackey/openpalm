@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -107,5 +107,69 @@ describe("stack manager", () => {
 
     expect(connection.id).toBe("openai-primary");
     expect(manager.listConnections().length).toBe(1);
+  });
+
+  it("removes stale channel route snippets when channels are disabled", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = new StackManager({
+      caddyfilePath: join(dir, "Caddyfile"),
+      caddyRoutesDir: join(dir, "routes"),
+      composeFilePath: join(dir, "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      channelSecretDir: join(dir, "channels"),
+      channelEnvDir: join(dir, "channel-config"),
+      gatewayChannelSecretsPath: join(dir, "gateway.env"),
+      gatewayRuntimeSecretsPath: join(dir, "gateway-runtime.env"),
+      openmemorySecretsPath: join(dir, "openmemory.env"),
+      postgresSecretsPath: join(dir, "postgres.env"),
+      opencodeProviderSecretsPath: join(dir, "providers.env"),
+      opencodeConfigPath: join(dir, "opencode.jsonc"),
+    });
+
+    manager.renderArtifacts();
+    expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeTrue();
+
+    const spec = manager.getSpec();
+    spec.channels.chat.enabled = false;
+    manager.setSpec(spec);
+
+    expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeFalse();
+  });
+
+  it("prevents deleting a connection referenced by an extension", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = new StackManager({
+      caddyfilePath: join(dir, "Caddyfile"),
+      caddyRoutesDir: join(dir, "routes"),
+      composeFilePath: join(dir, "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      channelSecretDir: join(dir, "channels"),
+      channelEnvDir: join(dir, "channel-config"),
+      gatewayChannelSecretsPath: join(dir, "gateway.env"),
+      gatewayRuntimeSecretsPath: join(dir, "gateway-runtime.env"),
+      openmemorySecretsPath: join(dir, "openmemory.env"),
+      postgresSecretsPath: join(dir, "postgres.env"),
+      opencodeProviderSecretsPath: join(dir, "providers.env"),
+      opencodeConfigPath: join(dir, "opencode.jsonc"),
+    });
+
+    manager.upsertConnection({
+      id: "openai-primary",
+      type: "ai_provider",
+      name: "OpenAI Primary",
+      env: {
+        OPENPALM_CONN_OPENAI_API_KEY: "test-key",
+      },
+    });
+    manager.setExtensionInstalled({
+      extensionId: "assistant-agent",
+      type: "agent",
+      enabled: true,
+      connectionIds: ["openai-primary"],
+    });
+
+    expect(() => manager.deleteConnection("openai-primary")).toThrow("connection_in_use");
   });
 });

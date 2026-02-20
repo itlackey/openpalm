@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { channelEnvSecretVariable, ensureStackSpec, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
@@ -91,6 +91,7 @@ export class StackManager {
     const generated = this.renderPreview();
     writeFileSync(this.paths.caddyfilePath, generated.caddyfile, "utf8");
     mkdirSync(this.paths.caddyRoutesDir, { recursive: true });
+    this.removeStaleRouteFiles(generated.caddyRoutes);
     for (const [routeFile, content] of Object.entries(generated.caddyRoutes)) {
       const path = join(this.paths.caddyRoutesDir, routeFile);
       mkdirSync(dirname(path), { recursive: true });
@@ -295,6 +296,9 @@ export class StackManager {
     const id = sanitizeEnvScalar(idRaw);
     if (!id) throw new Error("invalid_connection_id");
     const spec = this.getSpec();
+    if (spec.extensions.some((extension) => (extension.connectionIds ?? []).includes(id))) {
+      throw new Error("connection_in_use");
+    }
     const index = spec.connections.findIndex((connection) => connection.id === id);
     if (index < 0) throw new Error("connection_not_found");
     spec.connections.splice(index, 1);
@@ -389,5 +393,23 @@ export class StackManager {
 
   private channelConfigEnvPath(channel: ChannelName) {
     return join(this.paths.channelEnvDir, `${channel}.env`);
+  }
+
+  private removeStaleRouteFiles(nextRoutes: Record<string, string>) {
+    const keepPaths = new Set(Object.keys(nextRoutes).map((value) => join(this.paths.caddyRoutesDir, value)));
+    const walk = (dirPath: string) => {
+      for (const entry of readdirSync(dirPath)) {
+        const path = join(dirPath, entry);
+        const stat = statSync(path);
+        if (stat.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (keepPaths.has(path)) continue;
+        if (path === join(this.paths.caddyRoutesDir, "extra-user-overrides.caddy")) continue;
+        rmSync(path);
+      }
+    };
+    walk(this.paths.caddyRoutesDir);
   }
 }
