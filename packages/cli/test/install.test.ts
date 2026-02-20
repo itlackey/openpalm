@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const installSource = readFileSync("/home/user/openpalm/packages/cli/src/commands/install.ts", "utf-8");
+const installSource = readFileSync(join(import.meta.dir, "../src/commands/install.ts"), "utf-8");
 
 describe("install command source validation", () => {
   it("imports all required library modules", () => {

@@ -2,15 +2,15 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+const SRC_DIR = join(import.meta.dir, "../src");
+
 // Helper function to read source code files
 function readSourceFile(filename: string): string {
-  const path = join("/home/user/openpalm/packages/cli/src/commands", filename);
-  return readFileSync(path, "utf-8");
+  return readFileSync(join(SRC_DIR, "commands", filename), "utf-8");
 }
 
 function readLibFile(filename: string): string {
-  const path = join("/home/user/openpalm/packages/cli/src/lib", filename);
-  return readFileSync(path, "utf-8");
+  return readFileSync(join(SRC_DIR, "lib", filename), "utf-8");
 }
 
 describe("shared loadComposeConfig module", () => {

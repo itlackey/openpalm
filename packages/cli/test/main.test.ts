@@ -1,11 +1,14 @@
 import { describe, expect, it } from "bun:test";
+import { join } from "node:path";
+
+const REPO_ROOT = join(import.meta.dir, "../../..");
 
 /**
  * Helper function to run the CLI as a subprocess and capture output
  */
 async function runCli(...args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(["bun", "run", "packages/cli/src/main.ts", ...args], {
-    cwd: "/home/user/openpalm",
+  const proc = Bun.spawn(["bun", "run", join(REPO_ROOT, "packages/cli/src/main.ts"), ...args], {
+    cwd: REPO_ROOT,
     stdout: "pipe",
     stderr: "pipe",
   });

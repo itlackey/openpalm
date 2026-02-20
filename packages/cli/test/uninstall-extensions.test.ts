@@ -1,13 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const SRC_DIR = join(import.meta.dir, "../src/commands");
 
 // Read source files once for all tests
 const uninstallSource = readFileSync(
-  "/home/user/openpalm/packages/cli/src/commands/uninstall.ts",
+  join(SRC_DIR, "uninstall.ts"),
   "utf-8"
 );
 const extensionsSource = readFileSync(
-  "/home/user/openpalm/packages/cli/src/commands/extensions.ts",
+  join(SRC_DIR, "extensions.ts"),
   "utf-8"
 );
 
