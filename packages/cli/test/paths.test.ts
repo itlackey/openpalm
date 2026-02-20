@@ -36,23 +36,19 @@ describe("paths", () => {
         await createDirectoryTree(xdg);
 
         // Verify data subdirectories
-        const dataDirs = ["postgres", "qdrant", "openmemory", "shared", "caddy", "admin", "home"];
+        const dataDirs = ["postgres", "qdrant", "openmemory", "opencode", "admin"];
         for (const dir of dataDirs) {
           const dirPath = join(xdg.data, dir);
           const stats = await stat(dirPath);
           expect(stats.isDirectory()).toBe(true);
         }
 
-        // Verify config subdirectories
-        const configDirs = ["caddy", "channels", "cron"];
-        for (const dir of configDirs) {
-          const dirPath = join(xdg.config, dir);
-          const stats = await stat(dirPath);
-          expect(stats.isDirectory()).toBe(true);
-        }
+        // Verify config root directory exists
+        const configStats = await stat(xdg.config);
+        expect(configStats.isDirectory()).toBe(true);
 
         // Verify state subdirectories
-        const stateDirs = ["opencode-core", "gateway", "caddy", "workspace", "observability", "backups"];
+        const stateDirs = ["gateway", "rendered", "rendered/caddy", "rendered/caddy/snippets", "rendered/env", "caddy/config", "caddy/data", "logs", "tmp"];
         for (const dir of stateDirs) {
           const dirPath = join(xdg.state, dir);
           const stats = await stat(dirPath);

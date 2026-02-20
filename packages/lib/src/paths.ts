@@ -5,20 +5,16 @@ import { mkdir } from "node:fs/promises";
 
 export function resolveXDGPaths(): XDGPaths {
   const home = homedir();
-
-  // Data directory
   const data =
     Bun.env.OPENPALM_DATA_HOME ||
     (Bun.env.XDG_DATA_HOME ? join(Bun.env.XDG_DATA_HOME, "openpalm") : undefined) ||
     join(home, ".local", "share", "openpalm");
 
-  // Config directory
   const config =
     Bun.env.OPENPALM_CONFIG_HOME ||
     (Bun.env.XDG_CONFIG_HOME ? join(Bun.env.XDG_CONFIG_HOME, "openpalm") : undefined) ||
     join(home, ".config", "openpalm");
 
-  // State directory
   const state =
     Bun.env.OPENPALM_STATE_HOME ||
     (Bun.env.XDG_STATE_HOME ? join(Bun.env.XDG_STATE_HOME, "openpalm") : undefined) ||
@@ -28,21 +24,23 @@ export function resolveXDGPaths(): XDGPaths {
 }
 
 export async function createDirectoryTree(xdg: XDGPaths): Promise<void> {
-  // Data subdirectories
-  const dataDirs = ["postgres", "qdrant", "openmemory", "shared", "caddy", "admin", "home"];
-  for (const dir of dataDirs) {
-    await mkdir(join(xdg.data, dir), { recursive: true });
-  }
+  const dataDirs = ["postgres", "qdrant", "openmemory", "opencode", "admin"];
+  for (const dir of dataDirs) await mkdir(join(xdg.data, dir), { recursive: true });
 
-  // Config subdirectories
-  const configDirs = ["caddy", "channels", "cron", "secrets", "secrets/gateway", "secrets/channels"];
-  for (const dir of configDirs) {
-    await mkdir(join(xdg.config, dir), { recursive: true });
-  }
+  await mkdir(xdg.config, { recursive: true });
 
-  // State subdirectories
-  const stateDirs = ["opencode-core", "gateway", "caddy", "workspace", "observability", "backups"];
-  for (const dir of stateDirs) {
-    await mkdir(join(xdg.state, dir), { recursive: true });
-  }
+  const stateDirs = [
+    "gateway",
+    "rendered",
+    "rendered/caddy",
+    "rendered/caddy/snippets",
+    "rendered/env",
+    "caddy/config",
+    "caddy/data",
+    "logs",
+    "tmp",
+  ];
+  for (const dir of stateDirs) await mkdir(join(xdg.state, dir), { recursive: true });
+
+  await mkdir(join(homedir(), "openpalm"), { recursive: true });
 }

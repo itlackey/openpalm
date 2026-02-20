@@ -47,22 +47,22 @@ Secrets continue to be managed by the existing secret manager + Stack Spec mappi
   qdrant/
   openmemory/
   shared/
-  caddy/
   admin/
+  openpalm/
 
-~/.config/openpalm/            (OPENPALM_CONFIG_HOME — user-editable config)
-  opencode-core/               — core agent extensions (plugins, skills, lib, AGENTS.md)
-  caddy/Caddyfile
-  channels/
-  cron/                        — user-editable crontab and payload files
-  user.env
+~/.config/openpalm/            (OPENPALM_CONFIG_HOME — source-of-truth inputs)
+  stack-spec.json
   secrets.env
 
-~/.local/state/openpalm/       (OPENPALM_STATE_HOME — runtime state, logs)
-  opencode-core/
+~/.local/state/openpalm/       (OPENPALM_STATE_HOME — rendered artifacts + runtime state)
+  rendered/
+    docker-compose.yml
+    caddy/
+    env/
   gateway/
-  caddy/
-  workspace/
+  caddy/                      — Caddy runtime config/data
+  logs/
+  tmp/
   observability/
   backups/
   uninstall.sh                 — copied during install for easy access

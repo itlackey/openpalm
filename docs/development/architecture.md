@@ -179,7 +179,7 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 |---|---|---|---|
 | **Data** | `~/.local/share/openpalm/` | `OPENPALM_DATA_HOME` | PostgreSQL, Qdrant, Open Memory, Shared FS, Caddy TLS, Admin App |
 | **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (opencode-core/), Caddyfile, channel env files, user overrides, secrets |
-| **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, workspace |
+| **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, compose artifacts (workdir is ~/openpalm) |
 
 ### Admin Compose Runner Maintenance Cron Jobs
 

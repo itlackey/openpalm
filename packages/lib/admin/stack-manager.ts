@@ -18,13 +18,12 @@ export type StackManagerPaths = {
   composeFilePath: string;
   secretsEnvPath: string;
   stackSpecPath: string;
-  channelEnvDir: string;
-  channelSecretDir: string;
-  gatewayChannelSecretsPath: string;
-  gatewayRuntimeSecretsPath: string;
-  openmemorySecretsPath: string;
-  postgresSecretsPath: string;
-  opencodeProviderSecretsPath: string;
+  gatewayEnvPath: string;
+  openmemoryEnvPath: string;
+  postgresEnvPath: string;
+  qdrantEnvPath: string;
+  opencodeEnvPath: string;
+  channelsEnvPath: string;
 };
 
 export const CoreSecretRequirements = [
@@ -99,26 +98,18 @@ export class StackManager {
 
     writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
 
-    mkdirSync(dirname(this.paths.gatewayChannelSecretsPath), { recursive: true });
-    writeFileSync(this.paths.gatewayChannelSecretsPath, generated.gatewayChannelSecretsEnv, "utf8");
-    mkdirSync(dirname(this.paths.gatewayRuntimeSecretsPath), { recursive: true });
-    writeFileSync(this.paths.gatewayRuntimeSecretsPath, generated.gatewayRuntimeSecretsEnv, "utf8");
-    mkdirSync(dirname(this.paths.openmemorySecretsPath), { recursive: true });
-    writeFileSync(this.paths.openmemorySecretsPath, generated.openmemorySecretsEnv, "utf8");
-    mkdirSync(dirname(this.paths.postgresSecretsPath), { recursive: true });
-    writeFileSync(this.paths.postgresSecretsPath, generated.postgresSecretsEnv, "utf8");
-    mkdirSync(dirname(this.paths.opencodeProviderSecretsPath), { recursive: true });
-    writeFileSync(this.paths.opencodeProviderSecretsPath, generated.opencodeProviderSecretsEnv, "utf8");
-
-    mkdirSync(this.paths.channelSecretDir, { recursive: true });
-    mkdirSync(this.paths.channelEnvDir, { recursive: true });
-
-    for (const [channel, content] of Object.entries(generated.channelSecretsEnv)) {
-      writeFileSync(this.channelSecretEnvPath(channel as ChannelName), content, "utf8");
-    }
-    for (const [channel, content] of Object.entries(generated.channelConfigEnv)) {
-      writeFileSync(this.channelConfigEnvPath(channel as ChannelName), content, "utf8");
-    }
+    mkdirSync(dirname(this.paths.gatewayEnvPath), { recursive: true });
+    writeFileSync(this.paths.gatewayEnvPath, generated.gatewayEnv, "utf8");
+    mkdirSync(dirname(this.paths.openmemoryEnvPath), { recursive: true });
+    writeFileSync(this.paths.openmemoryEnvPath, generated.openmemoryEnv, "utf8");
+    mkdirSync(dirname(this.paths.postgresEnvPath), { recursive: true });
+    writeFileSync(this.paths.postgresEnvPath, generated.postgresEnv, "utf8");
+    mkdirSync(dirname(this.paths.qdrantEnvPath), { recursive: true });
+    writeFileSync(this.paths.qdrantEnvPath, generated.qdrantEnv, "utf8");
+    mkdirSync(dirname(this.paths.opencodeEnvPath), { recursive: true });
+    writeFileSync(this.paths.opencodeEnvPath, generated.opencodeEnv, "utf8");
+    mkdirSync(dirname(this.paths.channelsEnvPath), { recursive: true });
+    writeFileSync(this.paths.channelsEnvPath, generated.channelsEnv, "utf8");
 
     return generated;
   }
@@ -416,14 +407,6 @@ export class StackManager {
 
   private isValidSecretName(name: string) {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
-  }
-
-  private channelSecretEnvPath(channel: ChannelName) {
-    return join(this.paths.channelSecretDir, `${channel}.env`);
-  }
-
-  private channelConfigEnvPath(channel: ChannelName) {
-    return join(this.paths.channelEnvDir, `${channel}.env`);
   }
 
   private removeStaleRouteFiles(nextRoutes: Record<string, string>) {

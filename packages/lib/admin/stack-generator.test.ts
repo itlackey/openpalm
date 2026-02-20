@@ -8,14 +8,13 @@ describe("stack generator", () => {
     const out = generateStackArtifacts(spec, {});
     expect(out.caddyRoutes["channels/chat.caddy"]).toContain("handle /channels/chat*");
     expect(out.composeFile).toContain("caddy:");
-    expect(out.composeFile).toContain("/caddy/routes:/etc/caddy/routes:ro");
+    expect(out.composeFile).toContain("/rendered/caddy/snippets:/etc/caddy/snippets:ro");
     expect(out.composeFile).toContain("opencode-core:");
-    expect(out.composeFile).toContain("${OPENPALM_STATE_HOME}/opencode-core:/state");
-    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/home:/home/opencode");
+    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/opencode:/home/opencode");
+    expect(out.composeFile).toContain("${HOME}/openpalm:/work");
     expect(out.composeFile).toContain("user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"");
-    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/shared:/shared");
     expect(out.composeFile).toContain("gateway:");
-    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/admin:/app/data");
+    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}:/data");
     expect(out.composeFile).toContain("channel-discord:");
   });
 
@@ -36,8 +35,8 @@ describe("stack generator", () => {
       CHANNEL_VOICE_SECRET: "voice-secret",
       CHANNEL_TELEGRAM_SECRET: "telegram-secret",
     });
-    expect(out.gatewayChannelSecretsEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
-    expect(out.channelSecretsEnv.chat).toContain("CHANNEL_CHAT_SECRET=chat-secret");
-    expect(out.channelConfigEnv.chat).toContain("CHAT_INBOUND_TOKEN=chat-token");
+    expect(out.gatewayEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
+    expect(out.channelsEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
+    expect(out.channelsEnv).toContain("CHAT_INBOUND_TOKEN=chat-token");
   });
 });

@@ -42,14 +42,14 @@ Container image /opt/opencode/   (baked into image)
         ↓ OpenCode loads via OPENCODE_CONFIG_DIR=/opt/opencode
 Container /home/opencode          (user-global OpenCode state)
         ↑ host volume mount (persistent user layer)
-Host ${OPENPALM_DATA_HOME}/home/ (user-global state)
+Host ${OPENPALM_DATA_HOME}/openpalm/ (user-global state)
 ```
 
 Two separate OpenCode instances consume extensions:
 
 | Instance | Source Directory | Image Copy Target | Host Override | Role |
 |----------|----------------|-------------------|---------------|------|
-| **opencode-core** | `opencode/extensions/` | `/opt/opencode/` | `${OPENPALM_DATA_HOME}/home/` → `/home/opencode` | Full agent — all tools enabled, approval-gated |
+| **opencode-core** | `opencode/extensions/` | `/opt/opencode/` | `${OPENPALM_DATA_HOME}/openpalm/` → `/home/opencode` | Full agent — all tools enabled, approval-gated |
 | **gateway** | `gateway/opencode/` | `/opt/opencode/` | None (fully baked) | Restricted intake agent — all tools disabled |
 
 ### Runtime precedence model
@@ -57,7 +57,7 @@ Two separate OpenCode instances consume extensions:
 The `opencode-core` container uses:
 
 1. Immutable OpenPalm-managed core extensions at `/opt/opencode` (via `OPENCODE_CONFIG_DIR=/opt/opencode`).
-2. User-global OpenCode home persisted at `/home/opencode` (host-mounted from `${OPENPALM_DATA_HOME}/home`).
+2. User-global OpenCode home persisted at `/home/opencode` (host-mounted from `${OPENPALM_DATA_HOME}/openpalm`).
 
 This keeps core extensions deterministic while preserving user-global config/plugins/cache/auth across restarts.
 
@@ -125,11 +125,10 @@ The installer no longer seeds extension files. Extensions are baked into contain
 
 | What | Destination | Content |
 |------|------------|---------|
-| User-global OpenCode config | `${OPENPALM_DATA_HOME}/home/.config/opencode/opencode.json` | Created/managed by Admin as needed |
-| Caddyfile | `~/.config/openpalm/caddy/Caddyfile` | Reverse proxy rules |
-| Channel env files | `~/.config/openpalm/channels/*.env` | Empty credential templates |
+| User-global OpenCode config | `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/opencode.json` | Created/managed by Admin as needed |
+| Rendered Caddyfile | `~/.local/state/openpalm/rendered/caddy/Caddyfile` | Generated from stack spec |
+| Rendered service env files | `~/.local/state/openpalm/rendered/env/*.env` | Generated from stack spec + secrets |
 | Secrets | `~/.config/openpalm/secrets.env` | Placeholder for API keys (managed via admin API as Connections) |
-| User overrides | `~/.config/openpalm/user.env` | Blank user env overrides |
 
 The seed-not-overwrite pattern (`seed_file`) ensures manual edits are never overwritten on re-runs.
 
@@ -157,7 +156,7 @@ opencode/extensions/                         (source in repository)
     ↓ COPY in Dockerfile
 /opt/opencode/                               (immutable core extensions)
 
-${OPENPALM_DATA_HOME}/home/         (host persisted user-global OpenCode HOME)
+${OPENPALM_DATA_HOME}/openpalm/         (host persisted user-global OpenCode HOME)
     ↕ mounted as /home/opencode
 ```
 
@@ -409,7 +408,7 @@ Requires `ADMIN_TOKEN` in the environment.
 1. **Validate identifier.** `validatePluginIdentifier()` accepts npm names (`@scope/name`) and local paths (`./plugins/*.ts`). Rejects shell metacharacters.
 
 2. **Atomic config update.** `updatePluginListAtomically()`:
-   - Reads `opencode.json` from mounted OpenCode home (mounted at `/app/home/.config/opencode/opencode.json` in the admin container)
+   - Reads `opencode.json` from mounted OpenCode home (mounted at `/data/openpalm/.config/opencode/opencode.json` in the admin container)
    - Parses JSONC, appends to `plugin[]` if not present
    - Creates timestamped `.bak` backup
    - Writes to temp file and atomically renames
@@ -485,11 +484,11 @@ assets/state/registry/
 
 ### Host-Side Override (No Rebuild)
 
-1. Place files in `${OPENPALM_DATA_HOME}/home/.config/opencode/`:
+1. Place files in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/`:
 
 ```bash
-mkdir -p ${OPENPALM_DATA_HOME}/home/.config/opencode/plugins/
-vim ${OPENPALM_DATA_HOME}/home/.config/opencode/plugins/calendar-sync.ts
+mkdir -p ${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/
+vim ${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/calendar-sync.ts
 ```
 
 2. If explicit registration is needed (for Plugin-type extensions only), edit the host's `opencode.json`:
@@ -548,7 +547,7 @@ Automations are scheduled prompts managed via Unix cron. Each Automation has an 
 
 ## Configuration Backup and Rollback
 
-Config backups from admin edits accumulate next to the global config at `${OPENPALM_DATA_HOME}/home/.config/opencode/`.
+Config backups from admin edits accumulate next to the global config at `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/`.
 
 ---
 
@@ -556,12 +555,12 @@ Config backups from admin edits accumulate next to the global config at `${OPENP
 
 | Host Path | Container | Mount Point | Mode | Contents |
 |-----------|-----------|-------------|------|----------|
-| `${OPENPALM_DATA_HOME}/home/` | opencode-core | `/home/opencode` | rw | User-global OpenCode config/plugins/cache/auth |
-| `${OPENPALM_DATA_HOME}/home/` | admin | `/app/home` | rw | Admin reads/writes global OpenCode config |
+| `${OPENPALM_DATA_HOME}/openpalm/` | opencode-core | `/home/opencode` | rw | User-global OpenCode config/plugins/cache/auth |
+| `${OPENPALM_DATA_HOME}/openpalm/` | admin | `/data/openpalm` | rw | Admin reads/writes global OpenCode config |
 | `~/.config/openpalm/cron/` | opencode-core | `/cron` | rw | Crontab managed by admin (Automations) |
-| `~/.config/openpalm/channels/*.env` | channel-* | env_file | — | Channel credentials (Channels are a separate top-level concept) |
-| `~/.config/openpalm/secrets.env` | opencode-core, openmemory | env_file | — | API keys (managed as Connections via admin API) |
-| `~/.config/openpalm/user.env` | opencode-core, openmemory | env_file | — | Runtime overrides |
+| `~/.local/state/openpalm/rendered/env/channels.env` | channel-* | env_file | — | Generated channel env (config + mapped secrets) |
+| `~/.local/state/openpalm/rendered/env/*.env` | gateway/opencode/openmemory/postgres/qdrant | env_file | — | Generated service env from stack spec + secrets |
+| `~/.config/openpalm/secrets.env` | admin input | source file | — | Source-of-truth credentials managed via admin API |
 
 Note: The gateway has **no** host config volume. Its extensions are fully baked into its image.
 
@@ -572,14 +571,14 @@ Note: The gateway has **no** host config volume. Its extensions are fully baked 
 | Action | What Happens | Restart Required? |
 |--------|-------------|-------------------|
 | Add plugin to baked-in image | Modify `opencode/extensions/`, rebuild image | Yes — rebuild + restart |
-| Add plugin to host override | Place file in `${OPENPALM_DATA_HOME}/home/.config/opencode/plugins/` | Yes — restart opencode-core |
+| Add plugin to host override | Place file in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/` | Yes — restart opencode-core |
 | Add npm plugin via admin | Config updated atomically, auto-restarted | Automatic |
 | Add skill to baked-in image | Modify `opencode/extensions/skills/`, rebuild | Yes — rebuild + restart |
-| Add skill to host override | Place in `${OPENPALM_DATA_HOME}/home/.config/opencode/skills/` | Yes — restart opencode-core |
+| Add skill to host override | Place in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/skills/` | Yes — restart opencode-core |
 | Edit `opencode.json` on host | Changes applied on next startup | Yes — restart opencode-core |
 | Edit `opencode.json` via admin | Backup created, auto-restarted | Automatic |
 | Start/stop channel via admin | Admin runs compose up/stop for channel service | No restart of existing services |
 | Remove plugin via admin | Removed from `plugin[]`, auto-restarted | Automatic |
 | Edit `AGENTS.md` in image | Requires rebuild | Yes — rebuild + restart |
-| Edit `secrets.env` or `user.env` (Connections) | New env vars on next startup | Yes — restart opencode-core |
+| Edit `secrets.env` (Connections) | New env vars on next startup | Yes — restart opencode-core |
 | Create/edit Automation | Crontab updated in `/cron` volume | No — cron picks up changes automatically |
