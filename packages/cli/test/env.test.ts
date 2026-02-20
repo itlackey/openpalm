@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { readEnvFile, upsertEnvVar, generateEnvFromTemplate } from "../src/lib/env.ts";
+import { readEnvFile, upsertEnvVar, generateEnvFromTemplate, readEnvVar } from "../src/lib/env.ts";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,6 +116,28 @@ describe("env", () => {
           KEY2: "template_value2",
           KEY3: "new_value",
         });
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("readEnvVar", () => {
+    it("reads specific environment variables from file", async () => {
+      const tempDir = await mkdtemp(join(tmpdir(), "openpalm-test-"));
+      const envPath = join(tempDir, ".env");
+
+      try {
+        await writeFile(envPath, "KEY1=value1\nKEY2=value2\n");
+
+        const value1 = await readEnvVar(envPath, "KEY1");
+        expect(value1).toBe("value1");
+
+        const value2 = await readEnvVar(envPath, "KEY2");
+        expect(value2).toBe("value2");
+
+        const nonexistent = await readEnvVar(envPath, "NONEXISTENT");
+        expect(nonexistent).toBeUndefined();
       } finally {
         await rm(tempDir, { recursive: true, force: true });
       }

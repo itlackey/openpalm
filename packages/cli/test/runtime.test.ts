@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { detectOS, detectArch, resolveSocketPath, resolveComposeBin } from "../src/lib/runtime.ts";
+import { detectOS, detectArch, resolveSocketPath, resolveComposeBin, detectRuntime, validateRuntime } from "../src/lib/runtime.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 describe("runtime", () => {
   describe("detectOS", () => {
@@ -57,6 +59,29 @@ describe("runtime", () => {
     it("returns docker compose for orbstack platform", () => {
       const result = resolveComposeBin("orbstack");
       expect(result).toEqual({ bin: "docker", subcommand: "compose" });
+    });
+  });
+
+  describe("detectRuntime", () => {
+    it("returns one of the valid container platforms or null", async () => {
+      const result = await detectRuntime("linux");
+      const validValues = ["docker", "podman", "orbstack", null];
+      expect(validValues).toContain(result);
+    });
+  });
+
+  describe("validateRuntime", () => {
+    it("source code contains Bun.spawn and exitCode", () => {
+      const sourcePath = join(import.meta.dir, "..", "src", "lib", "runtime.ts");
+      const source = readFileSync(sourcePath, "utf-8");
+      expect(source).toContain("Bun.spawn");
+      expect(source).toContain("exitCode");
+    });
+
+    it("exports validateRuntime function", () => {
+      const sourcePath = join(import.meta.dir, "..", "src", "lib", "runtime.ts");
+      const source = readFileSync(sourcePath, "utf-8");
+      expect(source).toContain("export async function validateRuntime");
     });
   });
 });

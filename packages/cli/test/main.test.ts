@@ -113,4 +113,33 @@ describe("CLI entry point", () => {
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("Missing subcommand");
   });
+
+  it("prints version with -v flag", async () => {
+    const { stdout, exitCode } = await runCli("-v");
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("0.0.5");
+  });
+
+  it("prints help with -h flag", async () => {
+    const { stdout, exitCode } = await runCli("-h");
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Usage:");
+    expect(stdout).toContain("Commands:");
+  });
+
+  it("supports ps as alias for status", async () => {
+    const { stderr, exitCode } = await runCli("ps");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).not.toContain("Unknown command");
+  });
+
+  it("supports ext as alias for extensions with valid subcommand", async () => {
+    const { stderr, exitCode } = await runCli("ext", "list");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).not.toContain("Unknown command");
+  });
 });

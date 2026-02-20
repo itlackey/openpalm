@@ -1,9 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, afterEach } from "bun:test";
 import {
   detectAnthropicKey,
   detectOpenAIKey,
   getSmallModelCandidates,
   writeProviderSeedFile,
+  detectAllProviders,
+  findExistingOpenCodeConfig,
 } from "../src/lib/detect-providers.ts";
 import type { DetectedProvider } from "../src/types.ts";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
@@ -32,6 +34,27 @@ describe("detect-providers", () => {
         }
       }
     });
+
+    it("returns provider with apiKeyPresent: true when key present", () => {
+      // Save original value
+      const originalKey = Bun.env.ANTHROPIC_API_KEY;
+
+      try {
+        Bun.env.ANTHROPIC_API_KEY = "test-key-123";
+        const provider = detectAnthropicKey();
+        expect(provider.apiKeyPresent).toBe(true);
+        expect(provider.models.length).toBe(2);
+        expect(provider.models[0].id).toBe("anthropic/claude-sonnet-4-5");
+        expect(provider.models[1].id).toBe("anthropic/claude-haiku-4-5");
+      } finally {
+        // Restore original value
+        if (originalKey !== undefined) {
+          Bun.env.ANTHROPIC_API_KEY = originalKey;
+        } else {
+          delete Bun.env.ANTHROPIC_API_KEY;
+        }
+      }
+    });
   });
 
   describe("detectOpenAIKey", () => {
@@ -52,6 +75,27 @@ describe("detect-providers", () => {
         // Restore original value
         if (originalKey !== undefined) {
           Bun.env.OPENAI_API_KEY = originalKey;
+        }
+      }
+    });
+
+    it("returns provider with apiKeyPresent: true when key present", () => {
+      // Save original value
+      const originalKey = Bun.env.OPENAI_API_KEY;
+
+      try {
+        Bun.env.OPENAI_API_KEY = "test-key-456";
+        const provider = detectOpenAIKey();
+        expect(provider.apiKeyPresent).toBe(true);
+        expect(provider.models.length).toBe(2);
+        expect(provider.models[0].id).toBe("openai/gpt-4o");
+        expect(provider.models[1].id).toBe("openai/gpt-4o-mini");
+      } finally {
+        // Restore original value
+        if (originalKey !== undefined) {
+          Bun.env.OPENAI_API_KEY = originalKey;
+        } else {
+          delete Bun.env.OPENAI_API_KEY;
         }
       }
     });
@@ -177,6 +221,29 @@ describe("detect-providers", () => {
       } finally {
         await rm(tempDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe("detectAllProviders", () => {
+    it("returns an array of DetectedProvider objects", async () => {
+      const result = await detectAllProviders();
+      expect(Array.isArray(result.providers)).toBe(true);
+      expect(result.providers.length).toBeGreaterThanOrEqual(2);
+
+      // Verify each provider has required properties
+      for (const provider of result.providers) {
+        expect(provider).toHaveProperty("name");
+        expect(provider).toHaveProperty("type");
+        expect(provider).toHaveProperty("apiKeyPresent");
+        expect(provider).toHaveProperty("models");
+      }
+    });
+  });
+
+  describe("findExistingOpenCodeConfig", () => {
+    it("returns either null or a string", async () => {
+      const result = await findExistingOpenCodeConfig();
+      expect(result === null || typeof result === "string").toBe(true);
     });
   });
 });
