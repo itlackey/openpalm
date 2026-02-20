@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SRC_DIR = join(import.meta.dir, "../src");
+const LIB_SRC_DIR = join(import.meta.dir, "../../lib/src");
 
 // Helper function to read source code files
 function readSourceFile(filename: string): string {
@@ -10,7 +11,7 @@ function readSourceFile(filename: string): string {
 }
 
 function readLibFile(filename: string): string {
-  return readFileSync(join(SRC_DIR, "lib", filename), "utf-8");
+  return readFileSync(join(LIB_SRC_DIR, filename), "utf-8");
 }
 
 describe("shared loadComposeConfig module", () => {
@@ -42,7 +43,7 @@ describe("update command", () => {
   const source = readSourceFile("update.ts");
 
   it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
   });
 
   it("calls loadComposeConfig before compose operations", () => {
@@ -68,7 +69,7 @@ describe("start command", () => {
   const source = readSourceFile("start.ts");
 
   it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
   });
 
   it("accepts optional service names", () => {
@@ -91,7 +92,7 @@ describe("stop command", () => {
   const source = readSourceFile("stop.ts");
 
   it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
   });
 
   it("calls composeStop (not composeDown)", () => {
@@ -110,7 +111,7 @@ describe("restart command", () => {
   const source = readSourceFile("restart.ts");
 
   it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
   });
 
   it("calls composeRestart", () => {
@@ -128,7 +129,7 @@ describe("logs command", () => {
   const source = readSourceFile("logs.ts");
 
   it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
   });
 
   it("follows logs by default", () => {
@@ -153,7 +154,7 @@ describe("status command", () => {
   const source = readSourceFile("status.ts");
 
   it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
   });
 
   it("calls composePs", () => {
@@ -173,7 +174,7 @@ describe("all management commands - shared config pattern", () => {
   it("all commands import loadComposeConfig from shared module", () => {
     for (const command of commands) {
       const source = readSourceFile(command);
-      expect(source).toContain('import { loadComposeConfig } from "../lib/config.ts"');
+      expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
     }
   });
 

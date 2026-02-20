@@ -1,3 +1,7 @@
+## Current stack status
+
+Admin owns allowlisted compose lifecycle actions directly, with stack artifacts generated from Stack Spec.
+
 # Hosting in a Single Compose Stack + Extending with Channels/Tools
 *Extension guide: run everything in one compose file and safely grow the system.*
 
@@ -23,7 +27,7 @@ openpalm/
                          The lib/ directory contains shared utilities and is not an extension sub-type.
   gateway/               Gateway service (Bun)
   admin/                 Admin API + bundled admin UI service (Bun)
-  controller/            Container lifecycle service (Bun + Docker socket)
+  admin/ (compose control-plane)            Container lifecycle service (Bun + Docker socket)
   channels/
     chat/                HTTP chat adapter
     discord/             Discord adapter
@@ -55,8 +59,8 @@ The full `assets/state/docker-compose.yml` file defines all services using publi
 - **Gateway** connects to `opencode-core` via `OPENCODE_CORE_BASE_URL` and uses the `channel-intake` agent for intake validation. Gateway extensions are baked into the image; the `opencode-gateway:/app/opencode-config` volume mount is no longer required.
 - **Caddy** sits in front as the reverse proxy, routing `/channels/*` to channel adapters and `/admin/*` to the admin app and dashboard UIs.
 - **Channel adapters** are optional, enabled via `--profile channels`.
-- **Admin-app** manages extensions, config, and containers via the controller.
-- **Controller** is the only service with container engine socket access and runs compose commands using the persisted runtime settings.
+- **Admin-app** manages extensions, config, and containers via the admin.
+- **Admin** is the only service with container engine socket access and runs compose commands using the persisted runtime settings.
 
 See `assets/state/docker-compose.yml` for install/runtime defaults and `docker-compose.yml` for local build overrides.
 

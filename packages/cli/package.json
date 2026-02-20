@@ -34,5 +34,8 @@
     "build:linux-arm64": "bun build src/main.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-linux-arm64",
     "build:darwin-x64": "bun build src/main.ts --compile --target=bun-darwin-x64 --outfile dist/openpalm-darwin-x64",
     "build:darwin-arm64": "bun build src/main.ts --compile --target=bun-darwin-arm64 --outfile dist/openpalm-darwin-arm64"
+  },
+  "dependencies": {
+    "@openpalm/lib": "workspace:*"
   }
 }

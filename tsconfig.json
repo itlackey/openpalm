@@ -9,15 +9,24 @@
     "resolveJsonModule": true,
     "types": [
       "bun"
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@openpalm/lib": [
+        "packages/lib/src/index.ts"
+      ],
+      "@openpalm/lib/*": [
+        "packages/lib/src/*"
+      ]
+    }
   },
   "include": [
     "admin/src/**/*.ts",
-    "controller/**/*.ts",
     "gateway/src/**/*.ts",
     "channels/**/*.ts",
     "assets/state/scripts/extensions-cli.ts",
-    "packages/cli/src/**/*.ts"
+    "packages/cli/src/**/*.ts",
+    "packages/lib/src/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -53,7 +53,7 @@ Phase 2: Early UI access
 
 Phase 3: Background pull (user is in the wizard)
   → Pull remaining images in the background:
-    opencode-core, gateway, openmemory, qdrant, controller, channels
+    opencode-core, gateway, openmemory, qdrant, admin, channels
   → User completes setup (API keys, provider config, model selection)
     while downloads happen
 

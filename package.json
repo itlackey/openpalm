@@ -5,13 +5,13 @@
   "workspaces": [
     "gateway",
     "admin",
-    "controller",
     "channels/chat",
     "channels/discord",
     "channels/voice",
     "channels/telegram",
     "channels/webhook",
     "shared",
+    "packages/lib",
     "packages/cli"
   ],
   "scripts": {

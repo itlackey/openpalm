@@ -4,15 +4,15 @@ This board breaks `docs/testing-plan.md` into parallel tracks so implementation 
 
 ## Dispatched Tracks
 
-- **Agent 1 — Controller unit tests**
-  - Added route-level seams via `createControllerFetch(...)` and unit tests for health, auth rejection, allowed service filtering, and compose response shaping.
+- **Agent 1 — Admin unit tests**
+  - Added route-level seams via `createAdminFetch(...)` and unit tests for health, auth rejection, allowed service filtering, and compose response shaping.
 
 - **Agent 2 — Channel adapter unit tests**
   - Added per-adapter tests for health/auth, payload normalization, HMAC signing, validation, and forwarding behavior.
 
 - **Agent 3 — Integration + contract suites**
-  - Added integration tests for channel-to-gateway forwarding and admin/controller auth/list flows.
-  - Added contract tests for channel message shape plus doc parity checks for controller/admin endpoints.
+  - Added integration tests for channel-to-gateway forwarding and admin auth/list flows.
+  - Added contract tests for channel message shape plus doc parity checks for admin endpoints.
 
 - **Agent 4 — Security tests**
   - Added security-layer tests for auth enforcement, HMAC validation behavior, and input bounds.
@@ -24,5 +24,5 @@ This board breaks `docs/testing-plan.md` into parallel tracks so implementation 
 
 1. Expand UI Playwright stubs into full route/page-object coverage listed in `docs/testing-plan.md`.
 2. Add gateway-centered integration tests that exercise intake/core timeout paths in one in-process harness.
-3. Add explicit contract schema validators for IntakeDecision and full admin/controller response bodies.
+3. Add explicit contract schema validators for IntakeDecision and full admin response bodies.
 4. Add replay-defense and per-user independence assertions for deeper security coverage.

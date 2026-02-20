@@ -1,3 +1,9 @@
+## Current architecture status
+
+- Stack lifecycle operations run directly from Admin.
+- Admin now performs allowlisted Compose lifecycle operations directly using the mounted container socket.
+- Stack changes are generated from Stack Spec artifacts and applied through validated Admin workflows.
+
 # OpenPalm Architecture — Container / App / Channel
 
 This document describes the container architecture for OpenPalm.
@@ -25,7 +31,7 @@ graph TB
         OpenCodeCore["OpenCode Core<br/><small>:4096 — agent runtime<br/>(includes channel-intake agent)</small>"]
         OpenMemory["Open Memory<br/><small>:8765 — MCP</small>"]
         AdminApp["Admin App<br/><small>:8100 — admin API</small>"]
-        Controller["Controller<br/><small>:8090 — container lifecycle</small>"]
+        Admin Compose Runner["Admin Compose Runner<br/><small>:8090 — container lifecycle</small>"]
     end
 
     subgraph Storage["Storage + Config (Layer 3)"]
@@ -60,8 +66,8 @@ graph TB
     OpenCodeCore --> OpenMemory
 
     %% Admin flow
-    AdminApp --> Controller
-    Controller -->|compose runtime| Apps
+    AdminApp --> Admin Compose Runner
+    Admin Compose Runner -->|compose runtime| Apps
 
     %% Storage connections
     OpenMemory --> Qdrant
@@ -82,7 +88,7 @@ graph TB
     classDef ui fill:#8e8e93,color:#fff,stroke:#636366
 
     class Discord,Voice,Chat,Telegram channel
-    class Gateway,OpenCodeCore,OpenMemory,AdminApp,Controller app
+    class Gateway,OpenCodeCore,OpenMemory,AdminApp,Admin Compose Runner app
     class PSQL,Qdrant,SharedFS storage
     class Public,LAN,GW_Route proxy
     class AdminUI,OpenMemoryUI,OpenCodeUI ui
@@ -102,7 +108,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `opencode/extensions/`; host config provides optional overrides |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API for all management functions |
-| `controller` | `./controller` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
+| `admin` | `./admin` (build) | assistant_net | Container up/down/restart via configured runtime compose command |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
 | `channel-discord` | `./channels/discord` (build) | assistant_net | Discord adapter (profile: channels) |
 | `channel-voice` | `./channels/voice` (build) | assistant_net | Voice/STT adapter (profile: channels) |
@@ -140,11 +146,11 @@ The `channel-intake` agent is defined in a standalone Markdown file at `gateway/
 
 ### Admin operations
 ```
-Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Controller -> Compose Runtime
+Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Admin Compose Runner -> Compose Runtime
 ```
 
 The admin app provides the API for all admin functions:
-- Add/remove containers via the controller
+- Add/remove containers via the admin
 - Edit Caddy configuration to map sub-urls to containers
 - Manage extensions and config
 
@@ -175,9 +181,9 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 | **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (opencode-core/), Caddyfile, channel env files, user overrides, secrets |
 | **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, workspace |
 
-### Controller Maintenance Cron Jobs
+### Admin Compose Runner Maintenance Cron Jobs
 
-The controller container runs 8 scheduled maintenance tasks via cron (defined in `controller/entrypoint.sh`):
+The admin container runs 8 scheduled maintenance tasks via cron (defined in `admin/entrypoint.sh`):
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
@@ -230,7 +236,7 @@ Connections are named credential/endpoint configurations for external services. 
 
 ### Automations
 
-Automations are user-defined scheduled prompts, distinct from the controller's system-level maintenance cron jobs. They allow users to configure proactive assistant behavior (e.g. daily summaries, nightly data pulls) without writing code.
+Automations are user-defined scheduled prompts, distinct from the admin's system-level maintenance cron jobs. They allow users to configure proactive assistant behavior (e.g. daily summaries, nightly data pulls) without writing code.
 
 - **Properties**: Each automation has an ID (UUID), Name, Prompt (the text sent to the assistant), Schedule (standard Unix cron expression), and Status (enabled/disabled).
 - **Implementation**: Automations run inside `opencode-core` via a cron daemon. Each job executes a `curl` call against `localhost:4096/chat` with the configured prompt.
@@ -251,4 +257,4 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 5. **Agent rules (AGENTS.md)** — Behavioral constraints: never store secrets, require confirmation for destructive actions, deny data exfiltration, recall-first for user queries.
 6. **Skills** — Standardized operating procedures: `channel-intake` (validate/summarize/dispatch in the gateway) and `memory` (recall-first behavior and memory policy in the core agent).
 7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.
-8. **Controller isolation** — Only the controller container has access to the container engine socket.
+8. **Admin Compose Runner isolation** — Only the admin container has access to the container engine socket.

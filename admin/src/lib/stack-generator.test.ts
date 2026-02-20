@@ -6,8 +6,9 @@ describe("stack generator", () => {
   it("renders all core and enabled channel services in compose output", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
-    expect(out.caddyfile).toContain("handle /channels/chat*");
+    expect(out.caddyRoutes["channels/chat.caddy"]).toContain("handle /channels/chat*");
     expect(out.composeFile).toContain("caddy:");
+    expect(out.composeFile).toContain("/caddy/routes:/etc/caddy/routes:ro");
     expect(out.composeFile).toContain("opencode-core:");
     expect(out.composeFile).toContain("${OPENPALM_STATE_HOME}/opencode-core:/state");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/shared:/shared");
@@ -20,7 +21,7 @@ describe("stack generator", () => {
     const spec = createDefaultStackSpec();
     spec.channels.discord.enabled = false;
     const out = generateStackArtifacts(spec, {});
-    expect(out.caddyfile).not.toContain("handle /channels/discord*");
+    expect(out.caddyRoutes["channels/discord.caddy"]).toBeUndefined();
     expect(out.composeFile).not.toContain("channel-discord:");
   });
 

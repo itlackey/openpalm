@@ -1,3 +1,9 @@
+## Current security posture
+
+- Admin is the only service with container socket access.
+- Compose operations are allowlisted and service names are validated against generated compose service names.
+- Secrets remain managed by the existing secret manager model and rendered into scoped env files for least privilege.
+
 # OpenPalm Security Guide
 
 OpenPalm uses defense in depth: multiple independent controls are applied so a single failure does not expose the full system.
@@ -44,8 +50,8 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 ## 5) Admin and control-plane separation
 
 - Admin API requires admin token authentication.
-- Only controller can execute compose lifecycle operations.
-- Controller access requires controller token.
+- Only admin can execute compose lifecycle operations.
+- Admin access requires admin token.
 
 **Why:** isolate orchestration privileges from user-facing paths and enforce explicit auth boundaries.
 

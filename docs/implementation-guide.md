@@ -1,3 +1,10 @@
+## Current implementation status
+
+Current implementation direction:
+- Stack Spec is the source-of-truth for generated runtime artifacts.
+- Admin applies changes via allowlisted compose operations.
+- Secret management remains in the existing secret manager + Stack Spec mapping model, with scoped env rendering.
+
 # Implementation Guide — OpenPalm with OpenCode + OpenMemory
 *A secure, robust implementation guide using OpenCode server/SDK, Extensions, and OpenMemory for long-term memory.*
 
@@ -92,7 +99,7 @@ Extensions are baked into the container images at build time:
 ```
 
 ### Connections (credential management)
-Credentials are managed as **Connections** — named sets stored in `secrets.env` and referenced via `{env:VAR_NAME}` interpolation in config. Connection types include AI Provider, Platform, and API Service credentials. All Connection keys use the `OPENPALM_CONN_*` prefix convention. Mount `secrets.env` only into services that require it.
+Credentials are managed as **Connections** — named sets stored in the secret manager (with `secrets.env` as source and scoped generated env outputs) and referenced via `{env:VAR_NAME}` interpolation in config. Connection types include AI Provider, Platform, and API Service credentials. All Connection keys use the `OPENPALM_CONN_*` prefix convention. Mount `secrets.env` only into services that require it.
 
 ### Environment variables (all optional — defaults work inside Docker Compose)
 | Variable | Default | Description |

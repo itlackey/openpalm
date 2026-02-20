@@ -42,7 +42,7 @@ OPENPALM_IMAGE_TAG=latest-amd64
 
 # Auto-generated secrets
 ADMIN_TOKEN=<64-char random token>
-CONTROLLER_TOKEN=<64-char random token>
+ADMIN_TOKEN=<64-char random token>
 POSTGRES_PASSWORD=<64-char random token>
 CHANNEL_CHAT_SECRET=<64-char random token>
 CHANNEL_DISCORD_SECRET=<64-char random token>
@@ -163,7 +163,7 @@ Runtime state, disposable on reinstall.
 
 | Host Path | Container | Mount Point | Mode |
 |-----------|-----------|-------------|------|
-| (entire state home) | controller | `/workspace` | rw |
+| (entire state home) | admin | `/workspace` | rw |
 | (entire state home) | admin | `/workspace` | rw |
 | `opencode-core/` | opencode-core | `/state` | rw |
 | `gateway/` | gateway | `/app/data` | rw |
@@ -174,7 +174,7 @@ Runtime state, disposable on reinstall.
 
 ## Container Socket Mounting
 
-The controller needs access to the host container runtime socket. The installer detects the runtime and configures the socket path.
+The admin needs access to the host container runtime socket. The installer detects the runtime and configures the socket path.
 
 | Runtime | Host Socket Path | Container Mount Point |
 |---------|-----------------|----------------------|
@@ -183,7 +183,7 @@ The controller needs access to the host container runtime socket. The installer 
 | Podman (macOS) | `/var/run/docker.sock` | `/var/run/openpalm-container.sock` |
 | OrbStack (macOS) | `~/.orbstack/run/docker.sock` | `/var/run/openpalm-container.sock` |
 
-Inside the controller, `OPENPALM_CONTAINER_SOCKET_URI` is always `unix:///var/run/openpalm-container.sock`. The controller sets both `DOCKER_HOST` and `CONTAINER_HOST` to this URI when spawning compose commands.
+Inside the admin, `OPENPALM_CONTAINER_SOCKET_URI` is always `unix:///var/run/openpalm-container.sock`. The admin sets both `DOCKER_HOST` and `CONTAINER_HOST` to this URI when spawning compose commands.
 
 ---
 
@@ -198,7 +198,7 @@ Inside the controller, `OPENPALM_CONTAINER_SOCKET_URI` is always `unix:///var/ru
 | 8765 | OpenMemory API | `0.0.0.0` | `OPENPALM_OPENMEMORY_BIND_ADDRESS` |
 | 2222 | OpenCode SSH | `127.0.0.1` | `OPENCODE_CORE_SSH_BIND_ADDRESS` |
 
-Internal-only ports (not exposed to host): gateway (8080), admin (8100), controller (8090), channel adapters (8181–8184), postgres (5432), qdrant (6333/6334).
+Internal-only ports (not exposed to host): gateway (8080), admin (8100), admin (8090), channel adapters (8181–8184), postgres (5432), qdrant (6333/6334).
 
 ---
 
@@ -208,7 +208,7 @@ Internal-only ports (not exposed to host): gateway (8080), admin (8100), control
 caddy ──→ gateway ──→ opencode-core ──→ openmemory ──→ qdrant
   │                                            │
   │                                            └──→ postgres
-  ├──→ admin ──→ controller
+  ├──→ admin ──→ admin
   │
   └──→ openmemory-ui ──→ openmemory
 

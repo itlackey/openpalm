@@ -34,7 +34,7 @@ git history for implementation details.
 |-----|--------|---------|
 | R1  | Done   | YAML frontmatter added to all SKILL.md files |
 | R2  | Done   | Phantom gallery entries removed, skill-memory added |
-| R3  | Done   | Controller allowlist made dynamic via OPENPALM_EXTRA_SERVICES |
+| R3  | Done   | Admin allowlist made dynamic via OPENPALM_EXTRA_SERVICES |
 | R4  | Done   | Plugins moved to plugins/ auto-discovery path |
 | R5  | Done   | MCP disabled in opencode.jsonc |
 | R6  | Done   | Entrypoint config layering fixed with cp -rn merge |
@@ -97,8 +97,8 @@ Plugins now define local `Plugin` types. Two patterns are used: with context par
 ### 4. Phantom Gallery Entries (R2) — RESOLVED
 Non-existent gallery entries have been removed. The `skill-memory` entry was added for the consolidated memory Skill-type extension.
 
-### 5. Controller Dynamic Allowlist (R3) — RESOLVED
-The controller now reads `OPENPALM_EXTRA_SERVICES` from the environment, allowing community channel services and other compose services to be managed without code changes.
+### 5. Admin Dynamic Allowlist (R3) — RESOLVED
+The admin now reads `OPENPALM_EXTRA_SERVICES` from the environment, allowing community channel services and other compose services to be managed without code changes.
 
 ### 6. MCP Disabled (R5) — RESOLVED
 MCP is explicitly disabled in `opencode.jsonc` (`"enabled": false`). The `openmemory-http` plugin handles all memory operations via direct REST API calls.
@@ -165,7 +165,7 @@ This unlocks OpenCode's auto-discovery, per-skill permission scoping, and the `s
 
 Delete the five gallery entries referencing nonexistent files, or create the files. Add a CI check that validates gallery `installTarget` paths exist in the repository.
 
-### R3. Make the Controller Allowlist Dynamic (High Impact, Medium Effort)
+### R3. Make the Admin Allowlist Dynamic (High Impact, Medium Effort)
 
 Read allowed service names from the compose file or an environment variable:
 
@@ -246,4 +246,4 @@ The recent restructuring addressed several important issues: Skills (lowest-risk
 
 The five extension sub-types — Skill (lowest risk), Command (low), Agent (medium), Custom Tool (medium-high), and Plugin (highest) — each have distinct directories, risk levels, and discovery mechanisms. Channels are a separate top-level concept that run as dedicated container services and are not Extension sub-types. Connections manage named credentials via the admin API. Automations manage scheduled prompts via Unix cron.
 
-The highest-priority remaining issues are: skills still lack YAML frontmatter (R1), the gallery has phantom entries (R2), the controller allowlist blocks community containers (R3), and plugins are in a non-standard location outside OpenCode's discovery path (R4). The MCP split-brain (R5) is a security concern that's easy to fix. The config layering behavior (R6) needs verification to ensure baked-in extensions are actually available when the host override config is present.
+The highest-priority remaining issues are: skills still lack YAML frontmatter (R1), the gallery has phantom entries (R2), the admin allowlist blocks community containers (R3), and plugins are in a non-standard location outside OpenCode's discovery path (R4). The MCP split-brain (R5) is a security concern that's easy to fix. The config layering behavior (R6) needs verification to ensure baked-in extensions are actually available when the host override config is present.

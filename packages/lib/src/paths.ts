@@ -1,4 +1,4 @@
-import type { XDGPaths } from "../types.ts";
+import type { XDGPaths } from "./types.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";

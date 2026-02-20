@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildComposeArgs } from "../src/lib/compose.ts";
+import { buildComposeArgs } from "@openpalm/lib/compose.ts";
 import type { ComposeConfig } from "../src/types.ts";
 
 describe("compose", () => {

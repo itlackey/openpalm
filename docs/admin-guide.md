@@ -1,3 +1,9 @@
+## Current control-plane status
+
+OpenPalm now uses Admin as the control-plane executor for allowlisted Compose actions (`up`, `down/stop`, `restart`, `ps`, `logs`, optional `pull`) with service-name validation against the generated compose manifest.
+
+Secrets continue to be managed by the existing secret manager + Stack Spec mappings, with scoped env files rendered for gateway/channel/openmemory/postgres/opencode domains.
+
 # Admin Implementation Guide (Advanced)
 *Administrator tools that are user-friendly, password-protected, and safe by design.*
 
@@ -118,7 +124,7 @@ The admin UI provides an Automations page for managing user-defined scheduled pr
 If `opencode.jsonc` does not exist yet (for example, first boot with an empty override directory), the admin service bootstraps a minimal `{}` config file automatically before read/write operations so the UI and API remain functional.
 
 ### Restart without mounting Docker socket into admin
-Use a restricted "controller" sidecar:
+Use a restricted "admin" sidecar:
 - Exposes only a tiny HTTP API (restart specific services)
 - Requires shared secret from admin
 - Allowlisted services only
@@ -142,9 +148,9 @@ All admin write operations require the admin password:
 
 ---
 
-## 4) Default system maintenance cron jobs (controller)
+## 4) Default system maintenance cron jobs (admin)
 
-OpenPalm installs a fixed system-level cron schedule in the `controller` container on startup. These jobs are enabled by default and are not user-configurable in the admin UI.
+OpenPalm installs a fixed system-level cron schedule in the `admin` container on startup. These jobs are enabled by default and are not user-configurable in the admin UI.
 
 | Schedule | Job | Behavior |
 |---|---|---|

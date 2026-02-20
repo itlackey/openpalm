@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { generateToken } from "../src/lib/tokens.ts";
+import { generateToken } from "@openpalm/lib/tokens.ts";
 
 describe("tokens", () => {
   describe("generateToken", () => {

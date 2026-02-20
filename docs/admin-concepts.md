@@ -1,3 +1,9 @@
+## Current control-plane status
+
+Admin applies stack changes directly using allowlisted compose operations, while Stack Spec remains the source of truth for generated compose/caddy/channel/env artifacts.
+
+Secret handling remains on the existing secret manager model (no standalone secret-map file), with expanded scoped env rendering and validation.
+
 # OpenPalm Architecture Concepts
 
 This document defines the core concepts that make up the OpenPalm platform. Each concept is described from three perspectives: what it means to the user, what it represents architecturally, and how it works at the implementation level.
@@ -51,7 +57,7 @@ The install/enable lifecycle works as follows:
    - *Plugins (npm):* The npm package name (e.g., `"opencode-helicone-session"` or `"@my-org/custom-plugin"`) is added to the `plugin` array in `opencode.jsonc`. npm plugins are [installed automatically by Bun](https://opencode.ai/docs/plugins/#how-plugins-are-installed) at startup and cached in `~/.cache/opencode/node_modules/`.
    - *Plugin load order:* Global config plugins -> project config plugins -> global plugin directory -> project/custom plugin directory. Duplicate npm packages with the same name and version are loaded once.
 
-3. **Admin tells the controller to restart `opencode-core`** -- the next session picks up the changed configuration directory and/or the updated `opencode.jsonc`.
+3. **Admin tells the admin to restart `opencode-core`** -- the next session picks up the changed configuration directory and/or the updated `opencode.jsonc`.
 
 4. **Uninstall reverses the process** -- remove the file from the config directory or remove the entry from `opencode.jsonc`, then restart.
 
@@ -183,12 +189,12 @@ Each channel runs as a dedicated container in the Docker Compose stack. The cont
 - Enabling a channel involves three coordinated steps, all handled by the admin service:
   1. Write the channel's credentials to its env file.
   2. Update the Caddy reverse proxy to route traffic to the channel's endpoint, with the correct access level (private adds a LAN-only restriction rule; public removes it).
-  3. Tell the controller to start the channel's container via `docker compose up -d`.
+  3. Tell the admin to start the channel's container via `docker compose up -d`.
 - Disabling reverses the process: stop the container and remove or restrict the route.
 - Changing access level updates only the Caddy routing rule and reloads the proxy.
 
 **Security model:**
-- Each channel's container can only reach the Gateway on the internal Docker network. It cannot reach the AI assistant, memory service, admin, or controller directly.
+- Each channel's container can only reach the Gateway on the internal Docker network. It cannot reach the AI assistant, memory service, admin, or admin directly.
 - Every message is cryptographically signed. The Gateway rejects unsigned or incorrectly signed messages.
 - The Gateway applies per-user rate limiting (120 requests/minute) before any processing occurs.
 - The Gateway runs each inbound message through a restricted intake validation agent (which has no tool access) that checks for malformed input, unsafe content, and exfiltration attempts before the message reaches the main assistant.
@@ -227,7 +233,7 @@ Automations use standard Unix cron, running inside the `opencode-core` container
 3. The admin generates two artifacts:
    - A **JSON payload file** for the job (`cron-payloads/<id>.json`) containing the prompt, session ID, and metadata. This avoids shell-escaping issues -- cron invokes `curl -d @<file>` to read it directly.
    - A **crontab entry** that calls `curl` against the assistant's local HTTP endpoint (`http://localhost:4096/chat`) at the scheduled time with the payload file. OpenCode's [web/server mode](https://opencode.ai/docs/web/) exposes this HTTP API.
-4. The admin writes the complete crontab to a shared config volume and tells the controller to restart `opencode-core`, which installs the updated crontab on startup via its entrypoint script.
+4. The admin writes the complete crontab to a shared config volume and tells the admin to restart `opencode-core`, which installs the updated crontab on startup via its entrypoint script.
 
 **Execution:**
 - At the scheduled time, cron fires `curl` which sends the prompt to the assistant's HTTP API as a standard chat request.

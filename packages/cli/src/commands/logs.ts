@@ -1,5 +1,5 @@
-import { composeLogs } from "../lib/compose.ts";
-import { loadComposeConfig } from "../lib/config.ts";
+import { composeLogs } from "@openpalm/lib/compose.ts";
+import { loadComposeConfig } from "@openpalm/lib/config.ts";
 
 export async function logs(services?: string[]): Promise<void> {
   const config = await loadComposeConfig();

@@ -10,9 +10,9 @@ Detect regressions, feature drift, implementation gaps, and security violations 
 
 The following items from this plan are now implemented in-repo:
 
-- ✅ Layer 1 unit tests for gateway (`rate-limit`, `audit`, intake/security/client edge cases), controller routes, and channel adapters.
+- ✅ Layer 1 unit tests for gateway (`rate-limit`, `audit`, intake/security/client edge cases), admin routes, and channel adapters.
 - ✅ Layer 1 admin tests for `gallery` and `cron-store` (Automations backend).
-- ✅ Layer 2 integration suites for channel→gateway and admin→controller flows.
+- ✅ Layer 2 integration suites for channel→gateway and admin→admin flows.
 - ✅ Layer 3 contract suites for channel-message validation and docs parity checks.
 - ✅ Layer 4 security suites for auth, HMAC edge rejection, and input bounds.
 - ⚠️ Layer 5 admin UI Playwright tests are scaffolded under `admin/ui/tests/` and require expansion to full page-object coverage listed below.
@@ -40,7 +40,7 @@ Run: `bun test` — target < 5 seconds total.
 | `opencode-client.ts` | _(exists)_ | add: timeout behavior; non-200 status; malformed JSON response; retry-after headers |
 | `server.ts` | `server.test.ts` | `validatePayload` extracted or tested inline: missing fields, empty strings, text > 10k, unknown channel, valid payload |
 
-### Controller
+### Admin
 
 | Module | File | What to test |
 |--------|------|--------------|
@@ -106,16 +106,16 @@ Spin up a real gateway server + mock OpenCode Core server:
 | **Malformed payload** | partial JSON → 400 |
 | **Audit trail** | after each scenario, verify audit log file contains correct event |
 
-### 2b. Admin → Controller Integration
+### 2b. Admin → Admin Integration
 
-Spin up admin + mock controller:
+Spin up admin + mock admin:
 
 | Scenario | Assertions |
 |----------|------------|
 | Container list | admin proxies list correctly |
-| Restart service | admin sends restart, controller receives correct service name |
-| Disallowed service | controller rejects, admin surfaces error |
-| Auth cascade | missing admin token → 401; missing controller token → 401 |
+| Restart service | admin sends restart, admin receives correct service name |
+| Disallowed service | admin rejects, admin surfaces error |
+| Auth cascade | missing admin token → 401; missing admin token → 401 |
 
 ### 2c. Channel → Gateway Integration
 
@@ -139,7 +139,7 @@ Create a shared `test/contracts/` directory with:
 1. **`channel-message.schema.ts`** — Zod or hand-rolled validator for `ChannelMessage`
 2. **`intake-decision.schema.ts`** — validator for `IntakeDecision`
 3. **`admin-api.contracts.ts`** — expected status codes and response shapes for every admin endpoint
-4. **`controller-api.contracts.ts`** — expected status codes and response shapes for controller endpoints
+4. **`admin-api.contracts.ts`** — expected status codes and response shapes for admin endpoints
 
 ### What to test
 
@@ -148,7 +148,7 @@ Create a shared `test/contracts/` directory with:
 | Every channel adapter output matches `ChannelMessage` schema | Parse output with schema; fail on extra/missing fields |
 | Gateway error codes match docs | Trigger each documented error; verify exact error string and status |
 | Admin endpoints return documented shapes | Hit each endpoint; validate response against contract |
-| Controller allowed-service set matches docs | Compare `ALLOWED` set in code to `docs/api-reference.md` list |
+| Admin allowed-service set matches docs | Compare `ALLOWED` set in code to `docs/api-reference.md` list |
 
 ---
 
@@ -159,7 +159,7 @@ Run: `bun test --filter security`
 | Category | Tests |
 |----------|-------|
 | **HMAC** | Replay attack (same nonce rejected or at least doesn't bypass signature); empty signature rejected; truncated signature rejected |
-| **Auth** | Every admin endpoint without `x-admin-token` → 401; controller without `x-controller-token` → 401 |
+| **Auth** | Every admin endpoint without `x-admin-token` → 401; admin without `x-admin-token` → 401 |
 | **Input bounds** | text > 10,000 chars → 400; userId with injection chars handled; nonce length limits |
 | **Channel isolation** | channel-intake agent has tools denied (verify agent config); valid intake cannot escalate to tool use |
 | **Config safety** | `POST /admin/config` with permission widening to `allow` → rejected |
@@ -170,13 +170,13 @@ Run: `bun test --filter security`
 
 ## Layer 5: Admin UI Tests
 
-The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`) with hash-based routing, no framework. UI tests use Playwright (headless Chromium) against a real admin server with mocked backend dependencies (controller, gateway, opencode-core).
+The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`) with hash-based routing, no framework. UI tests use Playwright (headless Chromium) against a real admin server with mocked backend dependencies (admin, gateway, opencode-core).
 
 ### Test tooling
 
 - **Playwright** (`@playwright/test`) for browser automation
 - Real admin `Bun.serve()` instance started per test suite on a random port
-- Mock controller and mock gateway via `Bun.serve()` on random ports
+- Mock admin and mock gateway via `Bun.serve()` on random ports
 - Temp filesystem for admin state (setup.json, cron-store.json (Automations backend), config files)
 - Tests in `admin/ui/tests/` directory
 
@@ -203,7 +203,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | **Welcome step** | renders overview text; Next button enabled |
 | **Access scope step** | radio buttons for "Host only" / "LAN"; selection persists on Next/Back; calls `POST /admin/setup/access-scope` |
 | **Service instances step** | form fields for OpenMemory URL, Postgres URL, Qdrant URL, OpenAI endpoint, OpenAI API key; calls `POST /admin/setup/service-instances` on Next |
-| **Health check step** | shows status dots for gateway, controller, opencode-core, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
+| **Health check step** | shows status dots for gateway, admin, opencode-core, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
 | **Security step** | admin password input; password saved to localStorage; displays active protections list |
 | **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /admin/setup/channels` |
 | **Extensions step** | checkboxes for starter extensions (pre-checked by default); unchecking removes from selection |
@@ -242,7 +242,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 
 | Test | Assertions |
 |------|------------|
-| Health status grid | shows gateway, controller, opencode-core, openmemory, admin with dot indicators |
+| Health status grid | shows gateway, admin, opencode-core, openmemory, admin with dot indicators |
 | Healthy service dot | mock returns healthy → green dot |
 | Unhealthy service dot | mock returns error → red dot |
 | Channel cards | shows chat, discord, voice, telegram with access badge (LAN/PUBLIC) |
@@ -252,7 +252,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Container action: up | click Up → calls `POST /admin/containers/up` |
 | Container action: down | click Down → calls `POST /admin/containers/down` |
 | Container actions require auth | without token → error |
-| All known services listed | grid includes: gateway, opencode-core, openmemory, openmemory-ui, admin, controller, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
+| All known services listed | grid includes: gateway, opencode-core, openmemory, openmemory-ui, admin, admin, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
 
 ### 5f. Automations Page
 
@@ -365,7 +365,7 @@ Requires the full Docker Compose stack running (`bun run dev:up`).
 |------|------|
 | Chat roundtrip | POST `/channels/chat` → chat adapter → gateway → opencode-core → response |
 | Discord webhook roundtrip | POST `/channels/discord` → discord adapter → gateway → opencode-core → response |
-| Admin container lifecycle | `POST /admin/containers/restart` → controller restarts service → service comes back healthy |
+| Admin container lifecycle | `POST /admin/containers/restart` → admin restarts service → service comes back healthy |
 | Extension install/uninstall | install plugin via admin API → verify config updated → uninstall → verify removed |
 | Setup wizard flow | complete setup wizard steps in order → verify `setupComplete: true` |
 | Memory integration | send message → verify openmemory receives write-back → send follow-up → verify recall injected |
@@ -391,7 +391,7 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 | Guard | Implementation |
 |-------|---------------|
 | Allowed channels in gateway match docs | test reads `ALLOWED_CHANNELS` from source and compares to `docs/API.md` |
-| Allowed services in controller match docs | test reads `ALLOWED` set from source and compares to `docs/API.md` |
+| Allowed services in admin match docs | test reads `ALLOWED` set from source and compares to `docs/API.md` |
 | Docker compose services match architecture | test parses `docker-compose.yml` service names and compares to `docs/architecture.md` |
 | Channel adapter ports match docs | test reads each adapter's `PORT` default and compares to `docs/API.md` |
 | Admin UI nav tabs match implemented pages | test parses nav buttons in `index.html` and compares to `#page-*` divs |
@@ -499,7 +499,7 @@ test/
 │   ├── channel-message.contract.ts
 │   ├── intake-decision.contract.ts
 │   ├── admin-api.contract.test.ts
-│   └── controller-api.contract.test.ts
+│   └── admin-api.contract.test.ts
 ├── security/                       # security tests (Layer 4)
 │   ├── hmac.security.test.ts
 │   ├── auth.security.test.ts
@@ -515,7 +515,7 @@ test/
 └── helpers/
     ├── mock-gateway.ts             # reusable mock Bun.serve() for gateway
     ├── mock-opencode.ts            # reusable mock for opencode-core
-    ├── mock-controller.ts          # reusable mock for controller
+    ├── mock-admin.ts          # reusable mock for admin
     └── fixtures.ts                 # shared test data (valid payloads, tokens, etc.)
 ```
 
@@ -545,7 +545,7 @@ test/
 ## Priority Order for Implementation
 
 1. **Shared test helpers** (`test/helpers/`) — mock servers, fixtures, factory functions
-2. **Missing unit tests** — rate-limit, audit, controller, channel adapters (highest coverage gap)
+2. **Missing unit tests** — rate-limit, audit, admin, channel adapters (highest coverage gap)
 3. **Contract tests** — catch drift between docs and implementation
 4. **Gateway integration tests** — the most critical path (channel → intake → core)
 5. **Security tests** — HMAC, auth, input bounds
@@ -562,7 +562,7 @@ test/
 |-------|---------|--------|
 | Gateway unit | ~40% (3 of 6 modules) | 100% |
 | Admin unit | ~50% (3 of 6 modules) | 100% |
-| Controller unit | 0% | 100% |
+| Admin unit | 0% | 100% |
 | Channel adapters unit | 0% | 100% (all 4) |
 | Admin UI | 0% | all pages, all CRUD flows, auth, errors |
 | Integration | 0% | all critical paths |

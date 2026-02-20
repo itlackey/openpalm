@@ -1,3 +1,7 @@
+## API Status
+
+Lifecycle operations are exposed via Admin endpoints with allowlisted operations and service validation.
+
 # API Reference
 
 ## Gateway API (internal; channel adapters call gateway directly on the Docker network)
@@ -108,7 +112,7 @@ Health status for the admin app.
   ```json
   { "pluginId": "@scope/plugin-name" }
   ```
-  Delegates to atomic config update or controller depending on `installAction` type.
+  Delegates to atomic config update  depending on `installAction` type.
 - `POST /admin/gallery/uninstall` — uninstall a gallery item or plugin
   ```json
   { "galleryId": "plugin-policy-telemetry" }
@@ -144,9 +148,9 @@ These are available on the internal Docker network for service-to-service API/MC
 
 ---
 
-## Controller API (internal only, not exposed via Caddy)
+## Admin lifecycle API
 
-Header: `x-controller-token` (required)
+Header: `x-admin-token` (required)
 
 Runtime behavior:
 - Uses configured compose command from `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`

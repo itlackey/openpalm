@@ -96,8 +96,8 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 - Gallery (`admin/src/gallery.ts`) no longer contains references to non-existent files
 - All install targets now exist in the repository
 
-### 2.3 R3 - Controller Dynamic Allowlist ✅ FIXED
-- `controller/server.ts:17-21` now supports `OPENPALM_EXTRA_SERVICES` environment variable
+### 2.3 R3 - Admin Dynamic Allowlist ✅ FIXED
+- `admin/server.ts:17-21` now supports `OPENPALM_EXTRA_SERVICES` environment variable
 - Community container extensions can now be managed
 
 ### 2.4 R4 - Plugin Location ✅ FIXED
@@ -157,10 +157,10 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 
 ---
 
-### 3.6 Missing: Controller Cron Jobs in Architecture Doc
-**Gap:** `architecture.md` doesn't mention the maintenance cron jobs that run in the controller container.
+### 3.6 Missing: Admin Cron Jobs in Architecture Doc
+**Gap:** `architecture.md` doesn't mention the maintenance cron jobs that run in the admin container.
 
-**Implementation:** `controller/entrypoint.sh:8-36` defines 8 cron jobs:
+**Implementation:** `admin/entrypoint.sh:8-36` defines 8 cron jobs:
 - Pull and restart (daily 3:15)
 - Log rotation (hourly at :17)
 - Image prune (weekly Sunday 3:45)
@@ -170,7 +170,7 @@ welcome, accessScope, serviceInstances, healthCheck, security, channels, extensi
 - Filesystem cleanup (daily 4:10)
 - Metrics report (every 5 min)
 
-Note: these are infrastructure maintenance jobs in the controller container, distinct from user-facing Automations (scheduled prompts in opencode-core).
+Note: these are infrastructure maintenance jobs in the admin container, distinct from user-facing Automations (scheduled prompts in opencode-core).
 
 **Recommendation:** Add cron-based maintenance to architecture documentation.
 
@@ -251,4 +251,4 @@ The documentation is in good shape overall. The main areas needing attention are
 
 1. **Updating `extensions-reference.md`** - Reflect current gateway agent configuration (agent is passed as parameter, not defined in config)
 2. **Adding `serviceInstances` to setup wizard steps** - The documentation is missing this step
-3. **Filling the 11 documentation gaps** - Especially around config layering, Automations (controller maintenance vs user-facing), Automations API endpoints, and the Connections concept
+3. **Filling the 11 documentation gaps** - Especially around config layering, Automations (admin maintenance vs user-facing), Automations API endpoints, and the Connections concept

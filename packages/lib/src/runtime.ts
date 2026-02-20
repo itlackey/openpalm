@@ -1,4 +1,4 @@
-import type { ContainerPlatform, HostOS, HostArch } from "../types.ts";
+import type { ContainerPlatform, HostOS, HostArch } from "./types.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 

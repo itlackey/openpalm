@@ -17,8 +17,8 @@
 | Agent | medium | `agents/<name>.md` | Specialized assistant persona |
 | Custom Tool | medium-high | `tools/<name>.ts` | TypeScript LLM-callable function |
 | Plugin | highest | `plugins/<name>.ts` | TypeScript lifecycle hooks |
-| Channel | medium | compose service (`channel-*`) | Optional adapter extension surfaced in the gallery and managed by controller/admin |
-| Service | medium-high | compose service (`service-*` or third-party images) | Optional infrastructure extension surfaced in the gallery and managed by controller/admin |
+| Channel | medium | compose service (`channel-*`) | Optional adapter extension surfaced in the gallery and managed by admin |
+| Service | medium-high | compose service (`service-*` or third-party images) | Optional infrastructure extension surfaced in the gallery and managed by admin |
 
 Extensions are managed via the mounted config directory (`OPENCODE_CONFIG_DIR`). OpenCode auto-discovers each sub-type from its respective subdirectory: `plugins/`, `skills/`, `agents/`, `commands/`, and `tools/`. The `plugin[]` array in `opencode.jsonc` is **specifically for registering Plugin-type extensions and npm packages** — it does not cover Skills, Commands, Agents, or Custom Tools, which are discovered purely from the filesystem.
 
@@ -157,7 +157,7 @@ Use the `calendar.ping` tool to verify that the calendar-sync plugin is ready.
 - OpenCode extension documentation: https://opencode.ai/docs/plugins
 - Gateway main code: https://github.com/itlackey/openpalm/blob/main/gateway/src/server.ts
 - Admin main code: https://github.com/itlackey/openpalm/blob/main/admin/src/server.ts
-- Controller main code: https://github.com/itlackey/openpalm/blob/main/controller/server.ts
+- Admin main code: https://github.com/itlackey/openpalm/blob/main/admin/server.ts
 
 ### Reference architecture (brief)
 
@@ -166,8 +166,8 @@ Use the `calendar.ping` tool to verify that the calendar-sync plugin is ready.
 - Users can override or supplement baked-in extensions by mounting a volume at `/config` inside the container — files present there take precedence over image defaults.
 - The installer leaves `~/.config/openpalm/opencode-core/` empty by default. The opencode-core entrypoint populates missing defaults at runtime without overwriting user files.
 - The Gateway is the security/routing layer: it runs a 6-step pipeline (HMAC verification, payload validation, rate limiting at 120 req/min per user, intake validation via restricted agent, forward to assistant, audit log).
-- Admin manages config/extensions and invokes the controller for lifecycle actions.
-- Controller is the only container-control plane component and executes compose operations.
+- Admin manages config/extensions and invokes the admin for lifecycle actions.
+- Admin is the only container-control plane component and executes compose operations.
 
 ---
 
@@ -234,8 +234,8 @@ Each channel adapter:
 
 1. Add the service to `docker-compose.yml` with a unique service name.
 2. Set `GATEWAY_URL=http://gateway:8080` in the service's environment.
-3. Add the service name to `OPENPALM_EXTRA_SERVICES` so the controller
-   can manage it (see the controller's dynamic allowlist).
+3. Add the service name to `OPENPALM_EXTRA_SERVICES` so the admin
+   can manage it (see the admin's dynamic allowlist).
 4. Add a gallery entry in `admin/src/gallery.ts` under the `channel`
    category so it appears in the admin UI.
 
@@ -262,7 +262,7 @@ normalises them, POSTs to `/channel/inbound`, and returns the response.
 
 - A Docker image published to a registry (or built locally).
 - Environment variables for platform credentials (API keys, webhook secrets). Store these as Connections in `secrets.env` via the admin API — never bake credentials into images.
-- A health endpoint at `/health` for the controller to monitor.
+- A health endpoint at `/health` for the admin to monitor.
 
 ### C) What the platform enforces
 

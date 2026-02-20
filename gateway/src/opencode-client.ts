@@ -25,8 +25,8 @@ export class OpenCodeClient {
   constructor(private readonly baseUrl: string) {}
 
   async send(req: AgentRequest): Promise<AgentResponse> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    const aborter = new AbortController();
+    const timeout = setTimeout(() => aborter.abort(), DEFAULT_TIMEOUT_MS);
 
     try {
       const resp = await fetch(`${this.baseUrl}/chat`, {
@@ -35,7 +35,7 @@ export class OpenCodeClient {
           "content-type": "application/json",
           "x-client": "openpalm-gateway",
         },
-        signal: controller.signal,
+        signal: aborter.signal,
         body: JSON.stringify({
           message: req.message,
           session_id: req.sessionId,

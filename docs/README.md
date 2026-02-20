@@ -8,7 +8,7 @@ If you are new to OpenPalm, read the docs in this order:
 2. **[Admin Guide](admin-guide.md)** -- Set up and manage your OpenPalm instance.
 3. **[Extensions Guide](extensions-guide.md)** -- Add capabilities to your assistant with skills, commands, agents, tools, and plugins.
 4. **[Architecture](architecture.md)** -- Understand how the containers, gateway, and services fit together.
-5. **[API Reference](api-reference.md)** -- Integrate programmatically with the gateway, admin, and controller APIs.
+5. **[API Reference](api-reference.md)** -- Integrate programmatically with the gateway and admin APIs.
 
 ## All documentation
 
@@ -19,7 +19,8 @@ If you are new to OpenPalm, read the docs in this order:
 | [Admin Concepts](admin-concepts.md) | Key concepts for administrators |
 | [Admin Guide](admin-guide.md) | Installer details, admin console, authentication |
 | [Architecture](architecture.md) | Container inventory, data flow diagrams, URL routing |
-| [API Reference](api-reference.md) | All service endpoints: gateway, admin, controller, channels |
+| [Architecture Simplification Plan](architecture-simplification-plan.md) | Gap analysis and phased plan to complete stack-spec/generator simplification work |
+| [API Reference](api-reference.md) | Service endpoints and payloads for gateway, admin, and channels |
 | [Extensions Guide](extensions-guide.md) | How to build and install extensions (developer tutorial) |
 | [Extensions Reference](extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 | [Extensions Analysis](extensions-analysis.md) | Architecture analysis of the extension system (design rationale) |

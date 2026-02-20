@@ -1,14 +1,15 @@
 import { join } from "node:path";
 import { copyFile, chmod } from "node:fs/promises";
-import type { InstallOptions, ComposeConfig } from "../types.ts";
-import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "../lib/runtime.ts";
-import { resolveXDGPaths, createDirectoryTree } from "../lib/paths.ts";
-import { upsertEnvVar, generateEnvFromTemplate } from "../lib/env.ts";
-import { generateToken } from "../lib/tokens.ts";
-import { composePull, composeUp } from "../lib/compose.ts";
-import { resolveAssets, seedFile, seedConfigFiles, cleanupTempAssets } from "../lib/assets.ts";
-import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "../lib/detect-providers.ts";
-import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, select } from "../lib/ui.ts";
+import type { InstallOptions } from "../types.ts";
+import type { ComposeConfig } from "@openpalm/lib/types.ts";
+import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
+import { resolveXDGPaths, createDirectoryTree } from "@openpalm/lib/paths.ts";
+import { upsertEnvVar, generateEnvFromTemplate } from "@openpalm/lib/env.ts";
+import { generateToken } from "@openpalm/lib/tokens.ts";
+import { composePull, composeUp } from "@openpalm/lib/compose.ts";
+import { resolveAssets, seedFile, seedConfigFiles, cleanupTempAssets } from "@openpalm/lib/assets.ts";
+import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "@openpalm/lib/detect-providers.ts";
+import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, select } from "@openpalm/lib/ui.ts";
 
 export async function install(options: InstallOptions): Promise<void> {
   // ============================================================================

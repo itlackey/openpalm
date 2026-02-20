@@ -9,7 +9,7 @@ import {
   resolveAssets,
   downloadAssets,
   cleanupTempAssets,
-} from "../src/lib/assets";
+} from "@openpalm/lib/assets.ts";
 
 // Track temp directories for cleanup
 const tempDirs: string[] = [];

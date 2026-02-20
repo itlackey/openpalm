@@ -8,7 +8,8 @@ import { AutomationStore, validateCron } from "./automation-store.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "./lib/stack-manager.ts";
-import { composeAction, composeList } from "./lib/compose-runner.ts";
+import { composeAction, composeList, composeLogs, composePull, composeServiceNames } from "./lib/compose-runner.ts";
+import { applyStack, previewComposeOperations } from "./lib/stack-apply-engine.ts";
 import type { GalleryCategory } from "./gallery.ts";
 import type { ModelAssignment } from "./types.ts";
 
@@ -26,6 +27,7 @@ const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? "/app/config/openco
 const DATA_DIR = Bun.env.DATA_DIR ?? "/app/data";
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? "/app/config/Caddyfile";
+const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? "/app/config/caddy/routes";
 const CHANNEL_ENV_DIR = Bun.env.CHANNEL_ENV_DIR ?? "/app/channel-env";
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
@@ -57,10 +59,15 @@ const automationStore = new AutomationStore(DATA_DIR, CRON_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
 const stackManager = new StackManager({
   caddyfilePath: CADDYFILE_PATH,
+  caddyRoutesDir: CADDY_ROUTES_DIR,
   secretsEnvPath: SECRETS_ENV_PATH,
   stackSpecPath: STACK_SPEC_PATH,
   channelSecretDir: CHANNEL_SECRET_DIR,
   gatewayChannelSecretsPath: GATEWAY_CHANNEL_SECRETS_PATH,
+  gatewayRuntimeSecretsPath: Bun.env.GATEWAY_RUNTIME_SECRETS_PATH ?? "/app/config-root/secrets/gateway/gateway.env",
+  openmemorySecretsPath: Bun.env.OPENMEMORY_SECRETS_PATH ?? "/app/config-root/secrets/openmemory/openmemory.env",
+  postgresSecretsPath: Bun.env.POSTGRES_SECRETS_PATH ?? "/app/config-root/secrets/db/postgres.env",
+  opencodeProviderSecretsPath: Bun.env.OPENCODE_PROVIDER_SECRETS_PATH ?? "/app/config-root/secrets/opencode/providers.env",
   channelEnvDir: CHANNEL_ENV_DIR,
   composeFilePath: COMPOSE_FILE_PATH,
   opencodeConfigPath: OPENCODE_CONFIG_PATH,
@@ -425,14 +432,31 @@ const server = Bun.serve({
       if (url.pathname === "/admin/stack/apply" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { apply?: boolean };
-        const generated = stackManager.renderArtifacts();
-        const secretErrors = stackManager.validateEnabledChannelSecrets();
-        const impact = { reload: ["caddy"], restart: [] as string[] };
-        if (secretErrors.length > 0) {
-          return cors(json(400, { error: "secret_validation_failed", details: secretErrors, impact }));
+        try {
+          const result = await applyStack(stackManager, { apply: body.apply ?? true });
+          return cors(json(200, result));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.startsWith("secret_validation_failed:")) {
+            return cors(json(400, { error: "secret_validation_failed", details: message.replace("secret_validation_failed:", "").split(",") }));
+          }
+          if (message.startsWith("compose_validation_failed:")) {
+            return cors(json(400, { error: "compose_validation_failed", details: message.replace("compose_validation_failed:", "") }));
+          }
+          return cors(json(500, { error: "stack_apply_failed", details: message }));
         }
-        if (body.apply ?? true) await composeAction("restart", "caddy");
-        return cors(json(200, { ok: true, generated, impact }));
+      }
+
+      if (url.pathname === "/admin/stack/impact" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const result = await applyStack(stackManager, { apply: false });
+        return cors(json(200, { ok: true, impact: result.impact, warnings: result.warnings }));
+      }
+
+      if (url.pathname === "/admin/compose/capabilities" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const preview = await previewComposeOperations();
+        return cors(json(200, { ok: true, ...preview }));
       }
 
       if (url.pathname === "/admin/secrets/map" && req.method === "GET") {

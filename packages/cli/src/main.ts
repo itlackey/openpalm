@@ -9,7 +9,7 @@ import { restart } from "./commands/restart.ts";
 import { logs } from "./commands/logs.ts";
 import { status } from "./commands/status.ts";
 import { extensions } from "./commands/extensions.ts";
-import { log, error, bold, dim } from "./lib/ui.ts";
+import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 
 const VERSION = "0.0.5";
 
