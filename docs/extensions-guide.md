@@ -3,8 +3,8 @@
 
 > **Related extension docs:**
 > - **extensions-guide.md** (this file) -- How to build and install extensions (developer tutorial)
-> - [extensions-reference.md](extensions-reference.md) -- Technical reference for all extension types (API/schema details)
-> - [extensions-analysis.md](extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
+> - [extensions-reference.md](refenence/extensions-reference.md) -- Technical reference for all extension types (API/schema details)
+> - [extensions-analysis.md](draft/extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
 
 ## 1) Concept: Extensions and the `OPENCODE_CONFIG_DIR`
 

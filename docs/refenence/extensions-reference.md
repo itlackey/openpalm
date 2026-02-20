@@ -1,9 +1,9 @@
 # OpenPalm Extensions: Installation, Configuration, and Management
 
 > **Related extension docs:**
-> - [extensions-guide.md](extensions-guide.md) -- How to build and install extensions (developer tutorial)
+> - [extensions-guide.md](../extensions-guide.md) -- How to build and install extensions (developer tutorial)
 > - **extensions-reference.md** (this file) -- Technical reference for all extension types (API/schema details)
-> - [extensions-analysis.md](extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
+> - [extensions-analysis.md](../draft/extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
 
 This document provides a complete end-to-end reference for how extensions are authored, distributed, installed, configured, loaded at runtime, and removed in an OpenPalm stack.
 

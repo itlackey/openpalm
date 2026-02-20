@@ -13,21 +13,26 @@ The platform is built around five concepts:
 - **Automations** -- scheduled prompts that run on a cron schedule without user interaction
 - **Gateway** -- security and routing layer between channels and the assistant
 
+## Project Requirements
+
+- Simplicity as a primary goal, for UX, DX, and architecture. If it is complex, you are doing it wrong.
+- The openpalm tools (CLI, Admin, etc) exist to manage configuration for known technologies. They should not be complicated. Their primary goal is to take a simple spec and convert it to the necessary configuration and file system resources.
+- Clarity, simplicity, and security should be central to all decisions and implementations.
+
 ## Directory Structure
 
 ```
-/home/founder3/code/github/itlackey/openpalm
-├── admin/              # Admin UI service
-├── controller/        # Docker compose controller
-├── gateway/           # Main API gateway (entry point)
-├── channels/          # Channel adapters
+./openpalm
+├── admin/          # Admin UI service
+├── channels/       # Channel adapters
 │   ├── chat/
 │   ├── discord/
 │   ├── telegram/
 │   ├── voice/
 │   └── webhook/
-├── opencode/          # OpenCode extensions
-└── assets/            # Config templates, scripts, state
+├── gateway/       # Main API gateway (entry point)
+├── opencode/      # OpenCode extensions
+└── assets/        # Templates, scripts, state
 ```
 
 ## Build, Test, and Development Commands

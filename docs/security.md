@@ -93,4 +93,4 @@ The SSH port binding is configured in `docker-compose.yml` as:
 
 ---
 
-For architecture and route details, see [architecture.md](./architecture.md). For API controls, see [api-reference.md](./api-reference.md).
+For architecture and route details, see [architecture.md](./development/architecture.md). For API controls, see [api-reference.md](./development/api-reference.md).

@@ -77,6 +77,6 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `admi
 
 ## Still stuck?
 
-- Check the [Architecture guide](architecture.md) to understand how services connect.
+- Check the [Architecture guide](development/architecture.md) to understand how services connect.
 - Review [Admin Guide](admin-guide.md) for configuration details.
 - Open an issue at [github.com/itlackey/openpalm](https://github.com/itlackey/openpalm/issues).
