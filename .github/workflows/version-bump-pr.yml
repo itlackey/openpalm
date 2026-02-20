@@ -1,0 +1,134 @@
+name: Version bump PR
+
+# Creates a pull request with the version bump, allowing review before release.
+# After the PR merges, manually push the tag (or use the Release workflow for
+# direct tagging).
+#
+# This is the "safe" path — use the Release workflow for a faster direct release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "What to version-bump"
+        required: true
+        type: choice
+        options:
+          - platform
+          - opencode-core
+          - gateway
+          - admin
+          - channel-chat
+          - channel-discord
+          - channel-voice
+          - channel-telegram
+          - cli
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        run: bun run scripts/version.ts bump ${{ inputs.component }} ${{ inputs.bump }}
+
+      - name: Read new version
+        id: version
+        run: |
+          if [ "${{ inputs.component }}" = "platform" ]; then
+            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).platform)")
+            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
+          else
+            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).components['${{ inputs.component }}'])")
+            echo "version=${VER}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ inputs.component }}/v${VER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create branch and commit
+        run: |
+          BRANCH="release/${{ inputs.component }}/v${{ steps.version.outputs.version }}"
+          git checkout -b "${BRANCH}"
+          git add -A
+          if [ "${{ inputs.component }}" = "platform" ]; then
+            git commit -m "release: bump platform to v${{ steps.version.outputs.version }}"
+          else
+            git commit -m "release(${{ inputs.component }}): bump to v${{ steps.version.outputs.version }}"
+          fi
+          git push -u origin "${BRANCH}"
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMPONENT="${{ inputs.component }}"
+          VER="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+
+          if [ "${COMPONENT}" = "platform" ]; then
+            TITLE="release: platform v${VER}"
+            BODY="## Platform Release v${VER}
+
+          Bumps **all components** to version \`${VER}\`.
+
+          ### After merging
+
+          Create and push the release tag to trigger CI publishing:
+
+          \`\`\`bash
+          git pull origin main
+          git tag -a '${TAG}' -m 'Release ${TAG}'
+          git push origin '${TAG}'
+          \`\`\`
+
+          Or use the **Release** workflow dispatch with the same parameters to tag directly."
+          else
+            TITLE="release(${COMPONENT}): v${VER}"
+            BODY="## Component Release: ${COMPONENT} v${VER}
+
+          Bumps **${COMPONENT}** to version \`${VER}\`.
+
+          ### After merging
+
+          Create and push the release tag to trigger CI publishing:
+
+          \`\`\`bash
+          git pull origin main
+          git tag -a '${TAG}' -m 'Release ${COMPONENT} ${TAG}'
+          git push origin '${TAG}'
+          \`\`\`
+
+          Or use the **Release** workflow dispatch with the same parameters to tag directly."
+          fi
+
+          gh pr create \
+            --title "${TITLE}" \
+            --body "${BODY}" \
+            --label "release"

@@ -1,12 +1,29 @@
 name: Publish Docker images
 
-# Releases are controlled via version tags. Push a v* tag to trigger.
-# Manual dispatch also requires a v* version string.
+# Releases are controlled via version tags:
+#   v*                    → platform release  (all images)
+#   opencode-core/v*      → single component release
+#   gateway/v*            → single component release
+#   admin/v*              → single component release
+#   channel-chat/v*       → single component release
+#   channel-discord/v*    → single component release
+#   channel-voice/v*      → single component release
+#   channel-telegram/v*   → single component release
+#
+# Manual dispatch accepts a version string and optional component filter.
 # Registry changes (registry/*.json) NEVER trigger this workflow.
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
+      - "opencode-core/v*"
+      - "gateway/v*"
+      - "admin/v*"
+      - "channel-chat/v*"
+      - "channel-discord/v*"
+      - "channel-voice/v*"
+      - "channel-telegram/v*"
 
   workflow_dispatch:
     inputs:
@@ -14,86 +31,102 @@ on:
         description: "Release version (must start with v, e.g. v1.2.0)"
         required: true
         type: string
+      component:
+        description: "Component to publish (leave empty for all)"
+        required: false
+        type: choice
+        default: "all"
+        options:
+          - all
+          - opencode-core
+          - gateway
+          - admin
+          - channel-chat
+          - channel-discord
+          - channel-voice
+          - channel-telegram
 
 jobs:
-  # Gate: abort early if manual dispatch version doesn't match v*
-  validate-version:
-    if: github.event_name != 'workflow_dispatch' || startsWith(github.event.inputs.version, 'v')
+  # -----------------------------------------------------------------------
+  # Determine which images to build and the version tag to apply.
+  # Outputs a JSON matrix consumed by the publish job.
+  # -----------------------------------------------------------------------
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.result }}
+      version_tag: ${{ steps.resolve.outputs.tag }}
+      images: ${{ steps.matrix.outputs.images }}
     steps:
-      - run: echo "Version OK — ${{ github.event.inputs.version || github.ref_name }}"
+      - name: Resolve version tag and component
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.version }}"
+            COMPONENT="${{ github.event.inputs.component }}"
+          else
+            REF="${{ github.ref_name }}"
+            # Check if it's a component-specific tag (contains /)
+            if echo "${REF}" | grep -q '/'; then
+              COMPONENT="${REF%%/v*}"
+              TAG="${REF#*/}"
+            else
+              COMPONENT="all"
+              TAG="${REF}"
+            fi
+          fi
 
+          if ! echo "${TAG}" | grep -qE '^v'; then
+            echo "::error::Version tag must start with 'v', got: ${TAG}"
+            exit 1
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "component=${COMPONENT}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${TAG}, Component: ${COMPONENT}"
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          COMPONENT="${{ steps.resolve.outputs.component }}"
+
+          # Full list of images with their build contexts
+          ALL_IMAGES='[
+            {"image":"opencode-core","context":"./opencode"},
+            {"image":"gateway","context":"./gateway"},
+            {"image":"admin","context":"./admin"},
+            {"image":"channel-chat","context":"./channels/chat"},
+            {"image":"channel-discord","context":"./channels/discord"},
+            {"image":"channel-voice","context":"./channels/voice"},
+            {"image":"channel-telegram","context":"./channels/telegram"}
+          ]'
+
+          if [ "${COMPONENT}" = "all" ]; then
+            FILTERED="${ALL_IMAGES}"
+          else
+            FILTERED=$(echo "${ALL_IMAGES}" | jq -c "[.[] | select(.image == \"${COMPONENT}\")]")
+          fi
+
+          # Expand each image into two entries (amd64 + arm64)
+          MATRIX=$(echo "${FILTERED}" | jq -c '{include: [.[] | . as $base | ("amd64","arm64") as $arch | {image: $base.image, context: $base.context, platform: ("linux/" + $arch), arch: $arch}]}')
+
+          # Also output just the unique image names for the manifest job
+          IMAGES=$(echo "${FILTERED}" | jq -c '[.[].image]')
+
+          echo "result=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "images=${IMAGES}" >> "$GITHUB_OUTPUT"
+          echo "Matrix: ${MATRIX}"
+          echo "Images: ${IMAGES}"
+
+  # -----------------------------------------------------------------------
+  # Build and push per-arch images
+  # -----------------------------------------------------------------------
   publish:
-    needs: validate-version
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - image: opencode-core
-            context: ./opencode
-            platform: linux/amd64
-            arch: amd64
-          - image: opencode-core
-            context: ./opencode
-            platform: linux/arm64
-            arch: arm64
-          - image: gateway
-            context: ./gateway
-            platform: linux/amd64
-            arch: amd64
-          - image: gateway
-            context: ./gateway
-            platform: linux/arm64
-            arch: arm64
-          - image: admin
-            context: ./admin
-            platform: linux/amd64
-            arch: amd64
-          - image: admin
-            context: ./admin
-            platform: linux/arm64
-            arch: arm64
-          - image: controller
-            context: ./controller
-            platform: linux/amd64
-            arch: amd64
-          - image: controller
-            context: ./controller
-            platform: linux/arm64
-            arch: arm64
-          - image: channel-chat
-            context: ./channels/chat
-            platform: linux/amd64
-            arch: amd64
-          - image: channel-chat
-            context: ./channels/chat
-            platform: linux/arm64
-            arch: arm64
-          - image: channel-discord
-            context: ./channels/discord
-            platform: linux/amd64
-            arch: amd64
-          - image: channel-discord
-            context: ./channels/discord
-            platform: linux/arm64
-            arch: arm64
-          - image: channel-voice
-            context: ./channels/voice
-            platform: linux/amd64
-            arch: amd64
-          - image: channel-voice
-            context: ./channels/voice
-            platform: linux/arm64
-            arch: arm64
-          - image: channel-telegram
-            context: ./channels/telegram
-            platform: linux/amd64
-            arch: amd64
-          - image: channel-telegram
-            context: ./channels/telegram
-            platform: linux/arm64
-            arch: arm64
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     permissions:
       contents: read
     steps:
@@ -109,15 +142,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Resolve version tag
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -127,33 +151,28 @@ jobs:
             suffix=-${{ matrix.arch }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ steps.version.outputs.tag }}
+            type=raw,value=${{ needs.prepare.outputs.version_tag }}
             type=sha
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
+          file: ${{ matrix.context }}/Dockerfile
           push: true
           platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  publish-latest-manifests:
-    needs: publish
+  # -----------------------------------------------------------------------
+  # Create multi-arch manifests (latest + version tag)
+  # -----------------------------------------------------------------------
+  publish-manifests:
+    needs: [prepare, publish]
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image:
-          - opencode-core
-          - gateway
-          - admin
-          - controller
-          - channel-chat
-          - channel-discord
-          - channel-voice
-          - channel-telegram
+        image: ${{ fromJson(needs.prepare.outputs.images) }}
     permissions:
       contents: read
     steps:
@@ -166,15 +185,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Resolve version tag
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create latest manifest
         run: |
           IMAGE="${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}"
@@ -186,7 +196,7 @@ jobs:
       - name: Create version manifest
         run: |
           IMAGE="${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}"
-          TAG="${{ steps.version.outputs.tag }}"
+          TAG="${{ needs.prepare.outputs.version_tag }}"
           docker buildx imagetools create \
             -t "${IMAGE}:${TAG}" \
             "${IMAGE}:${TAG}-amd64" \
