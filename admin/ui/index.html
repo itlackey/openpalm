@@ -873,10 +873,10 @@ async function loadSystem() {
   h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
   h += '<span class="arrow">&#9654;</span> Developer Tools</h3>';
   h += '<div class="collapse-body hidden">';
-  const opencodeUrl = '/admin/assistant/';
+  const assistantUrl = '/admin/opencode/';
   const openmemoryUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
   h += '<div style="display:flex;flex-direction:column;gap:.5rem">';
-  h += '<a href="' + esc(opencodeUrl) + '" target="_blank">Open OpenCode UI</a>';
+  h += '<a href="' + esc(assistantUrl) + '" target="_blank">Open OpenCode UI</a>';
   h += '<a href="' + esc(openmemoryUrl) + '" target="_blank">Open Memory Dashboard</a>';
   h += '</div>';
   h += '</div></div>';
