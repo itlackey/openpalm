@@ -1,14 +1,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
-import { channelEnvSecretVariable, ensureStackSpec, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
+import { ensureStackSpec, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
-import type { ConnectionType, StackSpec } from "./stack-spec.ts";
+import type { ChannelExposure, StackSpec } from "./stack-spec.ts";
 
 export type ChannelName = "chat" | "discord" | "voice" | "telegram";
 
 const Channels: ChannelName[] = ["chat", "discord", "voice", "telegram"];
-const ConnectionTypes: ConnectionType[] = ["ai_provider", "platform", "api_service"];
 
 export type StackManagerPaths = {
   caddyfilePath: string;
@@ -47,7 +46,7 @@ export class StackManager {
     return spec;
   }
 
-  getChannelAccess(channel: ChannelName): "lan" | "public" {
+  getChannelAccess(channel: ChannelName): ChannelExposure {
     return this.getSpec().channels[channel].exposure;
   }
 
@@ -55,7 +54,7 @@ export class StackManager {
     return { ...this.getSpec().channels[channel].config };
   }
 
-  setChannelAccess(channel: ChannelName, access: "lan" | "public") {
+  setChannelAccess(channel: ChannelName, access: ChannelExposure) {
     const spec = this.getSpec();
     spec.channels[channel].enabled = true;
     spec.channels[channel].exposure = access;
@@ -116,26 +115,17 @@ export class StackManager {
     return generated;
   }
 
-  setChannelSharedSecret(channel: ChannelName, secret: string) {
-    const spec = this.getSpec();
-    const entries: Record<string, string | undefined> = {
-      [spec.secrets.gatewayChannelSecrets[channel]]: secret || undefined,
-      [spec.secrets.channelServiceSecrets[channel]]: secret || undefined,
-    };
-    this.updateSecretsEnv(entries);
-    this.renderArtifacts();
-  }
-
-  validateEnabledChannelSecrets() {
+  validateReferencedSecrets() {
     const spec = this.getSpec();
     const availableSecrets = this.readSecretsEnv();
     const errors: string[] = [];
     for (const channel of Channels) {
       if (!spec.channels[channel].enabled) continue;
-      const gatewayKey = spec.secrets.gatewayChannelSecrets[channel];
-      const channelKey = spec.secrets.channelServiceSecrets[channel];
-      if (!availableSecrets[gatewayKey]) errors.push(`missing_gateway_secret_${channel}`);
-      if (!availableSecrets[channelKey]) errors.push(`missing_channel_secret_${channel}`);
+      for (const [key, value] of Object.entries(spec.channels[channel].config)) {
+        const ref = parseSecretReference(value);
+        if (!ref) continue;
+        if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${channel}_${key}_${ref}`);
+      }
     }
     return errors;
   }
@@ -151,32 +141,24 @@ export class StackManager {
       usedBy.set(item.key, list);
     }
 
-    for (const connection of spec.connections) {
-      for (const secretRef of Object.values(connection.env)) {
-        const list = usedBy.get(secretRef) ?? [];
-        list.push(`connection:${connection.id}`);
-        usedBy.set(secretRef, list);
-      }
-    }
-
     for (const channel of Channels) {
-      for (const [target, key] of [["gateway", spec.secrets.gatewayChannelSecrets[channel]], ["channel", spec.secrets.channelServiceSecrets[channel]]]) {
-        const list = usedBy.get(key) ?? [];
-        list.push(`${target}:${channel}`);
-        usedBy.set(key, list);
+      for (const [key, value] of Object.entries(spec.channels[channel].config)) {
+        const ref = parseSecretReference(value);
+        if (!ref) continue;
+        const list = usedBy.get(ref) ?? [];
+        list.push(`channel:${channel}:${key}`);
+        usedBy.set(ref, list);
       }
     }
 
     const uniqueNames = Array.from(new Set([
       ...Object.keys(secretValues),
-      ...Object.values(spec.secrets.gatewayChannelSecrets),
-      ...Object.values(spec.secrets.channelServiceSecrets),
-      ...spec.connections.flatMap((connection) => Object.values(connection.env)),
+      ...Array.from(usedBy.keys()),
       ...CoreSecretRequirements.map((item) => item.key),
     ])).sort();
+
     return {
       available: uniqueNames,
-      mappings: spec.secrets,
       requiredCore: CoreSecretRequirements,
       secrets: uniqueNames.map((name) => ({
         name,
@@ -204,71 +186,11 @@ export class StackManager {
   deleteSecret(nameRaw: unknown) {
     const name = sanitizeEnvScalar(nameRaw).toUpperCase();
     if (!this.isValidSecretName(name)) throw new Error("invalid_secret_name");
-    const spec = this.getSpec();
-    const usedByChannel = Channels.some((channel) => spec.secrets.gatewayChannelSecrets[channel] === name || spec.secrets.channelServiceSecrets[channel] === name);
     const usedByCore = CoreSecretRequirements.some((item) => item.key === name);
-    const usedByConnection = spec.connections.some((connection) => Object.values(connection.env).includes(name));
-    if (usedByChannel || usedByCore || usedByConnection) throw new Error("secret_in_use");
+    const usedByReferences = this.listSecretManagerState().secrets.some((item) => item.name === name && item.usedBy.length > 0);
+    if (usedByCore || usedByReferences) throw new Error("secret_in_use");
     this.updateSecretsEnv({ [name]: undefined });
     return name;
-  }
-
-  mapChannelSecret(channelRaw: unknown, targetRaw: unknown, secretNameRaw: unknown) {
-    const channel = sanitizeEnvScalar(channelRaw) as ChannelName;
-    const target = sanitizeEnvScalar(targetRaw);
-    const secretName = sanitizeEnvScalar(secretNameRaw).toUpperCase();
-    if (!Channels.includes(channel)) throw new Error("invalid_channel");
-    if (target !== "gateway" && target !== "channel") throw new Error("invalid_target");
-    if (!this.isValidSecretName(secretName)) throw new Error("invalid_secret_name");
-
-    const spec = this.getSpec();
-    const available = new Set(Object.keys(this.readSecretsEnv()));
-    if (!available.has(secretName)) throw new Error("unknown_secret_name");
-    if (target === "gateway") spec.secrets.gatewayChannelSecrets[channel] = secretName;
-    else spec.secrets.channelServiceSecrets[channel] = secretName;
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.renderArtifacts();
-    return { channel, target, secretName };
-  }
-
-  getChannelSecretMappings(channel: ChannelName) {
-    const spec = this.getSpec();
-    return {
-      gateway: spec.secrets.gatewayChannelSecrets[channel],
-      channel: spec.secrets.channelServiceSecrets[channel],
-      requiredEnvKey: channelEnvSecretVariable(channel),
-    };
-  }
-
-  listConnections() {
-    return this.getSpec().connections;
-  }
-
-  validateConnection(input: { id?: unknown; name?: unknown; type?: unknown; env?: unknown }) {
-    return this.normalizeConnection(input);
-  }
-
-  upsertConnection(input: { id?: unknown; name?: unknown; type?: unknown; env?: unknown }) {
-    const nextConnection = this.normalizeConnection(input);
-
-    const spec = this.getSpec();
-    const index = spec.connections.findIndex((connection) => connection.id === nextConnection.id);
-    if (index >= 0) spec.connections[index] = nextConnection;
-    else spec.connections.push(nextConnection);
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    return nextConnection;
-  }
-
-  deleteConnection(idRaw: unknown) {
-    const id = sanitizeEnvScalar(idRaw);
-    if (!id) throw new Error("invalid_connection_id");
-    const spec = this.getSpec();
-    const index = spec.connections.findIndex((connection) => connection.id === id);
-    if (index < 0) throw new Error("connection_not_found");
-    spec.connections.splice(index, 1);
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.renderArtifacts();
-    return id;
   }
 
   listAutomations() {
@@ -333,34 +255,6 @@ export class StackManager {
 
   private isValidSecretName(name: string) {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
-  }
-
-  private normalizeConnection(input: { id?: unknown; name?: unknown; type?: unknown; env?: unknown }) {
-    const id = sanitizeEnvScalar(input.id);
-    const name = sanitizeEnvScalar(input.name);
-    const type = sanitizeEnvScalar(input.type) as ConnectionType;
-    if (!id) throw new Error("invalid_connection_id");
-    if (!name) throw new Error("invalid_connection_name");
-    if (!ConnectionTypes.includes(type)) throw new Error("invalid_connection_type");
-    const rawEnv = typeof input.env === "object" && input.env !== null ? input.env as Record<string, unknown> : {};
-    const envEntries = Object.entries(rawEnv);
-    if (envEntries.length === 0) throw new Error("missing_connection_env");
-
-    const normalizedEnv: Record<string, string> = {};
-    for (const [rawKey, rawValue] of envEntries) {
-      const key = sanitizeEnvScalar(rawKey).toUpperCase();
-      const value = sanitizeEnvScalar(rawValue).toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error("invalid_connection_env_key");
-      if (!value || !this.isValidSecretName(value)) throw new Error("invalid_connection_env_value");
-      normalizedEnv[key] = value;
-    }
-
-    const available = new Set(Object.keys(this.readSecretsEnv()));
-    for (const secretRef of Object.values(normalizedEnv)) {
-      if (!available.has(secretRef)) throw new Error("unknown_secret_name");
-    }
-
-    return { id, name, type, env: normalizedEnv };
   }
 
   private removeStaleRouteFiles(nextRoutes: Record<string, string>) {

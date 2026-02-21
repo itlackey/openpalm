@@ -10,7 +10,7 @@ This checklist captures follow-up areas to simplify architecture/implementation 
 
 ## 2) Stack-spec boundary hardening
 
-- Keep `stack-spec.json` limited to user-managed intent only (channels, access, secret mappings, connections, automations).
+- Keep `stack-spec.json` limited to user-managed intent only (channels, access, channel config, automations).
 - Audit for any derived/runtime fields accidentally reintroduced into stack-spec.
 - Add a regression test that fails if non-intent fields are added to default spec output.
 

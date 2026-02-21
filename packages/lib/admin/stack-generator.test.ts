@@ -26,28 +26,30 @@ describe("stack generator", () => {
     expect(out.composeFile).not.toContain("channel-discord:");
   });
 
-  it("generates channel env artifacts", () => {
+  it("generates channel env artifacts from direct secret references", () => {
     const spec = createDefaultStackSpec();
-    spec.channels.chat.config.CHAT_INBOUND_TOKEN = "chat-token";
-    spec.connections.push({
-      id: "openai",
-      type: "ai_provider",
-      name: "OpenAI",
-      env: {
-        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
-      },
-    });
+    spec.channels.chat.config.CHAT_INBOUND_TOKEN = "${CHAT_TOKEN_SECRET}";
+    spec.channels.chat.config.CHANNEL_CHAT_SECRET = "${CHANNEL_CHAT_SECRET_VALUE}";
     const out = generateStackArtifacts(spec, {
-      CHANNEL_CHAT_SECRET: "chat-secret",
-      CHANNEL_DISCORD_SECRET: "discord-secret",
-      CHANNEL_VOICE_SECRET: "voice-secret",
-      CHANNEL_TELEGRAM_SECRET: "telegram-secret",
-      OPENAI_API_KEY_MAIN: "provider-secret",
+      CHAT_TOKEN_SECRET: "chat-token",
+      CHANNEL_CHAT_SECRET_VALUE: "chat-secret",
     });
     expect(out.gatewayEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
-    expect(out.gatewayEnv).toContain("OPENAI_API_KEY=provider-secret");
-    expect(out.opencodeEnv).toContain("OPENAI_API_KEY=provider-secret");
     expect(out.channelsEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
     expect(out.channelsEnv).toContain("CHAT_INBOUND_TOKEN=chat-token");
+  });
+
+  it("renders host exposure routes with host-only guard", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels.chat.exposure = "host";
+    const out = generateStackArtifacts(spec, {});
+    expect(out.caddyfile).toContain("@host remote_ip");
+    expect(out.caddyRoutes["channels/chat.caddy"]).toContain("abort @not_host");
+  });
+
+  it("fails when a channel secret reference cannot be resolved", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels.chat.config.CHAT_INBOUND_TOKEN = "${MISSING_SECRET}";
+    expect(() => generateStackArtifacts(spec, {})).toThrow("unresolved_secret_reference_chat_CHAT_INBOUND_TOKEN_MISSING_SECRET");
   });
 });

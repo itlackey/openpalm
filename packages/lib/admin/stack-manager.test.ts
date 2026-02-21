@@ -4,104 +4,57 @@ import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { StackManager } from "./stack-manager.ts";
 
+function createManager(dir: string) {
+  return new StackManager({
+    caddyfilePath: join(dir, "Caddyfile"),
+    caddyRoutesDir: join(dir, "routes"),
+    composeFilePath: join(dir, "docker-compose.yml"),
+    secretsEnvPath: join(dir, "secrets.env"),
+    stackSpecPath: join(dir, "stack-spec.json"),
+    gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
+    openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
+    postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
+    qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
+    opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
+    channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
+  });
+}
+
 describe("stack manager", () => {
   it("writes all generated stack artifacts", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const caddyDir = join(dir, "caddy");
-    const caddyRoutesDir = join(caddyDir, "routes");
-    mkdirSync(caddyDir, { recursive: true });
-    mkdirSync(caddyRoutesDir, { recursive: true });
+    mkdirSync(join(caddyDir, "routes"), { recursive: true });
+    const manager = createManager(dir);
 
-    const manager = new StackManager({
-      caddyfilePath: join(caddyDir, "Caddyfile"),
-      caddyRoutesDir,
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
+    manager.upsertSecret("CHAT_TOKEN_SECRET", "abc");
+    manager.upsertSecret("CHAT_SHARED_SECRET", "abc12345678901234567890123456789");
+    manager.setChannelConfig("chat", {
+      CHAT_INBOUND_TOKEN: "${CHAT_TOKEN_SECRET}",
+      CHANNEL_CHAT_SECRET: "${CHAT_SHARED_SECRET}",
     });
-
-    manager.upsertSecret("MY_NEW_SECRET", "abc123");
-    manager.mapChannelSecret("chat", "gateway", "MY_NEW_SECRET");
-    manager.setChannelConfig("chat", { CHAT_INBOUND_TOKEN: "abc" });
     manager.renderArtifacts();
 
-    expect(readFileSync(join(caddyDir, "routes", "channels", "chat.caddy"), "utf8")).toContain("handle /channels/chat*");
+    expect(readFileSync(join(dir, "routes", "channels", "chat.caddy"), "utf8")).toContain("handle /channels/chat*");
     expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("opencode-core:");
-    expect(readFileSync(join(dir, "rendered", "env", "gateway.env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc123");
+    expect(readFileSync(join(dir, "rendered", "env", "gateway.env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "rendered", "env", "channels.env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
-
   });
 
-  it("prevents deleting secrets that are in use", () => {
+  it("prevents deleting secrets that are referenced by channel config", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    writeFileSync(join(dir, "secrets.env"), "CHANNEL_CHAT_SECRET=x\n", "utf8");
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
+    const manager = createManager(dir);
+    manager.upsertSecret("CHAT_TOKEN_SECRET", "x");
+    manager.setChannelConfig("chat", {
+      CHAT_INBOUND_TOKEN: "${CHAT_TOKEN_SECRET}",
+      CHANNEL_CHAT_SECRET: "",
     });
-    expect(() => manager.deleteSecret("CHANNEL_CHAT_SECRET")).toThrow("secret_in_use");
-  });
-
-  it("stores and lists global connections from stack spec", () => {
-    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
-
-    manager.upsertSecret("OPENAI_API_KEY_MAIN", "test-key");
-    const connection = manager.upsertConnection({
-      id: "openai-primary",
-      type: "ai_provider",
-      name: "OpenAI Primary",
-      env: {
-        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
-      },
-    });
-
-    expect(connection.id).toBe("openai-primary");
-    expect(manager.listConnections().length).toBe(1);
+    expect(() => manager.deleteSecret("CHAT_TOKEN_SECRET")).toThrow("secret_in_use");
   });
 
   it("removes stale channel route snippets when channels are disabled", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
+    const manager = createManager(dir);
 
     manager.renderArtifacts();
     expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeTrue();
@@ -113,107 +66,35 @@ describe("stack manager", () => {
     expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeFalse();
   });
 
-  it("deletes connection without mutating referenced secrets", () => {
+  it("validates missing referenced secrets for enabled channels", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
-
-    manager.upsertSecret("OPENAI_API_KEY_MAIN", "test-key");
-    manager.upsertConnection({
-      id: "openai-primary",
-      type: "ai_provider",
-      name: "OpenAI Primary",
-      env: {
-        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
+    writeFileSync(join(dir, "secrets.env"), "\n", "utf8");
+    writeFileSync(join(dir, "stack-spec.json"), JSON.stringify({
+      version: 1,
+      accessScope: "lan",
+      channels: {
+        chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING_CHAT_TOKEN}", CHANNEL_CHAT_SECRET: "" } },
+        discord: { enabled: true, exposure: "lan", config: { DISCORD_BOT_TOKEN: "", DISCORD_PUBLIC_KEY: "", CHANNEL_DISCORD_SECRET: "" } },
+        voice: { enabled: true, exposure: "lan", config: { CHANNEL_VOICE_SECRET: "" } },
+        telegram: { enabled: true, exposure: "lan", config: { TELEGRAM_BOT_TOKEN: "", TELEGRAM_WEBHOOK_SECRET: "", CHANNEL_TELEGRAM_SECRET: "" } },
       },
-    });
-    expect(manager.deleteConnection("openai-primary")).toBe("openai-primary");
-    expect(readFileSync(join(dir, "secrets.env"), "utf8")).toContain("OPENAI_API_KEY_MAIN=test-key");
+      automations: [],
+    }, null, 2), "utf8");
+    const manager = createManager(dir);
+
+    expect(manager.validateReferencedSecrets()).toContain("missing_secret_reference_chat_CHAT_INBOUND_TOKEN_MISSING_CHAT_TOKEN");
   });
 
-  it("validates connections without persisting them", () => {
+  it("supports host exposure for channels", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
-
-    manager.upsertSecret("OPENAI_API_KEY_MAIN", "test-key");
-    const validated = manager.validateConnection({
-      id: "openai-primary",
-      type: "ai_provider",
-      name: "OpenAI Primary",
-      env: {
-        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
-      },
-    });
-
-    expect(validated.id).toBe("openai-primary");
-    expect(manager.listConnections().length).toBe(0);
+    const manager = createManager(dir);
+    manager.setChannelAccess("chat", "host");
+    expect(manager.getChannelAccess("chat")).toBe("host");
   });
-
-  it("rejects connections that reference unknown secret keys", () => {
-    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
-
-    expect(() => manager.upsertConnection({
-      id: "openai-primary",
-      type: "ai_provider",
-      name: "OpenAI Primary",
-      env: {
-        OPENAI_API_KEY: "MISSING_SECRET",
-      },
-    })).toThrow("unknown_secret_name");
-  });
-
 
   it("preserves multiline automation scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
+    const manager = createManager(dir);
 
     const multi = "echo first\necho second";
     manager.upsertAutomation({
@@ -225,46 +106,5 @@ describe("stack manager", () => {
     });
 
     expect(manager.getAutomation("multi")?.script).toBe(multi);
-  });
-
-  it("supports automation CRUD in stack spec", () => {
-    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const manager = new StackManager({
-      caddyfilePath: join(dir, "Caddyfile"),
-      caddyRoutesDir: join(dir, "routes"),
-      composeFilePath: join(dir, "docker-compose.yml"),
-      secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
-      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
-    });
-
-    const created = manager.upsertAutomation({
-      id: "daily",
-      name: "Daily Task",
-      schedule: "0 9 * * *",
-      enabled: true,
-      script: "echo hello",
-    });
-
-    expect(created.id).toBe("daily");
-    expect(manager.listAutomations().length).toBe(1);
-
-    const updated = manager.upsertAutomation({
-      id: "daily",
-      name: "Daily Task Updated",
-      schedule: "15 9 * * *",
-      enabled: false,
-      script: "echo updated",
-    });
-
-    expect(updated.enabled).toBe(false);
-    expect(manager.getAutomation("daily")?.script).toBe("echo updated");
-    expect(manager.deleteAutomation("daily")).toBeTrue();
-    expect(manager.listAutomations().length).toBe(0);
   });
 });

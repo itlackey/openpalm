@@ -77,29 +77,14 @@ All admin endpoints should return errors in the shape:
 
 This keeps the UI implementation simple and predictable for non-technical users by avoiding endpoint-specific parsing rules.
 
-### Secrets + connection contract (canonical)
-The secret manager is the source of truth for both raw secret keys and connection mappings.
+### Secrets contract (canonical)
+The secret manager is the source of truth for key/value entries in `secrets.env`.
 
 - `GET /admin/secrets` — list available secret keys and where each key is used.
 - `POST /admin/secrets` — create or update a secret key/value `{ "name": "OPENAI_API_KEY_MAIN", "value": "..." }`.
 - `POST /admin/secrets/delete` — delete a secret key if not referenced `{ "name": "OPENAI_API_KEY_MAIN" }`.
-- `GET /admin/secrets/map` — read stack-level channel secret mappings.
-- `POST /admin/secrets/mappings/channel` — map channel gateway/channel secret refs `{ "channel": "chat", "target": "gateway" | "channel", "secretName": "CHANNEL_CHAT_SECRET" }`.
 
-Connection lifecycle:
-- `GET /admin/connections` — list saved connection definitions.
-- `POST /admin/connections/validate` — validate a connection payload against current secret inventory without saving.
-- `POST /admin/connections` — create/update a saved connection definition.
-- `GET /admin/compose/capabilities` — returns allowed service names, log tail constraints, and explicit reload semantics per service.
-- `POST /admin/connections/delete` — remove a saved connection definition.
-
-The UI must always derive secret dropdown options from live `GET /admin/secrets` output.
-
-### Common connection env-var conventions
-- OpenAI-compatible providers: `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`
-- Anthropic: `ANTHROPIC_API_KEY`
-- GitHub: `GITHUB_TOKEN`
-- Generic webhook/API auth: `API_KEY` or `BEARER_TOKEN`
+Channel configuration values in `stack-spec` can reference secrets directly with `${SECRET_NAME}`. During stack rendering/apply, unresolved references fail validation.
 
 ### Container management
 - `GET /admin/containers/list` — list running containers
@@ -109,7 +94,7 @@ The UI must always derive secret dropdown options from live `GET /admin/secrets`
 
 ### Channel management
 - `GET /admin/channels` — list channel services, network access mode, and editable config keys
-- `POST /admin/channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "lan" | "public" }`
+- `POST /admin/channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "host" | "lan" | "public" }`
 - `GET /admin/channels/config?service=channel-chat` — read channel-specific env overrides
 - `POST /admin/channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }`
 
@@ -177,15 +162,7 @@ The UI must always derive secret dropdown options from live `GET /admin/secrets`
 ### Secret management
 - `GET /admin/secrets` — list all secrets with usage info, configured status, and constraint metadata (auth required)
 - `POST /admin/secrets` — create or update a secret `{ "name": "MY_SECRET", "value": "..." }` (auth required)
-- `POST /admin/secrets/delete` — delete a secret `{ "name": "MY_SECRET" }` (auth required; fails with `secret_in_use` if referenced by a channel or connection)
-- `GET /admin/secrets/map` — list channel secret mappings from the stack spec (auth required)
-- `POST /admin/secrets/mappings/channel` — map a secret to a channel `{ "channel": "chat", "target": "gateway" | "channel", "secretName": "MY_SECRET" }` (auth required)
-- `POST /admin/channels/shared-secret` — set the shared HMAC secret for a channel `{ "channel": "chat", "secret": "..." }` (auth required; minimum 32 characters)
-
-### Connections
-- `GET /admin/connections` — list all connections (auth required)
-- `POST /admin/connections` — create or update a connection `{ "id": "openai-primary", "name": "OpenAI Primary", "type": "ai_provider" | "platform" | "api_service", "env": { "OPENAI_API_KEY": "OPENAI_API_KEY_MAIN" } }` (auth required; env values are secret key references, not raw values)
-- `POST /admin/connections/delete` — delete a connection `{ "id": "openai-primary" }` (auth required)
+- `POST /admin/secrets/delete` — delete a secret `{ "name": "MY_SECRET" }` (auth required; fails with `secret_in_use` if referenced by a channel config)
 
 ### Providers
 - `GET /admin/providers` — list all providers with masked API keys (auth required)
