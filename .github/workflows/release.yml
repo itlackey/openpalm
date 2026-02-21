@@ -1,7 +1,7 @@
 name: Release
 
 # Automated release workflow.
-# Bumps the version in versions.json and related files, commits the change,
+# Bumps the version in package.json files and related files, commits the change,
 # creates a git tag, and pushes. The tag push then triggers the existing
 # publish-images and/or publish-cli workflows.
 #
@@ -78,13 +78,12 @@ jobs:
       - name: Read new version
         id: version
         run: |
+          VER=$(bun run dev/version.ts current ${{ inputs.component }})
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+
           if [ "${{ inputs.component }}" = "platform" ]; then
-            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).platform)")
-            echo "version=${VER}" >> "$GITHUB_OUTPUT"
             echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
           else
-            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).components['${{ inputs.component }}'])")
-            echo "version=${VER}" >> "$GITHUB_OUTPUT"
             echo "tag=${{ inputs.component }}/v${VER}" >> "$GITHUB_OUTPUT"
           fi
 

@@ -76,13 +76,12 @@ jobs:
       - name: Read new version
         id: version
         run: |
+          VER=$(bun run dev/version.ts current ${{ inputs.component }})
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+
           if [ "${{ inputs.component }}" = "platform" ]; then
-            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).platform)")
-            echo "version=${VER}" >> "$GITHUB_OUTPUT"
             echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
           else
-            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).components['${{ inputs.component }}'])")
-            echo "version=${VER}" >> "$GITHUB_OUTPUT"
             echo "tag=${{ inputs.component }}/v${VER}" >> "$GITHUB_OUTPUT"
           fi
 
