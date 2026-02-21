@@ -222,10 +222,15 @@ describe("setup wizard", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("POST /admin/setup/channels saves channel selection", async () => {
+  it("POST /admin/setup/channels saves channel selection with configs", async () => {
     const r = await apiJson("/admin/setup/channels", {
       method: "POST",
-      body: JSON.stringify({ channels: ["channel-chat"] }),
+      body: JSON.stringify({
+        channels: ["channel-chat"],
+        channelConfigs: {
+          "channel-chat": { CHAT_INBOUND_TOKEN: "test-token" }
+        }
+      }),
     });
     expect(r.ok).toBe(true);
   });
@@ -259,32 +264,7 @@ describe("setup wizard", () => {
   });
 });
 
-// ── Plugin Management ───────────────────────────────────
-
-describe("plugin management", () => {
-  it("POST /admin/plugins/install requires auth", async () => {
-    const r = await apiJson("/admin/plugins/install", { method: "POST", body: JSON.stringify({ pluginId: "@scope/test" }) });
-    expect(r.status).toBe(401);
-  });
-
-  it("POST /admin/plugins/install installs plugin with auth", async () => {
-    const r = await apiJson("/admin/plugins/install", {
-      method: "POST",
-      headers: { "x-admin-token": "test-token-e2e" },
-      body: JSON.stringify({ pluginId: "@scope/test" })
-    });
-    expect(r.ok).toBe(true);
-  });
-
-  it("POST /admin/plugins/uninstall uninstalls plugin with auth", async () => {
-    const r = await apiJson("/admin/plugins/uninstall", {
-      method: "POST",
-      headers: { "x-admin-token": "test-token-e2e" },
-      body: JSON.stringify({ pluginId: "@scope/test" })
-    });
-    expect(r.ok).toBe(true);
-  });
-});
+// ── Auth-Protected Endpoints ────────────────────────────
 
 describe("auth-protected endpoints", () => {
   it("GET /admin/installed requires auth", async () => {
@@ -320,33 +300,11 @@ describe("auth-protected endpoints", () => {
     expect(Array.isArray(r.data.automations)).toBe(true);
   });
 
-  it("GET /admin/config requires auth", async () => {
-    const r = await api("/admin/config");
-    expect(r.status).toBe(401);
-  });
-
-  it("GET /admin/config returns config with auth", async () => {
-    const r = await api("/admin/config", {
-      headers: { "x-admin-token": "test-token-e2e" },
-    });
-    expect(r.status).toBe(200);
-    const text = await r.text();
-    expect(text).toContain("$schema");
-  });
-
-  it("auto-creates missing opencode config for installed/config endpoints", async () => {
+  it("auto-creates missing opencode config for installed endpoint", async () => {
     rmSync(opencodeConfigPath, { force: true });
-
     const installed = await authed("/admin/installed");
     expect(installed.status).toBe(200);
     expect(Array.isArray(installed.data.plugins)).toBe(true);
-
-    const cfg = await api("/admin/config", {
-      headers: { "x-admin-token": "test-token-e2e" },
-    });
-    expect(cfg.status).toBe(200);
-    const text = await cfg.text();
-    expect(text).toContain("{");
   });
 });
 
@@ -381,15 +339,7 @@ describe("meta endpoint", () => {
   });
 });
 
-describe("system state endpoint", () => {
-  it("GET /admin/system/state returns consolidated setup, stack, and secrets", async () => {
-    const r = await authed("/admin/system/state");
-    expect(r.ok).toBe(true);
-    expect(r.data).toHaveProperty("setup");
-    expect(r.data).toHaveProperty("stack");
-    expect(r.data).toHaveProperty("secrets");
-  });
-});
+// ── Stack Spec ───────────────────────────────────────────
 
 describe("stack spec endpoints", () => {
   it("GET /admin/stack/spec returns default spec with auth", async () => {
@@ -419,14 +369,6 @@ describe("stack spec endpoints", () => {
     expect(r.ok).toBe(true);
     const check = await authed("/admin/stack/spec");
     expect((check.data.spec as Record<string, unknown>).accessScope).toBe("host");
-  });
-
-  it("GET /admin/stack/render returns generated caddyfile", async () => {
-    const r = await authed("/admin/stack/render");
-    expect(r.ok).toBe(true);
-    const generated = r.data.generated as Record<string, unknown>;
-    expect(typeof generated.caddyfile).toBe("string");
-    expect(generated.caddyfile as string).toContain(":80 {");
   });
 });
 
@@ -473,6 +415,42 @@ describe("channel config secret references", () => {
   });
 });
 
+// ── Secrets ──────────────────────────────────────────────
+
+describe("secrets endpoints", () => {
+  it("GET /admin/secrets requires auth", async () => {
+    const r = await apiJson("/admin/secrets");
+    expect(r.status).toBe(401);
+  });
+
+  it("GET /admin/secrets returns secrets state with auth", async () => {
+    const r = await authed("/admin/secrets");
+    expect(r.ok).toBe(true);
+  });
+
+  it("GET /admin/secrets/raw returns raw secrets file with auth", async () => {
+    const r = await api("/admin/secrets/raw", {
+      headers: { "content-type": "application/json", "x-admin-token": "test-token-e2e" },
+    });
+    expect(r.status).toBe(200);
+  });
+
+  it("POST /admin/secrets/raw saves raw secrets file with auth", async () => {
+    const r = await authed("/admin/secrets/raw", {
+      method: "POST",
+      body: JSON.stringify({ content: "TEST_KEY=test_value\n" }),
+    });
+    expect(r.ok).toBe(true);
+
+    // Verify the content was saved
+    const check = await api("/admin/secrets/raw", {
+      headers: { "content-type": "application/json", "x-admin-token": "test-token-e2e" },
+    });
+    const text = await check.text();
+    expect(text).toContain("TEST_KEY=test_value");
+  });
+});
+
 // ── UI Content Verification ─────────────────────────────
 
 describe("UI content", () => {
@@ -484,13 +462,10 @@ describe("UI content", () => {
     expect(text).toContain("/admin/api/");
   });
 
-  it("index.html includes all page containers", async () => {
+  it("index.html includes dashboard page container", async () => {
     const r = await api("/");
     const text = await r.text();
-    expect(text).toContain('id="page-extensions"');
-    expect(text).toContain('id="page-channels"');
-    expect(text).toContain('id="page-automations"');
-    expect(text).toContain('id="page-system"');
+    expect(text).toContain('id="page-dashboard"');
   });
 
   it("index.html includes setup-ui.js script tag", async () => {
@@ -506,5 +481,13 @@ describe("UI content", () => {
     expect(text).toContain("checkSetup");
     expect(text).toContain("finishSetup");
     expect(text).toContain("pollUntilReady");
+  });
+
+  it("setup-ui.js includes channel configuration fields", async () => {
+    const r = await api("/setup-ui.js");
+    const text = await r.text();
+    expect(text).toContain("channelSections");
+    expect(text).toContain("channelFields");
+    expect(text).toContain("channelConfigs");
   });
 });

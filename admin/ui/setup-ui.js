@@ -1,13 +1,15 @@
 (() => {
   let setupState = null;
-  const STEPS = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels", "complete"];
-  const STEP_TITLES = ["Welcome", "Access", "Services", "Health Check", "Security", "Channels", "Complete"];
+  const STEPS = ["welcome", "serviceInstances", "security", "channels", "accessScope", "healthCheck", "complete"];
+  const STEP_TITLES = ["Welcome", "AI Providers", "Security", "Channels", "Access", "Health Check", "Complete"];
   let wizardStep = 0;
   let accessScope = "host";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
   let openmemoryProvider = { openaiBaseUrl: "", openaiApiKeyConfigured: false };
   let smallModelProvider = { endpoint: "", modelId: "", apiKeyConfigured: false };
   let enabledChannels = [];
+  let channelConfigs = {};
+  let channelFields = {};
   let api;
   let esc;
   let showPage;
@@ -20,7 +22,7 @@
     style.id = "setup-ui-style";
     style.textContent = `
       .wizard-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
-      .wizard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:640px;width:95%}
+      .wizard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:640px;width:95%;max-height:90vh;overflow-y:auto}
       .wizard h2{margin:0 0 .3rem}
       .wizard .steps{display:flex;gap:.5rem;margin:1rem 0}
       .wizard .step-dot{width:28px;height:28px;min-width:28px;border-radius:50%;background:var(--border)}
@@ -32,11 +34,18 @@
       .wizard .wiz-error.visible{display:block}
       .wizard details.advanced-section{margin-top:.8rem;border:1px solid var(--border);border-radius:8px;padding:.5rem .8rem}
       .wizard details.advanced-section summary{cursor:pointer;font-weight:600;font-size:14px;padding:.3rem 0;user-select:none}
+      .wizard .channel-section{border:1px solid var(--border);border-radius:8px;padding:.8rem;margin:.5rem 0}
+      .wizard .channel-section.enabled{border-color:var(--accent)}
+      .wizard .channel-fields{margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--border)}
     `;
     document.head.appendChild(style);
   }
 
   async function checkSetup() {
+    const meta = await api("/admin/meta");
+    if (meta.ok && meta.data && meta.data.channelFields) {
+      channelFields = meta.data.channelFields;
+    }
     const r = await api("/admin/setup/status");
     if (!r.ok) return;
     setupState = r.data;
@@ -81,21 +90,8 @@
       case "welcome":
         return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
           + '<p>This wizard will walk you through initial configuration:</p>'
-          + '<ul><li>Make sure everything is working</li><li>Set up security</li><li>Choose how to connect</li></ul>'
-          + '<p class="muted" style="font-size:13px">During setup, choose who can access your assistant.</p>';
-      case "healthCheck":
-        return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div><div id="wiz-step-error" class="error-text" style="display:none"></div>';
-      case "accessScope":
-        return '<p>Choose who can access your assistant.</p>'
-          + '<div id="wiz-step-error" class="wiz-error"></div>'
-          + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
-          + '<input type="radio" name="wiz-scope" value="host" ' + (accessScope === "host" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
-          + '<div><strong>Just this computer</strong><div class="muted" style="font-size:13px">Only accessible from this device. Most secure option.</div></div>'
-          + '</label>'
-          + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
-          + '<input type="radio" name="wiz-scope" value="lan" ' + (accessScope === "lan" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
-          + '<div><strong>Any device on my home network</strong><div class="muted" style="font-size:13px">Other devices on your local network can access your assistant.</div></div>'
-          + '</label>';
+          + '<ul><li>Connect your AI providers</li><li>Set up admin security</li><li>Choose your channels</li><li>Configure network access</li></ul>'
+          + '<p class="muted" style="font-size:13px">You can re-run this wizard any time from the admin dashboard.</p>';
       case "serviceInstances":
         return '<p>Configure API keys for your AI providers. Your assistant needs at least one AI model to function.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
@@ -124,7 +120,7 @@
           + '<input id="wiz-svc-qdrant" placeholder="Leave blank to use built-in" value="' + esc(serviceInstances.qdrant || "") + '" />'
           + '<hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)" />'
           + '<p style="margin:.5rem 0"><strong>Small / Fast Model for OpenCode</strong></p>'
-          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Configure a lightweight model for system tasks like summaries and title generation. This sets the <code>small_model</code> in the OpenCode configuration. Use an OpenAI-compatible endpoint — for example, a local <a href="https://ollama.com/" target="_blank" rel="noopener">Ollama</a> instance at <code>http://localhost:11434/v1</code>.</div>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Configure a lightweight model for system tasks like summaries and title generation.</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model endpoint (OpenAI-compatible)</label>'
           + '<input id="wiz-small-model-endpoint" placeholder="http://localhost:11434/v1" value="' + esc(smallModelProvider.endpoint || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model API key</label>'
@@ -132,40 +128,81 @@
           + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (smallModelProvider.apiKeyConfigured ? "API key already configured. Leave blank to keep current key." : "Leave blank if your endpoint does not require authentication (e.g. local Ollama).") + '</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Small model name</label>'
           + '<input id="wiz-small-model-id" placeholder="ollama/tinyllama:latest" value="' + esc(smallModelProvider.modelId || "") + '" />'
-          + '<div class="muted" style="font-size:12px;margin-top:.2rem">Format: <code>provider/model-name</code>. Examples: <code>ollama/tinyllama:latest</code>, <code>openai/gpt-4o-mini</code></div>'
           + '</details>';
       case "security":
-        return '<p>OpenPalm uses defense in depth with multiple security layers:</p>'
-          + '<div class="sec-box"><div class="sec-title">Authentication</div><div style="font-size:13px">Your admin token was auto-generated during installation. Find it in your <code>.env</code> file (look for <code>ADMIN_TOKEN</code>).</div></div>'
-          + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password</label>'
-          + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
-          + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
+        return '<p>Set your admin password to protect this management interface.</p>'
+          + '<div id="wiz-step-error" class="wiz-error"></div>'
+          + '<div class="sec-box"><div class="sec-title">Admin Password</div>'
+          + '<div style="font-size:13px;margin-bottom:.5rem">Your admin token was auto-generated during installation. Find it in your <code>secrets.env</code> file (look for <code>ADMIN_TOKEN</code>). Enter it here to authenticate.</div>'
+          + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" placeholder="Paste your ADMIN_TOKEN here" />'
+          + '</div>'
+          + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Security Features</div>'
           + '<ul style="font-size:13px;margin:.2rem 0"><li>Messages are cryptographically verified</li><li>Sensitive data is automatically filtered from memory</li><li>Rate limiting prevents abuse</li><li>Admin access restricted to your network</li></ul></div>';
       case "channels":
-        return '<p>Choose how you want to talk to your assistant.</p>'
+        return '<p>Choose how you want to talk to your assistant. Enable a channel and provide its credentials.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
-          + channelCheckboxes();
+          + channelSections();
+      case "accessScope":
+        return '<p>Choose who can access your assistant.</p>'
+          + '<div id="wiz-step-error" class="wiz-error"></div>'
+          + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
+          + '<input type="radio" name="wiz-scope" value="host" ' + (accessScope === "host" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
+          + '<div><strong>Just this computer</strong><div class="muted" style="font-size:13px">Only accessible from this device. Most secure option.</div></div>'
+          + '</label>'
+          + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
+          + '<input type="radio" name="wiz-scope" value="lan" ' + (accessScope === "lan" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
+          + '<div><strong>Any device on my home network</strong><div class="muted" style="font-size:13px">Other devices on your local network can access your assistant.</div></div>'
+          + '</label>';
+      case "healthCheck":
+        return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div><div id="wiz-step-error" class="error-text" style="display:none"></div>';
       case "complete":
         return '<p>Finalizing setup and starting your assistant...</p><div id="wiz-complete-status">Loading...</div>';
     }
     return "";
   }
 
-  function channelCheckboxes() {
+  function channelSections() {
     const chs = [
-      { id: "channel-chat", name: "Chat (HTTP)", desc: "Chat with your assistant through a web interface" },
-      { id: "channel-discord", name: "Discord", desc: "Connect your assistant to a Discord server" },
-      { id: "channel-voice", name: "Voice", desc: "Talk to your assistant using voice" },
-      { id: "channel-telegram", name: "Telegram", desc: "Connect your assistant to Telegram" },
+      { id: "channel-chat", name: "Chat", desc: "Chat with your assistant through the built-in web interface", fieldKey: "channel-chat" },
+      { id: "channel-discord", name: "Discord", desc: "Connect your assistant to a Discord server", fieldKey: "channel-discord" },
+      { id: "channel-voice", name: "Voice", desc: "Talk to your assistant using voice", fieldKey: "channel-voice" },
+      { id: "channel-telegram", name: "Telegram", desc: "Connect your assistant to Telegram", fieldKey: "channel-telegram" },
     ];
     let h = "";
     for (const c of chs) {
-      h += '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
-      h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" ' + (enabledChannels.includes(c.id) ? "checked" : "") + ' style="width:auto;margin-top:4px" />';
+      const checked = enabledChannels.includes(c.id);
+      const fields = channelFields[c.fieldKey] || [];
+      const savedConfig = channelConfigs[c.id] || {};
+      h += '<div class="channel-section' + (checked ? " enabled" : "") + '">';
+      h += '<label style="display:flex;gap:.7rem;align-items:start;cursor:pointer">';
+      h += '<input type="checkbox" class="wiz-ch" value="' + c.id + '" ' + (checked ? "checked" : "") + ' style="width:auto;margin-top:4px" onchange="window.openPalmSetup.toggleChannelSection(this)" />';
       h += '<div><strong>' + c.name + '</strong><div class="muted" style="font-size:13px">' + c.desc + '</div></div>';
       h += "</label>";
+      if (fields.length > 0) {
+        h += '<div class="channel-fields" id="ch-fields-' + c.id + '" style="' + (checked ? "" : "display:none") + '">';
+        for (var fi = 0; fi < fields.length; fi++) {
+          var f = fields[fi];
+          var val = savedConfig[f.key] || "";
+          h += '<label style="display:block;margin:.4rem 0 .2rem;font-size:13px">' + esc(f.label) + (f.required ? ' *' : '') + '</label>';
+          h += '<input class="wiz-ch-field" data-channel="' + c.id + '" data-key="' + esc(f.key) + '" type="' + f.type + '" placeholder="' + esc(f.helpText || "") + '" value="' + esc(val) + '" />';
+        }
+        h += '</div>';
+      }
+      h += '</div>';
     }
     return h;
+  }
+
+  function toggleChannelSection(checkbox) {
+    var section = checkbox.closest(".channel-section");
+    var fields = section.querySelector(".channel-fields");
+    if (checkbox.checked) {
+      section.classList.add("enabled");
+      if (fields) fields.style.display = "";
+    } else {
+      section.classList.remove("enabled");
+      if (fields) fields.style.display = "none";
+    }
   }
 
   function showStepError(msg) {
@@ -198,26 +235,23 @@
     el.innerHTML = h;
   }
 
+  function collectChannelConfigs() {
+    var configs = {};
+    var fields = document.querySelectorAll(".wiz-ch-field");
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      var channel = f.getAttribute("data-channel");
+      var key = f.getAttribute("data-key");
+      if (!channel || !key) continue;
+      if (!configs[channel]) configs[channel] = {};
+      configs[channel][key] = f.value;
+    }
+    return configs;
+  }
+
   async function wizardNext() {
     clearStepError();
 
-    if (STEPS[wizardStep] === "accessScope") {
-      const selected = document.querySelector('input[name="wiz-scope"]:checked');
-      const scope = selected ? selected.value : "host";
-      const scopeResult = await api("/admin/setup/access-scope", { method: "POST", body: JSON.stringify({ scope }) });
-      if (!scopeResult.ok) {
-        showStepError("Could not save your access preference. Please try again.");
-        return;
-      }
-      accessScope = scope;
-    }
-    if (STEPS[wizardStep] === "security") {
-      const a = document.getElementById("wiz-admin");
-      if (a) setAdminToken(a.value);
-    }
-    if (STEPS[wizardStep] === "channels") {
-      enabledChannels = Array.from(document.querySelectorAll(".wiz-ch:checked")).map((c) => c.value);
-    }
     if (STEPS[wizardStep] === "serviceInstances") {
       const openmemory = document.getElementById("wiz-svc-openmemory")?.value || "";
       const psql = document.getElementById("wiz-svc-psql")?.value || "";
@@ -244,6 +278,24 @@
       openmemoryProvider = serviceResult.data?.openmemoryProvider || openmemoryProvider;
       smallModelProvider = serviceResult.data?.smallModelProvider || smallModelProvider;
     }
+    if (STEPS[wizardStep] === "security") {
+      const a = document.getElementById("wiz-admin");
+      if (a) setAdminToken(a.value);
+    }
+    if (STEPS[wizardStep] === "channels") {
+      enabledChannels = Array.from(document.querySelectorAll(".wiz-ch:checked")).map((c) => c.value);
+      channelConfigs = collectChannelConfigs();
+    }
+    if (STEPS[wizardStep] === "accessScope") {
+      const selected = document.querySelector('input[name="wiz-scope"]:checked');
+      const scope = selected ? selected.value : "host";
+      const scopeResult = await api("/admin/setup/access-scope", { method: "POST", body: JSON.stringify({ scope }) });
+      if (!scopeResult.ok) {
+        showStepError("Could not save your access preference. Please try again.");
+        return;
+      }
+      accessScope = scope;
+    }
     await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
     wizardStep++;
     renderWizard();
@@ -258,6 +310,12 @@
 
   async function finishSetup() {
     clearStepError();
+
+    // Save channel selections and configs to the backend
+    await api("/admin/setup/channels", {
+      method: "POST",
+      body: JSON.stringify({ channels: enabledChannels, channelConfigs: channelConfigs })
+    });
 
     for (const channel of enabledChannels) {
       await api("/admin/containers/up", { method: "POST", body: JSON.stringify({ service: channel }) });
@@ -285,14 +343,14 @@
       el.innerHTML = '<p class="muted">Starting services... (' + (i + 1) + ')</p>';
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    el.innerHTML = '<p class="muted">Some services are still starting. You can continue and check the System page.</p><button class="secondary" onclick="window.openPalmSetup.continueToAdmin()">Continue to Admin</button>';
+    el.innerHTML = '<p class="muted">Some services are still starting. You can continue anyway.</p><button class="secondary" onclick="window.openPalmSetup.continueToAdmin()">Continue to Admin</button>';
   }
 
   function continueToAdmin() {
     var ov = document.getElementById("setup-overlay");
     if (window.releaseFocus && ov) window.releaseFocus(ov);
     if (ov) ov.classList.add("hidden");
-    showPage("extensions");
+    showPage("dashboard");
   }
 
   function init(deps) {
@@ -304,5 +362,5 @@
     ensureStyles();
   }
 
-  window.openPalmSetup = { init, checkSetup, runSetup, wizardNext, wizardPrev, finishSetup, continueToAdmin };
+  window.openPalmSetup = { init, checkSetup, runSetup, wizardNext, wizardPrev, finishSetup, continueToAdmin, toggleChannelSection };
 })();
