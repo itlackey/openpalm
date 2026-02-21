@@ -25,10 +25,9 @@ Each entry must be a valid JSON object matching this structure:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `id` | string | ✓ | Unique identifier (e.g., `com.myorg.my-plugin`). Use reverse-domain or kebab-case. |
-| `name` | string | ✓ | Display name shown in the gallery |
+| `name` | string | ✓ | Display name |
 | `description` | string | ✓ | One or two sentences describing what the extension does |
 | `category` | `"plugin" \| "skill" \| "command" \| "agent" \| "tool" \| "container"` | ✓ | Extension sub-type. Note: `container` represents Channels, which are a separate top-level concept from Extensions; it is included here for registry completeness but is not an Extension sub-type. |
-| `risk` | `"lowest" \| "low" \| "medium" \| "medium-high" \| "highest"` | ✓ | Honest self-assessed risk level |
 | `author` | string | ✓ | Your name, GitHub handle, or org |
 | `version` | string | ✓ | Semantic version (e.g., `1.0.0`) |
 | `source` | string | ✓ | npm package name, Docker image, or GitHub URL |
@@ -38,16 +37,6 @@ Each entry must be a valid JSON object matching this structure:
 | `installAction` | `"plugin" \| "skill-file" \| "command-file" \| "agent-file" \| "tool-file" \| "compose-service"` | ✓ | How OpenPalm installs this extension |
 | `installTarget` | string | ✓ | npm package, skill file path, or compose service name |
 | `docUrl` | string | | Optional link to documentation |
-
-### Risk level guidance
-
-Risk levels map directly to Extension sub-types:
-
-- **lowest** — Skill: behavioral directive only (no network, no disk writes, no side effects)
-- **low** — Command: slash command definition; minimal side effects
-- **medium** — Agent: specialized assistant persona; inherits tool access from its configuration
-- **medium-high** — Custom Tool: TypeScript callable function; executes code with defined I/O
-- **highest** — Plugin: lifecycle hooks; can intercept and modify any OpenCode operation
 
 ### installAction guide
 
@@ -68,7 +57,6 @@ Risk levels map directly to Extension sub-types:
   "name": "My Plugin",
   "description": "A short description of what this plugin does.",
   "category": "plugin",
-  "risk": "highest",
   "author": "your-github-handle",
   "version": "1.0.0",
   "source": "@example/my-opencode-plugin",
@@ -86,7 +74,6 @@ Risk levels map directly to Extension sub-types:
 Pull requests adding registry entries will be checked for:
 
 - All required fields present and non-empty
-- Honest risk level — understating risk is grounds for rejection
 - `source` points to a real, publicly accessible package or image
 - `securityNotes` accurately describes what the extension can and cannot do
 - No duplicate `id` with an existing entry

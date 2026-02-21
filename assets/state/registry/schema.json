@@ -4,7 +4,7 @@
   "title": "OpenPalm Registry Entry",
   "description": "Schema for a single OpenPalm extension registry entry",
   "type": "object",
-  "required": ["id", "name", "description", "category", "risk", "author", "version", "source", "tags", "permissions", "securityNotes", "installAction", "installTarget"],
+  "required": ["id", "name", "description", "category", "author", "version", "source", "tags", "permissions", "securityNotes", "installAction", "installTarget"],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -16,7 +16,7 @@
     },
     "name": {
       "type": "string",
-      "description": "Display name shown in the gallery",
+      "description": "Display name",
       "minLength": 1,
       "maxLength": 80
     },
@@ -30,11 +30,6 @@
       "type": "string",
       "enum": ["plugin", "skill", "command", "agent", "tool", "channel"],
       "description": "Extension type: one of the five extension sub-types, or channel for channel adapters"
-    },
-    "risk": {
-      "type": "string",
-      "enum": ["lowest", "low", "medium", "medium-high", "highest"],
-      "description": "Risk level based on extension type capabilities"
     },
     "author": {
       "type": "string",

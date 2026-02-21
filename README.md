@@ -57,7 +57,7 @@ OpenPalm includes a built-in memory system (powered by OpenMemory). Your assista
 
 A web-based control panel lets you:
 - Start, stop, and restart services
-- Browse and install extensions from the curated gallery, community registry, or npm
+- Browse and install extensions from the community registry or npm
 - Edit agent configuration with validation
 - Toggle channel access between private and public
 - Create and manage automations
@@ -76,24 +76,6 @@ The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`)
 Automations let your assistant act on a schedule -- daily briefings, weekly reports, periodic checks -- without anyone sending a message. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
 
 OpenPalm also ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics into `${OPENPALM_STATE_HOME}/observability/maintenance`.
-
-## How it works
-
-```
-Channels (Discord, Telegram, Chat, Voice)
-    |  signed messages
-    v
-Gateway (verify, rate-limit, audit)
-    |  validate with locked-down agent
-    v
-OpenCode Core (full assistant) <--> Open Memory
-    |
-Admin Dashboard --> Admin --> Docker Compose
-```
-
-Every component runs in its own container on a private network. The gateway verifies message signatures and validates input before anything reaches your assistant. The admin dashboard manages the system lifecycle.
-
-For the full architecture, container inventory, and routing details, see the [Architecture Guide](docs/development/architecture.md).
 
 ## Configuration
 
@@ -116,7 +98,7 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | **Runs as** | Isolated Docker containers on a private network | Local daemon with direct host access |
 | **Message security** | Cryptographically signed and verified | DM pairing codes |
 | **Tool access** | Approval gates + locked-down intake validation | Elevated bash toggled per session |
-| **Extensions** | Admin-authenticated install with curated gallery | Auto-discovery from registry |
+| **Extensions** | Admin-authenticated install | Auto-discovery from registry |
 | **Admin** | Web dashboard with password auth (LAN only) | Chat commands in messaging channels |
 | **Memory** | Explicit-save-only with secret detection | Session-based with compression |
 | **Deployment** | Single compose command (docker/podman/orbstack) | Daemon install with multiple modes |
@@ -133,9 +115,8 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |
 | [Architecture](docs/development/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](docs/development/api-reference.md) | All service endpoints: gateway, admin, channels |
-| [Extensions Guide](docs/extensions-guide.md) | Extension types, gallery, building and installing extensions |
+| [Extensions Guide](docs/extensions-guide.md) | Extension types and installing extensions |
 | [Extensions Reference](docs/reference/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
-| [Plugin Authoring](docs/development/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
 | [Host System Reference](docs/reference/host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 | [Testing Plan](docs/development/testing-plan.md) | Test strategy, coverage goals, and test categories |

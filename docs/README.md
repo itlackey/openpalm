@@ -20,9 +20,8 @@ If you are new to OpenPalm, read the docs in this order:
 | [Admin Guide](admin-guide.md) | Installer details, admin console, authentication |
 | [Architecture](development/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](development/api-reference.md) | Service endpoints and payloads for gateway, admin, and channels |
-| [Extensions Guide](extensions-guide.md) | Extension types, gallery, building and installing extensions |
+| [Extensions Guide](extensions-guide.md) | Extension types and installing extensions |
 | [Extensions Reference](reference/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
-| [Plugin Authoring](development/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
 | [Host System Reference](reference/host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Security](security.md) | Security controls by layer and why they exist |
 | [Testing Plan](development/testing-plan.md) | Test strategy, coverage goals, and test categories |

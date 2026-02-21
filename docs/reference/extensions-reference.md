@@ -1,7 +1,7 @@
 # OpenPalm Extensions: Installation, Configuration, and Management
 
 > **Related extension docs:**
-> - [extensions-guide.md](../extensions-guide.md) -- Extension types, gallery, building and installing extensions
+> - [extensions-guide.md](../extensions-guide.md) -- Extension types and installing extensions
 > - **extensions-reference.md** (this file) -- Technical reference for all extension types (API/schema details)
 
 This document provides a complete end-to-end reference for how extensions are authored, distributed, installed, configured, loaded at runtime, and removed in an OpenPalm stack.
@@ -10,17 +10,17 @@ This document provides a complete end-to-end reference for how extensions are au
 
 ## What Is an Extension?
 
-**Extension** is the umbrella term for all modular components that add behavior or capability to the OpenPalm stack. There are five sub-types, each with a distinct risk level:
+**Extension** is the umbrella term for all modular components that add behavior or capability to the OpenPalm stack. There are five sub-types:
 
-**Skill** (lowest risk) — A Markdown file that defines behavioral standard operating procedures. Injected into the agent's prompt context to guide how the LLM reasons and responds. Skills have no code execution capability — they are pure behavioral rules. Skills can include a `scripts/` subdirectory with supporting code. Located at `skills/<name>/SKILL.md`.
+**Skill** — A Markdown file that defines behavioral standard operating procedures. Injected into the agent's prompt context to guide how the LLM reasons and responds. Skills have no code execution capability — they are pure behavioral rules. Skills can include a `scripts/` subdirectory with supporting code. Located at `skills/<name>/SKILL.md`.
 
-**Command** (low risk) — A Markdown file with YAML frontmatter that defines a slash command the agent recognizes. Commands instruct the agent to invoke tools or perform specific actions when the user types a `/command`. Located at `commands/<name>.md`.
+**Command** — A Markdown file with YAML frontmatter that defines a slash command the agent recognizes. Commands instruct the agent to invoke tools or perform specific actions when the user types a `/command`. Located at `commands/<name>.md`.
 
-**Agent** (medium risk) — A Markdown file with YAML frontmatter that defines a specialized assistant persona with its own tool configuration, skills, and behavioral rules. Located at `agents/<name>.md`.
+**Agent** — A Markdown file with YAML frontmatter that defines a specialized assistant persona with its own tool configuration, skills, and behavioral rules. Located at `agents/<name>.md`.
 
-**Custom Tool** (medium-high risk) — A TypeScript file defining a Zod-validated, LLM-callable function that OpenCode auto-discovers and exposes to the agent. Located at `tools/<name>.ts`.
+**Custom Tool** — A TypeScript file defining a Zod-validated, LLM-callable function that OpenCode auto-discovers and exposes to the agent. Located at `tools/<name>.ts`.
 
-**Plugin** (highest risk) — A TypeScript file that hooks into the OpenCode runtime event system. Plugins execute code at defined lifecycle points (before tool calls, after responses, on session idle, during compaction) and can inspect, block, or augment agent behavior programmatically. Located at `plugins/<name>.ts`.
+**Plugin** — A TypeScript file that hooks into the OpenCode runtime event system. Plugins execute code at defined lifecycle points (before tool calls, after responses, on session idle, during compaction) and can inspect, block, or augment agent behavior programmatically. Located at `plugins/<name>.ts`.
 
 OpenPalm admin manages only plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
@@ -444,7 +444,6 @@ assets/state/registry/
 | `name` | string | Display name (max 80 chars) |
 | `description` | string | 1–2 sentences (10–500 chars) |
 | `category` | `plugin` \| `skill` \| `command` \| `agent` \| `tool` \| `channel` \| `service` | Extension category (OpenCode sub-types plus channel/service compose extensions) |
-| `risk` | `lowest` \| `low` \| `medium` \| `medium-high` \| `highest` | Risk level matching capability (Skill=lowest, Command=low, Agent/Channel=medium, Custom Tool/Service=medium-high, Plugin=highest) |
 | `author` | string | Author or GitHub handle |
 | `version` | string | Semantic version |
 | `source` | string | npm package, Docker image, or GitHub URL |
@@ -516,21 +515,9 @@ The admin adds it to `plugin[]` in the host override config and restarts the con
 
 **Secrets** — Named credential key/value pairs stored in `secrets.env` and managed via the admin API. Credentials are never baked into container images.
 
-**Gateway pipeline** — The Gateway is the security and routing layer that processes all inbound messages through a 6-step pipeline:
-1. HMAC signature verification
-2. Payload validation
-3. Rate limiting (120 requests/min per user)
-4. Intake validation via the restricted `channel-intake` agent (zero tool access)
-5. Forward validated payload to the core assistant
-6. Audit log of the interaction
+**Defense in depth** — `policy-and-telemetry.ts` blocks secrets in tool args. `openmemory-http.ts` blocks secrets in memory writeback. `AGENTS.md` instructs the LLM to never store secrets. The memory Skill reinforces explicit-save-only behavior.
 
-**Defense in depth** — `policy-and-telemetry.ts` blocks secrets in tool args. `openmemory-http.ts` blocks secrets in memory writeback. `AGENTS.md` instructs the LLM to never store secrets. The memory Skill (as an extension sub-type) reinforces explicit-save-only behavior.
-
----
-
-## Automations
-
-Automations are scheduled prompts managed via Unix cron in the `admin` container. Each Automation has an ID (UUID), Name, Prompt, Schedule (cron expression), and Status. Crontab entries are stored in admin-managed config/state mounts and managed via the admin UI/API. Automations allow operators to trigger recurring agent tasks without manual intervention.
+See [Security Guide](../security.md) for the full security model, including the Gateway pipeline.
 
 ---
 
