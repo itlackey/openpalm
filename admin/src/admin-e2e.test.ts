@@ -370,6 +370,16 @@ describe("meta endpoint", () => {
   });
 });
 
+describe("system state endpoint", () => {
+  it("GET /admin/system/state returns consolidated setup, stack, and secrets", async () => {
+    const r = await authed("/admin/system/state");
+    expect(r.ok).toBe(true);
+    expect(r.data).toHaveProperty("setup");
+    expect(r.data).toHaveProperty("stack");
+    expect(r.data).toHaveProperty("secrets");
+  });
+});
+
 describe("stack spec endpoints", () => {
   it("GET /admin/stack/spec returns default spec with auth", async () => {
     const r = await authed("/admin/stack/spec");
@@ -426,6 +436,42 @@ describe("scoped channel secrets", () => {
     expect(apply.data).toHaveProperty("impact");
   });
 
+
+  it("validates connections without persisting changes", async () => {
+    const secret = await authed("/admin/secrets", {
+      method: "POST",
+      body: JSON.stringify({ name: "OPENAI_API_KEY_MAIN", value: "secret-value" }),
+    });
+    expect(secret.ok).toBe(true);
+
+    const valid = await authed("/admin/connections/validate", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "openai-primary",
+        type: "ai_provider",
+        name: "OpenAI Primary",
+        env: { OPENAI_API_KEY: "OPENAI_API_KEY_MAIN" },
+      }),
+    });
+    expect(valid.status).toBe(200);
+    expect(valid.data.ok).toBe(true);
+
+    const list = await authed("/admin/connections");
+    expect((list.data.connections as Array<{ id: string }>).some((entry) => entry.id === "openai-primary")).toBe(false);
+
+    const invalid = await authed("/admin/connections/validate", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "openai-primary",
+        type: "ai_provider",
+        name: "OpenAI Primary",
+        env: { OPENAI_API_KEY: "MISSING_SECRET" },
+      }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(invalid.data.error).toBe("unknown_secret_name");
+    expect(invalid.data.details).toBeUndefined();
+  });
 
   it.skip("supports global connections CRUD via stack manager", async () => {
     const create = await authed("/admin/connections", {

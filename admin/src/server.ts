@@ -67,6 +67,13 @@ function json(status: number, payload: unknown) {
   });
 }
 
+function errorJson(status: number, error: string, details?: unknown, code?: string) {
+  const payload: Record<string, unknown> = { error };
+  if (details !== undefined) payload.details = details;
+  if (code) payload.code = code;
+  return json(status, payload);
+}
+
 function cors(resp: Response): Response {
   resp.headers.set("access-control-allow-origin", "*");
   resp.headers.set("access-control-allow-headers", "content-type, x-admin-token, x-request-id");
@@ -462,12 +469,12 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message.startsWith("secret_validation_failed:")) {
-            return cors(json(400, { error: "secret_validation_failed", details: message.replace("secret_validation_failed:", "").split(",") }));
+            return cors(errorJson(400, "secret_validation_failed", message.replace("secret_validation_failed:", "").split(",")));
           }
           if (message.startsWith("compose_validation_failed:")) {
-            return cors(json(400, { error: "compose_validation_failed", details: message.replace("compose_validation_failed:", "") }));
+            return cors(errorJson(400, "compose_validation_failed", message.replace("compose_validation_failed:", "")));
           }
-          return cors(json(500, { error: "stack_apply_failed", details: message }));
+          return cors(errorJson(500, "stack_apply_failed", message));
         }
       }
 
@@ -502,7 +509,7 @@ const server = Bun.serve({
           return cors(json(200, { ok: true, name }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_secret_name") return cors(json(400, { error: message }));
+          if (message === "invalid_secret_name") return cors(errorJson(400, message));
           throw error;
         }
       }
@@ -515,7 +522,7 @@ const server = Bun.serve({
           return cors(json(200, { ok: true, deleted }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_secret_name" || message === "secret_in_use") return cors(json(400, { error: message }));
+          if (message === "invalid_secret_name" || message === "secret_in_use") return cors(errorJson(400, message));
           throw error;
         }
       }
@@ -531,7 +538,7 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message === "invalid_channel" || message === "invalid_target" || message === "invalid_secret_name" || message === "unknown_secret_name") {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -559,7 +566,7 @@ const server = Bun.serve({
             message === "invalid_connection_env_value" ||
             message === "unknown_secret_name"
           ) {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -582,7 +589,7 @@ const server = Bun.serve({
             message === "invalid_connection_env_value" ||
             message === "unknown_secret_name"
           ) {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -597,7 +604,7 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message === "invalid_connection_id" || message === "connection_not_found") {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -953,7 +960,7 @@ const server = Bun.serve({
         return new Response(Bun.file(logoPath), { headers: { "content-type": "image/png" } });
       }
 
-      return cors(json(404, { error: "not_found" }));
+      return cors(errorJson(404, "not_found"));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const isNotFound = message.includes("not found") || message.includes("missing");
@@ -961,7 +968,7 @@ const server = Bun.serve({
       const errorCode = isNotFound ? "not_found" : "internal_error";
       console.error(`[${requestId}] ${errorCode}:`, error);
       const clientMessage = status === 500 ? "An internal error occurred" : message;
-      return cors(json(status, { error: errorCode, message: clientMessage, requestId }));
+      return cors(errorJson(status, errorCode, { message: clientMessage, requestId }));
     }
   }
 });
