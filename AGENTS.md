@@ -19,6 +19,40 @@ The platform is built around five concepts:
 - The openpalm tools (CLI, Admin, etc) exist to manage configuration for known technologies. They should not be complicated. Their primary goal is to take a simple spec and convert it to the necessary configuration and file system resources.
 - Clarity, simplicity, and security should be central to all decisions and implementations.
 
+## Architecture Rules
+
+These rules define how the system is structured. Follow them exactly when writing code or configuration.
+
+### Mounts and directories
+
+- Admin mounts all four known host directories: `DATA`, `STATE`, `CONFIG`, and workspace.
+- Each container has its own data directory under `DATA/<container>`.
+- Each container has its own state directory under `STATE/<container>` that contains the container's `.env` file.
+- The OpenCode container home directory mounts to `DATA/assistant`.
+- The generator writes all cron files to `STATE/automations` (mounted by Admin).
+- Channels and services can specify additional mount paths relative to their `DATA` directory. For example, a container path of `/var/lib/example-data` mounts to `DATA/<container>/example`.
+
+### Networking
+
+- Channels communicate only with the gateway — never directly with OpenCode, OpenMemory, Admin, or any other service.
+- Core containers (Admin, Gateway, OpenCode, OpenMemory) and service containers are host or LAN only (not public).
+
+### Secrets and environment
+
+- The generator finds all secret references in a channel's config and produces a scoped `.env` for that container containing only those secrets sourced from `secrets.env`.
+
+### Compose and Caddy generation
+
+- Core containers have predefined Compose config that is always included in the generated Compose file.
+- Channels and services both generate Docker Compose entries. Channels additionally generate Caddyfile entries.
+- The Caddyfile always includes rules to reach: Admin, OpenCode web UI, and OpenMemory UI.
+- The generator produces a valid `caddy.json` file.
+- Adding a channel or service is done by adding a JSON snippet to the spec and running the generator — no other code changes required.
+
+### Plugins
+
+- Adding OpenCode plugins is done by editing `DATA/assistant/.config/opencode/opencode.json`.
+
 ## Directory Structure
 
 ```
