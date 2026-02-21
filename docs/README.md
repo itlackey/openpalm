@@ -33,6 +33,8 @@ If you are new to OpenPalm, read the docs in this order:
 | [Plugin Authoring](development/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
 | [Docker Compose Guide](docker-compose-guide.md) | Hosting, observability, extending the stack |
 | [Host System Reference](refenence/host-system-reference.md) | Host paths, environment variables, system requirements |
+| [Stack Spec Schema](../assets/config/stack-spec.schema.json) | JSON Schema for `stack-spec.json` (host/lan/public exposure + direct secret references) |
+| [Generator Spec Schema](../assets/config/openpalm-generator.schema.json) | JSON Schema for the reference generator spec in docs/PR guidance |
 | [Implementation Guide](draft/implementation-guide.md) | Design rationale and build order |
 | [Security](security.md) | Security controls by layer and why they exist |
 | [Testing Plan](development/testing-plan.md) | Test strategy, coverage goals, and test categories |

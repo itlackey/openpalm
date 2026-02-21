@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openpalm.dev/schemas/openpalm-generator.schema.json",
+  "title": "OpenPalm Generator Reference Spec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["channels", "automations"],
+  "properties": {
+    "projectName": { "type": "string" },
+    "caddy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "email": { "type": "string" }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "image", "exposure", "containerPort"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "image": { "type": "string", "minLength": 1 },
+          "exposure": { "type": "string", "enum": ["host", "lan", "public"] },
+          "containerPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "hostPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "domains": { "type": "array", "items": { "type": "string" } },
+          "pathPrefixes": { "type": "array", "items": { "type": "string" } },
+          "internalTls": { "type": "boolean" },
+          "env": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+          "config": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+        }
+      }
+    },
+    "automations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "schedule", "script", "enabled"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "schedule": { "type": "string", "minLength": 1 },
+          "script": { "type": "string", "minLength": 1 },
+          "enabled": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

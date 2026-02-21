@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openpalm.dev/schemas/stack-spec.schema.json",
+  "title": "OpenPalm Stack Spec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "accessScope", "channels", "automations"],
+  "properties": {
+    "version": { "const": 1 },
+    "accessScope": { "type": "string", "enum": ["host", "lan"] },
+    "channels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chat", "discord", "voice", "telegram"],
+      "properties": {
+        "chat": { "$ref": "#/$defs/channelConfig" },
+        "discord": { "$ref": "#/$defs/channelConfig" },
+        "voice": { "$ref": "#/$defs/channelConfig" },
+        "telegram": { "$ref": "#/$defs/channelConfig" }
+      }
+    },
+    "automations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/automation" }
+    }
+  },
+  "$defs": {
+    "secretRef": {
+      "type": "string",
+      "pattern": "^\\$\\{[A-Z][A-Z0-9_]*\\}$"
+    },
+    "channelConfig": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "required": ["enabled", "exposure", "config"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "exposure": { "type": "string", "enum": ["host", "lan", "public"] },
+        "config": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "description": "Literal value or ${SECRET_NAME} reference"
+          }
+        }
+      }
+    },
+    "automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "schedule", "script", "enabled"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "schedule": { "type": "string", "minLength": 1 },
+        "script": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

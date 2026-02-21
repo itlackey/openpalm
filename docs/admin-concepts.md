@@ -77,7 +77,7 @@ The configuration directory mount is the key architectural element. It means the
 
 ## Connections
 
-> **Implementation Status:** Secrets are managed as key/value entries in `secrets.env`; connections are implemented in Stack Spec as references (`ENV_VAR_NAME` -> secret key name) through `packages/lib` workflows.
+> **Implementation Status:** Secrets are managed as key/value entries in `secrets.env`; channel config values in stack-spec reference secrets directly with `${SECRET_NAME}` when needed.
 
 ### What the user sees
 
@@ -122,15 +122,15 @@ The lifecycle:
    OPENAI_ENDPOINT=https://api.openai.com/v1
    ```
 
-3. **Admin maintains a connection registry** (a JSON metadata file) that tracks which connections exist, their types, display names, and which stack components reference them. This registry is what the UI reads to render the connections list with status indicators.
+3. **Admin validates secret usage from stack-spec channel config** and reports where each secret key is referenced for safe rotation/deletion workflows.
 
-4. **Other parts of the stack reference connections by name.** When configuring which AI provider the memory system uses, the admin writes the resolved endpoint and API key env vars to the appropriate service configuration (e.g., `OPENAI_BASE_URL` and `OPENAI_API_KEY` for the memory service). The connection registry records this binding so the UI can show "Used by: Memory system."
+4. **Runtime artifacts are rendered directly from stack-spec + secrets.env.** During render/apply, `${SECRET_NAME}` tokens in channel config are resolved into generated env files; unresolved references fail validation.
 
 5. **OpenCode provider configuration** is updated in `opencode.jsonc` to reference resolved environment variable names via [env var interpolation](https://opencode.ai/docs/config/#env-vars) (e.g., `"apiKey": "{env:ANTHROPIC_API_KEY}"`). This means the actual secret never appears in the config file. OpenCode's config supports `{env:VAR_NAME}` syntax for referencing environment variables and `{file:./path}` syntax for referencing file contents.
 
 The key design principle: credentials are written to exactly one file and referenced everywhere else by environment variable name. The admin UI provides the abstraction layer that lets users think in terms of "my Anthropic account" rather than "which env var holds my API key."
 
-**Connection validation** -- when a user saves a connection, the admin can optionally probe the endpoint (e.g., a lightweight API call) to verify the credentials are valid before committing them. Invalid connections are shown with a warning status rather than blocking the save.
+**Secret reference validation** -- during stack render/apply, referenced secret keys must exist in `secrets.env`; missing keys return validation errors before applying changes.
 
 ---
 
