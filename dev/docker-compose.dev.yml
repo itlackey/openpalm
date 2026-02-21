@@ -1,8 +1,8 @@
 # Development-only compose overlay.
 # Runtime orchestration is generated into assets/state/docker-compose.yml (and rendered state paths at install/runtime).
 services:
-  opencode-core:
-    build: ./opencode
+  assistant:
+    build: ./assistant
     # Extensions are baked into the image from opencode/extensions/.
     # For local dev, layer this over assets/state/docker-compose.yml.
     environment:
@@ -19,16 +19,34 @@ services:
     build: ./gateway
 
   admin:
-    build: ./admin
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+    ports:
+      - "8100:8100"
+    volumes:
+      - .:/compose:ro
+    environment:
+      OPENCODE_CORE_URL: "http://assistant:4096"
+      COMPOSE_PROJECT_PATH: /compose
+      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
 
   channel-chat:
-    build: ./channels/chat
+    build:
+      context: .
+      dockerfile: channels/chat/Dockerfile
 
   channel-discord:
-    build: ./channels/discord
+    build:
+      context: .
+      dockerfile: channels/discord/Dockerfile
 
   channel-voice:
-    build: ./channels/voice
+    build:
+      context: .
+      dockerfile: channels/voice/Dockerfile
 
   channel-telegram:
-    build: ./channels/telegram
+    build:
+      context: .
+      dockerfile: channels/telegram/Dockerfile

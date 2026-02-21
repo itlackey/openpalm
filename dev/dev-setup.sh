@@ -19,9 +19,13 @@ if [[ ! -f "$REPO_ROOT/.env" ]]; then
   sed "s|/REPLACE/WITH/ABSOLUTE/PATH|$REPO_ROOT|g" "$REPO_ROOT/dev/.env.example" >"$REPO_ROOT/.env"
 fi
 
-mkdir -p "$DEV_DIR/data"/{postgres,qdrant,openmemory,opencode,admin}
+mkdir -p "$DEV_DIR/data"/{postgres,qdrant,openmemory,assistant,admin}
 mkdir -p "$DEV_DIR/config"
-mkdir -p "$DEV_DIR/state"/{gateway,rendered/caddy/snippets,rendered/env,caddy/config,caddy/data,logs,tmp}
+mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,channel-discord,channel-voice,channel-telegram,rendered/caddy/snippets,rendered/env,caddy/config,caddy/data,logs,tmp}
+# Create empty env files so docker-compose doesn't error on missing env_file
+for svc in gateway openmemory postgres qdrant assistant channel-chat channel-discord channel-voice channel-telegram; do
+  touch "$DEV_DIR/state/$svc/.env"
+done
 mkdir -p "$HOME/openpalm"
 
 cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" 2>/dev/null || true

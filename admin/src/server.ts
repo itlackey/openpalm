@@ -548,6 +548,17 @@ const server = Bun.serve({
       }
 
       // ── Static UI ─────────────────────────────────────────────────
+      if (url.pathname.startsWith("/admin/opencode")) {
+        const subpath = url.pathname.slice("/admin/opencode".length) || "/";
+        const target = `${OPENCODE_CORE_URL}${subpath}${url.search}`;
+        try {
+          const proxyResp = await fetch(target, { signal: AbortSignal.timeout(5000) });
+          return new Response(proxyResp.body, { status: proxyResp.status, headers: proxyResp.headers });
+        } catch {
+          return cors(json(502, { error: "assistant_unavailable" }));
+        }
+      }
+
       if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
         const indexPath = `${UI_DIR}/index.html`;
         if (!existsSync(indexPath)) return cors(json(500, { error: "admin ui missing" }));

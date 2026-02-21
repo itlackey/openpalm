@@ -86,7 +86,7 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(port),
       ADMIN_TOKEN: "test-token-e2e",
-      STATE_ROOT: stateRoot,
+      OPENPALM_STATE_ROOT: stateRoot,
       DATA_DIR: dataDir,
       UI_DIR: uiDir,
       OPENCODE_CONFIG_PATH: opencodeConfigPath,
@@ -99,6 +99,7 @@ beforeAll(async () => {
       CHANNEL_SECRET_DIR: channelSecretDir,
       GATEWAY_CHANNEL_SECRETS_PATH: join(gatewaySecretDir, "channels.env"),
       CADDY_ROUTES_DIR: caddyRoutesDir,
+      CADDY_JSON_PATH: join(renderedDir, "caddy", "caddy.json"),
       COMPOSE_FILE_PATH: join(renderedDir, "docker-compose.yml"),
       GATEWAY_ENV_PATH: join(stateRoot, "gateway", ".env"),
       OPENMEMORY_ENV_PATH: join(stateRoot, "openmemory", ".env"),
@@ -167,6 +168,21 @@ describe("static file serving", () => {
   });
 });
 
+// ── OpenCode Proxy ───────────────────────────────────────
+
+describe("opencode proxy", () => {
+  it("GET /admin/opencode/ returns 502 when opencode-core is unreachable", async () => {
+    const r = await api("/admin/opencode/");
+    // 502 = route exists but upstream is unavailable (not 404 which would mean no route)
+    expect(r.status).toBe(502);
+  });
+
+  it("GET /admin/opencode/sub/path also proxies (not 404)", async () => {
+    const r = await api("/admin/opencode/api/v1/session");
+    expect(r.status).not.toBe(404);
+  });
+});
+
 // ── Setup Wizard ────────────────────────────────────────
 
 describe("setup wizard", () => {
@@ -206,12 +222,13 @@ describe("setup wizard", () => {
     expect(bad.status).toBe(400);
   });
 
-  it.skip("POST /admin/setup/access-scope sets scope", async () => {
+  it("POST /admin/setup/access-scope sets scope and writes artifacts", async () => {
     const r = await apiJson("/admin/setup/access-scope", {
       method: "POST",
       body: JSON.stringify({ scope: "host" }),
     });
     expect(r.ok).toBe(true);
+    expect((r.data.state as Record<string, unknown>).accessScope).toBe("host");
   });
 
   it("POST /admin/setup/service-instances saves config", async () => {

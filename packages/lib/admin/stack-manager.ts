@@ -100,6 +100,7 @@ export class StackManager {
 
   renderArtifacts() {
     const generated = this.renderPreview();
+    mkdirSync(dirname(this.paths.caddyfilePath), { recursive: true });
     writeFileSync(this.paths.caddyfilePath, generated.caddyfile, "utf8");
     mkdirSync(dirname(this.paths.caddyJsonPath), { recursive: true });
     writeFileSync(this.paths.caddyJsonPath, generated.caddyJson, "utf8");
@@ -112,6 +113,7 @@ export class StackManager {
       writeFileSync(path, content, "utf8");
     }
 
+    mkdirSync(dirname(this.paths.composeFilePath), { recursive: true });
     writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
 
     mkdirSync(dirname(this.paths.gatewayEnvPath), { recursive: true });

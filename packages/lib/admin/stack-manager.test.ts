@@ -43,6 +43,32 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");
   });
 
+  it("creates all required directories from scratch when they do not pre-exist", () => {
+    // Uses nested paths that mirror production (e.g. /state/rendered/caddy/) with NO pre-created dirs.
+    // This test would have failed before the renderArtifacts() mkdir fix.
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-mkdir-test-"));
+    const manager = new StackManager({
+      stateRootPath: dir,
+      caddyfilePath: join(dir, "rendered", "caddy", "Caddyfile"),
+      caddyJsonPath: join(dir, "rendered", "caddy", "caddy.json"),
+      caddyRoutesDir: join(dir, "rendered", "caddy", "snippets"),
+      composeFilePath: join(dir, "rendered", "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      gatewayEnvPath: join(dir, "gateway", ".env"),
+      openmemoryEnvPath: join(dir, "openmemory", ".env"),
+      postgresEnvPath: join(dir, "postgres", ".env"),
+      qdrantEnvPath: join(dir, "qdrant", ".env"),
+      assistantEnvPath: join(dir, "assistant", ".env"),
+    });
+
+    expect(() => manager.renderArtifacts()).not.toThrow();
+    expect(existsSync(join(dir, "rendered", "caddy", "Caddyfile"))).toBeTrue();
+    expect(existsSync(join(dir, "rendered", "caddy", "caddy.json"))).toBeTrue();
+    expect(existsSync(join(dir, "rendered", "docker-compose.yml"))).toBeTrue();
+    expect(existsSync(join(dir, "gateway", ".env"))).toBeTrue();
+  });
+
   it("prevents deleting secrets that are referenced by channel config", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);

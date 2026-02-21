@@ -25,14 +25,21 @@ function runCompose(args: string[]): Promise<ComposeResult> {
     const composeArgs = ComposeSubcommand
       ? [ComposeSubcommand, "-f", ComposeFile, ...args]
       : ["-f", ComposeFile, ...args];
-    const proc = spawn(ComposeBin, composeArgs, {
-      cwd: ComposeProjectPath,
-      env: {
-        ...process.env,
-        DOCKER_HOST: ContainerSocketUri,
-        CONTAINER_HOST: ContainerSocketUri,
-      },
-    });
+    let proc;
+    try {
+      proc = spawn(ComposeBin, composeArgs, {
+        cwd: ComposeProjectPath,
+        env: {
+          ...process.env,
+          DOCKER_HOST: ContainerSocketUri,
+          CONTAINER_HOST: ContainerSocketUri,
+        },
+      });
+    } catch (spawnError) {
+      const msg = spawnError instanceof Error ? spawnError.message : String(spawnError);
+      resolve({ ok: false, stdout: "", stderr: msg });
+      return;
+    }
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (chunk) => {
