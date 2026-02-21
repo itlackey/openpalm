@@ -84,19 +84,13 @@ Use a **dedicated Admin Console**, and link to it from dashboards.
 - System status
 - Config editor (schema-aware)
 - Service control (restart services)
-- Extension gallery (install/uninstall) — see [Extension gallery](#extension-gallery) below
+- Plugin management (install/uninstall npm plugins) — see [Plugin management](#plugin-management) below
 - Connections management — see [Connections](#connections-management) below
 - Automations management — see [Automations](#automations-management) below
 
-### Extension gallery
+### Plugin management
 
-The extension gallery lets users discover, install, and uninstall extensions without editing files directly. Key features:
-
-- **Risk badges**: Each extension is labeled with its risk level (Skill = lowest, Command = low, Agent = medium, Custom Tool = medium-high, Plugin = highest) so users can make informed install decisions.
-- **Discovery sources**: Extensions are surfaced from three places:
-  1. **Curated gallery** — Officially reviewed extensions maintained by the OpenPalm project.
-  2. **Community registry** — Community-submitted extensions with automated validation but no official review.
-  3. **npm search** — Live search of the npm registry for packages that follow the OpenPalm extension convention.
+The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Users can install and uninstall npm plugin packages, which are automatically resolved by Bun at startup. Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
 ### Connections management
 

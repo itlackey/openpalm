@@ -8,13 +8,7 @@ OpenPalm is built around five ideas: Extensions, Connections, Channels, Automati
 
 Extensions give your assistant new abilities. An extension might teach the assistant a new behavior ("always check memory before answering"), give it a new tool ("search the web"), add a custom slash command, or change how it processes requests.
 
-You browse extensions in the **Extension Gallery**, where each one has a name, a short description, and a risk badge that tells you how much access it needs. To add one, click to enable it. To remove it, click to disable it. You don't need to understand the technical differences between extension types to use them. The gallery groups extensions by type (like Behaviors, Commands, and Custom Tools) to help you browse, but you can simply search or use the 'All' tab to see everything.
-
-### Where extensions come from
-
-- **Curated gallery** — Pre-reviewed extensions that ship with OpenPalm. These have been audited and include a risk assessment.
-- **Community registry** — Extensions contributed by the community. You can browse them alongside curated ones.
-- **npm search** — For advanced users. Discovers additional extensions from the npm package registry. These are marked as unreviewed.
+The admin UI lets you manage **plugins** — npm packages that hook into the OpenCode runtime. To add a plugin, enter its npm package ID and click Install. To remove it, click Uninstall. Skills, agents, commands, and tools can be managed manually by advanced users in the OpenCode config directory.
 
 ### Risk levels
 

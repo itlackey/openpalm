@@ -248,7 +248,7 @@ describe("setup wizard", () => {
   });
 });
 
-// ── Gallery ─────────────────────────────────────────────
+// ── Plugin Management ───────────────────────────────────
 
 describe("plugin management", () => {
   it("POST /admin/plugins/install requires auth", async () => {

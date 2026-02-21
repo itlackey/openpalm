@@ -32,7 +32,7 @@ An extension is the umbrella term for all types of [OpenCode](https://opencode.a
 
 > **Note on directory naming:** OpenCode uses [plural directory names](https://opencode.ai/docs/config/#custom-directory) (`skills/`, `agents/`, `commands/`, `tools/`, `plugins/`, `modes/`, `themes/`) as the standard convention. All OpenPalm extension directories use the plural form.
 
-The admin UI and API never expose these type distinctions as primary navigation. Instead, each extension in the gallery has a risk badge and a plain-language description of what permissions it needs. The type is available as metadata for users who want it, but it's not required to make decisions.
+The admin UI manages only plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
 ### How it works
 
@@ -47,14 +47,12 @@ Configuration files across all sources are [merged together](https://opencode.ai
 5. `.opencode` directories -- agents, commands, plugins
 6. Inline config (`OPENCODE_CONFIG_CONTENT` env var) -- runtime overrides
 
-The install/enable lifecycle works as follows:
+The install/enable lifecycle for plugins works as follows:
 
-1. **Gallery or registry provides extension metadata** -- name, description, risk level, extension type, and the install target (a file path for bundled extensions, or an npm package identifier for plugins).
+1. **User provides a plugin npm package ID** through the admin UI or API.
 
-2. **Admin service resolves the install action based on type:**
-   - *Skills, commands, agents, custom tools:* The extension files ship with the OpenPalm image (baked into the `opencode-core` container at build time). "Installing" means placing them into the mounted configuration directory so OpenCode picks them up. Some may already be present via the entrypoint's `cp -rn` merge from the baked-in defaults.
-   - *Plugins (local):* A local `.ts` file is placed in the `plugins/` subdirectory of the mounted config directory. Local plugins are loaded directly from this directory at startup.
-   - *Plugins (npm):* The npm package name (e.g., `"opencode-helicone-session"` or `"@my-org/custom-plugin"`) is added to the `plugin` array in `opencode.jsonc`. npm plugins are [installed automatically by Bun](https://opencode.ai/docs/plugins/#how-plugins-are-installed) at startup and cached in `~/.cache/opencode/node_modules/`.
+2. **Admin service adds the plugin to `opencode.json`:**
+   - The npm package name (e.g., `"opencode-helicone-session"` or `"@my-org/custom-plugin"`) is added to the `plugin` array in `opencode.json`. npm plugins are [installed automatically by Bun](https://opencode.ai/docs/plugins/#how-plugins-are-installed) at startup and cached in `~/.cache/opencode/node_modules/`.
    - *Plugin load order:* Global config plugins -> project config plugins -> global plugin directory -> project/custom plugin directory. Duplicate npm packages with the same name and version are loaded once.
 
 3. **Admin tells the admin to restart `opencode-core`** -- the next session picks up the changed configuration directory and/or the updated `opencode.jsonc`.
@@ -63,11 +61,7 @@ The install/enable lifecycle works as follows:
 
 The configuration directory mount is the key architectural element. It means the admin service never needs to exec into the opencode-core container or modify its image. It only writes files to a shared volume and edits a JSON config file.
 
-**Extension discovery** happens through three sources:
-
-- A **curated gallery** of reviewed extensions with risk assessments, bundled with the admin service image. These are known-good and pre-audited.
-- A **community registry** fetched at runtime from a public JSON index hosted on GitHub. The admin caches this and lets users browse community-contributed extensions alongside curated ones.
-- An **npm search** fallback for discovering OpenCode plugins that aren't in either registry. These are marked as unreviewed and high-risk.
+**Extension management** in the admin UI is limited to plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
 **Relevant OpenCode documentation:**
 - [Config overview and precedence](https://opencode.ai/docs/config/)

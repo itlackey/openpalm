@@ -11,7 +11,7 @@ Detect regressions, feature drift, implementation gaps, and security violations 
 The following items from this plan are now implemented in-repo:
 
 - ✅ Layer 1 unit tests for gateway (`rate-limit`, `audit`, intake/security/client edge cases), admin routes, and channel adapters.
-- ✅ Layer 1 admin tests for `gallery` and `cron-store` (Automations backend).
+- ✅ Layer 1 admin tests for `automations`, `automation-history`, `stack-manager`, and `stack-spec`.
 - ✅ Layer 2 integration suites for channel→gateway and admin→admin flows.
 - ✅ Layer 3 contract suites for channel-message validation and docs parity checks.
 - ✅ Layer 4 security suites for auth, HMAC edge rejection, and input bounds.
@@ -69,9 +69,8 @@ Voice-specific: `GET /voice/stream` returns 501.
 |--------|------|--------------|
 | `setup.ts` | _(exists)_ | add: concurrent writes don't corrupt state; invalid step names rejected |
 | `runtime-env.ts` | _(exists)_ | add: missing file handled gracefully; malformed lines skipped |
-| `gallery.ts` | `gallery.test.ts` | search by name, tags, category; empty query returns all; npm search response parsing; community cache TTL |
-| `extensions.ts` | `extensions.test.ts` | install plugin adds to config; uninstall removes; permission-widening blocked; atomic backup created |
-| `cron-store.ts` | `cron-store.test.ts` | CRUD operations (Automations); persistence to disk; invalid cron expressions rejected |
+| `automations.ts` | `automations.test.ts` | cron sync; trigger automation; payload file management |
+| `automation-history.ts` | `automation-history.test.ts` | read history; get latest run; history file rotation |
 
 ### OpenMemory plugin
 
@@ -188,7 +187,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 |------|------------|
 | All 7 nav tabs render | click each tab → correct `#page-*` visible, others hidden |
 | Active tab styling | clicked tab has active class; others don't |
-| Default page on load | gallery page shown by default (or setup wizard if first boot) |
+| Default page on load | extensions page shown by default (or setup wizard if first boot) |
 | OpenCode iframe | navigating to OpenCode tab loads iframe with correct src |
 | OpenMemory iframe | navigating to OpenMemory tab loads iframe with correct src |
 
@@ -206,37 +205,19 @@ Run: `bun run test:ui` — target < 30 seconds.
 | **Health check step** | shows status dots for gateway, admin, opencode-core, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
 | **Security step** | admin password input; password saved to localStorage; displays active protections list |
 | **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /admin/setup/channels` |
-| **Extensions step** | checkboxes for starter extensions (pre-checked by default); unchecking removes from selection |
 | **Complete step** | calls `POST /admin/setup/complete`; shows "Continue to Admin" button; clicking dismisses overlay |
 | Wizard not shown after complete | reload page with `setupComplete: true` → no overlay |
 | Re-run wizard from settings | click "Open Setup Wizard" in settings → overlay reappears |
 
-### 5c. Gallery Page
+### 5c. Extensions Page (Plugin Management)
 
 | Test | Assertions |
 |------|------------|
-| Initial load | gallery cards rendered from curated registry |
-| Search by text | type query + Enter → cards filtered; empty results shows message |
-| Category filter tabs | Category filters for Skills, Commands, Agents, Tools, and Plugins; click any category → only matching cards; click "All" → all cards back |
-| Card content | each card shows name, risk badge, category, author, description (truncated), tags (max 4) |
-| Risk badge colors | lowest=gray (#8e8e93), low=green (#34c759), medium=yellow (#ff9500), medium-high=orange (#ff6b35), highest=red (#ff3b30) |
-| Detail modal opens | click card → modal overlay appears with full item details |
-| Detail modal content | modal shows: name, category, version, author, risk badge, risk description, security notes, permissions list, defense-in-depth section |
-| Detail modal close | click X or overlay background → modal closes |
-| Install from modal | click Install → confirm dialog → success alert → modal closes |
+| Lists installed plugins | page shows plugins currently in opencode.json `plugin[]` array |
+| Install plugin | enter plugin ID → click Install → calls `POST /admin/plugins/install` → plugin appears in list |
+| Uninstall plugin | click Uninstall → confirm → calls `POST /admin/plugins/uninstall` → plugin removed from list |
 | Install requires auth | install without admin token → error alert |
-| npm search | click "Search npm registry..." → prompt for query → results shown → prompt for package → confirm high-risk warning → install |
-| Community registry | community tab/search returns results with `source: "community-registry"` |
-
-### 5d. Installed Extensions Page
-
-| Test | Assertions |
-|------|------------|
-| Lists active extensions | page shows active extensions (skills, commands, agents, tools, plugins) currently in opencode config |
-| Lists gallery installations | page shows items installed via gallery |
-| Remove plugin | click Remove → confirm → plugin removed from list; calls `POST /admin/gallery/uninstall` |
 | Requires auth | page without admin token shows auth-required message or empty |
-| After install | install plugin on gallery page → switch to installed → plugin appears |
 
 ### 5e. Services Page
 
@@ -304,7 +285,7 @@ Connections are named credential sets stored in `secrets.env` and managed via th
 | API 401 on protected action | mock returns 401 → alert shown with error message |
 | API 500 on server error | mock returns 500 → alert shown with error text |
 | Network failure | mock server down → error alert or "Could not load" text |
-| Gallery load failure | mock returns error → "Could not load" message in gallery area |
+| Extensions load failure | mock returns error → "Could not load" message in extensions area |
 | Automations load failure | mock returns error → "Could not load" message in automations area |
 
 ### 5j. Auth Flow (cross-cutting)
@@ -321,10 +302,9 @@ Connections are named credential sets stored in `secrets.env` and managed via th
 ```
 admin/ui/tests/
 ├── setup-wizard.ui.test.ts
-├── gallery.ui.test.ts
-├── installed.ui.test.ts
+├── extensions.ui.test.ts       # Plugin management page
 ├── services.ui.test.ts
-├── automations.ui.test.ts      # Automations page (cron-store backend)
+├── automations.ui.test.ts      # Automations page
 ├── connections.ui.test.ts      # Connections CRUD (stack spec env var -> secret key refs)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
@@ -333,7 +313,7 @@ admin/ui/tests/
 └── helpers/
     ├── admin-harness.ts        # starts admin server + mocks on random ports
     ├── page-objects.ts         # page object helpers (selectors, common actions)
-    └── mock-responses.ts       # canned API responses for gallery, automations, connections, etc.
+    └── mock-responses.ts       # canned API responses for automations, connections, etc.
 ```
 
 ### CI considerations for UI tests
@@ -366,7 +346,7 @@ Requires the full Docker Compose stack running (`bun run dev:up`).
 | Chat roundtrip | POST `/channels/chat` → chat adapter → gateway → opencode-core → response |
 | Discord webhook roundtrip | POST `/channels/discord` → discord adapter → gateway → opencode-core → response |
 | Admin container lifecycle | `POST /admin/containers/restart` → admin restarts service → service comes back healthy |
-| Extension install/uninstall | install plugin via admin API → verify config updated → uninstall → verify removed |
+| Plugin install/uninstall | install plugin via admin API → verify config updated → uninstall → verify removed |
 | Setup wizard flow | complete setup wizard steps in order → verify `setupComplete: true` |
 | Memory integration | send message → verify openmemory receives write-back → send follow-up → verify recall injected |
 
@@ -376,8 +356,8 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 
 | Test | Flow |
 |------|------|
-| Setup wizard → gallery → install | complete setup wizard in browser → navigate to gallery → install an extension → verify on installed page |
-| Cron CRUD lifecycle | create cron → verify listed → edit schedule → verify updated → run now → delete → verify gone |
+| Setup wizard → extensions → install | complete setup wizard in browser → navigate to extensions → install a plugin → verify on extensions page |
+| Automation CRUD lifecycle | create automation → verify listed → edit schedule → verify updated → run now → delete → verify gone |
 | Container restart from UI | navigate to services → click Restart on a service → verify service comes back healthy |
 | Channel access toggle | set channel to public → verify badge updates → set back to LAN |
 | Config editor roundtrip | open settings → modify service instance URL → save → reload → verify value persisted |
@@ -401,7 +381,7 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 | Guard | Implementation |
 |-------|---------------|
 | `ChannelMessage` type matches test contracts | if type changes, contract tests fail |
-| Gallery registry items match schema | validate `assets/state/registry/*.json` against schema (already in CI) |
+| Stack spec schema validation | validate `assets/config/stack-spec.json` against expected schema |
 | Admin API routes match docs | test enumerates all routes in server source; compare to `docs/API.md` endpoint list |
 | UI fetch calls match API routes | test extracts all `fetch()` URLs from `index.html` and `setup-ui.js`; verify each has a corresponding server route |
 
@@ -481,10 +461,9 @@ jobs:
 │   └── module.integration.test.ts  # integration tests (Layer 2)
 admin/ui/tests/                     # admin UI tests (Layer 5)
 ├── setup-wizard.ui.test.ts
-├── gallery.ui.test.ts
-├── installed.ui.test.ts
+├── extensions.ui.test.ts           # Plugin management page
 ├── services.ui.test.ts
-├── automations.ui.test.ts          # Automations page (cron-store backend)
+├── automations.ui.test.ts          # Automations page
 ├── connections.ui.test.ts          # Connections CRUD (stack spec env var -> secret key refs)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
@@ -493,7 +472,7 @@ admin/ui/tests/                     # admin UI tests (Layer 5)
 └── helpers/
     ├── admin-harness.ts            # starts admin server + mocks on random ports
     ├── page-objects.ts             # page object helpers (selectors, common actions)
-    └── mock-responses.ts           # canned API responses for gallery, automations, connections, etc.
+    └── mock-responses.ts           # canned API responses for automations, connections, etc.
 test/
 ├── contracts/                      # contract schemas and tests (Layer 3)
 │   ├── channel-message.contract.ts
@@ -549,7 +528,7 @@ test/
 3. **Contract tests** — catch drift between docs and implementation
 4. **Gateway integration tests** — the most critical path (channel → intake → core)
 5. **Security tests** — HMAC, auth, input bounds
-6. **Admin UI tests** — setup wizard, gallery, crons, services, settings (Layer 5)
+6. **Admin UI tests** — setup wizard, extensions, automations, services, settings (Layer 5)
 7. **Regression guards** — config/schema/UI drift detection
 8. **CI workflow** — `test.yml` running layers 1-5 + typecheck
 9. **Compose stack tests** — local-only E2E (API + UI)
