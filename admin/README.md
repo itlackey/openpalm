@@ -69,7 +69,7 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 
 ### Plugin management
 
-The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory. See [Extensions Guide](../docs/extensions-guide.md) for details.
+The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory. See [Extensions Guide](../dev/docs/extensions-guide.md) for details.
 
 ### Automations
 
@@ -138,7 +138,7 @@ PowerShell: `& $env:TEMP/openpalm-uninstall.ps1 -RemoveAll -RemoveImages`.
 
 ## Related docs
 
-- [Admin Guide](../docs/admin-guide.md) — High-level setup and usage guide
-- [Admin Concepts](../docs/admin-concepts.md) — Core platform concepts
-- [API Reference](../docs/development/api-reference.md) — Admin API endpoints
-- [Maintenance Guide](../docs/admin/maintenance.md) — Backup, restore, and upgrade procedures
+- [Admin Guide](docs/admin-guide.md) — Setup and usage guide
+- [Admin Concepts](docs/admin-concepts.md) — Core platform concepts
+- [API Reference](../dev/docs/api-reference.md) — Admin API endpoints
+- [Maintenance Guide](docs/maintenance.md) — Backup, restore, and upgrade procedures

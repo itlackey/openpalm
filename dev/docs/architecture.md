@@ -226,7 +226,7 @@ Automations are user-defined scheduled prompts, distinct from the admin's system
 
 ## Security model
 
-See [Security Guide](../security.md) for the full defense-in-depth security model.
+See [Security Guide](../../admin/docs/security.md) for the full defense-in-depth security model.
 
 ## Single source of truth map
 
@@ -238,4 +238,4 @@ See [Security Guide](../security.md) for the full defense-in-depth security mode
 | Compose service allowlist | `packages/lib/admin/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |
 | Admin transport routes | `admin/src/server.ts` | Prefer delegating business rules to `packages/lib/admin/*`. |
 | Security/routing ingress | `gateway/src/server.ts` and `gateway/src/channel-*` | Gateway remains the only inbound message path. |
-| API contract documentation | `docs/development/api-reference.md` | Update this doc when route behavior or payloads change. |
+| API contract documentation | `dev/docs/api-reference.md` | Update this doc when route behavior or payloads change. |

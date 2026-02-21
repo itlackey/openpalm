@@ -99,16 +99,16 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 |---|---|
 | [CLI](docs/cli.md) | Install methods, commands, flags, and building from source |
 | [User Concepts](docs/user-concepts.md) | What OpenPalm is and how end users interact with it |
-| [Admin Concepts](docs/admin-concepts.md) | Key concepts for administrators |
-| [Admin Guide](docs/admin-guide.md) | Installation, admin console, authentication |
-| [Architecture](docs/development/architecture.md) | Container inventory, data flow diagrams, URL routing |
-| [API Reference](docs/development/api-reference.md) | All service endpoints: gateway, admin, channels |
-| [Extensions Guide](docs/extensions-guide.md) | Extension types and installing extensions |
-| [Extensions Reference](docs/reference/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
-| [Host System Reference](docs/reference/host-system-reference.md) | Host paths, environment variables, system requirements |
-| [Security Guide](docs/security.md) | Security controls by layer and why they exist |
-| [Maintenance](docs/admin/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues and how to resolve them |
+| [Admin Guide](admin/docs/admin-guide.md) | Installation, admin console, authentication |
+| [Admin Concepts](admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
+| [Security Guide](admin/docs/security.md) | Security controls by layer and why they exist |
+| [Host System Reference](admin/docs/host-system-reference.md) | Host paths, environment variables, system requirements |
+| [Maintenance](admin/docs/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
+| [Troubleshooting](admin/docs/troubleshooting.md) | Common issues and how to resolve them |
+| [Architecture](dev/docs/architecture.md) | Container inventory, data flow diagrams, URL routing |
+| [API Reference](dev/docs/api-reference.md) | All service endpoints: gateway, admin, channels |
+| [Extensions Guide](dev/docs/extensions-guide.md) | Extension types and installing extensions |
+| [Extensions Reference](dev/docs/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 
 ### Project READMEs
 
@@ -117,6 +117,11 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | Admin service | [admin/README.md](admin/README.md) |
 | Gateway service | [gateway/README.md](gateway/README.md) |
 | Assistant service | [assistant/README.md](assistant/README.md) |
+| Chat channel | [channels/chat/README.md](channels/chat/README.md) |
+| Discord channel | [channels/discord/README.md](channels/discord/README.md) |
+| Voice channel | [channels/voice/README.md](channels/voice/README.md) |
+| Telegram channel | [channels/telegram/README.md](channels/telegram/README.md) |
+| Webhook channel | [channels/webhook/README.md](channels/webhook/README.md) |
 
 ## Contributing
 

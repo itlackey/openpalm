@@ -75,7 +75,7 @@ Channel adapters do not:
 
 ## API endpoints
 
-See [API Reference](../docs/development/api-reference.md) for full endpoint details.
+See [API Reference](../dev/docs/api-reference.md) for full endpoint details.
 
 | Endpoint | Description |
 |---|---|
@@ -105,6 +105,6 @@ Headers: `x-channel-signature` (HMAC-SHA256)
 
 ## Related docs
 
-- [Architecture](../docs/development/architecture.md) — Full container architecture and data flow
-- [Security Guide](../docs/security.md) — Defense-in-depth security model
-- [API Reference](../docs/development/api-reference.md) — All service endpoints
+- [Architecture](../dev/docs/architecture.md) — Full container architecture and data flow
+- [Security Guide](../admin/docs/security.md) — Defense-in-depth security model
+- [API Reference](../dev/docs/api-reference.md) — All service endpoints
