@@ -1,9 +1,8 @@
 # OpenPalm Extensions: Installation, Configuration, and Management
 
 > **Related extension docs:**
-> - [extensions-guide.md](../extensions-guide.md) -- How to build and install extensions (developer tutorial)
+> - [extensions-guide.md](../extensions-guide.md) -- Extension types, gallery, building and installing extensions
 > - **extensions-reference.md** (this file) -- Technical reference for all extension types (API/schema details)
-> - [extensions-analysis.md](../draft/extensions-analysis.md) -- Architecture analysis of the extension system (design rationale)
 
 This document provides a complete end-to-end reference for how extensions are authored, distributed, installed, configured, loaded at runtime, and removed in an OpenPalm stack.
 
@@ -128,7 +127,7 @@ The installer no longer seeds extension files. Extensions are baked into contain
 | User-global OpenCode config | `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/opencode.json` | Created/managed by Admin as needed |
 | Rendered Caddyfile | `~/.local/state/openpalm/rendered/caddy/Caddyfile` | Generated from stack spec |
 | Rendered service env files | `~/.local/state/openpalm/rendered/env/*.env` | Generated from stack spec + secrets |
-| Secrets | `~/.config/openpalm/secrets.env` | Placeholder for API keys (managed via admin API as Connections) |
+| Secrets | `~/.config/openpalm/secrets.env` | Placeholder for API keys (managed via admin API) |
 
 The seed-not-overwrite pattern (`seed_file`) ensures manual edits are never overwritten on re-runs.
 
@@ -515,7 +514,7 @@ The admin adds it to `plugin[]` in the host override config and restarts the con
 
 **Config policy lint** — The admin config editor rejects permission widening to `"allow"`.
 
-**Connections** — Named credential sets (AI Provider, Platform, API Service) are stored in `secrets.env` and managed via the admin API. Credentials are never baked into container images.
+**Secrets** — Named credential key/value pairs stored in `secrets.env` and managed via the admin API. Credentials are never baked into container images.
 
 **Gateway pipeline** — The Gateway is the security and routing layer that processes all inbound messages through a 6-step pipeline:
 1. HMAC signature verification
@@ -570,5 +569,5 @@ Note: The gateway has **no** host config volume. Its extensions are fully baked 
 | Start/stop channel via admin | Admin runs compose up/stop for channel service | No restart of existing services |
 | Remove plugin via admin | Removed from `plugin[]`, auto-restarted | Automatic |
 | Edit `AGENTS.md` in image | Requires rebuild | Yes — rebuild + restart |
-| Edit `secrets.env` (Connections) | New env vars on next startup | Yes — restart opencode-core |
+| Edit `secrets.env` | New env vars on next startup | Yes — restart opencode-core |
 | Create/edit Automation | Crontab updated in admin cron volume (`/app/cron`) | No — cron picks up changes automatically |

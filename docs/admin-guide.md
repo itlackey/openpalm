@@ -1,9 +1,3 @@
-## Current control-plane status
-
-OpenPalm now uses Admin as the control-plane executor for allowlisted Compose actions (`up`, `down/stop`, `restart`, `ps`, `logs`, optional `pull`) with service-name validation against the generated compose manifest.
-
-Secrets continue to be managed by the existing secret manager + Stack Spec mappings, with scoped env files rendered for gateway/channel/openmemory/postgres/opencode domains.
-
 # Admin Implementation Guide (Advanced)
 *Administrator tools that are user-friendly, password-protected, and safe by design.*
 

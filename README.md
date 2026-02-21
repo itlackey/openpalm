@@ -15,7 +15,7 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 - **Connect your channels** — Discord, Telegram, web chat, and voice are built in. Add more without coding.
 - **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
 - **Admin dashboard** — manage everything from a browser: services, extensions, agent config, and automations.
-- **Built for safety** — eight layers of security stand between the internet and your assistant's actions.
+- **Built for safety** — defense-in-depth security protects the assistant and your data.
 
 ## Get started
 
@@ -67,30 +67,15 @@ Everything is password-protected. The admin panel is only accessible from your l
 
 ### Extensions
 
-Add capabilities through the admin UI, API, or command line. Extensions add new abilities to your assistant -- behavioral skills, slash commands, specialized agents, custom tools, and lifecycle plugins. Browse and manage them in the Extension Gallery, where each has a risk badge and plain-language description. Install from the curated gallery, community registry, or npm.
+OpenPalm supports all OpenCode extension types: plugins, agents, commands, skills, tools, and providers. Extensions add new abilities to your assistant — behavioral skills, slash commands, specialized agents, custom tools, and lifecycle plugins.
+
+The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools can be managed manually in the OpenCode config directory by advanced users.
 
 ### Automations
 
 Automations let your assistant act on a schedule -- daily briefings, weekly reports, periodic checks -- without anyone sending a message. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
 
 OpenPalm also ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics into `${OPENPALM_STATE_HOME}/observability/maintenance`.
-
-## Security
-
-OpenPalm is designed with defense in depth — multiple independent layers so that no single failure exposes the system.
-
-| Layer | What it does |
-|---|---|
-| **Network boundary** | Caddy reverse proxy restricts admin access to your local network; TLS encryption |
-| **Signed messages** | Every channel message is cryptographically signed and verified before processing |
-| **Rate limiting** | Per-user throttling prevents abuse (120 requests/minute) |
-| **Input validation** | Incoming messages are validated by a restricted agent that cannot run commands or edit files |
-| **Approval gates** | The main agent requires approval before running tools, editing files, or accessing the web |
-| **Secret protection** | A policy plugin blocks any tool call that contains passwords or tokens |
-| **Behavioral rules** | Hard-coded rules prevent data exfiltration and require confirmation for destructive actions |
-| **Isolated control plane** | Only one container can manage the Docker runtime — the rest have no access |
-
-For a detailed breakdown, see the [Security Guide](docs/security.md).
 
 ## How it works
 
@@ -148,13 +133,10 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |
 | [Architecture](docs/development/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](docs/development/api-reference.md) | All service endpoints: gateway, admin, channels |
-| [Extensions Guide](docs/extensions-guide.md) | Plugin system, gallery, building channel plugins |
+| [Extensions Guide](docs/extensions-guide.md) | Extension types, gallery, building and installing extensions |
 | [Extensions Reference](docs/reference/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
-| [Extensions Analysis](docs/draft/extensions-analysis.md) | Architecture analysis of the extension system (design rationale) |
 | [Plugin Authoring](docs/development/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
-| [Docker Compose Guide](docs/docker-compose-guide.md) | Hosting, observability, extending the stack |
 | [Host System Reference](docs/reference/host-system-reference.md) | Host paths, environment variables, system requirements |
-| [Implementation Guide](docs/draft/implementation-guide.md) | Design rationale and build order |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 | [Testing Plan](docs/development/testing-plan.md) | Test strategy, coverage goals, and test categories |
 | [Backup & Restore](docs/backup-restore.md) | How to back up and restore OpenPalm data |

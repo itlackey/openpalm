@@ -299,7 +299,7 @@ admin/ui/tests/
 ├── extensions.ui.test.ts       # Plugin management page
 ├── services.ui.test.ts
 ├── automations.ui.test.ts      # Automations page
-├── connections.ui.test.ts      # Connections CRUD (stack spec env var -> secret key refs)
+├── secrets.ui.test.ts          # Secrets CRUD (stack spec env var -> secret key refs)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
 ├── auth-flow.ui.test.ts
@@ -307,7 +307,7 @@ admin/ui/tests/
 └── helpers/
     ├── admin-harness.ts        # starts admin server + mocks on random ports
     ├── page-objects.ts         # page object helpers (selectors, common actions)
-    └── mock-responses.ts       # canned API responses for automations, connections, etc.
+    └── mock-responses.ts       # canned API responses for automations, secrets, etc.
 ```
 
 ### CI considerations for UI tests
@@ -458,7 +458,7 @@ admin/ui/tests/                     # admin UI tests (Layer 5)
 ├── extensions.ui.test.ts           # Plugin management page
 ├── services.ui.test.ts
 ├── automations.ui.test.ts          # Automations page
-├── connections.ui.test.ts          # Connections CRUD (stack spec env var -> secret key refs)
+├── secrets.ui.test.ts          # Secrets CRUD (stack spec env var -> secret key refs)
 ├── settings.ui.test.ts
 ├── navigation.ui.test.ts
 ├── auth-flow.ui.test.ts
@@ -466,7 +466,7 @@ admin/ui/tests/                     # admin UI tests (Layer 5)
 └── helpers/
     ├── admin-harness.ts            # starts admin server + mocks on random ports
     ├── page-objects.ts             # page object helpers (selectors, common actions)
-    └── mock-responses.ts           # canned API responses for automations, connections, etc.
+    └── mock-responses.ts           # canned API responses for automations, secrets, etc.
 test/
 ├── contracts/                      # contract schemas and tests (Layer 3)
 │   ├── channel-message.contract.ts

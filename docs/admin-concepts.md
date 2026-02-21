@@ -1,14 +1,8 @@
-## Current control-plane status
-
-Admin applies stack changes directly using allowlisted compose operations, while Stack Spec remains the source of truth for generated compose/caddy/channel/env artifacts.
-
-Secret handling remains on the existing secret manager model (no standalone secret-map file), with expanded scoped env rendering and validation.
-
 # OpenPalm Architecture Concepts
 
 This document defines the core concepts that make up the OpenPalm platform. Each concept is described from three perspectives: what it means to the user, what it represents architecturally, and how it works at the implementation level.
 
-These five concepts -- Extensions, Connections, Channels, Automations, and Gateway -- form the complete vocabulary for the admin UI, documentation, API naming, and internal development.
+These five concepts -- Extensions, Secrets, Channels, Automations, and Gateway -- form the complete vocabulary for the admin UI, documentation, API naming, and internal development.
 
 ---
 
@@ -75,9 +69,7 @@ The configuration directory mount is the key architectural element. It means the
 
 ---
 
-## Secrets and credential references
-
-> **Implementation Status:** Secrets are managed as key/value entries in `secrets.env`; channel config values in stack-spec reference secrets directly with `${SECRET_NAME}` when needed.
+## Secrets
 
 ### What the user sees
 
@@ -304,7 +296,7 @@ The intake validation agent is a notable design choice: rather than using rule-b
 |                                                              |
 |  Manages via Admin UI:                                       |
 |  +--------------+  +--------------+  +--------------+       |
-|  |  Extensions  |  | Connections  |  | Automations  |       |
+|  |  Extensions  |  |   Secrets    |  | Automations  |       |
 |  |              |  |              |  |              |       |
 |  | Add abilities|  | Credentials  |  |  Scheduled   |       |
 |  | to assistant |  | for services |  |    tasks     |       |
@@ -340,15 +332,15 @@ The intake validation agent is a notable design choice: rather than using rule-b
     |       ^               ^             ^        |
     |       +------ Extensions (config dir) ---+   |
     |                                               |
-    |  Uses credentials from Connections via env    |
-    |  vars injected by secrets.env                 |
+    |  Uses credentials from secrets.env via env    |
+    |  vars injected at container startup            |
     +-----------------------------------------------+
 ```
 
 The relationships between concepts:
 
 - **Extensions** add capabilities to the assistant. They are managed as files and config entries in the mounted [configuration directory](https://opencode.ai/docs/config/#custom-directory).
-- **Connections** provide the credentials that extensions (and the assistant itself) need to access external services. A connection is stored once and referenced by name.
+- **Secrets** provide the credentials that extensions (and the assistant itself) need to access external services. Secrets are stored in `secrets.env` and referenced by name.
 - **Channels** provide the paths through which users reach the assistant. Every channel message passes through the **Gateway**, which enforces security before the assistant processes anything.
 - **Automations** bypass channels entirely -- they trigger the assistant directly on a schedule, using the same internal HTTP API that the Gateway forwards to.
 - The **Gateway** is the trust boundary. It doesn't appear in user workflows but it's what makes it safe to expose channels to the internet, accept community extensions, and connect to external services.
@@ -374,8 +366,9 @@ The relationships between concepts:
 | Web / Server mode | https://opencode.ai/docs/web/ |
 | MCP Servers | https://opencode.ai/docs/mcp-servers/ |
 | Ecosystem | https://opencode.ai/docs/ecosystem/ |
-## Extension management simplification
 
-OpenPalm admin now manages only OpenCode plugins (the `plugin[]` list in user `opencode.json`).
+## Extension management
 
-Skills, agents, commands, and tools are still supported by OpenCode but are managed manually in `${OPENPALM_DATA_HOME}/opencode/.config/opencode/` by advanced users.
+OpenPalm supports all OpenCode extension types: plugins, agents, commands, skills, tools, and providers.
+
+The admin UI manages only OpenCode plugins (the `plugin[]` list in user `opencode.json`). Skills, agents, commands, and tools are still fully supported by OpenCode and are managed manually in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/` by advanced users.

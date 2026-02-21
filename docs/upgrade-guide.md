@@ -13,13 +13,13 @@ How to upgrade OpenPalm to a new version.
 ### 1. Pull the latest images
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml pull
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml pull
 ```
 
 ### 2. Restart services with the new images
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml up -d
 ```
 
 Docker Compose will recreate only the containers whose images have changed.
@@ -29,7 +29,7 @@ Docker Compose will recreate only the containers whose images have changed.
 Check that all services started successfully:
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml ps
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps
 ```
 
 Confirm each service shows a healthy status. You can also open the admin dashboard at `http://localhost/admin` and check the service health panel.
@@ -37,7 +37,7 @@ Confirm each service shows a healthy status. You can also open the admin dashboa
 ### 4. Check logs for errors
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml logs --tail=50
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs --tail=50
 ```
 
 Look for startup errors or deprecation warnings.
@@ -46,9 +46,9 @@ Look for startup errors or deprecation warnings.
 
 If something goes wrong after an upgrade:
 
-1. Stop the stack: `docker compose -f ~/.local/state/openpalm/docker-compose.yml down`
+1. Stop the stack: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml down`
 2. Restore your backup following the [Backup & Restore guide](backup-restore.md).
-3. Start the stack: `docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d`
+3. Start the stack: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml up -d`
 
 ## Automatic updates
 

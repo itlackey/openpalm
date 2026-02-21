@@ -1,9 +1,3 @@
-## Current architecture status
-
-- Stack lifecycle operations run directly from Admin.
-- Admin now performs allowlisted Compose lifecycle operations directly using the mounted container socket.
-- Stack changes are generated from Stack Spec artifacts and applied through validated Admin workflows.
-
 # OpenPalm Architecture — Container / App / Channel
 
 This document describes the container architecture for OpenPalm.
@@ -226,15 +220,14 @@ Directory names are **plural** by convention.
 | PostgreSQL | Admin App | Structured data |
 | Qdrant | Open Memory | Vector embeddings for memory search |
 
-### Connections
+### Secrets
 
-Connections are named credential/endpoint configurations for external services. They provide a layer of indirection so that secrets are never hard-coded into extension configs.
+Secrets are key/value credentials for external services stored in `secrets.env`.
 
 - **Storage**: Defined in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`), managed via the admin API.
-- **Types**: AI Provider (e.g. OpenAI, Anthropic), Platform (e.g. Discord, Telegram), API Service (generic REST/webhook credentials).
-- **Env var naming**: Connection env vars are standard uppercase env names (e.g. `OPENAI_API_KEY`) mapped to secret keys in Stack Spec.
-- **Config interpolation**: Extensions reference connections in `opencode.jsonc` using `{env:VAR_NAME}` syntax, which is resolved at runtime.
-- **Validation**: Connection validation is optional. When triggered (e.g. via the admin UI), the admin API performs a lightweight probe against the endpoint to confirm the credentials are accepted.
+- **Env var naming**: Secret keys are standard uppercase env names (e.g. `OPENAI_API_KEY`) referenced by channel config in Stack Spec.
+- **Config interpolation**: Extensions reference secrets in `opencode.json` using `{env:VAR_NAME}` syntax, which is resolved at runtime.
+- **Validation**: During stack render/apply, channel config values that reference `${SECRET_NAME}` tokens are validated against the secret inventory; missing keys fail validation.
 
 ### Automations
 
