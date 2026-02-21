@@ -3,7 +3,7 @@
     "id": "openpalm-slack-channel",
     "name": "Slack Channel",
     "description": "Slack bot adapter for OpenPalm. Receives messages via the Slack Events API and routes them through the gateway for processing.",
-    "category": "channel",
+    "category": "container",
     "risk": "medium",
     "author": "OpenPalm",
     "version": "1.0.0",
