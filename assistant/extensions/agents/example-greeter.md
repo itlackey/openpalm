@@ -2,7 +2,6 @@
 description: >
   A simple example agent that greets users. This file demonstrates the agent
   extension format. Agents are restricted sub-assistants with limited tool access.
-tools: []
 ---
 
 You are a friendly greeter agent. When invoked, respond with a brief, warm greeting.

@@ -15,10 +15,10 @@
     "webfetch": "ask"
   },
 
-  // Plugins loaded from the plugins/ directory
+  // Plugins loaded from the plugins/ directory (absolute paths required for local files)
   "plugin": [
-    "plugins/openmemory-http.ts",
-    "plugins/policy-and-telemetry.ts"
+    "/opt/opencode/plugins/openmemory-http.ts",
+    "/opt/opencode/plugins/policy-and-telemetry.ts"
   ],
 
   // MCP disabled — the openmemory-http plugin handles memory via direct

@@ -129,6 +129,31 @@ export function isSaveWorthy(text: string, categories?: string[]): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Recall block formatter
+// ---------------------------------------------------------------------------
+
+/**
+ * Format recalled memories into a clearly-delimited context block that
+ * the model can reference without confusion.
+ */
+export function formatRecallBlock(hits: MemoryHit[], maxChars: number): string {
+  if (hits.length === 0) return "";
+  let block = "<recalled_memories>\n";
+  let chars = block.length;
+  for (const hit of hits) {
+    const line = `- [${hit.id}] ${hit.text}\n`;
+    if (chars + line.length > maxChars) {
+      block += "- (additional memories truncated)\n";
+      break;
+    }
+    block += line;
+    chars += line.length;
+  }
+  block += "</recalled_memories>";
+  return block;
+}
+
+// ---------------------------------------------------------------------------
 // REST client
 // ---------------------------------------------------------------------------
 

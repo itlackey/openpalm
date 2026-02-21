@@ -3,9 +3,9 @@ import {
   containsSecret,
   isSaveWorthy,
   loadConfig,
+  formatRecallBlock,
   OpenMemoryClient,
 } from "../lib/openmemory-client.ts";
-import { formatRecallBlock } from "./openmemory-http.ts";
 import type { MemoryHit } from "../lib/openmemory-client.ts";
 
 // ---------------------------------------------------------------------------

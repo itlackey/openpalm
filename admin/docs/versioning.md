@@ -4,8 +4,6 @@ OpenPalm supports both coordinated platform releases and independent component r
 
 ## Source of truth
 
-`versions.json` has been removed. Versions now come from package manifests:
-
 | Target | Version source |
 |---|---|
 | Platform tag (`vX.Y.Z`) | `/package.json` |
