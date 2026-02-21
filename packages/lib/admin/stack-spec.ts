@@ -1,16 +1,30 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-export const StackSpecVersion = 1;
+export const StackSpecVersion = 2;
 
-export type StackAccessScope = "host" | "lan";
+export type StackAccessScope = "host" | "lan" | "public";
 export type ChannelExposure = "host" | "lan" | "public";
-export type StackChannelName = "chat" | "discord" | "voice" | "telegram";
+
+/** Built-in channel names that have known defaults for image, port, and config keys. */
+export type BuiltInChannelName = "chat" | "discord" | "voice" | "telegram";
+
+/** @deprecated Use string keys with isBuiltInChannel() for new code. Kept for backward compatibility. */
+export type StackChannelName = BuiltInChannelName;
 
 export type StackChannelConfig = {
   enabled: boolean;
   exposure: ChannelExposure;
+  image?: string;
+  containerPort?: number;
+  hostPort?: number;
+  domains?: string[];
+  pathPrefixes?: string[];
   config: Record<string, string>;
+};
+
+export type CaddyConfig = {
+  email?: string;
 };
 
 export type StackAutomation = {
@@ -24,26 +38,38 @@ export type StackAutomation = {
 export type StackSpec = {
   version: typeof StackSpecVersion;
   accessScope: StackAccessScope;
-  channels: Record<StackChannelName, StackChannelConfig>;
+  caddy?: CaddyConfig;
+  channels: Record<string, StackChannelConfig>;
   automations: StackAutomation[];
 };
 
-const ChannelNames: StackChannelName[] = ["chat", "discord", "voice", "telegram"];
+export const BuiltInChannelNames: BuiltInChannelName[] = ["chat", "discord", "voice", "telegram"];
 
-const ChannelConfigKeys: Record<StackChannelName, string[]> = {
+export const BuiltInChannelConfigKeys: Record<BuiltInChannelName, string[]> = {
   chat: ["CHAT_INBOUND_TOKEN", "CHANNEL_CHAT_SECRET"],
   discord: ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY", "CHANNEL_DISCORD_SECRET"],
   voice: ["CHANNEL_VOICE_SECRET"],
   telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "CHANNEL_TELEGRAM_SECRET"],
 };
 
+export const BuiltInChannelPorts: Record<BuiltInChannelName, number> = {
+  chat: 8181,
+  discord: 8184,
+  voice: 8183,
+  telegram: 8182,
+};
+
+export function isBuiltInChannel(name: string): name is BuiltInChannelName {
+  return BuiltInChannelNames.includes(name as BuiltInChannelName);
+}
+
 function defaultAutomations(): StackAutomation[] {
   return [];
 }
 
-function defaultChannelConfig(channel: StackChannelName): Record<string, string> {
+function defaultChannelConfig(channel: BuiltInChannelName): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const key of ChannelConfigKeys[channel]) result[key] = "";
+  for (const key of BuiltInChannelConfigKeys[channel]) result[key] = "";
   return result;
 }
 
@@ -66,24 +92,88 @@ function assertRecord(value: unknown, errorCode: string): Record<string, unknown
   return value as Record<string, unknown>;
 }
 
-function parseChannelConfig(raw: unknown, channelName: StackChannelName): Record<string, string> {
+function parseChannelConfig(raw: unknown, channelName: string): Record<string, string> {
   const config = assertRecord(raw ?? {}, `invalid_channel_config_${channelName}`);
-  const result = defaultChannelConfig(channelName);
-  for (const key of ChannelConfigKeys[channelName]) {
-    const value = config[key];
-    if (value !== undefined && typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
-    result[key] = typeof value === "string" ? value.trim() : "";
+
+  if (isBuiltInChannel(channelName)) {
+    const result = defaultChannelConfig(channelName);
+    for (const key of BuiltInChannelConfigKeys[channelName]) {
+      const value = config[key];
+      if (value !== undefined && typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
+      result[key] = typeof value === "string" ? value.trim() : "";
+    }
+    return result;
+  }
+
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
+    result[key] = value.trim();
   }
   return result;
 }
 
-function parseChannel(raw: unknown, channelName: StackChannelName): StackChannelConfig {
+function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
   const channel = assertRecord(raw, `invalid_channel_${channelName}`);
   const enabled = channel.enabled;
   const exposure = channel.exposure;
   if (typeof enabled !== "boolean") throw new Error(`invalid_channel_enabled_${channelName}`);
   if (exposure !== "host" && exposure !== "lan" && exposure !== "public") throw new Error(`invalid_channel_exposure_${channelName}`);
-  return { enabled, exposure, config: parseChannelConfig(channel.config, channelName) };
+
+  const result: StackChannelConfig = {
+    enabled,
+    exposure,
+    config: parseChannelConfig(channel.config, channelName),
+  };
+
+  if (channel.image !== undefined) {
+    if (typeof channel.image !== "string" || !channel.image.trim()) throw new Error(`invalid_channel_image_${channelName}`);
+    result.image = channel.image.trim();
+  }
+  if (channel.containerPort !== undefined) {
+    if (typeof channel.containerPort !== "number" || !Number.isInteger(channel.containerPort) || channel.containerPort < 1 || channel.containerPort > 65535) {
+      throw new Error(`invalid_channel_container_port_${channelName}`);
+    }
+    result.containerPort = channel.containerPort;
+  }
+  if (channel.hostPort !== undefined) {
+    if (typeof channel.hostPort !== "number" || !Number.isInteger(channel.hostPort) || channel.hostPort < 1 || channel.hostPort > 65535) {
+      throw new Error(`invalid_channel_host_port_${channelName}`);
+    }
+    result.hostPort = channel.hostPort;
+  }
+  if (channel.domains !== undefined) {
+    if (!Array.isArray(channel.domains)) throw new Error(`invalid_channel_domains_${channelName}`);
+    for (const d of channel.domains) {
+      if (typeof d !== "string" || !d.trim()) throw new Error(`invalid_channel_domain_entry_${channelName}`);
+    }
+    result.domains = channel.domains.map((d: string) => d.trim());
+  }
+  if (channel.pathPrefixes !== undefined) {
+    if (!Array.isArray(channel.pathPrefixes)) throw new Error(`invalid_channel_path_prefixes_${channelName}`);
+    for (const p of channel.pathPrefixes) {
+      if (typeof p !== "string" || !p.trim()) throw new Error(`invalid_channel_path_prefix_entry_${channelName}`);
+    }
+    result.pathPrefixes = channel.pathPrefixes.map((p: string) => p.trim());
+  }
+
+  if (!isBuiltInChannel(channelName)) {
+    if (!result.image) throw new Error(`custom_channel_requires_image_${channelName}`);
+    if (!result.containerPort) throw new Error(`custom_channel_requires_container_port_${channelName}`);
+  }
+
+  return result;
+}
+
+function parseCaddyConfig(raw: unknown): CaddyConfig | undefined {
+  if (raw === undefined) return undefined;
+  const doc = assertRecord(raw, "invalid_caddy_config");
+  const caddy: CaddyConfig = {};
+  if (doc.email !== undefined) {
+    if (typeof doc.email !== "string") throw new Error("invalid_caddy_email");
+    caddy.email = doc.email.trim();
+  }
+  return caddy;
 }
 
 function parseAutomations(raw: unknown): StackAutomation[] {
@@ -107,24 +197,26 @@ function parseAutomations(raw: unknown): StackAutomation[] {
 
 export function parseStackSpec(raw: unknown): StackSpec {
   const doc = assertRecord(raw, "invalid_stack_spec");
-  const allowedKeys = new Set(["version", "accessScope", "channels", "automations"]);
+  const allowedKeys = new Set(["version", "accessScope", "caddy", "channels", "automations"]);
   for (const key of Object.keys(doc)) {
     if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
   }
   const version = doc.version;
   if (version !== 1 && version !== 2) throw new Error("invalid_stack_spec_version");
-  if (doc.accessScope !== "host" && doc.accessScope !== "lan") throw new Error("invalid_access_scope");
+  if (doc.accessScope !== "host" && doc.accessScope !== "lan" && doc.accessScope !== "public") throw new Error("invalid_access_scope");
+
+  const caddy = parseCaddyConfig(doc.caddy);
 
   const channelsDoc = assertRecord(doc.channels, "missing_channels");
-  const channels = {
-    chat: parseChannel(channelsDoc.chat, "chat"),
-    discord: parseChannel(channelsDoc.discord, "discord"),
-    voice: parseChannel(channelsDoc.voice, "voice"),
-    telegram: parseChannel(channelsDoc.telegram, "telegram"),
-  };
 
-  for (const key of Object.keys(channelsDoc)) {
-    if (!ChannelNames.includes(key as StackChannelName)) throw new Error(`unknown_channel_${key}`);
+  for (const name of BuiltInChannelNames) {
+    if (channelsDoc[name] === undefined) throw new Error(`missing_built_in_channel_${name}`);
+  }
+
+  const channels: Record<string, StackChannelConfig> = {};
+  for (const [name, value] of Object.entries(channelsDoc)) {
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`invalid_channel_name_${name}`);
+    channels[name] = parseChannel(value, name);
   }
 
   const automations = parseAutomations(doc.automations);
@@ -132,6 +224,7 @@ export function parseStackSpec(raw: unknown): StackSpec {
   return {
     version: StackSpecVersion,
     accessScope: doc.accessScope,
+    caddy,
     channels,
     automations,
   };

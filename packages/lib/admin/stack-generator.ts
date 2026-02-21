@@ -1,33 +1,51 @@
-import { parseSecretReference } from "./stack-spec.ts";
-import type { StackChannelName, StackSpec } from "./stack-spec.ts";
+import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, BuiltInChannelNames } from "./stack-spec.ts";
+import type { BuiltInChannelName, StackChannelConfig, StackSpec } from "./stack-spec.ts";
 
-const ChannelPorts: Record<StackChannelName, string> = {
-  chat: "8181",
-  discord: "8184",
-  voice: "8183",
-  telegram: "8182",
-};
-
-const ChannelRewritePaths: Record<StackChannelName, string> = {
+const BuiltInChannelRewritePaths: Record<BuiltInChannelName, string> = {
   chat: "/chat",
   discord: "/discord/webhook",
   voice: "/voice/transcription",
   telegram: "/telegram/webhook",
 };
 
-const ChannelSharedSecretEnv: Record<StackChannelName, string> = {
+const BuiltInChannelSharedSecretEnv: Record<BuiltInChannelName, string> = {
   chat: "CHANNEL_CHAT_SECRET",
   discord: "CHANNEL_DISCORD_SECRET",
   voice: "CHANNEL_VOICE_SECRET",
   telegram: "CHANNEL_TELEGRAM_SECRET",
 };
 
-const Channels: StackChannelName[] = ["chat", "voice", "discord", "telegram"];
+function resolveChannelPort(name: string, config: StackChannelConfig): number {
+  if (config.containerPort) return config.containerPort;
+  if (isBuiltInChannel(name)) return BuiltInChannelPorts[name];
+  throw new Error(`missing_container_port_for_channel_${name}`);
+}
 
-function publishedChannelPort(channel: StackChannelName, exposure: StackSpec["channels"][StackChannelName]["exposure"]): string {
-  const port = ChannelPorts[channel];
-  if (exposure === "host") return `127.0.0.1:${port}:${port}`;
-  return `${port}:${port}`;
+function resolveChannelHostPort(name: string, config: StackChannelConfig): number {
+  if (config.hostPort) return config.hostPort;
+  return resolveChannelPort(name, config);
+}
+
+function resolveChannelImage(name: string, config: StackChannelConfig): string {
+  if (config.image) return config.image;
+  if (isBuiltInChannel(name)) {
+    return `\${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-${name}:\${OPENPALM_IMAGE_TAG:-latest}`;
+  }
+  throw new Error(`missing_image_for_channel_${name}`);
+}
+
+function publishedChannelPort(name: string, config: StackChannelConfig): string {
+  const containerPort = resolveChannelPort(name, config);
+  const hostPort = resolveChannelHostPort(name, config);
+
+  if (config.exposure === "host") {
+    return `127.0.0.1:${hostPort}:${containerPort}`;
+  }
+  return `${hostPort}:${containerPort}`;
+}
+
+function composeServiceName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
 }
 
 export type GeneratedStackArtifacts = {
@@ -42,16 +60,62 @@ export type GeneratedStackArtifacts = {
   channelsEnv: string;
 };
 
-function renderChannelRoute(channel: StackChannelName, spec: StackSpec): string {
-  const cfg = spec.channels[channel];
+function renderChannelRoute(name: string, spec: StackSpec): string {
+  const cfg = spec.channels[name];
   if (!cfg.enabled) return "";
-  const lines = ["handle /channels/" + channel + "* {"];
+  if (cfg.domains && cfg.domains.length > 0) return "";
+
+  const containerPort = resolveChannelPort(name, cfg);
+  const svcName = `channel-${composeServiceName(name)}`;
+
+  const rewritePath = isBuiltInChannel(name)
+    ? BuiltInChannelRewritePaths[name]
+    : (cfg.pathPrefixes?.[0] ?? `/${name}`);
+
+  const lines = [`handle /channels/${name}* {`];
   if (cfg.exposure === "lan") lines.push("\tabort @not_lan");
   if (cfg.exposure === "host") lines.push("\tabort @not_host");
-  lines.push(`\trewrite * ${ChannelRewritePaths[channel]}`);
-  lines.push(`\treverse_proxy channel-${channel}:${ChannelPorts[channel]}`);
+  lines.push(`\trewrite * ${rewritePath}`);
+  lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
   lines.push("}");
   return `${lines.join("\n")}\n`;
+}
+
+function renderDomainBlocks(spec: StackSpec): string {
+  const blocks: string[] = [];
+
+  for (const [name, cfg] of Object.entries(spec.channels)) {
+    if (!cfg.enabled) continue;
+    if (!cfg.domains || cfg.domains.length === 0) continue;
+
+    const containerPort = resolveChannelPort(name, cfg);
+    const svcName = `channel-${composeServiceName(name)}`;
+    const paths = cfg.pathPrefixes?.length ? cfg.pathPrefixes : ["/"];
+    const siteLabel = cfg.domains.join(", ");
+
+    const lines: string[] = [`${siteLabel} {`];
+
+    const useInternalTls = cfg.exposure !== "public";
+    if (useInternalTls) {
+      lines.push("\ttls internal");
+    }
+
+    for (const p of paths) {
+      const prefix = p.startsWith("/") ? p : `/${p}`;
+      if (prefix === "/" || prefix === "/*") {
+        lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
+      } else {
+        lines.push(`\thandle_path ${prefix}* {`);
+        lines.push(`\t\treverse_proxy ${svcName}:${containerPort}`);
+        lines.push("\t}");
+      }
+    }
+
+    lines.push("}");
+    blocks.push(lines.join("\n"));
+  }
+
+  return blocks.join("\n\n");
 }
 
 function renderLanMatcher(scope: StackSpec["accessScope"]): string {
@@ -88,33 +152,43 @@ function resolveScalar(value: string, secrets: Record<string, string>, fieldName
 
 function resolveChannelConfig(spec: StackSpec, secrets: Record<string, string>): Record<string, string> {
   const channelEnv: Record<string, string> = {};
-  for (const channel of Channels) {
-    if (!spec.channels[channel].enabled) continue;
-    for (const [key, value] of Object.entries(spec.channels[channel].config)) {
-      channelEnv[key] = resolveScalar(value, secrets, `${channel}_${key}`);
+  for (const [name, cfg] of Object.entries(spec.channels)) {
+    if (!cfg.enabled) continue;
+    for (const [key, value] of Object.entries(cfg.config)) {
+      channelEnv[key] = resolveScalar(value, secrets, `${name}_${key}`);
     }
   }
   return channelEnv;
 }
 
+function renderChannelComposeService(name: string, config: StackChannelConfig): string {
+  const svcName = `channel-${composeServiceName(name)}`;
+  const image = resolveChannelImage(name, config);
+  const containerPort = resolveChannelPort(name, config);
+  const portBinding = publishedChannelPort(name, config);
+
+  return [
+    `  ${svcName}:`,
+    `    image: ${image}`,
+    "    restart: unless-stopped",
+    "    env_file:",
+    "      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env",
+    "    environment:",
+    `      - PORT=${containerPort}`,
+    "      - GATEWAY_URL=http://gateway:8080",
+    "    ports:",
+    `      - "${portBinding}"`,
+    "    networks: [assistant_net]",
+    "    depends_on: [gateway]",
+    "",
+  ].join("\n");
+}
+
 function renderFullComposeFile(spec: StackSpec): string {
-  const channelServices = Channels
-    .filter((channel) => spec.channels[channel].enabled)
-    .map((channel) => [
-      `  channel-${channel}:`,
-      `    image: \${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-${channel}:\${OPENPALM_IMAGE_TAG:-latest}`,
-      "    restart: unless-stopped",
-      "    env_file:",
-      "      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env",
-      "    environment:",
-      `      - PORT=${ChannelPorts[channel]}`,
-      "      - GATEWAY_URL=http://gateway:8080",
-      "    ports:",
-      `      - "${publishedChannelPort(channel, spec.channels[channel].exposure)}"`,
-      "    networks: [assistant_net]",
-      "    depends_on: [gateway]",
-      "",
-    ].join("\n"))
+  const allChannelNames = Object.keys(spec.channels);
+  const channelServices = allChannelNames
+    .filter((name) => spec.channels[name].enabled)
+    .map((name) => renderChannelComposeService(name, spec.channels[name]))
     .join("\n");
 
   return [
@@ -239,16 +313,31 @@ function renderFullComposeFile(spec: StackSpec): string {
 export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, string>): GeneratedStackArtifacts {
   const lanMatcher = renderLanMatcher(spec.accessScope);
   const channelRoutes: Record<string, string> = {};
-  for (const channel of Channels) {
-    const route = renderChannelRoute(channel, spec);
-    if (route.length > 0) channelRoutes[`channels/${channel}.caddy`] = route;
+
+  for (const name of Object.keys(spec.channels)) {
+    const route = renderChannelRoute(name, spec);
+    if (route.length > 0) channelRoutes[`channels/${name}.caddy`] = route;
   }
 
-  const caddyfile = [
-    "{",
-    "\tadmin off",
-    "}",
+  const domainBlocks = renderDomainBlocks(spec);
+
+  const globalBlock: string[] = ["{", "\tadmin off"];
+  if (spec.caddy?.email) {
+    globalBlock.push(`\temail ${spec.caddy.email}`);
+  }
+  globalBlock.push("}");
+
+  const caddyfileParts: string[] = [
+    globalBlock.join("\n"),
     "",
+  ];
+
+  if (domainBlocks.length > 0) {
+    caddyfileParts.push(domainBlocks);
+    caddyfileParts.push("");
+  }
+
+  caddyfileParts.push(
     ":80 {",
     `\t@lan remote_ip ${lanMatcher}`,
     `\t@not_lan not remote_ip ${lanMatcher}`,
@@ -260,7 +349,9 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     "\timport /etc/caddy/snippets/extra-user-overrides.caddy",
     "}",
     "",
-  ].join("\n");
+  );
+
+  const caddyfile = caddyfileParts.join("\n");
 
   const caddyAdminRoute = [
     "# Admin and defaults (generated from stack spec)",
@@ -300,10 +391,11 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
 
   const resolvedChannelConfig = resolveChannelConfig(spec, secrets);
 
-  const gatewayChannelSecrets = Object.fromEntries(Channels.map((channel) => [
-    ChannelSharedSecretEnv[channel],
-    resolvedChannelConfig[ChannelSharedSecretEnv[channel]] ?? "",
-  ]));
+  const gatewayChannelSecrets: Record<string, string> = {};
+  for (const name of BuiltInChannelNames) {
+    const secretEnvKey = BuiltInChannelSharedSecretEnv[name];
+    gatewayChannelSecrets[secretEnvKey] = resolvedChannelConfig[secretEnvKey] ?? "";
+  }
 
   const gatewayEnv = envWithHeader("# Generated gateway env", {
     ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),

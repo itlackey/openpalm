@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { composeAction, composeConfigValidate, composeExec, composeServiceNames, composeLogsValidateTail } from "./compose-runner.ts";
 import { computeImpactFromChanges, type StackImpact } from "./impact-plan.ts";
 import { StackManager } from "./stack-manager.ts";
-import type { StackChannelName } from "./stack-spec.ts";
 
 export type StackApplyResult = {
   ok: boolean;
@@ -70,11 +69,7 @@ function caddyRoutesChanged(previous: Record<string, string>, next: Record<strin
 }
 
 function enabledChannelServices(manager: StackManager): string[] {
-  const spec = manager.getSpec();
-  const channelNames: StackChannelName[] = ["chat", "discord", "voice", "telegram"];
-  return channelNames
-    .filter((channel) => spec.channels[channel].enabled)
-    .map((channel) => `channel-${channel}`);
+  return manager.enabledChannelServiceNames();
 }
 
 function deriveImpact(manager: StackManager, existing: ExistingArtifacts, generated: ReturnType<StackManager["renderPreview"]>): StackImpact {
@@ -141,19 +136,24 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
 export async function previewComposeOperations(): Promise<{ services: string[]; logTailLimit: boolean; reloadSemantics: Record<string, "reload" | "restart"> }> {
   const names = await composeServiceNames();
   const tailCheck = composeLogsValidateTail(50);
+
+  const semantics: Record<string, "reload" | "restart"> = {
+    caddy: "reload",
+    gateway: "restart",
+    "opencode-core": "restart",
+    openmemory: "restart",
+    admin: "restart",
+  };
+
+  for (const name of names) {
+    if (name.startsWith("channel-") && !semantics[name]) {
+      semantics[name] = "restart";
+    }
+  }
+
   return {
     services: names,
     logTailLimit: tailCheck,
-    reloadSemantics: {
-      caddy: "reload",
-      gateway: "restart",
-      "opencode-core": "restart",
-      openmemory: "restart",
-      admin: "restart",
-      "channel-chat": "restart",
-      "channel-discord": "restart",
-      "channel-voice": "restart",
-      "channel-telegram": "restart",
-    },
+    reloadSemantics: semantics,
   };
 }

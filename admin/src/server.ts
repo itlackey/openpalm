@@ -8,7 +8,8 @@ import { getLatestRun, readHistory } from "./automation-history.ts";
 import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
-import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
+import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
+import { BuiltInChannelNames, BuiltInChannelConfigKeys, isBuiltInChannel } from "@openpalm/lib/admin/stack-spec.ts";
 import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import type { ModelAssignment } from "./types.ts";
@@ -31,15 +32,22 @@ const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env
 const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/stack-spec.json`;
 const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
-const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
-const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const KNOWN_SERVICES = allowedServiceSet();
-const CHANNEL_ENV_KEYS: Record<string, string[]> = {
-  "channel-chat": ["CHAT_INBOUND_TOKEN", "CHANNEL_CHAT_SECRET"],
-  "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY", "CHANNEL_DISCORD_SECRET"],
-  "channel-voice": ["CHANNEL_VOICE_SECRET"],
-  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "CHANNEL_TELEGRAM_SECRET"]
-};
+
+function channelEnvKeys(channelName: string): string[] {
+  if (isBuiltInChannel(channelName)) {
+    return BuiltInChannelConfigKeys[channelName];
+  }
+  return Object.keys(stackManager.getChannelConfig(channelName));
+}
+
+function allChannelServiceNames(): string[] {
+  return stackManager.listChannelNames().map((name) => `channel-${name}`);
+}
+
+function isValidChannelService(service: string): boolean {
+  return service.startsWith("channel-") && stackManager.listChannelNames().includes(service.replace("channel-", ""));
+}
 
 const setupManager = new SetupManager(DATA_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
@@ -113,22 +121,20 @@ function setOpencodePluginEnabled(pluginId: string, enabled: boolean) {
 
 
 
-type ChannelName = StackManagerChannelName;
-
-function detectChannelAccess(channel: ChannelName): "host" | "lan" | "public" {
+function detectChannelAccess(channel: string): "host" | "lan" | "public" {
   return stackManager.getChannelAccess(channel);
 }
 
-function setChannelAccess(channel: ChannelName, access: "host" | "lan" | "public") {
+function setChannelAccess(channel: string, access: "host" | "lan" | "public") {
   stackManager.setChannelAccess(channel, access);
 }
 
-function setAccessScope(scope: "host" | "lan") {
+function setAccessScope(scope: "host" | "lan" | "public") {
   stackManager.setAccessScope(scope);
 }
 
-function channelNameFromService(service: string): ChannelName {
-  return service.replace("channel-", "") as ChannelName;
+function channelNameFromService(service: string): string {
+  return service.replace("channel-", "");
 }
 
 function readChannelConfig(service: string) {
@@ -139,7 +145,7 @@ function writeChannelConfig(service: string, values: Record<string, string>) {
   stackManager.setChannelConfig(channelNameFromService(service), values);
 }
 
-function setRuntimeBindScope(scope: "host" | "lan") {
+function setRuntimeBindScope(scope: "host" | "lan" | "public") {
   const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
   const next = setRuntimeBindScopeContent(current, scope);
   writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
@@ -153,10 +159,11 @@ function updateRuntimeEnv(entries: Record<string, string | undefined>) {
 
 function normalizeSelectedChannels(value: unknown) {
   if (!Array.isArray(value)) return [];
+  const validServices = new Set(allChannelServiceNames());
   const selected: string[] = [];
   for (const service of value) {
     if (typeof service !== "string") continue;
-    if (!CHANNEL_SERVICE_SET.has(service)) continue;
+    if (!validServices.has(service)) continue;
     if (selected.includes(service)) continue;
     selected.push(service);
   }
@@ -369,8 +376,8 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/access-scope" && req.method === "POST") {
-        const body = (await req.json()) as { scope: "host" | "lan" };
-        if (!["host", "lan"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
+        const body = (await req.json()) as { scope: "host" | "lan" | "public" };
+        if (!["host", "lan", "public"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         setAccessScope(body.scope);
@@ -609,16 +616,20 @@ const server = Bun.serve({
       if (url.pathname === "/admin/channels" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const spec = stackManager.getSpec();
+        const channelNames = stackManager.listChannelNames();
         return cors(json(200, {
           secretOptions: stackManager.listSecretManagerState().available,
-          channels: CHANNEL_SERVICES.map((service) => {
-            const channelName = service.replace("channel-", "") as ChannelName;
+          channels: channelNames.map((channelName) => {
+            const service = `channel-${channelName}`;
+            const keys = channelEnvKeys(channelName);
             return {
               service,
               label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
+              builtIn: isBuiltInChannel(channelName),
               access: detectChannelAccess(channelName),
               config: readChannelConfig(service),
-              fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => ({
+              channelSpec: spec.channels[channelName],
+              fields: keys.map((key) => ({
                 key,
                 label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
                 type: key.toLowerCase().includes("token") || key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") ? "password" : "text",
@@ -631,8 +642,8 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/channels/access" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { channel: ChannelName; access: "host" | "lan" | "public" };
-        if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
+        const body = (await req.json()) as { channel: string; access: "host" | "lan" | "public" };
+        if (!body.channel || !stackManager.listChannelNames().includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
         if (!["host", "lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
         setChannelAccess(body.channel, body.access);
         await composeAction("restart", "caddy");
@@ -642,14 +653,14 @@ const server = Bun.serve({
       if (url.pathname === "/admin/channels/config" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const service = url.searchParams.get("service") ?? "";
-        if (!CHANNEL_SERVICES.includes(service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
+        if (!isValidChannelService(service)) return cors(json(400, { error: "invalid service" }));
         return cors(json(200, { service, config: readChannelConfig(service) }));
       }
 
       if (url.pathname === "/admin/channels/config" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string; config: Record<string, string>; restart?: boolean };
-        if (!CHANNEL_SERVICES.includes(body.service as (typeof CHANNEL_SERVICES)[number])) return cors(json(400, { error: "invalid service" }));
+        if (!isValidChannelService(body.service)) return cors(json(400, { error: "invalid service" }));
         writeChannelConfig(body.service, body.config ?? {});
         if (body.restart ?? true) await composeAction("restart", body.service);
         return cors(json(200, { ok: true, service: body.service }));

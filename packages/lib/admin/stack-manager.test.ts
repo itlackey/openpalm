@@ -70,7 +70,7 @@ describe("stack manager", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     writeFileSync(join(dir, "secrets.env"), "\n", "utf8");
     writeFileSync(join(dir, "stack-spec.json"), JSON.stringify({
-      version: 1,
+      version: 2,
       accessScope: "lan",
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING_CHAT_TOKEN}", CHANNEL_CHAT_SECRET: "" } },
