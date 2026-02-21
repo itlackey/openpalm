@@ -127,8 +127,8 @@ export class StackManager {
     return generated;
   }
 
-  validateReferencedSecrets() {
-    const spec = this.getSpec();
+  validateReferencedSecrets(specOverride?: StackSpec) {
+    const spec = specOverride ?? this.getSpec();
     const availableSecrets = this.readSecretsEnv();
     const errors: string[] = [];
     for (const [channel, cfg] of Object.entries(spec.channels)) {

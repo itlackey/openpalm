@@ -9,7 +9,7 @@ import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
-import { BuiltInChannelNames, BuiltInChannelConfigKeys, isBuiltInChannel } from "@openpalm/lib/admin/stack-spec.ts";
+import { BuiltInChannelNames, BuiltInChannelConfigKeys, isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import type { ModelAssignment } from "./types.ts";
@@ -462,6 +462,11 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { spec?: unknown };
         if (!body.spec) return cors(json(400, { error: "spec is required" }));
+        const parsed = parseStackSpec(body.spec);
+        const secretErrors = stackManager.validateReferencedSecrets(parsed);
+        if (secretErrors.length > 0) {
+          return cors(errorJson(400, "secret_reference_validation_failed", secretErrors));
+        }
         const spec = stackManager.setSpec(body.spec);
         return cors(json(200, { ok: true, spec }));
       }
