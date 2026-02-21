@@ -12,7 +12,7 @@
  *   tag   [component|platform]          Create git tag(s) for current versions
  *   release <component|platform> <type> Bump → commit → tag (all-in-one)
  *
- * "platform" bumps the platform version AND every component together.
+ * "platform" bumps the root package version AND every component together.
  * A specific component name bumps only that component.
  *
  * Examples:
@@ -33,8 +33,6 @@ import { resolve, dirname } from "path";
 
 const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
 const ROOT = resolve(SCRIPT_DIR, "..");
-const VERSIONS_PATH = resolve(ROOT, "versions.json");
-const ROOT_PKG_PATH = resolve(ROOT, "package.json");
 
 // ---------------------------------------------------------------------------
 // Component registry
@@ -44,21 +42,29 @@ interface ComponentMeta {
   /** Docker build context (relative to repo root) */
   context: string;
   /** package.json to update version in (relative to repo root) */
-  packageJson?: string;
+  packageJson: string;
   /** Extra files containing version strings to patch */
   extraFiles?: { path: string; pattern: RegExp; replacement: (v: string) => string }[];
   /** Whether this component produces a Docker image */
   image: boolean;
 }
 
-const COMPONENTS: Record<string, ComponentMeta> = {
-  "opencode-core": { context: "opencode", image: true },
-  gateway: { context: "gateway", image: true },
-  admin: { context: "admin", image: true },
-  "channel-chat": { context: "channels/chat", image: true },
-  "channel-discord": { context: "channels/discord", image: true },
-  "channel-voice": { context: "channels/voice", image: true },
-  "channel-telegram": { context: "channels/telegram", image: true },
+export const COMPONENTS: Record<string, ComponentMeta> = {
+  assistant: { context: "assistant", packageJson: "assistant/package.json", image: true },
+  gateway: { context: "gateway", packageJson: "gateway/package.json", image: true },
+  admin: { context: "admin", packageJson: "admin/package.json", image: true },
+  "channel-chat": { context: "channels/chat", packageJson: "channels/chat/package.json", image: true },
+  "channel-discord": {
+    context: "channels/discord",
+    packageJson: "channels/discord/package.json",
+    image: true,
+  },
+  "channel-voice": { context: "channels/voice", packageJson: "channels/voice/package.json", image: true },
+  "channel-telegram": {
+    context: "channels/telegram",
+    packageJson: "channels/telegram/package.json",
+    image: true,
+  },
   cli: {
     context: "packages/cli",
     packageJson: "packages/cli/package.json",
@@ -98,15 +104,32 @@ function writeJson(path: string, data: any): void {
   writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
 }
 
-function readVersions(): Versions {
-  return readJson(VERSIONS_PATH);
+function readPackageVersion(relPath: string): string {
+  const absPath = resolve(ROOT, relPath);
+  if (!existsSync(absPath)) error(`Missing package.json: ${relPath}`);
+  const pkg = readJson(absPath);
+  if (typeof pkg.version !== "string" || !pkg.version) error(`Missing version in ${relPath}`);
+  return pkg.version;
 }
 
-function writeVersions(v: Versions): void {
-  writeJson(VERSIONS_PATH, v);
+function readPlatformVersion(): string {
+  return readPackageVersion("package.json");
 }
 
-function bumpSemver(version: string, type: BumpType): string {
+function readComponentVersion(component: string): string {
+  const meta = COMPONENTS[component];
+  if (!meta) error(`Unknown component: ${component}`);
+  return readPackageVersion(meta.packageJson);
+}
+
+export function readCurrentVersions(): Versions {
+  return {
+    platform: readPlatformVersion(),
+    components: Object.fromEntries(COMPONENT_NAMES.map((name) => [name, readComponentVersion(name)])),
+  };
+}
+
+export function bumpSemver(version: string, type: BumpType): string {
   const parts = version.replace(/^v/, "").split(".").map(Number);
   if (parts.length !== 3 || parts.some(isNaN)) {
     throw new Error(`Invalid semver: ${version}`);
@@ -190,29 +213,23 @@ function applyComponentVersion(component: string, version: string): void {
   const meta = COMPONENTS[component];
   if (!meta) error(`Unknown component: ${component}`);
 
-  // Update the component's own package.json if it has one
-  if (meta.packageJson) {
-    patchPackageJson(meta.packageJson, version);
-  }
+  // Update the component's own package.json
+  patchPackageJson(meta.packageJson, version);
 
   // Patch any extra files
   patchExtraFiles(component, version);
 }
 
 /**
- * Apply a platform-wide version: updates versions.json, root package.json,
+ * Apply a platform-wide version: updates root package.json,
  * and every component's files.
  */
 function applyPlatformVersion(version: string): void {
-  const versions = readVersions();
-  versions.platform = version;
+  patchPackageJson("package.json", version);
   for (const name of COMPONENT_NAMES) {
-    versions.components[name] = version;
     applyComponentVersion(name, version);
   }
-  writeVersions(versions);
-  patchPackageJson("package.json", version);
-  log(`  ${dim("updated")} versions.json (platform + all components) → ${version}`);
+  log(`  ${dim("synced")} platform + all components → ${version}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +237,7 @@ function applyPlatformVersion(version: string): void {
 // ---------------------------------------------------------------------------
 
 function cmdStatus(): void {
-  const v = readVersions();
+  const v = readCurrentVersions();
   log(bold("OpenPalm Version Status"));
   log("");
   log(`  ${bold("Platform:")}  ${green(v.platform)}`);
@@ -238,21 +255,17 @@ function cmdStatus(): void {
 }
 
 function cmdBump(target: string, type: BumpType): void {
-  const versions = readVersions();
-
   if (target === "platform" || target === "all") {
-    const newVer = bumpSemver(versions.platform, type);
-    log(bold(`Bumping platform: ${versions.platform} → ${newVer} (${type})`));
+    const platformVersion = readPlatformVersion();
+    const newVer = bumpSemver(platformVersion, type);
+    log(bold(`Bumping platform: ${platformVersion} → ${newVer} (${type})`));
     applyPlatformVersion(newVer);
   } else {
     if (!COMPONENTS[target]) error(`Unknown component: ${target}`);
-    const oldVer = versions.components[target] ?? versions.platform;
+    const oldVer = readComponentVersion(target);
     const newVer = bumpSemver(oldVer, type);
     log(bold(`Bumping ${target}: ${oldVer} → ${newVer} (${type})`));
-    versions.components[target] = newVer;
-    writeVersions(versions);
     applyComponentVersion(target, newVer);
-    log(`  ${dim("updated")} versions.json → ${target}: ${newVer}`);
   }
 
   log(green("\nVersion bump complete."));
@@ -264,32 +277,27 @@ function cmdSet(target: string, version: string): void {
     error(`Invalid version format: ${version}  (expected: X.Y.Z)`);
   }
 
-  const versions = readVersions();
-
   if (target === "platform" || target === "all") {
     log(bold(`Setting platform version to ${version}`));
     applyPlatformVersion(version);
   } else {
     if (!COMPONENTS[target]) error(`Unknown component: ${target}`);
     log(bold(`Setting ${target} version to ${version}`));
-    versions.components[target] = version;
-    writeVersions(versions);
     applyComponentVersion(target, version);
-    log(`  ${dim("updated")} versions.json → ${target}: ${version}`);
   }
 
   log(green("\nVersion set complete."));
 }
 
 function cmdSync(): void {
-  const versions = readVersions();
-  log(bold(`Syncing all components to platform version: ${versions.platform}`));
-  applyPlatformVersion(versions.platform);
+  const platformVersion = readPlatformVersion();
+  log(bold(`Syncing all components to platform version: ${platformVersion}`));
+  applyPlatformVersion(platformVersion);
   log(green("\nSync complete."));
 }
 
 function cmdTag(target: string): void {
-  const versions = readVersions();
+  const versions = readCurrentVersions();
 
   if (target === "platform" || target === "all") {
     const tag = `v${versions.platform}`;
@@ -335,24 +343,24 @@ function cmdRelease(target: string, type: BumpType): void {
   // 1. Bump
   cmdBump(target, type);
 
-  const versions = readVersions();
+  const versions = readCurrentVersions();
 
   // 2. Stage changed files
   log(bold("\nStaging changes..."));
-  git("add versions.json package.json");
+  git("add package.json");
 
   if (target === "platform" || target === "all") {
     // Stage all component files
     for (const name of COMPONENT_NAMES) {
       const meta = COMPONENTS[name];
-      if (meta.packageJson) git(`add ${meta.packageJson}`);
+      git(`add ${meta.packageJson}`);
       if (meta.extraFiles) {
         for (const ef of meta.extraFiles) git(`add ${ef.path}`);
       }
     }
   } else {
     const meta = COMPONENTS[target];
-    if (meta.packageJson) git(`add ${meta.packageJson}`);
+    git(`add ${meta.packageJson}`);
     if (meta.extraFiles) {
       for (const ef of meta.extraFiles) git(`add ${ef.path}`);
     }
@@ -413,57 +421,63 @@ function printUsage(): void {
   log("  bun run dev/version.ts tag cli");
 }
 
-const [command, ...args] = process.argv.slice(2);
+export function runCli(argv: string[]): void {
+  const [command, ...args] = argv;
 
-switch (command) {
-  case "status":
-    cmdStatus();
-    break;
+  switch (command) {
+    case "status":
+      cmdStatus();
+      break;
 
-  case "bump": {
-    const [target, type] = args;
-    if (!target || !type) error("Usage: bump <component|platform> <patch|minor|major>");
-    if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
-    if (!BUMP_TYPES.has(type)) error(`Unknown bump type: ${type}. Use: patch, minor, major`);
-    cmdBump(target, type as BumpType);
-    break;
+    case "bump": {
+      const [target, type] = args;
+      if (!target || !type) error("Usage: bump <component|platform> <patch|minor|major>");
+      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      if (!BUMP_TYPES.has(type)) error(`Unknown bump type: ${type}. Use: patch, minor, major`);
+      cmdBump(target, type as BumpType);
+      break;
+    }
+
+    case "set": {
+      const [target, version] = args;
+      if (!target || !version) error("Usage: set <component|platform> <X.Y.Z>");
+      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      cmdSet(target, version);
+      break;
+    }
+
+    case "sync":
+      cmdSync();
+      break;
+
+    case "tag": {
+      const target = args[0] ?? "platform";
+      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      cmdTag(target);
+      break;
+    }
+
+    case "release": {
+      const [target, type] = args;
+      if (!target || !type) error("Usage: release <component|platform> <patch|minor|major>");
+      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      if (!BUMP_TYPES.has(type)) error(`Unknown bump type: ${type}. Use: patch, minor, major`);
+      cmdRelease(target, type as BumpType);
+      break;
+    }
+
+    case "help":
+    case "--help":
+    case "-h":
+    case undefined:
+      printUsage();
+      break;
+
+    default:
+      error(`Unknown command: ${command}\nRun with --help for usage.`);
   }
+}
 
-  case "set": {
-    const [target, version] = args;
-    if (!target || !version) error("Usage: set <component|platform> <X.Y.Z>");
-    if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
-    cmdSet(target, version);
-    break;
-  }
-
-  case "sync":
-    cmdSync();
-    break;
-
-  case "tag": {
-    const target = args[0] ?? "platform";
-    if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
-    cmdTag(target);
-    break;
-  }
-
-  case "release": {
-    const [target, type] = args;
-    if (!target || !type) error("Usage: release <component|platform> <patch|minor|major>");
-    if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
-    if (!BUMP_TYPES.has(type)) error(`Unknown bump type: ${type}. Use: patch, minor, major`);
-    cmdRelease(target, type as BumpType);
-    break;
-  }
-
-  case "help":
-  case "--help":
-  case "-h":
-  case undefined:
-    printUsage();
-    break;
-
-  default:
-    error(`Unknown command: ${command}\nRun with --help for usage.`);
+if (import.meta.main) {
+  runCli(process.argv.slice(2));
 }

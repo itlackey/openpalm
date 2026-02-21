@@ -1,7 +1,7 @@
 name: Release
 
 # Automated release workflow.
-# Bumps the version in versions.json and related files, commits the change,
+# Bumps the version in package.json files and related files, commits the change,
 # creates a git tag, and pushes. The tag push then triggers the existing
 # publish-images and/or publish-cli workflows.
 #
@@ -79,11 +79,11 @@ jobs:
         id: version
         run: |
           if [ "${{ inputs.component }}" = "platform" ]; then
-            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).platform)")
+            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf-8')).version)")
             echo "version=${VER}" >> "$GITHUB_OUTPUT"
             echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
           else
-            VER=$(bun -e "console.log(JSON.parse(require('fs').readFileSync('versions.json','utf-8')).components['${{ inputs.component }}'])")
+            VER=$(bun -e "const component='${{ inputs.component }}'; const map={assistant:'assistant/package.json',gateway:'gateway/package.json',admin:'admin/package.json','channel-chat':'channels/chat/package.json','channel-discord':'channels/discord/package.json','channel-voice':'channels/voice/package.json','channel-telegram':'channels/telegram/package.json',cli:'packages/cli/package.json'}; const path = map[component]; if (!path) throw new Error('Unknown component: ' + component); console.log(JSON.parse(require('fs').readFileSync(path,'utf-8')).version)")
             echo "version=${VER}" >> "$GITHUB_OUTPUT"
             echo "tag=${{ inputs.component }}/v${VER}" >> "$GITHUB_OUTPUT"
           fi
