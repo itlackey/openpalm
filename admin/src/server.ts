@@ -6,13 +6,11 @@ import { SetupManager } from "./setup.ts";
 import { ensureCronDirs, syncAutomations, triggerAutomation } from "./automations.ts";
 import { getLatestRun, readHistory } from "./automation-history.ts";
 import { validateCron } from "@openpalm/lib/admin/cron.ts";
-import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
 import { BuiltInChannelNames, BuiltInChannelConfigKeys, isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
-import type { ModelAssignment } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
@@ -20,12 +18,12 @@ const DATA_ROOT = Bun.env.OPENPALM_DATA_ROOT ?? "/data";
 const CONFIG_ROOT = Bun.env.OPENPALM_CONFIG_ROOT ?? "/config";
 const STATE_ROOT = Bun.env.OPENPALM_STATE_ROOT ?? "/state";
 
-const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/openpalm/.config/opencode/opencode.json`;
+const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/assistant/.config/opencode/opencode.json`;
 const DATA_DIR = Bun.env.DATA_DIR ?? `${DATA_ROOT}/admin`;
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? `${STATE_ROOT}/rendered/caddy/Caddyfile`;
 const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? `${STATE_ROOT}/rendered/caddy/snippets`;
-const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
+const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://assistant:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
@@ -54,18 +52,18 @@ function isValidChannelService(service: string): boolean {
 }
 
 const setupManager = new SetupManager(DATA_DIR);
-const providerStore = new ProviderStore(DATA_DIR);
 const stackManager = new StackManager({
+  stateRootPath: STATE_ROOT,
   caddyfilePath: CADDYFILE_PATH,
+  caddyJsonPath: Bun.env.CADDY_JSON_PATH ?? `${STATE_ROOT}/rendered/caddy/caddy.json`,
   caddyRoutesDir: CADDY_ROUTES_DIR,
   secretsEnvPath: SECRETS_ENV_PATH,
   stackSpecPath: STACK_SPEC_PATH,
-  gatewayEnvPath: Bun.env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/rendered/env/gateway.env`,
-  openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/rendered/env/openmemory.env`,
-  postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/rendered/env/postgres.env`,
-  qdrantEnvPath: Bun.env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/rendered/env/qdrant.env`,
-  opencodeEnvPath: Bun.env.OPENCODE_ENV_PATH ?? `${STATE_ROOT}/rendered/env/opencode.env`,
-  channelsEnvPath: Bun.env.CHANNELS_ENV_PATH ?? `${STATE_ROOT}/rendered/env/channels.env`,
+  gatewayEnvPath: Bun.env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/gateway/.env`,
+  openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/openmemory/.env`,
+  postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,
+  qdrantEnvPath: Bun.env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/qdrant/.env`,
+  assistantEnvPath: Bun.env.ASSISTANT_ENV_PATH ?? `${STATE_ROOT}/assistant/.env`,
   composeFilePath: COMPOSE_FILE_PATH,
 });
 
@@ -236,34 +234,6 @@ function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
   writeFileSync(OPENCODE_CONFIG_PATH, next, "utf8");
 }
 
-function applyProviderAssignment(role: ModelAssignment, providerUrl: string, providerApiKey: string, modelId: string) {
-  if (role === "small") {
-    const secretKey = "OPENPALM_SMALL_MODEL_API_KEY";
-    updateSecretsEnv({ [secretKey]: providerApiKey || undefined });
-    applySmallModelToOpencodeConfig(providerUrl, modelId);
-    setupManager.setSmallModel({ endpoint: providerUrl, modelId });
-  } else if (role === "openmemory") {
-    updateSecretsEnv({
-      OPENAI_BASE_URL: providerUrl || undefined,
-      OPENAI_API_KEY: providerApiKey || undefined,
-    });
-  }
-}
-
-async function fetchModelsFromProvider(url: string, apiKey: string): Promise<{ id: string; object?: string }[]> {
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { throw new Error("invalid provider URL"); }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("provider URL must use http or https");
-  const modelsUrl = url.replace(/\/+$/, "") + "/models";
-  const headers: Record<string, string> = { "accept": "application/json" };
-  if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
-  const resp = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) throw new Error(`provider returned status ${resp.status}`);
-  const body = await resp.json() as { data?: { id: string; object?: string }[] };
-  if (!Array.isArray(body.data)) throw new Error("unexpected response format: missing data array");
-  return body.data;
-}
-
 async function checkServiceHealth(url: string, expectJson = true): Promise<{ ok: boolean; time?: string; error?: string }> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -301,8 +271,7 @@ const server = Bun.serve({
         return cors(json(200, {
           serviceNames: {
             gateway: { label: "Message Router", description: "Routes messages between channels and your assistant" },
-            opencodeCore: { label: "AI Assistant", description: "The core assistant engine" },
-            "opencode-core": { label: "AI Assistant", description: "The core assistant engine" },
+            assistant: { label: "AI Assistant", description: "The core assistant engine" },
             openmemory: { label: "Memory", description: "Stores conversation history and context" },
             "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
             admin: { label: "Admin Panel", description: "This management interface" },
@@ -389,7 +358,7 @@ const server = Bun.serve({
         await Promise.all([
           composeAction("up", "caddy"),
           composeAction("up", "openmemory"),
-          composeAction("up", "opencode-core"),
+          composeAction("up", "assistant"),
         ]);
         const state = setupManager.setAccessScope(body.scope);
         return cors(json(200, { ok: true, state }));
@@ -541,7 +510,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
         const serviceInstances = getConfiguredServiceInstances();
         const openmemoryBaseUrl = serviceInstances.openmemory || OPENMEMORY_URL;
-        const [gateway, opencodeCore, openmemory] = await Promise.all([
+        const [gateway, assistant, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
           checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
           checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
@@ -549,7 +518,7 @@ const server = Bun.serve({
         return cors(json(200, {
           services: {
             gateway,
-            opencodeCore,
+            assistant,
             openmemory,
             admin: { ok: true, time: new Date().toISOString() }
           },
@@ -563,7 +532,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { pluginId?: string };
         if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
         setOpencodePluginEnabled(body.pluginId.trim(), true);
-        await composeAction("restart", "opencode-core");
+        await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
       }
 
@@ -572,7 +541,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { pluginId?: string };
         if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
         setOpencodePluginEnabled(body.pluginId.trim(), false);
-        await composeAction("restart", "opencode-core");
+        await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
       }
 
@@ -754,89 +723,6 @@ const server = Bun.serve({
         return cors(json(200, { history: readHistory(id, limit) }));
       }
 
-      // ── Providers ─────────────────────────────────────────────
-      if (url.pathname === "/admin/providers" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const providers = providerStore.listProviders().map((p) => ({
-          ...p,
-          apiKey: p.apiKey ? "••••••" : "",
-        }));
-        const state = providerStore.getState();
-        return cors(json(200, { providers, assignments: state.assignments }));
-      }
-
-      if (url.pathname === "/admin/providers" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { name?: string; url?: string; apiKey?: string };
-        if (!body.name) return cors(json(400, { error: "name is required" }));
-        const provider = providerStore.addProvider({
-          name: body.name,
-          url: body.url ?? "",
-          apiKey: body.apiKey ?? "",
-        });
-        return cors(json(201, { ok: true, provider: { ...provider, apiKey: provider.apiKey ? "••••••" : "" } }));
-      }
-
-      if (url.pathname === "/admin/providers/update" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; url?: string; apiKey?: string };
-        if (!body.id) return cors(json(400, { error: "id is required" }));
-        const { id, ...fields } = body;
-        const updated = providerStore.updateProvider(id, fields);
-        if (!updated) return cors(json(404, { error: "provider not found" }));
-        return cors(json(200, { ok: true, provider: { ...updated, apiKey: updated.apiKey ? "••••••" : "" } }));
-      }
-
-      if (url.pathname === "/admin/providers/delete" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string };
-        if (!body.id) return cors(json(400, { error: "id is required" }));
-        // Capture which roles used this provider before removal
-        const stateBefore = providerStore.getState();
-        const affectedRoles = Object.entries(stateBefore.assignments)
-          .filter(([, assignment]) => assignment.providerId === body.id)
-          .map(([role]) => role);
-        const removed = providerStore.removeProvider(body.id);
-        if (!removed) return cors(json(404, { error: "provider not found" }));
-        // Restart services that depended on the deleted provider
-        for (const role of affectedRoles) {
-          if (role === "small" || role === "openmemory") {
-            await composeAction("restart", "opencode-core");
-          }
-          if (role === "openmemory") {
-            await composeAction("restart", "openmemory");
-          }
-        }
-        return cors(json(200, { ok: true, deleted: body.id }));
-      }
-
-      if (url.pathname === "/admin/providers/models" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { providerId?: string };
-        if (!body.providerId) return cors(json(400, { error: "providerId is required" }));
-        const provider = providerStore.getProvider(body.providerId);
-        if (!provider) return cors(json(404, { error: "provider not found" }));
-        try {
-          const models = await fetchModelsFromProvider(provider.url, provider.apiKey);
-          return cors(json(200, { ok: true, models }));
-        } catch (e) {
-          return cors(json(502, { error: "failed to fetch models", message: e instanceof Error ? e.message : String(e) }));
-        }
-      }
-
-      if (url.pathname === "/admin/providers/assign" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { role?: string; providerId?: string; modelId?: string };
-        if (!body.role || !body.providerId || !body.modelId) return cors(json(400, { error: "role, providerId, and modelId are required" }));
-        if (body.role !== "small" && body.role !== "openmemory") return cors(json(400, { error: "role must be 'small' or 'openmemory'" }));
-        const provider = providerStore.getProvider(body.providerId);
-        if (!provider) return cors(json(404, { error: "provider not found" }));
-        const state = providerStore.assignModel(body.role as ModelAssignment, body.providerId, body.modelId);
-        applyProviderAssignment(body.role as ModelAssignment, provider.url, provider.apiKey, body.modelId);
-        await composeAction("restart", "opencode-core");
-        return cors(json(200, { ok: true, assignments: state.assignments }));
-      }
-
       // ── Config editor ─────────────────────────────────────────────
       if (url.pathname === "/admin/config" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
@@ -854,7 +740,7 @@ const server = Bun.serve({
         ensureOpencodeConfigPath();
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
-        if (body.restart ?? true) await composeAction("restart", "opencode-core");
+        if (body.restart ?? true) await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, backup }));
       }
 

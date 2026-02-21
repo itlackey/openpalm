@@ -21,7 +21,7 @@ on:
         type: choice
         options:
           - platform
-          - opencode-core
+          - assistant
           - gateway
           - admin
           - channel-chat

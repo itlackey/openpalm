@@ -10,7 +10,7 @@ For any issue, start by checking the logs of the relevant service:
 docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs <service-name> --tail=100
 ```
 
-Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`.
+Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`.
 
 ## Service won't start
 
@@ -42,14 +42,14 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `open
 2. Check OpenMemory logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs openmemory --tail=50`
 3. Check Qdrant is running: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps qdrant`
 4. Test the OpenMemory API directly: `curl http://localhost:8765/health`
-5. Verify the `openmemory-http` plugin is loaded by checking opencode-core logs for plugin initialization messages.
+5. Verify the `openmemory-http` plugin is loaded by checking assistant logs for plugin initialization messages.
 
 ## Channels not responding
 
 **Symptoms:** Messages sent via Discord, Telegram, or other channels get no response.
 
 **Steps:**
-1. Verify the channel env file has correct credentials: check `~/.local/state/openpalm/rendered/env/channels.env`
+1. Verify the channel env file has correct credentials: check `~/.local/state/openpalm/channel-<name>/.env`
 2. Check channel container logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs channel-<name> --tail=50`
 3. Verify the gateway is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps gateway`
 4. Check that the channel secret matches between the channel env and the gateway environment (e.g., `CHANNEL_DISCORD_SECRET`).
@@ -62,9 +62,9 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `open
 
 **Steps:**
 1. Verify `ANTHROPIC_API_KEY` is set in `~/.config/openpalm/secrets.env`.
-2. Check opencode-core logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs opencode-core --tail=50`
+2. Check assistant logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs assistant --tail=50`
 3. Look for API rate limit or authentication errors in the logs.
-4. Verify the opencode-core container is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps opencode-core`
+4. Verify the assistant container is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps assistant`
 5. Test the gateway health endpoint: `curl http://localhost:8080/health`
 
 ## Port conflicts

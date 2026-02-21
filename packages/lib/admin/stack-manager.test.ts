@@ -6,17 +6,18 @@ import { StackManager } from "./stack-manager.ts";
 
 function createManager(dir: string) {
   return new StackManager({
+    stateRootPath: dir,
     caddyfilePath: join(dir, "Caddyfile"),
+    caddyJsonPath: join(dir, "caddy.json"),
     caddyRoutesDir: join(dir, "routes"),
     composeFilePath: join(dir, "docker-compose.yml"),
     secretsEnvPath: join(dir, "secrets.env"),
     stackSpecPath: join(dir, "stack-spec.json"),
-    gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
-    openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
-    postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
-    qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
-    opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
-    channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
+    gatewayEnvPath: join(dir, "gateway", ".env"),
+    openmemoryEnvPath: join(dir, "openmemory", ".env"),
+    postgresEnvPath: join(dir, "postgres", ".env"),
+    qdrantEnvPath: join(dir, "qdrant", ".env"),
+    assistantEnvPath: join(dir, "assistant", ".env"),
   });
 }
 
@@ -36,9 +37,10 @@ describe("stack manager", () => {
     manager.renderArtifacts();
 
     expect(readFileSync(join(dir, "routes", "channels", "chat.caddy"), "utf8")).toContain("handle /channels/chat*");
-    expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("opencode-core:");
-    expect(readFileSync(join(dir, "rendered", "env", "gateway.env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
-    expect(readFileSync(join(dir, "rendered", "env", "channels.env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
+    expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("assistant:");
+    expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
+    expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
+    expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");
   });
 
   it("prevents deleting secrets that are referenced by channel config", () => {
@@ -136,7 +138,7 @@ describe("stack manager", () => {
     expect(route).toContain("reverse_proxy channel-slack:8500");
 
     // Channels env contains the config values
-    const channelsEnv = readFileSync(join(dir, "rendered", "env", "channels.env"), "utf8");
+    const channelsEnv = readFileSync(join(dir, "channel-slack", ".env"), "utf8");
     expect(channelsEnv).toContain("SLACK_BOT_TOKEN=test-token");
     expect(channelsEnv).toContain("SLACK_SIGNING_SECRET=test-secret");
   });
@@ -173,7 +175,7 @@ describe("stack manager", () => {
     expect(updatedConfig.NEW_KEY).toBe("added-value");
 
     // Channels env reflects the updated config
-    const channelsEnv = readFileSync(join(dir, "rendered", "env", "channels.env"), "utf8");
+    const channelsEnv = readFileSync(join(dir, "channel-webhook-relay", ".env"), "utf8");
     expect(channelsEnv).toContain("RELAY_TARGET=https://new-target.example.com");
     expect(channelsEnv).toContain("NEW_KEY=added-value");
   });
@@ -392,10 +394,11 @@ describe("stack manager", () => {
     expect(caddyfile).toContain("jira.example.com {");
 
     // Verify channels env has resolved secrets
-    const channelsEnv = readFileSync(join(dir, "rendered", "env", "channels.env"), "utf8");
-    expect(channelsEnv).toContain("SLACK_BOT_TOKEN=xoxb-slack");
-    expect(channelsEnv).toContain("SLACK_CHANNEL_ID=C12345");
-    expect(channelsEnv).toContain("JIRA_API_KEY=jira-key-123");
-    expect(channelsEnv).toContain("JIRA_PROJECT=PROJ");
+    const slackEnv = readFileSync(join(dir, "channel-slack", ".env"), "utf8");
+    const jiraEnv = readFileSync(join(dir, "channel-jira-webhook", ".env"), "utf8");
+    expect(slackEnv).toContain("SLACK_BOT_TOKEN=xoxb-slack");
+    expect(slackEnv).toContain("SLACK_CHANNEL_ID=C12345");
+    expect(jiraEnv).toContain("JIRA_API_KEY=jira-key-123");
+    expect(jiraEnv).toContain("JIRA_PROJECT=PROJ");
   });
 });

@@ -19,8 +19,8 @@ type ExistingArtifacts = {
   openmemoryEnv: string;
   postgresEnv: string;
   qdrantEnv: string;
-  opencodeEnv: string;
-  channelsEnv: string;
+  assistantEnv: string;
+  channelEnvs: Record<string, string>;
 };
 
 function readIfExists(path: string): string {
@@ -47,6 +47,11 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     caddyRoutes[routeFile] = readIfExists(join(paths.caddyRoutesDir, routeFile));
   }
 
+  const channelEnvs: Record<string, string> = {};
+  for (const serviceName of manager.enabledChannelServiceNames()) {
+    channelEnvs[serviceName] = readIfExists(join(paths.stateRootPath, serviceName, ".env"));
+  }
+
   return {
     caddyfile: readIfExists(paths.caddyfilePath),
     caddyRoutes,
@@ -55,8 +60,8 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     openmemoryEnv: readIfExists(paths.openmemoryEnvPath),
     postgresEnv: readIfExists(paths.postgresEnvPath),
     qdrantEnv: readIfExists(paths.qdrantEnvPath),
-    opencodeEnv: readIfExists(paths.opencodeEnvPath),
-    channelsEnv: readIfExists(paths.channelsEnvPath),
+    assistantEnv: readIfExists(paths.assistantEnvPath),
+    channelEnvs,
   };
 }
 
@@ -93,13 +98,16 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
     existing.caddyfile !== generated.caddyfile ||
     caddyRoutesChanged(existing.caddyRoutes, generated.caddyRoutes);
 
-  const channelsEnvChanged = existing.channelsEnv !== generated.channelsEnv;
+  const channelEnvServices = new Set<string>([...Object.keys(existing.channelEnvs), ...Object.keys(generated.channelEnvs)]);
+  const channelsEnvChanged = Array.from(channelEnvServices).some((serviceName) => (
+    (existing.channelEnvs[serviceName] ?? "") !== (generated.channelEnvs[serviceName] ?? "")
+  ));
 
   const changed = {
     caddyChanged,
     gatewaySecretsChanged: existing.gatewayEnv !== generated.gatewayEnv,
     channelConfigChanged: channelsEnvChanged ? enabledChannelServices(manager) : [],
-    opencodeChanged: existing.opencodeEnv !== generated.opencodeEnv,
+    assistantChanged: existing.assistantEnv !== generated.assistantEnv,
     openmemoryChanged:
       existing.openmemoryEnv !== generated.openmemoryEnv ||
       existing.postgresEnv !== generated.postgresEnv ||
@@ -108,7 +116,7 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
 
   const impact = computeImpactFromChanges(changed);
   if (existing.composeFile !== generated.composeFile) {
-    impact.restart = Array.from(new Set([...impact.restart, "gateway", "opencode-core", "openmemory", "admin"]));
+    impact.restart = Array.from(new Set([...impact.restart, "gateway", "assistant", "openmemory", "admin"]));
 
     // Services that exist in generated but not in existing need 'up', not 'restart'
     const existingServices = parseComposeServiceNames(existing.composeFile);
@@ -172,7 +180,7 @@ export async function previewComposeOperations(): Promise<{ services: string[]; 
   const semantics: Record<string, "reload" | "restart"> = {
     caddy: "reload",
     gateway: "restart",
-    "opencode-core": "restart",
+    "assistant": "restart",
     openmemory: "restart",
     admin: "restart",
   };

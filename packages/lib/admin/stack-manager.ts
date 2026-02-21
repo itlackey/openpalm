@@ -8,7 +8,9 @@ import type { ChannelExposure, StackSpec } from "./stack-spec.ts";
 export type ChannelName = string;
 
 export type StackManagerPaths = {
+  stateRootPath: string;
   caddyfilePath: string;
+  caddyJsonPath: string;
   caddyRoutesDir: string;
   composeFilePath: string;
   secretsEnvPath: string;
@@ -17,8 +19,7 @@ export type StackManagerPaths = {
   openmemoryEnvPath: string;
   postgresEnvPath: string;
   qdrantEnvPath: string;
-  opencodeEnvPath: string;
-  channelsEnvPath: string;
+  assistantEnvPath: string;
 };
 
 export const CoreSecretRequirements = [
@@ -100,6 +101,8 @@ export class StackManager {
   renderArtifacts() {
     const generated = this.renderPreview();
     writeFileSync(this.paths.caddyfilePath, generated.caddyfile, "utf8");
+    mkdirSync(dirname(this.paths.caddyJsonPath), { recursive: true });
+    writeFileSync(this.paths.caddyJsonPath, generated.caddyJson, "utf8");
     mkdirSync(this.paths.caddyRoutesDir, { recursive: true });
     this.removeStaleRouteFiles(generated.caddyRoutes);
     for (const [routeFile, content] of Object.entries(generated.caddyRoutes)) {
@@ -119,10 +122,13 @@ export class StackManager {
     writeFileSync(this.paths.postgresEnvPath, generated.postgresEnv, "utf8");
     mkdirSync(dirname(this.paths.qdrantEnvPath), { recursive: true });
     writeFileSync(this.paths.qdrantEnvPath, generated.qdrantEnv, "utf8");
-    mkdirSync(dirname(this.paths.opencodeEnvPath), { recursive: true });
-    writeFileSync(this.paths.opencodeEnvPath, generated.opencodeEnv, "utf8");
-    mkdirSync(dirname(this.paths.channelsEnvPath), { recursive: true });
-    writeFileSync(this.paths.channelsEnvPath, generated.channelsEnv, "utf8");
+    mkdirSync(dirname(this.paths.assistantEnvPath), { recursive: true });
+    writeFileSync(this.paths.assistantEnvPath, generated.assistantEnv, "utf8");
+    for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
+      const path = join(this.paths.stateRootPath, serviceName, ".env");
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content, "utf8");
+    }
 
     return generated;
   }

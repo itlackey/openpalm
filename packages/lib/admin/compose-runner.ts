@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
 export const CoreServices = [
-  "opencode-core", "gateway", "openmemory", "admin",
+  "assistant", "gateway", "openmemory", "admin",
   "channel-chat", "channel-discord", "channel-voice",
   "channel-telegram", "caddy", "openmemory-ui", "postgres", "qdrant"
 ] as const;

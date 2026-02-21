@@ -8,9 +8,10 @@ describe("stack generator", () => {
     const out = generateStackArtifacts(spec, {});
     expect(out.caddyRoutes["channels/chat.caddy"]).toContain("handle /channels/chat*");
     expect(out.composeFile).toContain("caddy:");
+    expect(() => JSON.parse(out.caddyJson)).not.toThrow();
     expect(out.composeFile).toContain("/rendered/caddy/snippets:/etc/caddy/snippets:ro");
-    expect(out.composeFile).toContain("opencode-core:");
-    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/opencode:/home/opencode");
+    expect(out.composeFile).toContain("assistant:");
+    expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/assistant:/home/opencode");
     expect(out.composeFile).toContain("${HOME}/openpalm:/work");
     expect(out.composeFile).toContain("user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"");
     expect(out.composeFile).toContain("gateway:");
@@ -36,8 +37,8 @@ describe("stack generator", () => {
       CHANNEL_CHAT_SECRET_VALUE: "chat-secret",
     });
     expect(out.gatewayEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
-    expect(out.channelsEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
-    expect(out.channelsEnv).toContain("CHAT_INBOUND_TOKEN=chat-token");
+    expect(out.channelEnvs["channel-chat"]).toContain("CHANNEL_CHAT_SECRET=chat-secret");
+    expect(out.channelEnvs["channel-chat"]).toContain("CHAT_INBOUND_TOKEN=chat-token");
   });
 
   it("renders host exposure routes with host-only guard", () => {
@@ -209,7 +210,7 @@ describe("stack generator", () => {
       config: { SLACK_TOKEN: "${MY_SLACK_TOKEN}" },
     };
     const out = generateStackArtifacts(spec, { MY_SLACK_TOKEN: "xoxb-test" });
-    expect(out.channelsEnv).toContain("SLACK_TOKEN=xoxb-test");
+    expect(out.channelEnvs["channel-slack"]).toContain("SLACK_TOKEN=xoxb-test");
   });
 
   it("generates path-based routes for custom channels without domains using handle_path", () => {
@@ -240,7 +241,7 @@ describe("stack generator", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
     expect(out.composeFile).toContain("GATEWAY_URL=http://gateway:8080");
-    expect(out.composeFile).toContain("OPENCODE_CORE_URL=http://opencode-core:4096");
+    expect(out.composeFile).toContain("OPENCODE_CORE_URL=http://assistant:4096");
     expect(out.composeFile).toContain("OPENPALM_COMPOSE_BIN=");
     expect(out.composeFile).toContain("OPENPALM_COMPOSE_SUBCOMMAND=");
     expect(out.composeFile).toContain("OPENPALM_CONTAINER_SOCKET_URI=");
@@ -396,11 +397,11 @@ describe("stack generator", () => {
       SECRET_B: "key-for-b",
     });
 
-    // Each channel's config appears resolved in channels.env
-    expect(out.channelsEnv).toContain("SVC_A_KEY=key-for-a");
-    expect(out.channelsEnv).toContain("SVC_A_URL=https://a.example.com");
-    expect(out.channelsEnv).toContain("SVC_B_KEY=key-for-b");
-    expect(out.channelsEnv).toContain("SVC_B_MODE=production");
+    // Each channel's config appears resolved in its own env file
+    expect(out.channelEnvs["channel-svc-a"]).toContain("SVC_A_KEY=key-for-a");
+    expect(out.channelEnvs["channel-svc-a"]).toContain("SVC_A_URL=https://a.example.com");
+    expect(out.channelEnvs["channel-svc-b"]).toContain("SVC_B_KEY=key-for-b");
+    expect(out.channelEnvs["channel-svc-b"]).toContain("SVC_B_MODE=production");
   });
 
   it("fails if any one custom channel has an unresolved secret", () => {

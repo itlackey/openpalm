@@ -28,9 +28,9 @@ Supported channels: `chat`, `discord`, `voice`, `telegram`
 Processing behavior:
 1. Gateway verifies HMAC and payload shape (payload validation).
 2. Rate limiting: 120 requests per minute per user.
-3. Gateway sends a dedicated intake command to `opencode-core` using the `channel-intake` agent (all tools denied) — intake validation.
+3. Gateway sends a dedicated intake command to `assistant` using the `channel-intake` agent (all tools denied) — intake validation.
 4. Gateway parses intake JSON (`valid`, `summary`, `reason`).
-5. If valid, gateway forwards only the summary to `opencode-core` (default agent).
+5. If valid, gateway forwards only the summary to `assistant` (default agent).
 
 Possible errors:
 - `400 invalid_payload` when payload fails shape validation (missing fields, invalid channel, text too long).
@@ -46,7 +46,7 @@ Gateway runtime knobs:
 
 Notes:
 - All inbound user traffic is routed through `/channel/inbound` only.
-- Gateway uses the `channel-intake` agent on `opencode-core` to validate + summarize, then forwards valid summaries to `opencode-core` (default agent).
+- Gateway uses the `channel-intake` agent on `assistant` to validate + summarize, then forwards valid summaries to `assistant` (default agent).
 
 ---
 
@@ -86,7 +86,7 @@ Channel configuration values in `stack-spec` can reference secrets directly with
 - `GET /admin/containers/list` — list running containers
 - `POST /admin/containers/up` — start a service `{ "service": "channel-discord" }`
 - `POST /admin/containers/down` — stop a service `{ "service": "channel-discord" }`
-- `POST /admin/containers/restart` — restart a service `{ "service": "opencode-core" }`
+- `POST /admin/containers/restart` — restart a service `{ "service": "assistant" }`
 
 ### Channel management
 - `GET /admin/channels` — list channel services, network access mode, and editable config keys
@@ -108,11 +108,11 @@ Channel configuration values in `stack-spec` can reference secrets directly with
 - `POST /admin/setup/service-instances` — update service instance overrides, OpenMemory provider, Anthropic key, and small model settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "...", "anthropicApiKey": "...", "smallModelEndpoint": "...", "smallModelApiKey": "...", "smallModelId": "..." }`
 - `POST /admin/setup/channels` — save enabled channel selection `{ "channels": ["channel-chat", "channel-discord"] }`
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
-- `GET /admin/setup/health-check` — run health checks against gateway, OpenCode, and OpenMemory; returns `{ services: { gateway, opencodeCore, openmemory, admin } }`
+- `GET /admin/setup/health-check` — run health checks against gateway, assistant, and OpenMemory; returns `{ services: { gateway, assistant, openmemory, admin } }`
 
 ### Plugin management
-- `POST /admin/plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts opencode-core)
-- `POST /admin/plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts opencode-core)
+- `POST /admin/plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
+- `POST /admin/plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
 
 ### Installed status
 - `GET /admin/installed` — returns currently installed plugins and setup state
@@ -133,19 +133,11 @@ Channel configuration values in `stack-spec` can reference secrets directly with
 - `POST /admin/secrets` — create or update a secret `{ "name": "MY_SECRET", "value": "..." }` (auth required)
 - `POST /admin/secrets/delete` — delete a secret `{ "name": "MY_SECRET" }` (auth required; fails with `secret_in_use` if referenced by a channel config)
 
-### Providers
-- `GET /admin/providers` — list all providers with masked API keys (auth required)
-- `POST /admin/providers` — create a provider `{ "name": "...", "url": "...", "apiKey": "..." }` (auth required)
-- `POST /admin/providers/update` — update a provider `{ "id": "...", "name?": "...", "url?": "...", "apiKey?": "..." }` (auth required)
-- `POST /admin/providers/delete` — delete a provider `{ "id": "..." }` (auth required; restarts affected services)
-- `POST /admin/providers/models` — fetch available models from a provider `{ "providerId": "..." }` (auth required)
-- `POST /admin/providers/assign` — assign a model to a role `{ "role": "small" | "openmemory", "providerId": "...", "modelId": "..." }` (auth required)
-
 ### Automations
 Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. Generated schedules are written to `cron.d.enabled/` and `cron.d.disabled/` with a combined `cron.schedule` render used for crontab loading. The API routes use `/admin/automations`.
 
 - `GET /admin/automations` — list all automations with last run info (auth required)
-- `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no opencode-core restart required).
+- `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no assistant restart required).
 - `POST /admin/automations/update` — update an automation `{ "id": "...", "name?": "...", "schedule?": "...", "script?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Syncs crontab.
 - `POST /admin/automations/delete` — delete an automation `{ "id": "..." }` (auth required). Syncs crontab.
 - `POST /admin/automations/trigger` — "Run Now": immediately trigger an automation `{ "id": "..." }` (auth required). Fires the automation's script without waiting for the schedule.
@@ -158,7 +150,7 @@ Automations are scheduled prompts managed as cron jobs in the admin container. E
 These are available on the internal Docker network for service-to-service API/MCP use, and are also exposed via Caddy as LAN-only web routes under `/admin/*`:
 
 - OpenCode Core UI/API:
-  - Internal service URL: `http://opencode-core:4096`
+  - Internal service URL: `http://assistant:4096`
   - LAN routes via Caddy: `/admin/opencode*`
 - OpenMemory UI/API/MCP:
   - Internal service URL: `http://openmemory:8765` (API/MCP)
@@ -175,7 +167,7 @@ All channel adapters are LAN-only by default. Access can be toggled to public vi
 
 ### Channel Environment Variables
 
-Channel-specific configuration is managed through the Stack Spec and rendered into scoped env files under `${OPENPALM_STATE_HOME}/rendered/env/`. The admin service manages channel config values through the stack manager API.
+Channel-specific configuration is managed through the Stack Spec and rendered into scoped env files under `${OPENPALM_STATE_HOME}/channel-*/.env`. The admin service manages channel config values through the stack manager API.
 
 Each channel adapter reads the following environment variables at startup:
 

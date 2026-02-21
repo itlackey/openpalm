@@ -24,18 +24,18 @@ Admin renders and maintains generated stack outputs under:
 - `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`
 - `${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile`
 - `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/*.caddy`
-- `${OPENPALM_STATE_HOME}/rendered/env/*.env`
+- `${OPENPALM_STATE_HOME}/*/.env`
 
 ## Persistent data
 
 - `${OPENPALM_DATA_HOME}/postgres`
 - `${OPENPALM_DATA_HOME}/qdrant`
 - `${OPENPALM_DATA_HOME}/openmemory`
-- `${OPENPALM_DATA_HOME}/opencode` (OpenCode HOME)
+- `${OPENPALM_DATA_HOME}/assistant` (OpenCode HOME)
 
 ## OpenCode special cases
 
-- OpenCode home mount: `${OPENPALM_DATA_HOME}/opencode -> /home/opencode`
+- OpenCode home mount: `${OPENPALM_DATA_HOME}/assistant -> /home/opencode`
 - OpenCode workdir mount: `${HOME}/openpalm -> /work`
 
 ## Compose invariant

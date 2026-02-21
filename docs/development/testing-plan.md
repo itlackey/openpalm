@@ -37,7 +37,7 @@ Run: `bun test` — target < 5 seconds total.
 | `audit.ts` | `audit.test.ts` | writes JSONL to file; creates directory if missing; each event is one line; event shape matches `AuditEvent` |
 | `channel-intake.ts` | _(exists)_ | add: missing `{` / `}` in response; empty string; double-encoded JSON; truncated JSON |
 | `channel-security.ts` | _(exists)_ | add: empty secret; empty body; timing-safe path (ensure `timingSafeEqual` is used, not `===`) |
-| `opencode-client.ts` | _(exists)_ | add: timeout behavior; non-200 status; malformed JSON response; retry-after headers |
+| `assistant-client.ts` | _(exists)_ | add: timeout behavior; non-200 status; malformed JSON response; retry-after headers |
 | `server.ts` | `server.test.ts` | `validatePayload` extracted or tested inline: missing fields, empty strings, text > 10k, unknown channel, valid payload |
 
 ### Admin
@@ -169,7 +169,7 @@ Run: `bun test --filter security`
 
 ## Layer 5: Admin UI Tests
 
-The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`) with hash-based routing, no framework. UI tests use Playwright (headless Chromium) against a real admin server with mocked backend dependencies (admin, gateway, opencode-core).
+The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`) with hash-based routing, no framework. UI tests use Playwright (headless Chromium) against a real admin server with mocked backend dependencies (admin, gateway, assistant).
 
 ### Test tooling
 
@@ -202,7 +202,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | **Welcome step** | renders overview text; Next button enabled |
 | **Access scope step** | radio buttons for "Host only" / "LAN"; selection persists on Next/Back; calls `POST /admin/setup/access-scope` |
 | **Service instances step** | form fields for OpenMemory URL, Postgres URL, Qdrant URL, OpenAI endpoint, OpenAI API key; calls `POST /admin/setup/service-instances` on Next |
-| **Health check step** | shows status dots for gateway, admin, opencode-core, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
+| **Health check step** | shows status dots for gateway, admin, assistant, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
 | **Security step** | admin password input; password saved to localStorage; displays active protections list |
 | **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /admin/setup/channels` |
 | **Complete step** | calls `POST /admin/setup/complete`; shows "Continue to Admin" button; clicking dismisses overlay |
@@ -223,7 +223,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 
 | Test | Assertions |
 |------|------------|
-| Health status grid | shows gateway, admin, opencode-core, openmemory, admin with dot indicators |
+| Health status grid | shows gateway, admin, assistant, openmemory, admin with dot indicators |
 | Healthy service dot | mock returns healthy → green dot |
 | Unhealthy service dot | mock returns error → red dot |
 | Channel cards | shows chat, discord, voice, telegram with access badge (LAN/PUBLIC) |
@@ -233,7 +233,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Container action: up | click Up → calls `POST /admin/containers/up` |
 | Container action: down | click Down → calls `POST /admin/containers/down` |
 | Container actions require auth | without token → error |
-| All known services listed | grid includes: gateway, opencode-core, openmemory, openmemory-ui, admin, admin, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
+| All known services listed | grid includes: gateway, assistant, openmemory, openmemory-ui, admin, admin, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
 
 ### 5f. Automations Page
 
@@ -331,14 +331,14 @@ Requires the full Docker Compose stack running (`bun run dev:up`).
 | All services healthy | `GET /health` on every service port; all return `{ ok: true }` |
 | Caddy routing | request to `/admin*` routes to admin; `/channels/chat*` routes to chat |
 | LAN restriction | `/admin*` not accessible from non-LAN IP (test with Caddy config parsing) |
-| Service discovery | gateway can reach `opencode-core:4096`; channels can reach `gateway:8080` |
+| Service discovery | gateway can reach `assistant:4096`; channels can reach `gateway:8080` |
 
 ### E2E API flow tests
 
 | Test | Flow |
 |------|------|
-| Chat roundtrip | POST `/channels/chat` → chat adapter → gateway → opencode-core → response |
-| Discord webhook roundtrip | POST `/channels/discord` → discord adapter → gateway → opencode-core → response |
+| Chat roundtrip | POST `/channels/chat` → chat adapter → gateway → assistant → response |
+| Discord webhook roundtrip | POST `/channels/discord` → discord adapter → gateway → assistant → response |
 | Admin container lifecycle | `POST /admin/containers/restart` → admin restarts service → service comes back healthy |
 | Plugin install/uninstall | install plugin via admin API → verify config updated → uninstall → verify removed |
 | Setup wizard flow | complete setup wizard steps in order → verify `setupComplete: true` |
@@ -487,7 +487,7 @@ test/
 │   └── ui-api-drift.test.ts       # UI fetch URLs vs server routes
 └── helpers/
     ├── mock-gateway.ts             # reusable mock Bun.serve() for gateway
-    ├── mock-opencode.ts            # reusable mock for opencode-core
+    ├── mock-opencode.ts            # reusable mock for assistant
     ├── mock-admin.ts          # reusable mock for admin
     └── fixtures.ts                 # shared test data (valid payloads, tokens, etc.)
 ```

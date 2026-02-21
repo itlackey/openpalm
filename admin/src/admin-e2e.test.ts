@@ -47,11 +47,11 @@ beforeAll(async () => {
   const channelSecretDir = join(tmpDir, "secrets", "channels");
   const gatewaySecretDir = join(tmpDir, "secrets", "gateway");
   const cronDir = join(tmpDir, "cron");
+  const stateRoot = join(tmpDir, "state");
   const renderedDir = join(tmpDir, "rendered");
-  const renderedEnvDir = join(renderedDir, "env");
   const caddyRoutesDir = join(renderedDir, "caddy", "snippets");
 
-  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, renderedEnvDir, caddyRoutesDir]) mkdirSync(d, { recursive: true });
+  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, stateRoot, caddyRoutesDir]) mkdirSync(d, { recursive: true });
 
   // Copy UI files
   for (const f of ["index.html", "setup-ui.js", "logo.png"]) {
@@ -59,7 +59,7 @@ beforeAll(async () => {
   }
 
   // Copy config files
-  copyFileSync(join(REPO_ROOT, "opencode/extensions/opencode.jsonc"), opencodeConfigPath);
+  copyFileSync(join(REPO_ROOT, "assistant/extensions/opencode.jsonc"), opencodeConfigPath);
   copyFileSync(join(REPO_ROOT, "assets/state/caddy/Caddyfile"), join(caddyDir, "Caddyfile"));
 
   // Create required env/secrets files
@@ -86,6 +86,7 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(port),
       ADMIN_TOKEN: "test-token-e2e",
+      STATE_ROOT: stateRoot,
       DATA_DIR: dataDir,
       UI_DIR: uiDir,
       OPENCODE_CONFIG_PATH: opencodeConfigPath,
@@ -99,12 +100,11 @@ beforeAll(async () => {
       GATEWAY_CHANNEL_SECRETS_PATH: join(gatewaySecretDir, "channels.env"),
       CADDY_ROUTES_DIR: caddyRoutesDir,
       COMPOSE_FILE_PATH: join(renderedDir, "docker-compose.yml"),
-      GATEWAY_ENV_PATH: join(renderedEnvDir, "gateway.env"),
-      OPENMEMORY_ENV_PATH: join(renderedEnvDir, "openmemory.env"),
-      POSTGRES_ENV_PATH: join(renderedEnvDir, "postgres.env"),
-      QDRANT_ENV_PATH: join(renderedEnvDir, "qdrant.env"),
-      OPENCODE_ENV_PATH: join(renderedEnvDir, "opencode.env"),
-      CHANNELS_ENV_PATH: join(renderedEnvDir, "channels.env"),
+      GATEWAY_ENV_PATH: join(stateRoot, "gateway", ".env"),
+      OPENMEMORY_ENV_PATH: join(stateRoot, "openmemory", ".env"),
+      POSTGRES_ENV_PATH: join(stateRoot, "postgres", ".env"),
+      QDRANT_ENV_PATH: join(stateRoot, "qdrant", ".env"),
+      ASSISTANT_ENV_PATH: join(stateRoot, "assistant", ".env"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -372,7 +372,7 @@ describe("meta endpoint", () => {
     expect(r.data).toHaveProperty("channelFields");
     const names = r.data.serviceNames as Record<string, { label: string }>;
     expect(names.gateway.label).toBe("Message Router");
-    expect(names.opencodeCore.label).toBe("AI Assistant");
+    expect(names.assistant.label).toBe("AI Assistant");
     expect(names.openmemory.label).toBe("Memory");
     const fields = r.data.channelFields as Record<string, Array<{ key: string; label: string }>>;
     expect(fields["channel-discord"].length).toBe(2);
@@ -455,8 +455,8 @@ describe("channel config secret references", () => {
     const spec = current.data.spec as Record<string, unknown>;
     const channels = structuredClone(spec.channels as Record<string, { enabled: boolean; exposure: string; config: Record<string, string> }>);
 
-    for (const channel of ["chat", "discord", "voice", "telegram"] as const) {
-      channels[channel].config = Object.fromEntries(Object.keys(channels[channel].config).map((key) => [key, ""]));
+    for (const channelName of Object.keys(channels)) {
+      channels[channelName].config = Object.fromEntries(Object.keys(channels[channelName].config).map((key) => [key, ""]));
     }
 
     channels.chat = {
@@ -506,116 +506,5 @@ describe("UI content", () => {
     expect(text).toContain("checkSetup");
     expect(text).toContain("finishSetup");
     expect(text).toContain("pollUntilReady");
-  });
-});
-
-// ── Providers ──────────────────────────────────────────
-
-describe("providers", () => {
-  it("GET /admin/providers requires auth", async () => {
-    const r = await apiJson("/admin/providers");
-    expect(r.status).toBe(401);
-  });
-
-  it("GET /admin/providers returns empty list initially", async () => {
-    const r = await authed("/admin/providers");
-    expect(r.ok).toBe(true);
-    expect(r.data.providers).toEqual([]);
-    expect(r.data.assignments).toEqual({});
-  });
-
-  it("POST /admin/providers creates a provider", async () => {
-    const r = await authed("/admin/providers", {
-      method: "POST",
-      body: JSON.stringify({ name: "TestProvider", url: "http://localhost:11434/v1", apiKey: "test-key" }),
-    });
-    expect(r.status).toBe(201);
-    expect(r.data.ok).toBe(true);
-    const provider = r.data.provider as Record<string, unknown>;
-    expect(provider.name).toBe("TestProvider");
-    expect(provider.apiKey).toBe("••••••"); // masked
-  });
-
-  it("POST /admin/providers validates name required", async () => {
-    const r = await authed("/admin/providers", {
-      method: "POST",
-      body: JSON.stringify({ url: "http://test" }),
-    });
-    expect(r.status).toBe(400);
-    expect(r.data.error).toBe("name is required");
-  });
-
-  it("GET /admin/providers lists providers with masked keys", async () => {
-    const r = await authed("/admin/providers");
-    expect(r.ok).toBe(true);
-    const providers = r.data.providers as Array<Record<string, unknown>>;
-    expect(providers.length).toBeGreaterThan(0);
-    expect(providers[0].apiKey).toBe("••••••");
-  });
-
-  it("POST /admin/providers/update updates a provider", async () => {
-    const list = await authed("/admin/providers");
-    const providers = list.data.providers as Array<{ id: string }>;
-    const r = await authed("/admin/providers/update", {
-      method: "POST",
-      body: JSON.stringify({ id: providers[0].id, name: "Updated" }),
-    });
-    expect(r.ok).toBe(true);
-    expect((r.data.provider as Record<string, unknown>).name).toBe("Updated");
-  });
-
-  it("POST /admin/providers/update returns 404 for missing", async () => {
-    const r = await authed("/admin/providers/update", {
-      method: "POST",
-      body: JSON.stringify({ id: "nonexistent", name: "x" }),
-    });
-    expect(r.status).toBe(404);
-  });
-
-  it("POST /admin/providers/assign validates inputs", async () => {
-    const r = await authed("/admin/providers/assign", {
-      method: "POST",
-      body: JSON.stringify({ role: "invalid" }),
-    });
-    expect(r.status).toBe(400);
-  });
-
-  it("POST /admin/providers/assign assigns a model", async () => {
-    const list = await authed("/admin/providers");
-    const providers = list.data.providers as Array<{ id: string }>;
-    const r = await authed("/admin/providers/assign", {
-      method: "POST",
-      body: JSON.stringify({ role: "small", providerId: providers[0].id, modelId: "test-model" }),
-    });
-    expect(r.ok).toBe(true);
-    expect(r.data.assignments).toHaveProperty("small");
-  });
-
-  it("POST /admin/providers/models returns 404 for missing provider", async () => {
-    const r = await authed("/admin/providers/models", {
-      method: "POST",
-      body: JSON.stringify({ providerId: "nonexistent" }),
-    });
-    expect(r.status).toBe(404);
-  });
-
-  it("POST /admin/providers/delete removes a provider", async () => {
-    const list = await authed("/admin/providers");
-    const providers = list.data.providers as Array<{ id: string }>;
-    const r = await authed("/admin/providers/delete", {
-      method: "POST",
-      body: JSON.stringify({ id: providers[0].id }),
-    });
-    expect(r.ok).toBe(true);
-    const after = await authed("/admin/providers");
-    expect((after.data.providers as Array<unknown>).length).toBe(0);
-  });
-
-  it("POST /admin/providers/delete returns 404 for missing", async () => {
-    const r = await authed("/admin/providers/delete", {
-      method: "POST",
-      body: JSON.stringify({ id: "nonexistent" }),
-    });
-    expect(r.status).toBe(404);
   });
 });
