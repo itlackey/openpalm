@@ -152,3 +152,4 @@ bun.lockb
 # OpenPalm
 admin/test-results/
 docs/draft/
+admin/playwright-report/
