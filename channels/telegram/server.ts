@@ -1,22 +1,17 @@
-import { createHmac } from "node:crypto";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { json } from "@openpalm/lib/shared/http.ts";
+
+export { signPayload };
 
 const PORT = Number(Bun.env.PORT ?? 8182);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const SHARED_SECRET = Bun.env.CHANNEL_TELEGRAM_SECRET ?? "";
 const TELEGRAM_WEBHOOK_SECRET = Bun.env.TELEGRAM_WEBHOOK_SECRET ?? "";
 
-function json(status: number, payload: unknown) {
-  return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });
-}
-
-export function signPayload(secret: string, body: string) {
-  return createHmac("sha256", secret).update(body).digest("hex");
-}
-
 export function createTelegramFetch(gatewayUrl: string, sharedSecret: string, webhookSecret: string, forwardFetch: typeof fetch = fetch) {
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/health") return json(200, { ok: true });
+    if (url.pathname === "/health") return json(200, { ok: true, service: "channel-telegram" });
     if (url.pathname !== "/telegram/webhook" || req.method !== "POST") return json(404, { error: "not_found" });
 
     if (webhookSecret && req.headers.get("x-telegram-bot-api-secret-token") !== webhookSecret) {
