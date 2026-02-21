@@ -142,6 +142,36 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "secrets.env"), "utf8")).toContain("OPENAI_API_KEY_MAIN=test-key");
   });
 
+  it("validates connections without persisting them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = new StackManager({
+      caddyfilePath: join(dir, "Caddyfile"),
+      caddyRoutesDir: join(dir, "routes"),
+      composeFilePath: join(dir, "docker-compose.yml"),
+      secretsEnvPath: join(dir, "secrets.env"),
+      stackSpecPath: join(dir, "stack-spec.json"),
+      gatewayEnvPath: join(dir, "rendered", "env", "gateway.env"),
+      openmemoryEnvPath: join(dir, "rendered", "env", "openmemory.env"),
+      postgresEnvPath: join(dir, "rendered", "env", "postgres.env"),
+      qdrantEnvPath: join(dir, "rendered", "env", "qdrant.env"),
+      opencodeEnvPath: join(dir, "rendered", "env", "opencode.env"),
+      channelsEnvPath: join(dir, "rendered", "env", "channels.env"),
+    });
+
+    manager.upsertSecret("OPENAI_API_KEY_MAIN", "test-key");
+    const validated = manager.validateConnection({
+      id: "openai-primary",
+      type: "ai_provider",
+      name: "OpenAI Primary",
+      env: {
+        OPENAI_API_KEY: "OPENAI_API_KEY_MAIN",
+      },
+    });
+
+    expect(validated.id).toBe("openai-primary");
+    expect(manager.listConnections().length).toBe(0);
+  });
+
   it("rejects connections that reference unknown secret keys", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = new StackManager({

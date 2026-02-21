@@ -260,3 +260,15 @@ Security is enforced at multiple layers, each with a distinct responsibility:
 6. **Skills** — Standardized operating procedures: `channel-intake` (validate/summarize/dispatch in the gateway) and `memory` (recall-first behavior and memory policy in the core agent).
 7. **Admin auth** — Password-protected admin API, restricted to LAN-only access via Caddy.
 8. **Admin socket isolation** — Only the admin container has access to the container engine socket.
+
+## Single source of truth map
+
+| Concern | Source of truth | Notes |
+|---|---|---|
+| User intent for stack behavior | `config/stack-spec.json` via `packages/lib/admin/stack-spec.ts` | Keep this file intent-only (no derived runtime state). |
+| Secret values and key inventory | `config/secrets.env` via `StackManager` secret APIs | UI should always use live secret inventory from API. |
+| Rendered compose/caddy/env artifacts | `packages/lib/admin/stack-generator.ts` output | Generated under `state/rendered/*`; never hand-edit. |
+| Compose service allowlist | `packages/lib/admin/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |
+| Admin transport routes | `admin/src/server.ts` | Prefer delegating business rules to `packages/lib/admin/*`. |
+| Security/routing ingress | `gateway/src/server.ts` and `gateway/src/channel-*` | Gateway remains the only inbound message path. |
+| API contract documentation | `docs/development/api-reference.md` | Update this doc when route behavior or payloads change. |

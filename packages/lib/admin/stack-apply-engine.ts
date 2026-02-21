@@ -138,8 +138,22 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
   return { ok: true, generated, impact, warnings };
 }
 
-export async function previewComposeOperations(): Promise<{ services: string[]; logTailLimit: boolean }> {
+export async function previewComposeOperations(): Promise<{ services: string[]; logTailLimit: boolean; reloadSemantics: Record<string, "reload" | "restart"> }> {
   const names = await composeServiceNames();
   const tailCheck = composeLogsValidateTail(50);
-  return { services: names, logTailLimit: tailCheck };
+  return {
+    services: names,
+    logTailLimit: tailCheck,
+    reloadSemantics: {
+      caddy: "reload",
+      gateway: "restart",
+      "opencode-core": "restart",
+      openmemory: "restart",
+      admin: "restart",
+      "channel-chat": "restart",
+      "channel-discord": "restart",
+      "channel-voice": "restart",
+      "channel-telegram": "restart",
+    },
+  };
 }

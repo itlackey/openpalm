@@ -16,6 +16,18 @@ describe("stack spec", () => {
     expect(readFileSync(path, "utf8")).toContain('"version": 1');
   });
 
+  it("keeps default stack spec focused on user intent fields only", () => {
+    const spec = createDefaultStackSpec() as Record<string, unknown>;
+    expect(Object.keys(spec).sort()).toEqual([
+      "accessScope",
+      "automations",
+      "channels",
+      "connections",
+      "secrets",
+      "version",
+    ]);
+  });
+
   it("validates and rejects unknown channels", () => {
     const base = createDefaultStackSpec();
     expect(() => parseStackSpec({
@@ -25,6 +37,16 @@ describe("stack spec", () => {
         webhook: { enabled: true, exposure: "lan" },
       },
     })).toThrow("unknown_channel_webhook");
+  });
+
+  it("rejects unknown top-level stack spec fields", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      runtime: {
+        generatedAt: Date.now(),
+      },
+    })).toThrow("unknown_stack_spec_field_runtime");
   });
 
   it("accepts legacy version 2 stack specs and normalizes to version 1", () => {

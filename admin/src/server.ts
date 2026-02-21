@@ -9,16 +9,9 @@ import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, type ChannelName as StackManagerChannelName, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
-import { composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
+import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import type { ModelAssignment } from "./types.ts";
-
-// TODO: Split this file into route modules as it grows:
-//   routes/setup.ts       - Setup wizard endpoints (/admin/setup/*)
-//   routes/channels.ts    - Channel management endpoints (/admin/channels/*)
-//   routes/automations.ts - Automation CRUD endpoints (/admin/automations/*)
-//   routes/providers.ts   - Provider management endpoints (/admin/providers/*)
-//   routes/system.ts      - System/config endpoints (/admin/containers/*, /admin/config/*)
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
@@ -40,11 +33,7 @@ const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/d
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "channel-telegram"] as const;
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
-const KNOWN_SERVICES = new Set<string>([
-  "gateway", "opencode-core", "openmemory", "openmemory-ui",
-  "admin", "caddy",
-  "channel-chat", "channel-discord", "channel-voice", "channel-telegram"
-]);
+const KNOWN_SERVICES = allowedServiceSet();
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
   "channel-chat": ["CHAT_INBOUND_TOKEN"],
   "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
@@ -76,6 +65,13 @@ function json(status: number, payload: unknown) {
     status,
     headers: { "content-type": "application/json" }
   });
+}
+
+function errorJson(status: number, error: string, details?: unknown, code?: string) {
+  const payload: Record<string, unknown> = { error };
+  if (details !== undefined) payload.details = details;
+  if (code) payload.code = code;
+  return json(status, payload);
 }
 
 function cors(resp: Response): Response {
@@ -338,6 +334,34 @@ const server = Bun.serve({
         }));
       }
 
+      if (url.pathname === "/admin/system/state" && req.method === "GET") {
+        const setup = setupManager.getState();
+        if (setup.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        const secretState = stackManager.listSecretManagerState();
+        const spec = stackManager.getSpec();
+        return cors(json(200, {
+          setup: {
+            ...setup,
+            firstBoot: setupManager.isFirstBoot(),
+            serviceInstances: getConfiguredServiceInstances(),
+            openmemoryProvider: getConfiguredOpenmemoryProvider(),
+            smallModelProvider: getConfiguredSmallModel(),
+          },
+          stack: {
+            accessScope: spec.accessScope,
+            channels: spec.channels,
+            connections: spec.connections,
+            automations: spec.automations,
+          },
+          secrets: {
+            available: secretState.available,
+            mappings: secretState.mappings,
+            requiredCore: secretState.requiredCore,
+            secrets: secretState.secrets,
+          },
+        }));
+      }
+
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
         const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels"];
@@ -448,12 +472,12 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message.startsWith("secret_validation_failed:")) {
-            return cors(json(400, { error: "secret_validation_failed", details: message.replace("secret_validation_failed:", "").split(",") }));
+            return cors(errorJson(400, "secret_validation_failed", message.replace("secret_validation_failed:", "").split(",")));
           }
           if (message.startsWith("compose_validation_failed:")) {
-            return cors(json(400, { error: "compose_validation_failed", details: message.replace("compose_validation_failed:", "") }));
+            return cors(errorJson(400, "compose_validation_failed", message.replace("compose_validation_failed:", "")));
           }
-          return cors(json(500, { error: "stack_apply_failed", details: message }));
+          return cors(errorJson(500, "stack_apply_failed", message));
         }
       }
 
@@ -488,7 +512,7 @@ const server = Bun.serve({
           return cors(json(200, { ok: true, name }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_secret_name") return cors(json(400, { error: message }));
+          if (message === "invalid_secret_name") return cors(errorJson(400, message));
           throw error;
         }
       }
@@ -501,7 +525,7 @@ const server = Bun.serve({
           return cors(json(200, { ok: true, deleted }));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_secret_name" || message === "secret_in_use") return cors(json(400, { error: message }));
+          if (message === "invalid_secret_name" || message === "secret_in_use") return cors(errorJson(400, message));
           throw error;
         }
       }
@@ -517,7 +541,7 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message === "invalid_channel" || message === "invalid_target" || message === "invalid_secret_name" || message === "unknown_secret_name") {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -526,6 +550,29 @@ const server = Bun.serve({
       if (url.pathname === "/admin/connections" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, { ok: true, connections: stackManager.listConnections() }));
+      }
+
+      if (url.pathname === "/admin/connections/validate" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const body = (await req.json()) as { id?: string; name?: string; type?: string; env?: Record<string, string> };
+        try {
+          const connection = stackManager.validateConnection(body);
+          return cors(json(200, { ok: true, connection }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (
+            message === "invalid_connection_id" ||
+            message === "invalid_connection_name" ||
+            message === "invalid_connection_type" ||
+            message === "missing_connection_env" ||
+            message === "invalid_connection_env_key" ||
+            message === "invalid_connection_env_value" ||
+            message === "unknown_secret_name"
+          ) {
+            return cors(errorJson(400, message));
+          }
+          throw error;
+        }
       }
 
       if (url.pathname === "/admin/connections" && req.method === "POST") {
@@ -545,7 +592,7 @@ const server = Bun.serve({
             message === "invalid_connection_env_value" ||
             message === "unknown_secret_name"
           ) {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -560,7 +607,7 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message === "invalid_connection_id" || message === "connection_not_found") {
-            return cors(json(400, { error: message }));
+            return cors(errorJson(400, message));
           }
           throw error;
         }
@@ -916,7 +963,7 @@ const server = Bun.serve({
         return new Response(Bun.file(logoPath), { headers: { "content-type": "image/png" } });
       }
 
-      return cors(json(404, { error: "not_found" }));
+      return cors(errorJson(404, "not_found"));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const isNotFound = message.includes("not found") || message.includes("missing");
@@ -924,7 +971,7 @@ const server = Bun.serve({
       const errorCode = isNotFound ? "not_found" : "internal_error";
       console.error(`[${requestId}] ${errorCode}:`, error);
       const clientMessage = status === 500 ? "An internal error occurred" : message;
-      return cors(json(status, { error: errorCode, message: clientMessage, requestId }));
+      return cors(errorJson(status, errorCode, { message: clientMessage, requestId }));
     }
   }
 });

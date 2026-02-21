@@ -64,6 +64,43 @@ Headers for all protected admin endpoints:
 ### GET /health
 Health status for the admin app.
 
+### Standard admin error shape
+All admin endpoints should return errors in the shape:
+
+```json
+{
+  "error": "machine_readable_error_code",
+  "details": "optional human-readable or structured details",
+  "code": "optional stable subcode"
+}
+```
+
+This keeps the UI implementation simple and predictable for non-technical users by avoiding endpoint-specific parsing rules.
+
+### Secrets + connection contract (canonical)
+The secret manager is the source of truth for both raw secret keys and connection mappings.
+
+- `GET /admin/secrets` — list available secret keys and where each key is used.
+- `POST /admin/secrets` — create or update a secret key/value `{ "name": "OPENAI_API_KEY_MAIN", "value": "..." }`.
+- `POST /admin/secrets/delete` — delete a secret key if not referenced `{ "name": "OPENAI_API_KEY_MAIN" }`.
+- `GET /admin/secrets/map` — read stack-level channel secret mappings.
+- `POST /admin/secrets/mappings/channel` — map channel gateway/channel secret refs `{ "channel": "chat", "target": "gateway" | "channel", "secretName": "CHANNEL_CHAT_SECRET" }`.
+
+Connection lifecycle:
+- `GET /admin/connections` — list saved connection definitions.
+- `POST /admin/connections/validate` — validate a connection payload against current secret inventory without saving.
+- `POST /admin/connections` — create/update a saved connection definition.
+- `GET /admin/compose/capabilities` — returns allowed service names, log tail constraints, and explicit reload semantics per service.
+- `POST /admin/connections/delete` — remove a saved connection definition.
+
+The UI must always derive secret dropdown options from live `GET /admin/secrets` output.
+
+### Common connection env-var conventions
+- OpenAI-compatible providers: `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`
+- Anthropic: `ANTHROPIC_API_KEY`
+- GitHub: `GITHUB_TOKEN`
+- Generic webhook/API auth: `API_KEY` or `BEARER_TOKEN`
+
 ### Container management
 - `GET /admin/containers/list` — list running containers
 - `POST /admin/containers/up` — start a service `{ "service": "channel-discord" }`
@@ -84,6 +121,7 @@ Health status for the admin app.
 
 ### Setup wizard
 - `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, first-boot flag), current service-instance overrides, provider setup, and small model config
+- `GET /admin/system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows
 - `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" }`
 - `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
 - `POST /admin/setup/service-instances` — update service instance overrides, OpenMemory provider, Anthropic key, and small model settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "...", "anthropicApiKey": "...", "smallModelEndpoint": "...", "smallModelApiKey": "...", "smallModelId": "..." }`
@@ -91,6 +129,33 @@ Health status for the admin app.
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
 - `GET /admin/setup/health-check` — run health checks against gateway, OpenCode, and OpenMemory; returns `{ services: { gateway, opencodeCore, openmemory, admin } }`
 
+### Gallery (extension marketplace)
+- `GET /admin/gallery/search?q=&category=` — search curated gallery registry
+  - `q` — free-text search (matches name, description, tags, id)
+  - `category` — filter by `plugin`, `skill`, `command`, `agent`, `tool`, `channel`, or `service`.
+- `GET /admin/gallery/categories` — list gallery categories with counts
+- `GET /admin/gallery/item/:id` — get full detail for a single gallery item including risk badge
+- `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
+- `GET /admin/gallery/community?q=&category=` — search the public community registry fetched from GitHub at runtime (no auth required; 10-minute cache)
+  - `q` — optional free-text search
+  - `category` — optional filter by `plugin`, `skill`, `command`, `agent`, `tool`, `channel`, or `service`
+  - Returns `{ items, total, source: "community-registry" }`
+- `POST /admin/gallery/community/refresh` — force a cache refresh of the community registry (auth required)
+
+### Install / uninstall
+- `POST /admin/gallery/install` — install a gallery item or npm plugin
+  ```json
+  { "galleryId": "plugin-policy-telemetry" }
+  ```
+  or install an npm plugin directly:
+  ```json
+  { "pluginId": "@scope/plugin-name" }
+  ```
+  Delegates to atomic config update  depending on `installAction` type.
+- `POST /admin/gallery/uninstall` — uninstall a gallery item or plugin
+  ```json
+  { "galleryId": "plugin-policy-telemetry" }
+  ```
 ### Plugin management
 - `POST /admin/plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts opencode-core)
 - `POST /admin/plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts opencode-core)
