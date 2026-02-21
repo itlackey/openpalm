@@ -15,7 +15,7 @@ OpenPalm supports all OpenCode extension types: **plugins**, **agents**, **comma
 
 ## What the admin UI and CLI manage
 
-The admin UI and CLI (`openpalm extensions ...`) manage **npm plugins** — entries in the `plugin[]` array of `opencode.json`. Installing a plugin adds it to this array and restarts `opencode-core` so the change takes effect. OpenCode then fetches the package via `bun install` at startup.
+The admin UI and CLI (`openpalm extensions ...`) manage **npm plugins** — entries in the `plugin[]` array of `opencode.json`. Installing a plugin adds it to this array and restarts `assistant` so the change takes effect. OpenCode then fetches the package via `bun install` at startup.
 
 ```bash
 openpalm extensions install --plugin @scope/plugin-name
@@ -40,7 +40,7 @@ and add them to the `plugin[]` array in:
 
 - `${OPENPALM_DATA_HOME}/assistant/.config/opencode/opencode.json`
 
-Changes take effect after restarting `opencode-core`.
+Changes take effect after restarting `assistant`.
 
 ## Providers
 
@@ -48,7 +48,7 @@ Providers are configured via the admin UI under Settings, or by editing the `ope
 
 ## Built-in extensions
 
-OpenPalm ships with built-in extensions baked into the `opencode-core` container image:
+OpenPalm ships with built-in extensions baked into the `assistant` container image:
 
 - **`openmemory-http` plugin** — memory recall injection and post-turn writeback via OpenMemory's REST API
 - **`policy-and-telemetry` plugin** — secret detection in tool arguments and structured audit logging

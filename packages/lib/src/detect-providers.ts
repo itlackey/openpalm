@@ -158,7 +158,7 @@ export async function findExistingOpenCodeConfig(): Promise<string | null> {
     `${home}/.config/opencode/opencode.jsonc`,
     `${home}/.opencode/opencode.json`,
     `${home}/.opencode/opencode.jsonc`,
-    "./opencode.json",
+    "./assistant.json",
     "./opencode.jsonc",
   ];
 

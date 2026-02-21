@@ -9,7 +9,7 @@
 # Prerequisites:
 #   - Bun installed (https://bun.sh)
 #   - Dependencies installed: cd admin && bun install; cd gateway && bun install
-#   - Supporting services running (opencode-core, openmemory) via
+#   - Supporting services running (assistant, openmemory) via
 #     docker compose, or point the env vars at your own instances.
 #
 # This script uses bun run --hot for hot reload so you can edit TypeScript
@@ -24,7 +24,7 @@ export ADMIN_TOKEN="${ADMIN_TOKEN:-dev-admin-token}"
 export GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 export OPENCODE_CORE_URL="${OPENCODE_CORE_URL:-http://localhost:4096}"
 export OPENCODE_CORE_BASE_URL="${OPENCODE_CORE_BASE_URL:-http://localhost:4096}"
-export OPENCODE_CONFIG_PATH="${OPENCODE_CONFIG_PATH:-$ROOT/opencode/extensions/opencode.jsonc}"
+export OPENCODE_CONFIG_PATH="${OPENCODE_CONFIG_PATH:-$ROOT/assistant/extensions/opencode.jsonc}"
 export DATA_DIR="${DATA_DIR:-$ROOT/.dev/data}"
 export CHANNEL_ENV_DIR="${CHANNEL_ENV_DIR:-$ROOT/assets/config/channels}"
 export CADDYFILE_PATH="${CADDYFILE_PATH:-$ROOT/assets/config/Caddyfile}"

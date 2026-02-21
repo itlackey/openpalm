@@ -57,7 +57,7 @@ export type GeneratedStackArtifacts = {
   openmemoryEnv: string;
   postgresEnv: string;
   qdrantEnv: string;
-  opencodeEnv: string;
+  assistantEnv: string;
   channelEnvs: Record<string, string>;
 };
 
@@ -266,11 +266,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    networks: [assistant_net]",
     "    depends_on: [openmemory]",
     "",
-    "  opencode-core:",
-    "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/opencode-core:${OPENPALM_IMAGE_TAG:-latest}",
+    "  assistant:",
+    "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/opencode-core/.env",
+    "      - ${OPENPALM_STATE_HOME}/assistant/.env",
     "    environment:",
     "      - OPENCODE_CONFIG_DIR=/opt/opencode",
     "      - OPENCODE_PORT=4096",
@@ -300,12 +300,12 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${OPENPALM_STATE_HOME}/gateway/.env",
     "    environment:",
     "      - PORT=8080",
-    "      - OPENCODE_CORE_BASE_URL=http://opencode-core:4096",
+    "      - OPENCODE_CORE_BASE_URL=http://assistant:4096",
     "      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
     "    volumes:",
     "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
     "    networks: [assistant_net]",
-    "    depends_on: [opencode-core]",
+    "    depends_on: [assistant]",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]",
     "      interval: 30s",
@@ -320,7 +320,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - PORT=8100",
     "      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}",
     "      - GATEWAY_URL=http://gateway:8080",
-    "      - OPENCODE_CORE_URL=http://opencode-core:4096",
+    "      - OPENCODE_CORE_URL=http://assistant:4096",
     "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
     "      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
     "      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
@@ -331,7 +331,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${HOME}/openpalm:/work",
     "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
     "    networks: [assistant_net]",
-    "    depends_on: [gateway, opencode-core]",
+    "    depends_on: [gateway, assistant]",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]",
     "      interval: 30s",
@@ -400,7 +400,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     "\t\t}",
     "",
     "\t\thandle_path /admin/opencode* {",
-    "\t\t\treverse_proxy opencode-core:4096",
+    "\t\t\treverse_proxy assistant:4096",
     "\t\t}",
     "",
     "\t\thandle_path /admin/openmemory* {",
@@ -414,7 +414,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     "",
     "handle {",
     "\tabort @not_lan",
-    "\treverse_proxy opencode-core:4096",
+    "\treverse_proxy assistant:4096",
     "}",
     "",
   ].join("\n");
@@ -458,7 +458,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     openmemoryEnv: envWithHeader("# Generated openmemory env", pickEnvByKeys(secrets, ["OPENAI_BASE_URL", "OPENAI_API_KEY"])),
     postgresEnv: envWithHeader("# Generated postgres env", pickEnvByKeys(secrets, ["POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"])),
     qdrantEnv: envWithHeader("# Generated qdrant env", {}),
-    opencodeEnv: envWithHeader("# Generated opencode env", {
+    assistantEnv: envWithHeader("# Generated assistant env", {
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
     }),
     channelEnvs,

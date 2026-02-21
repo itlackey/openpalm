@@ -99,7 +99,7 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `mem0/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
 | `openmemory-ui` | `mem0/openmemory-ui:latest` | assistant_net | OpenMemory dashboard (Next.js, port 3000) |
-| `opencode-core` | `./opencode` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `opencode/extensions/`; host config provides optional overrides |
+| `assistant` | `./assistant` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `assistant/extensions/`; host config provides optional overrides |
 | `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
 | `admin` | `./admin` (build) | assistant_net | Admin API, stack apply executor (allowlisted compose ops), and automation cron host |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
@@ -127,8 +127,8 @@ The gateway endpoint is `/channel/inbound`. It receives HMAC-signed payloads fro
 1. **HMAC signature verification** — Validates the channel adapter's HMAC signature. Rejects unsigned or tampered requests.
 2. **Payload validation** — Validates the structure and content of the incoming payload before further processing.
 3. **Rate limiting** — Enforces a limit of 120 requests/min/user. Excess requests are rejected with 429.
-4. **Intake validation** — Gateway forwards the message to `opencode-core` using the `channel-intake` agent, which validates and summarizes the input. The `channel-intake` agent runs with deny-by-default permissions (all tools denied). If the intake is rejected, the gateway returns a 422 error.
-5. **Forward to assistant** — If the intake is valid, the gateway forwards only the validated summary to `opencode-core` (default agent) for full processing with approval gates.
+4. **Intake validation** — Gateway forwards the message to `assistant` using the `channel-intake` agent, which validates and summarizes the input. The `channel-intake` agent runs with deny-by-default permissions (all tools denied). If the intake is rejected, the gateway returns a 422 error.
+5. **Forward to assistant** — If the intake is valid, the gateway forwards only the validated summary to `assistant` (default agent) for full processing with approval gates.
 6. **Audit log** — All inbound requests and their outcomes are written to the audit log.
 
 The gateway is stateless. It verifies HMAC signatures, applies rate limiting (120 req/min/user), logs audit events, and routes traffic to the OpenCode runtime.
@@ -156,10 +156,10 @@ The admin app provides the API for all admin functions:
 | `/channels/discord*` | channel-discord:8184 | `/discord/webhook` | LAN by default (public toggle via Admin API) |
 | `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
 | `/admin/api*` | admin:8100 | prefix stripped to `/admin/*` | LAN only |
-| `/admin/opencode*` | opencode-core:4096 | prefix stripped to `/*` | LAN only |
+| `/admin/opencode*` | assistant:4096 | prefix stripped to `/*` | LAN only |
 | `/admin/openmemory*` | openmemory-ui:3000 | prefix stripped to `/*` | LAN only |
 | `/admin*` (catch-all) | admin:8100 | `/admin` prefix stripped before proxy | LAN only |
-| `/*` (default route) | opencode-core:4096 | pass-through | LAN only |
+| `/*` (default route) | assistant:4096 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
 
@@ -174,12 +174,12 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 | Category | Host Path | Env Var | Contents |
 |---|---|---|---|
 | **Data** | `~/.local/share/openpalm/` | `OPENPALM_DATA_HOME` | PostgreSQL, Qdrant, Open Memory, Shared FS, Caddy TLS, Admin App |
-| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (opencode-core/), Caddyfile, channel env files, user overrides, secrets |
+| **Config** | `~/.config/openpalm/` | `OPENPALM_CONFIG_HOME` | Agent configs (assistant/), Caddyfile, channel env files, user overrides, secrets |
 | **State** | `~/.local/state/openpalm/` | `OPENPALM_STATE_HOME` | Runtime state, audit logs, compose artifacts (workdir is ~/openpalm) |
 
 ### Extension directory layout
 
-Extensions (skills, commands, agents, tools, plugins) are **baked into container images** at build time. `lib/` is a shared library directory used internally and is not an extension sub-type. The canonical sources are `opencode/extensions/` (core) and `gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
+Extensions (skills, commands, agents, tools, plugins) are **baked into container images** at build time. `lib/` is a shared library directory used internally and is not an extension sub-type. The canonical sources are `assistant/extensions/` (core) and `gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
 
 **Extension sub-types and directory layout:**
 
@@ -195,7 +195,7 @@ Directory names are **plural** by convention.
 
 | Source Directory | Container | Contents |
 |---|---|---|
-| `opencode/extensions/` | opencode-core (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/, commands/, skills/memory/ |
+| `assistant/extensions/` | assistant (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/, commands/, skills/memory/ |
 | `gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, agent/channel-intake.md, skills/channel-intake/ |
 
 | Store | Used by | Purpose |

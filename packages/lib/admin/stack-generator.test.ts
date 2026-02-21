@@ -10,7 +10,7 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("caddy:");
     expect(() => JSON.parse(out.caddyJson)).not.toThrow();
     expect(out.composeFile).toContain("/rendered/caddy/snippets:/etc/caddy/snippets:ro");
-    expect(out.composeFile).toContain("opencode-core:");
+    expect(out.composeFile).toContain("assistant:");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/assistant:/home/opencode");
     expect(out.composeFile).toContain("${HOME}/openpalm:/work");
     expect(out.composeFile).toContain("user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"");
@@ -241,7 +241,7 @@ describe("stack generator", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
     expect(out.composeFile).toContain("GATEWAY_URL=http://gateway:8080");
-    expect(out.composeFile).toContain("OPENCODE_CORE_URL=http://opencode-core:4096");
+    expect(out.composeFile).toContain("OPENCODE_CORE_URL=http://assistant:4096");
     expect(out.composeFile).toContain("OPENPALM_COMPOSE_BIN=");
     expect(out.composeFile).toContain("OPENPALM_COMPOSE_SUBCOMMAND=");
     expect(out.composeFile).toContain("OPENPALM_CONTAINER_SOCKET_URI=");

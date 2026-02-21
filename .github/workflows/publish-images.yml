@@ -2,7 +2,7 @@ name: Publish Docker images
 
 # Releases are controlled via version tags:
 #   v*                    → platform release  (all images)
-#   opencode-core/v*      → single component release
+#   assistant/v*      → single component release
 #   gateway/v*            → single component release
 #   admin/v*              → single component release
 #   channel-chat/v*       → single component release
@@ -17,7 +17,7 @@ on:
   push:
     tags:
       - "v*"
-      - "opencode-core/v*"
+      - "assistant/v*"
       - "gateway/v*"
       - "admin/v*"
       - "channel-chat/v*"
@@ -38,7 +38,7 @@ on:
         default: "all"
         options:
           - all
-          - opencode-core
+          - assistant
           - gateway
           - admin
           - channel-chat
@@ -92,7 +92,7 @@ jobs:
 
           # Full list of images with their build contexts
           ALL_IMAGES='[
-            {"image":"opencode-core","context":"./opencode"},
+            {"image":"assistant","context":"./assistant"},
             {"image":"gateway","context":"./gateway"},
             {"image":"admin","context":"./admin"},
             {"image":"channel-chat","context":"./channels/chat"},

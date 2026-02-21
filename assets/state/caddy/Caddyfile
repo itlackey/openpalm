@@ -41,7 +41,7 @@
 			}
 
 			handle_path /admin/opencode* {
-				reverse_proxy opencode-core:4096
+				reverse_proxy assistant:4096
 			}
 
 			handle_path /admin/openmemory* {
@@ -54,11 +54,11 @@
 		}
 	}
 
-	# Default: proxy to opencode-core web UI.
+	# Default: proxy to assistant web UI.
 	# This allows the OpenCode SPA (which uses root-relative asset paths)
 	# to load correctly when accessed directly or embedded in an iframe.
 	handle {
 		abort @not_lan
-		reverse_proxy opencode-core:4096
+		reverse_proxy assistant:4096
 	}
 }

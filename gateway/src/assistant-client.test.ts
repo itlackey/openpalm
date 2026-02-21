@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { OpenCodeClient } from "./opencode-client.ts";
+import { OpenCodeClient } from "./assistant-client.ts";
 
 describe("OpenCodeClient", () => {
   it("sends a message and parses the response", async () => {

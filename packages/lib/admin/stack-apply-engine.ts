@@ -19,7 +19,7 @@ type ExistingArtifacts = {
   openmemoryEnv: string;
   postgresEnv: string;
   qdrantEnv: string;
-  opencodeEnv: string;
+  assistantEnv: string;
   channelEnvs: Record<string, string>;
 };
 
@@ -60,7 +60,7 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     openmemoryEnv: readIfExists(paths.openmemoryEnvPath),
     postgresEnv: readIfExists(paths.postgresEnvPath),
     qdrantEnv: readIfExists(paths.qdrantEnvPath),
-    opencodeEnv: readIfExists(paths.opencodeEnvPath),
+    assistantEnv: readIfExists(paths.assistantEnvPath),
     channelEnvs,
   };
 }
@@ -107,7 +107,7 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
     caddyChanged,
     gatewaySecretsChanged: existing.gatewayEnv !== generated.gatewayEnv,
     channelConfigChanged: channelsEnvChanged ? enabledChannelServices(manager) : [],
-    opencodeChanged: existing.opencodeEnv !== generated.opencodeEnv,
+    assistantChanged: existing.assistantEnv !== generated.assistantEnv,
     openmemoryChanged:
       existing.openmemoryEnv !== generated.openmemoryEnv ||
       existing.postgresEnv !== generated.postgresEnv ||
@@ -116,7 +116,7 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
 
   const impact = computeImpactFromChanges(changed);
   if (existing.composeFile !== generated.composeFile) {
-    impact.restart = Array.from(new Set([...impact.restart, "gateway", "opencode-core", "openmemory", "admin"]));
+    impact.restart = Array.from(new Set([...impact.restart, "gateway", "assistant", "openmemory", "admin"]));
 
     // Services that exist in generated but not in existing need 'up', not 'restart'
     const existingServices = parseComposeServiceNames(existing.composeFile);
@@ -180,7 +180,7 @@ export async function previewComposeOperations(): Promise<{ services: string[]; 
   const semantics: Record<string, "reload" | "restart"> = {
     caddy: "reload",
     gateway: "restart",
-    "opencode-core": "restart",
+    "assistant": "restart",
     openmemory: "restart",
     admin: "restart",
   };

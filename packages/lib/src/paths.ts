@@ -36,7 +36,7 @@ export async function createDirectoryTree(xdg: XDGPaths): Promise<void> {
     "qdrant",
     "openmemory",
     "openmemory-ui",
-    "opencode-core",
+    "assistant",
     "rendered",
     "rendered/caddy",
     "rendered/caddy/snippets",

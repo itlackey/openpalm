@@ -59,7 +59,7 @@ beforeAll(async () => {
   }
 
   // Copy config files
-  copyFileSync(join(REPO_ROOT, "opencode/extensions/opencode.jsonc"), opencodeConfigPath);
+  copyFileSync(join(REPO_ROOT, "assistant/extensions/opencode.jsonc"), opencodeConfigPath);
   copyFileSync(join(REPO_ROOT, "assets/state/caddy/Caddyfile"), join(caddyDir, "Caddyfile"));
 
   // Create required env/secrets files
@@ -104,7 +104,7 @@ beforeAll(async () => {
       OPENMEMORY_ENV_PATH: join(stateRoot, "openmemory", ".env"),
       POSTGRES_ENV_PATH: join(stateRoot, "postgres", ".env"),
       QDRANT_ENV_PATH: join(stateRoot, "qdrant", ".env"),
-      OPENCODE_ENV_PATH: join(stateRoot, "opencode-core", ".env"),
+      ASSISTANT_ENV_PATH: join(stateRoot, "assistant", ".env"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -372,7 +372,7 @@ describe("meta endpoint", () => {
     expect(r.data).toHaveProperty("channelFields");
     const names = r.data.serviceNames as Record<string, { label: string }>;
     expect(names.gateway.label).toBe("Message Router");
-    expect(names.opencodeCore.label).toBe("AI Assistant");
+    expect(names.assistant.label).toBe("AI Assistant");
     expect(names.openmemory.label).toBe("Memory");
     const fields = r.data.channelFields as Record<string, Array<{ key: string; label: string }>>;
     expect(fields["channel-discord"].length).toBe(2);

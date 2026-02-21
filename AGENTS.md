@@ -65,7 +65,7 @@ These rules define how the system is structured. Follow them exactly when writin
 │   ├── voice/
 │   └── webhook/
 ├── gateway/       # Main API gateway (entry point)
-├── opencode/      # OpenCode extensions
+├── assistant/      # OpenCode extensions
 └── assets/        # Templates, scripts, state
 ```
 
@@ -84,7 +84,7 @@ cd channels/discord && bun test
 
 # Run a single test file
 bun test gateway/src/channel-intake.test.ts
-bun test ./gateway/src/opencode-client.test.ts
+bun test ./gateway/src/assistant-client.test.ts
 
 # Run tests matching a pattern
 bun test --match "channel intake"
@@ -159,7 +159,7 @@ import * as foo from "./foo";
 
 ### Naming Conventions
 
-- **Files**: kebab-case (e.g., `channel-intake.ts`, `opencode-client.ts`)
+- **Files**: kebab-case (e.g., `channel-intake.ts`, `assistant-client.ts`)
 - **Types/Interfaces**: PascalCase (e.g., `ChannelMessage`, `IntakeDecision`)
 - **Functions**: camelCase (e.g., `buildIntakeCommand`, `parseIntakeDecision`)
 - **Classes**: PascalCase (e.g., `OpenCodeClient`, `SetupManager`)
@@ -247,5 +247,5 @@ function json(status: number, payload: unknown) {
 
 ### Docker/Compose
 
-- Core services are always allowed: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
+- Core services are always allowed: `assistant`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
 - Additional services can be allowed via `OPENPALM_EXTRA_SERVICES` env var (comma-separated list)

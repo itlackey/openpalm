@@ -52,7 +52,7 @@ interface ComponentMeta {
 }
 
 const COMPONENTS: Record<string, ComponentMeta> = {
-  "opencode-core": { context: "opencode", image: true },
+  "assistant": { context: "assistant", image: true },
   gateway: { context: "gateway", image: true },
   admin: { context: "admin", image: true },
   "channel-chat": { context: "channels/chat", image: true },

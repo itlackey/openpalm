@@ -3,11 +3,11 @@ import { AuditLog } from "./audit.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 import { verifySignature } from "./channel-security.ts";
 import { allowRequest } from "./rate-limit.ts";
-import { OpenCodeClient } from "./opencode-client.ts";
+import { OpenCodeClient } from "./assistant-client.ts";
 import type { ChannelMessage } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8080);
-const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://opencode-core:4096";
+const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://assistant:4096";
 const ALLOWED_CHANNELS = new Set(["chat", "discord", "voice", "telegram"]);
 
 const CHANNEL_SHARED_SECRETS: Record<string, string> = {

@@ -26,7 +26,7 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 
 ## 3) Agent-level isolation for channel intake
 
-- The gateway sends raw channel input to the `channel-intake` agent on `opencode-core`.
+- The gateway sends raw channel input to the `channel-intake` agent on `assistant`.
 - The `channel-intake` agent has all tools denied (bash, edit, webfetch) — it can only validate and summarize.
 - Only validated summaries are forwarded to the default agent for full processing.
 
@@ -55,25 +55,25 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 
 **Why:** separate generated system settings, user overrides, and secrets to reduce accidental misconfiguration and leakage.
 
-## 7) Optional LAN SSH for opencode-core (disabled by default)
+## 7) Optional LAN SSH for assistant (disabled by default)
 
 - SSH is opt-in (`OPENCODE_ENABLE_SSH=1`).
-- Password auth is disabled; key auth only via `opencode-core/ssh/authorized_keys`.
+- Password auth is disabled; key auth only via `assistant/ssh/authorized_keys`.
 - Bind defaults are localhost unless explicitly opened to LAN.
 
 ### SSH Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENCODE_ENABLE_SSH` | `0` | Set to `1` to enable the SSH server inside the opencode-core container |
+| `OPENCODE_ENABLE_SSH` | `0` | Set to `1` to enable the SSH server inside the assistant container |
 | `OPENCODE_CORE_SSH_PORT` | `2222` | Host port mapped to the container's SSH port 22 |
 | `OPENCODE_CORE_SSH_BIND_ADDRESS` | `127.0.0.1` | Bind address for the SSH port on the host. Use `0.0.0.0` to expose to LAN |
 
 ### SSH Setup Steps
 
-1. Set `OPENCODE_ENABLE_SSH=1` in your environment or generated `opencode-core/.env` override flow.
-2. Place your public key in `~/.config/openpalm/opencode-core/ssh/authorized_keys`.
-3. Restart `opencode-core` for changes to take effect.
+1. Set `OPENCODE_ENABLE_SSH=1` in your environment or generated `assistant/.env` override flow.
+2. Place your public key in `~/.config/openpalm/assistant/ssh/authorized_keys`.
+3. Restart `assistant` for changes to take effect.
 4. Connect via `ssh -p ${OPENCODE_CORE_SSH_PORT} root@localhost` (default port 2222).
 
 The SSH port binding is configured in `docker-compose.yml` as:

@@ -19,7 +19,7 @@ export type StackManagerPaths = {
   openmemoryEnvPath: string;
   postgresEnvPath: string;
   qdrantEnvPath: string;
-  opencodeEnvPath: string;
+  assistantEnvPath: string;
 };
 
 export const CoreSecretRequirements = [
@@ -122,8 +122,8 @@ export class StackManager {
     writeFileSync(this.paths.postgresEnvPath, generated.postgresEnv, "utf8");
     mkdirSync(dirname(this.paths.qdrantEnvPath), { recursive: true });
     writeFileSync(this.paths.qdrantEnvPath, generated.qdrantEnv, "utf8");
-    mkdirSync(dirname(this.paths.opencodeEnvPath), { recursive: true });
-    writeFileSync(this.paths.opencodeEnvPath, generated.opencodeEnv, "utf8");
+    mkdirSync(dirname(this.paths.assistantEnvPath), { recursive: true });
+    writeFileSync(this.paths.assistantEnvPath, generated.assistantEnv, "utf8");
     for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
       const path = join(this.paths.stateRootPath, serviceName, ".env");
       mkdirSync(dirname(path), { recursive: true });

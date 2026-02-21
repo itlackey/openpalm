@@ -25,7 +25,7 @@ const DATA_DIR = Bun.env.DATA_DIR ?? `${DATA_ROOT}/admin`;
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? `${STATE_ROOT}/rendered/caddy/Caddyfile`;
 const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? `${STATE_ROOT}/rendered/caddy/snippets`;
-const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://opencode-core:4096";
+const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://assistant:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
@@ -66,7 +66,7 @@ const stackManager = new StackManager({
   openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/openmemory/.env`,
   postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,
   qdrantEnvPath: Bun.env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/qdrant/.env`,
-  opencodeEnvPath: Bun.env.OPENCODE_ENV_PATH ?? `${STATE_ROOT}/opencode-core/.env`,
+  assistantEnvPath: Bun.env.ASSISTANT_ENV_PATH ?? `${STATE_ROOT}/assistant/.env`,
   composeFilePath: COMPOSE_FILE_PATH,
 });
 
@@ -302,8 +302,7 @@ const server = Bun.serve({
         return cors(json(200, {
           serviceNames: {
             gateway: { label: "Message Router", description: "Routes messages between channels and your assistant" },
-            opencodeCore: { label: "AI Assistant", description: "The core assistant engine" },
-            "opencode-core": { label: "AI Assistant", description: "The core assistant engine" },
+            assistant: { label: "AI Assistant", description: "The core assistant engine" },
             openmemory: { label: "Memory", description: "Stores conversation history and context" },
             "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
             admin: { label: "Admin Panel", description: "This management interface" },
@@ -390,7 +389,7 @@ const server = Bun.serve({
         await Promise.all([
           composeAction("up", "caddy"),
           composeAction("up", "openmemory"),
-          composeAction("up", "opencode-core"),
+          composeAction("up", "assistant"),
         ]);
         const state = setupManager.setAccessScope(body.scope);
         return cors(json(200, { ok: true, state }));
@@ -542,7 +541,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
         const serviceInstances = getConfiguredServiceInstances();
         const openmemoryBaseUrl = serviceInstances.openmemory || OPENMEMORY_URL;
-        const [gateway, opencodeCore, openmemory] = await Promise.all([
+        const [gateway, assistant, openmemory] = await Promise.all([
           checkServiceHealth(`${GATEWAY_URL}/health`),
           checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
           checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
@@ -550,7 +549,7 @@ const server = Bun.serve({
         return cors(json(200, {
           services: {
             gateway,
-            opencodeCore,
+            assistant,
             openmemory,
             admin: { ok: true, time: new Date().toISOString() }
           },
@@ -564,7 +563,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { pluginId?: string };
         if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
         setOpencodePluginEnabled(body.pluginId.trim(), true);
-        await composeAction("restart", "opencode-core");
+        await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
       }
 
@@ -573,7 +572,7 @@ const server = Bun.serve({
         const body = (await req.json()) as { pluginId?: string };
         if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
         setOpencodePluginEnabled(body.pluginId.trim(), false);
-        await composeAction("restart", "opencode-core");
+        await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
       }
 
@@ -802,7 +801,7 @@ const server = Bun.serve({
         // Restart services that depended on the deleted provider
         for (const role of affectedRoles) {
           if (role === "small" || role === "openmemory") {
-            await composeAction("restart", "opencode-core");
+            await composeAction("restart", "assistant");
           }
           if (role === "openmemory") {
             await composeAction("restart", "openmemory");
@@ -834,7 +833,7 @@ const server = Bun.serve({
         if (!provider) return cors(json(404, { error: "provider not found" }));
         const state = providerStore.assignModel(body.role as ModelAssignment, body.providerId, body.modelId);
         applyProviderAssignment(body.role as ModelAssignment, provider.url, provider.apiKey, body.modelId);
-        await composeAction("restart", "opencode-core");
+        await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, assignments: state.assignments }));
       }
 
@@ -855,7 +854,7 @@ const server = Bun.serve({
         ensureOpencodeConfigPath();
         const backup = snapshotFile(OPENCODE_CONFIG_PATH);
         writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
-        if (body.restart ?? true) await composeAction("restart", "opencode-core");
+        if (body.restart ?? true) await composeAction("restart", "assistant");
         return cors(json(200, { ok: true, backup }));
       }
 

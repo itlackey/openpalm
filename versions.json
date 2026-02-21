@@ -1,7 +1,7 @@
 {
   "platform": "0.0.5",
   "components": {
-    "opencode-core": "0.0.5",
+    "assistant": "0.0.5",
     "gateway": "0.0.5",
     "admin": "0.0.5",
     "channel-chat": "0.0.5",

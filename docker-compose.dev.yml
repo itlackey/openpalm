@@ -1,9 +1,9 @@
 # Development-only compose overlay.
 # Runtime orchestration is generated into assets/state/docker-compose.yml (and rendered state paths at install/runtime).
 services:
-  opencode-core:
-    build: ./opencode
-    # Extensions are baked into the image from opencode/extensions/.
+  assistant:
+    build: ./assistant
+    # Extensions are baked into the image from assistant/extensions/.
     # For local dev, layer this over assets/state/docker-compose.yml.
     environment:
       # OpenMemory HTTP API plugin configuration

@@ -69,7 +69,7 @@ This report compares the **POC proof-of-concept generators** (`gen-stack.ts` and
 
 - Library function (`generateStackArtifacts`) embedded in the admin package
 - Generates: compose file, Caddyfile, Caddy route snippets, env files (gateway, channels, postgres, qdrant, openmemory, opencode)
-- Compose file is a **template string** with hardcoded core services (caddy, postgres, qdrant, openmemory, openmemory-ui, opencode-core, gateway, admin) + dynamic channel services
+- Compose file is a **template string** with hardcoded core services (caddy, postgres, qdrant, openmemory, openmemory-ui, assistant, gateway, admin) + dynamic channel services
 - Exposure model: correctly implements `127.0.0.1` binding for host exposure
 - Caddy: single `:80` site block, `@lan`/`@not_lan`/`@host`/`@not_host` matchers, snippet imports
 - Per-channel Caddy routes emitted as separate `.caddy` snippet files
@@ -86,7 +86,7 @@ This report compares the **POC proof-of-concept generators** (`gen-stack.ts` and
 | G3 | **Compose file is a template string, not structured** | Low | POC builds a structured JS object and serializes it to YAML. Current builds compose output via string concatenation/template literals. This makes the compose generation harder to test, extend, and validate programmatically. |
 | G4 | **No user-configurable network name** | Low | POC uses a configurable `edge` network. Current hardcodes `assistant_net`. Not user-facing but affects composability. |
 | G5 | **No standalone CLI entrypoint for generation** | Low | POC is a standalone `bun run gen-stack.ts ./spec.json --out ./out` script. Current generation is embedded in the admin server/library, invoked through the `StackManager` class. There's no CLI tool to regenerate artifacts from a spec file independently. |
-| G6 | **Core services not spec-driven** | Medium | POC treats all services uniformly — they're all defined in the spec. Current hardcodes 8 core services (caddy, postgres, qdrant, openmemory, openmemory-ui, opencode-core, gateway, admin) in the template. Adding or removing a core service requires modifying the generator code. |
+| G6 | **Core services not spec-driven** | Medium | POC treats all services uniformly — they're all defined in the spec. Current hardcodes 8 core services (caddy, postgres, qdrant, openmemory, openmemory-ui, assistant, gateway, admin) in the template. Adding or removing a core service requires modifying the generator code. |
 | G7 | **No `volumes` / `labels` / `depends_on` per channel in spec** | Low | POC notes these as future enhancements. Current hardcodes `depends_on: [gateway]` and `networks: [assistant_net]` for all channels. No per-channel volume or label configuration. |
 
 ---

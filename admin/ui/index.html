@@ -340,13 +340,13 @@ async function loadMyExtensions() {
     h += '</div>';
   }
 
-  h += '<div class="card" style="margin-top:1rem"><strong>Manual OpenCode customization</strong><div class="muted" style="font-size:13px;margin-top:.3rem">Manage skills, agents, commands, and tools manually under OPENPALM_DATA_HOME/opencode/.config/opencode/.</div></div>';
+  h += '<div class="card" style="margin-top:1rem"><strong>Manual OpenCode customization</strong><div class="muted" style="font-size:13px;margin-top:.3rem">Manage skills, agents, commands, and tools manually under OPENPALM_DATA_HOME/assistant/.config/opencode/.</div></div>';
   el.innerHTML = h;
 }
 
 function confirmUninstall(pluginId, index) {
   showInlineConfirm('uninstall-confirm-' + index,
-    'Remove plugin "' + pluginId + '" and restart opencode-core?',
+    'Remove plugin "' + pluginId + '" and restart assistant?',
     function() { doUninstall(pluginId); }
   );
 }
@@ -873,7 +873,7 @@ async function loadSystem() {
   h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
   h += '<span class="arrow">&#9654;</span> Developer Tools</h3>';
   h += '<div class="collapse-body hidden">';
-  const opencodeUrl = '/admin/opencode/';
+  const opencodeUrl = '/admin/assistant/';
   const openmemoryUrl = window.location.protocol + '//' + window.location.hostname + ':3000';
   h += '<div style="display:flex;flex-direction:column;gap:.5rem">';
   h += '<a href="' + esc(opencodeUrl) + '" target="_blank">Open OpenCode UI</a>';
@@ -890,7 +890,7 @@ async function loadSystem() {
   if (!adminToken) {
     h += '<p class="muted">Please enter your admin password above to manage services.</p>';
   } else {
-    const known = ['gateway','opencode-core','openmemory','openmemory-ui','admin','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
+    const known = ['gateway','assistant','openmemory','openmemory-ui','admin','channel-chat','channel-discord','channel-voice','channel-telegram','caddy'];
     for (let ki = 0; ki < known.length; ki++) {
       const svcName = known[ki];
       h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--border)">';

@@ -17,11 +17,11 @@ All `dev:*` scripts wrap the multi-file compose command so you don't have to typ
 |---|---|
 | `bun run dev:setup` | Create `.env` and seed `.dev/` directories (no-clobber) |
 | `bun run dev:setup:clean` | Wipe `.dev/` and `.env`, then re-seed from scratch |
-| `bun run dev:build` | Build images and start the stack (`-- opencode-core` for one service) |
+| `bun run dev:build` | Build images and start the stack (`-- assistant` for one service) |
 | `bun run dev:up` | Start the stack without rebuilding images |
 | `bun run dev:down` | Stop and remove all containers |
 | `bun run dev:restart` | Restart containers (`-- gateway` for one service) |
-| `bun run dev:logs` | Tail logs (`-- gateway opencode-core` to filter) |
+| `bun run dev:logs` | Tail logs (`-- gateway assistant` to filter) |
 | `bun run dev:ps` | Show container status |
 | `bun run dev:config` | Validate and print the resolved compose config |
 | `bun run dev:fresh` | Full fresh-install test: clean, re-seed, build, and start |
@@ -40,13 +40,13 @@ bun run dev:fresh
 
 `dev-setup.sh` creates the same XDG-style directory tree that the production installer creates:
 
-On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpalm/`). Inside the opencode-core container, this is mounted as `OPENCODE_CONFIG_DIR`. Channel env files are stored in the `channels/` subdirectory of the config home.
+On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpalm/`). Inside the assistant container, this is mounted as `OPENCODE_CONFIG_DIR`. Channel env files are stored in the `channels/` subdirectory of the config home.
 
 ```
 .dev/
 ├── config/          ← OPENPALM_CONFIG_HOME
 │   ├── caddy/Caddyfile
-│   ├── opencode-core/opencode.jsonc
+│   ├── assistant/opencode.jsonc
 │   ├── channels/{chat,discord,voice,telegram}.env
 │   ├── cron/        ← Automation definitions and cron payloads
 │   ├── ssh/authorized_keys
@@ -60,7 +60,7 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 │   └── admin/
 └── state/           ← OPENPALM_STATE_HOME
     ├── caddy/
-    ├── opencode-core/
+    ├── assistant/
     ├── workspace/
     └── gateway/
 ```

@@ -18,7 +18,7 @@ version**.
 
 | Component | Artifact | Published to |
 |-----------|----------|-------------|
-| `opencode-core` | Docker image | Docker Hub |
+| `assistant` | Docker image | Docker Hub |
 | `gateway` | Docker image | Docker Hub |
 | `admin` | Docker image | Docker Hub |
 | `channel-chat` | Docker image | Docker Hub |
@@ -277,7 +277,7 @@ packages/cli/src/main.ts              # ← Hardcoded VERSION constant
 {
   "platform": "0.1.0",
   "components": {
-    "opencode-core": "0.1.0",
+    "assistant": "0.1.0",
     "gateway": "0.1.0",
     "admin": "0.1.0",
     "channel-chat": "0.1.0",
@@ -300,7 +300,7 @@ OpenPalm Version Status
   Platform:  0.1.0
 
   Components:
-    opencode-core     [image]  0.1.0 ✓ synced
+    assistant     [image]  0.1.0 ✓ synced
     gateway           [image]  0.1.0 ✓ synced
     admin             [image]  0.1.0 ✓ synced
     channel-chat      [image]  0.1.0 ✓ synced
@@ -326,8 +326,8 @@ The production `docker-compose.yml` in `assets/state/` already supports
 per-image version pinning via environment variables:
 
 ```yaml
-opencode-core:
-  image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/opencode-core:${OPENPALM_IMAGE_TAG:-latest}
+assistant:
+  image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
 ```
 
 To pin specific versions per service, override `OPENPALM_IMAGE_TAG` in your

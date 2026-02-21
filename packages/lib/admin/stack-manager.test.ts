@@ -17,7 +17,7 @@ function createManager(dir: string) {
     openmemoryEnvPath: join(dir, "openmemory", ".env"),
     postgresEnvPath: join(dir, "postgres", ".env"),
     qdrantEnvPath: join(dir, "qdrant", ".env"),
-    opencodeEnvPath: join(dir, "opencode-core", ".env"),
+    assistantEnvPath: join(dir, "assistant", ".env"),
   });
 }
 
@@ -37,7 +37,7 @@ describe("stack manager", () => {
     manager.renderArtifacts();
 
     expect(readFileSync(join(dir, "routes", "channels", "chat.caddy"), "utf8")).toContain("handle /channels/chat*");
-    expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("opencode-core:");
+    expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("assistant:");
     expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
     expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");

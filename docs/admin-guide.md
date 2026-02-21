@@ -33,7 +33,7 @@
 
 ### Persistent directory layout (XDG Base Directory)
 
-> **Config path note**: `OPENPALM_CONFIG_HOME` is the host-side XDG path (e.g., `~/.config/openpalm/`). Inside the `opencode-core` container, this directory is volume-mounted and referenced as `OPENCODE_CONFIG_DIR`. The `OPENCODE_CONFIG_DIR` env var is what OpenCode itself uses to locate its configuration at runtime.
+> **Config path note**: `OPENPALM_CONFIG_HOME` is the host-side XDG path (e.g., `~/.config/openpalm/`). Inside the `assistant` container, this directory is volume-mounted and referenced as `OPENCODE_CONFIG_DIR`. The `OPENCODE_CONFIG_DIR` env var is what OpenCode itself uses to locate its configuration at runtime.
 
 ```
 ~/.local/share/openpalm/      (OPENPALM_DATA_HOME — databases, blobs)

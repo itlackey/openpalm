@@ -17,14 +17,14 @@ export function computeImpactFromChanges(changes: {
   caddyChanged?: boolean;
   gatewaySecretsChanged?: boolean;
   channelConfigChanged?: string[];
-  opencodeChanged?: boolean;
+  assistantChanged?: boolean;
   openmemoryChanged?: boolean;
 }): StackImpact {
   const impact = createEmptyImpact();
   if (changes.caddyChanged) impact.reload.push("caddy");
   if (changes.gatewaySecretsChanged) impact.restart.push("gateway");
   for (const service of changes.channelConfigChanged ?? []) impact.restart.push(service);
-  if (changes.opencodeChanged) impact.restart.push("opencode-core");
+  if (changes.assistantChanged) impact.restart.push("assistant");
   if (changes.openmemoryChanged) impact.restart.push("openmemory");
   impact.reload = unique(impact.reload);
   impact.restart = unique(impact.restart);
