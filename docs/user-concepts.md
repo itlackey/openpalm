@@ -24,27 +24,13 @@ Each extension shows a risk badge so you can make informed decisions:
 
 ---
 
-## Connections
+## Secrets
 
-Connections are where you manage the accounts and credentials your assistant uses to reach external services. If you want your assistant to use a specific AI model provider, connect to your GitHub account, or access an API, you set that up as a connection.
+Secrets are where you manage the credentials your assistant uses to reach external services.
 
-Each connection has a friendly name (like "Anthropic" or "GitHub"), shows whether it's configured, and lets you enter or update credentials. Once a connection is set up, it becomes available wherever it's needed — you might use the same OpenAI connection for both the assistant's memory system and an extension that needs embeddings.
+Each secret has a key name (for example `OPENAI_API_KEY`) and a value. Channel configuration fields can reference a secret directly using `${SECRET_NAME}`.
 
-### Connection types
-
-Connections are grouped into three categories:
-
-- **AI Provider** — LLM services used by the assistant or memory system (Anthropic, OpenAI, local Ollama instances, and others)
-- **Platform** — Developer platforms the assistant can interact with (GitHub, GitLab)
-- **API Service** — External services used by extensions or channels (search APIs, notification services)
-
-### What you see for each connection
-
-- **Name** — A friendly label like "Anthropic" or "GitHub"
-- **Status** — Whether it's configured, not configured, or has an error
-- **Used by** — Which parts of the system are using this connection (e.g., "AI Assistant," "Memory system")
-
-When you save a connection, OpenPalm can optionally verify the credentials by making a test call to the service. If the credentials are invalid, you'll see a warning — but the save isn't blocked, so you can fix it later.
+When you apply stack changes, OpenPalm validates that every `${SECRET_NAME}` reference exists before writing runtime artifacts.
 
 ---
 
