@@ -23,7 +23,7 @@ This document provides a complete end-to-end reference for how extensions are au
 
 **Plugin** (highest risk) — A TypeScript file that hooks into the OpenCode runtime event system. Plugins execute code at defined lifecycle points (before tool calls, after responses, on session idle, during compaction) and can inspect, block, or augment agent behavior programmatically. Located at `plugins/<name>.ts`.
 
-Users see all extension sub-types in a single gallery with risk badges corresponding to the sub-type. The gallery discovery sources are: curated gallery, community registry, and npm search.
+OpenPalm admin manages only plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
 > **Note on Channels:** Channel adapters (Discord, Telegram, Voice, Web Chat) each run as dedicated container services. Channels are a **separate top-level concept** — not an Extension sub-type. They are not "container extensions." See the Volume Mount Summary for how channel containers integrate with the stack.
 
@@ -363,29 +363,19 @@ Skills are the lowest-risk extension sub-type. This skill merges the previous `M
 
 ## Installing Extensions at Runtime
 
-There are three interfaces for installing extensions at runtime without modifying the repository or rebuilding images.
+There are two interfaces for installing plugins at runtime without modifying the repository or rebuilding images.
 
 ### 1. Admin UI (Web Dashboard)
 
-The admin dashboard at `http://localhost/admin` provides a gallery-based interface with three extension sources:
-
-**Curated gallery** — A hard-coded registry of reviewed extensions in `admin/src/gallery.ts`. Includes built-in plugins, skills, channel services, and third-party containers (Ollama, SearXNG, n8n). All extension sub-types appear here with risk badges (Skill=lowest, Command=low, Agent=medium, Custom Tool=medium-high, Plugin=highest).
-
-**Community registry** — Fetched at runtime from `assets/state/registry/index.json` on GitHub. Cached for 10 minutes. Configurable via `OPENPALM_REGISTRY_URL`.
-
-**npm search** — Direct search of the npm registry for OpenCode-compatible plugins.
+The admin dashboard at `http://localhost/admin` provides a plugin management interface. Users can install and uninstall npm plugin packages by plugin ID. The admin service updates `opencode.json` `plugin[]` and restarts `opencode-core`.
 
 ### 2. Admin REST API
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `POST /admin/gallery/install` | Install | Accepts `{ galleryId }` or `{ pluginId }` |
-| `POST /admin/gallery/uninstall` | Uninstall | Accepts `{ galleryId }` or `{ pluginId }` |
+| `POST /admin/plugins/install` | Install | Accepts `{ pluginId: "@scope/plugin-name" }` |
+| `POST /admin/plugins/uninstall` | Uninstall | Accepts `{ pluginId: "@scope/plugin-name" }` |
 | `GET /admin/installed` | List | Returns current `plugin[]` and setup state |
-| `GET /admin/gallery/search` | Search curated | `?q=` and `?category=` |
-| `GET /admin/gallery/community` | Search community | Same params, fetches from GitHub |
-| `POST /admin/gallery/community/refresh` | Refresh cache | Force 10-minute cache refresh |
-| `GET /admin/gallery/npm-search` | npm search | `?q=` |
 
 All mutating endpoints require `x-admin-token` header.
 
@@ -454,7 +444,7 @@ assets/state/registry/
 | `id` | string | Unique identifier (kebab-case, 3–100 chars) |
 | `name` | string | Display name (max 80 chars) |
 | `description` | string | 1–2 sentences (10–500 chars) |
-| `category` | `plugin` \| `skill` \| `command` \| `agent` \| `tool` \| `channel` \| `service` | Extension category (OpenCode sub-types plus gallery-managed channel/service compose extensions) |
+| `category` | `plugin` \| `skill` \| `command` \| `agent` \| `tool` \| `channel` \| `service` | Extension category (OpenCode sub-types plus channel/service compose extensions) |
 | `risk` | `lowest` \| `low` \| `medium` \| `medium-high` \| `highest` | Risk level matching capability (Skill=lowest, Command=low, Agent/Channel=medium, Custom Tool/Service=medium-high, Plugin=highest) |
 | `author` | string | Author or GitHub handle |
 | `version` | string | Semantic version |

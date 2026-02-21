@@ -48,17 +48,4 @@ export type ProviderConnection = {
   createdAt: string;
 };
 
-export type ConnectionType = "ai-provider" | "platform" | "api-service";
-
-export type Connection = {
-  id: string;
-  name: string;
-  type: ConnectionType;
-  endpoint: string;
-  status: "configured" | "not-configured" | "error";
-  usedBy: string[];
-  envPrefix: string; // e.g., "ANTHROPIC"
-  createdAt: string;
-};
-
 export type ModelAssignment = "small" | "openmemory";

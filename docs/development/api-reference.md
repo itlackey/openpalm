@@ -59,7 +59,7 @@ Notes:
 Headers for all protected admin endpoints:
 - `x-admin-token` (required — the admin password set during install)
 
-**Exceptions (no auth required):** `/health`, `/admin/setup/*`, `/admin/gallery/search`, `/admin/gallery/categories`, `/admin/gallery/item/:id`, `/admin/gallery/npm-search`, `/admin/gallery/community`, static UI assets (`/`, `/index.html`).
+**Exceptions (no auth required):** `/health`, `/admin/setup/*` (before setup completes), `/admin/meta`, static UI assets (`/`, `/index.html`, `/setup-ui.js`, `/logo.png`).
 
 ### GET /health
 Health status for the admin app.
@@ -83,52 +83,62 @@ Health status for the admin app.
 **Policy lint rule:** The config editor parses the submitted JSONC and inspects the `permission` object. If any permission value is set to `"allow"`, the request is rejected with `400 policy lint failed: permission widening blocked`. Only `"ask"` and `"deny"` are permitted permission values. This prevents operators from accidentally removing approval gates on sensitive tool operations.
 
 ### Setup wizard
-- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag), current service-instance overrides, and OpenMemory provider setup (`openmemoryProvider.openaiBaseUrl`, `openmemoryProvider.openaiApiKeyConfigured`)
-- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions" }`
+- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, first-boot flag), current service-instance overrides, provider setup, and small model config
+- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" }`
 - `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
-- `POST /admin/setup/service-instances` — update service instance overrides and OpenMemory OpenAI-compatible provider settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "..." }` (`openaiApiKey` is optional; leave empty to keep current key)
+- `POST /admin/setup/service-instances` — update service instance overrides, OpenMemory provider, Anthropic key, and small model settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "...", "anthropicApiKey": "...", "smallModelEndpoint": "...", "smallModelApiKey": "...", "smallModelId": "..." }`
+- `POST /admin/setup/channels` — save enabled channel selection `{ "channels": ["channel-chat", "channel-discord"] }`
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
-- `GET /admin/setup/health-check` — run health checks against gateway and OpenCode; returns `{ gateway: boolean, opencode: boolean }`
+- `GET /admin/setup/health-check` — run health checks against gateway, OpenCode, and OpenMemory; returns `{ services: { gateway, opencodeCore, openmemory, admin } }`
 
-### Gallery (extension marketplace)
-- `GET /admin/gallery/search?q=&category=` — search curated gallery registry
-  - `q` — free-text search (matches name, description, tags, id)
-  - `category` — filter by `plugin`, `skill`, `command`, `agent`, `tool`, `channel`, or `service`.
-- `GET /admin/gallery/categories` — list gallery categories with counts
-- `GET /admin/gallery/item/:id` — get full detail for a single gallery item including risk badge
-- `GET /admin/gallery/npm-search?q=` — search npm registry for non-curated OpenCode plugins
-- `GET /admin/gallery/community?q=&category=` — search the public community registry fetched from GitHub at runtime (no auth required; 10-minute cache)
-  - `q` — optional free-text search
-  - `category` — optional filter by `plugin`, `skill`, `command`, `agent`, `tool`, `channel`, or `service`
-  - Returns `{ items, total, source: "community-registry" }`
-- `POST /admin/gallery/community/refresh` — force a cache refresh of the community registry (auth required)
-
-### Install / uninstall
-- `POST /admin/gallery/install` — install a gallery item or npm plugin
-  ```json
-  { "galleryId": "plugin-policy-telemetry" }
-  ```
-  or install an npm plugin directly:
-  ```json
-  { "pluginId": "@scope/plugin-name" }
-  ```
-  Delegates to atomic config update  depending on `installAction` type.
-- `POST /admin/gallery/uninstall` — uninstall a gallery item or plugin
-  ```json
-  { "galleryId": "plugin-policy-telemetry" }
-  ```
+### Plugin management
+- `POST /admin/plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts opencode-core)
+- `POST /admin/plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts opencode-core)
 
 ### Installed status
-- `GET /admin/installed` — returns currently installed extensions (including skills, commands, agents, tools, and plugins) and active services
+- `GET /admin/installed` — returns currently installed plugins and setup state
+
+### Meta
+- `GET /admin/meta` — returns service display names, channel field definitions, and required core secrets (no auth required)
+
+### Stack spec
+- `GET /admin/stack/spec` — returns the current stack spec (auth required)
+- `POST /admin/stack/spec` — validate and save a custom stack spec `{ "spec": {...} }` (auth required)
+- `GET /admin/stack/render` — returns generated Caddyfile, compose file, and env artifacts from the current spec (auth required)
+- `POST /admin/stack/apply` — apply the current stack spec (generates artifacts, validates secrets, optionally runs compose operations) `{ "apply": true }` (auth required)
+- `GET /admin/stack/impact` — preview what a stack apply would change without applying (auth required)
+- `GET /admin/compose/capabilities` — preview compose operations available (auth required)
+
+### Secret management
+- `GET /admin/secrets` — list all secrets with usage info, configured status, and constraint metadata (auth required)
+- `POST /admin/secrets` — create or update a secret `{ "name": "MY_SECRET", "value": "..." }` (auth required)
+- `POST /admin/secrets/delete` — delete a secret `{ "name": "MY_SECRET" }` (auth required; fails with `secret_in_use` if referenced by a channel or connection)
+- `GET /admin/secrets/map` — list channel secret mappings from the stack spec (auth required)
+- `POST /admin/secrets/mappings/channel` — map a secret to a channel `{ "channel": "chat", "target": "gateway" | "channel", "secretName": "MY_SECRET" }` (auth required)
+- `POST /admin/channels/shared-secret` — set the shared HMAC secret for a channel `{ "channel": "chat", "secret": "..." }` (auth required; minimum 32 characters)
+
+### Connections
+- `GET /admin/connections` — list all connections (auth required)
+- `POST /admin/connections` — create or update a connection `{ "id": "openai-primary", "name": "OpenAI Primary", "type": "ai_provider" | "platform" | "api_service", "env": { "OPENAI_API_KEY": "OPENAI_API_KEY_MAIN" } }` (auth required; env values are secret key references, not raw values)
+- `POST /admin/connections/delete` — delete a connection `{ "id": "openai-primary" }` (auth required)
+
+### Providers
+- `GET /admin/providers` — list all providers with masked API keys (auth required)
+- `POST /admin/providers` — create a provider `{ "name": "...", "url": "...", "apiKey": "..." }` (auth required)
+- `POST /admin/providers/update` — update a provider `{ "id": "...", "name?": "...", "url?": "...", "apiKey?": "..." }` (auth required)
+- `POST /admin/providers/delete` — delete a provider `{ "id": "..." }` (auth required; restarts affected services)
+- `POST /admin/providers/models` — fetch available models from a provider `{ "providerId": "..." }` (auth required)
+- `POST /admin/providers/assign` — assign a model to a role `{ "role": "small" | "openmemory", "providerId": "...", "modelId": "..." }` (auth required)
 
 ### Automations
-Automations are scheduled prompts. Each automation has an ID (UUID), Name, Prompt, Schedule, and Status. The API routes use `/admin/automations`.
+Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. The API routes use `/admin/automations`.
 
-- `GET /admin/automations` — list all automations (auth required)
-- `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "prompt": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Triggers an `opencode-core` restart.
-- `POST /admin/automations/update` — update an automation `{ "id": "...", "name?": "...", "schedule?": "...", "prompt?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Triggers an `opencode-core` restart.
-- `POST /admin/automations/delete` — delete an automation `{ "id": "..." }` (auth required). Triggers an `opencode-core` restart.
-- `POST /admin/automations/trigger` — "Run Now": immediately trigger an automation `{ "id": "..." }` (auth required). Fires the automation's prompt against `opencode-core` without waiting for the schedule.
+- `GET /admin/automations` — list all automations with last run info (auth required)
+- `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no opencode-core restart required).
+- `POST /admin/automations/update` — update an automation `{ "id": "...", "name?": "...", "schedule?": "...", "script?": "...", "enabled?": true }` (auth required). Validates cron expression if provided. Syncs crontab.
+- `POST /admin/automations/delete` — delete an automation `{ "id": "..." }` (auth required). Syncs crontab.
+- `POST /admin/automations/trigger` — "Run Now": immediately trigger an automation `{ "id": "..." }` (auth required). Fires the automation's script without waiting for the schedule.
+- `GET /admin/automations/history?id=&limit=` — get execution history for an automation (auth required). Returns up to `limit` (default 20, max 100) recent runs.
 
 ---
 
@@ -148,32 +158,13 @@ These are available on the internal Docker network for service-to-service API/MC
 
 ---
 
-## Admin lifecycle API
-
-Header: `x-admin-token` (required)
-
-Runtime behavior:
-- Uses configured compose command from `OPENPALM_COMPOSE_BIN` + `OPENPALM_COMPOSE_SUBCOMMAND`
-- Uses configured container socket URI from `OPENPALM_CONTAINER_SOCKET_URI`
-- Runtime selection persisted by installer (`OPENPALM_CONTAINER_PLATFORM`)
-
-- `GET /health` — health check
-- `GET /containers` — list running containers (via configured compose runtime `ps`)
-- `POST /restart/:service` — restart a service
-- `POST /up/:service` — start a service
-- `POST /down/:service` — stop a service (Note: despite the endpoint name, this runs `docker compose stop`, not `docker compose down`. The container is halted but not removed, which preserves container state and is safer for single-service operations.)
-
-Allowed services: `opencode-core`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`
-
----
-
 ## Channel Adapter APIs
 
 All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /admin/channels/access`).
 
 ### Channel Environment Variables
 
-Channel-specific env override files follow the naming convention `channels/<channel>.env` (e.g., `channels/discord.env`, `channels/chat.env`). These files live under the `assets/config/channels/` directory and are mounted into each channel adapter container.
+Channel-specific configuration is managed through the Stack Spec and rendered into scoped env files under `${OPENPALM_STATE_HOME}/rendered/env/`. The admin service manages channel config values through the stack manager API.
 
 Each channel adapter reads the following environment variables at startup:
 
