@@ -388,10 +388,6 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
   );
 
   const caddyfile = caddyfileParts.join("\n");
-  const caddyJson = `${JSON.stringify({
-    admin: { disabled: true },
-    apps: { http: { servers: { openpalm: { listen: [":80"], routes: [] } } } },
-  }, null, 2)}\n`;
 
   const caddyAdminRoute = [
     "# Admin and defaults (generated from stack spec)",
@@ -428,6 +424,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     "extra-user-overrides.caddy": "# user-managed overrides\n",
     ...channelRoutes,
   };
+  const caddyJson = `${JSON.stringify({ caddyfile, caddyRoutes }, null, 2)}\n`;
 
   const channelEnvs: Record<string, string> = {};
   for (const [name, cfg] of Object.entries(spec.channels)) {
@@ -441,8 +438,10 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
 
   const gatewayChannelSecrets: Record<string, string> = {};
   for (const name of BuiltInChannelNames) {
+    const channel = spec.channels[name];
+    if (!channel) throw new Error(`missing_built_in_channel_${name}`);
     const secretEnvKey = BuiltInChannelSharedSecretEnv[name];
-    gatewayChannelSecrets[secretEnvKey] = resolveChannelConfig(name, spec.channels[name], secrets)[secretEnvKey] ?? "";
+    gatewayChannelSecrets[secretEnvKey] = resolveChannelConfig(name, channel, secrets)[secretEnvKey] ?? "";
   }
 
   const gatewayEnv = envWithHeader("# Generated gateway env", {

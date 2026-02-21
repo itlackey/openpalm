@@ -40,6 +40,7 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("opencode-core:");
     expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
+    expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");
   });
 
   it("prevents deleting secrets that are referenced by channel config", () => {
