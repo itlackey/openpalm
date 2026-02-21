@@ -1,4 +1,4 @@
-export type AccessScope = "host" | "lan";
+export type AccessScope = "host" | "lan" | "public";
 
 const RUNTIME_BIND_KEYS = {
   OPENPALM_INGRESS_BIND_ADDRESS: true,

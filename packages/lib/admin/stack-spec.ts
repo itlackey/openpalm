@@ -63,6 +63,26 @@ export function isBuiltInChannel(name: string): name is BuiltInChannelName {
   return BuiltInChannelNames.includes(name as BuiltInChannelName);
 }
 
+// --- Validation patterns for user-provided values that flow into generated configs ---
+
+/** Domain: alphanumeric labels separated by dots, optional wildcard prefix, 2+ char TLD. Max 253 chars per RFC 1035. */
+const DOMAIN_PATTERN = /^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i;
+
+/** Path prefix: must start with /, only alphanumeric plus / _ - allowed. No whitespace, no Caddy metacharacters. */
+const PATH_PREFIX_PATTERN = /^\/[a-z0-9\/_-]*$/i;
+
+/** Docker image name: registry/namespace/name:tag or @sha256 digest. No whitespace or YAML metacharacters. */
+const IMAGE_PATTERN = /^[a-z0-9]+([._\/:@-][a-z0-9]+)*$/i;
+
+/** Email: basic validation — no whitespace, newlines, or Caddy metacharacters. */
+const EMAIL_PATTERN = /^[^\s{}"#]+@[^\s{}"#]+\.[^\s{}"#]+$/;
+
+/** Custom config keys: uppercase letters, digits, underscores. Must start with a letter. */
+const CONFIG_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/** Maximum channel name length (DNS label limit). */
+const MAX_CHANNEL_NAME_LENGTH = 63;
+
 function defaultAutomations(): StackAutomation[] {
   return [];
 }
@@ -100,15 +120,16 @@ function parseChannelConfig(raw: unknown, channelName: string): Record<string, s
     for (const key of BuiltInChannelConfigKeys[channelName]) {
       const value = config[key];
       if (value !== undefined && typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
-      result[key] = typeof value === "string" ? value.trim() : "";
+      result[key] = typeof value === "string" ? value.replace(/[\r\n]+/g, "").trim() : "";
     }
     return result;
   }
 
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
+    if (!CONFIG_KEY_PATTERN.test(key)) throw new Error(`invalid_channel_config_key_${channelName}_${key}`);
     if (typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
-    result[key] = value.trim();
+    result[key] = value.replace(/[\r\n]+/g, "").trim();
   }
   return result;
 }
@@ -128,6 +149,7 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
 
   if (channel.image !== undefined) {
     if (typeof channel.image !== "string" || !channel.image.trim()) throw new Error(`invalid_channel_image_${channelName}`);
+    if (!IMAGE_PATTERN.test(channel.image.trim())) throw new Error(`invalid_channel_image_format_${channelName}`);
     result.image = channel.image.trim();
   }
   if (channel.containerPort !== undefined) {
@@ -146,6 +168,8 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
     if (!Array.isArray(channel.domains)) throw new Error(`invalid_channel_domains_${channelName}`);
     for (const d of channel.domains) {
       if (typeof d !== "string" || !d.trim()) throw new Error(`invalid_channel_domain_entry_${channelName}`);
+      if (!DOMAIN_PATTERN.test(d.trim())) throw new Error(`invalid_channel_domain_format_${channelName}`);
+      if (d.trim().length > 253) throw new Error(`invalid_channel_domain_length_${channelName}`);
     }
     result.domains = channel.domains.map((d: string) => d.trim());
   }
@@ -153,6 +177,7 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
     if (!Array.isArray(channel.pathPrefixes)) throw new Error(`invalid_channel_path_prefixes_${channelName}`);
     for (const p of channel.pathPrefixes) {
       if (typeof p !== "string" || !p.trim()) throw new Error(`invalid_channel_path_prefix_entry_${channelName}`);
+      if (!PATH_PREFIX_PATTERN.test(p.trim())) throw new Error(`invalid_channel_path_prefix_format_${channelName}`);
     }
     result.pathPrefixes = channel.pathPrefixes.map((p: string) => p.trim());
   }
@@ -171,6 +196,7 @@ function parseCaddyConfig(raw: unknown): CaddyConfig | undefined {
   const caddy: CaddyConfig = {};
   if (doc.email !== undefined) {
     if (typeof doc.email !== "string") throw new Error("invalid_caddy_email");
+    if (!EMAIL_PATTERN.test(doc.email.trim())) throw new Error("invalid_caddy_email_format");
     caddy.email = doc.email.trim();
   }
   return caddy;
@@ -215,7 +241,7 @@ export function parseStackSpec(raw: unknown): StackSpec {
 
   const channels: Record<string, StackChannelConfig> = {};
   for (const [name, value] of Object.entries(channelsDoc)) {
-    if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`invalid_channel_name_${name}`);
+    if (!/^[a-z][a-z0-9-]*$/.test(name) || name.length > MAX_CHANNEL_NAME_LENGTH) throw new Error(`invalid_channel_name_${name}`);
     channels[name] = parseChannel(value, name);
   }
 

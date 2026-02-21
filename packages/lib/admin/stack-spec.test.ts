@@ -244,6 +244,104 @@ describe("stack spec", () => {
     expect(BuiltInChannelPorts.discord).toBe(8184);
   });
 
+  // --- Security validation tests ---
+
+  it("rejects domains with Caddy injection characters", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "my-svc": {
+          enabled: true, exposure: "public",
+          image: "svc:latest", containerPort: 8080,
+          domains: ["example.com }\n:80 {"], config: {},
+        },
+      },
+    })).toThrow("invalid_channel_domain_format_my-svc");
+  });
+
+  it("rejects path prefixes with Caddy injection characters", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "my-svc": {
+          enabled: true, exposure: "lan",
+          image: "svc:latest", containerPort: 8080,
+          pathPrefixes: ["/foo* {\n\treverse_proxy evil:1234"], config: {},
+        },
+      },
+    })).toThrow("invalid_channel_path_prefix_format_my-svc");
+  });
+
+  it("rejects image names with YAML injection characters", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "my-svc": {
+          enabled: true, exposure: "lan",
+          image: "evil:latest\n    privileged: true", containerPort: 8080,
+          config: {},
+        },
+      },
+    })).toThrow("invalid_channel_image_format_my-svc");
+  });
+
+  it("rejects caddy email with injection characters", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      caddy: { email: "foo@bar.com\n\tacme_ca https://evil.ca" },
+    })).toThrow("invalid_caddy_email_format");
+  });
+
+  it("rejects custom config keys with invalid format", () => {
+    const base = createDefaultStackSpec();
+    expect(() => parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "my-svc": {
+          enabled: true, exposure: "lan",
+          image: "svc:latest", containerPort: 8080,
+          config: { "invalid-key": "value" },
+        },
+      },
+    })).toThrow("invalid_channel_config_key_my-svc_invalid-key");
+  });
+
+  it("strips newlines from config values at parse time", () => {
+    const base = createDefaultStackSpec();
+    const parsed = parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        chat: { ...base.channels.chat, config: { CHAT_INBOUND_TOKEN: "abc\ndef", CHANNEL_CHAT_SECRET: "ok" } },
+      },
+    });
+    expect(parsed.channels.chat.config.CHAT_INBOUND_TOKEN).toBe("abcdef");
+  });
+
+  it("rejects excessively long channel names", () => {
+    const base = createDefaultStackSpec();
+    const longName = "a" + "b".repeat(63);
+    expect(() => parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        [longName]: {
+          enabled: true, exposure: "lan",
+          image: "svc:latest", containerPort: 8080,
+          config: {},
+        },
+      },
+    })).toThrow(`invalid_channel_name_${longName}`);
+  });
+
   it("reads version 1 specs and upgrades to version 2", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
     const path = join(dir, "stack-spec.json");
