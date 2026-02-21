@@ -90,15 +90,17 @@ jobs:
         run: |
           COMPONENT="${{ steps.resolve.outputs.component }}"
 
-          # Full list of images with their build contexts
+          # Full list of images with their build contexts and Dockerfile paths.
+          # Components that copy from packages/lib (outside their own dir) use
+          # the repo root as context so all paths are accessible.
           ALL_IMAGES='[
-            {"image":"assistant","context":"./assistant"},
-            {"image":"gateway","context":"./gateway"},
-            {"image":"admin","context":"./admin"},
-            {"image":"channel-chat","context":"./channels/chat"},
-            {"image":"channel-discord","context":"./channels/discord"},
-            {"image":"channel-voice","context":"./channels/voice"},
-            {"image":"channel-telegram","context":"./channels/telegram"}
+            {"image":"assistant","context":"./assistant","file":"./assistant/Dockerfile"},
+            {"image":"gateway","context":"./gateway","file":"./gateway/Dockerfile"},
+            {"image":"admin","context":".","file":"./admin/Dockerfile"},
+            {"image":"channel-chat","context":".","file":"./channels/chat/Dockerfile"},
+            {"image":"channel-discord","context":".","file":"./channels/discord/Dockerfile"},
+            {"image":"channel-voice","context":".","file":"./channels/voice/Dockerfile"},
+            {"image":"channel-telegram","context":".","file":"./channels/telegram/Dockerfile"}
           ]'
 
           if [ "${COMPONENT}" = "all" ]; then
@@ -108,7 +110,7 @@ jobs:
           fi
 
           # Expand each image into two entries (amd64 + arm64)
-          MATRIX=$(echo "${FILTERED}" | jq -c '{include: [.[] | . as $base | ("amd64","arm64") as $arch | {image: $base.image, context: $base.context, platform: ("linux/" + $arch), arch: $arch}]}')
+          MATRIX=$(echo "${FILTERED}" | jq -c '{include: [.[] | . as $base | ("amd64","arm64") as $arch | {image: $base.image, context: $base.context, file: $base.file, platform: ("linux/" + $arch), arch: $arch}]}')
 
           # Also output just the unique image names for the manifest job
           IMAGES=$(echo "${FILTERED}" | jq -c '[.[].image]')
@@ -158,7 +160,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          file: ${{ matrix.file }}
           push: true
           platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
