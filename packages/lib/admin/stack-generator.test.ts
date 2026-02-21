@@ -254,6 +254,176 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]");
   });
 
+  // --- Multi-channel artifact generation with unique requirements ---
+
+  it("generates correct compose services for multiple custom channels with diverse configs", () => {
+    const spec = createDefaultStackSpec();
+    // Disable built-ins we're not focusing on
+    spec.channels.discord.enabled = false;
+    spec.channels.voice.enabled = false;
+    spec.channels.telegram.enabled = false;
+
+    spec.channels["slack"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "openpalm/channel-slack:latest",
+      containerPort: 8500,
+      config: { SLACK_BOT_TOKEN: "${SLACK_TOKEN}", SLACK_SIGNING_SECRET: "inline-secret" },
+    };
+    spec.channels["whatsapp"] = {
+      enabled: true,
+      exposure: "public",
+      image: "ghcr.io/acme/wa-bridge:v2",
+      containerPort: 9200,
+      hostPort: 9201,
+      domains: ["wa.example.com"],
+      config: { WA_PHONE_ID: "12345" },
+    };
+    spec.channels["internal-api"] = {
+      enabled: true,
+      exposure: "host",
+      image: "my-api:latest",
+      containerPort: 3000,
+      config: {},
+    };
+
+    const out = generateStackArtifacts(spec, { SLACK_TOKEN: "xoxb-test-123" });
+
+    // Each custom channel gets its own compose service
+    expect(out.composeFile).toContain("channel-slack:");
+    expect(out.composeFile).toContain("image: openpalm/channel-slack:latest");
+    expect(out.composeFile).toContain("channel-whatsapp:");
+    expect(out.composeFile).toContain("image: ghcr.io/acme/wa-bridge:v2");
+    expect(out.composeFile).toContain("channel-internal-api:");
+    expect(out.composeFile).toContain("image: my-api:latest");
+
+    // Host-exposed channel binds to loopback
+    expect(out.composeFile).toContain("\"127.0.0.1:3000:3000\"");
+    // Custom hostPort mapping is used
+    expect(out.composeFile).toContain("\"9201:9200\"");
+    // LAN channel binds on all interfaces
+    expect(out.composeFile).toContain("\"8500:8500\"");
+
+    // Built-in chat still present alongside custom channels
+    expect(out.composeFile).toContain("channel-chat:");
+
+    // Disabled built-ins are absent
+    expect(out.composeFile).not.toContain("channel-discord:");
+  });
+
+  it("generates correct Caddy routing for channels with different routing strategies", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels.discord.enabled = false;
+    spec.channels.voice.enabled = false;
+    spec.channels.telegram.enabled = false;
+
+    // Path-based custom channel (LAN)
+    spec.channels["slack"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "slack:latest",
+      containerPort: 8500,
+      config: {},
+    };
+    // Domain-based custom channel (public, no IP guard)
+    spec.channels["whatsapp"] = {
+      enabled: true,
+      exposure: "public",
+      image: "wa:latest",
+      containerPort: 9200,
+      domains: ["wa.example.com"],
+      pathPrefixes: ["/webhook"],
+      config: {},
+    };
+    // Path-based custom channel (host only)
+    spec.channels["debug-svc"] = {
+      enabled: true,
+      exposure: "host",
+      image: "debug:latest",
+      containerPort: 3000,
+      config: {},
+    };
+
+    const out = generateStackArtifacts(spec, {});
+
+    // Path-based channel uses handle_path with LAN guard
+    const slackRoute = out.caddyRoutes["channels/slack.caddy"];
+    expect(slackRoute).toContain("handle_path /channels/slack*");
+    expect(slackRoute).toContain("abort @not_lan");
+    expect(slackRoute).toContain("reverse_proxy channel-slack:8500");
+    expect(slackRoute).not.toContain("rewrite");
+
+    // Domain-based channel appears in the main Caddyfile, not as a route snippet
+    expect(out.caddyRoutes["channels/whatsapp.caddy"]).toBeUndefined();
+    expect(out.caddyfile).toContain("wa.example.com {");
+    expect(out.caddyfile).toContain("handle_path /webhook*");
+    expect(out.caddyfile).toContain("reverse_proxy channel-whatsapp:9200");
+    // Public domain: no TLS internal, no IP guard
+    const waBlock = out.caddyfile.split("wa.example.com {")[1].split("}")[0];
+    expect(waBlock).not.toContain("tls internal");
+    expect(waBlock).not.toContain("abort");
+
+    // Host-only channel uses handle_path with host guard
+    const debugRoute = out.caddyRoutes["channels/debug-svc.caddy"];
+    expect(debugRoute).toContain("handle_path /channels/debug-svc*");
+    expect(debugRoute).toContain("abort @not_host");
+
+    // Built-in chat still uses handle+rewrite (not handle_path)
+    const chatRoute = out.caddyRoutes["channels/chat.caddy"];
+    expect(chatRoute).toContain("handle /channels/chat*");
+    expect(chatRoute).toContain("rewrite * /chat");
+  });
+
+  it("resolves config secrets independently per custom channel", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels["svc-a"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "a:latest",
+      containerPort: 7000,
+      config: { SVC_A_KEY: "${SECRET_A}", SVC_A_URL: "https://a.example.com" },
+    };
+    spec.channels["svc-b"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "b:latest",
+      containerPort: 7001,
+      config: { SVC_B_KEY: "${SECRET_B}", SVC_B_MODE: "production" },
+    };
+
+    const out = generateStackArtifacts(spec, {
+      SECRET_A: "key-for-a",
+      SECRET_B: "key-for-b",
+    });
+
+    // Each channel's config appears resolved in channels.env
+    expect(out.channelsEnv).toContain("SVC_A_KEY=key-for-a");
+    expect(out.channelsEnv).toContain("SVC_A_URL=https://a.example.com");
+    expect(out.channelsEnv).toContain("SVC_B_KEY=key-for-b");
+    expect(out.channelsEnv).toContain("SVC_B_MODE=production");
+  });
+
+  it("fails if any one custom channel has an unresolved secret", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels["good-svc"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "good:latest",
+      containerPort: 7000,
+      config: { GOOD_KEY: "${RESOLVED_SECRET}" },
+    };
+    spec.channels["bad-svc"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "bad:latest",
+      containerPort: 7001,
+      config: { BAD_KEY: "${MISSING_SECRET}" },
+    };
+
+    expect(() => generateStackArtifacts(spec, { RESOLVED_SECRET: "ok" }))
+      .toThrow("unresolved_secret_reference_bad-svc_BAD_KEY_MISSING_SECRET");
+  });
+
   it("produces clean compose output with no channels enabled", () => {
     const spec = createDefaultStackSpec();
     for (const name of Object.keys(spec.channels)) {

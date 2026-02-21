@@ -342,6 +342,95 @@ describe("stack spec", () => {
     })).toThrow(`invalid_channel_name_${longName}`);
   });
 
+  // --- Arbitrary channel management ---
+
+  it("accepts multiple custom channels with distinct configurations simultaneously", () => {
+    const base = createDefaultStackSpec();
+    const parsed = parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "slack": {
+          enabled: true, exposure: "lan",
+          image: "openpalm/channel-slack:latest", containerPort: 8500,
+          config: { SLACK_BOT_TOKEN: "${SLACK_TOKEN}", SLACK_SIGNING_SECRET: "${SLACK_SECRET}" },
+        },
+        "whatsapp": {
+          enabled: true, exposure: "public",
+          image: "ghcr.io/acme/wa-bridge:v2", containerPort: 9200,
+          hostPort: 9201,
+          domains: ["wa.example.com"],
+          config: { WA_PHONE_ID: "12345", WA_ACCESS_TOKEN: "${WA_TOKEN}" },
+        },
+        "internal-api": {
+          enabled: true, exposure: "host",
+          image: "my-api:latest", containerPort: 3000,
+          pathPrefixes: ["/v1"],
+          config: { API_SECRET: "inline-secret" },
+        },
+      },
+    });
+
+    // All channels present alongside built-ins
+    expect(Object.keys(parsed.channels)).toContain("chat");
+    expect(Object.keys(parsed.channels)).toContain("slack");
+    expect(Object.keys(parsed.channels)).toContain("whatsapp");
+    expect(Object.keys(parsed.channels)).toContain("internal-api");
+
+    // Each channel retains its unique config
+    expect(parsed.channels["slack"].config.SLACK_BOT_TOKEN).toBe("${SLACK_TOKEN}");
+    expect(parsed.channels["whatsapp"].config.WA_PHONE_ID).toBe("12345");
+    expect(parsed.channels["whatsapp"].config.WA_ACCESS_TOKEN).toBe("${WA_TOKEN}");
+    expect(parsed.channels["internal-api"].config.API_SECRET).toBe("inline-secret");
+
+    // Exposure levels are independent per channel
+    expect(parsed.channels["slack"].exposure).toBe("lan");
+    expect(parsed.channels["whatsapp"].exposure).toBe("public");
+    expect(parsed.channels["internal-api"].exposure).toBe("host");
+
+    // Optional fields preserved correctly
+    expect(parsed.channels["whatsapp"].domains).toEqual(["wa.example.com"]);
+    expect(parsed.channels["whatsapp"].hostPort).toBe(9201);
+    expect(parsed.channels["internal-api"].pathPrefixes).toEqual(["/v1"]);
+    expect(parsed.channels["slack"].domains).toBeUndefined();
+  });
+
+  it("each custom channel independently requires image and containerPort", () => {
+    const base = createDefaultStackSpec();
+    // First custom channel is valid, second is missing image
+    expect(() => parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "good-svc": { enabled: true, exposure: "lan", image: "good:latest", containerPort: 8000, config: {} },
+        "bad-svc": { enabled: true, exposure: "lan", containerPort: 8001, config: {} },
+      },
+    })).toThrow("custom_channel_requires_image_bad-svc");
+  });
+
+  it("allows custom channels with different config key sets", () => {
+    const base = createDefaultStackSpec();
+    const parsed = parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        "svc-a": {
+          enabled: true, exposure: "lan",
+          image: "a:latest", containerPort: 7000,
+          config: { DATABASE_URL: "postgres://...", CACHE_TTL: "300" },
+        },
+        "svc-b": {
+          enabled: true, exposure: "lan",
+          image: "b:latest", containerPort: 7001,
+          config: { WEBHOOK_URL: "https://hook.example.com", RETRY_COUNT: "3", LOG_LEVEL: "debug" },
+        },
+      },
+    });
+
+    expect(Object.keys(parsed.channels["svc-a"].config)).toEqual(["DATABASE_URL", "CACHE_TTL"]);
+    expect(Object.keys(parsed.channels["svc-b"].config)).toEqual(["WEBHOOK_URL", "RETRY_COUNT", "LOG_LEVEL"]);
+  });
+
   it("reads version 1 specs and upgrades to version 2", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
     const path = join(dir, "stack-spec.json");
