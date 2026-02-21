@@ -38,7 +38,7 @@ bun run dev:fresh
 
 ### Directory layout
 
-`dev-setup.sh` creates the same XDG-style directory tree that the production installer creates:
+`dev/dev-setup.sh` creates the same XDG-style directory tree that the production installer creates:
 
 On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpalm/`). Inside the opencode-core container, this is mounted as `OPENCODE_CONFIG_DIR`. Channel env files are stored in the `channels/` subdirectory of the config home.
 
@@ -69,14 +69,14 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 
 - `assets/config/system.env` — system-managed template; do not edit unless you know what you're doing.
 - `assets/config/user.env` — user-specific overrides (API keys, model preferences, etc.).
-- `.env.example` — local dev template. `dev-setup.sh` creates `.env` from this automatically.
+- `dev/.env.example` — local dev template. `dev/dev-setup.sh` creates `.env` from this automatically.
 
 ### Compose architecture
 
 The dev stack layers two compose files:
 
 1. `assets/state/docker-compose.yml` — production base (images, volumes, networking)
-2. `docker-compose.yml` — dev override (local builds from source)
+2. `dev/docker-compose.dev.yml` — dev override (local builds from source)
 
 `--project-directory .` is required so build contexts and volume paths resolve from the repo root rather than the compose file's directory. The `dev:*` scripts handle this automatically.
 

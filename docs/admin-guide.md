@@ -65,7 +65,7 @@
 ### Runtime vs Dev Compose
 
 - **Runtime source of truth**: `assets/state/docker-compose.yml` (rendered/applied to `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`).
-- **Dev-only overlay**: `docker-compose.dev.yml` at the repo root (local builds and overrides only).
+- **Dev-only overlay**: `dev/docker-compose.dev.yml` (local builds and overrides only).
 
 ---
 

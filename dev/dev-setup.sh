@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_DIR="$REPO_ROOT/.dev"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   echo "OpenPalm Development Setup"
-  echo "Usage: ./dev-setup.sh [--clean]"
+  echo "Usage: ./dev/dev-setup.sh [--clean]"
   exit 0
 fi
 
@@ -16,7 +16,7 @@ if [[ "${1:-}" == "--clean" ]]; then
 fi
 
 if [[ ! -f "$REPO_ROOT/.env" ]]; then
-  sed "s|/REPLACE/WITH/ABSOLUTE/PATH|$REPO_ROOT|g" "$REPO_ROOT/.env.example" >"$REPO_ROOT/.env"
+  sed "s|/REPLACE/WITH/ABSOLUTE/PATH|$REPO_ROOT|g" "$REPO_ROOT/dev/.env.example" >"$REPO_ROOT/.env"
 fi
 
 mkdir -p "$DEV_DIR/data"/{postgres,qdrant,openmemory,opencode,admin}

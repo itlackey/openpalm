@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/dev.sh -- Run admin and gateway locally with hot reload.
+# dev/dev.sh -- Run admin and gateway locally with hot reload.
 #
 # Usage:
-#   ./scripts/dev.sh          # Start both admin and gateway
-#   ./scripts/dev.sh admin    # Start admin only
-#   ./scripts/dev.sh gateway  # Start gateway only
+#   ./dev/dev.sh          # Start both admin and gateway
+#   ./dev/dev.sh admin    # Start admin only
+#   ./dev/dev.sh gateway  # Start gateway only
 #
 # Prerequisites:
 #   - Bun installed (https://bun.sh)

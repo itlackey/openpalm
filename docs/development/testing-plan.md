@@ -366,7 +366,7 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 |-------|---------------|
 | Allowed channels in gateway match docs | test reads `ALLOWED_CHANNELS` from source and compares to `docs/API.md` |
 | Allowed services in admin match docs | test reads `ALLOWED` set from source and compares to `docs/API.md` |
-| Docker compose services match architecture | test parses `docker-compose.dev.yml` service names and compares to `docs/architecture.md` |
+| Docker compose services match architecture | test parses `dev/docker-compose.dev.yml` service names and compares to `docs/architecture.md` |
 | Channel adapter ports match docs | test reads each adapter's `PORT` default and compares to `docs/API.md` |
 | Admin UI nav tabs match implemented pages | test parses nav buttons in `index.html` and compares to `#page-*` divs |
 

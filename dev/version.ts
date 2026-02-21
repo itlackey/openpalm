@@ -2,7 +2,7 @@
 /**
  * Version management for OpenPalm
  *
- * Usage: bun run scripts/version.ts <command> [args]
+ * Usage: bun run dev/version.ts <command> [args]
  *
  * Commands:
  *   status                             Show all component versions
@@ -16,11 +16,11 @@
  * A specific component name bumps only that component.
  *
  * Examples:
- *   bun run scripts/version.ts status
- *   bun run scripts/version.ts bump platform patch
- *   bun run scripts/version.ts bump gateway minor
- *   bun run scripts/version.ts release cli patch
- *   bun run scripts/version.ts tag platform
+ *   bun run dev/version.ts status
+ *   bun run dev/version.ts bump platform patch
+ *   bun run dev/version.ts bump gateway minor
+ *   bun run dev/version.ts release cli patch
+ *   bun run dev/version.ts tag platform
  */
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -388,7 +388,7 @@ const VALID_TARGETS = new Set(["platform", "all", ...COMPONENT_NAMES]);
 function printUsage(): void {
   log(bold("openpalm version manager"));
   log("");
-  log(bold("Usage:") + " bun run scripts/version.ts <command> [args]");
+  log(bold("Usage:") + " bun run dev/version.ts <command> [args]");
   log("");
   log(bold("Commands:"));
   log("  status                              Show all component versions");
@@ -405,12 +405,12 @@ function printUsage(): void {
   }
   log("");
   log(bold("Examples:"));
-  log("  bun run scripts/version.ts status");
-  log("  bun run scripts/version.ts bump platform patch");
-  log("  bun run scripts/version.ts bump gateway minor");
-  log("  bun run scripts/version.ts set cli 1.0.0");
-  log("  bun run scripts/version.ts release platform minor");
-  log("  bun run scripts/version.ts tag cli");
+  log("  bun run dev/version.ts status");
+  log("  bun run dev/version.ts bump platform patch");
+  log("  bun run dev/version.ts bump gateway minor");
+  log("  bun run dev/version.ts set cli 1.0.0");
+  log("  bun run dev/version.ts release platform minor");
+  log("  bun run dev/version.ts tag cli");
 }
 
 const [command, ...args] = process.argv.slice(2);
