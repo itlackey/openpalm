@@ -9,6 +9,7 @@
  *   bump  <component|platform> <type>  Bump version (patch | minor | major)
  *   set   <component|platform> <ver>   Set an exact version string
  *   sync                               Sync every component to the platform version
+ *   current [component|platform]       Print current version for a target
  *   tag   [component|platform]          Create git tag(s) for current versions
  *   release <component|platform> <type> Bump → commit → tag (all-in-one)
  *
@@ -80,6 +81,10 @@ export const COMPONENTS: Record<string, ComponentMeta> = {
 };
 
 const COMPONENT_NAMES = Object.keys(COMPONENTS);
+// Backward compatibility for previous component naming in local scripts/workflows.
+const TARGET_ALIASES: Record<string, string> = {
+  "opencode-core": "assistant",
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -296,6 +301,12 @@ function cmdSync(): void {
   log(green("\nSync complete."));
 }
 
+function cmdCurrent(target: string): void {
+  const version =
+    target === "platform" || target === "all" ? readPlatformVersion() : readComponentVersion(target);
+  log(version);
+}
+
 function cmdTag(target: string): void {
   const versions = readCurrentVersions();
 
@@ -391,7 +402,11 @@ function cmdRelease(target: string, type: BumpType): void {
 // ---------------------------------------------------------------------------
 
 const BUMP_TYPES = new Set(["patch", "minor", "major"]);
-const VALID_TARGETS = new Set(["platform", "all", ...COMPONENT_NAMES]);
+const VALID_TARGETS = new Set(["platform", "all", ...COMPONENT_NAMES, ...Object.keys(TARGET_ALIASES)]);
+
+function normalizeTarget(target: string): string {
+  return TARGET_ALIASES[target] ?? target;
+}
 
 function printUsage(): void {
   log(bold("openpalm version manager"));
@@ -403,6 +418,7 @@ function printUsage(): void {
   log("  bump  <component|platform> <type>   Bump version (patch | minor | major)");
   log("  set   <component|platform> <ver>    Set an exact version (X.Y.Z)");
   log("  sync                                Sync all components to platform version");
+  log("  current [component|platform]        Print current version");
   log("  tag   [component|platform]           Create git tag(s) for current versions");
   log("  release <component|platform> <type> Bump + commit + tag (all-in-one)");
   log("");
@@ -430,18 +446,20 @@ export function runCli(argv: string[]): void {
       break;
 
     case "bump": {
-      const [target, type] = args;
-      if (!target || !type) error("Usage: bump <component|platform> <patch|minor|major>");
-      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const [rawTarget, type] = args;
+      if (!rawTarget || !type) error("Usage: bump <component|platform> <patch|minor|major>");
+      if (!VALID_TARGETS.has(rawTarget)) error(`Unknown target: ${rawTarget}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const target = normalizeTarget(rawTarget);
       if (!BUMP_TYPES.has(type)) error(`Unknown bump type: ${type}. Use: patch, minor, major`);
       cmdBump(target, type as BumpType);
       break;
     }
 
     case "set": {
-      const [target, version] = args;
-      if (!target || !version) error("Usage: set <component|platform> <X.Y.Z>");
-      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const [rawTarget, version] = args;
+      if (!rawTarget || !version) error("Usage: set <component|platform> <X.Y.Z>");
+      if (!VALID_TARGETS.has(rawTarget)) error(`Unknown target: ${rawTarget}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const target = normalizeTarget(rawTarget);
       cmdSet(target, version);
       break;
     }
@@ -450,17 +468,27 @@ export function runCli(argv: string[]): void {
       cmdSync();
       break;
 
+    case "current": {
+      const rawTarget = args[0] ?? "platform";
+      if (!VALID_TARGETS.has(rawTarget)) error(`Unknown target: ${rawTarget}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const target = normalizeTarget(rawTarget);
+      cmdCurrent(target);
+      break;
+    }
+
     case "tag": {
-      const target = args[0] ?? "platform";
-      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const rawTarget = args[0] ?? "platform";
+      if (!VALID_TARGETS.has(rawTarget)) error(`Unknown target: ${rawTarget}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const target = normalizeTarget(rawTarget);
       cmdTag(target);
       break;
     }
 
     case "release": {
-      const [target, type] = args;
-      if (!target || !type) error("Usage: release <component|platform> <patch|minor|major>");
-      if (!VALID_TARGETS.has(target)) error(`Unknown target: ${target}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const [rawTarget, type] = args;
+      if (!rawTarget || !type) error("Usage: release <component|platform> <patch|minor|major>");
+      if (!VALID_TARGETS.has(rawTarget)) error(`Unknown target: ${rawTarget}. Use: ${[...VALID_TARGETS].join(", ")}`);
+      const target = normalizeTarget(rawTarget);
       if (!BUMP_TYPES.has(type)) error(`Unknown bump type: ${type}. Use: patch, minor, major`);
       cmdRelease(target, type as BumpType);
       break;

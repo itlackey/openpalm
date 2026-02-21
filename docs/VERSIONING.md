@@ -30,6 +30,7 @@ Run via root scripts in `/package.json`:
 
 ```bash
 bun run ver:status
+bun run ver current [target]
 bun run ver:bump <target> <patch|minor|major>
 bun run ver:release <target> <patch|minor|major>
 ```
@@ -39,6 +40,7 @@ Supported targets: `platform` (or `all`), `assistant`, `gateway`, `admin`, `chan
 ### Command behavior
 
 - `status`: reads versions from each package manifest
+- `current`: prints one target version (used by release workflows)
 - `bump`: updates one target (or all targets for `platform`)
 - `set`: writes an exact semver (`X.Y.Z`)
 - `sync`: sets every component to the root platform version

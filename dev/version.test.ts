@@ -5,6 +5,7 @@ describe("version manager", () => {
   it("reads platform and component versions from package manifests", () => {
     const versions = readCurrentVersions();
     expect(versions.platform).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(versions.components.assistant).toMatch(/^\d+\.\d+\.\d+$/);
     for (const name of Object.keys(COMPONENTS)) {
       expect(versions.components[name]).toMatch(/^\d+\.\d+\.\d+$/);
     }
@@ -14,5 +15,6 @@ describe("version manager", () => {
     expect(bumpSemver("1.2.3", "patch")).toBe("1.2.4");
     expect(bumpSemver("1.2.3", "minor")).toBe("1.3.0");
     expect(bumpSemver("1.2.3", "major")).toBe("2.0.0");
+    expect(() => bumpSemver("1.2", "patch")).toThrow();
   });
 });
