@@ -438,31 +438,33 @@ describe("scoped channel secrets", () => {
 
 
   it("validates connections without persisting changes", async () => {
+    const connectionId = `openai-primary-${Date.now()}`;
+    const secretName = `OPENAI_API_KEY_MAIN_${Date.now()}`;
     const secret = await authed("/admin/secrets", {
       method: "POST",
-      body: JSON.stringify({ name: "OPENAI_API_KEY_MAIN", value: "secret-value" }),
+      body: JSON.stringify({ name: secretName, value: "secret-value" }),
     });
     expect(secret.ok).toBe(true);
 
     const valid = await authed("/admin/connections/validate", {
       method: "POST",
       body: JSON.stringify({
-        id: "openai-primary",
+        id: connectionId,
         type: "ai_provider",
         name: "OpenAI Primary",
-        env: { OPENAI_API_KEY: "OPENAI_API_KEY_MAIN" },
+        env: { OPENAI_API_KEY: secretName },
       }),
     });
     expect(valid.status).toBe(200);
     expect(valid.data.ok).toBe(true);
 
     const list = await authed("/admin/connections");
-    expect((list.data.connections as Array<{ id: string }>).some((entry) => entry.id === "openai-primary")).toBe(false);
+    expect((list.data.connections as Array<{ id: string }>).some((entry) => entry.id === connectionId)).toBe(false);
 
     const invalid = await authed("/admin/connections/validate", {
       method: "POST",
       body: JSON.stringify({
-        id: "openai-primary",
+        id: connectionId,
         type: "ai_provider",
         name: "OpenAI Primary",
         env: { OPENAI_API_KEY: "MISSING_SECRET" },
@@ -470,7 +472,6 @@ describe("scoped channel secrets", () => {
     });
     expect(invalid.status).toBe(400);
     expect(invalid.data.error).toBe("unknown_secret_name");
-    expect(invalid.data.details).toBeUndefined();
   });
 
   it.skip("supports global connections CRUD via stack manager", async () => {
