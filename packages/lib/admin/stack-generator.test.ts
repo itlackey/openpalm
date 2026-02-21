@@ -16,6 +16,7 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("gateway:");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}:/data");
     expect(out.composeFile).toContain("channel-discord:");
+    expect(out.composeFile).toContain("\"8181:8181\"");
   });
 
   it("skips disabled channels in generated artifacts", () => {
@@ -45,6 +46,16 @@ describe("stack generator", () => {
     const out = generateStackArtifacts(spec, {});
     expect(out.caddyfile).toContain("@host remote_ip");
     expect(out.caddyRoutes["channels/chat.caddy"]).toContain("abort @not_host");
+  });
+
+
+  it("binds host exposure channels to loopback while lan/public bind on all interfaces", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels.chat.exposure = "host";
+    spec.channels.discord.exposure = "lan";
+    const out = generateStackArtifacts(spec, {});
+    expect(out.composeFile).toContain("\"127.0.0.1:8181:8181\"");
+    expect(out.composeFile).toContain("\"8184:8184\"");
   });
 
   it("fails when a channel secret reference cannot be resolved", () => {

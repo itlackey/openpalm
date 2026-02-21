@@ -24,6 +24,12 @@ const ChannelSharedSecretEnv: Record<StackChannelName, string> = {
 
 const Channels: StackChannelName[] = ["chat", "voice", "discord", "telegram"];
 
+function publishedChannelPort(channel: StackChannelName, exposure: StackSpec["channels"][StackChannelName]["exposure"]): string {
+  const port = ChannelPorts[channel];
+  if (exposure === "host") return `127.0.0.1:${port}:${port}`;
+  return `${port}:${port}`;
+}
+
 export type GeneratedStackArtifacts = {
   caddyfile: string;
   caddyRoutes: Record<string, string>;
@@ -103,6 +109,8 @@ function renderFullComposeFile(spec: StackSpec): string {
       "    environment:",
       `      - PORT=${ChannelPorts[channel]}`,
       "      - GATEWAY_URL=http://gateway:8080",
+      "    ports:",
+      `      - "${publishedChannelPort(channel, spec.channels[channel].exposure)}"`,
       "    networks: [assistant_net]",
       "    depends_on: [gateway]",
       "",

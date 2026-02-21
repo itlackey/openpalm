@@ -173,7 +173,7 @@ Channel configuration values in `stack-spec` can reference secrets directly with
 - `POST /admin/providers/assign` — assign a model to a role `{ "role": "small" | "openmemory", "providerId": "...", "modelId": "..." }` (auth required)
 
 ### Automations
-Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. The API routes use `/admin/automations`.
+Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. Generated schedules are written to `cron.d.enabled/` and `cron.d.disabled/` with a combined `cron.schedule` render used for crontab loading. The API routes use `/admin/automations`.
 
 - `GET /admin/automations` — list all automations with last run info (auth required)
 - `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no opencode-core restart required).
