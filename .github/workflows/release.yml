@@ -73,7 +73,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
-        run: bun run scripts/version.ts bump ${{ inputs.component }} ${{ inputs.bump }}
+        run: bun run dev/version.ts bump ${{ inputs.component }} ${{ inputs.bump }}
 
       - name: Read new version
         id: version

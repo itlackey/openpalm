@@ -61,7 +61,7 @@ git push origin HEAD --follow-tags
 
 ## Helper script reference
 
-The version manager lives at `scripts/version.ts` and is accessible via the
+The version manager lives at `dev/version.ts` and is accessible via the
 `ver` script alias in `package.json`.
 
 ### Commands
@@ -126,7 +126,7 @@ trigger downstream workflows).
 
 **What it does:**
 1. Checks out the repo (using `RELEASE_TOKEN`)
-2. Runs `bun run scripts/version.ts bump <component> <bump>`
+2. Runs `bun run dev/version.ts bump <component> <bump>`
 3. Commits the version changes
 4. Creates the appropriate git tag (`v*` or `<component>/v*`)
 5. Pushes the commit + tag
@@ -258,7 +258,7 @@ git push origin 'v1.0.0'
 
 ```
 versions.json                         # ← Source of truth for all versions
-scripts/version.ts                    # ← Helper script (bun run ver ...)
+dev/version.ts                        # ← Helper script (bun run ver ...)
 package.json                          # ← Root version + ver:* scripts
 packages/cli/package.json             # ← CLI npm version
 packages/cli/src/main.ts              # ← Hardcoded VERSION constant

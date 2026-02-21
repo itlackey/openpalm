@@ -134,7 +134,7 @@ This checklist plans a full refactor of stack-spec and its downstream consumers 
 
 ## Scripts and operational tooling checklist
 
-- [ ] Audit scripts under `scripts/` and root dev scripts for references to connection APIs or legacy stack-spec keys.
+- [ ] Audit scripts under `dev/` for references to connection APIs or legacy stack-spec keys.
 - [ ] Update smoke/validation scripts that parse stack-spec JSON structure.
 - [ ] If there is a schema validation step in CI, update schema/fixtures accordingly.
 - [ ] Add a one-time migration helper script (optional but recommended) to rewrite existing `stack-spec.json` files by removing deprecated fields.

@@ -29,7 +29,7 @@
     "channels/**/*.ts",
     "packages/cli/src/**/*.ts",
     "packages/lib/src/**/*.ts",
-    "scripts/**/*.ts",
+    "dev/**/*.ts",
     "packages/lib/admin/**/*.ts"
   ],
   "exclude": [

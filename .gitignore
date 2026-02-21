@@ -68,7 +68,7 @@ web_modules/
 # dotenv environment variable files
 .env
 .env.*
-!.env.example
+!dev/.env.example
 !assets/config/system.env
 !assets/config/user.env
 
