@@ -75,19 +75,7 @@ The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`)
 
 Automations let your assistant act on a schedule -- daily briefings, weekly reports, periodic checks -- without anyone sending a message. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
 
-OpenPalm also ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics into `${OPENPALM_STATE_HOME}/observability/maintenance`.
-
-## Configuration
-
-All data is organized following standard conventions:
-
-| What | Where | Purpose |
-|---|---|---|
-| Databases & storage | `~/.local/share/openpalm/` | PostgreSQL, Qdrant, OpenMemory, OpenCode home data |
-| Configuration | `~/.config/openpalm/` | `stack-spec.json` and `secrets.env` (source-of-truth inputs) |
-| Runtime state | `~/.local/state/openpalm/` | Rendered compose/Caddy/env artifacts, logs, runtime state (`~/openpalm` is workdir) |
-
-The installer sets these up automatically. Override the paths with environment variables if you prefer a different location.
+OpenPalm also ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics.
 
 ## OpenPalm vs OpenClaw
 
