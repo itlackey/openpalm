@@ -455,8 +455,8 @@ describe("channel config secret references", () => {
     const spec = current.data.spec as Record<string, unknown>;
     const channels = structuredClone(spec.channels as Record<string, { enabled: boolean; exposure: string; config: Record<string, string> }>);
 
-    for (const channel of ["chat", "discord", "voice", "telegram"] as const) {
-      channels[channel].config = Object.fromEntries(Object.keys(channels[channel].config).map((key) => [key, ""]));
+    for (const channelName of Object.keys(channels)) {
+      channels[channelName].config = Object.fromEntries(Object.keys(channels[channelName].config).map((key) => [key, ""]));
     }
 
     channels.chat = {
