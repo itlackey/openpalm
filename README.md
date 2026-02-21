@@ -149,11 +149,11 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | [Architecture](docs/development/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](docs/development/api-reference.md) | All service endpoints: gateway, admin, channels |
 | [Extensions Guide](docs/extensions-guide.md) | Plugin system, gallery, building channel plugins |
-| [Extensions Reference](docs/refenence/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
+| [Extensions Reference](docs/reference/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 | [Extensions Analysis](docs/draft/extensions-analysis.md) | Architecture analysis of the extension system (design rationale) |
 | [Plugin Authoring](docs/development/plugin-authoring.md) | How to write OpenCode plugins with lifecycle hooks |
 | [Docker Compose Guide](docs/docker-compose-guide.md) | Hosting, observability, extending the stack |
-| [Host System Reference](docs/refenence/host-system-reference.md) | Host paths, environment variables, system requirements |
+| [Host System Reference](docs/reference/host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Implementation Guide](docs/draft/implementation-guide.md) | Design rationale and build order |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 | [Testing Plan](docs/development/testing-plan.md) | Test strategy, coverage goals, and test categories |

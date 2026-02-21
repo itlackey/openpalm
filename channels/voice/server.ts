@@ -1,16 +1,11 @@
-import { createHmac } from "node:crypto";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { json } from "@openpalm/lib/shared/http.ts";
+
+export { signPayload };
 
 const PORT = Number(Bun.env.PORT ?? 8183);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const SHARED_SECRET = Bun.env.CHANNEL_VOICE_SECRET ?? "";
-
-export function signPayload(secret: string, body: string) {
-  return createHmac("sha256", secret).update(body).digest("hex");
-}
-
-function json(status: number, payload: unknown) {
-  return new Response(JSON.stringify(payload, null, 2), { status, headers: { "content-type": "application/json" } });
-}
 
 export function createVoiceFetch(gatewayUrl: string, sharedSecret: string, forwardFetch: typeof fetch = fetch) {
   return async function handle(req: Request): Promise<Response> {
