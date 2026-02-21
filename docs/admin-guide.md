@@ -1,190 +1,69 @@
-# Admin Implementation Guide (Advanced)
-*Administrator tools that are user-friendly, password-protected, and safe by design.*
+# Admin Guide
 
-## 1) Cross-platform installer + guided setup
+OpenPalm installs in minutes from a single command and is managed entirely through the Admin UI or CLI.
 
-### Goals
-- One installer that:
-  1) checks prerequisites for selected runtime (Docker/Podman/OrbStack compose)
-  2) guides runtime installation if missing
-  3) selects a directory for persistent data
-  4) writes `.env` + runtime/compose overrides
-  5) boots stack, shows startup progress indicator, and verifies health
+## Installation
 
-### Recommended path
-- **CLI installer (Node/Bun)** first for speed and portability.
-- Optional **Tauri UI installer** later for a premium wizard UX.
+Pick whichever method suits your system:
 
-### Installer flow
-1. Detect OS + admin privileges
-2. Resolve runtime (`docker`, `podman`, or `orbstack`) and validate compose command
-3. If missing:
-  - Windows/macOS: guide to Docker Desktop / Podman Desktop / OrbStack install
-  - Linux: guide to Docker Engine or Podman install
-4. Resolve XDG Base Directory paths (data, config, state)
-5. Write resolved absolute paths into `.env`
-6. Persist runtime command/socket config in `.env`
-6. Generate admin password and write to `.env`
-7. Seed default configs into `$OPENPALM_CONFIG_HOME`
-8. Run compose up via selected runtime
-9. Show spinner while waiting for health check endpoints
-10. Auto-open setup UI in browser (unless user disables)
-11. Setup wizard runs on first visit to admin UI — user enters admin password from `.env`
-
-### Persistent directory layout (XDG Base Directory)
-
-> **Config path note**: `OPENPALM_CONFIG_HOME` is the host-side XDG path (e.g., `~/.config/openpalm/`). Inside the `assistant` container, this directory is volume-mounted and referenced as `OPENCODE_CONFIG_DIR`. The `OPENCODE_CONFIG_DIR` env var is what OpenCode itself uses to locate its configuration at runtime.
-
-```
-~/.local/share/openpalm/      (OPENPALM_DATA_HOME — databases, blobs)
-  postgres/
-  qdrant/
-  openmemory/
-  shared/
-  admin/
-  openpalm/
-
-~/.config/openpalm/            (OPENPALM_CONFIG_HOME — source-of-truth inputs)
-  stack-spec.json
-  secrets.env
-
-~/.local/state/openpalm/       (OPENPALM_STATE_HOME — rendered artifacts + runtime state)
-  rendered/
-    docker-compose.yml
-    caddy/
-    env/
-  gateway/
-  caddy/                      — Caddy runtime config/data
-  logs/
-  tmp/
-  observability/
-  backups/
-  uninstall.sh                 — copied during install for easy access
+**Bash** (Linux / macOS):
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
 ```
 
-### Runtime vs Dev Compose
+**PowerShell** (Windows):
+```powershell
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+```
 
-- **Runtime source of truth**: `assets/state/docker-compose.yml` (rendered/applied to `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`).
-- **Dev-only overlay**: `dev/docker-compose.dev.yml` (local builds and overrides only).
+**npx** / **bunx**:
+```bash
+npx openpalm install
+# or
+bunx openpalm install
+```
 
----
+The installer detects your container runtime (Docker, Podman, or OrbStack), generates secure credentials, starts all services, and opens a setup wizard. No config files to edit. See the [CLI documentation](cli.md) for all commands.
 
-## 2) Settings UI (edit config + restart)
+For implementation details of the installer flow and directory layout, see [admin/README.md](../admin/README.md).
 
-### Do not embed config editing inside Grafana
-Use a **dedicated Admin Console**, and link to it from dashboards.
+## Admin console
 
-### Admin Console pages
-- System status
-- Config editor (schema-aware)
-- Service control (restart services)
-- Plugin management (install/uninstall npm plugins) — see [Plugin management](#plugin-management) below
-- Secrets management — see [Secrets](#secrets-management) below
-- Automations management — see [Automations](#automations-management) below
+Access the admin dashboard at `http://localhost/admin`. Log in with the admin password from your `.env` file.
 
-### Plugin management
+| Page | What it does |
+|---|---|
+| System status | Service health indicators |
+| Config editor | Schema-aware JSONC editor |
+| Service control | Start / stop / restart containers |
+| Plugin management | Install and uninstall npm plugins |
+| Secrets | Manage API keys and credentials |
+| Automations | Schedule recurring prompts |
 
-The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Users can install and uninstall npm plugin packages, which are automatically resolved by Bun at startup. Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
+### Managing plugins
 
-### Secrets management
+The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Enter an npm package ID and click Install. Skills, agents, commands, and tools are managed manually in the OpenCode config directory. See the [Extensions Guide](extensions-guide.md) for details.
 
-> **Implementation Status:** Secrets are managed via Secret Manager APIs and stored in `secrets.env`. Stack-spec channel config values may reference secret keys directly using `${SECRET_NAME}` and are validated during render/apply.
+### Managing secrets
 
-The admin UI provides a secrets workflow for managing key/value credentials and runtime config values:
+Secrets are key/value credentials stored in `secrets.env`. Channel config values reference secrets via `${SECRET_NAME}`. Stack render/apply fails if a referenced secret key is missing.
 
-- **What users see**: Secret key names, whether values are configured, and where each key is used.
-- **Validation**: Stack render/apply fails fast when channel config references a missing secret key.
-- **Storage**: Secrets are stored as key/value entries in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`).
+### Managing automations
 
-### Automations management
+Create scheduled prompts with a name, prompt text, and cron expression. Use **Enable/Disable** to toggle without deleting, **Run Now** to trigger immediately, and **Edit** or **Delete** to manage existing automations.
 
-The admin UI provides an Automations page for managing user-defined scheduled prompts. Cron execution is owned by the admin container (`cron && bun run src/server.ts`):
+## Authentication
 
-- **Creating an automation**: Users provide a Name, a Prompt (the text sent to the assistant), and a Schedule using a cron expression or schedule picker. The automation is assigned a UUID and stored as a JSON payload file in `cron-payloads/`.
-- **Enable/disable**: Each automation has a Status toggle. Disabled automations remain stored but are not executed by the cron daemon.
-- **Run Now**: A manual trigger button allows users to fire an automation immediately, outside its normal schedule, for testing or one-off use.
-- **Edit**: Name, prompt, and schedule can be updated at any time. The change takes effect at the next scheduled run (or immediately if Run Now is used).
-- **Delete**: Removes the automation and its payload file permanently.
+- Admin password is generated at install time and stored in `.env`
+- All admin write operations require the `x-admin-token` header
+- The admin panel is LAN-only by default
+- The setup wizard offers a `host` scope option for localhost-only access
 
-### Safe config editing flow
-1) Parse JSONC
-2) Validate schema
-3) Policy lint (deny widening permissions to `allow`)
-4) Write atomically with backup
-5) Restart OpenCode (deterministic)
+## Channel security
 
-If `opencode.jsonc` does not exist yet (for example, first boot with an empty override directory), the admin service bootstraps a minimal `{}` config file automatically before read/write operations so the UI and API remain functional.
-
-### Container lifecycle model
-
-Admin is the control-plane executor and performs allowlisted compose operations directly using the mounted container socket.
-
----
-
-## 3) Admin access protection
-
-### Auth model
-- Admin password generated during install and stored in `.env`
-- Password sent as `x-admin-token` header to the admin API
-- Setup wizard includes an early access-scope choice (`host` or `lan`) that tightens Caddy + published port bindings for host-only installs
-- The admin password is the single credential needed for all admin operations
-
-### Protected actions
-All admin write operations require the admin password:
-- Install/uninstall extensions
-- Edit extension config
-- Manage channels (access, config)
-- Start/stop/restart containers
-
----
-
-## 4) Default system maintenance cron jobs (admin)
-
-OpenPalm installs a fixed system-level cron schedule in the `admin` container on startup. These jobs are enabled by default and are not user-configurable in the admin UI.
-
-| Schedule | Job | Behavior |
-|---|---|---|
-| `15 3 * * *` | Pull + restart | Pull updated images and run `compose up -d` to recreate services when needed |
-| `17 * * * *` | Log rotation | Compress maintenance logs over 5MB; delete compressed logs older than 14 days |
-| `45 3 * * 0` | Image prune | Remove unused container images older than 7 days |
-| `*/10 * * * *` | Health check | Probe core service health endpoints, capture resource usage, restart non-running services |
-| `40 2 * * *` | Security scan | Run best-effort vulnerability scan with `docker scout` when available |
-| `20 2 * * *` | Database maintenance | Run Postgres `vacuumdb --all --analyze-in-stages` |
-| `10 4 * * *` | Filesystem cleanup | Delete stale temporary files from observability temp paths |
-| `*/5 * * * *` | Metrics scrape | Persist `docker stats` snapshots for dashboard/reporting pipelines (with 7-day retention) |
-
-Logs for each job are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPENPALM_MAINTENANCE_LOG_DIR` when explicitly set).
-
----
-
-## 5) Hardening: protect your channels
-
-### Universal channel hardening
-- Dedicated secrets per channel
-- Signature verification (when supported)
-- Replay protection (timestamp + nonce)
-- Rate limiting per user/channel
-- Max message size + attachment allowlist
-- Outbound allowlist for fetches
-
-### Network placement
-- Public entrypoint: reverse proxy + TLS
-- Keep OpenCode/OpenMemory private; only Gateway can access them
-
-### Gateway security pipeline
-
-See [Architecture — Message processing](development/architecture.md#message-processing-channel-inbound) for the full 6-step Gateway security pipeline.
-
-### Capability isolation
-Channel adapters should not:
-- access Docker
-- access host filesystem
-- hold non-channel secrets
-
+Channels send HMAC-signed payloads through the Gateway. The Gateway verifies signatures, rate-limits requests, and validates input via the `channel-intake` agent before any message reaches the assistant. See the [Gateway README](../gateway/README.md) and [Security Guide](security.md) for details.
 
 ## Uninstall
-
-To uninstall:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash
@@ -194,5 +73,4 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state
 pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
 ```
 
-Use `--remove-all` to delete all OpenPalm config/state/data directories and `--remove-images` to remove container images.
-PowerShell example with full cleanup: `& $env:TEMP/openpalm-uninstall.ps1 -RemoveAll -RemoveImages`.
+Use `--remove-all` to delete all config/state/data directories and `--remove-images` to remove container images.

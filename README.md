@@ -100,17 +100,23 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | [CLI](docs/cli.md) | Install methods, commands, flags, and building from source |
 | [User Concepts](docs/user-concepts.md) | What OpenPalm is and how end users interact with it |
 | [Admin Concepts](docs/admin-concepts.md) | Key concepts for administrators |
-| [Admin Guide](docs/admin-guide.md) | Installer details, admin console, authentication |
+| [Admin Guide](docs/admin-guide.md) | Installation, admin console, authentication |
 | [Architecture](docs/development/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](docs/development/api-reference.md) | All service endpoints: gateway, admin, channels |
 | [Extensions Guide](docs/extensions-guide.md) | Extension types and installing extensions |
 | [Extensions Reference](docs/reference/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 | [Host System Reference](docs/reference/host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
-| [Testing Plan](docs/development/testing-plan.md) | Test strategy, coverage goals, and test categories |
-| [Backup & Restore](docs/backup-restore.md) | How to back up and restore OpenPalm data |
-| [Upgrade Guide](docs/upgrade-guide.md) | How to upgrade OpenPalm to a new version |
+| [Maintenance](docs/admin/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and how to resolve them |
+
+### Project READMEs
+
+| Service | README |
+|---|---|
+| Admin service | [admin/README.md](admin/README.md) |
+| Gateway service | [gateway/README.md](gateway/README.md) |
+| Assistant service | [assistant/README.md](assistant/README.md) |
 
 ## Contributing
 
