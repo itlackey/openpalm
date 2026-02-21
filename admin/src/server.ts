@@ -1,16 +1,16 @@
-import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
-import { parseJsonc, stringifyPretty } from "./jsonc.ts";
-import { SetupManager } from "./setup.ts";
-import { ensureCronDirs, syncAutomations, triggerAutomation } from "./automations.ts";
-import { getLatestRun, readHistory } from "./automation-history.ts";
+import { SetupManager } from "@openpalm/lib/admin/setup-manager.ts";
+import { ensureCronDirs, syncAutomations, triggerAutomation } from "@openpalm/lib/admin/automations.ts";
+import { getLatestRun } from "@openpalm/lib/admin/automation-history.ts";
 import { validateCron } from "@openpalm/lib/admin/cron.ts";
-import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "@openpalm/lib/admin/runtime-env.ts";
 import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
-import { BuiltInChannelNames, BuiltInChannelConfigKeys, isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
-import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
-import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
+import { isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
+import { allowedServiceSet, composeAction } from "@openpalm/lib/admin/compose-runner.ts";
+import { applyStack } from "@openpalm/lib/admin/stack-apply-engine.ts";
+import { parseJsonc, stringifyPretty } from "@openpalm/lib/admin/jsonc.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
@@ -30,25 +30,15 @@ const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env
 const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/stack-spec.json`;
 const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
-function knownServices(): Set<string> {
-  const base = allowedServiceSet();
-  for (const svc of allChannelServiceNames()) base.add(svc);
-  return base;
-}
-
-function channelEnvKeys(channelName: string): string[] {
-  if (isBuiltInChannel(channelName)) {
-    return BuiltInChannelConfigKeys[channelName];
-  }
-  return Object.keys(stackManager.getChannelConfig(channelName));
-}
 
 function allChannelServiceNames(): string[] {
   return stackManager.listChannelNames().map((name) => `channel-${name}`);
 }
 
-function isValidChannelService(service: string): boolean {
-  return service.startsWith("channel-") && stackManager.listChannelNames().includes(service.replace("channel-", ""));
+function knownServices(): Set<string> {
+  const base = allowedServiceSet();
+  for (const svc of allChannelServiceNames()) base.add(svc);
+  return base;
 }
 
 const setupManager = new SetupManager(DATA_DIR);
@@ -77,10 +67,9 @@ function json(status: number, payload: unknown) {
   });
 }
 
-function errorJson(status: number, error: string, details?: unknown, code?: string) {
+function errorJson(status: number, error: string, details?: unknown) {
   const payload: Record<string, unknown> = { error };
   if (details !== undefined) payload.details = details;
-  if (code) payload.code = code;
   return json(status, payload);
 }
 
@@ -93,83 +82,6 @@ function cors(resp: Response): Response {
 
 function auth(req: Request) {
   return req.headers.get("x-admin-token") === ADMIN_TOKEN;
-}
-
-function snapshotFile(path: string) {
-  const backup = `${path}.${Date.now()}.bak`;
-  copyFileSync(path, backup);
-  return backup;
-}
-
-
-
-function ensureOpencodeConfigPath() {
-  if (existsSync(OPENCODE_CONFIG_PATH)) return;
-  mkdirSync(dirname(OPENCODE_CONFIG_PATH), { recursive: true });
-  writeFileSync(OPENCODE_CONFIG_PATH, "{\n  \"plugin\": []\n}\n", "utf8");
-}
-
-function setOpencodePluginEnabled(pluginId: string, enabled: boolean) {
-  ensureOpencodeConfigPath();
-  const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
-  const doc = parseJsonc(raw) as Record<string, unknown>;
-  const current = Array.isArray(doc.plugin) ? doc.plugin.filter((value): value is string => typeof value === "string") : [];
-  const next = enabled
-    ? (current.includes(pluginId) ? current : [...current, pluginId])
-    : current.filter((value) => value !== pluginId);
-  doc.plugin = next;
-  writeFileSync(OPENCODE_CONFIG_PATH, stringifyPretty(doc), "utf8");
-}
-
-
-
-function detectChannelAccess(channel: string): "host" | "lan" | "public" {
-  return stackManager.getChannelAccess(channel);
-}
-
-function setChannelAccess(channel: string, access: "host" | "lan" | "public") {
-  stackManager.setChannelAccess(channel, access);
-}
-
-function setAccessScope(scope: "host" | "lan" | "public") {
-  stackManager.setAccessScope(scope);
-}
-
-function channelNameFromService(service: string): string {
-  return service.replace("channel-", "");
-}
-
-function readChannelConfig(service: string) {
-  return stackManager.getChannelConfig(channelNameFromService(service));
-}
-
-function writeChannelConfig(service: string, values: Record<string, string>) {
-  stackManager.setChannelConfig(channelNameFromService(service), values);
-}
-
-function setRuntimeBindScope(scope: "host" | "lan" | "public") {
-  const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
-  const next = setRuntimeBindScopeContent(current, scope);
-  writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
-}
-
-function updateRuntimeEnv(entries: Record<string, string | undefined>) {
-  const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
-  const next = updateRuntimeEnvContent(current, entries);
-  writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
-}
-
-function normalizeSelectedChannels(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  const validServices = new Set(allChannelServiceNames());
-  const selected: string[] = [];
-  for (const service of value) {
-    if (typeof service !== "string") continue;
-    if (!validServices.has(service)) continue;
-    if (selected.includes(service)) continue;
-    selected.push(service);
-  }
-  return selected;
 }
 
 function readRuntimeEnv() {
@@ -186,6 +98,18 @@ function updateSecretsEnv(entries: Record<string, string | undefined>) {
   const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, "utf8") : "";
   const next = updateRuntimeEnvContent(current, entries);
   writeFileSync(SECRETS_ENV_PATH, next, "utf8");
+}
+
+function updateRuntimeEnv(entries: Record<string, string | undefined>) {
+  const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
+  const next = updateRuntimeEnvContent(current, entries);
+  writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
+}
+
+function setRuntimeBindScope(scope: "host" | "lan" | "public") {
+  const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, "utf8") : "";
+  const next = setRuntimeBindScopeContent(current, scope);
+  writeFileSync(RUNTIME_ENV_PATH, next, "utf8");
 }
 
 function getConfiguredServiceInstances() {
@@ -216,6 +140,12 @@ function getConfiguredSmallModel() {
   };
 }
 
+function ensureOpencodeConfigPath() {
+  if (existsSync(OPENCODE_CONFIG_PATH)) return;
+  mkdirSync(dirname(OPENCODE_CONFIG_PATH), { recursive: true });
+  writeFileSync(OPENCODE_CONFIG_PATH, "{\n  \"plugin\": []\n}\n", "utf8");
+}
+
 function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
   if (!modelId || !existsSync(OPENCODE_CONFIG_PATH)) return;
   const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
@@ -230,8 +160,7 @@ function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
     providers[providerId] = { options: providerOptions };
     doc.provider = providers;
   }
-  const next = stringifyPretty(doc);
-  writeFileSync(OPENCODE_CONFIG_PATH, next, "utf8");
+  writeFileSync(OPENCODE_CONFIG_PATH, stringifyPretty(doc), "utf8");
 }
 
 async function checkServiceHealth(url: string, expectJson = true): Promise<{ ok: boolean; time?: string; error?: string }> {
@@ -246,8 +175,17 @@ async function checkServiceHealth(url: string, expectJson = true): Promise<{ ok:
   }
 }
 
-function normalizeServiceInstanceUrl(value: unknown): string {
-  return sanitizeEnvScalar(value);
+function normalizeSelectedChannels(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const validServices = new Set(allChannelServiceNames());
+  const selected: string[] = [];
+  for (const service of value) {
+    if (typeof service !== "string") continue;
+    if (!validServices.has(service)) continue;
+    if (selected.includes(service)) continue;
+    selected.push(service);
+  }
+  return selected;
 }
 
 const server = Bun.serve({
@@ -266,7 +204,7 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, service: "admin", time: new Date().toISOString() }));
       }
 
-      // ── Meta (display names) ────────────────────────────────────────
+      // ── Meta (display names + channel fields for wizard) ──────────
       if (url.pathname === "/admin/meta" && req.method === "GET") {
         return cors(json(200, {
           serviceNames: {
@@ -314,32 +252,6 @@ const server = Bun.serve({
         }));
       }
 
-      if (url.pathname === "/admin/system/state" && req.method === "GET") {
-        const setup = setupManager.getState();
-        if (setup.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        const secretState = stackManager.listSecretManagerState();
-        const spec = stackManager.getSpec();
-        return cors(json(200, {
-          setup: {
-            ...setup,
-            firstBoot: setupManager.isFirstBoot(),
-            serviceInstances: getConfiguredServiceInstances(),
-            openmemoryProvider: getConfiguredOpenmemoryProvider(),
-            smallModelProvider: getConfiguredSmallModel(),
-          },
-          stack: {
-            accessScope: spec.accessScope,
-            channels: spec.channels,
-            automations: spec.automations,
-          },
-          secrets: {
-            available: secretState.available,
-            requiredCore: secretState.requiredCore,
-            secrets: secretState.secrets,
-          },
-        }));
-      }
-
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
         const body = (await req.json()) as { step: string };
         const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels"];
@@ -353,7 +265,7 @@ const server = Bun.serve({
         if (!["host", "lan", "public"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        setAccessScope(body.scope);
+        stackManager.setAccessScope(body.scope);
         setRuntimeBindScope(body.scope);
         await Promise.all([
           composeAction("up", "caddy"),
@@ -375,9 +287,9 @@ const server = Bun.serve({
         const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string; anthropicApiKey?: string; smallModelEndpoint?: string; smallModelApiKey?: string; smallModelId?: string };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        const openmemory = normalizeServiceInstanceUrl(body.openmemory);
-        const psql = normalizeServiceInstanceUrl(body.psql);
-        const qdrant = normalizeServiceInstanceUrl(body.qdrant);
+        const openmemory = sanitizeEnvScalar(body.openmemory);
+        const psql = sanitizeEnvScalar(body.psql);
+        const qdrant = sanitizeEnvScalar(body.qdrant);
         const openaiBaseUrl = sanitizeEnvScalar(body.openaiBaseUrl);
         const openaiApiKey = sanitizeEnvScalar(body.openaiApiKey);
         const anthropicApiKey = sanitizeEnvScalar(body.anthropicApiKey);
@@ -392,15 +304,9 @@ const server = Bun.serve({
         const secretEntries: Record<string, string | undefined> = {
           OPENAI_BASE_URL: openaiBaseUrl || undefined
         };
-        if (openaiApiKey.length > 0) {
-          secretEntries.OPENAI_API_KEY = openaiApiKey;
-        }
-        if (anthropicApiKey.length > 0) {
-          secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
-        }
-        if (smallModelApiKey.length > 0) {
-          secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
-        }
+        if (openaiApiKey.length > 0) secretEntries.OPENAI_API_KEY = openaiApiKey;
+        if (anthropicApiKey.length > 0) secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
+        if (smallModelApiKey.length > 0) secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
         updateSecretsEnv(secretEntries);
         const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
         if (smallModelId) {
@@ -411,16 +317,49 @@ const server = Bun.serve({
       }
 
       if (url.pathname === "/admin/setup/channels" && req.method === "POST") {
-        const body = (await req.json()) as { channels?: unknown };
+        const body = (await req.json()) as { channels?: unknown; channelConfigs?: Record<string, Record<string, string>> };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const channels = normalizeSelectedChannels(body.channels);
         updateRuntimeEnv({ OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(",") : undefined });
+
+        // Save channel-specific config values from the wizard
+        if (body.channelConfigs && typeof body.channelConfigs === "object") {
+          for (const [service, values] of Object.entries(body.channelConfigs)) {
+            const channelName = service.replace("channel-", "");
+            if (stackManager.listChannelNames().includes(channelName) && values && typeof values === "object") {
+              stackManager.setChannelConfig(channelName, values);
+            }
+          }
+        }
+
+        // Enable/disable channels in the stack spec
+        const spec = stackManager.getSpec();
+        for (const channelName of stackManager.listChannelNames()) {
+          const service = `channel-${channelName}`;
+          spec.channels[channelName].enabled = channels.includes(service);
+        }
+        stackManager.setSpec(spec);
+
         const state = setupManager.setEnabledChannels(channels);
         return cors(json(200, { ok: true, state }));
       }
 
-      // ── Stack spec + generator (phase 1 scaffolding) ─────────────
+      if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
+        const serviceInstances = getConfiguredServiceInstances();
+        const openmemoryBaseUrl = serviceInstances.openmemory || OPENMEMORY_URL;
+        const [gateway, assistant, openmemory] = await Promise.all([
+          checkServiceHealth(`${GATEWAY_URL}/health`),
+          checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
+          checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
+        ]);
+        return cors(json(200, {
+          services: { gateway, assistant, openmemory, admin: { ok: true, time: new Date().toISOString() } },
+          serviceInstances
+        }));
+      }
+
+      // ── Stack spec (for admin editor) ─────────────────────────────
       if (url.pathname === "/admin/stack/spec" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const spec = stackManager.getSpec();
@@ -440,42 +379,22 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, spec }));
       }
 
-      if (url.pathname === "/admin/stack/render" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const generated = stackManager.renderPreview();
-        return cors(json(200, { ok: true, generated }));
-      }
-
       if (url.pathname === "/admin/stack/apply" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { apply?: boolean };
         try {
-          const result = await applyStack(stackManager, { apply: body.apply ?? true });
+          const result = await applyStack(stackManager);
+          syncAutomations(stackManager.listAutomations());
           return cors(json(200, result));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message.startsWith("secret_validation_failed:")) {
             return cors(errorJson(400, "secret_reference_validation_failed", message.replace("secret_validation_failed:", "").split(",")));
           }
-          if (message.startsWith("compose_validation_failed:")) {
-            return cors(errorJson(400, "compose_validation_failed", message.replace("compose_validation_failed:", "")));
-          }
           return cors(errorJson(500, "stack_apply_failed", message));
         }
       }
 
-      if (url.pathname === "/admin/stack/impact" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const result = await applyStack(stackManager, { apply: false });
-        return cors(json(200, { ok: true, impact: result.impact, warnings: result.warnings }));
-      }
-
-      if (url.pathname === "/admin/compose/capabilities" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const preview = await previewComposeOperations();
-        return cors(json(200, { ok: true, ...preview }));
-      }
-
+      // ── Secrets (for admin editor) ────────────────────────────────
       if (url.pathname === "/admin/secrets" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         return cors(json(200, { ok: true, ...stackManager.listSecretManagerState() }));
@@ -507,64 +426,28 @@ const server = Bun.serve({
         }
       }
 
-      if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
-        const serviceInstances = getConfiguredServiceInstances();
-        const openmemoryBaseUrl = serviceInstances.openmemory || OPENMEMORY_URL;
-        const [gateway, assistant, openmemory] = await Promise.all([
-          checkServiceHealth(`${GATEWAY_URL}/health`),
-          checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
-          checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
-        ]);
-        return cors(json(200, {
-          services: {
-            gateway,
-            assistant,
-            openmemory,
-            admin: { ok: true, time: new Date().toISOString() }
-          },
-          serviceInstances
-        }));
+      if (url.pathname === "/admin/secrets/raw" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        const content = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, "utf8") : "";
+        return cors(new Response(content, { headers: { "content-type": "text/plain" } }));
       }
 
-      // ── Plugin management (MVP) ────────────────────────────────────
-      if (url.pathname === "/admin/plugins/install" && req.method === "POST") {
+      if (url.pathname === "/admin/secrets/raw" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { pluginId?: string };
-        if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
-        setOpencodePluginEnabled(body.pluginId.trim(), true);
-        await composeAction("restart", "assistant");
-        return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
+        const body = (await req.json()) as { content?: string };
+        if (typeof body.content !== "string") return cors(json(400, { error: "content is required" }));
+        writeFileSync(SECRETS_ENV_PATH, body.content, "utf8");
+        stackManager.renderArtifacts();
+        return cors(json(200, { ok: true }));
       }
 
-      if (url.pathname === "/admin/plugins/uninstall" && req.method === "POST") {
+      // ── Container management (minimal) ────────────────────────────
+      if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { pluginId?: string };
-        if (!body.pluginId || body.pluginId.trim().length === 0) return cors(json(400, { error: "pluginId is required" }));
-        setOpencodePluginEnabled(body.pluginId.trim(), false);
-        await composeAction("restart", "assistant");
-        return cors(json(200, { ok: true, pluginId: body.pluginId.trim() }));
-      }
-
-      // ── Installed status ──────────────────────────────────────────
-      if (url.pathname === "/admin/installed" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const state = setupManager.getState();
-        ensureOpencodeConfigPath();
-        const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
-        const doc = parseJsonc(raw) as { plugin?: string[] };
-        const plugins = Array.isArray(doc.plugin) ? doc.plugin.filter((value): value is string => typeof value === "string") : [];
-        return cors(json(200, {
-          plugins,
-          setupState: state
-        }));
-      }
-
-      // ── Container management ──────────────────────────────────────
-      if (url.pathname === "/admin/containers/list" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const result = await composeList();
-        if (!result.ok) return cors(json(500, { ok: false, error: result.stderr }));
-        return cors(json(200, { ok: true, containers: result.stdout }));
+        const body = (await req.json()) as { service: string };
+        if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
+        await composeAction("restart", body.service);
+        return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }
 
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
@@ -575,76 +458,7 @@ const server = Bun.serve({
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
 
-      if (url.pathname === "/admin/containers/down" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { service: string };
-        if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await composeAction("down", body.service);
-        return cors(json(200, { ok: true, action: "down", service: body.service }));
-      }
-
-      if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { service: string };
-        if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
-        await composeAction("restart", body.service);
-        return cors(json(200, { ok: true, action: "restart", service: body.service }));
-      }
-
-      if (url.pathname === "/admin/channels" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const spec = stackManager.getSpec();
-        const channelNames = stackManager.listChannelNames();
-        return cors(json(200, {
-          secretOptions: stackManager.listSecretManagerState().available,
-          channels: channelNames.map((channelName) => {
-            const service = `channel-${channelName}`;
-            const keys = channelEnvKeys(channelName);
-            return {
-              service,
-              label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
-              builtIn: isBuiltInChannel(channelName),
-              access: detectChannelAccess(channelName),
-              config: readChannelConfig(service),
-              channelSpec: spec.channels[channelName],
-              fields: keys.map((key) => ({
-                key,
-                label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
-                type: key.toLowerCase().includes("token") || key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") ? "password" : "text",
-                required: key.includes("BOT_TOKEN"),
-              }))
-            };
-          })
-        }));
-      }
-
-      if (url.pathname === "/admin/channels/access" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { channel: string; access: "host" | "lan" | "public" };
-        if (!body.channel || !stackManager.listChannelNames().includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
-        if (!["host", "lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
-        setChannelAccess(body.channel, body.access);
-        await composeAction("restart", "caddy");
-        return cors(json(200, { ok: true, channel: body.channel, access: body.access }));
-      }
-
-      if (url.pathname === "/admin/channels/config" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const service = url.searchParams.get("service") ?? "";
-        if (!isValidChannelService(service)) return cors(json(400, { error: "invalid service" }));
-        return cors(json(200, { service, config: readChannelConfig(service) }));
-      }
-
-      if (url.pathname === "/admin/channels/config" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { service: string; config: Record<string, string>; restart?: boolean };
-        if (!isValidChannelService(body.service)) return cors(json(400, { error: "invalid service" }));
-        writeChannelConfig(body.service, body.config ?? {});
-        if (body.restart ?? true) await composeAction("restart", body.service);
-        return cors(json(200, { ok: true, service: body.service }));
-      }
-
-      // ── Automations ────────────────────────────────────────────────
+      // ── Automations ───────────────────────────────────────────────
       if (url.pathname === "/admin/automations" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const automations = stackManager.listAutomations().map((automation) => ({
@@ -662,7 +476,6 @@ const server = Bun.serve({
         }
         const cronError = validateCron(body.schedule);
         if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
-
         const automation = stackManager.upsertAutomation({
           id: randomUUID(),
           name: body.name,
@@ -680,15 +493,9 @@ const server = Bun.serve({
         if (!body.id) return cors(json(400, { error: "id is required" }));
         const existing = stackManager.getAutomation(body.id);
         if (!existing) return cors(json(404, { error: "automation not found" }));
-
-        const updated = {
-          ...existing,
-          ...body,
-          id: existing.id,
-        };
+        const updated = { ...existing, ...body, id: existing.id };
         const cronError = validateCron(updated.schedule);
         if (cronError) return cors(json(400, { error: `invalid cron expression: ${cronError}` }));
-
         const automation = stackManager.upsertAutomation(updated);
         syncAutomations(stackManager.listAutomations());
         return cors(json(200, { ok: true, automation }));
@@ -709,39 +516,35 @@ const server = Bun.serve({
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
         if (!stackManager.getAutomation(body.id)) return cors(json(404, { error: "automation not found" }));
-
         const result = await triggerAutomation(body.id);
         return cors(json(200, { triggered: body.id, ...result }));
       }
 
-      if (url.pathname === "/admin/automations/history" && req.method === "GET") {
+      // ── Channels (for wizard) ─────────────────────────────────────
+      if (url.pathname === "/admin/channels" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const id = url.searchParams.get("id")?.trim() ?? "";
-        if (!id) return cors(json(400, { error: "id is required" }));
-        const rawLimit = Number(url.searchParams.get("limit") ?? 20);
-        const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20;
-        return cors(json(200, { history: readHistory(id, limit) }));
+        const spec = stackManager.getSpec();
+        const channelNames = stackManager.listChannelNames();
+        return cors(json(200, {
+          channels: channelNames.map((channelName) => ({
+            service: `channel-${channelName}`,
+            label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
+            builtIn: isBuiltInChannel(channelName),
+            access: stackManager.getChannelAccess(channelName),
+            config: { ...spec.channels[channelName].config },
+            channelSpec: spec.channels[channelName],
+          }))
+        }));
       }
 
-      // ── Config editor ─────────────────────────────────────────────
-      if (url.pathname === "/admin/config" && req.method === "GET") {
+      // ── Installed plugins (read-only list) ────────────────────────
+      if (url.pathname === "/admin/installed" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         ensureOpencodeConfigPath();
-        return cors(new Response(readFileSync(OPENCODE_CONFIG_PATH, "utf8"), { headers: { "content-type": "text/plain" } }));
-      }
-
-      if (url.pathname === "/admin/config" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { config: string; restart?: boolean };
-        const parsed = parseJsonc(body.config);
-        if (typeof parsed !== "object") return cors(json(400, { error: "The configuration file has a syntax error" }));
-        const permissions = (parsed as Record<string, unknown>).permission as Record<string, string> | undefined;
-        if (permissions && Object.values(permissions).some((v) => v === "allow")) return cors(json(400, { error: "This change would weaken security protections and was blocked" }));
-        ensureOpencodeConfigPath();
-        const backup = snapshotFile(OPENCODE_CONFIG_PATH);
-        writeFileSync(OPENCODE_CONFIG_PATH, body.config, "utf8");
-        if (body.restart ?? true) await composeAction("restart", "assistant");
-        return cors(json(200, { ok: true, backup }));
+        const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
+        const doc = parseJsonc(raw) as { plugin?: string[] };
+        const plugins = Array.isArray(doc.plugin) ? doc.plugin.filter((value): value is string => typeof value === "string") : [];
+        return cors(json(200, { plugins }));
       }
 
       // ── Static UI ─────────────────────────────────────────────────
