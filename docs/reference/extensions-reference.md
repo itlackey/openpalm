@@ -515,21 +515,9 @@ The admin adds it to `plugin[]` in the host override config and restarts the con
 
 **Secrets** — Named credential key/value pairs stored in `secrets.env` and managed via the admin API. Credentials are never baked into container images.
 
-**Gateway pipeline** — The Gateway is the security and routing layer that processes all inbound messages through a 6-step pipeline:
-1. HMAC signature verification
-2. Payload validation
-3. Rate limiting (120 requests/min per user)
-4. Intake validation via the restricted `channel-intake` agent (zero tool access)
-5. Forward validated payload to the core assistant
-6. Audit log of the interaction
+**Defense in depth** — `policy-and-telemetry.ts` blocks secrets in tool args. `openmemory-http.ts` blocks secrets in memory writeback. `AGENTS.md` instructs the LLM to never store secrets. The memory Skill reinforces explicit-save-only behavior.
 
-**Defense in depth** — `policy-and-telemetry.ts` blocks secrets in tool args. `openmemory-http.ts` blocks secrets in memory writeback. `AGENTS.md` instructs the LLM to never store secrets. The memory Skill (as an extension sub-type) reinforces explicit-save-only behavior.
-
----
-
-## Automations
-
-Automations are scheduled prompts managed via Unix cron in the `admin` container. Each Automation has an ID (UUID), Name, Prompt, Schedule (cron expression), and Status. Crontab entries are stored in admin-managed config/state mounts and managed via the admin UI/API. Automations allow operators to trigger recurring agent tasks without manual intervention.
+See [Security Guide](../security.md) for the full security model, including the Gateway pipeline.
 
 ---
 

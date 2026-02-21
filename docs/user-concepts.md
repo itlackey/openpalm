@@ -10,8 +10,6 @@ Extensions give your assistant new abilities. An extension might teach the assis
 
 The admin UI lets you manage **plugins** — npm packages that hook into the OpenCode runtime. To add a plugin, enter its npm package ID and click Install. To remove it, click Uninstall. Skills, agents, commands, and tools can be managed manually by advanced users in the OpenCode config directory.
 
-### Extensions
-
 Each extension sub-type defines what it can and cannot do:
 
 | Extension | What it means |

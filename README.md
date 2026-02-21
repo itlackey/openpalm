@@ -77,24 +77,6 @@ Automations let your assistant act on a schedule -- daily briefings, weekly repo
 
 OpenPalm also ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics into `${OPENPALM_STATE_HOME}/observability/maintenance`.
 
-## How it works
-
-```
-Channels (Discord, Telegram, Chat, Voice)
-    |  signed messages
-    v
-Gateway (verify, rate-limit, audit)
-    |  validate with locked-down agent
-    v
-OpenCode Core (full assistant) <--> Open Memory
-    |
-Admin Dashboard --> Admin --> Docker Compose
-```
-
-Every component runs in its own container on a private network. The gateway verifies message signatures and validates input before anything reaches your assistant. The admin dashboard manages the system lifecycle.
-
-For the full architecture, container inventory, and routing details, see the [Architecture Guide](docs/development/architecture.md).
-
 ## Configuration
 
 All data is organized following standard conventions:

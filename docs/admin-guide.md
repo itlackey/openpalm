@@ -173,16 +173,7 @@ Logs for each job are written to `${OPENPALM_STATE_HOME}/observability/maintenan
 
 ### Gateway security pipeline
 
-Every inbound channel message passes through the Gateway's 6-step security pipeline before reaching the AI assistant:
-
-1. **HMAC signature verification** — Rejects unsigned or tampered requests from channel adapters.
-2. **Payload validation** — Validates the structure and content of the incoming message.
-3. **Rate limiting** — Caps traffic at 120 requests/min/user; excess requests receive a 429 response.
-4. **Intake validation** — The `channel-intake` agent (running with zero tool access) validates and summarizes the input; invalid messages are rejected with 422.
-5. **Forward to assistant** — Only the validated summary is forwarded to the AI assistant (default agent with approval gates).
-6. **Audit log** — All requests and outcomes are written to the immutable audit log.
-
-This pipeline is enforced at the `/channel/inbound` endpoint on the Gateway container. Network isolation (Caddy + internal Docker network) provides an additional perimeter, but the pipeline is the primary channel security control.
+See [Architecture — Message processing](development/architecture.md#message-processing-channel-inbound) for the full 6-step Gateway security pipeline.
 
 ### Capability isolation
 Channel adapters should not:
@@ -205,6 +196,3 @@ pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itl
 
 Use `--remove-all` to delete all OpenPalm config/state/data directories and `--remove-images` to remove container images.
 PowerShell example with full cleanup: `& $env:TEMP/openpalm-uninstall.ps1 -RemoveAll -RemoveImages`.
-
-During setup you choose whether your assistant is accessible only from this machine or from your local network. You can change this later from the admin dashboard.
-The setup wizard also lets you configure OpenMemory's OpenAI-compatible endpoint and API key, which are persisted in `~/.config/openpalm/secrets.env`.
