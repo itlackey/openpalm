@@ -43,7 +43,7 @@ Changes take effect after restarting `assistant`.
 
 ## Provider configuration
 
-Provider detection and initial setup are handled by the install/setup flow (see `openpalm install` in [CLI Guide](cli.md)). Ongoing provider configuration should be managed directly in `opencode.json` and `secrets.env`.
+Provider detection and initial setup are handled by the install/setup flow (see `openpalm install` in [CLI Guide](../../docs/cli.md)). Ongoing provider configuration should be managed directly in `opencode.json` and `secrets.env`.
 
 ## Built-in extensions
 
@@ -55,4 +55,4 @@ OpenPalm ships with built-in extensions baked into the `assistant` container ima
 - **`memory-query`, `memory-save`, `health-check` tools** — callable functions for memory operations and health checks
 - **`/memory-recall`, `/memory-save`, `/health` commands** — slash command shortcuts
 
-See the [Extensions Reference](reference/extensions-reference.md) for full technical details on each built-in extension.
+See the [Extensions Reference](extensions-reference.md) for full technical details on each built-in extension.

@@ -53,6 +53,28 @@ These rules define how the system is structured. Follow them exactly when writin
 
 - Adding OpenCode plugins is done by editing `DATA/assistant/.config/opencode/opencode.json`.
 
+## Documentation Structure
+
+Documentation is organized by audience and proximity to code. Start at the top level and drill down.
+
+| Location | What's there | When to read it |
+|---|---|---|
+| `docs/` | User-facing guides: `cli.md`, `user-concepts.md` | Understanding what OpenPalm is; install and CLI usage |
+| `admin/docs/` | Admin and operations: admin-guide, admin-concepts, security, troubleshooting, maintenance, host-system-reference, versioning | Setting up, securing, maintaining, or troubleshooting a running instance |
+| `dev/docs/` | Developer references: architecture, API reference, extensions guide and reference, testing plan | Building features, understanding internals, writing extensions, API integration |
+| `admin/README.md` | Admin service implementation: installer flow, cron jobs, compose lifecycle, directory layout | Changing or understanding the admin container itself |
+| `gateway/README.md` | Gateway service: message pipeline, HMAC verification, channel intake agent | Changing or understanding the gateway container |
+| `assistant/README.md` | Assistant service: extension architecture, built-in plugins/skills/tools, SSH access | Changing or understanding the assistant container |
+| `channels/<name>/README.md` | Per-channel: endpoints, env vars, setup instructions | Setting up or modifying a specific channel adapter |
+
+**Finding information quickly:**
+- *How does a message flow from Discord to the assistant?* → `dev/docs/architecture.md`
+- *What admin API endpoints exist?* → `dev/docs/api-reference.md`
+- *How do I set up a Discord bot token?* → `channels/discord/README.md`
+- *How do I back up or upgrade?* → `admin/docs/maintenance.md`
+- *What security controls are in place?* → `admin/docs/security.md`
+- *How do I add an extension?* → `dev/docs/extensions-guide.md`
+
 ## Directory Structure
 
 ```

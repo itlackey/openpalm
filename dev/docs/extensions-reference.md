@@ -1,7 +1,7 @@
 # OpenPalm Extensions: Installation, Configuration, and Management
 
 > **Related extension docs:**
-> - [extensions-guide.md](../extensions-guide.md) -- Extension types and installing extensions
+> - [extensions-guide.md](extensions-guide.md) -- Extension types and installing extensions
 > - **extensions-reference.md** (this file) -- Technical reference for all extension types (API/schema details)
 
 This document provides a complete end-to-end reference for how extensions are authored, distributed, installed, configured, loaded at runtime, and removed in an OpenPalm stack.
@@ -517,7 +517,7 @@ The admin adds it to `plugin[]` in the host override config and restarts the con
 
 **Defense in depth** — `policy-and-telemetry.ts` blocks secrets in tool args. `openmemory-http.ts` blocks secrets in memory writeback. `AGENTS.md` instructs the LLM to never store secrets. The memory Skill reinforces explicit-save-only behavior.
 
-See [Security Guide](../security.md) for the full security model, including the Gateway pipeline.
+See [Security Guide](../../admin/docs/security.md) for the full security model, including the Gateway pipeline.
 
 ---
 

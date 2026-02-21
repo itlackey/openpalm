@@ -61,28 +61,10 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 - Password auth is disabled; key auth only via `assistant/ssh/authorized_keys`.
 - Bind defaults are localhost unless explicitly opened to LAN.
 
-### SSH Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENCODE_ENABLE_SSH` | `0` | Set to `1` to enable the SSH server inside the assistant container |
-| `OPENCODE_CORE_SSH_PORT` | `2222` | Host port mapped to the container's SSH port 22 |
-| `OPENCODE_CORE_SSH_BIND_ADDRESS` | `127.0.0.1` | Bind address for the SSH port on the host. Use `0.0.0.0` to expose to LAN |
-
-### SSH Setup Steps
-
-1. Set `OPENCODE_ENABLE_SSH=1` in your environment or generated `assistant/.env` override flow.
-2. Place your public key in `~/.config/openpalm/assistant/ssh/authorized_keys`.
-3. Restart `assistant` for changes to take effect.
-4. Connect via `ssh -p ${OPENCODE_CORE_SSH_PORT} root@localhost` (default port 2222).
-
-The SSH port binding is configured in `docker-compose.yml` as:
-```
-"${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22"
-```
+See [assistant/README.md](../../assistant/README.md#ssh-access-optional) for setup steps and environment variables.
 
 **Why:** allow controlled remote administration while preserving secure-by-default local-only operation.
 
 ---
 
-For architecture and route details, see [architecture.md](./development/architecture.md). For API controls, see [api-reference.md](./development/api-reference.md).
+For architecture and route details, see [architecture.md](../../dev/docs/architecture.md). For API controls, see [api-reference.md](../../dev/docs/api-reference.md).

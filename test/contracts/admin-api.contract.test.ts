@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 describe("contract: admin API docs", () => {
   it("documents key admin endpoints used by ui", () => {
-    const docs = readFileSync("docs/development/api-reference.md", "utf8");
+    const docs = readFileSync("dev/docs/api-reference.md", "utf8");
     expect(docs.includes("/admin/setup/status")).toBe(true);
     expect(docs.includes("/admin/plugins/install")).toBe(true);
     expect(docs.includes("/admin/containers/restart")).toBe(true);
@@ -15,7 +15,7 @@ describe("contract: admin API docs", () => {
   });
 
   it("does not reference removed connection endpoints", () => {
-    const docs = readFileSync("docs/development/api-reference.md", "utf8");
+    const docs = readFileSync("dev/docs/api-reference.md", "utf8");
     expect(docs.includes("/admin/connections")).toBe(false);
   });
 });
