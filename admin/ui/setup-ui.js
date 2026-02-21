@@ -140,7 +140,7 @@
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Admin Password</label>'
           + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" />'
           + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Other Protections Active</div>'
-          + '<ul style="font-size:13px;margin:.2rem 0"><li>Messages are cryptographically verified</li><li>Actions are categorized by risk level and require approval</li><li>Sensitive data is automatically filtered from memory</li><li>Rate limiting prevents abuse</li><li>Admin access restricted to your network</li></ul></div>';
+          + '<ul style="font-size:13px;margin:.2rem 0"><li>Messages are cryptographically verified</li><li>Sensitive data is automatically filtered from memory</li><li>Rate limiting prevents abuse</li><li>Admin access restricted to your network</li></ul></div>';
       case "channels":
         return '<p>Choose how you want to talk to your assistant.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'

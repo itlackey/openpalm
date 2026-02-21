@@ -200,13 +200,13 @@ Extensions (skills, commands, agents, tools, plugins) are **baked into container
 
 **Extension sub-types and directory layout:**
 
-| Sub-type | Risk level | Directory convention | Example path |
-|---|---|---|---|
-| Skill | Lowest | `skills/<name>/` | `skills/memory/SKILL.md` |
-| Command | Low | `commands/` | `commands/<name>.md` |
-| Agent | Medium | `agents/` | `agents/<name>.md` |
-| Custom Tool | Medium-high | `tools/` | `tools/<name>.ts` |
-| Plugin | Highest | `plugins/` | `plugins/<name>.ts` |
+| Sub-type | Directory convention | Example path |
+|---|---|---|
+| Skill | `skills/<name>/` | `skills/memory/SKILL.md` |
+| Command | `commands/` | `commands/<name>.md` |
+| Agent | `agents/` | `agents/<name>.md` |
+| Custom Tool | `tools/` | `tools/<name>.ts` |
+| Plugin | `plugins/` | `plugins/<name>.ts` |
 
 Directory names are **plural** by convention.
 

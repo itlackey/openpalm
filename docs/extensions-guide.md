@@ -4,14 +4,14 @@ OpenPalm supports all OpenCode extension types: **plugins**, **agents**, **comma
 
 ## Extension types
 
-| Type | What it does | Risk |
-|---|---|---|
-| **Skill** | A Markdown file that guides how the assistant reasons and responds. No code execution. | Lowest |
-| **Command** | A Markdown slash command (`/command-name`) that sends a predefined prompt to the assistant. | Low |
-| **Agent** | A Markdown file defining a specialized assistant persona with its own tool access and system prompt. | Medium |
-| **Tool** | A TypeScript module exposing a callable function to the assistant. Can make network requests, read files, and interact with services. | Medium-high |
-| **Plugin** | A TypeScript module that hooks into the OpenCode lifecycle. Can intercept, block, or augment tool execution and inject context. | Highest |
-| **Provider** | An AI provider configuration (OpenAI, Anthropic, or any OpenAI-compatible endpoint) with model and API key settings. | — |
+| Type | What it does |
+|---|---|
+| **Skill** | A Markdown file that guides how the assistant reasons and responds. No code execution. |
+| **Command** | A Markdown slash command (`/command-name`) that sends a predefined prompt to the assistant. |
+| **Agent** | A Markdown file defining a specialized assistant persona with its own tool access and system prompt. |
+| **Tool** | A TypeScript module exposing a callable function to the assistant. Can make network requests, read files, and interact with services. |
+| **Plugin** | A TypeScript module that hooks into the OpenCode lifecycle. Can intercept, block, or augment tool execution and inject context. |
+| **Provider** | An AI provider configuration (OpenAI, Anthropic, or any OpenAI-compatible endpoint) with model and API key settings. |
 
 ## What the admin UI and CLI manage
 

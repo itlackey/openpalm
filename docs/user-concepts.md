@@ -10,17 +10,17 @@ Extensions give your assistant new abilities. An extension might teach the assis
 
 The admin UI lets you manage **plugins** — npm packages that hook into the OpenCode runtime. To add a plugin, enter its npm package ID and click Install. To remove it, click Uninstall. Skills, agents, commands, and tools can be managed manually by advanced users in the OpenCode config directory.
 
-### Risk levels
+### Extensions
 
-Each extension shows a risk badge so you can make informed decisions:
+Each extension sub-type defines what it can and cannot do:
 
-| Risk | What it means |
+| Extension | What it means |
 |---|---|
-| **Lowest** | Only influences how the assistant thinks. Cannot run code or access external services. |
-| **Low** | Sends a predefined prompt to the assistant. No code execution. |
-| **Medium** | Can change which tools the assistant has access to. |
-| **Medium-High** | Can run code, make network requests, and interact with services. |
-| **Highest** | Can observe and modify everything the assistant does. |
+| **Skill** | Only influences how the assistant thinks. Cannot run code or access external services. |
+| **Command** | Sends a predefined prompt to the assistant. No code execution. |
+| **Agent** | Can change which tools the assistant has access to. |
+| **Tool** | Can run code, make network requests, and interact with services. |
+| **Plugin** | Can observe and modify everything the assistant does. |
 
 ---
 
