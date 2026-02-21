@@ -205,6 +205,39 @@ describe("cleanupTempAssets", () => {
   });
 });
 
+describe("installer required assets", () => {
+  // These files are checked by install.sh bootstrap_install_assets() and install.ps1.
+  // If any are missing the installer falls back to downloading from GitHub even in a
+  // local checkout, which would break the development workflow.
+  const requiredFiles = [
+    "config/system.env",
+    "config/secrets.env",
+    "config/stack-spec.json",
+    "state/docker-compose.yml",
+    "state/caddy/Caddyfile",
+    "state/scripts/install.sh",
+    "state/scripts/uninstall.sh",
+  ];
+
+  for (const rel of requiredFiles) {
+    it(`assets/${rel} exists`, async () => {
+      const result = await findLocalAssets();
+      // findLocalAssets resolves based on CWD which is the repo root during tests.
+      expect(result).not.toBeNull();
+      const path = join(result!, rel);
+      const exists = await Bun.file(path).exists();
+      expect(exists, `Expected assets/${rel} to exist`).toBe(true);
+    });
+  }
+
+  it("system.env has OPENPALM_IMAGE_NAMESPACE set", async () => {
+    const result = await findLocalAssets();
+    expect(result).not.toBeNull();
+    const content = await Bun.file(join(result!, "config/system.env")).text();
+    expect(content).toContain("OPENPALM_IMAGE_NAMESPACE=openpalm");
+  });
+});
+
 describe("downloadAssets", () => {
   it("defaults to itlackey/openpalm", async () => {
     // Verify by reading the source code or by checking the function signature

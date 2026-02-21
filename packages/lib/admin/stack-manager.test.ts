@@ -11,6 +11,7 @@ function createManager(dir: string) {
     caddyJsonPath: join(dir, "caddy.json"),
     caddyRoutesDir: join(dir, "routes"),
     composeFilePath: join(dir, "docker-compose.yml"),
+    systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
     stackSpecPath: join(dir, "stack-spec.json"),
     gatewayEnvPath: join(dir, "gateway", ".env"),
@@ -53,6 +54,7 @@ describe("stack manager", () => {
       caddyJsonPath: join(dir, "rendered", "caddy", "caddy.json"),
       caddyRoutesDir: join(dir, "rendered", "caddy", "snippets"),
       composeFilePath: join(dir, "rendered", "docker-compose.yml"),
+      systemEnvPath: join(dir, "system.env"),
       secretsEnvPath: join(dir, "secrets.env"),
       stackSpecPath: join(dir, "stack-spec.json"),
       gatewayEnvPath: join(dir, "gateway", ".env"),
@@ -66,7 +68,29 @@ describe("stack manager", () => {
     expect(existsSync(join(dir, "rendered", "caddy", "Caddyfile"))).toBeTrue();
     expect(existsSync(join(dir, "rendered", "caddy", "caddy.json"))).toBeTrue();
     expect(existsSync(join(dir, "rendered", "docker-compose.yml"))).toBeTrue();
+    expect(existsSync(join(dir, "system.env"))).toBeTrue();
     expect(existsSync(join(dir, "gateway", ".env"))).toBeTrue();
+  });
+
+  it("writes system.env with access scope and enabled channels", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = createManager(dir);
+
+    manager.renderArtifacts();
+
+    const systemEnv = readFileSync(join(dir, "system.env"), "utf8");
+    expect(systemEnv).toContain("OPENPALM_ACCESS_SCOPE=lan");
+    expect(systemEnv).toContain("OPENPALM_ENABLED_CHANNELS=");
+  });
+
+  it("system.env updates when access scope changes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
+    const manager = createManager(dir);
+
+    manager.setAccessScope("host");
+
+    const systemEnv = readFileSync(join(dir, "system.env"), "utf8");
+    expect(systemEnv).toContain("OPENPALM_ACCESS_SCOPE=host");
   });
 
   it("prevents deleting secrets that are referenced by channel config", () => {

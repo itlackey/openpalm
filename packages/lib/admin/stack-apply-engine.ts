@@ -15,6 +15,7 @@ type ExistingArtifacts = {
   caddyfile: string;
   caddyRoutes: Record<string, string>;
   composeFile: string;
+  systemEnv: string;
   gatewayEnv: string;
   openmemoryEnv: string;
   postgresEnv: string;
@@ -56,6 +57,7 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     caddyfile: readIfExists(paths.caddyfilePath),
     caddyRoutes,
     composeFile: readIfExists(paths.composeFilePath),
+    systemEnv: readIfExists(paths.systemEnvPath),
     gatewayEnv: readIfExists(paths.gatewayEnvPath),
     openmemoryEnv: readIfExists(paths.openmemoryEnvPath),
     postgresEnv: readIfExists(paths.postgresEnvPath),
@@ -115,6 +117,9 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
   };
 
   const impact = computeImpactFromChanges(changed);
+  if (existing.systemEnv !== generated.systemEnv) {
+    impact.restart = Array.from(new Set([...impact.restart, "admin", "gateway"]));
+  }
   if (existing.composeFile !== generated.composeFile) {
     impact.restart = Array.from(new Set([...impact.restart, "gateway", "assistant", "openmemory", "admin"]));
 

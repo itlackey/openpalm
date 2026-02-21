@@ -53,6 +53,7 @@ export type GeneratedStackArtifacts = {
   caddyJson: string;
   caddyRoutes: Record<string, string>;
   composeFile: string;
+  systemEnv: string;
   gatewayEnv: string;
   openmemoryEnv: string;
   postgresEnv: string;
@@ -297,6 +298,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
     "    env_file:",
+    "      - ${OPENPALM_STATE_HOME}/system.env",
     "      - ${OPENPALM_STATE_HOME}/gateway/.env",
     "    environment:",
     "      - PORT=8080",
@@ -316,6 +318,8 @@ function renderFullComposeFile(spec: StackSpec): string {
     "  admin:",
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
+    "    env_file:",
+    "      - ${OPENPALM_STATE_HOME}/system.env",
     "    environment:",
     "      - PORT=8100",
     "      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}",
@@ -436,6 +440,16 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     );
   }
 
+  const enabledChannels = Object.keys(spec.channels)
+    .filter((name) => spec.channels[name].enabled)
+    .map((name) => `channel-${composeServiceName(name)}`)
+    .join(",");
+
+  const systemEnv = envWithHeader("# Generated system env — do not edit; regenerated on every stack apply", {
+    OPENPALM_ACCESS_SCOPE: spec.accessScope,
+    OPENPALM_ENABLED_CHANNELS: enabledChannels,
+  });
+
   const gatewayChannelSecrets: Record<string, string> = {};
   for (const name of BuiltInChannelNames) {
     const channel = spec.channels[name];
@@ -454,6 +468,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     caddyJson,
     caddyRoutes,
     composeFile: renderFullComposeFile(spec),
+    systemEnv,
     gatewayEnv,
     openmemoryEnv: envWithHeader("# Generated openmemory env", pickEnvByKeys(secrets, ["OPENAI_BASE_URL", "OPENAI_API_KEY"])),
     postgresEnv: envWithHeader("# Generated postgres env", pickEnvByKeys(secrets, ["POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"])),

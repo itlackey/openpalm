@@ -25,18 +25,20 @@ This document is the authoritative technical reference for the OpenPalm stack ge
    - 3.6 [Step 6 — Generate Channel Route Snippets](#36-step-6--generate-channel-route-snippets)
    - 3.7 [Step 7 — Resolve Channel Config Secrets](#37-step-7--resolve-channel-config-secrets)
    - 3.8 [Step 8 — Generate Per-Service Env Files](#38-step-8--generate-per-service-env-files)
-   - 3.9 [Step 9 — Assemble Output Bundle](#39-step-9--assemble-output-bundle)
+   - 3.9 [Step 9 — Generate System Env](#39-step-9--generate-system-env)
+   - 3.10 [Step 10 — Assemble Output Bundle](#310-step-10--assemble-output-bundle)
 4. [Output Artifacts](#4-output-artifacts)
    - 4.1 [caddyfile](#41-caddyfile)
    - 4.2 [caddyJson](#42-caddyjson)
    - 4.3 [caddyRoutes](#43-caddyroutes)
    - 4.4 [composeFile](#44-composefile)
-   - 4.5 [gatewayEnv](#45-gatewayenv)
-   - 4.6 [openmemoryEnv](#46-openmemoryenv)
-   - 4.7 [postgresEnv](#47-postgresenv)
-   - 4.8 [qdrantEnv](#48-qdrantenv)
-   - 4.9 [assistantEnv](#49-assistantenv)
-   - 4.10 [channelEnvs](#410-channelenvsrecord)
+   - 4.5 [systemEnv](#45-systemenv)
+   - 4.6 [gatewayEnv](#46-gatewayenv)
+   - 4.7 [openmemoryEnv](#47-openmemoryenv)
+   - 4.8 [postgresEnv](#48-postgresenv)
+   - 4.9 [qdrantEnv](#49-qdrantenv)
+   - 4.10 [assistantEnv](#410-assistantenv)
+   - 4.11 [channelEnvs](#411-channelenvsrecord)
 5. [Defaults](#5-defaults)
    - 5.1 [Built-in Channel Ports](#51-built-in-channel-ports)
    - 5.2 [Built-in Channel Images](#52-built-in-channel-images)
@@ -470,7 +472,25 @@ Keys starting with `OPENPALM_SMALL_MODEL_API_KEY` or `ANTHROPIC_API_KEY` picked 
 
 One entry per enabled channel, keyed by the compose service name (`channel-<name>`). The content is the resolved config map for that channel (after step 7), serialised as `KEY=value` lines.
 
-### 3.9 Step 9 — Assemble Output Bundle
+### 3.9 Step 9 — Generate System Env
+
+`systemEnv` is the generated flat env file that exposes system-derived state values to containers. It is written to `$OPENPALM_STATE_HOME/system.env` and loaded by the `admin` and `gateway` services via their `env_file` declarations.
+
+Unlike `secrets.env` (user-managed) or the per-service `.env` files (derived from secrets), `system.env` is always regenerated on every `renderArtifacts()` call. Users **must not hand-edit** it — any changes will be overwritten.
+
+**Generated content:**
+
+```
+# Generated system env — do not edit; regenerated on every stack apply
+OPENPALM_ACCESS_SCOPE=<spec.accessScope>
+OPENPALM_ENABLED_CHANNELS=<comma-separated enabled channel service names>
+```
+
+`OPENPALM_ENABLED_CHANNELS` is the comma-separated list of Docker service names for all enabled channels (e.g. `channel-chat,channel-discord,channel-telegram`). Disabled channels are excluded. If no channels are enabled the value is an empty string.
+
+During initial installation, `install.sh` and `dev-setup.sh` seed an empty placeholder at `$OPENPALM_STATE_HOME/system.env` so Docker Compose can start before the first `renderArtifacts()` call.
+
+### 3.10 Step 10 — Assemble Output Bundle
 
 All generated strings are collected into a `GeneratedStackArtifacts` object and returned to the caller. See [Section 4](#4-output-artifacts) for the full description of each field.
 
@@ -488,6 +508,7 @@ type GeneratedStackArtifacts = {
   caddyJson:     string;
   caddyRoutes:   Record<string, string>;
   composeFile:   string;
+  systemEnv:     string;
   gatewayEnv:    string;
   openmemoryEnv: string;
   postgresEnv:   string;
@@ -571,47 +592,61 @@ handle {
 
 ### 4.4 `composeFile`
 
-**Type**: `string` (YAML)  
+**Type**: `string` (YAML)
 **Written to**: `$OPENPALM_STATE_HOME/rendered/docker-compose.yml`
 
 The complete Docker Compose file. Contains all core services and all enabled channel services. The `networks:` section always defines `assistant_net`. Never hand-edit this file — it is regenerated on every `renderArtifacts()` call.
 
-### 4.5 `gatewayEnv`
+### 4.5 `systemEnv`
+
+**Type**: `string`
+**Written to**: `$OPENPALM_STATE_HOME/system.env`
+
+The generated system env file. Exposes system-derived state values to the `admin` and `gateway` containers via their `env_file` declarations. Always regenerated on every `renderArtifacts()` call — do not hand-edit.
+
+| Variable | Value |
+|---|---|
+| `OPENPALM_ACCESS_SCOPE` | The `accessScope` field from the spec (`host`, `lan`, or `public`) |
+| `OPENPALM_ENABLED_CHANNELS` | Comma-separated Docker service names for all enabled channels (e.g. `channel-chat,channel-discord`). Empty string if no channels are enabled. |
+
+An empty placeholder is seeded by `install.sh` and `dev-setup.sh` so Docker Compose can start before the first `renderArtifacts()` call.
+
+### 4.6 `gatewayEnv`
 
 **Type**: `string`  
 **Written to**: `$OPENPALM_STATE_HOME/gateway/.env`
 
 Env file for the `gateway` container. Contains all secrets with keys prefixed by `OPENPALM_GATEWAY_`, `GATEWAY_`, `OPENPALM_SMALL_MODEL_API_KEY`, or `ANTHROPIC_API_KEY`, plus the four built-in channel shared secrets.
 
-### 4.6 `openmemoryEnv`
+### 4.7 `openmemoryEnv`
 
 **Type**: `string`  
 **Written to**: `$OPENPALM_STATE_HOME/openmemory/.env`
 
 Env file for the `openmemory` container. Contains `OPENAI_BASE_URL` and `OPENAI_API_KEY` (empty string if not configured).
 
-### 4.7 `postgresEnv`
+### 4.8 `postgresEnv`
 
 **Type**: `string`  
 **Written to**: `$OPENPALM_STATE_HOME/postgres/.env`
 
 Env file for the `postgres` container. Contains `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (empty string if not configured in secrets).
 
-### 4.8 `qdrantEnv`
+### 4.9 `qdrantEnv`
 
 **Type**: `string`  
 **Written to**: `$OPENPALM_STATE_HOME/qdrant/.env`
 
 Env file for the `qdrant` container. Currently always empty (only the comment header is present) — no secrets are injected into Qdrant.
 
-### 4.9 `assistantEnv`
+### 4.10 `assistantEnv`
 
 **Type**: `string`  
 **Written to**: `$OPENPALM_STATE_HOME/assistant/.env`
 
 Env file for the `assistant` container. Contains all secrets with keys prefixed by `OPENPALM_SMALL_MODEL_API_KEY` or `ANTHROPIC_API_KEY`.
 
-### 4.10 `channelEnvs` (Record)
+### 4.11 `channelEnvs` (Record)
 
 **Type**: `Record<string, string>`  
 **Written to**: `$OPENPALM_STATE_HOME/<serviceName>/.env` for each entry
@@ -840,6 +875,7 @@ The engine reads the current on-disk artifacts through `readExistingArtifacts()`
 |---|---|
 | Caddy config changed | `caddyfile` string differs OR any route snippet in `caddyRoutes` differs |
 | Gateway secrets changed | `gatewayEnv` string differs |
+| System env changed | `systemEnv` string differs |
 | Channel config changed | Any entry in `channelEnvs` differs (keyed by service name) |
 | Assistant changed | `assistantEnv` string differs |
 | OpenMemory changed | `openmemoryEnv` OR `postgresEnv` OR `qdrantEnv` differs |
@@ -855,6 +891,7 @@ A new service (in generated but not in existing compose file) is detected by par
 |---|---|---|
 | Caddy config | `reload` | `caddy` |
 | Gateway secrets | `restart` | `gateway` |
+| System env | `restart` | `admin`, `gateway` |
 | Channel config | `restart` | all changed channel service names |
 | Assistant env | `restart` | `assistant` |
 | OpenMemory env (any) | `restart` | `openmemory` |
@@ -888,6 +925,7 @@ The generator produces artifacts scoped to two root directories, resolved from e
 
 ```
 $OPENPALM_STATE_HOME/
+├── system.env                         # systemEnv artifact (loaded by admin + gateway)
 ├── rendered/
 │   ├── caddy/
 │   │   ├── Caddyfile                   # caddyfile artifact

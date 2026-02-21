@@ -13,6 +13,7 @@ export type StackManagerPaths = {
   caddyJsonPath: string;
   caddyRoutesDir: string;
   composeFilePath: string;
+  systemEnvPath: string;
   secretsEnvPath: string;
   stackSpecPath: string;
   gatewayEnvPath: string;
@@ -115,6 +116,9 @@ export class StackManager {
 
     mkdirSync(dirname(this.paths.composeFilePath), { recursive: true });
     writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
+
+    mkdirSync(dirname(this.paths.systemEnvPath), { recursive: true });
+    writeFileSync(this.paths.systemEnvPath, generated.systemEnv, "utf8");
 
     mkdirSync(dirname(this.paths.gatewayEnvPath), { recursive: true });
     writeFileSync(this.paths.gatewayEnvPath, generated.gatewayEnv, "utf8");
