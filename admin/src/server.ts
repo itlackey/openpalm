@@ -35,10 +35,10 @@ const CHANNEL_SERVICES = ["channel-chat", "channel-discord", "channel-voice", "c
 const CHANNEL_SERVICE_SET = new Set<string>(CHANNEL_SERVICES);
 const KNOWN_SERVICES = allowedServiceSet();
 const CHANNEL_ENV_KEYS: Record<string, string[]> = {
-  "channel-chat": ["CHAT_INBOUND_TOKEN"],
-  "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
-  "channel-voice": [],
-  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]
+  "channel-chat": ["CHAT_INBOUND_TOKEN", "CHANNEL_CHAT_SECRET"],
+  "channel-discord": ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY", "CHANNEL_DISCORD_SECRET"],
+  "channel-voice": ["CHANNEL_VOICE_SECRET"],
+  "channel-telegram": ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "CHANNEL_TELEGRAM_SECRET"]
 };
 
 const setupManager = new SetupManager(DATA_DIR);
@@ -115,11 +115,11 @@ function setOpencodePluginEnabled(pluginId: string, enabled: boolean) {
 
 type ChannelName = StackManagerChannelName;
 
-function detectChannelAccess(channel: ChannelName): "lan" | "public" {
+function detectChannelAccess(channel: ChannelName): "host" | "lan" | "public" {
   return stackManager.getChannelAccess(channel);
 }
 
-function setChannelAccess(channel: ChannelName, access: "lan" | "public") {
+function setChannelAccess(channel: ChannelName, access: "host" | "lan" | "public") {
   stackManager.setChannelAccess(channel, access);
 }
 
@@ -350,12 +350,10 @@ const server = Bun.serve({
           stack: {
             accessScope: spec.accessScope,
             channels: spec.channels,
-            connections: spec.connections,
             automations: spec.automations,
           },
           secrets: {
             available: secretState.available,
-            mappings: secretState.mappings,
             requiredCore: secretState.requiredCore,
             secrets: secretState.secrets,
           },
@@ -472,7 +470,7 @@ const server = Bun.serve({
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (message.startsWith("secret_validation_failed:")) {
-            return cors(errorJson(400, "secret_validation_failed", message.replace("secret_validation_failed:", "").split(",")));
+            return cors(errorJson(400, "secret_reference_validation_failed", message.replace("secret_validation_failed:", "").split(",")));
           }
           if (message.startsWith("compose_validation_failed:")) {
             return cors(errorJson(400, "compose_validation_failed", message.replace("compose_validation_failed:", "")));
@@ -491,12 +489,6 @@ const server = Bun.serve({
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const preview = await previewComposeOperations();
         return cors(json(200, { ok: true, ...preview }));
-      }
-
-      if (url.pathname === "/admin/secrets/map" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const spec = stackManager.getSpec();
-        return cors(json(200, { ok: true, secrets: spec.secrets }));
       }
 
       if (url.pathname === "/admin/secrets" && req.method === "GET") {
@@ -528,101 +520,6 @@ const server = Bun.serve({
           if (message === "invalid_secret_name" || message === "secret_in_use") return cors(errorJson(400, message));
           throw error;
         }
-      }
-
-      if (url.pathname === "/admin/secrets/mappings/channel" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { channel?: ChannelName; target?: "gateway" | "channel"; secretName?: string };
-        if (!body.channel || !["chat", "discord", "voice", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
-        if (body.target !== "gateway" && body.target !== "channel") return cors(json(400, { error: "invalid target" }));
-        try {
-          const mapped = stackManager.mapChannelSecret(body.channel, body.target, body.secretName);
-          return cors(json(200, { ok: true, ...mapped }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_channel" || message === "invalid_target" || message === "invalid_secret_name" || message === "unknown_secret_name") {
-            return cors(errorJson(400, message));
-          }
-          throw error;
-        }
-      }
-
-      if (url.pathname === "/admin/connections" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        return cors(json(200, { ok: true, connections: stackManager.listConnections() }));
-      }
-
-      if (url.pathname === "/admin/connections/validate" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; type?: string; env?: Record<string, string> };
-        try {
-          const connection = stackManager.validateConnection(body);
-          return cors(json(200, { ok: true, connection }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (
-            message === "invalid_connection_id" ||
-            message === "invalid_connection_name" ||
-            message === "invalid_connection_type" ||
-            message === "missing_connection_env" ||
-            message === "invalid_connection_env_key" ||
-            message === "invalid_connection_env_value" ||
-            message === "unknown_secret_name"
-          ) {
-            return cors(errorJson(400, message));
-          }
-          throw error;
-        }
-      }
-
-      if (url.pathname === "/admin/connections" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; type?: string; env?: Record<string, string> };
-        try {
-          const connection = stackManager.upsertConnection(body);
-          return cors(json(200, { ok: true, connection }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (
-            message === "invalid_connection_id" ||
-            message === "invalid_connection_name" ||
-            message === "invalid_connection_type" ||
-            message === "missing_connection_env" ||
-            message === "invalid_connection_env_key" ||
-            message === "invalid_connection_env_value" ||
-            message === "unknown_secret_name"
-          ) {
-            return cors(errorJson(400, message));
-          }
-          throw error;
-        }
-      }
-
-      if (url.pathname === "/admin/connections/delete" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string };
-        try {
-          const deleted = stackManager.deleteConnection(body.id);
-          return cors(json(200, { ok: true, deleted }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message === "invalid_connection_id" || message === "connection_not_found") {
-            return cors(errorJson(400, message));
-          }
-          throw error;
-        }
-      }
-
-      if (url.pathname === "/admin/channels/shared-secret" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { channel?: ChannelName; secret?: string };
-        if (!body.channel || !["chat", "discord", "voice", "telegram"].includes(body.channel)) {
-          return cors(json(400, { error: "invalid channel" }));
-        }
-        const secret = sanitizeEnvScalar(body.secret);
-        if (secret.length > 0 && secret.length < 32) return cors(json(400, { error: "secret must be at least 32 characters" }));
-        stackManager.setChannelSharedSecret(body.channel, secret);
-        return cors(json(200, { ok: true, channel: body.channel }));
       }
 
       if (url.pathname === "/admin/setup/health-check" && req.method === "GET") {
@@ -721,9 +618,6 @@ const server = Bun.serve({
               label: channelName.charAt(0).toUpperCase() + channelName.slice(1),
               access: detectChannelAccess(channelName),
               config: readChannelConfig(service),
-              secretMappings: {
-                ...stackManager.getChannelSecretMappings(channelName),
-              },
               fields: (CHANNEL_ENV_KEYS[service] ?? []).map((key) => ({
                 key,
                 label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^(Discord|Telegram|Chat) /, ""),
@@ -737,9 +631,9 @@ const server = Bun.serve({
 
       if (url.pathname === "/admin/channels/access" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { channel: ChannelName; access: "lan" | "public" };
+        const body = (await req.json()) as { channel: ChannelName; access: "host" | "lan" | "public" };
         if (!["chat", "voice", "discord", "telegram"].includes(body.channel)) return cors(json(400, { error: "invalid channel" }));
-        if (!["lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
+        if (!["host", "lan", "public"].includes(body.access)) return cors(json(400, { error: "invalid access" }));
         setChannelAccess(body.channel, body.access);
         await composeAction("restart", "caddy");
         return cors(json(200, { ok: true, channel: body.channel, access: body.access }));

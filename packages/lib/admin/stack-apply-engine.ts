@@ -105,7 +105,7 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
 export async function applyStack(manager: StackManager, options?: { apply?: boolean }): Promise<StackApplyResult> {
   const generated = manager.renderPreview();
   const existing = readExistingArtifacts(manager);
-  const secretErrors = manager.validateEnabledChannelSecrets();
+  const secretErrors = manager.validateReferencedSecrets();
   if (secretErrors.length > 0) {
     throw new Error(`secret_validation_failed:${secretErrors.join(",")}`);
   }

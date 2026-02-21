@@ -1,4 +1,4 @@
-import { channelEnvSecretVariable } from "./stack-spec.ts";
+import { parseSecretReference } from "./stack-spec.ts";
 import type { StackChannelName, StackSpec } from "./stack-spec.ts";
 
 const ChannelPorts: Record<StackChannelName, string> = {
@@ -15,7 +15,20 @@ const ChannelRewritePaths: Record<StackChannelName, string> = {
   telegram: "/telegram/webhook",
 };
 
+const ChannelSharedSecretEnv: Record<StackChannelName, string> = {
+  chat: "CHANNEL_CHAT_SECRET",
+  discord: "CHANNEL_DISCORD_SECRET",
+  voice: "CHANNEL_VOICE_SECRET",
+  telegram: "CHANNEL_TELEGRAM_SECRET",
+};
+
 const Channels: StackChannelName[] = ["chat", "voice", "discord", "telegram"];
+
+function publishedChannelPort(channel: StackChannelName, exposure: StackSpec["channels"][StackChannelName]["exposure"]): string {
+  const port = ChannelPorts[channel];
+  if (exposure === "host") return `127.0.0.1:${port}:${port}`;
+  return `${port}:${port}`;
+}
 
 export type GeneratedStackArtifacts = {
   caddyfile: string;
@@ -34,6 +47,7 @@ function renderChannelRoute(channel: StackChannelName, spec: StackSpec): string 
   if (!cfg.enabled) return "";
   const lines = ["handle /channels/" + channel + "* {"];
   if (cfg.exposure === "lan") lines.push("\tabort @not_lan");
+  if (cfg.exposure === "host") lines.push("\tabort @not_host");
   lines.push(`\trewrite * ${ChannelRewritePaths[channel]}`);
   lines.push(`\treverse_proxy channel-${channel}:${ChannelPorts[channel]}`);
   lines.push("}");
@@ -65,6 +79,24 @@ function pickEnvByKeys(secrets: Record<string, string>, keys: string[]): Record<
   return result;
 }
 
+function resolveScalar(value: string, secrets: Record<string, string>, fieldName: string): string {
+  const ref = parseSecretReference(value);
+  if (!ref) return value;
+  if (secrets[ref] === undefined || secrets[ref].length === 0) throw new Error(`unresolved_secret_reference_${fieldName}_${ref}`);
+  return secrets[ref];
+}
+
+function resolveChannelConfig(spec: StackSpec, secrets: Record<string, string>): Record<string, string> {
+  const channelEnv: Record<string, string> = {};
+  for (const channel of Channels) {
+    if (!spec.channels[channel].enabled) continue;
+    for (const [key, value] of Object.entries(spec.channels[channel].config)) {
+      channelEnv[key] = resolveScalar(value, secrets, `${channel}_${key}`);
+    }
+  }
+  return channelEnv;
+}
+
 function renderFullComposeFile(spec: StackSpec): string {
   const channelServices = Channels
     .filter((channel) => spec.channels[channel].enabled)
@@ -77,6 +109,8 @@ function renderFullComposeFile(spec: StackSpec): string {
       "    environment:",
       `      - PORT=${ChannelPorts[channel]}`,
       "      - GATEWAY_URL=http://gateway:8080",
+      "    ports:",
+      `      - "${publishedChannelPort(channel, spec.channels[channel].exposure)}"`,
       "    networks: [assistant_net]",
       "    depends_on: [gateway]",
       "",
@@ -218,6 +252,8 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     ":80 {",
     `\t@lan remote_ip ${lanMatcher}`,
     `\t@not_lan not remote_ip ${lanMatcher}`,
+    "\t@host remote_ip 127.0.0.0/8 ::1",
+    "\t@not_host not remote_ip 127.0.0.0/8 ::1",
     "",
     "\timport /etc/caddy/snippets/admin.caddy",
     "\timport /etc/caddy/snippets/channels/*.caddy",
@@ -262,31 +298,19 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     ...channelRoutes,
   };
 
-  const connectionEnv: Record<string, string> = {};
-  for (const connection of spec.connections) {
-    for (const [targetKey, secretRef] of Object.entries(connection.env)) {
-      connectionEnv[targetKey] = secrets[secretRef] ?? "";
-    }
-  }
+  const resolvedChannelConfig = resolveChannelConfig(spec, secrets);
+
+  const gatewayChannelSecrets = Object.fromEntries(Channels.map((channel) => [
+    ChannelSharedSecretEnv[channel],
+    resolvedChannelConfig[ChannelSharedSecretEnv[channel]] ?? "",
+  ]));
 
   const gatewayEnv = envWithHeader("# Generated gateway env", {
     ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
-    ...connectionEnv,
-    ...Object.fromEntries(Channels.map((channel) => {
-      const ref = spec.secrets.gatewayChannelSecrets[channel];
-      const envVar = channelEnvSecretVariable(channel);
-      return [envVar, secrets[ref] ?? ""];
-    })),
+    ...gatewayChannelSecrets,
   });
 
-  const channelsEnv = envWithHeader("# Generated channels env", Object.assign(
-    {},
-    ...Channels.map((channel) => {
-      const ref = spec.secrets.channelServiceSecrets[channel];
-      const envVar = channelEnvSecretVariable(channel);
-      return { ...spec.channels[channel].config, [envVar]: secrets[ref] ?? "" };
-    }),
-  ));
+  const channelsEnv = envWithHeader("# Generated channels env", resolvedChannelConfig);
 
   return {
     caddyfile,
@@ -298,7 +322,6 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     qdrantEnv: envWithHeader("# Generated qdrant env", {}),
     opencodeEnv: envWithHeader("# Generated opencode env", {
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
-      ...connectionEnv,
     }),
     channelsEnv,
   };

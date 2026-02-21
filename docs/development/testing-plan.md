@@ -262,21 +262,15 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Warning displayed | shows warning about breaking workflows |
 | Re-run setup button | click "Open Setup Wizard" → wizard overlay appears |
 
-### 5h. Connections
+### 5h. Channel secret references
 
-Connections are named credential sets stored in `secrets.env` and managed via the admin API. Connection mappings use standard env var names that reference secret keys. Types: AI Provider, Platform, API Service.
+Channel configs reference secrets directly from `secrets.env` using `${SECRET_NAME}` values. Stack apply validates that all referenced keys are present.
 
 | Test | Assertions |
 |------|------------|
-| List connections | `GET /admin/connections` returns all stored connections with name, type, and masked value |
-| Create connection | POST with name, type (AI Provider / Platform / API Service), and env mappings to secret keys → connection appears in list |
-| Update connection | POST update with new value → `secrets.env` entry updated |
-| Delete connection | POST delete → connection removed from list; key removed from `secrets.env` |
-| Connection type filter | filter by "AI Provider" → only AI Provider connections shown; same for Platform and API Service |
-| Credential validation | submit connection with empty name or empty value → error shown |
-| "Used by" tracking | connection used by an extension → "Used by" count shown on connection entry |
+| Validate secret references | stack apply rejects missing `${SECRET_NAME}` references before rendering/apply |
 | Secrets storage | after creating/updating secrets, verify `secrets.env` contains user-defined keys and values |
-| Requires auth | all connection CRUD operations without admin token → 401 |
+| Requires auth | secret CRUD operations without admin token return 401 |
 
 ### 5i. Error Handling (cross-cutting)
 

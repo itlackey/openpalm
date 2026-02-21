@@ -2,28 +2,10 @@
   "version": 1,
   "accessScope": "lan",
   "channels": {
-    "chat": { "enabled": true, "exposure": "lan", "config": { "CHAT_INBOUND_TOKEN": "" } },
-    "discord": { "enabled": true, "exposure": "lan", "config": { "DISCORD_BOT_TOKEN": "", "DISCORD_PUBLIC_KEY": "" } },
-    "voice": { "enabled": true, "exposure": "lan", "config": {} },
-    "telegram": { "enabled": true, "exposure": "lan", "config": { "TELEGRAM_BOT_TOKEN": "", "TELEGRAM_WEBHOOK_SECRET": "" } }
+    "chat": { "enabled": true, "exposure": "lan", "config": { "CHAT_INBOUND_TOKEN": "", "CHANNEL_CHAT_SECRET": "" } },
+    "discord": { "enabled": true, "exposure": "lan", "config": { "DISCORD_BOT_TOKEN": "", "DISCORD_PUBLIC_KEY": "", "CHANNEL_DISCORD_SECRET": "" } },
+    "voice": { "enabled": true, "exposure": "lan", "config": { "CHANNEL_VOICE_SECRET": "" } },
+    "telegram": { "enabled": true, "exposure": "lan", "config": { "TELEGRAM_BOT_TOKEN": "", "TELEGRAM_WEBHOOK_SECRET": "", "CHANNEL_TELEGRAM_SECRET": "" } }
   },
-  "secrets": {
-    "available": ["CHANNEL_CHAT_SECRET", "CHANNEL_DISCORD_SECRET", "CHANNEL_VOICE_SECRET", "CHANNEL_TELEGRAM_SECRET"],
-    "gatewayChannelSecrets": {
-      "chat": "CHANNEL_CHAT_SECRET",
-      "discord": "CHANNEL_DISCORD_SECRET",
-      "voice": "CHANNEL_VOICE_SECRET",
-      "telegram": "CHANNEL_TELEGRAM_SECRET"
-    },
-    "channelServiceSecrets": {
-      "chat": "CHANNEL_CHAT_SECRET",
-      "discord": "CHANNEL_DISCORD_SECRET",
-      "voice": "CHANNEL_VOICE_SECRET",
-      "telegram": "CHANNEL_TELEGRAM_SECRET"
-    }
-  },
-  "connections": [],
-  "extensions": [],
-  "gateway": { "rateLimitPerMinute": 120, "intakeValidation": true },
   "automations": []
 }

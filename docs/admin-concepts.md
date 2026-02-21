@@ -75,43 +75,25 @@ The configuration directory mount is the key architectural element. It means the
 
 ---
 
-## Connections
+## Secrets and credential references
 
-> **Implementation Status:** Secrets are managed as key/value entries in `secrets.env`; connections are implemented in Stack Spec as references (`ENV_VAR_NAME` -> secret key name) through `packages/lib` workflows.
+> **Implementation Status:** Secrets are managed as key/value entries in `secrets.env`; channel config values in stack-spec reference secrets directly with `${SECRET_NAME}` when needed.
 
 ### What the user sees
 
-Connections are where you manage the accounts and credentials your assistant uses to interact with external services. If you want your assistant to use a specific AI model provider, connect to your GitHub account, or access an API, you set that up as a connection. Each connection has a friendly name (like "Anthropic" or "GitHub"), shows whether it's configured, and lets you enter or update credentials. Once a connection is set up, it becomes available wherever it's needed -- you might use the same OpenAI connection for both the assistant's memory system and an extension that needs embeddings.
+Secrets are where you manage the credentials and runtime keys used by channels and services. Users can create/update key-value entries (for example `OPENAI_API_KEY`, `DISCORD_BOT_TOKEN`) and see whether each key is configured and where it is referenced.
 
 ### What it represents
 
-A connection is a named set of credentials and endpoint configuration for an external service. Connections are the single source of truth for authentication details used across the stack. Rather than scattering API keys and URLs across multiple `.env` files and config blocks, each credential is stored once in a central secret store and referenced by name wherever it's needed.
-
-A connection has these properties:
-
-| Property | Description | Example |
-|---|---|---|
-| **ID** | Stable internal identifier | `anthropic`, `github`, `openai-embeddings` |
-| **Name** | User-facing display name | "Anthropic", "GitHub", "OpenAI (Embeddings)" |
-| **Type** | Connection category | `ai-provider`, `platform`, `api-service` |
-| **Endpoint** | Base URL for the service (if configurable) | `https://api.anthropic.com` |
-| **Credentials** | One or more secret values (API keys, tokens) | API key, OAuth token, username/password |
-| **Status** | Whether the connection is configured and valid | configured / not configured / error |
-| **Used by** | Which parts of the stack reference this connection | "AI Assistant (primary model)", "Memory system" |
-
-Connection types serve as organizational categories in the UI:
-
-- **AI Provider** -- LLM API endpoints used by the assistant or memory system (Anthropic, OpenAI, local Ollama instances). OpenCode supports [many providers](https://opencode.ai/docs/providers/) natively including OpenAI, Anthropic, Google Gemini, AWS Bedrock, Groq, Azure OpenAI, OpenRouter, and self-hosted endpoints via `LOCAL_ENDPOINT`.
-- **Platform** -- Developer platforms the assistant can interact with (GitHub, GitLab)
-- **API Service** -- External services used by extensions or channels (search APIs, notification services)
+A secret is a named key/value entry in `secrets.env`. The stack treats `secrets.env` as the single source of truth, and channel config values in stack-spec can reference secrets directly via `${SECRET_NAME}`.
 
 ### How it works
 
-Connections are stored in a central secrets file (`secrets.env`) that is mounted as a volume accessible to services that need credentials. The admin service manages this file through a structured API -- users never see or edit the env file directly.
+Secrets are stored in a central secrets file (`secrets.env`) that is mounted as a volume accessible to services that need credentials. The admin service manages this file through a structured API -- users never see or edit the env file directly.
 
 The lifecycle:
 
-1. **User creates or edits a connection** through the admin UI by filling in labeled fields (endpoint URL, API key, etc.).
+1. **User creates or updates secret keys** through the admin UI by entering key/value pairs.
 
 2. **Admin service writes the credentials** to `secrets.env` using user-selected secret keys:
    ```
@@ -122,15 +104,15 @@ The lifecycle:
    OPENAI_ENDPOINT=https://api.openai.com/v1
    ```
 
-3. **Admin maintains a connection registry** (a JSON metadata file) that tracks which connections exist, their types, display names, and which stack components reference them. This registry is what the UI reads to render the connections list with status indicators.
+3. **Admin validates secret usage from stack-spec channel config** and reports where each secret key is referenced for safe rotation/deletion workflows.
 
-4. **Other parts of the stack reference connections by name.** When configuring which AI provider the memory system uses, the admin writes the resolved endpoint and API key env vars to the appropriate service configuration (e.g., `OPENAI_BASE_URL` and `OPENAI_API_KEY` for the memory service). The connection registry records this binding so the UI can show "Used by: Memory system."
+4. **Runtime artifacts are rendered directly from stack-spec + secrets.env.** During render/apply, `${SECRET_NAME}` tokens in channel config are resolved into generated env files; unresolved references fail validation.
 
 5. **OpenCode provider configuration** is updated in `opencode.jsonc` to reference resolved environment variable names via [env var interpolation](https://opencode.ai/docs/config/#env-vars) (e.g., `"apiKey": "{env:ANTHROPIC_API_KEY}"`). This means the actual secret never appears in the config file. OpenCode's config supports `{env:VAR_NAME}` syntax for referencing environment variables and `{file:./path}` syntax for referencing file contents.
 
 The key design principle: credentials are written to exactly one file and referenced everywhere else by environment variable name. The admin UI provides the abstraction layer that lets users think in terms of "my Anthropic account" rather than "which env var holds my API key."
 
-**Connection validation** -- when a user saves a connection, the admin can optionally probe the endpoint (e.g., a lightweight API call) to verify the credentials are valid before committing them. Invalid connections are shown with a warning status rather than blocking the save.
+**Secret reference validation** -- during stack render/apply, referenced secret keys must exist in `secrets.env`; missing keys return validation errors before applying changes.
 
 ---
 

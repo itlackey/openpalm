@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "bun:test";
-import { createDefaultStackSpec, ensureStackSpec, parseStackSpec, writeStackSpec } from "./stack-spec.ts";
+import { createDefaultStackSpec, ensureStackSpec, parseStackSpec, parseSecretReference, writeStackSpec } from "./stack-spec.ts";
 
 describe("stack spec", () => {
   it("creates a default stack spec when missing", () => {
@@ -12,6 +12,7 @@ describe("stack spec", () => {
     expect(spec.version).toBe(1);
     expect(spec.channels.chat.enabled).toBe(true);
     expect(spec.channels.chat.config).toHaveProperty("CHAT_INBOUND_TOKEN");
+    expect(spec.channels.chat.config).toHaveProperty("CHANNEL_CHAT_SECRET");
     expect(Array.isArray(spec.automations)).toBe(true);
     expect(readFileSync(path, "utf8")).toContain('"version": 1');
   });
@@ -22,8 +23,6 @@ describe("stack spec", () => {
       "accessScope",
       "automations",
       "channels",
-      "connections",
-      "secrets",
       "version",
     ]);
   });
@@ -43,40 +42,34 @@ describe("stack spec", () => {
     const base = createDefaultStackSpec();
     expect(() => parseStackSpec({
       ...base,
-      runtime: {
-        generatedAt: Date.now(),
-      },
-    })).toThrow("unknown_stack_spec_field_runtime");
+      connections: [],
+    })).toThrow("unknown_stack_spec_field_connections");
   });
 
-  it("accepts legacy version 2 stack specs and normalizes to version 1", () => {
-    const migrated = parseStackSpec({
-      version: 2,
-      accessScope: "lan",
-      channels: {
-        chat: { enabled: true, exposure: "lan" },
-        discord: { enabled: true, exposure: "lan" },
-        voice: { enabled: true, exposure: "lan" },
-        telegram: { enabled: true, exposure: "lan" },
-      },
-      secrets: baseSecrets(),
-    });
-    expect(migrated.version).toBe(1);
-    expect(migrated.secrets.gatewayChannelSecrets.chat).toBe("CHANNEL_CHAT_SECRET");
-  });
-
-  it("parses channel config from spec", () => {
+  it("accepts host channel exposure", () => {
     const base = createDefaultStackSpec();
     const parsed = parseStackSpec({
       ...base,
       channels: {
         ...base.channels,
-        chat: { ...base.channels.chat, config: { CHAT_INBOUND_TOKEN: "abc" } },
+        discord: { ...base.channels.discord, exposure: "host" },
       },
     });
-    expect(parsed.channels.chat.config.CHAT_INBOUND_TOKEN).toBe("abc");
+    expect(parsed.channels.discord.exposure).toBe("host");
   });
 
+  it("parses channel config values including secret references", () => {
+    const base = createDefaultStackSpec();
+    const parsed = parseStackSpec({
+      ...base,
+      channels: {
+        ...base.channels,
+        chat: { ...base.channels.chat, config: { CHAT_INBOUND_TOKEN: "${CHAT_TOKEN}", CHANNEL_CHAT_SECRET: "${CHAT_SHARED}" } },
+      },
+    });
+    expect(parsed.channels.chat.config.CHAT_INBOUND_TOKEN).toBe("${CHAT_TOKEN}");
+    expect(parsed.channels.chat.config.CHANNEL_CHAT_SECRET).toBe("${CHAT_SHARED}");
+  });
 
   it("parses automations settings", () => {
     const base = createDefaultStackSpec();
@@ -94,24 +87,6 @@ describe("stack spec", () => {
     });
     expect(parsed.automations.length).toBe(1);
   });
-
-  it("rejects connection env entries that are not secret key references", () => {
-    const base = createDefaultStackSpec();
-    expect(() => parseStackSpec({
-      ...base,
-      connections: [
-        {
-          id: "openai",
-          type: "ai_provider",
-          name: "OpenAI",
-          env: {
-            OPENAI_API_KEY: "not-a-secret-name",
-          },
-        },
-      ],
-    })).toThrow("invalid_connection_secret_ref_OPENAI_API_KEY");
-  });
-
 
   it("rejects automations without script", () => {
     const base = createDefaultStackSpec();
@@ -137,21 +112,9 @@ describe("stack spec", () => {
     const saved = ensureStackSpec(path);
     expect(saved.channels.discord.exposure).toBe("public");
   });
-});
 
-function baseSecrets() {
-  return {
-    gatewayChannelSecrets: {
-      chat: "CHANNEL_CHAT_SECRET",
-      discord: "CHANNEL_DISCORD_SECRET",
-      voice: "CHANNEL_VOICE_SECRET",
-      telegram: "CHANNEL_TELEGRAM_SECRET",
-    },
-    channelServiceSecrets: {
-      chat: "CHANNEL_CHAT_SECRET",
-      discord: "CHANNEL_DISCORD_SECRET",
-      voice: "CHANNEL_VOICE_SECRET",
-      telegram: "CHANNEL_TELEGRAM_SECRET",
-    },
-  };
-}
+  it("parses explicit secret references", () => {
+    expect(parseSecretReference("${OPENAI_API_KEY}")).toBe("OPENAI_API_KEY");
+    expect(parseSecretReference("OPENAI_API_KEY")).toBeNull();
+  });
+});

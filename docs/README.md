@@ -25,6 +25,7 @@ If you are new to OpenPalm, read the docs in this order:
 | [Admin Guide](admin-guide.md) | Installer details, admin console, authentication |
 | [Architecture](development/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [Architecture Simplification Plan](draft/architecture-simplification-plan.md) | Gap analysis and phased plan to complete stack-spec/generator simplification work |
+| [Stack Spec Refactor Plan](development/stack-spec-secrets-connections-removal-plan.md) | Detailed checklist for removing stack-spec secrets/connections and adding host channel exposure |
 | [API Reference](development/api-reference.md) | Service endpoints and payloads for gateway, admin, and channels |
 | [Extensions Guide](extensions-guide.md) | How to build and install extensions (developer tutorial) |
 | [Extensions Reference](refenence/extensions-reference.md) | Technical reference for all extension types (API/schema details) |

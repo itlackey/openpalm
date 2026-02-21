@@ -85,23 +85,22 @@ Use a **dedicated Admin Console**, and link to it from dashboards.
 - Config editor (schema-aware)
 - Service control (restart services)
 - Plugin management (install/uninstall npm plugins) — see [Plugin management](#plugin-management) below
-- Connections management — see [Connections](#connections-management) below
+- Secrets management — see [Secrets](#secrets-management) below
 - Automations management — see [Automations](#automations-management) below
 
 ### Plugin management
 
 The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Users can install and uninstall npm plugin packages, which are automatically resolved by Bun at startup. Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
-### Connections management
+### Secrets management
 
-> **Implementation Status:** Connections + secrets are managed through the Stack Spec + Secret Manager APIs. Credentials are stored in `secrets.env` and rendered into generated env artifacts by the shared `packages/lib` stack manager.
+> **Implementation Status:** Secrets are managed via Secret Manager APIs and stored in `secrets.env`. Stack-spec channel config values may reference secret keys directly using `${SECRET_NAME}` and are validated during render/apply.
 
-The admin UI provides a Connections page for managing named credential/endpoint configurations:
+The admin UI provides a secrets workflow for managing key/value credentials and runtime config values:
 
-- **What users see**: Each connection is displayed with a friendly name, a status indicator (connected / error / unchecked), and "Used by" information listing which extensions reference it.
-- **Connection types**: AI Provider (e.g. OpenAI, Anthropic), Platform (e.g. Discord, Telegram), API Service (generic REST/webhook credentials).
-- **Validation**: Users can trigger an optional validation check from the UI. The admin API probes the endpoint with the stored credentials and reports success or failure without revealing the raw secret.
-- **Storage**: Secrets are stored as key/value pairs in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`). Connections are stored in Stack Spec as `ENV_VAR_NAME -> SECRET_KEY` references (not raw secret values).
+- **What users see**: Secret key names, whether values are configured, and where each key is used.
+- **Validation**: Stack render/apply fails fast when channel config references a missing secret key.
+- **Storage**: Secrets are stored as key/value entries in `secrets.env` (at `$OPENPALM_CONFIG_HOME/secrets.env`).
 
 ### Automations management
 

@@ -7,6 +7,9 @@ const cronDir = Bun.env.CRON_DIR ?? "/app/cron";
 const scriptsDir = join(cronDir, "scripts");
 const logDir = join(cronDir, "log");
 const lockDir = join(cronDir, "lock");
+const cronEnabledDir = join(cronDir, "cron.d.enabled");
+const cronDisabledDir = join(cronDir, "cron.d.disabled");
+const combinedSchedulePath = join(cronDir, "cron.schedule");
 const runnerPath = join(cronDir, "run-automation");
 
 function fileSafeId(id: string): string {
@@ -14,8 +17,18 @@ function fileSafeId(id: string): string {
   return id;
 }
 
+function sortedFiles(dir: string): string[] {
+  return readdirSync(dir).filter((name) => !name.startsWith(".")).sort();
+}
+
+function clearCronEntries(dir: string): void {
+  for (const file of sortedFiles(dir)) {
+    rmSync(join(dir, file), { force: true });
+  }
+}
+
 export function ensureCronDirs(): void {
-  for (const dir of [cronDir, scriptsDir, logDir, lockDir]) {
+  for (const dir of [cronDir, scriptsDir, logDir, lockDir, cronEnabledDir, cronDisabledDir]) {
     mkdirSync(dir, { recursive: true });
   }
   writeRunner();
@@ -39,21 +52,42 @@ export function syncAutomations(automations: StackAutomation[]): void {
     if (!activeIds.has(id)) rmSync(join(scriptsDir, file), { force: true });
   }
 
-  const lines = ["# OpenPalm automations — managed by admin, do not edit", ""];
-  for (const automation of automations) {
+  clearCronEntries(cronEnabledDir);
+  clearCronEntries(cronDisabledDir);
+
+  const combinedLines = ["# OpenPalm automations — managed by admin, do not edit", ""];
+  const sortedAutomations = [...automations].sort((a, b) => a.id.localeCompare(b.id));
+
+  for (const [index, automation] of sortedAutomations.entries()) {
     const id = fileSafeId(automation.id);
-    const prefix = automation.enabled ? "" : "# DISABLED: ";
-    lines.push(`# ${automation.name} (${id})`);
-    lines.push(`${prefix}${automation.schedule} ${runnerPath} ${id}`);
-    lines.push("");
+    const fileName = `${String(index + 1).padStart(2, "0")}-${id}`;
+    const entry = [
+      "# OpenPalm automation (managed)",
+      `# ${automation.name} (${id})`,
+      `${automation.schedule} ${runnerPath} ${id}`,
+      "",
+    ].join("\n");
+
+    if (automation.enabled) {
+      writeFileSync(join(cronEnabledDir, fileName), entry, "utf8");
+      combinedLines.push(`# ${automation.name} (${id})`);
+      combinedLines.push(`${automation.schedule} ${runnerPath} ${id}`);
+      combinedLines.push("");
+    } else {
+      writeFileSync(join(cronDisabledDir, fileName), entry, "utf8");
+    }
   }
 
-  const crontabPath = join(cronDir, "crontab");
-  writeFileSync(crontabPath, lines.join("\n"), "utf8");
+  writeFileSync(combinedSchedulePath, `${combinedLines.join("\n")}`.trimEnd() + "\n", "utf8");
 
   try {
-    execSync(`crontab ${crontabPath}`, { stdio: "pipe" });
+    execSync(`crontab ${combinedSchedulePath}`, { stdio: "pipe" });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("crontab: not found")) {
+      console.warn("crontab reload skipped: binary not available in this environment");
+      return;
+    }
     console.error("crontab reload failed", error);
   }
 }

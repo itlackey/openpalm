@@ -8,14 +8,14 @@ describe("contract: admin API docs", () => {
     expect(docs.includes("/admin/plugins/install")).toBe(true);
     expect(docs.includes("/admin/containers/restart")).toBe(true);
     expect(docs.includes("/admin/secrets")).toBe(true);
-    expect(docs.includes("/admin/connections")).toBe(true);
+    expect(docs.includes("/admin/connections")).toBe(false);
     expect(docs.includes("/admin/automations")).toBe(true);
     expect(docs.includes("/admin/providers")).toBe(true);
     expect(docs.includes("/admin/stack/spec")).toBe(true);
   });
 
-  it("does not reference removed gallery endpoints", () => {
+  it("does not reference removed connection endpoints", () => {
     const docs = readFileSync("docs/development/api-reference.md", "utf8");
-    expect(docs.includes("/admin/gallery/")).toBe(false);
+    expect(docs.includes("/admin/connections")).toBe(false);
   });
 });

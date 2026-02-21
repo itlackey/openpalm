@@ -4,28 +4,13 @@ import { dirname } from "node:path";
 export const StackSpecVersion = 1;
 
 export type StackAccessScope = "host" | "lan";
-export type ChannelExposure = "lan" | "public";
+export type ChannelExposure = "host" | "lan" | "public";
 export type StackChannelName = "chat" | "discord" | "voice" | "telegram";
-export type ConnectionType = "ai_provider" | "platform" | "api_service";
 
 export type StackChannelConfig = {
   enabled: boolean;
   exposure: ChannelExposure;
   config: Record<string, string>;
-};
-
-export type ChannelSecretMap = Record<StackChannelName, string>;
-
-export type StackSecretsConfig = {
-  gatewayChannelSecrets: ChannelSecretMap;
-  channelServiceSecrets: ChannelSecretMap;
-};
-
-export type StackConnection = {
-  id: string;
-  type: ConnectionType;
-  name: string;
-  env: Record<string, string>;
 };
 
 export type StackAutomation = {
@@ -40,31 +25,17 @@ export type StackSpec = {
   version: typeof StackSpecVersion;
   accessScope: StackAccessScope;
   channels: Record<StackChannelName, StackChannelConfig>;
-  secrets: StackSecretsConfig;
-  connections: StackConnection[];
   automations: StackAutomation[];
 };
 
 const ChannelNames: StackChannelName[] = ["chat", "discord", "voice", "telegram"];
-const ConnectionTypes: ConnectionType[] = ["ai_provider", "platform", "api_service"];
 
 const ChannelConfigKeys: Record<StackChannelName, string[]> = {
-  chat: ["CHAT_INBOUND_TOKEN"],
-  discord: ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY"],
-  voice: [],
-  telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
+  chat: ["CHAT_INBOUND_TOKEN", "CHANNEL_CHAT_SECRET"],
+  discord: ["DISCORD_BOT_TOKEN", "DISCORD_PUBLIC_KEY", "CHANNEL_DISCORD_SECRET"],
+  voice: ["CHANNEL_VOICE_SECRET"],
+  telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "CHANNEL_TELEGRAM_SECRET"],
 };
-
-const DefaultChannelSecrets: ChannelSecretMap = {
-  chat: "CHANNEL_CHAT_SECRET",
-  discord: "CHANNEL_DISCORD_SECRET",
-  voice: "CHANNEL_VOICE_SECRET",
-  telegram: "CHANNEL_TELEGRAM_SECRET",
-};
-
-function defaultConnections(): StackConnection[] {
-  return [];
-}
 
 function defaultAutomations(): StackAutomation[] {
   return [];
@@ -86,11 +57,6 @@ export function createDefaultStackSpec(): StackSpec {
       voice: { enabled: true, exposure: "lan", config: defaultChannelConfig("voice") },
       telegram: { enabled: true, exposure: "lan", config: defaultChannelConfig("telegram") },
     },
-    secrets: {
-      gatewayChannelSecrets: { ...DefaultChannelSecrets },
-      channelServiceSecrets: { ...DefaultChannelSecrets },
-    },
-    connections: defaultConnections(),
     automations: defaultAutomations(),
   };
 }
@@ -116,49 +82,8 @@ function parseChannel(raw: unknown, channelName: StackChannelName): StackChannel
   const enabled = channel.enabled;
   const exposure = channel.exposure;
   if (typeof enabled !== "boolean") throw new Error(`invalid_channel_enabled_${channelName}`);
-  if (exposure !== "lan" && exposure !== "public") throw new Error(`invalid_channel_exposure_${channelName}`);
+  if (exposure !== "host" && exposure !== "lan" && exposure !== "public") throw new Error(`invalid_channel_exposure_${channelName}`);
   return { enabled, exposure, config: parseChannelConfig(channel.config, channelName) };
-}
-
-function parseChannelSecretMap(raw: unknown, mapName: string): ChannelSecretMap {
-  const map = assertRecord(raw, `invalid_${mapName}`);
-  const result: Partial<ChannelSecretMap> = {};
-  for (const channel of ChannelNames) {
-    const value = map[channel];
-    if (typeof value !== "string" || value.trim().length === 0) throw new Error(`invalid_secret_key_${mapName}_${channel}`);
-    result[channel] = value.trim();
-  }
-  return result as ChannelSecretMap;
-}
-
-function parseConnections(raw: unknown): StackConnection[] {
-  if (raw === undefined) return defaultConnections();
-  if (!Array.isArray(raw)) throw new Error("invalid_connections");
-  const unique = new Set<string>();
-  return raw.map((value, index) => {
-    const item = assertRecord(value, `invalid_connection_${index}`);
-    const id = typeof item.id === "string" ? item.id.trim() : "";
-    const type = item.type;
-    const name = typeof item.name === "string" ? item.name.trim() : "";
-    const envRaw = assertRecord(item.env ?? {}, `invalid_connection_env_${index}`);
-    if (!id) throw new Error(`invalid_connection_id_${index}`);
-    if (!ConnectionTypes.includes(type as ConnectionType)) throw new Error(`invalid_connection_type_${index}`);
-    if (!name) throw new Error(`invalid_connection_name_${index}`);
-    if (unique.has(id)) throw new Error(`duplicate_connection_id_${id}`);
-    unique.add(id);
-    const envEntries = Object.entries(envRaw).filter((entry): entry is [string, unknown] => typeof entry[0] === "string");
-    const env: Record<string, string> = {};
-    for (const [envKey, envValue] of envEntries) {
-      const key = envKey.trim();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) throw new Error(`invalid_connection_env_key_${key}`);
-      if (typeof envValue !== "string" || envValue.trim().length === 0) throw new Error(`invalid_connection_env_value_${key}`);
-      const secretRef = envValue.trim();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(secretRef)) throw new Error(`invalid_connection_secret_ref_${key}`);
-      env[key] = secretRef;
-    }
-    if (Object.keys(env).length === 0) throw new Error(`missing_connection_env_${id}`);
-    return { id, type: type as ConnectionType, name, env };
-  });
 }
 
 function parseAutomations(raw: unknown): StackAutomation[] {
@@ -182,7 +107,7 @@ function parseAutomations(raw: unknown): StackAutomation[] {
 
 export function parseStackSpec(raw: unknown): StackSpec {
   const doc = assertRecord(raw, "invalid_stack_spec");
-  const allowedKeys = new Set(["version", "accessScope", "channels", "secrets", "connections", "automations"]);
+  const allowedKeys = new Set(["version", "accessScope", "channels", "automations"]);
   for (const key of Object.keys(doc)) {
     if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
   }
@@ -202,22 +127,12 @@ export function parseStackSpec(raw: unknown): StackSpec {
     if (!ChannelNames.includes(key as StackChannelName)) throw new Error(`unknown_channel_${key}`);
   }
 
-  const secretsDoc = assertRecord(doc.secrets ?? {}, "missing_secrets");
-  const gatewayChannelSecrets = parseChannelSecretMap(secretsDoc.gatewayChannelSecrets ?? DefaultChannelSecrets, "gatewayChannelSecrets");
-  const channelServiceSecrets = parseChannelSecretMap(secretsDoc.channelServiceSecrets ?? DefaultChannelSecrets, "channelServiceSecrets");
-
-  const connections = parseConnections(doc.connections);
   const automations = parseAutomations(doc.automations);
 
   return {
     version: StackSpecVersion,
     accessScope: doc.accessScope,
     channels,
-    secrets: {
-      gatewayChannelSecrets,
-      channelServiceSecrets,
-    },
-    connections,
     automations,
   };
 }
@@ -244,9 +159,8 @@ export function writeStackSpec(path: string, spec: StackSpec): void {
   writeFileSync(path, stringifyStackSpec(spec), "utf8");
 }
 
-export function channelEnvSecretVariable(channel: StackChannelName): string {
-  if (channel === "chat") return "CHANNEL_CHAT_SECRET";
-  if (channel === "discord") return "CHANNEL_DISCORD_SECRET";
-  if (channel === "voice") return "CHANNEL_VOICE_SECRET";
-  return "CHANNEL_TELEGRAM_SECRET";
+export function parseSecretReference(value: string): string | null {
+  const match = value.match(/^\$\{([A-Z][A-Z0-9_]*)\}$/);
+  if (!match) return null;
+  return match[1];
 }

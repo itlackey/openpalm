@@ -419,108 +419,46 @@ describe("stack spec endpoints", () => {
   });
 });
 
-describe("scoped channel secrets", () => {
-  it.skip("POST /admin/channels/shared-secret writes channel and gateway scoped secret files", async () => {
-    const r = await authed("/admin/channels/shared-secret", {
-      method: "POST",
-      body: JSON.stringify({ channel: "chat", secret: "x".repeat(32) }),
-    });
-    expect(r.ok).toBe(true);
+describe("channel config secret references", () => {
+  it("rejects stack spec save when channel config has unresolved secret references", async () => {
+    const current = await authed("/admin/stack/spec");
+    const spec = current.data.spec as Record<string, unknown>;
+    const channels = (spec.channels as Record<string, Record<string, unknown>>);
+    channels.chat = {
+      ...channels.chat,
+      config: {
+        ...(channels.chat.config as Record<string, string>),
+        CHAT_INBOUND_TOKEN: "${MISSING_SECRET}",
+      },
+    };
 
-    const apply = await authed("/admin/stack/apply", {
+    const save = await authed("/admin/stack/spec", {
       method: "POST",
-      body: JSON.stringify({ apply: false }),
+      body: JSON.stringify({ spec: { ...spec, channels } }),
     });
-    expect(apply.ok).toBe(true);
-    expect(apply.status).toBe(200);
-    expect(apply.data).toHaveProperty("impact");
+    expect(save.ok).toBe(false);
   });
 
+  it("accepts host exposure in stack spec", async () => {
+    const current = await authed("/admin/stack/spec");
+    const spec = current.data.spec as Record<string, unknown>;
+    const channels = structuredClone(spec.channels as Record<string, { enabled: boolean; exposure: string; config: Record<string, string> }>);
 
-  it("validates connections without persisting changes", async () => {
-    const connectionId = `openai-primary-${Date.now()}`;
-    const secretName = `OPENAI_API_KEY_MAIN_${Date.now()}`;
-    const secret = await authed("/admin/secrets", {
+    for (const channel of ["chat", "discord", "voice", "telegram"] as const) {
+      channels[channel].config = Object.fromEntries(Object.keys(channels[channel].config).map((key) => [key, ""]));
+    }
+
+    channels.chat = {
+      ...channels.chat,
+      exposure: "host",
+    };
+
+    const save = await authed("/admin/stack/spec", {
       method: "POST",
-      body: JSON.stringify({ name: secretName, value: "secret-value" }),
+      body: JSON.stringify({ spec: { ...spec, channels } }),
     });
-    expect(secret.ok).toBe(true);
-
-    const valid = await authed("/admin/connections/validate", {
-      method: "POST",
-      body: JSON.stringify({
-        id: connectionId,
-        type: "ai_provider",
-        name: "OpenAI Primary",
-        env: { OPENAI_API_KEY: secretName },
-      }),
-    });
-    expect(valid.status).toBe(200);
-    expect(valid.data.ok).toBe(true);
-
-    const list = await authed("/admin/connections");
-    expect((list.data.connections as Array<{ id: string }>).some((entry) => entry.id === connectionId)).toBe(false);
-
-    const invalid = await authed("/admin/connections/validate", {
-      method: "POST",
-      body: JSON.stringify({
-        id: connectionId,
-        type: "ai_provider",
-        name: "OpenAI Primary",
-        env: { OPENAI_API_KEY: "MISSING_SECRET" },
-      }),
-    });
-    expect(invalid.status).toBe(400);
-    expect(invalid.data.error).toBe("unknown_secret_name");
-  });
-
-  it.skip("supports global connections CRUD via stack manager", async () => {
-    const create = await authed("/admin/connections", {
-      method: "POST",
-      body: JSON.stringify({
-        id: "openai-primary",
-        type: "ai_provider",
-        name: "OpenAI Primary",
-        env: { OPENAI_API_KEY: "OPENAI_API_KEY_MAIN" },
-      }),
-    });
-    expect(create.status).toBe(200);
-
-    const list = await authed("/admin/connections");
-    expect(list.status).toBe(200);
-    expect(Array.isArray(list.data.connections)).toBe(true);
-    expect((list.data.connections as Array<{ id: string }>).some((entry) => entry.id === "openai-primary")).toBe(true);
-
-    const del = await authed("/admin/connections/delete", {
-      method: "POST",
-      body: JSON.stringify({ id: "openai-primary" }),
-    });
-    expect(del.status).toBe(200);
-  });
-  it.skip("supports github-style secret manager CRUD and channel mapping", async () => {
-    const create = await authed("/admin/secrets", {
-      method: "POST",
-      body: JSON.stringify({ name: "my_custom_secret", value: "secret-value" }),
-    });
-    expect(create.ok).toBe(true);
-
-    const list = await authed("/admin/secrets");
-    expect(list.ok).toBe(true);
-    const available = list.data.available as string[];
-    expect(available).toContain("MY_CUSTOM_SECRET");
-
-    const map = await authed("/admin/secrets/mappings/channel", {
-      method: "POST",
-      body: JSON.stringify({ channel: "chat", target: "gateway", secretName: "MY_CUSTOM_SECRET" }),
-    });
-    expect(map.ok).toBe(true);
-
-    const del = await authed("/admin/secrets/delete", {
-      method: "POST",
-      body: JSON.stringify({ name: "MY_CUSTOM_SECRET" }),
-    });
-    expect(del.status).toBe(400);
-    expect(del.data.error).toBe("secret_in_use");
+    expect(save.ok).toBe(true);
+    expect(((save.data.spec as Record<string, unknown>).channels as Record<string, Record<string, unknown>>).chat.exposure).toBe("host");
   });
 });
 
