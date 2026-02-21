@@ -20,7 +20,7 @@ const DATA_ROOT = Bun.env.OPENPALM_DATA_ROOT ?? "/data";
 const CONFIG_ROOT = Bun.env.OPENPALM_CONFIG_ROOT ?? "/config";
 const STATE_ROOT = Bun.env.OPENPALM_STATE_ROOT ?? "/state";
 
-const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/openpalm/.config/opencode/opencode.json`;
+const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/assistant/.config/opencode/opencode.json`;
 const DATA_DIR = Bun.env.DATA_DIR ?? `${DATA_ROOT}/admin`;
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? `${STATE_ROOT}/rendered/caddy/Caddyfile`;
@@ -56,16 +56,17 @@ function isValidChannelService(service: string): boolean {
 const setupManager = new SetupManager(DATA_DIR);
 const providerStore = new ProviderStore(DATA_DIR);
 const stackManager = new StackManager({
+  stateRootPath: STATE_ROOT,
   caddyfilePath: CADDYFILE_PATH,
+  caddyJsonPath: Bun.env.CADDY_JSON_PATH ?? `${STATE_ROOT}/rendered/caddy/caddy.json`,
   caddyRoutesDir: CADDY_ROUTES_DIR,
   secretsEnvPath: SECRETS_ENV_PATH,
   stackSpecPath: STACK_SPEC_PATH,
-  gatewayEnvPath: Bun.env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/rendered/env/gateway.env`,
-  openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/rendered/env/openmemory.env`,
-  postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/rendered/env/postgres.env`,
-  qdrantEnvPath: Bun.env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/rendered/env/qdrant.env`,
-  opencodeEnvPath: Bun.env.OPENCODE_ENV_PATH ?? `${STATE_ROOT}/rendered/env/opencode.env`,
-  channelsEnvPath: Bun.env.CHANNELS_ENV_PATH ?? `${STATE_ROOT}/rendered/env/channels.env`,
+  gatewayEnvPath: Bun.env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/gateway/.env`,
+  openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/openmemory/.env`,
+  postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,
+  qdrantEnvPath: Bun.env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/qdrant/.env`,
+  opencodeEnvPath: Bun.env.OPENCODE_ENV_PATH ?? `${STATE_ROOT}/opencode-core/.env`,
   composeFilePath: COMPOSE_FILE_PATH,
 });
 

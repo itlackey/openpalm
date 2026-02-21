@@ -124,9 +124,9 @@ The installer no longer seeds extension files. Extensions are baked into contain
 
 | What | Destination | Content |
 |------|------------|---------|
-| User-global OpenCode config | `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/opencode.json` | Created/managed by Admin as needed |
+| User-global OpenCode config | `${OPENPALM_DATA_HOME}/assistant/.config/opencode/opencode.json` | Created/managed by Admin as needed |
 | Rendered Caddyfile | `~/.local/state/openpalm/rendered/caddy/Caddyfile` | Generated from stack spec |
-| Rendered service env files | `~/.local/state/openpalm/rendered/env/*.env` | Generated from stack spec + secrets |
+| Rendered service env files | `~/.local/state/openpalm/{service}/.env` | Generated from stack spec + secrets |
 | Secrets | `~/.config/openpalm/secrets.env` | Placeholder for API keys (managed via admin API) |
 
 The seed-not-overwrite pattern (`seed_file`) ensures manual edits are never overwritten on re-runs.
@@ -397,7 +397,7 @@ Requires `ADMIN_TOKEN` in the environment.
 1. **Validate identifier.** `validatePluginIdentifier()` accepts npm names (`@scope/name`) and local paths (`./plugins/*.ts`). Rejects shell metacharacters.
 
 2. **Atomic config update.** `updatePluginListAtomically()`:
-   - Reads `opencode.json` from mounted OpenCode home (mounted at `/data/openpalm/.config/opencode/opencode.json` in the admin container)
+   - Reads `opencode.json` from mounted OpenCode home (mounted at `/data/assistant/.config/opencode/opencode.json` in the admin container)
    - Parses JSONC, appends to `plugin[]` if not present
    - Creates timestamped `.bak` backup
    - Writes to temp file and atomically renames
@@ -472,11 +472,11 @@ assets/state/registry/
 
 ### Host-Side Override (No Rebuild)
 
-1. Place files in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/`:
+1. Place files in `${OPENPALM_DATA_HOME}/assistant/.config/opencode/`:
 
 ```bash
-mkdir -p ${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/
-vim ${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/calendar-sync.ts
+mkdir -p ${OPENPALM_DATA_HOME}/assistant/.config/opencode/plugins/
+vim ${OPENPALM_DATA_HOME}/assistant/.config/opencode/plugins/calendar-sync.ts
 ```
 
 2. If explicit registration is needed (for Plugin-type extensions only), edit the host's `opencode.json`:
@@ -523,7 +523,7 @@ See [Security Guide](../security.md) for the full security model, including the 
 
 ## Configuration Backup and Rollback
 
-Config backups from admin edits accumulate next to the global config at `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/`.
+Config backups from admin edits accumulate next to the global config at `${OPENPALM_DATA_HOME}/assistant/.config/opencode/`.
 
 ---
 
@@ -532,10 +532,10 @@ Config backups from admin edits accumulate next to the global config at `${OPENP
 | Host Path | Container | Mount Point | Mode | Contents |
 |-----------|-----------|-------------|------|----------|
 | `${OPENPALM_DATA_HOME}/openpalm/` | opencode-core | `/home/opencode` | rw | User-global OpenCode config/plugins/cache/auth |
-| `${OPENPALM_DATA_HOME}/openpalm/` | admin | `/data/openpalm` | rw | Admin reads/writes global OpenCode config |
-| `~/.config/openpalm/cron/` | admin | `/app/cron` | rw | Crontab + payloads managed by admin (Automations) |
-| `~/.local/state/openpalm/rendered/env/channels.env` | channel-* | env_file | — | Generated channel env (config + mapped secrets) |
-| `~/.local/state/openpalm/rendered/env/*.env` | gateway/opencode/openmemory/postgres/qdrant | env_file | — | Generated service env from stack spec + secrets |
+| `${OPENPALM_DATA_HOME}/assistant/` | admin | `/data/assistant` | rw | Admin reads/writes global OpenCode config |
+| `~/.local/state/openpalm/automations/` | admin | `/state/automations` | rw | Crontab + payloads managed by admin (Automations) |
+| `~/.local/state/openpalm/channel-*/.env` | channel-* | env_file | — | Generated channel env (config + mapped secrets) |
+| `~/.local/state/openpalm/{gateway,opencode-core,openmemory,postgres,qdrant}/.env` | core services | env_file | — | Generated service env from stack spec + secrets |
 | `~/.config/openpalm/secrets.env` | admin input | source file | — | Source-of-truth credentials managed via admin API |
 
 Note: The gateway has **no** host config volume. Its extensions are fully baked into its image.
@@ -547,14 +547,14 @@ Note: The gateway has **no** host config volume. Its extensions are fully baked 
 | Action | What Happens | Restart Required? |
 |--------|-------------|-------------------|
 | Add plugin to baked-in image | Modify `opencode/extensions/`, rebuild image | Yes — rebuild + restart |
-| Add plugin to host override | Place file in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/` | Yes — restart opencode-core |
+| Add plugin to host override | Place file in `${OPENPALM_DATA_HOME}/assistant/.config/opencode/plugins/` | Yes — restart opencode-core |
 | Add npm plugin via admin | Config updated atomically, auto-restarted | Automatic |
 | Add skill to baked-in image | Modify `opencode/extensions/skills/`, rebuild | Yes — rebuild + restart |
-| Add skill to host override | Place in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/skills/` | Yes — restart opencode-core |
+| Add skill to host override | Place in `${OPENPALM_DATA_HOME}/assistant/.config/opencode/skills/` | Yes — restart opencode-core |
 | Edit `opencode.json` on host | Changes applied on next startup | Yes — restart opencode-core |
 | Edit `opencode.json` via admin | Backup created, auto-restarted | Automatic |
 | Start/stop channel via admin | Admin runs compose up/stop for channel service | No restart of existing services |
 | Remove plugin via admin | Removed from `plugin[]`, auto-restarted | Automatic |
 | Edit `AGENTS.md` in image | Requires rebuild | Yes — rebuild + restart |
 | Edit `secrets.env` | New env vars on next startup | Yes — restart opencode-core |
-| Create/edit Automation | Crontab updated in admin cron volume (`/app/cron`) | No — cron picks up changes automatically |
+| Create/edit Automation | Crontab updated in admin automations volume (`/state/automations`) | No — cron picks up changes automatically |

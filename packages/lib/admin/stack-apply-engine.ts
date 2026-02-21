@@ -20,7 +20,7 @@ type ExistingArtifacts = {
   postgresEnv: string;
   qdrantEnv: string;
   opencodeEnv: string;
-  channelsEnv: string;
+  channelEnvs: Record<string, string>;
 };
 
 function readIfExists(path: string): string {
@@ -47,6 +47,11 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     caddyRoutes[routeFile] = readIfExists(join(paths.caddyRoutesDir, routeFile));
   }
 
+  const channelEnvs: Record<string, string> = {};
+  for (const serviceName of manager.enabledChannelServiceNames()) {
+    channelEnvs[serviceName] = readIfExists(join(paths.stateRootPath, serviceName, ".env"));
+  }
+
   return {
     caddyfile: readIfExists(paths.caddyfilePath),
     caddyRoutes,
@@ -56,7 +61,7 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     postgresEnv: readIfExists(paths.postgresEnvPath),
     qdrantEnv: readIfExists(paths.qdrantEnvPath),
     opencodeEnv: readIfExists(paths.opencodeEnvPath),
-    channelsEnv: readIfExists(paths.channelsEnvPath),
+    channelEnvs,
   };
 }
 
@@ -93,7 +98,10 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
     existing.caddyfile !== generated.caddyfile ||
     caddyRoutesChanged(existing.caddyRoutes, generated.caddyRoutes);
 
-  const channelsEnvChanged = existing.channelsEnv !== generated.channelsEnv;
+  const channelEnvServices = new Set<string>([...Object.keys(existing.channelEnvs), ...Object.keys(generated.channelEnvs)]);
+  const channelsEnvChanged = Array.from(channelEnvServices).some((serviceName) => (
+    (existing.channelEnvs[serviceName] ?? "") !== (generated.channelEnvs[serviceName] ?? "")
+  ));
 
   const changed = {
     caddyChanged,

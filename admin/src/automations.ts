@@ -3,7 +3,7 @@ import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import type { StackAutomation } from "@openpalm/lib/admin/stack-spec.ts";
 
-const cronDir = Bun.env.CRON_DIR ?? "/app/cron";
+const cronDir = Bun.env.CRON_DIR ?? "/state/automations";
 const scriptsDir = join(cronDir, "scripts");
 const logDir = join(cronDir, "log");
 const lockDir = join(cronDir, "lock");

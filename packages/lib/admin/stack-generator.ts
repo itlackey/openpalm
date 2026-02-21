@@ -50,6 +50,7 @@ function composeServiceName(name: string): string {
 
 export type GeneratedStackArtifacts = {
   caddyfile: string;
+  caddyJson: string;
   caddyRoutes: Record<string, string>;
   composeFile: string;
   gatewayEnv: string;
@@ -57,7 +58,7 @@ export type GeneratedStackArtifacts = {
   postgresEnv: string;
   qdrantEnv: string;
   opencodeEnv: string;
-  channelsEnv: string;
+  channelEnvs: Record<string, string>;
 };
 
 function renderChannelRoute(name: string, spec: StackSpec): string {
@@ -166,13 +167,10 @@ function resolveScalar(value: string, secrets: Record<string, string>, fieldName
   return secrets[ref];
 }
 
-function resolveChannelConfig(spec: StackSpec, secrets: Record<string, string>): Record<string, string> {
+function resolveChannelConfig(name: string, cfg: StackChannelConfig, secrets: Record<string, string>): Record<string, string> {
   const channelEnv: Record<string, string> = {};
-  for (const [name, cfg] of Object.entries(spec.channels)) {
-    if (!cfg.enabled) continue;
-    for (const [key, value] of Object.entries(cfg.config)) {
-      channelEnv[key] = resolveScalar(value, secrets, `${name}_${key}`);
-    }
+  for (const [key, value] of Object.entries(cfg.config)) {
+    channelEnv[key] = resolveScalar(value, secrets, `${name}_${key}`);
   }
   return channelEnv;
 }
@@ -188,7 +186,7 @@ function renderChannelComposeService(name: string, config: StackChannelConfig): 
     `    image: ${image}`,
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/env/channels.env",
+    `      - \${OPENPALM_STATE_HOME}/${svcName}/.env`,
     "    environment:",
     `      - PORT=${containerPort}`,
     "      - GATEWAY_URL=http://gateway:8080",
@@ -213,8 +211,8 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: caddy:2-alpine",
     "    restart: unless-stopped",
     "    ports:",
-    "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-0.0.0.0}:80:80\"",
-    "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-0.0.0.0}:443:443\"",
+    "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80\"",
+    "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443\"",
     "    volumes:",
     "      - ${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
     "      - ${OPENPALM_STATE_HOME}/rendered/caddy/snippets:/etc/caddy/snippets:ro",
@@ -227,7 +225,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: postgres:16-alpine",
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/env/postgres.env",
+    "      - ${OPENPALM_STATE_HOME}/postgres/.env",
     "    environment:",
     "      POSTGRES_DB: ${POSTGRES_DB:-openpalm}",
     "      POSTGRES_USER: ${POSTGRES_USER:-openpalm}",
@@ -240,7 +238,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: qdrant/qdrant:latest",
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/env/qdrant.env",
+    "      - ${OPENPALM_STATE_HOME}/qdrant/.env",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage",
     "    networks: [assistant_net]",
@@ -249,9 +247,9 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: mem0/openmemory-mcp:latest",
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/env/openmemory.env",
+    "      - ${OPENPALM_STATE_HOME}/openmemory/.env",
     "    ports:",
-    "      - \"${OPENPALM_OPENMEMORY_BIND_ADDRESS:-0.0.0.0}:8765:8765\"",
+    "      - \"${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765\"",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/openmemory:/data",
     "    networks: [assistant_net]",
@@ -264,7 +262,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - NEXT_PUBLIC_API_URL=${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}",
     "      - NEXT_PUBLIC_USER_ID=${OPENMEMORY_USER_ID:-default-user}",
     "    ports:",
-    "      - \"${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-0.0.0.0}:3000:3000\"",
+    "      - \"${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-127.0.0.1}:3000:3000\"",
     "    networks: [assistant_net]",
     "    depends_on: [openmemory]",
     "",
@@ -272,7 +270,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/opencode-core:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/env/opencode.env",
+    "      - ${OPENPALM_STATE_HOME}/opencode-core/.env",
     "    environment:",
     "      - OPENCODE_CONFIG_DIR=/opt/opencode",
     "      - OPENCODE_PORT=4096",
@@ -282,7 +280,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - \"${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096\"",
     "      - \"${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22\"",
     "    volumes:",
-    "      - ${OPENPALM_DATA_HOME}/opencode:/home/opencode",
+    "      - ${OPENPALM_DATA_HOME}/assistant:/home/opencode",
     "      - ${HOME}/openpalm:/work",
     "    working_dir: /work",
     "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
@@ -299,7 +297,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
     "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/env/gateway.env",
+    "      - ${OPENPALM_STATE_HOME}/gateway/.env",
     "    environment:",
     "      - PORT=8080",
     "      - OPENCODE_CORE_BASE_URL=http://opencode-core:4096",
@@ -390,6 +388,10 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
   );
 
   const caddyfile = caddyfileParts.join("\n");
+  const caddyJson = `${JSON.stringify({
+    admin: { disabled: true },
+    apps: { http: { servers: { openpalm: { listen: [":80"], routes: [] } } } },
+  }, null, 2)}\n`;
 
   const caddyAdminRoute = [
     "# Admin and defaults (generated from stack spec)",
@@ -427,12 +429,20 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     ...channelRoutes,
   };
 
-  const resolvedChannelConfig = resolveChannelConfig(spec, secrets);
+  const channelEnvs: Record<string, string> = {};
+  for (const [name, cfg] of Object.entries(spec.channels)) {
+    if (!cfg.enabled) continue;
+    const svcName = `channel-${composeServiceName(name)}`;
+    channelEnvs[svcName] = envWithHeader(
+      `# Generated channel env (${name})`,
+      resolveChannelConfig(name, cfg, secrets),
+    );
+  }
 
   const gatewayChannelSecrets: Record<string, string> = {};
   for (const name of BuiltInChannelNames) {
     const secretEnvKey = BuiltInChannelSharedSecretEnv[name];
-    gatewayChannelSecrets[secretEnvKey] = resolvedChannelConfig[secretEnvKey] ?? "";
+    gatewayChannelSecrets[secretEnvKey] = resolveChannelConfig(name, spec.channels[name], secrets)[secretEnvKey] ?? "";
   }
 
   const gatewayEnv = envWithHeader("# Generated gateway env", {
@@ -440,10 +450,9 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     ...gatewayChannelSecrets,
   });
 
-  const channelsEnv = envWithHeader("# Generated channels env", resolvedChannelConfig);
-
   return {
     caddyfile,
+    caddyJson,
     caddyRoutes,
     composeFile: renderFullComposeFile(spec),
     gatewayEnv,
@@ -453,6 +462,6 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     opencodeEnv: envWithHeader("# Generated opencode env", {
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
     }),
-    channelsEnv,
+    channelEnvs,
   };
 }

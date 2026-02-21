@@ -24,17 +24,23 @@ export function resolveXDGPaths(): XDGPaths {
 }
 
 export async function createDirectoryTree(xdg: XDGPaths): Promise<void> {
-  const dataDirs = ["postgres", "qdrant", "openmemory", "opencode", "admin"];
+  const dataDirs = ["postgres", "qdrant", "openmemory", "assistant", "admin"];
   for (const dir of dataDirs) await mkdir(join(xdg.data, dir), { recursive: true });
 
   await mkdir(xdg.config, { recursive: true });
 
   const stateDirs = [
+    "admin",
     "gateway",
+    "postgres",
+    "qdrant",
+    "openmemory",
+    "openmemory-ui",
+    "opencode-core",
     "rendered",
     "rendered/caddy",
     "rendered/caddy/snippets",
-    "rendered/env",
+    "automations",
     "caddy/config",
     "caddy/data",
     "logs",

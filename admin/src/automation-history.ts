@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const logDir = join(Bun.env.CRON_DIR ?? "/config/cron", "log");
+const logDir = join(Bun.env.CRON_DIR ?? "/state/automations", "log");
 
 export type AutomationRun = {
   ts: string;

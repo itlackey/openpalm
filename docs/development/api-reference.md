@@ -175,7 +175,7 @@ All channel adapters are LAN-only by default. Access can be toggled to public vi
 
 ### Channel Environment Variables
 
-Channel-specific configuration is managed through the Stack Spec and rendered into scoped env files under `${OPENPALM_STATE_HOME}/rendered/env/`. The admin service manages channel config values through the stack manager API.
+Channel-specific configuration is managed through the Stack Spec and rendered into scoped env files under `${OPENPALM_STATE_HOME}/channel-*/.env`. The admin service manages channel config values through the stack manager API.
 
 Each channel adapter reads the following environment variables at startup:
 

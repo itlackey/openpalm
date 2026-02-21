@@ -27,18 +27,18 @@ openpalm extensions uninstall --plugin @scope/plugin-name
 
 Skills, agents, commands, and tools are managed directly on the host in the OpenCode config directory:
 
-- `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/skills/`
-- `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/agents/`
-- `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/commands/`
-- `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/tools/`
+- `${OPENPALM_DATA_HOME}/assistant/.config/opencode/skills/`
+- `${OPENPALM_DATA_HOME}/assistant/.config/opencode/agents/`
+- `${OPENPALM_DATA_HOME}/assistant/.config/opencode/commands/`
+- `${OPENPALM_DATA_HOME}/assistant/.config/opencode/tools/`
 
 For local plugins, place files in:
 
-- `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/`
+- `${OPENPALM_DATA_HOME}/assistant/.config/opencode/plugins/`
 
 and add them to the `plugin[]` array in:
 
-- `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/opencode.json`
+- `${OPENPALM_DATA_HOME}/assistant/.config/opencode/opencode.json`
 
 Changes take effect after restarting `opencode-core`.
 

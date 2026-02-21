@@ -47,11 +47,11 @@ beforeAll(async () => {
   const channelSecretDir = join(tmpDir, "secrets", "channels");
   const gatewaySecretDir = join(tmpDir, "secrets", "gateway");
   const cronDir = join(tmpDir, "cron");
+  const stateRoot = join(tmpDir, "state");
   const renderedDir = join(tmpDir, "rendered");
-  const renderedEnvDir = join(renderedDir, "env");
   const caddyRoutesDir = join(renderedDir, "caddy", "snippets");
 
-  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, renderedEnvDir, caddyRoutesDir]) mkdirSync(d, { recursive: true });
+  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, stateRoot, caddyRoutesDir]) mkdirSync(d, { recursive: true });
 
   // Copy UI files
   for (const f of ["index.html", "setup-ui.js", "logo.png"]) {
@@ -86,6 +86,7 @@ beforeAll(async () => {
       ...process.env,
       PORT: String(port),
       ADMIN_TOKEN: "test-token-e2e",
+      STATE_ROOT: stateRoot,
       DATA_DIR: dataDir,
       UI_DIR: uiDir,
       OPENCODE_CONFIG_PATH: opencodeConfigPath,
@@ -99,12 +100,11 @@ beforeAll(async () => {
       GATEWAY_CHANNEL_SECRETS_PATH: join(gatewaySecretDir, "channels.env"),
       CADDY_ROUTES_DIR: caddyRoutesDir,
       COMPOSE_FILE_PATH: join(renderedDir, "docker-compose.yml"),
-      GATEWAY_ENV_PATH: join(renderedEnvDir, "gateway.env"),
-      OPENMEMORY_ENV_PATH: join(renderedEnvDir, "openmemory.env"),
-      POSTGRES_ENV_PATH: join(renderedEnvDir, "postgres.env"),
-      QDRANT_ENV_PATH: join(renderedEnvDir, "qdrant.env"),
-      OPENCODE_ENV_PATH: join(renderedEnvDir, "opencode.env"),
-      CHANNELS_ENV_PATH: join(renderedEnvDir, "channels.env"),
+      GATEWAY_ENV_PATH: join(stateRoot, "gateway", ".env"),
+      OPENMEMORY_ENV_PATH: join(stateRoot, "openmemory", ".env"),
+      POSTGRES_ENV_PATH: join(stateRoot, "postgres", ".env"),
+      QDRANT_ENV_PATH: join(stateRoot, "qdrant", ".env"),
+      OPENCODE_ENV_PATH: join(stateRoot, "opencode-core", ".env"),
     },
     stdout: "pipe",
     stderr: "pipe",
