@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "accessScope": "lan",
   "channels": {
     "chat": { "enabled": true, "exposure": "lan", "config": { "CHAT_INBOUND_TOKEN": "", "CHANNEL_CHAT_SECRET": "" } },

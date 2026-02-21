@@ -9,7 +9,7 @@ export type SmallModelConfig = {
 export type SetupState = {
   completed: boolean;
   completedAt?: string;
-  accessScope: "host" | "lan";
+  accessScope: "host" | "lan" | "public";
   serviceInstances: {
     openmemory: string;
     psql: string;
@@ -136,7 +136,7 @@ export class SetupManager {
     return state;
   }
 
-  setAccessScope(scope: "host" | "lan") {
+  setAccessScope(scope: "host" | "lan" | "public") {
     const state = this.getState();
     state.accessScope = scope;
     this.save(state);

@@ -1,13 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
-import { ensureStackSpec, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
+import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
 import type { ChannelExposure, StackSpec } from "./stack-spec.ts";
 
-export type ChannelName = "chat" | "discord" | "voice" | "telegram";
-
-const Channels: ChannelName[] = ["chat", "discord", "voice", "telegram"];
+export type ChannelName = string;
 
 export type StackManagerPaths = {
   caddyfilePath: string;
@@ -47,15 +45,20 @@ export class StackManager {
   }
 
   getChannelAccess(channel: ChannelName): ChannelExposure {
-    return this.getSpec().channels[channel].exposure;
+    const spec = this.getSpec();
+    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
+    return spec.channels[channel].exposure;
   }
 
   getChannelConfig(channel: ChannelName): Record<string, string> {
-    return { ...this.getSpec().channels[channel].config };
+    const spec = this.getSpec();
+    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
+    return { ...spec.channels[channel].config };
   }
 
   setChannelAccess(channel: ChannelName, access: ChannelExposure) {
     const spec = this.getSpec();
+    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
     spec.channels[channel].enabled = true;
     spec.channels[channel].exposure = access;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
@@ -64,17 +67,26 @@ export class StackManager {
 
   setChannelConfig(channel: ChannelName, values: Record<string, string>) {
     const spec = this.getSpec();
+    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
     const current = spec.channels[channel].config;
-    const next: Record<string, string> = {};
-    for (const key of Object.keys(current)) {
-      next[key] = sanitizeEnvScalar(values[key] ?? "");
+    if (isBuiltInChannel(channel)) {
+      const next: Record<string, string> = {};
+      for (const key of Object.keys(current)) {
+        next[key] = sanitizeEnvScalar(values[key] ?? "");
+      }
+      spec.channels[channel].config = next;
+    } else {
+      const next: Record<string, string> = {};
+      for (const key of Object.keys(values)) {
+        next[key] = sanitizeEnvScalar(values[key] ?? "");
+      }
+      spec.channels[channel].config = next;
     }
-    spec.channels[channel].config = next;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     return this.renderArtifacts();
   }
 
-  setAccessScope(scope: "host" | "lan") {
+  setAccessScope(scope: "host" | "lan" | "public") {
     const spec = this.getSpec();
     spec.accessScope = scope;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
@@ -115,13 +127,13 @@ export class StackManager {
     return generated;
   }
 
-  validateReferencedSecrets() {
-    const spec = this.getSpec();
+  validateReferencedSecrets(specOverride?: StackSpec) {
+    const spec = specOverride ?? this.getSpec();
     const availableSecrets = this.readSecretsEnv();
     const errors: string[] = [];
-    for (const channel of Channels) {
-      if (!spec.channels[channel].enabled) continue;
-      for (const [key, value] of Object.entries(spec.channels[channel].config)) {
+    for (const [channel, cfg] of Object.entries(spec.channels)) {
+      if (!cfg.enabled) continue;
+      for (const [key, value] of Object.entries(cfg.config)) {
         const ref = parseSecretReference(value);
         if (!ref) continue;
         if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${channel}_${key}_${ref}`);
@@ -141,8 +153,8 @@ export class StackManager {
       usedBy.set(item.key, list);
     }
 
-    for (const channel of Channels) {
-      for (const [key, value] of Object.entries(spec.channels[channel].config)) {
+    for (const [channel, cfg] of Object.entries(spec.channels)) {
+      for (const [key, value] of Object.entries(cfg.config)) {
         const ref = parseSecretReference(value);
         if (!ref) continue;
         const list = usedBy.get(ref) ?? [];
@@ -235,6 +247,19 @@ export class StackManager {
     return true;
   }
 
+  /** Returns all channel names (built-in + custom) from the spec. */
+  listChannelNames(): string[] {
+    return Object.keys(this.getSpec().channels);
+  }
+
+  /** Returns enabled channel service names (e.g., "channel-chat", "channel-my-custom"). */
+  enabledChannelServiceNames(): string[] {
+    const spec = this.getSpec();
+    return Object.keys(spec.channels)
+      .filter((name) => spec.channels[name].enabled)
+      .map((name) => `channel-${name}`);
+  }
+
   private writeStackSpecAtomically(content: string) {
     const tempPath = `${this.paths.stackSpecPath}.${Date.now()}.tmp`;
     mkdirSync(dirname(this.paths.stackSpecPath), { recursive: true });
@@ -260,6 +285,7 @@ export class StackManager {
   private removeStaleRouteFiles(nextRoutes: Record<string, string>) {
     const keepPaths = new Set(Object.keys(nextRoutes).map((value) => join(this.paths.caddyRoutesDir, value)));
     const walk = (dirPath: string) => {
+      if (!existsSync(dirPath)) return;
       for (const entry of readdirSync(dirPath)) {
         const path = join(dirPath, entry);
         const stat = statSync(path);

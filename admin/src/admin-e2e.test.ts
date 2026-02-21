@@ -47,8 +47,11 @@ beforeAll(async () => {
   const channelSecretDir = join(tmpDir, "secrets", "channels");
   const gatewaySecretDir = join(tmpDir, "secrets", "gateway");
   const cronDir = join(tmpDir, "cron");
+  const renderedDir = join(tmpDir, "rendered");
+  const renderedEnvDir = join(renderedDir, "env");
+  const caddyRoutesDir = join(renderedDir, "caddy", "snippets");
 
-  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir]) mkdirSync(d, { recursive: true });
+  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, renderedEnvDir, caddyRoutesDir]) mkdirSync(d, { recursive: true });
 
   // Copy UI files
   for (const f of ["index.html", "setup-ui.js", "logo.png"]) {
@@ -94,6 +97,14 @@ beforeAll(async () => {
       STACK_SPEC_PATH: stackSpecPath,
       CHANNEL_SECRET_DIR: channelSecretDir,
       GATEWAY_CHANNEL_SECRETS_PATH: join(gatewaySecretDir, "channels.env"),
+      CADDY_ROUTES_DIR: caddyRoutesDir,
+      COMPOSE_FILE_PATH: join(renderedDir, "docker-compose.yml"),
+      GATEWAY_ENV_PATH: join(renderedEnvDir, "gateway.env"),
+      OPENMEMORY_ENV_PATH: join(renderedEnvDir, "openmemory.env"),
+      POSTGRES_ENV_PATH: join(renderedEnvDir, "postgres.env"),
+      QDRANT_ENV_PATH: join(renderedEnvDir, "qdrant.env"),
+      OPENCODE_ENV_PATH: join(renderedEnvDir, "opencode.env"),
+      CHANNELS_ENV_PATH: join(renderedEnvDir, "channels.env"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -384,7 +395,7 @@ describe("stack spec endpoints", () => {
   it("GET /admin/stack/spec returns default spec with auth", async () => {
     const r = await authed("/admin/stack/spec");
     expect(r.ok).toBe(true);
-    expect((r.data.spec as Record<string, unknown>).version).toBe(1);
+    expect((r.data.spec as Record<string, unknown>).version).toBe(2);
   });
 
   it.skip("POST /admin/stack/spec validates and saves custom spec", async () => {
