@@ -7,31 +7,31 @@ Common issues and how to resolve them.
 For any issue, start by checking the logs of the relevant service:
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml logs <service-name> --tail=100
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs <service-name> --tail=100
 ```
 
-Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `admin`, `openmemory`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`.
+Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`.
 
 ## Service won't start
 
 **Symptoms:** `docker compose ps` shows a service as `restarting` or `exited`.
 
 **Steps:**
-1. Check logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs <service-name> --tail=50`
+1. Check logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs <service-name> --tail=50`
 2. Look for missing environment variables, port conflicts, or failed health checks.
 3. Verify the Docker daemon is running: `docker info`
 4. Check available disk space: `df -h`
-5. Restart the service: `docker compose -f ~/.local/state/openpalm/docker-compose.yml restart <service-name>`
+5. Restart the service: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml restart <service-name>`
 
 ## Admin UI shows "Server unreachable"
 
 **Symptoms:** The admin dashboard at `http://localhost/admin` cannot connect to the backend.
 
 **Steps:**
-1. Verify the admin container is healthy: `docker compose -f ~/.local/state/openpalm/docker-compose.yml ps admin`
-2. Check that port 8100 is accessible inside the container: `docker compose -f ~/.local/state/openpalm/docker-compose.yml exec admin curl -s http://localhost:8100/health`
-3. Check Caddy is routing correctly: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs caddy --tail=20`
-4. Verify the Caddyfile has the admin route: check `~/.config/openpalm/caddy/Caddyfile`
+1. Verify the admin container is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps admin`
+2. Check that port 8100 is accessible inside the container: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml exec admin curl -s http://localhost:8100/health`
+3. Check Caddy is routing correctly: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs caddy --tail=20`
+4. Verify the Caddyfile has the admin route: check `~/.local/state/openpalm/rendered/caddy/Caddyfile`
 
 ## Memory not working
 
@@ -39,8 +39,8 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `admi
 
 **Steps:**
 1. Verify `OPENAI_API_KEY` is set in `~/.config/openpalm/secrets.env` (OpenMemory uses OpenAI for embeddings).
-2. Check OpenMemory logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs openmemory --tail=50`
-3. Check Qdrant is running: `docker compose -f ~/.local/state/openpalm/docker-compose.yml ps qdrant`
+2. Check OpenMemory logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs openmemory --tail=50`
+3. Check Qdrant is running: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps qdrant`
 4. Test the OpenMemory API directly: `curl http://localhost:8765/health`
 5. Verify the `openmemory-http` plugin is loaded by checking opencode-core logs for plugin initialization messages.
 
@@ -50,8 +50,8 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `admi
 
 **Steps:**
 1. Verify the channel env file has correct credentials: check `~/.local/state/openpalm/rendered/env/channels.env`
-2. Check channel container logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs channel-<name> --tail=50`
-3. Verify the gateway is healthy: `docker compose -f ~/.local/state/openpalm/docker-compose.yml ps gateway`
+2. Check channel container logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs channel-<name> --tail=50`
+3. Verify the gateway is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps gateway`
 4. Check that the channel secret matches between the channel env and the gateway environment (e.g., `CHANNEL_DISCORD_SECRET`).
 5. For Discord: verify the bot token is valid and the bot has been invited to the server with correct permissions.
 6. For Telegram: verify the bot token via `https://api.telegram.org/bot<token>/getMe`.
@@ -62,9 +62,9 @@ Replace `<service-name>` with one of: `opencode-core`, `gateway`, `admin`, `admi
 
 **Steps:**
 1. Verify `ANTHROPIC_API_KEY` is set in `~/.config/openpalm/secrets.env`.
-2. Check opencode-core logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs opencode-core --tail=50`
+2. Check opencode-core logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs opencode-core --tail=50`
 3. Look for API rate limit or authentication errors in the logs.
-4. Verify the opencode-core container is healthy: `docker compose -f ~/.local/state/openpalm/docker-compose.yml ps opencode-core`
+4. Verify the opencode-core container is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps opencode-core`
 5. Test the gateway health endpoint: `curl http://localhost:8080/health`
 
 ## Port conflicts

@@ -1,7 +1,3 @@
-## API Status
-
-Lifecycle operations are exposed via Admin endpoints with allowlisted operations and service validation.
-
 # API Reference
 
 ## Gateway API (internal; channel adapters call gateway directly on the Docker network)

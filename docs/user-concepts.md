@@ -1,6 +1,6 @@
 # OpenPalm User Guide — Core Concepts
 
-OpenPalm is built around five ideas: Extensions, Connections, Channels, Automations, and the Gateway. This guide explains what each one does and how you interact with it.
+OpenPalm is built around five ideas: Extensions, Secrets, Channels, Automations, and the Gateway. This guide explains what each one does and how you interact with it.
 
 ---
 
@@ -124,7 +124,7 @@ The Gateway is what makes it safe to expose channels to the internet, install co
        |
        +---> Extensions -----> Give the assistant new abilities
        |
-       +---> Connections -----> Provide credentials for services
+       +---> Secrets ----------> Provide credentials for services
        |
        +---> Automations -----> Schedule recurring tasks
        |
@@ -140,7 +140,7 @@ The Gateway is what makes it safe to expose channels to the internet, install co
 ```
 
 - **Extensions** add capabilities to the assistant.
-- **Connections** provide the credentials that extensions and the assistant need to reach external services.
+- **Secrets** provide the credentials that extensions and the assistant need to reach external services.
 - **Channels** let you and others talk to the assistant from different platforms. Every channel message passes through the **Gateway** for security.
 - **Automations** let the assistant act on a schedule without anyone sending a message.
 - The **Gateway** protects the assistant behind every channel, ensuring all messages are authenticated, rate-limited, and screened.

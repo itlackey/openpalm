@@ -80,6 +80,6 @@ export const AuditLog = async () => {
 
 ## Deployment
 
-Place the file in `~/.config/openpalm/opencode-core/plugins/` and restart opencode-core. For npm packages, add to `plugin[]` in `opencode.jsonc`. To bake into the image, add to `opencode/extensions/plugins/` and rebuild.
+Place the file in `${OPENPALM_DATA_HOME}/openpalm/.config/opencode/plugins/` and restart opencode-core. For npm packages, add to `plugin[]` in `opencode.json`. To bake into the image, add to `opencode/extensions/plugins/` and rebuild.
 
 See also: [Extensions Guide](../extensions-guide.md) | [Extensions Reference](../reference/extensions-reference.md)

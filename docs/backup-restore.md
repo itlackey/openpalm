@@ -17,7 +17,7 @@ How to back up and restore your OpenPalm instance.
 ### 1. Stop services (recommended for consistency)
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml stop
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml stop
 ```
 
 If you cannot tolerate downtime, you can back up while running, but database dumps are safer with services stopped.
@@ -25,7 +25,7 @@ If you cannot tolerate downtime, you can back up while running, but database dum
 ### 2. Dump PostgreSQL
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml \
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml \
   exec -T postgres pg_dump -U openpalm openpalm > openpalm-pg-backup.sql
 ```
 
@@ -46,7 +46,7 @@ tar czf openpalm-config-backup.tar.gz ~/.config/openpalm/
 ### 5. Restart services
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml up -d
 ```
 
 ## Restore procedure
@@ -54,7 +54,7 @@ docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d
 ### 1. Stop services
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml down
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml down
 ```
 
 ### 2. Restore configuration
@@ -72,15 +72,15 @@ tar xzf openpalm-data-backup.tar.gz -C /
 ### 4. Restore PostgreSQL
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d postgres
-docker compose -f ~/.local/state/openpalm/docker-compose.yml \
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml up -d postgres
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml \
   exec -T postgres psql -U openpalm openpalm < openpalm-pg-backup.sql
 ```
 
 ### 5. Start all services
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml up -d
 ```
 
 ### 6. Verify
@@ -88,7 +88,7 @@ docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d
 Check that all services are healthy:
 
 ```bash
-docker compose -f ~/.local/state/openpalm/docker-compose.yml ps
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps
 ```
 
 ## Tips
