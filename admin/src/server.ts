@@ -337,7 +337,8 @@ const server = Bun.serve({
       if (url.pathname === "/admin/system/state" && req.method === "GET") {
         const setup = setupManager.getState();
         if (setup.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        const secrets = stackManager.listSecretManagerState();
+        const secretState = stackManager.listSecretManagerState();
+        const spec = stackManager.getSpec();
         return cors(json(200, {
           setup: {
             ...setup,
@@ -347,14 +348,16 @@ const server = Bun.serve({
             smallModelProvider: getConfiguredSmallModel(),
           },
           stack: {
-            accessScope: stackManager.getSpec().accessScope,
-            channels: stackManager.getSpec().channels,
-            connections: stackManager.listConnections(),
-            automations: stackManager.listAutomations(),
+            accessScope: spec.accessScope,
+            channels: spec.channels,
+            connections: spec.connections,
+            automations: spec.automations,
           },
           secrets: {
-            available: secrets.available,
-            usedBy: secrets.usedBy,
+            available: secretState.available,
+            mappings: secretState.mappings,
+            requiredCore: secretState.requiredCore,
+            secrets: secretState.secrets,
           },
         }));
       }

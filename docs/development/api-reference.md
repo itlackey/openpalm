@@ -120,13 +120,14 @@ The UI must always derive secret dropdown options from live `GET /admin/secrets`
 **Policy lint rule:** The config editor parses the submitted JSONC and inspects the `permission` object. If any permission value is set to `"allow"`, the request is rejected with `400 policy lint failed: permission widening blocked`. Only `"ask"` and `"deny"` are permitted permission values. This prevents operators from accidentally removing approval gates on sensitive tool operations.
 
 ### Setup wizard
-- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, extensions, first-boot flag), current service-instance overrides, and OpenMemory provider setup (`openmemoryProvider.openaiBaseUrl`, `openmemoryProvider.openaiApiKeyConfigured`)
-- `GET /admin/system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows.
-- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" | "extensions" }`
+- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, first-boot flag), current service-instance overrides, provider setup, and small model config
+- `GET /admin/system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows
+- `POST /admin/setup/step` — mark a step complete `{ "step": "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels" }`
 - `POST /admin/setup/access-scope` — set setup access scope `{ "scope": "host" | "lan" }` (updates Caddy matchers and compose bind addresses)
-- `POST /admin/setup/service-instances` — update service instance overrides and OpenMemory OpenAI-compatible provider settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "..." }` (`openaiApiKey` is optional; leave empty to keep current key)
+- `POST /admin/setup/service-instances` — update service instance overrides, OpenMemory provider, Anthropic key, and small model settings `{ "openmemory": "...", "psql": "...", "qdrant": "...", "openaiBaseUrl": "...", "openaiApiKey": "...", "anthropicApiKey": "...", "smallModelEndpoint": "...", "smallModelApiKey": "...", "smallModelId": "..." }`
+- `POST /admin/setup/channels` — save enabled channel selection `{ "channels": ["channel-chat", "channel-discord"] }`
 - `POST /admin/setup/complete` — finalize setup wizard (marks `setupComplete: true`)
-- `GET /admin/setup/health-check` — run health checks against gateway and OpenCode; returns `{ gateway: boolean, opencode: boolean }`
+- `GET /admin/setup/health-check` — run health checks against gateway, OpenCode, and OpenMemory; returns `{ services: { gateway, opencodeCore, openmemory, admin } }`
 
 ### Gallery (extension marketplace)
 - `GET /admin/gallery/search?q=&category=` — search curated gallery registry
