@@ -276,10 +276,10 @@ const server = Bun.serve({
             "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
             admin: { label: "Admin Panel", description: "This management interface" },
             "channel-chat": { label: "Chat Channel", description: "Web chat interface" },
-            "channel-discord": { label: "Discord Channel", description: "Discord bot integration" },
+            "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
             "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
-            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot integration" },
-            caddy: { label: "Web Server", description: "Handles secure traffic routing" }
+            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
+            caddy: { label: "Web Server", description: "Handles secure connections" }
           },
           channelFields: {
             "channel-chat": [
