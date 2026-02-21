@@ -133,14 +133,6 @@ Channel configuration values in `stack-spec` can reference secrets directly with
 - `POST /admin/secrets` — create or update a secret `{ "name": "MY_SECRET", "value": "..." }` (auth required)
 - `POST /admin/secrets/delete` — delete a secret `{ "name": "MY_SECRET" }` (auth required; fails with `secret_in_use` if referenced by a channel config)
 
-### Providers
-- `GET /admin/providers` — list all providers with masked API keys (auth required)
-- `POST /admin/providers` — create a provider `{ "name": "...", "url": "...", "apiKey": "..." }` (auth required)
-- `POST /admin/providers/update` — update a provider `{ "id": "...", "name?": "...", "url?": "...", "apiKey?": "..." }` (auth required)
-- `POST /admin/providers/delete` — delete a provider `{ "id": "..." }` (auth required; restarts affected services)
-- `POST /admin/providers/models` — fetch available models from a provider `{ "providerId": "..." }` (auth required)
-- `POST /admin/providers/assign` — assign a model to a role `{ "role": "small" | "openmemory", "providerId": "...", "modelId": "..." }` (auth required)
-
 ### Automations
 Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. Generated schedules are written to `cron.d.enabled/` and `cron.d.disabled/` with a combined `cron.schedule` render used for crontab loading. The API routes use `/admin/automations`.
 

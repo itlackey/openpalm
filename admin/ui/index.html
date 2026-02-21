@@ -113,12 +113,6 @@ let currentPage = 'extensions';
 let automations = [];
 let automationEditId = null;
 
-/* Providers state */
-let providersList = [];
-let providerAssignments = {};
-let providerModels = [];
-let selectedProviderId = '';
-
 const BASE = '';
 const ADMIN_PREFIX = '/admin/';
 const ADMIN_API_PREFIX = '/admin/api/';
@@ -821,19 +815,11 @@ async function loadSystem() {
   h += '<button class="secondary" onclick="runSetup()">Open Setup Wizard</button>';
   h += '</div>';
 
-  /* Providers */
-  h += '<div class="card" id="providers-section">';
-  h += renderProvidersSection();
-  h += '</div>';
-
   /* Advanced Configuration (collapsed) */
   const status = await api('/admin/setup/status');
   const svc = status.ok && status.data && status.data.serviceInstances
     ? status.data.serviceInstances
     : { openmemory: '', psql: '', qdrant: '' };
-  const openmemoryProvider = status.ok && status.data && status.data.openmemoryProvider
-    ? status.data.openmemoryProvider
-    : { openaiBaseUrl: '', openaiApiKeyConfigured: false };
 
   h += '<div class="card">';
   h += '<h3 style="cursor:pointer;user-select:none" onclick="toggleCollapse(this)">';
@@ -854,15 +840,6 @@ async function loadSystem() {
   h += '<div class="field-group">';
   h += '<label>Search service address</label>';
   h += '<input id="set-qdrant-url" placeholder="http://qdrant:6333" value="' + esc(svc.qdrant || '') + '" />';
-  h += '</div>';
-  h += '<div class="field-group">';
-  h += '<label>AI model endpoint for memory</label>';
-  h += '<input id="set-openmemory-openai-base" placeholder="https://api.openai.com/v1" value="' + esc(openmemoryProvider.openaiBaseUrl || '') + '" />';
-  h += '</div>';
-  h += '<div class="field-group">';
-  h += '<label>AI model API key for memory</label>';
-  h += '<input id="set-openmemory-openai-key" type="password" placeholder="sk-..." value="" />';
-  h += '<div class="help-text">' + (openmemoryProvider.openaiApiKeyConfigured ? 'API key already configured. Leave blank to keep current key.' : 'Leave blank if not using an external AI model for memory.') + '</div>';
   h += '</div>';
   h += '<div id="advanced-save-confirm"></div>';
   h += '<button onclick="confirmSaveServiceInstances()">Save Configuration</button>';
@@ -905,180 +882,6 @@ async function loadSystem() {
 
   el.innerHTML = h;
 
-  /* Now load providers data */
-  await loadProvidersData();
-}
-
-/* ── Providers (embedded in System) ───────────────────── */
-async function loadProvidersData() {
-  const r = await api('/admin/providers');
-  if (r.ok) {
-    providersList = r.data.providers || [];
-    providerAssignments = r.data.assignments || {};
-  }
-  const section = document.getElementById('providers-section');
-  if (section) {
-    section.innerHTML = renderProvidersSection();
-  }
-}
-
-function renderProvidersSection() {
-  let h = '<h3>Providers</h3>';
-  h += '<p class="muted" style="font-size:13px">Manage AI provider connections and assign models to roles.</p>';
-
-  h += '<div style="margin-bottom:1rem;padding:.8rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">';
-  h += '<strong style="font-size:14px">Add Provider</strong>';
-  h += '<div class="grid3" style="margin-top:.5rem">';
-  h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">Name</label>';
-  h += '<input id="prov-name" placeholder="e.g. OpenAI, Ollama" /></div>';
-  h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">Base URL</label>';
-  h += '<input id="prov-url" placeholder="https://api.openai.com/v1" /></div>';
-  h += '<div><label style="display:block;font-size:13px;margin-bottom:.2rem">API Key</label>';
-  h += '<input id="prov-key" type="password" placeholder="sk-..." /></div>';
-  h += '</div>';
-  h += '<div style="margin-top:.5rem"><button class="sm" onclick="addProvider()">Add Provider</button></div>';
-  h += '</div>';
-
-  if (providersList.length === 0) {
-    h += '<p class="muted" style="font-size:13px">No providers configured yet. Add one above to get started.</p>';
-  } else {
-    h += '<div class="grid2">';
-    for (let pi = 0; pi < providersList.length; pi++) {
-      const p = providersList[pi];
-      const isSmall = providerAssignments.small && providerAssignments.small.providerId === p.id;
-      const isOpenmemory = providerAssignments.openmemory && providerAssignments.openmemory.providerId === p.id;
-      h += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem">';
-      h += '<div style="display:flex;justify-content:space-between;align-items:start">';
-      h += '<strong>' + esc(p.name) + '</strong>';
-      h += '<button class="danger sm" onclick="deleteProvider(\'' + jsStr(p.id) + '\')">Delete</button>';
-      h += '</div>';
-      h += '<div class="muted" style="font-size:12px;margin:.2rem 0">' + esc(p.url || 'No URL') + '</div>';
-      h += '<div class="muted" style="font-size:12px">Key: ' + (p.apiKey ? '------' : 'none') + '</div>';
-      if (isSmall) h += '<div style="margin-top:.3rem"><span class="badge badge-low">Small Model</span> ' + esc(providerAssignments.small.modelId) + '</div>';
-      if (isOpenmemory) h += '<div style="margin-top:.3rem"><span class="badge badge-medium">Memory Model</span> ' + esc(providerAssignments.openmemory.modelId) + '</div>';
-      h += '<div style="margin-top:.4rem;display:flex;gap:.3rem;flex-wrap:wrap">';
-      h += '<button class="secondary sm" onclick="fetchModels(\'' + jsStr(p.id) + '\')">Fetch Models</button>';
-      h += '<button class="secondary sm" onclick="editProvider(\'' + jsStr(p.id) + '\')">Edit</button>';
-      h += '</div>';
-      h += '<div id="provider-delete-confirm-' + esc(p.id) + '"></div>';
-      h += '</div>';
-    }
-    h += '</div>';
-  }
-
-  h += '<div id="provider-models-section"></div>';
-  return h;
-}
-
-async function addProvider() {
-  const name = document.getElementById('prov-name') ? document.getElementById('prov-name').value.trim() : '';
-  const url = document.getElementById('prov-url') ? document.getElementById('prov-url').value.trim() : '';
-  const apiKey = document.getElementById('prov-key') ? document.getElementById('prov-key').value.trim() : '';
-  if (!name) { showToast('Provider name is required.', 'error'); return; }
-  const r = await api('/admin/providers', { method: 'POST', body: JSON.stringify({ name: name, url: url, apiKey: apiKey }) });
-  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
-  showToast('Provider added.', 'success');
-  await loadProvidersData();
-}
-
-async function deleteProvider(id) {
-  showInlineConfirm('provider-delete-confirm-' + id,
-    'Delete this provider? Any model assignments will be removed.',
-    async function() {
-      const r = await api('/admin/providers/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
-      if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
-      showToast('Provider deleted.', 'success');
-      await loadProvidersData();
-    }
-  );
-}
-
-function editProvider(id) {
-  const p = providersList.find(function(x) { return x.id === id; });
-  if (!p) return;
-  const el = document.getElementById('modal-overlay');
-  let h = '<div class="modal">';
-  h += '<h3>Edit Provider: ' + esc(p.name) + '</h3>';
-  h += '<div class="field-group">';
-  h += '<label>Name</label>';
-  h += '<input id="edit-prov-name" value="' + esc(p.name) + '" />';
-  h += '</div>';
-  h += '<div class="field-group">';
-  h += '<label>Base URL</label>';
-  h += '<input id="edit-prov-url" value="' + esc(p.url) + '" />';
-  h += '</div>';
-  h += '<div class="field-group">';
-  h += '<label>API Key</label>';
-  h += '<input id="edit-prov-key" type="password" placeholder="Leave blank to keep current" />';
-  h += '</div>';
-  h += '<div style="margin-top:1rem;display:flex;gap:.5rem">';
-  h += '<button onclick="saveProviderEdit(\'' + jsStr(id) + '\')">Save</button>';
-  h += '<button class="secondary" onclick="closeModal()">Cancel</button>';
-  h += '</div></div>';
-  el.innerHTML = h;
-  el.classList.remove('hidden');
-}
-
-async function saveProviderEdit(id) {
-  const name = document.getElementById('edit-prov-name') ? document.getElementById('edit-prov-name').value.trim() : '';
-  const url = document.getElementById('edit-prov-url') ? document.getElementById('edit-prov-url').value.trim() : '';
-  const apiKey = document.getElementById('edit-prov-key') ? document.getElementById('edit-prov-key').value.trim() : '';
-  const payload = { id: id };
-  if (name) payload.name = name;
-  if (url !== undefined) payload.url = url;
-  if (apiKey) payload.apiKey = apiKey;
-  const r = await api('/admin/providers/update', { method: 'POST', body: JSON.stringify(payload) });
-  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
-  closeModal();
-  showToast('Provider updated.', 'success');
-  await loadProvidersData();
-}
-
-async function fetchModels(providerId) {
-  selectedProviderId = providerId;
-  const section = document.getElementById('provider-models-section');
-  if (!section) return;
-  section.innerHTML = '<div style="padding:.5rem"><p class="muted">Fetching models...</p></div>';
-  const r = await api('/admin/providers/models', { method: 'POST', body: JSON.stringify({ providerId: providerId }) });
-  if (!r.ok) {
-    section.innerHTML = '<div style="padding:.5rem;border:1px solid var(--red);border-radius:var(--radius)"><p style="color:var(--red);font-size:13px">Failed to fetch models: ' + esc(friendlyError(r.data ? (r.data.message || r.data.error) : 'Unknown error')) + '</p></div>';
-    return;
-  }
-  providerModels = r.data.models || [];
-  renderModelSelection();
-}
-
-function renderModelSelection() {
-  const section = document.getElementById('provider-models-section');
-  if (!section) return;
-  const p = providersList.find(function(x) { return x.id === selectedProviderId; });
-  if (!p || !providerModels.length) {
-    section.innerHTML = '<div style="padding:.5rem"><p class="muted">No models found for this provider.</p></div>';
-    return;
-  }
-  let h = '<div style="margin-top:.8rem"><strong>Available Models from ' + esc(p.name) + '</strong>';
-  h += '<p class="muted" style="font-size:13px">Select a model and assign it to a role.</p>';
-  h += '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);margin:.5rem 0">';
-  for (let mi = 0; mi < providerModels.length; mi++) {
-    const m = providerModels[mi];
-    h += '<div style="padding:.4rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
-    h += '<span style="font-size:14px">' + esc(m.id) + '</span>';
-    h += '<span style="display:flex;gap:.3rem">';
-    h += '<button class="sm" onclick="assignModel(\'' + jsStr(m.id) + '\',\'small\')">Set Small</button>';
-    h += '<button class="secondary sm" onclick="assignModel(\'' + jsStr(m.id) + '\',\'openmemory\')">Set Memory</button>';
-    h += '</span>';
-    h += '</div>';
-  }
-  h += '</div></div>';
-  section.innerHTML = h;
-}
-
-async function assignModel(modelId, role) {
-  const r = await api('/admin/providers/assign', { method: 'POST', body: JSON.stringify({ role: role, providerId: selectedProviderId, modelId: modelId }) });
-  if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
-  providerAssignments = r.data.assignments || {};
-  showToast('Model "' + modelId + '" assigned as ' + role + '. Your assistant will restart to apply changes.', 'success');
-  await loadProvidersData();
 }
 
 /* ── Settings (Authentication) ────────────────────────── */
@@ -1108,10 +911,7 @@ async function saveServiceInstances() {
   const openmemory = document.getElementById('set-openmemory-url') ? document.getElementById('set-openmemory-url').value : '';
   const psql = document.getElementById('set-psql-url') ? document.getElementById('set-psql-url').value : '';
   const qdrant = document.getElementById('set-qdrant-url') ? document.getElementById('set-qdrant-url').value : '';
-  const openaiBaseUrl = document.getElementById('set-openmemory-openai-base') ? document.getElementById('set-openmemory-openai-base').value : '';
-  const openaiApiKey = document.getElementById('set-openmemory-openai-key') ? document.getElementById('set-openmemory-openai-key').value : '';
-  const payload = { openmemory: openmemory, psql: psql, qdrant: qdrant, openaiBaseUrl: openaiBaseUrl };
-  if (openaiApiKey.trim()) payload.openaiApiKey = openaiApiKey.trim();
+  const payload = { openmemory: openmemory, psql: psql, qdrant: qdrant };
   const r = await api('/admin/setup/service-instances', { method: 'POST', body: JSON.stringify(payload) });
   if (!r.ok) { showToast('Failed: ' + friendlyError(r.data ? r.data.error : 'Unknown error'), 'error'); return; }
   showToast('Configuration saved.', 'success');

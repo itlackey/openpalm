@@ -6,13 +6,11 @@ import { SetupManager } from "./setup.ts";
 import { ensureCronDirs, syncAutomations, triggerAutomation } from "./automations.ts";
 import { getLatestRun, readHistory } from "./automation-history.ts";
 import { validateCron } from "@openpalm/lib/admin/cron.ts";
-import { ProviderStore } from "./provider-store.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
 import { BuiltInChannelNames, BuiltInChannelConfigKeys, isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 import { allowedServiceSet, composeAction, composeList, composeLogs, composePull, composeServiceNames } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack, previewComposeOperations } from "@openpalm/lib/admin/stack-apply-engine.ts";
-import type { ModelAssignment } from "./types.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
@@ -54,7 +52,6 @@ function isValidChannelService(service: string): boolean {
 }
 
 const setupManager = new SetupManager(DATA_DIR);
-const providerStore = new ProviderStore(DATA_DIR);
 const stackManager = new StackManager({
   stateRootPath: STATE_ROOT,
   caddyfilePath: CADDYFILE_PATH,
@@ -237,34 +234,6 @@ function applySmallModelToOpencodeConfig(endpoint: string, modelId: string) {
   writeFileSync(OPENCODE_CONFIG_PATH, next, "utf8");
 }
 
-function applyProviderAssignment(role: ModelAssignment, providerUrl: string, providerApiKey: string, modelId: string) {
-  if (role === "small") {
-    const secretKey = "OPENPALM_SMALL_MODEL_API_KEY";
-    updateSecretsEnv({ [secretKey]: providerApiKey || undefined });
-    applySmallModelToOpencodeConfig(providerUrl, modelId);
-    setupManager.setSmallModel({ endpoint: providerUrl, modelId });
-  } else if (role === "openmemory") {
-    updateSecretsEnv({
-      OPENAI_BASE_URL: providerUrl || undefined,
-      OPENAI_API_KEY: providerApiKey || undefined,
-    });
-  }
-}
-
-async function fetchModelsFromProvider(url: string, apiKey: string): Promise<{ id: string; object?: string }[]> {
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { throw new Error("invalid provider URL"); }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("provider URL must use http or https");
-  const modelsUrl = url.replace(/\/+$/, "") + "/models";
-  const headers: Record<string, string> = { "accept": "application/json" };
-  if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
-  const resp = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) throw new Error(`provider returned status ${resp.status}`);
-  const body = await resp.json() as { data?: { id: string; object?: string }[] };
-  if (!Array.isArray(body.data)) throw new Error("unexpected response format: missing data array");
-  return body.data;
-}
-
 async function checkServiceHealth(url: string, expectJson = true): Promise<{ ok: boolean; time?: string; error?: string }> {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -307,10 +276,10 @@ const server = Bun.serve({
             "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
             admin: { label: "Admin Panel", description: "This management interface" },
             "channel-chat": { label: "Chat Channel", description: "Web chat interface" },
-            "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
+            "channel-discord": { label: "Discord Channel", description: "Discord bot integration" },
             "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
-            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
-            caddy: { label: "Web Server", description: "Handles secure connections" }
+            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot integration" },
+            caddy: { label: "Web Server", description: "Handles secure traffic routing" }
           },
           channelFields: {
             "channel-chat": [
@@ -752,89 +721,6 @@ const server = Bun.serve({
         const rawLimit = Number(url.searchParams.get("limit") ?? 20);
         const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20;
         return cors(json(200, { history: readHistory(id, limit) }));
-      }
-
-      // ── Providers ─────────────────────────────────────────────
-      if (url.pathname === "/admin/providers" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const providers = providerStore.listProviders().map((p) => ({
-          ...p,
-          apiKey: p.apiKey ? "••••••" : "",
-        }));
-        const state = providerStore.getState();
-        return cors(json(200, { providers, assignments: state.assignments }));
-      }
-
-      if (url.pathname === "/admin/providers" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { name?: string; url?: string; apiKey?: string };
-        if (!body.name) return cors(json(400, { error: "name is required" }));
-        const provider = providerStore.addProvider({
-          name: body.name,
-          url: body.url ?? "",
-          apiKey: body.apiKey ?? "",
-        });
-        return cors(json(201, { ok: true, provider: { ...provider, apiKey: provider.apiKey ? "••••••" : "" } }));
-      }
-
-      if (url.pathname === "/admin/providers/update" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string; name?: string; url?: string; apiKey?: string };
-        if (!body.id) return cors(json(400, { error: "id is required" }));
-        const { id, ...fields } = body;
-        const updated = providerStore.updateProvider(id, fields);
-        if (!updated) return cors(json(404, { error: "provider not found" }));
-        return cors(json(200, { ok: true, provider: { ...updated, apiKey: updated.apiKey ? "••••••" : "" } }));
-      }
-
-      if (url.pathname === "/admin/providers/delete" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { id?: string };
-        if (!body.id) return cors(json(400, { error: "id is required" }));
-        // Capture which roles used this provider before removal
-        const stateBefore = providerStore.getState();
-        const affectedRoles = Object.entries(stateBefore.assignments)
-          .filter(([, assignment]) => assignment.providerId === body.id)
-          .map(([role]) => role);
-        const removed = providerStore.removeProvider(body.id);
-        if (!removed) return cors(json(404, { error: "provider not found" }));
-        // Restart services that depended on the deleted provider
-        for (const role of affectedRoles) {
-          if (role === "small" || role === "openmemory") {
-            await composeAction("restart", "assistant");
-          }
-          if (role === "openmemory") {
-            await composeAction("restart", "openmemory");
-          }
-        }
-        return cors(json(200, { ok: true, deleted: body.id }));
-      }
-
-      if (url.pathname === "/admin/providers/models" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { providerId?: string };
-        if (!body.providerId) return cors(json(400, { error: "providerId is required" }));
-        const provider = providerStore.getProvider(body.providerId);
-        if (!provider) return cors(json(404, { error: "provider not found" }));
-        try {
-          const models = await fetchModelsFromProvider(provider.url, provider.apiKey);
-          return cors(json(200, { ok: true, models }));
-        } catch (e) {
-          return cors(json(502, { error: "failed to fetch models", message: e instanceof Error ? e.message : String(e) }));
-        }
-      }
-
-      if (url.pathname === "/admin/providers/assign" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
-        const body = (await req.json()) as { role?: string; providerId?: string; modelId?: string };
-        if (!body.role || !body.providerId || !body.modelId) return cors(json(400, { error: "role, providerId, and modelId are required" }));
-        if (body.role !== "small" && body.role !== "openmemory") return cors(json(400, { error: "role must be 'small' or 'openmemory'" }));
-        const provider = providerStore.getProvider(body.providerId);
-        if (!provider) return cors(json(404, { error: "provider not found" }));
-        const state = providerStore.assignModel(body.role as ModelAssignment, body.providerId, body.modelId);
-        applyProviderAssignment(body.role as ModelAssignment, provider.url, provider.apiKey, body.modelId);
-        await composeAction("restart", "assistant");
-        return cors(json(200, { ok: true, assignments: state.assignments }));
       }
 
       // ── Config editor ─────────────────────────────────────────────

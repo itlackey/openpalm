@@ -10,7 +10,7 @@ describe("contract: admin API docs", () => {
     expect(docs.includes("/admin/secrets")).toBe(true);
     expect(docs.includes("/admin/connections")).toBe(false);
     expect(docs.includes("/admin/automations")).toBe(true);
-    expect(docs.includes("/admin/providers")).toBe(true);
+    expect(docs.includes("/admin/providers")).toBe(false);
     expect(docs.includes("/admin/stack/spec")).toBe(true);
   });
 

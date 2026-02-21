@@ -1,6 +1,6 @@
 # Extensions Guide
 
-OpenPalm supports all OpenCode extension types: **plugins**, **agents**, **commands**, **skills**, **tools**, and **providers**. These extensions add new capabilities to your assistant — behavioral rules, slash commands, specialized agent personas, custom callable tools, and lifecycle plugins that hook into the runtime.
+OpenPalm supports all OpenCode extension types: **plugins**, **agents**, **commands**, **skills**, and **tools**. These extensions add new capabilities to your assistant — behavioral rules, slash commands, specialized agent personas, custom callable tools, and lifecycle plugins that hook into the runtime.
 
 ## Extension types
 
@@ -11,7 +11,6 @@ OpenPalm supports all OpenCode extension types: **plugins**, **agents**, **comma
 | **Agent** | A Markdown file defining a specialized assistant persona with its own tool access and system prompt. |
 | **Tool** | A TypeScript module exposing a callable function to the assistant. Can make network requests, read files, and interact with services. |
 | **Plugin** | A TypeScript module that hooks into the OpenCode lifecycle. Can intercept, block, or augment tool execution and inject context. |
-| **Provider** | An AI provider configuration (OpenAI, Anthropic, or any OpenAI-compatible endpoint) with model and API key settings. |
 
 ## What the admin UI and CLI manage
 
@@ -42,9 +41,9 @@ and add them to the `plugin[]` array in:
 
 Changes take effect after restarting `assistant`.
 
-## Providers
+## Provider configuration
 
-Providers are configured via the admin UI under Settings, or by editing the `opencode.json` config directly. Each provider entry specifies a base URL and API key, which are stored in `secrets.env` and referenced via `{env:VAR_NAME}` interpolation in the config file. The admin API also supports listing, creating, updating, and deleting providers at `/admin/providers`.
+Provider detection and initial setup are handled by the install/setup flow. Ongoing provider configuration should be managed directly in `opencode.json` and `secrets.env`.
 
 ## Built-in extensions
 
