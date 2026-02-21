@@ -32,7 +32,11 @@ const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env
 const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/stack-spec.json`;
 const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
-const KNOWN_SERVICES = allowedServiceSet();
+function knownServices(): Set<string> {
+  const base = allowedServiceSet();
+  for (const svc of allChannelServiceNames()) base.add(svc);
+  return base;
+}
 
 function channelEnvKeys(channelName: string): string[] {
   if (isBuiltInChannel(channelName)) {
@@ -592,7 +596,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
-        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
+        if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await composeAction("up", body.service);
         return cors(json(200, { ok: true, action: "up", service: body.service }));
       }
@@ -600,7 +604,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/down" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
-        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
+        if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await composeAction("down", body.service);
         return cors(json(200, { ok: true, action: "down", service: body.service }));
       }
@@ -608,7 +612,7 @@ const server = Bun.serve({
       if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { service: string };
-        if (!body.service || !KNOWN_SERVICES.has(body.service)) return cors(json(400, { error: "unknown service name" }));
+        if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await composeAction("restart", body.service);
         return cors(json(200, { ok: true, action: "restart", service: body.service }));
       }

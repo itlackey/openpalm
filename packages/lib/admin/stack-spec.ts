@@ -9,9 +9,6 @@ export type ChannelExposure = "host" | "lan" | "public";
 /** Built-in channel names that have known defaults for image, port, and config keys. */
 export type BuiltInChannelName = "chat" | "discord" | "voice" | "telegram";
 
-/** @deprecated Use string keys with isBuiltInChannel() for new code. Kept for backward compatibility. */
-export type StackChannelName = BuiltInChannelName;
-
 export type StackChannelConfig = {
   enabled: boolean;
   exposure: ChannelExposure;

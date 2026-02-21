@@ -72,6 +72,22 @@ function enabledChannelServices(manager: StackManager): string[] {
   return manager.enabledChannelServiceNames();
 }
 
+function parseComposeServiceNames(composeContent: string): Set<string> {
+  const names = new Set<string>();
+  const lines = composeContent.split(/\r?\n/);
+  let inServices = false;
+  for (const line of lines) {
+    if (!inServices) {
+      if (line.trim() === "services:") inServices = true;
+      continue;
+    }
+    if (/^[^\s#]/.test(line) && line.trim() !== "") break;
+    const match = /^\s{2}([a-zA-Z0-9_-]+):\s*$/.exec(line);
+    if (match) names.add(match[1]);
+  }
+  return names;
+}
+
 function deriveImpact(manager: StackManager, existing: ExistingArtifacts, generated: ReturnType<StackManager["renderPreview"]>): StackImpact {
   const caddyChanged =
     existing.caddyfile !== generated.caddyfile ||
@@ -93,7 +109,19 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
   const impact = computeImpactFromChanges(changed);
   if (existing.composeFile !== generated.composeFile) {
     impact.restart = Array.from(new Set([...impact.restart, "gateway", "opencode-core", "openmemory", "admin"]));
+
+    // Services that exist in generated but not in existing need 'up', not 'restart'
+    const existingServices = parseComposeServiceNames(existing.composeFile);
+    const generatedServices = parseComposeServiceNames(generated.composeFile);
+    for (const svc of generatedServices) {
+      if (!existingServices.has(svc)) impact.up.push(svc);
+    }
   }
+
+  // Move any new services from restart to up (up takes precedence)
+  const upSet = new Set(impact.up);
+  impact.restart = impact.restart.filter((svc) => !upSet.has(svc));
+
   return impact;
 }
 
@@ -115,6 +143,10 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
 
   if (options?.apply ?? true) {
     manager.renderArtifacts();
+    for (const service of impact.up) {
+      const result = await composeAction("up", service);
+      if (!result.ok) throw new Error(`compose_up_failed:${service}:${result.stderr}`);
+    }
     for (const service of impact.restart) {
       const result = await composeAction("restart", service);
       if (!result.ok) throw new Error(`compose_restart_failed:${service}:${result.stderr}`);

@@ -115,7 +115,7 @@ describe("stack generator", () => {
     expect(out.caddyRoutes["channels/public-api.caddy"]).toBeUndefined();
   });
 
-  it("generates tls internal for non-public domain channels", () => {
+  it("generates tls internal and IP guard for lan domain channels", () => {
     const spec = createDefaultStackSpec();
     spec.channels["admin-panel"] = {
       enabled: true,
@@ -128,6 +128,43 @@ describe("stack generator", () => {
     const out = generateStackArtifacts(spec, {});
     expect(out.caddyfile).toContain("admin.local {");
     expect(out.caddyfile).toContain("tls internal");
+    expect(out.caddyfile).toContain("@not_lan not remote_ip");
+    expect(out.caddyfile).toContain("abort @not_lan");
+  });
+
+  it("generates tls internal and host guard for host domain channels", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels["debug-panel"] = {
+      enabled: true,
+      exposure: "host",
+      image: "debug:latest",
+      containerPort: 3000,
+      domains: ["debug.local"],
+      config: {},
+    };
+    const out = generateStackArtifacts(spec, {});
+    expect(out.caddyfile).toContain("debug.local {");
+    expect(out.caddyfile).toContain("tls internal");
+    expect(out.caddyfile).toContain("@not_host not remote_ip 127.0.0.0/8 ::1");
+    expect(out.caddyfile).toContain("abort @not_host");
+  });
+
+  it("no IP guard for public domain channels", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels["public-api"] = {
+      enabled: true,
+      exposure: "public",
+      image: "api:latest",
+      containerPort: 9000,
+      domains: ["api.example.com"],
+      config: {},
+    };
+    const out = generateStackArtifacts(spec, {});
+    expect(out.caddyfile).toContain("api.example.com {");
+    expect(out.caddyfile).not.toContain("tls internal");
+    // Public domain block should not contain abort directives
+    const domainBlock = out.caddyfile.split("api.example.com {")[1].split("}")[0];
+    expect(domainBlock).not.toContain("abort");
   });
 
   it("includes caddy email in global block when configured", () => {
@@ -175,7 +212,7 @@ describe("stack generator", () => {
     expect(out.channelsEnv).toContain("SLACK_TOKEN=xoxb-test");
   });
 
-  it("generates path-based routes for custom channels without domains", () => {
+  it("generates path-based routes for custom channels without domains using handle_path", () => {
     const spec = createDefaultStackSpec();
     spec.channels["webhook"] = {
       enabled: true,
@@ -185,8 +222,46 @@ describe("stack generator", () => {
       config: {},
     };
     const out = generateStackArtifacts(spec, {});
-    expect(out.caddyRoutes["channels/webhook.caddy"]).toContain("handle /channels/webhook*");
+    expect(out.caddyRoutes["channels/webhook.caddy"]).toContain("handle_path /channels/webhook*");
     expect(out.caddyRoutes["channels/webhook.caddy"]).toContain("reverse_proxy channel-webhook:8600");
     expect(out.caddyRoutes["channels/webhook.caddy"]).toContain("abort @not_lan");
+    // Custom channels should NOT have a rewrite directive (handle_path strips prefix)
+    expect(out.caddyRoutes["channels/webhook.caddy"]).not.toContain("rewrite");
+  });
+
+  it("uses handle+rewrite for built-in channels (not handle_path)", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    expect(out.caddyRoutes["channels/chat.caddy"]).toContain("handle /channels/chat*");
+    expect(out.caddyRoutes["channels/chat.caddy"]).toContain("rewrite * /chat");
+  });
+
+  it("includes admin service env vars needed for compose and service discovery", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    expect(out.composeFile).toContain("GATEWAY_URL=http://gateway:8080");
+    expect(out.composeFile).toContain("OPENCODE_CORE_URL=http://opencode-core:4096");
+    expect(out.composeFile).toContain("OPENPALM_COMPOSE_BIN=");
+    expect(out.composeFile).toContain("OPENPALM_COMPOSE_SUBCOMMAND=");
+    expect(out.composeFile).toContain("OPENPALM_CONTAINER_SOCKET_URI=");
+  });
+
+  it("includes healthchecks for core services", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:4096/\"]");
+    expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]");
+    expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]");
+  });
+
+  it("produces clean compose output with no channels enabled", () => {
+    const spec = createDefaultStackSpec();
+    for (const name of Object.keys(spec.channels)) {
+      spec.channels[name].enabled = false;
+    }
+    const out = generateStackArtifacts(spec, {});
+    expect(out.composeFile).toContain("networks:");
+    // Should not have triple blank lines
+    expect(out.composeFile).not.toContain("\n\n\n\n");
   });
 });

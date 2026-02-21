@@ -68,14 +68,21 @@ function renderChannelRoute(name: string, spec: StackSpec): string {
   const containerPort = resolveChannelPort(name, cfg);
   const svcName = `channel-${composeServiceName(name)}`;
 
-  const rewritePath = isBuiltInChannel(name)
-    ? BuiltInChannelRewritePaths[name]
-    : (cfg.pathPrefixes?.[0] ?? `/${name}`);
+  if (isBuiltInChannel(name)) {
+    const rewritePath = BuiltInChannelRewritePaths[name];
+    const lines = [`handle /channels/${name}* {`];
+    if (cfg.exposure === "lan") lines.push("\tabort @not_lan");
+    if (cfg.exposure === "host") lines.push("\tabort @not_host");
+    lines.push(`\trewrite * ${rewritePath}`);
+    lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
+    lines.push("}");
+    return `${lines.join("\n")}\n`;
+  }
 
-  const lines = [`handle /channels/${name}* {`];
+  // Custom channels: strip the /channels/{name} prefix and forward the rest of the path
+  const lines = [`handle_path /channels/${name}* {`];
   if (cfg.exposure === "lan") lines.push("\tabort @not_lan");
   if (cfg.exposure === "host") lines.push("\tabort @not_host");
-  lines.push(`\trewrite * ${rewritePath}`);
   lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
   lines.push("}");
   return `${lines.join("\n")}\n`;
@@ -83,6 +90,7 @@ function renderChannelRoute(name: string, spec: StackSpec): string {
 
 function renderDomainBlocks(spec: StackSpec): string {
   const blocks: string[] = [];
+  const lanMatcher = renderLanMatcher(spec.accessScope);
 
   for (const [name, cfg] of Object.entries(spec.channels)) {
     if (!cfg.enabled) continue;
@@ -98,6 +106,14 @@ function renderDomainBlocks(spec: StackSpec): string {
     const useInternalTls = cfg.exposure !== "public";
     if (useInternalTls) {
       lines.push("\ttls internal");
+    }
+
+    if (cfg.exposure === "lan") {
+      lines.push(`\t@not_lan not remote_ip ${lanMatcher}`);
+      lines.push("\tabort @not_lan");
+    } else if (cfg.exposure === "host") {
+      lines.push("\t@not_host not remote_ip 127.0.0.0/8 ::1");
+      lines.push("\tabort @not_host");
     }
 
     for (const p of paths) {
@@ -272,6 +288,12 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
     "    networks: [assistant_net]",
     "    depends_on: [openmemory]",
+    "    healthcheck:",
+    "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:4096/\"]",
+    "      interval: 30s",
+    "      timeout: 10s",
+    "      retries: 5",
+    "      start_period: 30s",
     "",
     "  gateway:",
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}",
@@ -286,6 +308,12 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
     "    networks: [assistant_net]",
     "    depends_on: [opencode-core]",
+    "    healthcheck:",
+    "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]",
+    "      interval: 30s",
+    "      timeout: 5s",
+    "      retries: 3",
+    "      start_period: 10s",
     "",
     "  admin:",
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
@@ -293,6 +321,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    environment:",
     "      - PORT=8100",
     "      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}",
+    "      - GATEWAY_URL=http://gateway:8080",
+    "      - OPENCODE_CORE_URL=http://opencode-core:4096",
+    "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
+    "      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
+    "      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}:/data",
     "      - ${OPENPALM_CONFIG_HOME}:/config",
@@ -301,9 +334,14 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
     "    networks: [assistant_net]",
     "    depends_on: [gateway, opencode-core]",
+    "    healthcheck:",
+    "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]",
+    "      interval: 30s",
+    "      timeout: 5s",
+    "      retries: 3",
+    "      start_period: 10s",
     "",
-    channelServices.trimEnd(),
-    "",
+    ...(channelServices.length > 0 ? [channelServices.trimEnd(), ""] : []),
     "networks:",
     "  assistant_net:",
     "",
