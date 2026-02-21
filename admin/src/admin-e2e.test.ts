@@ -442,14 +442,15 @@ describe("channel config secret references", () => {
   it("accepts host exposure in stack spec", async () => {
     const current = await authed("/admin/stack/spec");
     const spec = current.data.spec as Record<string, unknown>;
-    const channels = (spec.channels as Record<string, Record<string, unknown>>);
+    const channels = structuredClone(spec.channels as Record<string, { enabled: boolean; exposure: string; config: Record<string, string> }>);
+
+    for (const channel of ["chat", "discord", "voice", "telegram"] as const) {
+      channels[channel].config = Object.fromEntries(Object.keys(channels[channel].config).map((key) => [key, ""]));
+    }
+
     channels.chat = {
       ...channels.chat,
       exposure: "host",
-      config: {
-        ...(channels.chat.config as Record<string, string>),
-        CHAT_INBOUND_TOKEN: "",
-      },
     };
 
     const save = await authed("/admin/stack/spec", {

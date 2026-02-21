@@ -83,6 +83,11 @@ export function syncAutomations(automations: StackAutomation[]): void {
   try {
     execSync(`crontab ${combinedSchedulePath}`, { stdio: "pipe" });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("crontab: not found")) {
+      console.warn("crontab reload skipped: binary not available in this environment");
+      return;
+    }
     console.error("crontab reload failed", error);
   }
 }
