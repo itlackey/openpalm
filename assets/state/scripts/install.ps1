@@ -171,7 +171,22 @@ try {
 
   $OpenPalmContainerPlatform = if ($env:OPENPALM_CONTAINER_PLATFORM) { $env:OPENPALM_CONTAINER_PLATFORM } else { Detect-Runtime }
   if (-not $OpenPalmContainerPlatform) {
-    throw "No supported container runtime detected. Install Docker Desktop or Podman, then rerun."
+    Write-Host ""
+    Write-Host "  No container runtime found" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  OpenPalm runs inside containers and needs Docker Desktop (recommended)"
+    Write-Host "  or Podman installed first."
+    Write-Host ""
+    Write-Host "  Download Docker Desktop (free for personal use):"
+    Write-Host "    https://www.docker.com/products/docker-desktop/" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Or install via winget:"
+    Write-Host "    winget install Docker.DockerDesktop" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  After installing, open Docker Desktop and wait for it to start,"
+    Write-Host "  then rerun this installer."
+    Write-Host ""
+    exit 1
   }
 
   $OpenPalmComposeBin = ""
@@ -199,11 +214,40 @@ try {
   }
 
   if (-not (Get-Command $OpenPalmComposeBin -ErrorAction SilentlyContinue)) {
-    throw "Container CLI '$OpenPalmComposeBin' not found for runtime '$OpenPalmContainerPlatform'. Install Docker Desktop or Podman, ensure CLI is in PATH, and rerun."
+    Write-Host ""
+    Write-Host "  Container CLI '$OpenPalmComposeBin' not found in PATH." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Open Docker Desktop and wait for it to finish starting,"
+    Write-Host "  then rerun this installer."
+    Write-Host ""
+    Write-Host "  If Docker Desktop is not installed:"
+    Write-Host "    https://www.docker.com/products/docker-desktop/" -ForegroundColor Cyan
+    Write-Host ""
+    exit 1
+  }
+
+  # Check if Docker daemon is running
+  try {
+    & $OpenPalmComposeBin info *> $null
+  }
+  catch {
+    Write-Host ""
+    Write-Host "  Docker is installed but not running." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Open Docker Desktop and wait for it to finish starting,"
+    Write-Host "  then rerun this installer."
+    Write-Host ""
+    exit 1
   }
 
   if (-not (Compose-VersionOk -Bin $OpenPalmComposeBin -Sub $OpenPalmComposeSubcommand)) {
-    throw "Compose command check failed for '$OpenPalmComposeBin $OpenPalmComposeSubcommand'. Ensure runtime is running and compose support is available."
+    Write-Host ""
+    Write-Host "  Compose support not available for '$OpenPalmComposeBin'." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Docker Compose is included with Docker Desktop."
+    Write-Host "  Make sure Docker Desktop is up to date."
+    Write-Host ""
+    exit 1
   }
 
   $OpenPalmContainerSocketUri = "unix://$OpenPalmContainerSocketInContainer"
@@ -215,17 +259,51 @@ try {
   Write-Host "Selected container runtime: $OpenPalmContainerPlatform"
   Write-Host "Compose command: $OpenPalmComposeBin $OpenPalmComposeSubcommand"
 
+  # ── Pre-flight checks ──────────────────────────────────────────────────
+  # Check available disk space (~3GB needed)
+  try {
+    $drive = (Get-Item $HOME).PSDrive
+    $freeGB = [math]::Round($drive.Free / 1GB, 1)
+    if ($freeGB -lt 3) {
+      Write-Host ""
+      Write-Host "  WARNING: Low disk space - only ${freeGB}GB available." -ForegroundColor Yellow
+      Write-Host "  OpenPalm needs roughly 3GB for container images and data."
+      Write-Host ""
+    }
+  }
+  catch {}
+
+  # Check if port 80 is in use
+  try {
+    $port80 = Get-NetTCPConnection -LocalPort 80 -State Listen -ErrorAction SilentlyContinue
+    if ($port80) {
+      Write-Host ""
+      Write-Host "  WARNING: Port 80 is already in use by another process." -ForegroundColor Yellow
+      Write-Host "  OpenPalm needs port 80 for its web interface."
+      Write-Host "  Stop the other service or free port 80, then rerun."
+      Write-Host ""
+    }
+  }
+  catch {}
+
+  $GeneratedAdminToken = ""
   if (-not (Test-Path ".env")) {
     Copy-Item (Join-Path $InstallAssetsDir "config/system.env") ".env"
-    Upsert-EnvVar ADMIN_TOKEN (New-Token)
+    $GeneratedAdminToken = New-Token
+    Upsert-EnvVar ADMIN_TOKEN $GeneratedAdminToken
     Upsert-EnvVar POSTGRES_PASSWORD (New-Token)
     Upsert-EnvVar CHANNEL_CHAT_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_DISCORD_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_VOICE_SECRET (New-Token)
     Upsert-EnvVar CHANNEL_TELEGRAM_SECRET (New-Token)
-    Write-Host "Created .env with generated secure defaults."
     Write-Host ""
-    Write-Host "  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup."
+    Write-Host "  YOUR ADMIN PASSWORD (save this!)" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  $GeneratedAdminToken" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  You will need this password to log in to the admin dashboard."
+    Write-Host "  It is also saved in: $(Get-Location)\.env"
+    Write-Host ""
   }
 
   $OpenPalmDataHome = if ($env:OPENPALM_DATA_HOME) { $env:OPENPALM_DATA_HOME } else { Normalize-EnvPath (Join-Path $HOME ".local/share/openpalm") }
@@ -313,19 +391,18 @@ try {
   Write-Host "Directory structure created. Config seeded from defaults."
   Write-Host ""
 
-  Write-Host "Pulling latest images..."
+  Write-Host "Downloading OpenPalm services (this may take a few minutes on first install)..."
   & $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file "$OpenPalmStateHome/.env" -f $composeFilePath pull
   if ($LASTEXITCODE -ne 0) {
-    throw "Failed to pull images with '$OpenPalmComposeBin $OpenPalmComposeSubcommand pull'."
+    throw "Failed to download service images. Check your internet connection and try again."
   }
 
-  Write-Host "Starting core services..."
+  Write-Host ""
+  Write-Host "Starting services..."
   & $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file "$OpenPalmStateHome/.env" -f $composeFilePath up -d --pull always
   if ($LASTEXITCODE -ne 0) {
-    throw "Failed to start services with '$OpenPalmComposeBin $OpenPalmComposeSubcommand up -d --pull always'."
+    throw "Failed to start services. Check that Docker Desktop is running and try again."
   }
-
-  Write-Host "If you want channel adapters too: $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath --profile channels up -d"
 
   $adminReadyUrl = "http://localhost/admin/api/setup/status"
   $setupUrl = "http://localhost/admin"
@@ -349,33 +426,58 @@ try {
   Write-Host ""
 
   if ($ready) {
-    Write-Host "OpenPalm setup is ready: $setupUrl"
-    Write-Host "Containers will continue coming online while you complete setup."
-    Write-Host "Open Memory UI (LAN only): http://localhost/admin/openmemory"
     Write-Host ""
-    Write-Host "Container runtime config:"
-    Write-Host "  Platform        -> $OpenPalmContainerPlatform"
-    Write-Host "  Compose command -> $OpenPalmComposeBin $OpenPalmComposeSubcommand"
-    Write-Host "  Compose file    -> $composeFilePath"
-    Write-Host "  Socket path     -> $OpenPalmContainerSocketPath"
+    Write-Host "  OpenPalm is ready!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Host directories:"
-    Write-Host "  Data   -> $OpenPalmDataHome"
-    Write-Host "  Config -> $OpenPalmConfigHome"
-    Write-Host "  State  -> $OpenPalmStateHome"
+    Write-Host "  Setup wizard: $setupUrl"
+    Write-Host ""
+    if ($GeneratedAdminToken) {
+      Write-Host "  Admin password: $GeneratedAdminToken" -ForegroundColor Yellow
+      Write-Host ""
+    }
+    Write-Host "  What happens next:"
+    Write-Host "    1. A setup wizard will open in your browser"
+    Write-Host "    2. Enter your AI provider API key (e.g. from console.anthropic.com)"
+    Write-Host "    3. Paste your admin password when prompted"
+    Write-Host "    4. Pick which channels to enable (chat, Discord, etc.)"
+    Write-Host "    5. Done! Start chatting with your assistant"
+    Write-Host ""
 
     if (-not $NoOpen) {
       Start-Process $setupUrl | Out-Null
-      Write-Host "Opened setup UI in your default browser: $setupUrl"
+      Write-Host "  Opening setup wizard in your browser..."
     }
     else {
-      Write-Host "Auto-open skipped (--NoOpen). Complete setup at: $setupUrl"
+      Write-Host "  Open this URL in your browser to continue: $setupUrl"
     }
+
+    Write-Host ""
+    Write-Host "  Useful commands:"
+    Write-Host "    View logs:    $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath logs"
+    Write-Host "    Stop:         $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath down"
+    Write-Host ""
 
     exit 0
   }
 
-  Write-Host "Health check failed. Inspect logs with: $OpenPalmComposeBin $OpenPalmComposeSubcommand -f $composeFilePath logs"
+  Write-Host ""
+  Write-Host "  Setup did not come online within 90 seconds" -ForegroundColor Yellow
+  Write-Host ""
+  Write-Host "  This usually means containers are still starting. Try these steps:"
+  Write-Host ""
+  Write-Host "  1. Wait a minute, then open: $setupUrl"
+  Write-Host ""
+  Write-Host "  2. Check if containers are running:"
+  Write-Host "     $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath ps"
+  Write-Host ""
+  Write-Host "  3. Check logs for errors:"
+  Write-Host "     $OpenPalmComposeBin $OpenPalmComposeSubcommand --env-file $OpenPalmStateHome/.env -f $composeFilePath logs --tail=30"
+  Write-Host ""
+  Write-Host "  4. Common fixes:"
+  Write-Host "     - Make sure port 80 is not used by another service"
+  Write-Host "     - Restart Docker Desktop and try again"
+  Write-Host "     - Check that you have internet access (images need to download)"
+  Write-Host ""
   exit 1
 }
 finally {

@@ -317,7 +317,44 @@ if [ -z "$OPENPALM_CONTAINER_PLATFORM" ]; then
   OPENPALM_CONTAINER_PLATFORM="$(detect_runtime)"
 fi
 if [ -z "$OPENPALM_CONTAINER_PLATFORM" ]; then
-  echo "No supported container runtime detected. Install docker, podman, or orbstack and rerun."
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║  No container runtime found                                 ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  OpenPalm runs inside containers and needs Docker (recommended)"
+  echo "  or Podman installed first."
+  echo ""
+  case "$OS_NAME" in
+    macos)
+      echo "  For macOS, install ONE of:"
+      echo ""
+      echo "    Docker Desktop (free for personal use):"
+      echo "      https://www.docker.com/products/docker-desktop/"
+      echo ""
+      echo "    OrbStack (lightweight, fast):"
+      echo "      https://orbstack.dev/download"
+      echo ""
+      echo "    Or via Homebrew:"
+      echo "      brew install --cask docker"
+      echo ""
+      ;;
+    linux)
+      echo "  For Linux, install Docker Engine + Compose plugin:"
+      echo ""
+      echo "    Quick install (official script):"
+      echo "      curl -fsSL https://get.docker.com | sh"
+      echo ""
+      echo "    Or follow the guide at:"
+      echo "      https://docs.docker.com/engine/install/"
+      echo ""
+      echo "    After installing, make sure Docker is running:"
+      echo "      sudo systemctl start docker"
+      echo ""
+      ;;
+  esac
+  echo "  After installing, rerun this installer."
+  echo ""
   exit 1
 fi
 OPENPALM_COMPOSE_BIN=""
@@ -361,29 +398,68 @@ if [ "$OPENPALM_CONTAINER_PLATFORM" = "orbstack" ] && [ ! -S "$OPENPALM_CONTAINE
 fi
 
 if ! command -v "$OPENPALM_COMPOSE_BIN" >/dev/null 2>&1; then
-  echo "Container CLI '$OPENPALM_COMPOSE_BIN' not found for runtime '$OPENPALM_CONTAINER_PLATFORM'."
+  echo ""
+  echo "Container CLI '$OPENPALM_COMPOSE_BIN' not found in PATH."
+  echo ""
   case "$OS_NAME" in
     macos)
       if [ "$OPENPALM_CONTAINER_PLATFORM" = "orbstack" ]; then
-        echo "Install/start OrbStack and ensure Docker-compatible CLI is available."
+        echo "  Open OrbStack.app — it registers the Docker CLI automatically."
       else
-        echo "Install Docker Desktop (docker) or Podman Desktop/CLI (podman), then rerun."
+        echo "  Open Docker Desktop.app — it registers the Docker CLI automatically."
+        echo "  If already installed, make sure the app is running."
       fi
       ;;
     linux)
-      echo "Install Docker Engine + Compose plugin, or Podman + podman-compose support, then rerun."
+      echo "  Install Docker Engine + Compose plugin:"
+      echo "    curl -fsSL https://get.docker.com | sh"
+      echo ""
+      echo "  Or see: https://docs.docker.com/engine/install/"
       ;;
   esac
+  echo ""
   exit 1
 fi
 
-if ! compose_version_ok "$OPENPALM_COMPOSE_BIN" "$OPENPALM_COMPOSE_SUBCOMMAND"; then
-  echo "Compose command check failed for '$OPENPALM_COMPOSE_BIN ${OPENPALM_COMPOSE_SUBCOMMAND}'."
-  if [ "$OPENPALM_CONTAINER_PLATFORM" = "podman" ]; then
-    echo "Ensure Podman compose support is installed and working."
-  else
-    echo "Ensure your container runtime is running and compose support is available."
+# Check if the Docker daemon is actually running (common gotcha)
+if [ "$OPENPALM_CONTAINER_PLATFORM" != "podman" ]; then
+  if ! "$OPENPALM_COMPOSE_BIN" info >/dev/null 2>&1; then
+    echo ""
+    echo "Docker is installed but the daemon is not running."
+    echo ""
+    case "$OS_NAME" in
+      macos)
+        echo "  Open Docker Desktop (or OrbStack) and wait for it to start,"
+        echo "  then rerun this installer."
+        ;;
+      linux)
+        echo "  Start the Docker service:"
+        echo "    sudo systemctl start docker"
+        echo ""
+        echo "  To start Docker automatically on boot:"
+        echo "    sudo systemctl enable docker"
+        ;;
+    esac
+    echo ""
+    exit 1
   fi
+fi
+
+if ! compose_version_ok "$OPENPALM_COMPOSE_BIN" "$OPENPALM_COMPOSE_SUBCOMMAND"; then
+  echo ""
+  echo "Compose support not available for '$OPENPALM_COMPOSE_BIN'."
+  echo ""
+  if [ "$OPENPALM_CONTAINER_PLATFORM" = "podman" ]; then
+    echo "  Install podman-compose:"
+    echo "    pip install podman-compose"
+    echo "  Or: https://github.com/containers/podman-compose"
+  else
+    echo "  Docker Compose is included in Docker Desktop."
+    echo "  For Docker Engine on Linux, install the Compose plugin:"
+    echo "    sudo apt-get install docker-compose-plugin"
+    echo "  Or: https://docs.docker.com/compose/install/"
+  fi
+  echo ""
   exit 1
 fi
 
@@ -406,6 +482,54 @@ if [ ! -f "$INSTALL_ASSETS_DIR/state/docker-compose.yml" ]; then
   exit 1
 fi
 
+# ── Pre-flight checks ────────────────────────────────────────────────────
+preflight_ok=1
+
+# Check available disk space (need ~3GB minimum for images + data)
+if command -v df >/dev/null 2>&1; then
+  avail_kb="$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+  if [ -n "$avail_kb" ] && [ "$avail_kb" -lt 3000000 ] 2>/dev/null; then
+    avail_gb=$(( avail_kb / 1048576 ))
+    echo ""
+    echo "WARNING: Low disk space — only ~${avail_gb}GB available."
+    echo "  OpenPalm needs roughly 3GB for container images and data."
+    echo "  Free up space or install to a drive with more room."
+    echo ""
+    preflight_ok=0
+  fi
+fi
+
+# Check if port 80 is already in use (Caddy needs it)
+if command -v lsof >/dev/null 2>&1; then
+  if lsof -iTCP:80 -sTCP:LISTEN -P -n >/dev/null 2>&1; then
+    echo ""
+    echo "WARNING: Port 80 is already in use by another process."
+    echo "  OpenPalm needs port 80 for its web interface."
+    echo "  Stop the other service or free port 80, then rerun."
+    echo ""
+    if command -v lsof >/dev/null 2>&1; then
+      echo "  Process using port 80:"
+      lsof -iTCP:80 -sTCP:LISTEN -P -n 2>/dev/null | head -3
+      echo ""
+    fi
+    preflight_ok=0
+  fi
+elif command -v ss >/dev/null 2>&1; then
+  if ss -tlnp 2>/dev/null | grep -q ':80 '; then
+    echo ""
+    echo "WARNING: Port 80 is already in use by another process."
+    echo "  OpenPalm needs port 80 for its web interface."
+    echo "  Stop the other service or free port 80, then rerun."
+    echo ""
+    preflight_ok=0
+  fi
+fi
+
+if [ "$preflight_ok" -eq 0 ]; then
+  echo "Pre-flight checks found issues (see above). Continuing anyway..."
+  echo ""
+fi
+
 # ── Resolve XDG Base Directory paths ───────────────────────────────────────
 OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/openpalm}"
 OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/openpalm}"
@@ -417,17 +541,28 @@ echo "  Config → $OPENPALM_CONFIG_HOME"
 echo "  State  → $OPENPALM_STATE_HOME"
 
 # ── Generate .env if missing ───────────────────────────────────────────────
+GENERATED_ADMIN_TOKEN=""
 if [ ! -f .env ]; then
   cp "$INSTALL_ASSETS_DIR/config/system.env" .env
-  upsert_env_var ADMIN_TOKEN "$(generate_token)"
+  GENERATED_ADMIN_TOKEN="$(generate_token)"
+  upsert_env_var ADMIN_TOKEN "$GENERATED_ADMIN_TOKEN"
   upsert_env_var POSTGRES_PASSWORD "$(generate_token)"
   upsert_env_var CHANNEL_CHAT_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_DISCORD_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_VOICE_SECRET "$(generate_token)"
   upsert_env_var CHANNEL_TELEGRAM_SECRET "$(generate_token)"
-  echo "Created .env with generated secure defaults."
   echo ""
-  echo "  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup."
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║  YOUR ADMIN PASSWORD (save this!)                           ║"
+  echo "╠══════════════════════════════════════════════════════════════╣"
+  echo "║                                                              ║"
+  echo "  $GENERATED_ADMIN_TOKEN"
+  echo "║                                                              ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  You will need this password to log in to the admin dashboard."
+  echo "  It is also saved in: $(pwd)/.env"
+  echo ""
 fi
 
 # Write resolved configuration into .env (idempotent)
@@ -508,13 +643,12 @@ echo "Directory structure created. Config seeded from defaults."
 echo ""
 
 # ── Start services ─────────────────────────────────────────────────────────
-echo "Pulling latest images..."
+echo "Downloading OpenPalm services (this may take a few minutes on first install)..."
 "${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" pull
 
-echo "Starting core services..."
+echo ""
+echo "Starting services..."
 "${COMPOSE_CMD[@]}" --env-file "$OPENPALM_STATE_HOME/.env" -f "$COMPOSE_FILE_PATH" up -d --pull always
-
-echo "If you want channel adapters too: ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH --profile channels up -d"
 
 ADMIN_READY_URL="http://localhost/admin/api/setup/status"
 SETUP_URL="http://localhost/admin"
@@ -535,20 +669,24 @@ done
 printf "\r"
 
 if [ "$READY" -eq 1 ]; then
-  echo "OpenPalm setup is ready: $SETUP_URL"
-  echo "Containers will continue coming online while you complete setup."
-  echo "Open Memory UI (LAN only): http://localhost/admin/openmemory"
   echo ""
-  echo "Container runtime config:"
-  echo "  Platform        → $OPENPALM_CONTAINER_PLATFORM"
-  echo "  Compose command → ${COMPOSE_CMD[*]}"
-  echo "  Compose file    → $COMPOSE_FILE_PATH"
-  echo "  Socket path     → $OPENPALM_CONTAINER_SOCKET_PATH"
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║  OpenPalm is ready!                                         ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
   echo ""
-  echo "Host directories:"
-  echo "  Data   → $OPENPALM_DATA_HOME"
-  echo "  Config → $OPENPALM_CONFIG_HOME"
-  echo "  State  → $OPENPALM_STATE_HOME"
+  echo "  Setup wizard: $SETUP_URL"
+  echo ""
+  if [ -n "$GENERATED_ADMIN_TOKEN" ]; then
+    echo "  Admin password: $GENERATED_ADMIN_TOKEN"
+    echo ""
+  fi
+  echo "  What happens next:"
+  echo "    1. A setup wizard will open in your browser"
+  echo "    2. Enter your AI provider API key (e.g. from console.anthropic.com)"
+  echo "    3. Paste your admin password when prompted"
+  echo "    4. Pick which channels to enable (chat, Discord, etc.)"
+  echo "    5. Done! Start chatting with your assistant"
+  echo ""
 
   if [ "$OPEN_BROWSER" -eq 1 ]; then
     case "$OS_NAME" in
@@ -559,12 +697,37 @@ if [ "$READY" -eq 1 ]; then
         xdg-open "$SETUP_URL" >/dev/null 2>&1 || true
         ;;
     esac
-    echo "Opened setup UI in your default browser: $SETUP_URL"
+    echo "  Opening setup wizard in your browser..."
   else
-    echo "Auto-open skipped (--no-open). Complete setup at: $SETUP_URL"
+    echo "  Open this URL in your browser to continue: $SETUP_URL"
   fi
+  echo ""
+  echo "  Useful commands:"
+  echo "    View logs:    ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH logs"
+  echo "    Stop:         ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH down"
+  echo "    Uninstall:    $OPENPALM_STATE_HOME/uninstall.sh"
+  echo ""
   exit 0
 fi
 
-echo "Health check failed. Inspect logs with: ${COMPOSE_CMD[*]} logs"
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  Setup did not come online within 90 seconds                ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  This usually means containers are still starting. Try these steps:"
+echo ""
+echo "  1. Wait a minute, then open: $SETUP_URL"
+echo ""
+echo "  2. Check if containers are running:"
+echo "     ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH ps"
+echo ""
+echo "  3. Check logs for errors:"
+echo "     ${COMPOSE_CMD[*]} --env-file $OPENPALM_STATE_HOME/.env -f $COMPOSE_FILE_PATH logs --tail=30"
+echo ""
+echo "  4. Common fixes:"
+echo "     - Make sure port 80 is not used by another service"
+echo "     - Restart Docker/Podman and try again"
+echo "     - Check that you have internet access (images need to download)"
+echo ""
 exit 1

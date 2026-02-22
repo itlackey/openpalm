@@ -17,31 +17,51 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 - **Admin dashboard** — manage everything from a browser: services, extensions, agent config, and automations.
 - **Built for safety** — defense-in-depth security protects the assistant and your data.
 
+## Prerequisites
+
+You need **one thing** installed before starting: a container runtime. If you have never heard of Docker, think of it as a way to run apps in isolated boxes so they don't interfere with the rest of your computer.
+
+| Your computer | What to install | Link |
+|---|---|---|
+| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
+| **Mac** | Docker Desktop _or_ OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
+| **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com \| sh` |
+
+After installing, **open the app and wait for it to finish starting** (you'll see a green/running indicator). Then run the installer below.
+
 ## Get started
 
-Pick whichever method suits your system:
+Copy-paste **one** command into your terminal and the installer does the rest:
 
-**Bash** (Linux / macOS — no dependencies beyond curl):
+**Mac or Linux** — open Terminal and paste:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
 ```
 
-**PowerShell** (Windows):
+**Windows** — open PowerShell and paste:
 ```powershell
 pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
-**npx** (any OS with Node.js):
+<details>
+<summary>Alternative: install via npx or bunx</summary>
+
+If you already have Node.js or Bun installed:
 ```bash
 npx openpalm install
-```
-
-**bunx** (any OS with Bun):
-```bash
+# or
 bunx openpalm install
 ```
+</details>
 
-The installer detects your container runtime, generates secure credentials, starts all services, and opens a setup wizard in your browser. The whole process is guided — no config files to edit. See the [CLI documentation](docs/cli.md) for all available commands.
+### What happens when you run the installer
+
+1. It checks your system and downloads the OpenPalm services
+2. It generates a secure admin password and prints it to your screen
+3. It starts all services and opens a setup wizard in your browser
+4. The wizard walks you through connecting your AI provider, setting a password, and choosing channels
+
+No config files to edit. See the [CLI documentation](docs/cli.md) for all available commands.
 
 ## What you get
 

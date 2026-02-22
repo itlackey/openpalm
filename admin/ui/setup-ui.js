@@ -88,21 +88,21 @@
     const adminToken = getAdminToken();
     switch (STEPS[wizardStep]) {
       case "welcome":
-        return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant platform.</p>'
-          + '<p>This wizard will walk you through initial configuration:</p>'
-          + '<ul><li>Connect your AI providers</li><li>Set up admin security</li><li>Choose your channels</li><li>Configure network access</li></ul>'
-          + '<p class="muted" style="font-size:13px">You can re-run this wizard any time from the admin dashboard.</p>';
+        return '<p>Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant.</p>'
+          + '<p>This quick setup will get you up and running in a few steps:</p>'
+          + '<ol><li><strong>AI Provider</strong> &mdash; connect the model that powers your assistant</li><li><strong>Admin Password</strong> &mdash; secure this dashboard</li><li><strong>Channels</strong> &mdash; choose how to talk to your assistant (chat, Discord, etc.)</li><li><strong>Access</strong> &mdash; decide who on your network can use it</li></ol>'
+          + '<p class="muted" style="font-size:13px">Don\'t worry about getting it perfect &mdash; you can change everything later from the admin dashboard.</p>';
       case "serviceInstances":
-        return '<p>Configure API keys for your AI providers. Your assistant needs at least one AI model to function.</p>'
+        return '<p>Connect an AI model so your assistant can respond. You need at least an Anthropic API key.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
           + '<div class="sec-box"><div class="sec-title">AI Assistant Model</div>'
-          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Required. Your assistant uses this API key to communicate. Get one from <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>.</div>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem"><strong>Required.</strong> This is the brain of your assistant. If you don\'t have a key yet, <a href="https://console.anthropic.com/" target="_blank" rel="noopener">create one at console.anthropic.com</a> (sign up is free, you pay per use).</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">Anthropic API Key</label>'
           + '<input id="wiz-anthropic-key" type="password" placeholder="sk-ant-..." value="" />'
           + '<div class="muted" style="font-size:12px;margin-top:.2rem">' + (setupState && setupState.anthropicKeyConfigured ? "API key already configured. Leave blank to keep current key." : "") + '</div>'
           + '</div>'
           + '<div class="sec-box"><div class="sec-title">Memory System</div>'
-          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Required for memory features. Uses an OpenAI-compatible endpoint to store and recall information.</div>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Optional but recommended. Lets your assistant remember past conversations. Uses an OpenAI-compatible API for embeddings. If you skip this, memory features won\'t work.</div>'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model endpoint for memory</label>'
           + '<input id="wiz-openmemory-openai-base" placeholder="e.g. https://api.openai.com/v1 (leave blank for default)" value="' + esc(openmemoryProvider.openaiBaseUrl || "") + '" />'
           + '<label style="display:block;margin:.5rem 0 .2rem;font-size:13px">AI model API key for memory</label>'
@@ -133,13 +133,14 @@
         return '<p>Set your admin password to protect this management interface.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
           + '<div class="sec-box"><div class="sec-title">Admin Password</div>'
-          + '<div style="font-size:13px;margin-bottom:.5rem">Your admin token was auto-generated during installation. Find it in your <code>secrets.env</code> file (look for <code>ADMIN_TOKEN</code>). Enter it here to authenticate.</div>'
-          + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" placeholder="Paste your ADMIN_TOKEN here" />'
+          + '<div style="font-size:13px;margin-bottom:.5rem">Your admin password was printed in the terminal during installation. Look for the line labeled <strong>"YOUR ADMIN PASSWORD"</strong> and paste it below.</div>'
+          + '<div style="font-size:12px;margin-bottom:.5rem;color:var(--muted)">If you lost it, you can also find it in the <code>.env</code> file (look for <code>ADMIN_TOKEN</code>) in the folder where you ran the installer.</div>'
+          + '<input type="password" id="wiz-admin" value="' + esc(adminToken) + '" placeholder="Paste your admin password here" />'
           + '</div>'
           + '<div class="sec-box" style="margin-top:.7rem"><div class="sec-title">Security Features</div>'
           + '<ul style="font-size:13px;margin:.2rem 0"><li>Messages are cryptographically verified</li><li>Sensitive data is automatically filtered from memory</li><li>Rate limiting prevents abuse</li><li>Admin access restricted to your network</li></ul></div>';
       case "channels":
-        return '<p>Choose how you want to talk to your assistant. Enable a channel and provide its credentials.</p>'
+        return '<p>Choose how you want to talk to your assistant. Check any channels you want to enable. You can skip this and add channels later from the admin dashboard.</p>'
           + '<div id="wiz-step-error" class="wiz-error"></div>'
           + channelSections();
       case "accessScope":
