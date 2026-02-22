@@ -12,7 +12,8 @@ export type PreflightWarning = {
  */
 export async function checkDiskSpace(): Promise<PreflightWarning | null> {
   try {
-    const proc = Bun.spawn(["df", "-k", homedir()], {
+    // Use -P (POSIX) mode to guarantee single-line output per filesystem
+    const proc = Bun.spawn(["df", "-Pk", homedir()], {
       stdout: "pipe",
       stderr: "ignore",
     });
@@ -21,7 +22,7 @@ export async function checkDiskSpace(): Promise<PreflightWarning | null> {
     const lines = output.trim().split("\n");
     if (lines.length < 2) return null;
 
-    // df -k output: Filesystem 1K-blocks Used Available Use% Mounted
+    // df -Pk output: Filesystem 1024-blocks Used Available Capacity Mounted
     const parts = lines[1].split(/\s+/);
     const availKB = parseInt(parts[3], 10);
     if (isNaN(availKB)) return null;
@@ -59,9 +60,9 @@ export async function checkPort80(): Promise<PreflightWarning | null> {
       };
     }
   } catch {
-    // lsof not available, try ss
+    // lsof not available, try ss without -p (works without root)
     try {
-      const ss = Bun.spawn(["ss", "-tlnp"], {
+      const ss = Bun.spawn(["ss", "-tln"], {
         stdout: "pipe",
         stderr: "ignore",
       });
@@ -136,7 +137,7 @@ export function noRuntimeGuidance(os: HostOS): string {
     "No container runtime found.",
     "",
     "OpenPalm runs inside containers and needs Docker (recommended)",
-    "or Podman installed first.",
+    "or Podman (experimental) installed first.",
     "",
   ];
 

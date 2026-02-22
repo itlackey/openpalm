@@ -23,7 +23,12 @@ export async function readEnvFile(path: string): Promise<Record<string, string>>
     }
 
     const key = trimmed.substring(0, eqIndex).trim();
-    const value = trimmed.substring(eqIndex + 1).trim();
+    let value = trimmed.substring(eqIndex + 1).trim();
+    // Strip matching leading/trailing quotes (common in .env files)
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
     env[key] = value;
   }
 

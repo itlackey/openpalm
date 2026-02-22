@@ -40,11 +40,13 @@ function printHelp(): void {
   log("  --runtime <docker|podman|orbstack>  Force container runtime");
   log("  --no-open                           Don't auto-open browser");
   log("  --ref <branch|tag>                  Git ref for asset download");
+  log("  --force                             Overwrite existing installation");
   log("");
   log(bold("Uninstall options:"));
   log("  --runtime <docker|podman|orbstack>  Force container runtime");
-  log("  --remove-all                        Remove all data/config/state");
+  log("  --remove-all                        Remove all data/config/state and CLI binary");
   log("  --remove-images                     Remove container images");
+  log("  --remove-binary                     Remove the openpalm CLI binary");
   log("  --yes                               Skip confirmation prompts");
   log("");
   log(bold("Management commands accept optional service names:"));
@@ -111,16 +113,19 @@ async function main(): Promise<void> {
           runtime: parseArg(args, "runtime") as ContainerPlatform | undefined,
           noOpen: hasFlag(args, "no-open"),
           ref: parseArg(args, "ref"),
+          force: hasFlag(args, "force"),
         };
         await install(options);
         break;
       }
 
       case "uninstall": {
+        const removeAll = hasFlag(args, "remove-all");
         const options: UninstallOptions = {
           runtime: parseArg(args, "runtime") as ContainerPlatform | undefined,
-          removeAll: hasFlag(args, "remove-all"),
+          removeAll,
           removeImages: hasFlag(args, "remove-images"),
+          removeBinary: removeAll || hasFlag(args, "remove-binary"),
           yes: hasFlag(args, "yes"),
         };
         await uninstall(options);

@@ -3,6 +3,7 @@ param(
   [string]$Runtime,
   [switch]$RemoveAll,
   [switch]$RemoveImages,
+  [switch]$RemoveBinary,
   [switch]$Yes
 )
 
@@ -16,8 +17,7 @@ if (-not $RunningOnWindows) {
   exit 1
 }
 
-$RootDir = Split-Path -Parent $PSScriptRoot
-Set-Location $RootDir
+# Resolve .env from XDG state home or common locations
 
 function Get-EnvValueFromFile {
   param(
@@ -40,7 +40,17 @@ function Normalize-EnvPath([string]$PathValue) {
   return ($PathValue -replace "\\", "/")
 }
 
-$envPath = Join-Path $RootDir ".env"
+# Try state home .env first (canonical), then CWD .env as fallback
+$defaultStateHome = Normalize-EnvPath (Join-Path $HOME ".local/state/openpalm")
+$stateEnvPath = Join-Path (if ($env:OPENPALM_STATE_HOME) { $env:OPENPALM_STATE_HOME } else { $defaultStateHome }) ".env"
+$cwdEnvPath = Join-Path (Get-Location) ".env"
+if (Test-Path $stateEnvPath) {
+  $envPath = $stateEnvPath
+} elseif (Test-Path $cwdEnvPath) {
+  $envPath = $cwdEnvPath
+} else {
+  $envPath = $cwdEnvPath  # Will fail gracefully in Get-EnvValueFromFile
+}
 $OpenPalmDataHome = if ($env:OPENPALM_DATA_HOME) { $env:OPENPALM_DATA_HOME } else { Get-EnvValueFromFile -Key "OPENPALM_DATA_HOME" -Path $envPath }
 $OpenPalmConfigHome = if ($env:OPENPALM_CONFIG_HOME) { $env:OPENPALM_CONFIG_HOME } else { Get-EnvValueFromFile -Key "OPENPALM_CONFIG_HOME" -Path $envPath }
 $OpenPalmStateHome = if ($env:OPENPALM_STATE_HOME) { $env:OPENPALM_STATE_HOME } else { Get-EnvValueFromFile -Key "OPENPALM_STATE_HOME" -Path $envPath }
@@ -80,6 +90,7 @@ Write-Host "  Runtime: $(if ($OpenPalmContainerPlatform) { $OpenPalmContainerPla
 Write-Host "  Stop/remove containers: yes"
 Write-Host "  Remove images: $(if ($RemoveImages) { "yes" } else { "no" })"
 Write-Host "  Remove all data/config/state: $(if ($RemoveAll) { "yes" } else { "no" })"
+Write-Host "  Remove CLI binary: $(if ($RemoveAll -or $RemoveBinary) { "yes" } else { "no" })"
 Write-Host "  Data dir: $OpenPalmDataHome"
 Write-Host "  Config dir: $OpenPalmConfigHome"
 Write-Host "  State dir: $OpenPalmStateHome"
@@ -93,11 +104,11 @@ if (-not $Yes) {
 }
 
 if ($OpenPalmComposeBin -and (Get-Command $OpenPalmComposeBin -ErrorAction SilentlyContinue) -and (Test-Path $composeFilePath)) {
-  $args = @($OpenPalmComposeSubcommand, "--env-file", $composeEnvPath, "-f", $composeFilePath, "down", "--remove-orphans")
+  $composeArgs = @($OpenPalmComposeSubcommand, "--env-file", $composeEnvPath, "-f", $composeFilePath, "down", "--remove-orphans")
   if ($RemoveImages) {
-    $args += @("--rmi", "all")
+    $composeArgs += @("--rmi", "all")
   }
-  & $OpenPalmComposeBin @args
+  & $OpenPalmComposeBin @composeArgs
 }
 else {
   Write-Host "Compose runtime or file not found; skipping container shutdown."
@@ -115,4 +126,27 @@ if ($RemoveAll) {
   Write-Host "Removed OpenPalm data/config/state and local .env."
 }
 
+if ($RemoveAll -or $RemoveBinary) {
+  $installDir = Join-Path $env:LOCALAPPDATA "OpenPalm"
+  $binaryPath = Join-Path $installDir "openpalm.exe"
+  if (Test-Path $binaryPath) {
+    Remove-Item -LiteralPath $binaryPath -Force
+    Write-Host "Removed CLI binary: $binaryPath"
+  } else {
+    Write-Host "CLI binary not found at $binaryPath — it may have been installed elsewhere."
+  }
+  # Clean up PATH entry
+  $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($UserPath -like "*$installDir*") {
+    $newPath = ($UserPath.Split(";") | Where-Object { $_ -ne $installDir }) -join ";"
+    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+    Write-Host "Removed $installDir from user PATH."
+  }
+}
+
+$workDir = Join-Path $HOME "openpalm"
+Write-Host ""
+Write-Host "Note: $workDir (assistant working directory) was not removed."
+Write-Host "  Delete it manually if you no longer need it."
+Write-Host ""
 Write-Host "Uninstall complete."

@@ -57,9 +57,16 @@ function yamlTextImport(): Plugin {
 export default defineConfig({
 	plugins: [bunShim(), sveltekit(), devtoolsJson(), yamlTextImport()],
 	ssr: {
-		// yaml is CJS — Node ESM interop can't extract named exports,
-		// so bundle it into the SSR output instead of externalizing
+		// yaml is CJS — Vite 7's ESM module runner can't handle require().
+		// Force resolution to the ESM browser build instead.
 		noExternal: ['yaml']
+	},
+	resolve: {
+		alias: {
+			// yaml's "node" export condition points to CJS dist/index.js which
+			// breaks in Vite 7's ESModulesEvaluator. Redirect to the ESM browser build.
+			yaml: resolve('../../node_modules/yaml/browser/index.js')
+		}
 	},
 	server: {
 		fs: {

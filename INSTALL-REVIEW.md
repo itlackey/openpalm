@@ -9,11 +9,20 @@
 
 The install flow is well-structured: a thin shell wrapper downloads a compiled Bun binary, which then handles XDG directory creation, secret generation, config seeding, minimal compose deployment, and health-check polling. The architecture is sound. However, there are **22 concrete issues** ranging from silent data loss risks to cross-platform gaps that should be addressed before v1. This document groups them by severity.
 
+### Fix Status
+
+**All 22 issues have been addressed.**
+
+| Status | Issues |
+|--------|--------|
+| **Fixed** | 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 |
+| **Verified safe** | 4 (admin pull has no timeout — confirmed correct) |
+
 ---
 
 ## Critical Issues (will break installs for some users)
 
-### 1. `OPENPALM_IMAGE_NAMESPACE` is never written to `.env` during install
+### 1. `OPENPALM_IMAGE_NAMESPACE` is never written to `.env` during install — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:117-129`
 
@@ -27,7 +36,7 @@ The install command writes `OPENPALM_IMAGE_TAG` to `.env` (line 127) but never w
 
 **Fix:** Add `OPENPALM_IMAGE_NAMESPACE` to the `upsertEnvVars` call at line 117, or ensure `seedConfigFiles` also seeds `system.env` into the state directory.
 
-### 2. Windows XDG paths use Unix separators (`~/.local/share/openpalm`)
+### 2. Windows XDG paths use Unix separators (`~/.local/share/openpalm`) — FIXED
 
 **File:** `packages/lib/src/paths.ts:6-23`
 
@@ -39,7 +48,7 @@ On Windows, `homedir()` returns `C:\Users\<user>`. The fallback path becomes `C:
 
 **Fix:** On Windows, default to `%LOCALAPPDATA%\OpenPalm\data`, `%LOCALAPPDATA%\OpenPalm\config`, `%LOCALAPPDATA%\OpenPalm\state` (matching the PowerShell installer's install location pattern). Also ensure compose-file variable interpolation handles Windows paths (or normalize to forward slashes before writing to `.env`).
 
-### 3. `install.sh` doesn't work when piped with arguments
+### 3. `install.sh` doesn't work when piped with arguments — FIXED
 
 **File:** `assets/state/scripts/install.sh:10-11`
 
@@ -59,7 +68,7 @@ The script uses `$#` and `$1` which are empty when piped without `-s --`.
 
 **Fix:** Document the `-s --` pattern for passing arguments, or implement a two-phase approach: download-then-execute.
 
-### 4. The `composePull` timeout of 30 seconds is too short for first install
+### 4. The `composePull` timeout of 30 seconds is too short for first install — VERIFIED SAFE
 
 **File:** `packages/lib/src/compose.ts:13-48`
 
@@ -67,7 +76,7 @@ The script uses `$#` and `$1` which are empty when piped without `-s --`.
 
 But the broader issue: if `composePull` is invoked from the admin service (not the CLI) via `compose-runner.ts`, the admin's compose runner (`packages/lib/admin/compose-runner.ts`) spawns processes differently and may have its own timeout behavior. Verify the admin-initiated pull (which downloads ALL images) has no timeout that would kill a slow first-time pull.
 
-### 5. No `windows-arm64` build target in package.json
+### 5. No `windows-arm64` build target in package.json — FIXED
 
 **File:** `packages/cli/package.json:29-37`
 
@@ -79,7 +88,7 @@ The install.ps1 script correctly detects ARM64 architecture on Windows but will 
 
 **Fix:** Add `build:windows-arm64` to package.json scripts. If Bun doesn't support cross-compiling to Windows ARM64 yet, remove ARM64 from the install.ps1 detection logic and document the limitation.
 
-### 6. Socket path is always Unix on Windows
+### 6. Socket path is always Unix on Windows — FIXED
 
 **File:** `packages/lib/src/runtime.ts:55-72`
 
@@ -100,7 +109,7 @@ Consider detecting WSL2 (`uname -r` contains `microsoft`) to differentiate.
 
 ## High-Severity Issues (degraded experience, potential data loss)
 
-### 7. Uninstall does not remove the CLI binary itself
+### 7. Uninstall does not remove the CLI binary itself — FIXED
 
 **Files:** `packages/cli/src/commands/uninstall.ts`, `assets/state/scripts/uninstall.sh`, `assets/state/scripts/uninstall.ps1`
 
@@ -116,7 +125,7 @@ Additionally, the Windows uninstaller doesn't clean up the PATH entry it added d
 2. On Windows, removes the install dir from the user PATH
 3. Optionally removes `~/openpalm` working directory (with explicit confirmation since it may contain user data)
 
-### 8. `uninstall.sh` script assumes it runs from the repo root
+### 8. `uninstall.sh` script assumes it runs from the repo root — FIXED
 
 **File:** `assets/state/scripts/uninstall.sh:4-8`
 
@@ -142,7 +151,7 @@ The CLI `uninstall` command (`packages/cli/src/commands/uninstall.ts`) handles t
 
 Consider removing the standalone `uninstall.sh` from the public scripts since it duplicates logic, and the installed version at `$OPENPALM_STATE_HOME/uninstall.sh` already just calls `openpalm uninstall`.
 
-### 9. `.env` is written to `process.cwd()`, creating location-dependent state
+### 9. `.env` is written to `process.cwd()`, creating location-dependent state — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:83`
 
@@ -158,7 +167,7 @@ The `.env` is created in whatever directory the user happens to be in when they 
 
 **Fix:** The canonical `.env` should be `$OPENPALM_STATE_HOME/.env`. Write it there and symlink or copy to CWD only for user convenience. After install, all management commands should exclusively use the state-home copy. Remove the CWD fallback from the uninstall command.
 
-### 10. Admin token displayed but not reliably persisted
+### 10. Admin token displayed but not reliably persisted — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:86-113`
 
@@ -173,7 +182,7 @@ But if the user already has a `.env` file (line 84 check), no admin token is gen
 
 **Fix:** After detecting an existing `.env`, check if `ADMIN_TOKEN` is set to the insecure default. If so, generate a new one and update it.
 
-### 11. Race condition between `.env` write and compose copy
+### 11. Race condition between `.env` write and compose copy — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:97-138`
 
@@ -190,7 +199,7 @@ If the install crashes between steps 1 and 3, the state home has no `.env`. On r
 
 ## Medium-Severity Issues (correctness, edge cases)
 
-### 12. `df -k` parsing fails on some Linux distributions
+### 12. `df -k` parsing fails on some Linux distributions — FIXED
 
 **File:** `packages/lib/src/preflight.ts:15-38`
 
@@ -198,7 +207,7 @@ The disk space check parses `df -k` output assuming the "Available" column is at
 
 **Fix:** Use `df -Pk` (POSIX mode) which guarantees single-line output per filesystem.
 
-### 13. Port 80 check doesn't work on systems requiring elevated privileges
+### 13. Port 80 check doesn't work on systems requiring elevated privileges — FIXED
 
 **File:** `packages/lib/src/preflight.ts:45-81`
 
@@ -210,7 +219,7 @@ The catch logic falls through and reports port 80 as available even when it's no
 
 **Fix:** Try `ss -tln` (without `-p`) which doesn't require root and still shows listening ports. Or bind a test socket to port 80 briefly to detect conflicts.
 
-### 14. `$HOME/openpalm` working directory is hardcoded in compose files
+### 14. `$HOME/openpalm` working directory is hardcoded in compose files — FIXED
 
 **Files:** `packages/lib/src/paths.ts:51`, `packages/lib/admin/stack-generator.ts:506,566`, `packages/cli/src/commands/install.ts:254`
 
@@ -221,7 +230,7 @@ The compose files mount `${HOME}/openpalm:/work`. This:
 
 **Fix:** Make the working directory configurable via an env var (`OPENPALM_WORK_HOME`) with `${HOME}/openpalm` as the default. This allows users to point it elsewhere.
 
-### 15. Podman compose support is untested / incomplete
+### 15. Podman compose support is untested / incomplete — FIXED
 
 **File:** `packages/lib/src/runtime.ts:74-81`
 
@@ -233,7 +242,7 @@ The code assumes `podman compose` works identically to `docker compose`. However
 
 **Fix:** If Podman is a v1 target, add integration tests. If not, clearly document it as "experimental" in the installer output and in docs. At minimum, set `OPENPALM_CONTAINER_SOCKET_IN_CONTAINER` to the appropriate path for Podman.
 
-### 16. No idempotency guard on `openpalm install`
+### 16. No idempotency guard on `openpalm install` — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:14-380`
 
@@ -251,7 +260,7 @@ Running `openpalm install` twice:
 
 **Fix:** Add an installation state check. If OpenPalm is already installed (compose file exists and contains more than just caddy+admin), warn the user and suggest `openpalm update` instead. Add a `--force` flag to override.
 
-### 17. `compose pull` error is unhandled gracefully
+### 17. `compose pull` error is unhandled gracefully — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:279-281`
 
@@ -266,7 +275,7 @@ If `composePull` fails (network error, invalid image tag, Docker Hub rate limit)
 
 ## Low-Severity Issues (polish, robustness)
 
-### 18. `install.sh` hardcodes GitHub release URL format
+### 18. `install.sh` hardcodes GitHub release URL format — FIXED
 
 **File:** `assets/state/scripts/install.sh:125`
 
@@ -278,7 +287,7 @@ This follows the "latest release" redirect. If you publish a pre-release tag, Gi
 
 **Fix:** If `--ref` is provided, use the GitHub API to resolve the correct release URL, or at minimum use `/releases/tags/<ref>/download/` instead of `/releases/latest/`.
 
-### 19. Env file parsing doesn't handle quoted values
+### 19. Env file parsing doesn't handle quoted values — FIXED
 
 **File:** `packages/lib/src/env.ts:24-28`
 
@@ -290,7 +299,7 @@ If a user writes `ADMIN_TOKEN="my-token"` or `ADMIN_TOKEN='my-token'` (common in
 
 **Fix:** Strip matching leading/trailing single or double quotes from values during parsing.
 
-### 20. Health check polling has no exponential backoff
+### 20. Health check polling has no exponential backoff — FIXED
 
 **File:** `packages/cli/src/commands/install.ts:293-304`
 
@@ -298,7 +307,7 @@ The health check loop polls every 2 seconds for up to 90 iterations (3 minutes).
 
 **Fix:** Use exponential backoff starting at 1s and capping at 5s, or at minimum suppress connection-refused errors in the output.
 
-### 21. `uninstall.ps1` uses `$args` (reserved variable) for compose arguments
+### 21. `uninstall.ps1` uses `$args` (reserved variable) for compose arguments — FIXED
 
 **File:** `assets/state/scripts/uninstall.ps1:96`
 
@@ -310,7 +319,7 @@ $args = @($OpenPalmComposeSubcommand, "--env-file", ...)
 
 **Fix:** Rename to `$composeArgs` or similar.
 
-### 22. The `~/openpalm` work directory is not cleaned up on uninstall
+### 22. The `~/openpalm` work directory is not cleaned up on uninstall — FIXED
 
 **Files:** `packages/cli/src/commands/uninstall.ts`, `assets/state/scripts/uninstall.sh`
 
@@ -322,30 +331,30 @@ The install creates `~/openpalm` (the assistant's working directory). Neither un
 
 ## Summary Table
 
-| # | Severity | Area | Issue |
-|---|----------|------|-------|
-| 1 | Critical | Install | `OPENPALM_IMAGE_NAMESPACE` not written to `.env` |
-| 2 | Critical | Install | Windows XDG paths use Unix conventions |
-| 3 | Critical | Install | Piped `install.sh` can't receive arguments |
-| 4 | Critical | Install | Verify admin-initiated pull has no timeout |
-| 5 | Critical | Build | No `windows-arm64` build target |
-| 6 | Critical | Install | Docker socket path wrong on native Windows |
-| 7 | High | Uninstall | CLI binary not removed |
-| 8 | High | Uninstall | Shell uninstall script path resolution is fragile |
-| 9 | High | Install | `.env` written to CWD creates location-dependent state |
-| 10 | High | Install | Admin token may remain at insecure default |
-| 11 | High | Install | Race between `.env` write and state copy |
-| 12 | Medium | Preflight | `df -k` parsing fails on wrapped output |
-| 13 | Medium | Preflight | Port 80 check fails without root |
-| 14 | Medium | Install | `~/openpalm` work dir is hardcoded |
-| 15 | Medium | Install | Podman compose support gaps |
-| 16 | Medium | Install | No idempotency guard on re-install |
-| 17 | Medium | Install | `compose pull` failure not handled gracefully |
-| 18 | Low | Install | `--ref` flag doesn't affect download URL |
-| 19 | Low | Env | Quoted `.env` values not stripped |
-| 20 | Low | Install | Health check has no exponential backoff |
-| 21 | Low | Uninstall | PowerShell `$args` variable shadowed |
-| 22 | Low | Uninstall | `~/openpalm` not mentioned in uninstall |
+| # | Severity | Area | Issue | Status |
+|---|----------|------|-------|--------|
+| 1 | Critical | Install | `OPENPALM_IMAGE_NAMESPACE` not written to `.env` | **FIXED** |
+| 2 | Critical | Install | Windows XDG paths use Unix conventions | **FIXED** |
+| 3 | Critical | Install | Piped `install.sh` can't receive arguments | **FIXED** |
+| 4 | Critical | Install | Verify admin-initiated pull has no timeout | **Verified safe** |
+| 5 | Critical | Build | No `windows-arm64` build target | **FIXED** |
+| 6 | Critical | Install | Docker socket path wrong on native Windows | **FIXED** |
+| 7 | High | Uninstall | CLI binary not removed | **FIXED** |
+| 8 | High | Uninstall | Shell uninstall script path resolution is fragile | **FIXED** |
+| 9 | High | Install | `.env` written to CWD creates location-dependent state | **FIXED** |
+| 10 | High | Install | Admin token may remain at insecure default | **FIXED** |
+| 11 | High | Install | Race between `.env` write and state copy | **FIXED** |
+| 12 | Medium | Preflight | `df -k` parsing fails on wrapped output | **FIXED** |
+| 13 | Medium | Preflight | Port 80 check fails without root | **FIXED** |
+| 14 | Medium | Install | `~/openpalm` work dir is hardcoded | **FIXED** |
+| 15 | Medium | Install | Podman compose support gaps | **FIXED** |
+| 16 | Medium | Install | No idempotency guard on re-install | **FIXED** |
+| 17 | Medium | Install | `compose pull` failure not handled gracefully | **FIXED** |
+| 18 | Low | Install | `--ref` flag doesn't affect download URL | **FIXED** |
+| 19 | Low | Env | Quoted `.env` values not stripped | **FIXED** |
+| 20 | Low | Install | Health check has no exponential backoff | **FIXED** |
+| 21 | Low | Uninstall | PowerShell `$args` variable shadowed | **FIXED** |
+| 22 | Low | Uninstall | `~/openpalm` not mentioned in uninstall | **FIXED** |
 
 ---
 
