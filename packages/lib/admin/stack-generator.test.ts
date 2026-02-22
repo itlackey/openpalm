@@ -31,7 +31,7 @@ describe("stack generator", () => {
     expect(caddyConfig.apps.http.servers.main.routes.length).toBeGreaterThan(0);
   });
 
-  it("generates hostname routes for core services in Caddy JSON", () => {
+  it("generates hostname route for localhost in Caddy JSON", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
     const caddyConfig = JSON.parse(out.caddyJson);
@@ -44,9 +44,10 @@ describe("stack generator", () => {
     const hostnames = hostRoutes.flatMap((r: Record<string, unknown>) =>
       (r.match as Array<Record<string, unknown>>).flatMap((m: Record<string, unknown>) => m.host)
     );
-    expect(hostnames).toContain("assistant");
-    expect(hostnames).toContain("admin");
-    expect(hostnames).toContain("openmemory");
+    expect(hostnames).toContain("localhost");
+    expect(hostnames).not.toContain("assistant");
+    expect(hostnames).not.toContain("admin");
+    expect(hostnames).not.toContain("openmemory");
   });
 
   it("generates admin subroute with expected sub-handlers", () => {
@@ -601,16 +602,16 @@ describe("stack generator", () => {
     expect(out.composeFile).not.toContain("snippets");
   });
 
-  it("generates default catch-all route to assistant", () => {
+  it("generates default catch-all route to admin", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
     const caddyConfig = JSON.parse(out.caddyJson);
     const routes = caddyConfig.apps.http.servers.main.routes;
     const lastRoute = routes[routes.length - 1];
-    // Last route should be catch-all (no match) proxying to assistant:4096
+    // Last route should be catch-all (no match) proxying to admin:8100
     expect(lastRoute.match).toBeUndefined();
     const json = JSON.stringify(lastRoute);
-    expect(json).toContain("assistant:4096");
+    expect(json).toContain("admin:8100");
   });
 
   // --- Gap coverage: admin subroute sub-handlers ---
@@ -663,6 +664,75 @@ describe("stack generator", () => {
     expect(omRoute.terminal).toBe(true);
   });
 
+
+
+  it("admin subroute contains /services/opencode* route proxying to assistant", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    const caddyConfig = JSON.parse(out.caddyJson);
+    const routes = caddyConfig.apps.http.servers.main.routes;
+    const adminRoute = routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+      )
+    );
+    const subroute = adminRoute.handle[0];
+    const opencodeRoute = subroute.routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/services/opencode*")
+      )
+    );
+    expect(opencodeRoute).toBeDefined();
+    const json = JSON.stringify(opencodeRoute);
+    expect(json).toContain("/services/opencode");
+    expect(json).toContain("assistant:4096");
+  });
+
+  it("admin subroute contains /services/openmemory* route proxying to openmemory-ui", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    const caddyConfig = JSON.parse(out.caddyJson);
+    const routes = caddyConfig.apps.http.servers.main.routes;
+    const adminRoute = routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+      )
+    );
+    const subroute = adminRoute.handle[0];
+    const omRoute = subroute.routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/services/openmemory*")
+      )
+    );
+    expect(omRoute).toBeDefined();
+    const json = JSON.stringify(omRoute);
+    expect(json).toContain("/services/openmemory");
+    expect(json).toContain("openmemory-ui:3000");
+  });
+
+  it("admin subroute contains /api* route rewriting to /admin", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    const caddyConfig = JSON.parse(out.caddyJson);
+    const routes = caddyConfig.apps.http.servers.main.routes;
+    const adminRoute = routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+      )
+    );
+    const subroute = adminRoute.handle[0];
+    const apiRoute = subroute.routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/api*")
+      )
+    );
+    expect(apiRoute).toBeDefined();
+    const json = JSON.stringify(apiRoute);
+    expect(json).toContain('"find":"/api"');
+    expect(json).toContain('"replace":"/admin"');
+    expect(json).toContain("admin:8100");
+  });
+
   it("admin subroute /admin/api* uses uri_substring rewrite", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
@@ -710,14 +780,14 @@ describe("stack generator", () => {
     const out = generateStackArtifacts(spec, {});
     const caddyConfig = JSON.parse(out.caddyJson);
     const routes = caddyConfig.apps.http.servers.main.routes;
-    // Find the assistant hostname route
-    const assistantRoute = routes.find((r: Record<string, unknown>) =>
+    // Find the localhost hostname route
+    const localhostRoute = routes.find((r: Record<string, unknown>) =>
       Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.host) && (m.host as string[]).includes("assistant")
+        Array.isArray(m.host) && (m.host as string[]).includes("localhost")
       )
     );
-    expect(assistantRoute).toBeDefined();
-    const subroute = assistantRoute.handle[0];
+    expect(localhostRoute).toBeDefined();
+    const subroute = localhostRoute.handle[0];
     const guardRoute = subroute.routes[0];
     const negatedRanges = guardRoute.match[0].not[0].remote_ip.ranges;
     expect(negatedRanges).toEqual(["127.0.0.0/8", "::1"]);

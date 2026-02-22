@@ -122,7 +122,7 @@ function caddyHostRoute(hostname: string, upstream: string, guardRanges: string[
 
 function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
   return {
-    match: [{ path: ["/admin*"] }],
+    match: [{ path: ["/api*", "/services/opencode*", "/services/openmemory*", "/admin*"] }],
     handle: [
       {
         handler: "subroute",
@@ -131,6 +131,15 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
           {
             match: [caddyGuardMatcher(guardRanges, true)],
             handle: [caddyGuardHandler()],
+            terminal: true,
+          },
+          // /api* → rewrite + proxy to admin:8100
+          {
+            match: [{ path: ["/api*"] }],
+            handle: [
+              { handler: "rewrite", uri_substring: [{ find: "/api", replace: "/admin" }] },
+              { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
+            ],
             terminal: true,
           },
           // /admin/api* → rewrite + proxy to admin:8100
@@ -142,12 +151,30 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
             ],
             terminal: true,
           },
+          // /services/opencode* → strip prefix + proxy to assistant:4096
+          {
+            match: [{ path: ["/services/opencode*"] }],
+            handle: [
+              { handler: "rewrite", strip_path_prefix: "/services/opencode" },
+              { handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] },
+            ],
+            terminal: true,
+          },
           // /admin/opencode* → strip prefix + proxy to assistant:4096
           {
             match: [{ path: ["/admin/opencode*"] }],
             handle: [
               { handler: "rewrite", strip_path_prefix: "/admin/opencode" },
               { handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] },
+            ],
+            terminal: true,
+          },
+          // /services/openmemory* → strip prefix + proxy to openmemory-ui:3000
+          {
+            match: [{ path: ["/services/openmemory*"] }],
+            handle: [
+              { handler: "rewrite", strip_path_prefix: "/services/openmemory" },
+              { handler: "reverse_proxy", upstreams: [{ dial: "openmemory-ui:3000" }] },
             ],
             terminal: true,
           },
@@ -266,10 +293,8 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
   const mainRoutes: CaddyRoute[] = [];
   const domainRoutes: CaddyRoute[] = [];
 
-  // Hostname routes for core services
-  mainRoutes.push(caddyHostRoute("assistant", "assistant:4096", guardRanges));
-  mainRoutes.push(caddyHostRoute("admin", "admin:8100", guardRanges));
-  mainRoutes.push(caddyHostRoute("openmemory", "openmemory-ui:3000", guardRanges));
+  // Hostname route for local entrypoint without DNS setup
+  mainRoutes.push(caddyHostRoute("localhost", "admin:8100", guardRanges));
 
   // Admin subroute
   mainRoutes.push(caddyAdminSubroute(guardRanges));
@@ -289,7 +314,7 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
     if (route) mainRoutes.push(route);
   }
 
-  // Default catch-all → assistant
+  // Default catch-all → admin
   mainRoutes.push({
     handle: [
       {
@@ -301,7 +326,7 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
             terminal: true,
           },
           {
-            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] }],
+            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }],
           },
         ],
       },
