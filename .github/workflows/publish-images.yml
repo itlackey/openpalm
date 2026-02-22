@@ -95,7 +95,7 @@ jobs:
           # the repo root as context so all paths are accessible.
           ALL_IMAGES='[
             {"image":"assistant","context":"./assistant","file":"./assistant/Dockerfile"},
-            {"image":"gateway","context":"./gateway","file":"./gateway/Dockerfile"},
+            {"image":"gateway","context":".","file":"./gateway/Dockerfile"},
             {"image":"admin","context":".","file":"./admin/Dockerfile"},
             {"image":"channel-chat","context":".","file":"./channels/chat/Dockerfile"},
             {"image":"channel-discord","context":".","file":"./channels/discord/Dockerfile"},

@@ -64,6 +64,9 @@ jobs:
           # Bundle all source (including @openpalm/lib) into a single file.
           bun build packages/cli/src/main.ts --outfile .npm-publish/dist/openpalm.js --target bun
 
+          # Prepend shebang so npm registers it as an executable.
+          sed -i '1i#!/usr/bin/env bun' .npm-publish/dist/openpalm.js
+
           # Create a publishable package manifest outside the monorepo workspace.
           node -e '
             const fs = require("fs");
@@ -91,8 +94,9 @@ jobs:
         run: npm publish --provenance --access public
         working-directory: .npm-publish
         # No NODE_AUTH_TOKEN needed — uses OIDC trusted publishing.
-        # Configure the trusted publisher for the "openpalm" package at:
-        # https://www.npmjs.com/package/openpalm/access
+        # The "openpalm" package must exist on npm first.
+        # Configure the trusted publisher at:
+        #   https://www.npmjs.com/package/openpalm/access
         #   Provider:  GitHub Actions
         #   Owner:     itlackey
         #   Repo:      openpalm

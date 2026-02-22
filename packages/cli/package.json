@@ -1,5 +1,5 @@
 {
-  "name": "@openpalm/cli",
+  "name": "openpalm",
   "version": "0.2.5",
   "description": "CLI tool for installing and managing an OpenPalm stack",
   "type": "module",

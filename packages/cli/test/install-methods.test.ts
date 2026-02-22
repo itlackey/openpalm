@@ -56,7 +56,7 @@ describe("install methods verification", () => {
 
   describe("package.json enables npx/bunx usage", () => {
     it("has correct package name for npx/bunx", () => {
-      expect(pkgJson.name).toBe("@openpalm/cli");
+      expect(pkgJson.name).toBe("openpalm");
     });
 
     it("has bin entry pointing to main.ts", () => {

@@ -14,14 +14,14 @@ RUN find /opt/opencode -name "*.test.ts" -delete \
   && chown -R 1000:1000 /opt/opencode
 
 # Create non-root user for runtime (UID/GID match compose OPENPALM_UID/GID defaults).
-ARG OPENPALM_UID=1000
-ARG OPENPALM_GID=1000
-RUN addgroup --system --gid ${OPENPALM_GID} openpalm && \
-    adduser --system --uid ${OPENPALM_UID} --ingroup openpalm openpalm
+# The oven/bun base image ships a "bun" user at 1000:1000 — rename it to openpalm
+# so the user name is consistent across all OpenPalm containers.
+RUN groupmod -n openpalm bun && \
+    usermod -l openpalm -d /home/openpalm -m bun
 
 # Stable HOME mountpoint for user-global state.
 RUN mkdir -p /home/opencode /work \
-  && chown ${OPENPALM_UID}:${OPENPALM_GID} /home/opencode /work \
+  && chown openpalm:openpalm /home/opencode /work \
   && chmod 755 /home/opencode /work
 
 WORKDIR /work
