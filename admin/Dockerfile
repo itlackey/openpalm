@@ -1,4 +1,4 @@
-FROM oven/bun:1.1.42
+FROM oven/bun:1.3.5
 RUN apt-get update \
   && apt-get install -y cron curl ca-certificates gnupg \
   && install -m 0755 -d /etc/apt/keyrings \

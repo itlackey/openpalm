@@ -96,7 +96,7 @@ function renderLanRanges(scope: StackSpec["accessScope"]): string[] {
   return ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1", "fd00::/8"];
 }
 
-function caddyGuardHandler(ranges: string[]): Record<string, unknown> {
+function caddyGuardHandler(): Record<string, unknown> {
   return {
     handler: "static_response",
     status_code: "403",
@@ -120,7 +120,7 @@ function caddyHostRoute(hostname: string, upstream: string, guardRanges: string[
         routes: [
           {
             match: [caddyGuardMatcher(guardRanges, true)],
-            handle: [caddyGuardHandler(guardRanges)],
+            handle: [caddyGuardHandler()],
             terminal: true,
           },
           {
@@ -143,7 +143,7 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
           // Guard: block non-LAN
           {
             match: [caddyGuardMatcher(guardRanges, true)],
-            handle: [caddyGuardHandler(guardRanges)],
+            handle: [caddyGuardHandler()],
             terminal: true,
           },
           // /admin/api* → rewrite + proxy to admin:8100
@@ -201,7 +201,7 @@ function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpe
     const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
     subrouteHandlers.push({
       match: [caddyGuardMatcher(ranges, true)],
-      handle: [caddyGuardHandler(ranges)],
+      handle: [caddyGuardHandler()],
       terminal: true,
     });
   }
@@ -243,7 +243,7 @@ function caddyDomainRoute(domain: string, svcName: string, port: number, cfg: St
     const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
     subrouteHandlers.push({
       match: [caddyGuardMatcher(ranges, true)],
-      handle: [caddyGuardHandler(ranges)],
+      handle: [caddyGuardHandler()],
       terminal: true,
     });
   }
@@ -310,7 +310,7 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
         routes: [
           {
             match: [caddyGuardMatcher(guardRanges, true)],
-            handle: [caddyGuardHandler(guardRanges)],
+            handle: [caddyGuardHandler()],
             terminal: true,
           },
           {
@@ -458,7 +458,7 @@ function renderPostgresComposeService(): string {
 function renderQdrantComposeService(): string {
   return [
     "  qdrant:",
-    "    image: qdrant/qdrant:latest",
+    "    image: qdrant/qdrant:v1.13.2",
     "    restart: unless-stopped",
     "    env_file:",
     "      - ${OPENPALM_STATE_HOME}/qdrant/.env",

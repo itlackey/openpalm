@@ -17,10 +17,9 @@ describe("channel security", () => {
     expect(verifySignature("secret", "{}", signed.slice(0, -2))).toBe(false);
   });
 
-  it("handles empty shared secrets deterministically", () => {
+  it("rejects empty shared secrets", () => {
     const body = JSON.stringify({ channel: "chat" });
-    const sig = signPayload("", body);
-    expect(verifySignature("", body, sig)).toBe(true);
-    expect(verifySignature("", body, `${sig}ff`)).toBe(false);
+    expect(() => signPayload("", body)).toThrow("HMAC secret must not be empty");
+    expect(verifySignature("", body, "any-sig")).toBe(false);
   });
 });

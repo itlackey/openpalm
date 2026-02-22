@@ -127,7 +127,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
   const impact = deriveImpact(manager, existing, generated);
 
   if (options?.apply ?? true) {
-    manager.renderArtifacts();
+    manager.renderArtifacts(generated);
     for (const service of impact.up) {
       const result = await composeAction("up", service);
       if (!result.ok) throw new Error(`compose_up_failed:${service}:${result.stderr}`);

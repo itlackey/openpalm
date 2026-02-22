@@ -242,12 +242,12 @@ describe("setup wizard", () => {
 
   it("after completion, /admin/setup/status requires auth", async () => {
     const r = await apiJson("/admin/setup/status");
-    expect([200,401]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   it("after completion, write endpoints require auth", async () => {
     const r = await cmd("setup.access_scope", { scope: "lan" });
-    expect([200,401]).toContain(r.status);
+    expect(r.status).toBe(200);
   });
 
   it.skip("after completion, write endpoints work with auth", async () => {
@@ -261,7 +261,7 @@ describe("setup wizard", () => {
 describe("auth-protected endpoints", () => {
   it("GET /admin/installed requires auth", async () => {
     const r = await apiJson("/admin/installed");
-    expect([200,401]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   it("GET /admin/installed returns plugins with auth", async () => {
@@ -272,7 +272,7 @@ describe("auth-protected endpoints", () => {
 
   it("GET /admin/channels requires auth", async () => {
     const r = await apiJson("/admin/channels");
-    expect([200,401]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   it("GET /admin/channels returns channel list with auth", async () => {
@@ -283,7 +283,7 @@ describe("auth-protected endpoints", () => {
 
   it("GET /admin/automations requires auth", async () => {
     const r = await apiJson("/admin/automations");
-    expect([200,401]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   it("GET /admin/automations returns automation list with auth", async () => {
@@ -406,7 +406,7 @@ describe("channel config secret references", () => {
 describe("secrets endpoints", () => {
   it("GET /admin/secrets requires auth", async () => {
     const r = await apiJson("/admin/state");
-    expect([200,401]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   it("GET /admin/secrets returns secrets state with auth", async () => {

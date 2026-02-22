@@ -74,6 +74,61 @@ export async function upsertEnvVar(path: string, key: string, value: string): Pr
   await Bun.write(path, newLines.join("\n"));
 }
 
+/**
+ * Upserts multiple key-value pairs into an env file in a single read-write cycle.
+ * Prefer this over calling `upsertEnvVar` repeatedly when writing several keys
+ * to the same file, as it avoids N redundant read-write operations.
+ */
+export async function upsertEnvVars(filePath: string, entries: [key: string, value: string][]): Promise<void> {
+  if (entries.length === 0) {
+    return;
+  }
+
+  const file = Bun.file(filePath);
+  const exists = await file.exists();
+
+  if (!exists) {
+    const content = entries.map(([k, v]) => `${k}=${v}`).join("\n") + "\n";
+    await Bun.write(filePath, content);
+    return;
+  }
+
+  const content = await file.text();
+  const lines = content.split("\n");
+
+  // Track which keys have already been updated in-place
+  const updated = new Set<string>();
+  const newLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Check if this line matches any of the incoming keys
+    const match = entries.find(([k]) => trimmed.startsWith(`${k}=`));
+    if (match) {
+      const [k, v] = match;
+      newLines.push(`${k}=${v}`);
+      updated.add(k);
+    } else {
+      newLines.push(line);
+    }
+  }
+
+  // Append keys that were not found in the existing file
+  const toAppend = entries.filter(([k]) => !updated.has(k));
+  if (toAppend.length > 0) {
+    // Remove trailing empty lines to avoid double newlines
+    while (newLines.length > 0 && newLines[newLines.length - 1].trim() === "") {
+      newLines.pop();
+    }
+    for (const [k, v] of toAppend) {
+      newLines.push(`${k}=${v}`);
+    }
+    newLines.push(""); // Restore trailing newline
+  }
+
+  await Bun.write(filePath, newLines.join("\n"));
+}
+
 export async function generateEnvFromTemplate(
   templatePath: string,
   outputPath: string,

@@ -4,7 +4,7 @@ import type { InstallOptions } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
 import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
 import { resolveXDGPaths, createDirectoryTree } from "@openpalm/lib/paths.ts";
-import { upsertEnvVar } from "@openpalm/lib/env.ts";
+import { upsertEnvVar, upsertEnvVars } from "@openpalm/lib/env.ts";
 import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { resolveAssets, seedConfigFiles, cleanupTempAssets } from "@openpalm/lib/assets.ts";
@@ -125,19 +125,21 @@ export async function install(options: InstallOptions): Promise<void> {
     info("Using existing .env file");
   }
 
-  // 12. Upsert runtime config vars into .env
+  // 12. Upsert runtime config vars into .env (single read-write cycle)
   const socketPath = resolveSocketPath(platform, os);
-  await upsertEnvVar(envPath, "OPENPALM_DATA_HOME", xdg.data);
-  await upsertEnvVar(envPath, "OPENPALM_CONFIG_HOME", xdg.config);
-  await upsertEnvVar(envPath, "OPENPALM_STATE_HOME", xdg.state);
-  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_PLATFORM", platform);
-  await upsertEnvVar(envPath, "OPENPALM_COMPOSE_BIN", bin);
-  await upsertEnvVar(envPath, "OPENPALM_COMPOSE_SUBCOMMAND", subcommand);
-  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_PATH", socketPath);
-  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", "/var/run/docker.sock");
-  await upsertEnvVar(envPath, "OPENPALM_CONTAINER_SOCKET_URI", "unix:///var/run/docker.sock");
-  await upsertEnvVar(envPath, "OPENPALM_IMAGE_TAG", `latest-${arch}`);
-  await upsertEnvVar(envPath, "OPENPALM_ENABLED_CHANNELS", "");
+  await upsertEnvVars(envPath, [
+    ["OPENPALM_DATA_HOME", xdg.data],
+    ["OPENPALM_CONFIG_HOME", xdg.config],
+    ["OPENPALM_STATE_HOME", xdg.state],
+    ["OPENPALM_CONTAINER_PLATFORM", platform],
+    ["OPENPALM_COMPOSE_BIN", bin],
+    ["OPENPALM_COMPOSE_SUBCOMMAND", subcommand],
+    ["OPENPALM_CONTAINER_SOCKET_PATH", socketPath],
+    ["OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", "/var/run/docker.sock"],
+    ["OPENPALM_CONTAINER_SOCKET_URI", "unix:///var/run/docker.sock"],
+    ["OPENPALM_IMAGE_TAG", `latest-${arch}`],
+    ["OPENPALM_ENABLED_CHANNELS", ""],
+  ]);
 
   // 13. Create XDG directory tree
   const spin3 = spinner("Creating directory structure...");

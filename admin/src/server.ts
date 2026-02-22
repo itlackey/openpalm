@@ -342,28 +342,52 @@ data: {"ok":true,"service":"admin"}
           if (type === "setup.complete") return cors(json(200, { ok: true, data: setupManager.completeSetup() }));
           if (type === "channel.configure") {
             const channel = sanitizeEnvScalar(payload.channel);
-            const exposure = payload.exposure;
-            const config = (payload.config ?? {}) as Record<string, string>;
+            const exposure = typeof payload.exposure === "string" ? payload.exposure : "";
             if (!channel) return cors(json(400, { ok: false, error: "invalid_channel", code: "invalid_channel" }));
             if (exposure === "host" || exposure === "lan" || exposure === "public") stackManager.setChannelAccess(channel, exposure);
-            if (payload.config !== undefined) stackManager.setChannelConfig(channel, config);
+            if (payload.config !== undefined && typeof payload.config === "object" && payload.config !== null) {
+              const config: Record<string, string> = {};
+              for (const [k, v] of Object.entries(payload.config)) {
+                if (typeof v === "string") config[k] = v;
+              }
+              stackManager.setChannelConfig(channel, config);
+            }
             return cors(json(200, { ok: true, data: { channel, exposure: stackManager.getChannelAccess(channel), config: stackManager.getChannelConfig(channel) } }));
           }
-          if (type === "secret.upsert") return cors(json(200, { ok: true, data: { name: stackManager.upsertSecret(payload.name, payload.value) } }));
-          if (type === "secret.delete") return cors(json(200, { ok: true, data: { name: stackManager.deleteSecret(payload.name) } }));
+          if (type === "secret.upsert") {
+            const name = typeof payload.name === "string" ? payload.name : "";
+            const value = typeof payload.value === "string" ? payload.value : "";
+            if (!name) return cors(json(400, { ok: false, error: "name is required", code: "invalid_payload" }));
+            return cors(json(200, { ok: true, data: { name: stackManager.upsertSecret(name, value) } }));
+          }
+          if (type === "secret.delete") {
+            const name = typeof payload.name === "string" ? payload.name : "";
+            if (!name) return cors(json(400, { ok: false, error: "name is required", code: "invalid_payload" }));
+            return cors(json(200, { ok: true, data: { name: stackManager.deleteSecret(name) } }));
+          }
           if (type === "secret.raw.set") {
             const content = typeof payload.content === "string" ? payload.content : "";
+            const validationError = validateSecretsRawContent(content);
+            if (validationError) return cors(json(400, { ok: false, error: validationError, code: "invalid_secrets_content" }));
             writeFileSync(SECRETS_ENV_PATH, content, "utf8");
             stackManager.renderArtifacts();
             return cors(json(200, { ok: true, data: { updated: true } }));
           }
           if (type === "automation.upsert") {
-            const automation = stackManager.upsertAutomation({ id: payload.id ?? randomUUID(), name: payload.name, schedule: payload.schedule, enabled: payload.enabled ?? true, script: payload.script });
+            const name = typeof payload.name === "string" ? payload.name : "";
+            const schedule = typeof payload.schedule === "string" ? payload.schedule : "";
+            const script = typeof payload.script === "string" ? payload.script : "";
+            if (!name || !schedule || !script) return cors(json(400, { ok: false, error: "name, schedule, and script are required", code: "invalid_payload" }));
+            const id = typeof payload.id === "string" ? payload.id : randomUUID();
+            const enabled = typeof payload.enabled === "boolean" ? payload.enabled : true;
+            const automation = stackManager.upsertAutomation({ id, name, schedule, enabled, script });
             syncAutomations(stackManager.listAutomations());
             return cors(json(200, { ok: true, data: automation }));
           }
           if (type === "automation.delete") {
-            const removed = stackManager.deleteAutomation(payload.id);
+            const id = typeof payload.id === "string" ? payload.id : "";
+            if (!id) return cors(json(400, { ok: false, error: "id is required", code: "invalid_payload" }));
+            const removed = stackManager.deleteAutomation(id);
             syncAutomations(stackManager.listAutomations());
             return cors(json(200, { ok: true, data: { removed } }));
           }
@@ -635,6 +659,8 @@ data: {"ok":true,"service":"admin"}
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { content?: string };
         if (typeof body.content !== "string") return cors(json(400, { error: "content is required" }));
+        const validationError = validateSecretsRawContent(body.content);
+        if (validationError) return cors(json(400, { error: validationError }));
         writeFileSync(SECRETS_ENV_PATH, body.content, "utf8");
         stackManager.renderArtifacts();
         return cors(json(200, { ok: true }));

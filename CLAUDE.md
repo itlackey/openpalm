@@ -1,0 +1,137 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+OpenPalm is a self-hosted multi-channel AI assistant platform. It connects communication channels (Discord, Telegram, Voice, Chat, Webhook) through a security gateway to an OpenCode agent runtime, with long-term memory via OpenMemory. All services run as Docker containers orchestrated by Docker Compose, fronted by a Caddy reverse proxy.
+
+**Core principle**: Simplicity in UX, DX, and architecture. The tools (CLI, Admin) manage configuration for known technologies — take a simple spec and convert it to config and filesystem resources.
+
+## Build & Development Commands
+
+```bash
+# Setup and run
+bun run dev:setup          # Create .env, seed .dev/ directories
+bun run dev:build          # Build images and start the stack
+bun run dev:up             # Start without rebuilding
+bun run dev:down           # Stop containers
+bun run dev:restart        # Restart (append -- <service> for one service)
+bun run dev:logs           # Tail logs (append -- <service> to filter)
+bun run dev:ps             # Container status
+bun run dev:fresh          # Full clean rebuild from scratch
+bun run dev:setup:clean    # Wipe .dev/ and .env, re-seed
+
+# Type checking
+bun run typecheck
+
+# Tests (5 layers)
+bun test                          # All tests
+bun test --filter unit            # Unit only
+bun test --filter integration     # Integration only
+bun test --filter contract        # Contract tests
+bun test --filter security        # Security tests
+bun run test:ui                   # Playwright E2E (or: cd admin && npx playwright test)
+
+# Single test file
+bun test gateway/src/channel-intake.test.ts
+
+# Tests matching a pattern
+bun test --match "channel intake"
+
+# Workspace tests
+cd gateway && bun test
+cd admin && bun test
+```
+
+## Architecture
+
+```
+Channels (Discord/Telegram/Voice/Chat/Webhook)
+  ↓ HMAC-signed requests
+Caddy reverse proxy (:80/:443, LAN-restricted)
+  ↓
+Gateway (security: HMAC verify → rate limit → intake validation → audit)
+  ↓
+Assistant/OpenCode (agent runtime with extensions and OpenMemory integration)
+  ↓
+OpenMemory (MCP server + Qdrant vector DB + PostgreSQL)
+
+Admin (control plane: UI, API, Docker Compose lifecycle, cron automations)
+```
+
+**Network rules**: Channels talk only to Gateway — never directly to Assistant, Admin, or OpenMemory. Admin/Assistant/OpenMemory are LAN-only (Caddy IP restrictions).
+
+**Five core concepts**: Extensions (capabilities added to assistant), Connections (credential sets), Channels (platform adapters), Automations (cron-scheduled prompts), Gateway (security/routing layer).
+
+## Monorepo Structure
+
+Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`.
+
+| Directory | Purpose |
+|-----------|---------|
+| `admin/` | Control-plane service (UI, API, lifecycle manager, cron daemon) |
+| `gateway/` | Security layer (HMAC, rate limiting, intake validation, audit) |
+| `assistant/` | OpenCode agent runtime with built-in extensions |
+| `channels/` | Channel adapter services |
+| `packages/lib/` | Shared library (`@openpalm/lib`) used by all services |
+| `packages/cli/` | CLI tool (installer, management commands) |
+| `assets/` | Docker Compose base, Caddy config, install scripts |
+| `dev/` | Dev utilities, setup scripts, dev compose overlay |
+| `test/` | Cross-service tests (integration, contract, security) |
+| `docs/` | User-facing documentation |
+
+## Compose Layer Stacking
+
+Two compose files are layered; `--project-directory .` is required so paths resolve from repo root:
+1. `assets/state/docker-compose.yml` — production base
+2. `dev/docker-compose.dev.yml` — dev overlay (local builds from source)
+
+The `dev:*` scripts handle this automatically.
+
+## XDG Directory Layout (.dev/)
+
+```
+.dev/
+├── config/    (OPENPALM_CONFIG_HOME) — secrets.env, channel envs, caddy, opencode.jsonc
+├── data/      (OPENPALM_DATA_HOME)   — postgres, qdrant, openmemory, admin, assistant
+└── state/     (OPENPALM_STATE_HOME)  — rendered artifacts, runtime state
+```
+
+Delete `.dev/data/admin/setup-state.json` to reset the admin wizard to first-boot state.
+
+## Code Conventions
+
+- **Runtime**: Bun with ES modules (`"type": "module"`)
+- **TypeScript**: Strict mode, target ES2022, module ESNext, bundler resolution
+- **No linter/formatter configured** — follow existing patterns
+- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/admin/*`
+- **File names**: kebab-case (`channel-intake.ts`)
+- **Imports**: Use `import type` for type-only imports; use full `.ts` extensions in relative paths
+- **Env vars**: Access via `Bun.env` with defaults: `const PORT = Number(Bun.env.PORT ?? 8090);`
+- **Error codes**: snake_case strings (`"missing_summary_for_valid_intake"`)
+- **Catch clauses**: Use `unknown`, then narrow with type guards
+- **Tests**: `bun:test` framework with `describe`/`it`/`expect`
+
+## Playwright E2E Tests
+
+Located in `admin/ui/tests/`. Config at `admin/playwright.config.ts`. Runs sequentially (1 worker, not parallel) due to shared state file. Global setup resets `setup-state.json` before each run.
+
+## Dev Access URLs
+
+- Admin UI: `http://localhost/admin/`
+- OpenCode UI: `http://localhost/admin/opencode/`
+- OpenMemory UI: `http://localhost:3000/`
+- Admin API (direct): `http://localhost:8100/`
+
+## Documentation Map
+
+| Question | Location |
+|----------|----------|
+| Message flow / container layout | `dev/docs/architecture.md` |
+| API endpoints (gateway, admin, channels) | `dev/docs/api-reference.md` |
+| Extension development | `dev/docs/extensions-guide.md` |
+| Security model | `admin/docs/security.md` |
+| Backup, restore, upgrade | `admin/docs/maintenance.md` |
+| Troubleshooting | `admin/docs/troubleshooting.md` |
+| Channel setup | `channels/<name>/README.md` |

@@ -1,13 +1,5 @@
 import { describe, expect, it } from "bun:test";
-
-type ChannelMessage = {
-  userId: string;
-  channel: string;
-  text: string;
-  nonce: string;
-  timestamp: number;
-  metadata?: Record<string, unknown>;
-};
+import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 
 function validateChannelMessage(value: unknown): value is ChannelMessage {
   if (typeof value !== "object" || value == null) return false;
@@ -24,6 +16,18 @@ describe("contract: channel message", () => {
       nonce: "n",
       timestamp: Date.now(),
       metadata: { guildId: "g1" }
+    };
+    expect(validateChannelMessage(payload)).toBe(true);
+  });
+
+  it("accepts messages with attachments", () => {
+    const payload: unknown = {
+      userId: "chat:1",
+      channel: "chat",
+      text: "see attached",
+      attachments: ["file.png"],
+      nonce: "n",
+      timestamp: Date.now(),
     };
     expect(validateChannelMessage(payload)).toBe(true);
   });

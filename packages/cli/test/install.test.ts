@@ -62,14 +62,15 @@ describe("install command source validation", () => {
   });
 
   it("upserts XDG paths and runtime config into .env", () => {
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_DATA_HOME\", xdg.data)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_CONFIG_HOME\", xdg.config)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_STATE_HOME\", xdg.state)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_CONTAINER_PLATFORM\", platform)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_COMPOSE_BIN\", bin)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_COMPOSE_SUBCOMMAND\", subcommand)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_CONTAINER_SOCKET_PATH\", socketPath)");
-    expect(installSource).toContain("upsertEnvVar(envPath, \"OPENPALM_IMAGE_TAG\"");
+    expect(installSource).toContain("upsertEnvVars(envPath,");
+    expect(installSource).toContain("\"OPENPALM_DATA_HOME\", xdg.data");
+    expect(installSource).toContain("\"OPENPALM_CONFIG_HOME\", xdg.config");
+    expect(installSource).toContain("\"OPENPALM_STATE_HOME\", xdg.state");
+    expect(installSource).toContain("\"OPENPALM_CONTAINER_PLATFORM\", platform");
+    expect(installSource).toContain("\"OPENPALM_COMPOSE_BIN\", bin");
+    expect(installSource).toContain("\"OPENPALM_COMPOSE_SUBCOMMAND\", subcommand");
+    expect(installSource).toContain("\"OPENPALM_CONTAINER_SOCKET_PATH\", socketPath");
+    expect(installSource).toContain("\"OPENPALM_IMAGE_TAG\"");
   });
 
   it("creates XDG directory tree", () => {

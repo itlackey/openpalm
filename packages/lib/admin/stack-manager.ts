@@ -98,8 +98,8 @@ export class StackManager {
     return generateStackArtifacts(this.getSpec(), this.readSecretsEnv());
   }
 
-  renderArtifacts() {
-    const generated = this.renderPreview();
+  renderArtifacts(precomputed?: ReturnType<StackManager["renderPreview"]>) {
+    const generated = precomputed ?? this.renderPreview();
     const changedArtifacts: string[] = [];
     const write = (path: string, content: string) => this.writeArtifact(path, content, changedArtifacts);
 

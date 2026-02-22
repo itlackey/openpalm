@@ -16,7 +16,9 @@ services:
       TEMPORAL_ENABLED: "false"
 
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
 
   admin:
     build:

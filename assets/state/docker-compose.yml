@@ -26,7 +26,7 @@ services:
     networks: [assistant_net]
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.13.2
     restart: unless-stopped
     env_file:
       - ${OPENPALM_STATE_HOME}/qdrant/.env

@@ -12,8 +12,9 @@ import { extensions } from "./commands/extensions.ts";
 import { preflight } from "./commands/preflight.ts";
 import { createChannel } from "./commands/create-channel.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
+import pkg from "../package.json";
 
-const VERSION = "0.1.1";
+const VERSION = pkg.version;
 
 function printHelp(): void {
   log(bold("openpalm") + dim(` v${VERSION}`));

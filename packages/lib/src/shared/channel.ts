@@ -1,6 +1,11 @@
 /**
  * Standard channel adapter interface.
  *
+ * @planned These types define the intended design direction for channel adapters.
+ * They are not yet imported or used by any channel implementation. Current channel
+ * adapters use `createXxxFetch` factory functions instead. These interfaces will
+ * become active when the channel adapter harness is standardised.
+ *
  * Every channel adapter must export a `createChannel()` function that returns
  * an object satisfying this interface. The scaffold script generates a
  * conforming implementation automatically.

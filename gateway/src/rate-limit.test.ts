@@ -11,12 +11,12 @@ describe("rate limit", () => {
 
   it("resets after the window expires", async () => {
     const key = `user-window-reset-${Math.random().toString(36).slice(2)}`;
-    expect(allowRequest(key, 1, 10)).toBe(true);
-    expect(allowRequest(key, 1, 10)).toBe(false);
+    expect(allowRequest(key, 1, 100)).toBe(true);
+    expect(allowRequest(key, 1, 100)).toBe(false);
 
-    await Bun.sleep(15);
+    await Bun.sleep(150);
 
-    expect(allowRequest(key, 1, 10)).toBe(true);
+    expect(allowRequest(key, 1, 100)).toBe(true);
   });
 
   it("tracks distinct keys independently", () => {
