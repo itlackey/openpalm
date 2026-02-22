@@ -13,7 +13,7 @@
  *   - Repo root has valid source for admin/ and gateway/
  *
  * These tests are slower (~30-60s) because they build images and start
- * containers. They are NOT included in `bun test` (no --filter match).
+ * containers. They only run when OPENPALM_RUN_DOCKER_STACK_TESTS=1.
  * Run them explicitly when validating Docker packaging.
  */
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
@@ -31,6 +31,7 @@ const ADMIN_TOKEN = "test-docker-token";
 const dockerAvailable = await Bun.spawn(["docker", "info"], {
   stdout: "pipe", stderr: "pipe",
 }).exited.then((code) => code === 0).catch(() => false);
+const runDockerStackTests = dockerAvailable && Bun.env.OPENPALM_RUN_DOCKER_STACK_TESTS === "1";
 
 // ── Temp directory layout ─────────────────────────────────
 let tmpDir: string;
@@ -94,7 +95,7 @@ const ADMIN_PORT = 18200;
 const GATEWAY_PORT = 18280;
 
 beforeAll(async () => {
-  if (!dockerAvailable) return;
+  if (!runDockerStackTests) return;
 
   // Create isolated temp directory tree
   tmpDir = mkdtempSync(join(tmpdir(), "openpalm-docker-test-"));
@@ -223,7 +224,7 @@ services:
 }, 180_000); // 3 min timeout for builds
 
 afterAll(async () => {
-  if (!dockerAvailable || !tmpDir) return;
+  if (!runDockerStackTests || !tmpDir) return;
 
   // Tear down containers
   console.log("[docker-test] Tearing down...");
@@ -235,7 +236,7 @@ afterAll(async () => {
 
 // ── Tests ─────────────────────────────────────────────────
 
-describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
+describe.skipIf(!runDockerStackTests)("docker stack: admin container", () => {
   it("health endpoint responds with service info", async () => {
     const resp = await api(ADMIN_PORT, "/health");
     expect(resp.status).toBe(200);
@@ -279,7 +280,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
   });
 });
 
-describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () => {
+describe.skipIf(!runDockerStackTests)("docker stack: YAML handling (Bun.YAML)", () => {
   it("stack spec is loaded and has correct version", async () => {
     const r = await authedJson(ADMIN_PORT, "/state");
     expect(r.ok).toBe(true);
@@ -336,7 +337,7 @@ describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () =
   });
 });
 
-describe.skipIf(!dockerAvailable)("docker stack: gateway container", () => {
+describe.skipIf(!runDockerStackTests)("docker stack: gateway container", () => {
   it("gateway health endpoint responds", async () => {
     const resp = await api(GATEWAY_PORT, "/health").catch(() => null);
     // Gateway may not be fully healthy without assistant upstream,
