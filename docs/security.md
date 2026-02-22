@@ -5,7 +5,7 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 ## 1) Network boundary and route controls (Caddy)
 
 - Caddy fronts all inbound traffic.
-- `/admin*`, `/admin/opencode*`, and `/admin/openmemory*` are LAN-restricted.
+- `/services/opencode*` and `/services/openmemory*` are LAN-restricted.
 - Channel routes are LAN-only by default and can be explicitly toggled to public in admin.
 - Setup wizard can harden further with `host` scope (localhost-only matchers + localhost compose bindings).
 - Unknown routes are rejected at the edge.

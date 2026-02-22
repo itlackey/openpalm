@@ -6,7 +6,7 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 
 - **Admin UI** — Web dashboard for managing services, extensions, secrets, channels, and automations
 - **Compose lifecycle** — Executes allowlisted `docker compose` operations (start, stop, restart, pull)
-- **Automation cron host** — Runs user-defined scheduled prompts via a cron daemon (`cron && bun run src/server.ts`)
+- **Automation cron host** — Runs user-defined scheduled prompts via a cron daemon (`cron && node /app/packages/ui/build/index.js`)
 - **System maintenance cron** — Runs built-in non-configurable maintenance jobs (image pulls, health checks, database maintenance, log rotation, etc.)
 - **Config editor** — Reads and writes `opencode.json` with schema validation, policy lint, and atomic backup
 

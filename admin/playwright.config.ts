@@ -13,7 +13,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "line" : "list",
   use: {
-    baseURL: "http://localhost/admin",
+    baseURL: "http://localhost",
     trace: "on-first-retry",
   },
   projects: [

@@ -3,7 +3,7 @@ import { authedGet, cmd, AUTH_HEADERS } from './helpers';
 
 test.describe('secrets operations', () => {
 	test('GET /secrets with auth returns secret state', async ({ request }) => {
-		const res = await authedGet(request, '/admin/secrets');
+		const res = await authedGet(request, '/secrets');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -20,7 +20,7 @@ test.describe('secrets operations', () => {
 	});
 
 	test('GET /secrets/raw contains saved secret', async ({ request }) => {
-		const res = await request.get('/admin/secrets/raw', { headers: AUTH_HEADERS });
+		const res = await request.get('/secrets/raw', { headers: AUTH_HEADERS });
 		expect(res.status()).toBe(200);
 		const text = await res.text();
 		expect(text).toContain('TEST_SECRET');
@@ -36,7 +36,7 @@ test.describe('secrets operations', () => {
 	});
 
 	test('GET /secrets/raw returns updated content', async ({ request }) => {
-		const res = await request.get('/admin/secrets/raw', { headers: AUTH_HEADERS });
+		const res = await request.get('/secrets/raw', { headers: AUTH_HEADERS });
 		expect(res.status()).toBe(200);
 		const text = await res.text();
 		expect(text).toContain('NEW_KEY=new_value');

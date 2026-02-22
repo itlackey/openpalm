@@ -7,7 +7,7 @@
 
 	async function saveToken() {
 		try {
-			const res = await fetch(`${import.meta.env.BASE_URL ?? '/admin/'}installed`, {
+			const res = await fetch(`${import.meta.env.BASE_URL ?? '/'}installed`, {
 				headers: {
 					'content-type': 'application/json',
 					'x-admin-token': tokenInput

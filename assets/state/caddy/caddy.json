@@ -8,7 +8,7 @@
           "routes": [
             {
               "match": [{
-                "path": ["/admin*"],
+                "path": ["/api*"],
                 "remote_ip": {
                   "ranges": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fd00::/8"]
                 }
@@ -17,16 +17,8 @@
                 "handler": "subroute",
                 "routes": [
                   {
-                    "match": [{ "path": ["/admin/api*"] }],
                     "handle": [
-                      { "handler": "rewrite", "uri_substring": [{ "find": "/admin/api", "replace": "/admin" }] },
-                      { "handler": "reverse_proxy", "upstreams": [{ "dial": "admin:8100" }] }
-                    ],
-                    "terminal": true
-                  },
-                  {
-                    "handle": [
-                      { "handler": "rewrite", "strip_path_prefix": "/admin" },
+                      { "handler": "rewrite", "strip_path_prefix": "/api" },
                       { "handler": "reverse_proxy", "upstreams": [{ "dial": "admin:8100" }] }
                     ]
                   }
@@ -36,9 +28,8 @@
             },
             {
               "handle": [{
-                "handler": "static_response",
-                "body": "OpenPalm is starting... Please visit /admin/ to complete setup.",
-                "status_code": "503"
+                "handler": "reverse_proxy",
+                "upstreams": [{ "dial": "admin:8100" }]
               }]
             }
           ]

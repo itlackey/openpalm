@@ -97,7 +97,7 @@ describe("staged install flow - Phase 2: Early UI access", () => {
   });
 
   it("waits for admin health check before opening browser", () => {
-    expect(installSource).toContain("/api/setup/status");
+    expect(installSource).toContain("/setup/status");
     expect(installSource).toContain("healthy = true");
 
     const healthCheckIdx = installSource.indexOf("healthy = true");

@@ -9,7 +9,7 @@ import { ADMIN_TOKEN } from './helpers';
 
 test.beforeEach(async ({ page }) => {
 	// Set the admin token in localStorage before navigating
-	await page.goto('/admin/');
+	await page.goto('/');
 	await page.evaluate(
 		(token) => localStorage.setItem('op_admin', token),
 		ADMIN_TOKEN
@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('setup wizard browser flow', () => {
 	test('clicking "Run Setup Wizard" opens the wizard overlay', async ({ page }) => {
-		await page.goto('/admin/');
+		await page.goto('/');
 		await expect(page.locator('h2')).toContainText('Dashboard');
 
 		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
@@ -29,7 +29,7 @@ test.describe('setup wizard browser flow', () => {
 	test('wizard step navigation: Welcome -> AI Providers -> Security -> Channels', async ({
 		page
 	}) => {
-		await page.goto('/admin/');
+		await page.goto('/');
 		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
 		await expect(page.locator('.wizard-overlay')).toBeVisible();
 
@@ -53,7 +53,7 @@ test.describe('setup wizard browser flow', () => {
 	});
 
 	test('wizard Back button navigates to previous step', async ({ page }) => {
-		await page.goto('/admin/');
+		await page.goto('/');
 		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
 
 		// Welcome -> Next
@@ -66,7 +66,7 @@ test.describe('setup wizard browser flow', () => {
 	});
 
 	test('full wizard flow reaches Complete step', async ({ page }) => {
-		await page.goto('/admin/');
+		await page.goto('/');
 		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
 		await expect(page.locator('.wizard-overlay')).toBeVisible();
 

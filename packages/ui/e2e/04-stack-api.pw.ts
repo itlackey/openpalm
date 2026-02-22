@@ -3,7 +3,7 @@ import { authedGet, cmd } from './helpers';
 
 test.describe('stack spec operations (auth + setup complete required)', () => {
 	test('GET /stack/spec with auth returns spec with version', async ({ request }) => {
-		const res = await authedGet(request, '/admin/stack/spec');
+		const res = await authedGet(request, '/stack/spec');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -12,7 +12,7 @@ test.describe('stack spec operations (auth + setup complete required)', () => {
 	});
 
 	test('GET /state with auth returns full state object', async ({ request }) => {
-		const res = await authedGet(request, '/admin/state');
+		const res = await authedGet(request, '/state');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -24,7 +24,7 @@ test.describe('stack spec operations (auth + setup complete required)', () => {
 
 	test('POST command stack.spec.set saves spec', async ({ request }) => {
 		// Get current spec
-		const specRes = await authedGet(request, '/admin/stack/spec');
+		const specRes = await authedGet(request, '/stack/spec');
 		const specBody = await specRes.json();
 		const spec = specBody.spec;
 
@@ -44,7 +44,7 @@ test.describe('stack spec operations (auth + setup complete required)', () => {
 	test('POST command stack.spec.set with invalid secret refs rejected', async ({
 		request
 	}) => {
-		const specRes = await authedGet(request, '/admin/stack/spec');
+		const specRes = await authedGet(request, '/stack/spec');
 		const specBody = await specRes.json();
 		const spec = structuredClone(specBody.spec);
 

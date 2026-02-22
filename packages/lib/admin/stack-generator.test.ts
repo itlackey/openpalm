@@ -56,10 +56,10 @@ describe("stack generator", () => {
     const caddyConfig = JSON.parse(out.caddyJson);
     const routes = caddyConfig.apps.http.servers.main.routes;
 
-    // Find the /admin* route
+    // Find the /api* route
     const adminRoute = routes.find((r: Record<string, unknown>) =>
       Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+        Array.isArray(m.path) && (m.path as string[]).includes("/api*")
       )
     );
     expect(adminRoute).toBeDefined();
@@ -616,56 +616,6 @@ describe("stack generator", () => {
 
   // --- Gap coverage: admin subroute sub-handlers ---
 
-  it("admin subroute contains /admin/opencode* route proxying to assistant", () => {
-    const spec = createDefaultStackSpec();
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    const routes = caddyConfig.apps.http.servers.main.routes;
-    const adminRoute = routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
-      )
-    );
-    const subroute = adminRoute.handle[0];
-    const opencodeRoute = subroute.routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin/opencode*")
-      )
-    );
-    expect(opencodeRoute).toBeDefined();
-    const json = JSON.stringify(opencodeRoute);
-    expect(json).toContain("strip_path_prefix");
-    expect(json).toContain("/admin/opencode");
-    expect(json).toContain("assistant:4096");
-    expect(opencodeRoute.terminal).toBe(true);
-  });
-
-  it("admin subroute contains /admin/openmemory* route proxying to openmemory-ui", () => {
-    const spec = createDefaultStackSpec();
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    const routes = caddyConfig.apps.http.servers.main.routes;
-    const adminRoute = routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
-      )
-    );
-    const subroute = adminRoute.handle[0];
-    const omRoute = subroute.routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin/openmemory*")
-      )
-    );
-    expect(omRoute).toBeDefined();
-    const json = JSON.stringify(omRoute);
-    expect(json).toContain("strip_path_prefix");
-    expect(json).toContain("/admin/openmemory");
-    expect(json).toContain("openmemory-ui:3000");
-    expect(omRoute.terminal).toBe(true);
-  });
-
-
-
   it("admin subroute contains /services/opencode* route proxying to assistant", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
@@ -673,7 +623,7 @@ describe("stack generator", () => {
     const routes = caddyConfig.apps.http.servers.main.routes;
     const adminRoute = routes.find((r: Record<string, unknown>) =>
       Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+        Array.isArray(m.path) && (m.path as string[]).includes("/api*")
       )
     );
     const subroute = adminRoute.handle[0];
@@ -695,7 +645,7 @@ describe("stack generator", () => {
     const routes = caddyConfig.apps.http.servers.main.routes;
     const adminRoute = routes.find((r: Record<string, unknown>) =>
       Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+        Array.isArray(m.path) && (m.path as string[]).includes("/api*")
       )
     );
     const subroute = adminRoute.handle[0];
@@ -710,14 +660,14 @@ describe("stack generator", () => {
     expect(json).toContain("openmemory-ui:3000");
   });
 
-  it("admin subroute contains /api* route rewriting to /admin", () => {
+  it("admin subroute contains /api* route rewriting to root", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
     const caddyConfig = JSON.parse(out.caddyJson);
     const routes = caddyConfig.apps.http.servers.main.routes;
     const adminRoute = routes.find((r: Record<string, unknown>) =>
       Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
+        Array.isArray(m.path) && (m.path as string[]).includes("/api*")
       )
     );
     const subroute = adminRoute.handle[0];
@@ -728,31 +678,7 @@ describe("stack generator", () => {
     );
     expect(apiRoute).toBeDefined();
     const json = JSON.stringify(apiRoute);
-    expect(json).toContain('"find":"/api"');
-    expect(json).toContain('"replace":"/admin"');
-    expect(json).toContain("admin:8100");
-  });
-
-  it("admin subroute /admin/api* uses uri_substring rewrite", () => {
-    const spec = createDefaultStackSpec();
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    const routes = caddyConfig.apps.http.servers.main.routes;
-    const adminRoute = routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin*")
-      )
-    );
-    const subroute = adminRoute.handle[0];
-    const apiRoute = subroute.routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/admin/api*")
-      )
-    );
-    expect(apiRoute).toBeDefined();
-    const json = JSON.stringify(apiRoute);
-    expect(json).toContain("uri_substring");
-    expect(json).toContain("/admin/api");
+    expect(json).toContain('"strip_path_prefix":"/api"');
     expect(json).toContain("admin:8100");
   });
 

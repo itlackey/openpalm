@@ -66,7 +66,7 @@ export async function extensions(
           process.exit(1);
         }
 
-        const response = await fetch(`${base}/admin/plugins/install`, {
+        const response = await fetch(`${base}/plugins/install`, {
           method: "POST",
           headers,
           body: JSON.stringify({ pluginId }),
@@ -86,7 +86,7 @@ export async function extensions(
           process.exit(1);
         }
 
-        const response = await fetch(`${base}/admin/plugins/uninstall`, {
+        const response = await fetch(`${base}/plugins/uninstall`, {
           method: "POST",
           headers,
           body: JSON.stringify({ pluginId }),
@@ -99,7 +99,7 @@ export async function extensions(
       }
 
       case "list": {
-        const response = await fetch(`${base}/admin/installed`, {
+        const response = await fetch(`${base}/installed`, {
           method: "GET",
           headers,
         });

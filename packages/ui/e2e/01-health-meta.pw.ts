@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('health + meta (no auth required)', () => {
 	test('GET /health returns ok', async ({ request }) => {
-		const res = await request.get('/admin/health');
+		const res = await request.get('/health');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -12,7 +12,7 @@ test.describe('health + meta (no auth required)', () => {
 	test('GET /meta returns service names, channel fields, and builtInChannels', async ({
 		request
 	}) => {
-		const res = await request.get('/admin/meta');
+		const res = await request.get('/meta');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.serviceNames).toBeDefined();
@@ -29,7 +29,7 @@ test.describe('health + meta (no auth required)', () => {
 	test('GET /setup/status returns first-boot state (no auth needed before setup)', async ({
 		request
 	}) => {
-		const res = await request.get('/admin/setup/status');
+		const res = await request.get('/setup/status');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.completed).toBe(false);

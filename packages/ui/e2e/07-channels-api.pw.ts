@@ -3,7 +3,7 @@ import { authedGet } from './helpers';
 
 test.describe('channels, installed, and snippets', () => {
 	test('GET /channels with auth returns channel list', async ({ request }) => {
-		const res = await authedGet(request, '/admin/channels');
+		const res = await authedGet(request, '/channels');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.channels).toBeDefined();
@@ -16,7 +16,7 @@ test.describe('channels, installed, and snippets', () => {
 	});
 
 	test('GET /installed with auth returns plugins array', async ({ request }) => {
-		const res = await authedGet(request, '/admin/installed');
+		const res = await authedGet(request, '/installed');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.plugins).toBeDefined();
@@ -26,7 +26,7 @@ test.describe('channels, installed, and snippets', () => {
 	test('GET /snippets with auth returns builtInChannels and coreAutomations', async ({
 		request
 	}) => {
-		const res = await authedGet(request, '/admin/snippets');
+		const res = await authedGet(request, '/snippets');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);

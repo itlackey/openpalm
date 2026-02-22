@@ -4,7 +4,7 @@ RUN apt-get update \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && chmod a+r /etc/apt/keyrings/docker.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list \
   && apt-get update \
   && apt-get install -y docker-ce-cli \
   && rm -rf /var/lib/apt/lists/*
@@ -16,14 +16,12 @@ RUN groupmod -n openpalm bun && \
     usermod -l openpalm -d /home/openpalm -m bun
 
 WORKDIR /app
-# Bun workspace symlinks are not available inside Docker builds, so we copy the
-# raw TypeScript source of @openpalm/lib directly into node_modules.
-# See packages/lib/README.md "Docker Build" for details.
-COPY packages/lib /app/node_modules/@openpalm/lib
-COPY admin/package.json ./
-COPY admin/src ./src
-COPY admin/ui ./ui
-RUN bun install --production
+COPY packages/lib ./packages/lib
+COPY packages/ui ./packages/ui
+RUN cd /app/packages/ui \
+  && sed -i 's|"@openpalm/lib": "workspace:\*"|"@openpalm/lib": "file:../lib"|' package.json \
+  && bun install --production \
+  && bun run build
 RUN chown -R openpalm:openpalm /app
 EXPOSE 8100
 COPY admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh

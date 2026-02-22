@@ -40,4 +40,4 @@ fi
 cron
 
 # ── Drop to non-root and start the admin server ──────────────────────────────
-exec gosu openpalm bun run src/server.ts
+exec gosu openpalm node /app/packages/ui/build/index.js
