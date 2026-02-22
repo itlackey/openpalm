@@ -42,6 +42,22 @@ bun test --match "channel intake"
 # Workspace tests
 cd gateway && bun test
 cd admin && bun test
+
+# Workflow tests (requires: act — https://github.com/nektos/act)
+bun run test:workflows             # Test all GitHub Actions workflows locally
+./dev/test-workflows.sh --list     # List available workflows
+./dev/test-workflows.sh test       # Test a single workflow
+./dev/test-workflows.sh --dry-run  # Validate workflow YAML only
+```
+
+## Pre-push Checklist
+
+Before pushing to the remote, ensure all local tests and workflow tests pass:
+
+```bash
+bun run typecheck                  # Type-check all workspaces
+bun test                           # Run all unit/integration/contract/security tests
+bun run test:workflows             # Verify all GitHub Actions workflows locally
 ```
 
 ## Architecture
@@ -139,3 +155,6 @@ Located in `admin/ui/tests/`. Config at `admin/playwright.config.ts`. Runs seque
 | Host paths and XDG layout | `docs/host-system-reference.md` |
 | Stack generation spec | `packages/lib/docs/specification.md` |
 | Channel setup | `channels/<name>/README.md` |
+| Versioning and releases | `dev/docs/versioning.md` |
+| Testing strategy | `dev/docs/testing-plan.md` |
+| Contributor checklist | `dev/docs/contributor-checklist.md` |

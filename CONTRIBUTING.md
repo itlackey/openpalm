@@ -83,11 +83,36 @@ The dev stack layers two compose files:
 ## Edit and validate
 
 ```bash
-bun test
 bun run typecheck
+bun test
 ```
 
 Workspaces: `gateway`, `admin`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`, `channels/webhook`, `packages/lib`, `packages/cli`, `packages/ui`.
+
+## Before pushing
+
+After all local tests pass, verify the GitHub Actions workflows will succeed:
+
+```bash
+bun run test:workflows
+```
+
+This runs all 7 CI workflows locally using [act](https://github.com/nektos/act), including Docker image builds, CLI bundling, registry validation, and release workflow checks. You can also test individual workflows:
+
+```bash
+./dev/test-workflows.sh --list              # List available workflows
+./dev/test-workflows.sh publish-images      # Test Docker builds only
+./dev/test-workflows.sh publish-cli         # Test CLI publish only
+./dev/test-workflows.sh --dry-run           # Validate workflow YAML only
+```
+
+**Full pre-push sequence:**
+
+```bash
+bun run typecheck          # Type-check all workspaces
+bun test                   # Run all tests
+bun run test:workflows     # Verify all CI workflows locally
+```
 
 ### OpenMemory Dashboard
 

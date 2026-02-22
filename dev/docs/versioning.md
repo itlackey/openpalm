@@ -75,6 +75,19 @@ Use these workflow files as the canonical implementation details:
 | `DOCKERHUB_TOKEN` | `publish-images.yml` | Docker Hub auth |
 | `DOCKERHUB_NAMESPACE` (optional) | `publish-images.yml` | Image namespace (default `openpalm`) |
 
-CLI publish uses npm trusted publishing (OIDC) in `publish-cli.yml` (no `NPM_TOKEN`).
+CLI publish uses npm trusted publishing (OIDC) in `publish-cli.yml` (no `NPM_TOKEN`). The `openpalm` package must exist on npmjs.com with a trusted publisher configured for this repo.
 
 For token behavior details, see GitHub docs on [`GITHUB_TOKEN` workflow-trigger limits](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow) and npm [trusted publishers](https://docs.npmjs.com/trusted-publishers/).
+
+## Local workflow testing
+
+Before pushing release-related changes, verify all workflows locally:
+
+```bash
+bun run test:workflows                      # Test all 7 workflows
+./dev/test-workflows.sh publish-images      # Test Docker builds only
+./dev/test-workflows.sh publish-cli         # Test CLI publish only
+./dev/test-workflows.sh --dry-run           # Validate YAML only
+```
+
+Requires [act](https://github.com/nektos/act). See `./dev/test-workflows.sh --help` for all options.

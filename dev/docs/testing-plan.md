@@ -437,6 +437,20 @@ jobs:
       - run: bun run test:ui
 ```
 
+### Workflow tests (local pre-push verification)
+
+All GitHub Actions workflows can be tested locally using [act](https://github.com/nektos/act):
+
+```bash
+bun run test:workflows                      # Test all 7 workflows
+./dev/test-workflows.sh publish-images      # Test one workflow
+./dev/test-workflows.sh --dry-run           # Validate YAML only
+```
+
+This covers: `test`, `publish-images`, `publish-cli`, `release`, `validate-registry`, `update-registry-index`, and `version-bump-pr`. The script builds all Docker images locally, bundles the CLI, validates the npm package, and runs workflow YAML through act.
+
+**Developers must run `bun run test:workflows` after all other tests pass and before pushing to the remote.**
+
 ### Local-only (not in CI)
 
 - **Layer 6 (compose stack tests)**: requires Docker + full stack. Run with `bun run test:compose`.
@@ -508,6 +522,7 @@ test/
     "test:compose": "bun test --filter compose",
     "test:compose:ui": "bun test --filter e2e-ui.compose",
     "test:ci": "bun run typecheck && bun test --filter '!compose'",
+    "test:workflows": "./dev/test-workflows.sh",
     "typecheck": "bunx tsc --noEmit"
   }
 }

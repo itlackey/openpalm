@@ -10,6 +10,7 @@ Technical references and developer guides for contributing to or extending OpenP
 | [API Reference](docs/api-reference.md) | All service endpoints: gateway, admin, channels |
 | [Testing Plan](docs/testing-plan.md) | Test strategy, coverage goals, and test categories |
 | [Contributor Checklist](docs/contributor-checklist.md) | Architecture-safe change checklist |
+| [Versioning & Releases](docs/versioning.md) | Version sources, release workflows, required secrets |
 
 ## Related
 

@@ -110,7 +110,9 @@ run_act_with_event() {
 
 test_test() {
   echo "Running: test.yml (unit job only — integration/contracts/security depend on it)"
-  run_act "test" "push" -j unit
+  # Disable Docker socket binding so test/docker/ tests skip cleanly inside act
+  # (the Docker daemon is reachable via host socket but compose builds fail).
+  run_act "test" "push" -j unit --container-daemon-socket -
 }
 
 test_publish-images() {

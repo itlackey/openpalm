@@ -9,4 +9,5 @@ Use this checklist before merging admin/gateway stack changes.
 - [ ] Any new compose service behavior uses `compose-runner` allowlist helpers (no duplicated allowlists).
 - [ ] If reload/restart semantics change, update `/admin/compose/capabilities` behavior and docs.
 - [ ] Run targeted tests for changed packages (`bun test <path>`), plus `bun run typecheck` when touching TS APIs.
+- [ ] Run `bun run test:workflows` to verify all GitHub Actions workflows pass locally before pushing.
 - [ ] Remove stale TODOs/comments related to replaced architecture decisions.
