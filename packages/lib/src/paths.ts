@@ -5,20 +5,26 @@ import { mkdir } from "node:fs/promises";
 
 export function resolveXDGPaths(): XDGPaths {
   const home = homedir();
+  const isWindows = process.platform === "win32";
+
+  // On Windows, use %LOCALAPPDATA%\OpenPalm instead of Unix-style ~/.local paths.
+  // Docker Desktop for Windows expects Windows-style paths for bind mounts.
+  const localAppData = isWindows ? (Bun.env.LOCALAPPDATA || join(home, "AppData", "Local")) : "";
+
   const data =
     Bun.env.OPENPALM_DATA_HOME ||
     (Bun.env.XDG_DATA_HOME ? join(Bun.env.XDG_DATA_HOME, "openpalm") : undefined) ||
-    join(home, ".local", "share", "openpalm");
+    (isWindows ? join(localAppData, "OpenPalm", "data") : join(home, ".local", "share", "openpalm"));
 
   const config =
     Bun.env.OPENPALM_CONFIG_HOME ||
     (Bun.env.XDG_CONFIG_HOME ? join(Bun.env.XDG_CONFIG_HOME, "openpalm") : undefined) ||
-    join(home, ".config", "openpalm");
+    (isWindows ? join(localAppData, "OpenPalm", "config") : join(home, ".config", "openpalm"));
 
   const state =
     Bun.env.OPENPALM_STATE_HOME ||
     (Bun.env.XDG_STATE_HOME ? join(Bun.env.XDG_STATE_HOME, "openpalm") : undefined) ||
-    join(home, ".local", "state", "openpalm");
+    (isWindows ? join(localAppData, "OpenPalm", "state") : join(home, ".local", "state", "openpalm"));
 
   return { data, config, state };
 }
@@ -48,5 +54,9 @@ export async function createDirectoryTree(xdg: XDGPaths): Promise<void> {
   ];
   for (const dir of stateDirs) await mkdir(join(xdg.state, dir), { recursive: true });
 
-  await mkdir(join(homedir(), "openpalm"), { recursive: true });
+  await mkdir(resolveWorkHome(), { recursive: true });
+}
+
+export function resolveWorkHome(): string {
+  return Bun.env.OPENPALM_WORK_HOME || join(homedir(), "openpalm");
 }

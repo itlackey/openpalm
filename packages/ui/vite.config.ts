@@ -7,11 +7,12 @@ import { readFileSync } from 'node:fs';
 
 /**
  * Vite plugin to shim `Bun` globals used by @openpalm/lib when running
- * under Node.js (SvelteKit build / SSR). Maps Bun.env → process.env and
- * stubs Bun.spawn / Bun.spawnSync so module-level code doesn't crash.
+ * under Node.js (SvelteKit build / SSR). Maps Bun.env → process.env,
+ * Bun.YAML → npm yaml package, and stubs Bun.spawn / Bun.spawnSync
+ * so module-level code doesn't crash.
  */
 function bunShim(): Plugin {
-	const shimCode = [
+	const baseShimCode = [
 		'if(typeof globalThis.Bun==="undefined"){',
 		'  globalThis.Bun={',
 		'    env:typeof process!=="undefined"?process.env:{},',
@@ -28,9 +29,27 @@ function bunShim(): Plugin {
 		transform(code: string, id: string) {
 			// Only shim server-side (SSR) modules from @openpalm/lib that reference Bun.
 			// Client-side code should never import from packages/lib directly.
-			if (id.includes('packages/lib') && code.includes('Bun.')) {
-				return { code: shimCode + '\n' + code, map: null };
+			if (!id.includes('packages/lib') || !code.includes('Bun.')) return;
+
+			if (code.includes('Bun.YAML')) {
+				// Module needs Bun.YAML — import the npm yaml package as a polyfill
+				const yamlShimCode = [
+					'import{parse as __bun_yaml_parse,stringify as __bun_yaml_stringify}from"yaml";',
+					'if(typeof globalThis.Bun==="undefined"){',
+					'  globalThis.Bun={',
+					'    env:typeof process!=="undefined"?process.env:{},',
+					'    YAML:{parse:__bun_yaml_parse,stringify:(v,r,s)=>__bun_yaml_stringify(v,typeof s==="number"?{indent:s}:undefined)},',
+					'    spawn(){throw new Error("Bun.spawn not available in Node")},',
+					'    spawnSync(){throw new Error("Bun.spawnSync not available in Node")}',
+					'  };',
+					'}else if(!globalThis.Bun.YAML){',
+					'  globalThis.Bun.YAML={parse:__bun_yaml_parse,stringify:(v,r,s)=>__bun_yaml_stringify(v,typeof s==="number"?{indent:s}:undefined)};',
+					'}'
+				].join('\n');
+				return { code: yamlShimCode + '\n' + code, map: null };
 			}
+
+			return { code: baseShimCode + '\n' + code, map: null };
 		}
 	};
 }
@@ -62,9 +81,16 @@ function yamlTextImport(): Plugin {
 export default defineConfig({
 	plugins: [bunShim(), sveltekit(), devtoolsJson(), yamlTextImport()],
 	ssr: {
-		// yaml is CJS — Node ESM interop can't extract named exports,
-		// so bundle it into the SSR output instead of externalizing
+		// yaml is CJS — Vite 7's ESM module runner can't handle require().
+		// Force resolution to the ESM browser build instead.
 		noExternal: ['yaml']
+	},
+	resolve: {
+		alias: {
+			// yaml's "node" export condition points to CJS dist/index.js which
+			// breaks in Vite 7's ESModulesEvaluator. Redirect to the ESM browser build.
+			yaml: resolve('../../node_modules/yaml/browser/index.js')
+		}
 	},
 	server: {
 		fs: {

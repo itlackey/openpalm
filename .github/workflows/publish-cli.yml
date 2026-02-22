@@ -45,15 +45,6 @@ jobs:
       - name: Update npm
         run: npm install -g npm@latest
 
-      - name: Set version from tag
-        run: |
-          REF="${GITHUB_REF#refs/tags/}"
-          # Strip component prefix if present (cli/v1.2.3 → 1.2.3)
-          TAG="${REF#cli/}"
-          TAG="${TAG#v}"
-          cd packages/cli
-          npm version "$TAG" --no-git-tag-version --allow-same-version
-
       - name: Bundle CLI for npm
         working-directory: packages/cli
         run: |
@@ -61,6 +52,7 @@ jobs:
           bun build src/main.ts --outfile dist/openpalm.js --target bun
 
           # Rewrite package.json: point bin at bundle, drop workspace dependency
+          # Must happen before npm version/publish — npm rejects workspace: protocol
           node -e '
             const fs = require("fs");
             const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
@@ -69,6 +61,15 @@ jobs:
             delete pkg.dependencies;
             fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
           '
+
+      - name: Set version from tag
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          # Strip component prefix if present (cli/v1.2.3 → 1.2.3)
+          TAG="${REF#cli/}"
+          TAG="${TAG#v}"
+          cd packages/cli
+          npm version "$TAG" --no-git-tag-version --allow-same-version
 
       - name: Publish to npm
         run: npm publish --provenance --access public

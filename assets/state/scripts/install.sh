@@ -7,8 +7,13 @@ set -euo pipefail
 # installs it to ~/.local/bin (or /usr/local/bin), and delegates to
 # `openpalm install`. All installer logic lives in the CLI itself.
 #
-# Usage:
+# Usage (no arguments):
 #   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
+#
+# Usage (with arguments — note the -s -- before flags):
+#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash -s -- --runtime docker
+#   curl -fsSL ... | bash -s -- --runtime podman --no-open
+#   curl -fsSL ... | bash -s -- --ref v1.0.0
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -18,6 +23,7 @@ OPENPALM_REPO_NAME="${OPENPALM_REPO_NAME:-openpalm}"
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
 CLI_ARGS=()
+RELEASE_REF=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -38,6 +44,7 @@ while [ "$#" -gt 0 ]; do
         echo "Missing value for --ref."
         exit 1
       fi
+      RELEASE_REF="$2"
       CLI_ARGS+=(--ref "$2")
       shift 2
       ;;
@@ -47,10 +54,13 @@ Usage: install.sh [--runtime docker|podman|orbstack] [--no-open] [--ref <branch|
 
 Download the OpenPalm CLI and run `openpalm install`.
 
+When piping via curl, pass arguments with -s --:
+  curl -fsSL <url>/install.sh | bash -s -- --runtime docker
+
 Options:
   --runtime   Force a container runtime platform selection.
   --no-open   Do not auto-open the admin setup URL after services are healthy.
-  --ref       Git ref (branch or tag) for asset download (default: main).
+  --ref       Git ref (branch or tag) for release download (default: latest).
   -h, --help  Show this help.
 HELP
       exit 0
@@ -122,7 +132,11 @@ esac
 # ── Download CLI binary ──────────────────────────────────────────────────────
 
 BINARY_NAME="openpalm-${OS_NAME}-${HOST_ARCH}"
-DOWNLOAD_URL="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/latest/download/${BINARY_NAME}"
+if [ -n "$RELEASE_REF" ]; then
+  DOWNLOAD_URL="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/download/${RELEASE_REF}/${BINARY_NAME}"
+else
+  DOWNLOAD_URL="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/latest/download/${BINARY_NAME}"
+fi
 TARGET_PATH="${INSTALL_DIR}/openpalm"
 BINARY_TMP="$(mktemp)"
 

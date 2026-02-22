@@ -2,8 +2,9 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
-import { stringify as yamlStringify } from "yaml";
 import { StackManager } from "./stack-manager.ts";
+
+const yamlStringify = (obj: unknown) => Bun.YAML.stringify(obj, null, 2);
 
 function createManager(dir: string) {
   return new StackManager({

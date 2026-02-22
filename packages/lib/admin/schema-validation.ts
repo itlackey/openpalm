@@ -111,13 +111,7 @@ export function validateComposeFile(yamlString: string): ValidationResult {
 
   let doc: unknown;
   try {
-    // Use Bun.YAML if available, otherwise fall back to basic YAML parsing
-    if (typeof Bun !== "undefined" && "YAML" in Bun) {
-      doc = (Bun as unknown as { YAML: { parse: (s: string) => unknown } }).YAML.parse(yamlString);
-    } else {
-      // Fallback: check structure via line parsing
-      return validateComposeFileBasic(yamlString);
-    }
+    doc = Bun.YAML.parse(yamlString);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     return { valid: false, errors: [{ path: "/", message: `YAML parse error: ${message}` }] };

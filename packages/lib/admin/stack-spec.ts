@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { stringify as yamlStringify, parse as yamlParse } from "yaml";
 import { BUILTIN_CHANNELS } from "../assets/channels/index.ts";
 import type { BuiltInChannelDef } from "../assets/channels/index.ts";
 
@@ -373,14 +372,14 @@ export function parseStackSpec(raw: unknown): StackSpec {
 }
 
 export function stringifyStackSpec(spec: StackSpec): string {
-  return yamlStringify(spec, { lineWidth: 0 });
+  return Bun.YAML.stringify(spec, null, 2);
 }
 
 export function ensureStackSpec(path: string): StackSpec {
   // Check for YAML at the given path
   if (existsSync(path)) {
     const content = readFileSync(path, "utf8");
-    const parsed = path.endsWith(".json") ? JSON.parse(content) as unknown : yamlParse(content) as unknown;
+    const parsed = path.endsWith(".json") ? JSON.parse(content) as unknown : Bun.YAML.parse(content) as unknown;
     return parseStackSpec(parsed);
   }
 

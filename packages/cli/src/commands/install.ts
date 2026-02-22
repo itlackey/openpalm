@@ -1,15 +1,15 @@
 import { join } from "node:path";
-import { chmod, writeFile, rm } from "node:fs/promises";
+import { chmod, writeFile, rm, stat } from "node:fs/promises";
 import type { InstallOptions } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
-import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
-import { resolveXDGPaths, createDirectoryTree } from "@openpalm/lib/paths.ts";
-import { upsertEnvVars } from "@openpalm/lib/env.ts";
+import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveSocketUri, resolveInContainerSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
+import { resolveXDGPaths, resolveWorkHome, createDirectoryTree } from "@openpalm/lib/paths.ts";
+import { readEnvFile, upsertEnvVar, upsertEnvVars } from "@openpalm/lib/env.ts";
 import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { seedConfigFiles } from "@openpalm/lib/assets.ts";
 import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
-import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner } from "@openpalm/lib/ui.ts";
+import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, confirm } from "@openpalm/lib/ui.ts";
 
 export async function install(options: InstallOptions): Promise<void> {
   // ============================================================================
@@ -73,8 +73,14 @@ export async function install(options: InstallOptions): Promise<void> {
   log(bold("Detected environment:"));
   info(`  OS: ${cyan(os)}`);
   info(`  Architecture: ${cyan(arch)}`);
-  info(`  Container runtime: ${cyan(platform)}`);
+  info(`  Container runtime: ${cyan(platform)}${platform === "podman" ? yellow(" (experimental)") : ""}`);
   info(`  Compose command: ${cyan(`${bin} ${subcommand}`)}\n`);
+
+  if (platform === "podman") {
+    warn("Podman support is experimental. Some features may not work as expected.");
+    info("  For the most reliable experience, we recommend Docker Desktop or Docker Engine.");
+    log("");
+  }
 
   // 8. Resolve XDG paths, print them
   const xdg = resolveXDGPaths();
@@ -83,12 +89,52 @@ export async function install(options: InstallOptions): Promise<void> {
   info(`  Config: ${dim(xdg.config)}`);
   info(`  State: ${dim(xdg.state)}\n`);
 
-  // 9. Check if .env exists in CWD, generate if not
-  const envPath = join(process.cwd(), ".env");
-  const envExists = await Bun.file(envPath).exists();
+  // 9. Idempotency guard — check if OpenPalm is already installed
+  const stateComposeFile = join(xdg.state, "docker-compose.yml");
+  const stateEnvFile = join(xdg.state, ".env");
+  if (!options.force) {
+    try {
+      const existingCompose = await Bun.file(stateComposeFile).text();
+      // If compose file exists and contains services beyond caddy+admin, it's a full install
+      if (existingCompose.includes("gateway:") && existingCompose.includes("assistant:")) {
+        warn("OpenPalm appears to already be installed.");
+        info("  The existing compose file contains a full stack configuration.");
+        info("");
+        info("  To update to the latest version, run:");
+        info(`    ${cyan("openpalm update")}`);
+        info("");
+        info("  To reinstall from scratch, run:");
+        info(`    ${cyan("openpalm install --force")}`);
+        log("");
+        const shouldContinue = await confirm("Continue anyway and overwrite the existing installation?");
+        if (!shouldContinue) {
+          log("Aborted.");
+          return;
+        }
+      }
+    } catch {
+      // Compose file doesn't exist — fresh install, proceed
+    }
+  }
 
+  // 10. Create XDG directory tree first (needed before writing state .env)
+  const spin3 = spinner("Creating directory structure...");
+  await createDirectoryTree(xdg);
+  spin3.stop(green("Directory structure created"));
+
+  // 11. Generate secrets and write canonical .env to state home first
+  const cwdEnvPath = join(process.cwd(), ".env");
+  const cwdEnvExists = await Bun.file(cwdEnvPath).exists();
+  const stateEnvExists = await Bun.file(stateEnvFile).exists();
+
+  // Determine which .env to use as starting point
   let generatedAdminToken = "";
-  if (!envExists) {
+  if (stateEnvExists) {
+    info("Using existing state .env file");
+  } else if (cwdEnvExists) {
+    info("Using existing .env file from current directory");
+    await Bun.write(stateEnvFile, Bun.file(cwdEnvPath));
+  } else {
     const spin2 = spinner("Generating .env file...");
     generatedAdminToken = generateToken();
     const overrides: Record<string, string> = {
@@ -100,56 +146,68 @@ export async function install(options: InstallOptions): Promise<void> {
       CHANNEL_TELEGRAM_SECRET: generateToken(),
     };
     const envSeed = Object.entries(overrides).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
-    await writeFile(envPath, envSeed, { encoding: "utf8", mode: 0o600 });
+    await writeFile(stateEnvFile, envSeed, { encoding: "utf8", mode: 0o600 });
     spin2.stop(green(".env file created"));
+  }
 
-    // Display admin token prominently
+  // 12. Check for insecure default admin token and regenerate if needed
+  if (!generatedAdminToken) {
+    const existingEnv = await readEnvFile(stateEnvFile);
+    if (!existingEnv.ADMIN_TOKEN || existingEnv.ADMIN_TOKEN === "change-me-admin-token") {
+      generatedAdminToken = generateToken();
+      await upsertEnvVar(stateEnvFile, "ADMIN_TOKEN", generatedAdminToken);
+      warn("Insecure default admin token detected — regenerated with a secure token.");
+    }
+  }
+
+  // Display admin token prominently if we generated one
+  if (generatedAdminToken) {
     log("");
     log(bold(green("  YOUR ADMIN PASSWORD (save this!)")));
     log("");
     log(`  ${yellow(generatedAdminToken)}`);
     log("");
     info("  You will need this password to log in to the admin dashboard.");
-    info(`  It is also saved in: ${dim(envPath)}`);
+    info(`  It is also saved in: ${dim(stateEnvFile)}`);
     log("");
-  } else {
-    info("Using existing .env file");
   }
 
-  // 10. Upsert runtime config vars into .env (single read-write cycle)
+  // 13. Upsert runtime config vars into canonical state .env (single read-write cycle)
   const socketPath = resolveSocketPath(platform, os);
-  await upsertEnvVars(envPath, [
-    ["OPENPALM_DATA_HOME", xdg.data],
-    ["OPENPALM_CONFIG_HOME", xdg.config],
-    ["OPENPALM_STATE_HOME", xdg.state],
+  const socketUri = resolveSocketUri(platform, os);
+  const inContainerSocket = resolveInContainerSocketPath(platform);
+  // Normalize backslashes to forward slashes for Docker Compose compatibility on Windows
+  const normPath = (p: string) => p.replace(/\\/g, "/");
+  await upsertEnvVars(stateEnvFile, [
+    ["OPENPALM_DATA_HOME", normPath(xdg.data)],
+    ["OPENPALM_CONFIG_HOME", normPath(xdg.config)],
+    ["OPENPALM_STATE_HOME", normPath(xdg.state)],
     ["OPENPALM_CONTAINER_PLATFORM", platform],
     ["OPENPALM_COMPOSE_BIN", bin],
     ["OPENPALM_COMPOSE_SUBCOMMAND", subcommand],
     ["OPENPALM_CONTAINER_SOCKET_PATH", socketPath],
-    ["OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", "/var/run/docker.sock"],
-    ["OPENPALM_CONTAINER_SOCKET_URI", "unix:///var/run/docker.sock"],
+    ["OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", inContainerSocket],
+    ["OPENPALM_CONTAINER_SOCKET_URI", socketUri],
+    ["OPENPALM_IMAGE_NAMESPACE", "openpalm"],
     ["OPENPALM_IMAGE_TAG", `latest-${arch}`],
+    ["OPENPALM_WORK_HOME", normPath(resolveWorkHome())],
+    ["OPENPALM_UID", String(process.getuid?.() ?? 1000)],
+    ["OPENPALM_GID", String(process.getgid?.() ?? 1000)],
     ["OPENPALM_ENABLED_CHANNELS", ""],
   ]);
 
-  // 11. Create XDG directory tree
-  const spin3 = spinner("Creating directory structure...");
-  await createDirectoryTree(xdg);
-  spin3.stop(green("Directory structure created"));
+  // 14. Copy canonical .env to CWD for user convenience
+  await Bun.write(cwdEnvPath, Bun.file(stateEnvFile));
 
-  // 12. Copy .env to state home
-  const stateEnvFile = join(xdg.state, ".env");
-  await Bun.write(stateEnvFile, Bun.file(envPath));
-
-  // 13. Seed config files (embedded templates — no network needed)
+  // 15. Seed config files (embedded templates — no network needed)
   const spin4 = spinner("Seeding configuration files...");
   await seedConfigFiles(xdg.config);
   spin4.stop(green("Configuration files seeded"));
 
-  // 14. Reset setup wizard state so every install/reinstall starts from first boot
+  // 16. Reset setup wizard state so every install/reinstall starts from first boot
   await rm(join(xdg.data, "admin", "setup-state.json"), { force: true });
 
-  // 15. Write uninstall script to state home
+  // 17. Write uninstall script to state home
   const uninstallDst = join(xdg.state, "uninstall.sh");
   await writeFile(uninstallDst, "#!/usr/bin/env bash\nopenpalm uninstall\n", "utf8");
   try {
@@ -158,14 +216,14 @@ export async function install(options: InstallOptions): Promise<void> {
     // chmod may fail on Windows — non-critical
   }
 
-  // 16. Write an empty system.env so the admin env_file reference resolves
+  // 18. Write an empty system.env so the admin env_file reference resolves
   const systemEnvPath = join(xdg.state, "system.env");
   const systemEnvExists = await Bun.file(systemEnvPath).exists();
   if (!systemEnvExists) {
     await writeFile(systemEnvPath, "# Generated system env — populated on first stack apply\n", "utf8");
   }
 
-  // 17. Write minimal setup-only Caddy JSON config (admin routes only)
+  // 19. Write minimal setup-only Caddy JSON config (admin routes only)
   const minimalCaddyJson = JSON.stringify({
     admin: { disabled: true },
     apps: {
@@ -221,7 +279,6 @@ export async function install(options: InstallOptions): Promise<void> {
 
   // Write a minimal compose file with just caddy + admin so we can pull/start
   // before the admin wizard generates the full stack compose file.
-  const stateComposeFile = join(xdg.state, "docker-compose.yml");
   const minimalCompose = `services:
   caddy:
     image: caddy:2-alpine
@@ -255,7 +312,7 @@ export async function install(options: InstallOptions): Promise<void> {
       - \${OPENPALM_DATA_HOME}:/data
       - \${OPENPALM_CONFIG_HOME}:/config
       - \${OPENPALM_STATE_HOME}:/state
-      - \${HOME}/openpalm:/work
+      - \${OPENPALM_WORK_HOME:-\${HOME}/openpalm}:/work
       - \${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:\${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}
     networks: [assistant_net]
     healthcheck:
@@ -280,21 +337,39 @@ networks:
 
   const coreServices = ["caddy", "admin"];
 
+  // Pull with graceful error handling
   const spin6 = spinner("Pulling core service images...");
-  await composePull(composeConfig, coreServices);
-  spin6.stop(green("Core images pulled"));
+  try {
+    await composePull(composeConfig, coreServices);
+    spin6.stop(green("Core images pulled"));
+  } catch (pullErr) {
+    spin6.stop(yellow("Failed to pull core images"));
+    warn("Image pull failed. This can happen due to network issues or rate limits.");
+    info("");
+    info("  To retry, run:");
+    info(`    ${cyan("openpalm install")}`);
+    info("");
+    info("  Or manually pull and then start:");
+    info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} pull`)}`);
+    info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} up -d`)}`);
+    log("");
+    process.exit(1);
+  }
 
   const spin7 = spinner("Starting core services...");
   await composeUp(composeConfig, coreServices, { detach: true });
   spin7.stop(green("Core services started"));
 
-  // Wait for admin health check
+  // Wait for admin health check with exponential backoff
   const adminUrl = "http://localhost/admin";
   const healthUrl = `${adminUrl}/api/setup/status`;
   const spin8 = spinner("Waiting for admin interface...");
 
   let healthy = false;
-  for (let i = 0; i < 90; i++) {
+  let delay = 1000; // Start at 1s
+  const maxDelay = 5000; // Cap at 5s
+  const deadline = Date.now() + 180_000; // 3 minutes total
+  while (Date.now() < deadline) {
     try {
       const response = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
       if (response.ok) {
@@ -304,7 +379,8 @@ networks:
     } catch {
       // Service not ready yet
     }
-    await Bun.sleep(2000);
+    await Bun.sleep(delay);
+    delay = Math.min(delay * 1.5, maxDelay);
   }
 
   if (!healthy) {
@@ -357,7 +433,7 @@ networks:
     }
   } else {
     log("");
-    log(bold(yellow("  Setup did not come online within 90 seconds")));
+    log(bold(yellow("  Setup did not come online within 3 minutes")));
     log("");
     info("  This usually means containers are still starting. Try these steps:");
     log("");

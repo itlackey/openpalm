@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [ ! -d "$ROOT_DIR/assets" ]; then
-  ROOT_DIR="$(pwd)"
-fi
-cd "$ROOT_DIR"
+# Resolve .env from XDG state home or common locations
+# (does not assume the script runs from the repo root)
 
 RUNTIME_OVERRIDE=""
 REMOVE_ALL=0
 REMOVE_IMAGES=0
+REMOVE_BINARY=0
 ASSUME_YES=0
 
 while [ "$#" -gt 0 ]; do
@@ -25,10 +22,15 @@ while [ "$#" -gt 0 ]; do
       ;;
     --remove-all)
       REMOVE_ALL=1
+      REMOVE_BINARY=1
       shift
       ;;
     --remove-images)
       REMOVE_IMAGES=1
+      shift
+      ;;
+    --remove-binary)
+      REMOVE_BINARY=1
       shift
       ;;
     --yes)
@@ -41,8 +43,9 @@ Usage: ./assets/state/scripts/uninstall.sh [--runtime docker|podman|orbstack] [-
 
 Options:
   --runtime        Force a container runtime platform selection.
-  --remove-all     Remove all OpenPalm config/state/data directories and local .env.
+  --remove-all     Remove all OpenPalm config/state/data directories, local .env, and CLI binary.
   --remove-images  Remove container images used by OpenPalm.
+  --remove-binary  Remove the openpalm CLI binary from ~/.local/bin.
   --yes            Skip confirmation prompts.
   -h, --help       Show this help.
 HELP
@@ -79,11 +82,25 @@ if [ "$OS_NAME" = "windows-bash" ]; then
   exit 1
 fi
 
-ENV_FILE=".env"
-OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-$(read_env_var OPENPALM_DATA_HOME "$ENV_FILE")}"
-OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-$(read_env_var OPENPALM_CONFIG_HOME "$ENV_FILE")}"
-OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-$(read_env_var OPENPALM_STATE_HOME "$ENV_FILE")}"
-OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-$(read_env_var OPENPALM_CONTAINER_PLATFORM "$ENV_FILE")}}"
+# Try state home .env first (canonical), then CWD .env as fallback
+STATE_ENV_FILE="${OPENPALM_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/openpalm}/.env"
+CWD_ENV_FILE=".env"
+if [ -f "$STATE_ENV_FILE" ]; then
+  ENV_FILE="$STATE_ENV_FILE"
+elif [ -f "$CWD_ENV_FILE" ]; then
+  ENV_FILE="$CWD_ENV_FILE"
+else
+  ENV_FILE=""
+fi
+
+if [ -n "$ENV_FILE" ]; then
+  OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-$(read_env_var OPENPALM_DATA_HOME "$ENV_FILE")}"
+  OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-$(read_env_var OPENPALM_CONFIG_HOME "$ENV_FILE")}"
+  OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-$(read_env_var OPENPALM_STATE_HOME "$ENV_FILE")}"
+  OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-$(read_env_var OPENPALM_CONTAINER_PLATFORM "$ENV_FILE")}}"
+else
+  OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-}}"
+fi
 
 OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/openpalm}"
 OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/openpalm}"
@@ -133,6 +150,7 @@ echo "  Runtime: ${OPENPALM_CONTAINER_PLATFORM:-auto-unavailable}"
 echo "  Stop/remove containers: yes"
 echo "  Remove images: $([ "$REMOVE_IMAGES" -eq 1 ] && echo yes || echo no)"
 echo "  Remove all data/config/state: $([ "$REMOVE_ALL" -eq 1 ] && echo yes || echo no)"
+echo "  Remove CLI binary: $([ "$REMOVE_BINARY" -eq 1 ] && echo yes || echo no)"
 echo "  Data dir: $OPENPALM_DATA_HOME"
 echo "  Config dir: $OPENPALM_CONFIG_HOME"
 echo "  State dir: $OPENPALM_STATE_HOME"
@@ -162,15 +180,24 @@ fi
 
 if [ "$REMOVE_ALL" -eq 1 ]; then
   rm -rf "$OPENPALM_DATA_HOME" "$OPENPALM_CONFIG_HOME" "$OPENPALM_STATE_HOME"
-  rm -f "$ROOT_DIR/.env"
+  # Remove CWD .env if it exists (best-effort)
+  rm -f ".env" 2>/dev/null || true
   echo "Removed OpenPalm data/config/state and local .env."
 fi
 
-# Remove CLI binary if it exists in the standard install location
-CLI_PATH="$HOME/.local/bin/openpalm"
-if [ -f "$CLI_PATH" ]; then
-  echo "Removing CLI binary at $CLI_PATH"
-  rm -f "$CLI_PATH"
+if [ "$REMOVE_BINARY" -eq 1 ]; then
+  BINARY_PATH="$HOME/.local/bin/openpalm"
+  if [ -f "$BINARY_PATH" ]; then
+    rm -f "$BINARY_PATH"
+    echo "Removed CLI binary: $BINARY_PATH"
+  else
+    echo "CLI binary not found at $BINARY_PATH — it may have been installed elsewhere."
+  fi
 fi
+
+echo ""
+echo "Note: ~/openpalm (assistant working directory) was not removed."
+echo "  Delete it manually if you no longer need it: rm -rf ~/openpalm"
+echo ""
 
 echo "Uninstall complete."

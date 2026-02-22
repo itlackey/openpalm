@@ -155,7 +155,18 @@ describe("CLI entry point", () => {
   });
 
   it("supports ext as alias for extensions with valid subcommand", async () => {
-    const { stderr, exitCode } = await runCli("ext", "list");
+    // Run with isolated env: no ADMIN_TOKEN and a non-existent state dir
+    // so the CLI can't authenticate — proving "list" is recognized (not "Unknown command")
+    // but the command still fails (non-zero exit) because no token is available.
+    const proc = Bun.spawn(["bun", "run", join(REPO_ROOT, "packages/cli/src/main.ts"), "ext", "list"], {
+      cwd: REPO_ROOT,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, ADMIN_TOKEN: "", OPENPALM_STATE_HOME: "/tmp/nonexistent-openpalm-state" },
+    });
+    await proc.exited;
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = proc.exitCode ?? 1;
 
     expect(exitCode).not.toBe(0);
     expect(stderr).not.toContain("Unknown command");
