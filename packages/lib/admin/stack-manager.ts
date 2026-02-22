@@ -103,53 +103,28 @@ export class StackManager {
   renderArtifacts() {
     const generated = this.renderPreview();
     const changedArtifacts: string[] = [];
-    const trackChange = (path: string, content: string) => {
-      if (!existsSync(path) || readFileSync(path, "utf8") !== content) changedArtifacts.push(path);
-    };
+    const write = (path: string, content: string) => this.writeArtifact(path, content, changedArtifacts);
 
-    trackChange(this.paths.caddyfilePath, generated.caddyfile);
-    mkdirSync(dirname(this.paths.caddyfilePath), { recursive: true });
-    writeFileSync(this.paths.caddyfilePath, generated.caddyfile, "utf8");
-    trackChange(this.paths.caddyJsonPath, generated.caddyJson);
-    mkdirSync(dirname(this.paths.caddyJsonPath), { recursive: true });
-    writeFileSync(this.paths.caddyJsonPath, generated.caddyJson, "utf8");
+    write(this.paths.caddyfilePath, generated.caddyfile);
+    write(this.paths.caddyJsonPath, generated.caddyJson);
     mkdirSync(this.paths.caddyRoutesDir, { recursive: true });
     this.removeStaleRouteFiles(generated.caddyRoutes);
     for (const [routeFile, content] of Object.entries(generated.caddyRoutes)) {
       const path = join(this.paths.caddyRoutesDir, routeFile);
       mkdirSync(dirname(path), { recursive: true });
       if (routeFile === "extra-user-overrides.caddy" && existsSync(path)) continue;
-      trackChange(path, content);
-      writeFileSync(path, content, "utf8");
+      write(path, content);
     }
 
-    trackChange(this.paths.composeFilePath, generated.composeFile);
-    mkdirSync(dirname(this.paths.composeFilePath), { recursive: true });
-    writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
-
-    trackChange(this.paths.gatewayEnvPath, generated.gatewayEnv);
-    mkdirSync(dirname(this.paths.systemEnvPath), { recursive: true });
-    writeFileSync(this.paths.systemEnvPath, generated.systemEnv, "utf8");
-
-    mkdirSync(dirname(this.paths.gatewayEnvPath), { recursive: true });
-    writeFileSync(this.paths.gatewayEnvPath, generated.gatewayEnv, "utf8");
-    trackChange(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
-    mkdirSync(dirname(this.paths.openmemoryEnvPath), { recursive: true });
-    writeFileSync(this.paths.openmemoryEnvPath, generated.openmemoryEnv, "utf8");
-    trackChange(this.paths.postgresEnvPath, generated.postgresEnv);
-    mkdirSync(dirname(this.paths.postgresEnvPath), { recursive: true });
-    writeFileSync(this.paths.postgresEnvPath, generated.postgresEnv, "utf8");
-    trackChange(this.paths.qdrantEnvPath, generated.qdrantEnv);
-    mkdirSync(dirname(this.paths.qdrantEnvPath), { recursive: true });
-    writeFileSync(this.paths.qdrantEnvPath, generated.qdrantEnv, "utf8");
-    trackChange(this.paths.assistantEnvPath, generated.assistantEnv);
-    mkdirSync(dirname(this.paths.assistantEnvPath), { recursive: true });
-    writeFileSync(this.paths.assistantEnvPath, generated.assistantEnv, "utf8");
+    write(this.paths.composeFilePath, generated.composeFile);
+    write(this.paths.systemEnvPath, generated.systemEnv);
+    write(this.paths.gatewayEnvPath, generated.gatewayEnv);
+    write(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
+    write(this.paths.postgresEnvPath, generated.postgresEnv);
+    write(this.paths.qdrantEnvPath, generated.qdrantEnv);
+    write(this.paths.assistantEnvPath, generated.assistantEnv);
     for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
-      const path = join(this.paths.stateRootPath, serviceName, ".env");
-      mkdirSync(dirname(path), { recursive: true });
-      trackChange(path, content);
-      writeFileSync(path, content, "utf8");
+      write(join(this.paths.stateRootPath, serviceName, ".env"), content);
     }
 
     const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "rendered", "render-report.json");
@@ -295,6 +270,12 @@ export class StackManager {
     return Object.keys(spec.channels)
       .filter((name) => spec.channels[name].enabled)
       .map((name) => `channel-${name}`);
+  }
+
+  private writeArtifact(path: string, content: string, changedList: string[]): void {
+    if (!existsSync(path) || readFileSync(path, "utf8") !== content) changedList.push(path);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, content, "utf8");
   }
 
   private writeStackSpecAtomically(content: string) {
