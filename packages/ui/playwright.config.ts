@@ -15,7 +15,7 @@ export default defineConfig({
 		baseURL: BASE
 	},
 	webServer: {
-		command: `node build/index.js`,
+		command: `bun run build && node build/index.js`,
 		port: PORT,
 		timeout: 60_000,
 		reuseExistingServer: false,
