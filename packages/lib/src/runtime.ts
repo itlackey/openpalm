@@ -9,7 +9,7 @@ export function detectOS(): HostOS {
     case "linux":
       return "linux";
     case "win32":
-      return "windows-bash";
+      return "windows";
     default:
       return "unknown";
   }

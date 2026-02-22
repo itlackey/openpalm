@@ -9,6 +9,7 @@ import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { resolveAssets, seedConfigFiles, cleanupTempAssets } from "@openpalm/lib/assets.ts";
 import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "@openpalm/lib/detect-providers.ts";
+import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, select } from "@openpalm/lib/ui.ts";
 
 export async function install(options: InstallOptions): Promise<void> {
@@ -24,11 +25,6 @@ export async function install(options: InstallOptions): Promise<void> {
     error("Unable to detect operating system. Installation aborted.");
     process.exit(1);
   }
-  if (os === "windows-bash") {
-    error("Windows detected. Please use PowerShell instead:");
-    info('  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"');
-    process.exit(1);
-  }
 
   // 2. Detect arch
   const arch = detectArch();
@@ -36,31 +32,53 @@ export async function install(options: InstallOptions): Promise<void> {
   // 3. Detect or use overridden container runtime
   const platform = options.runtime ?? await detectRuntime(os);
   if (!platform) {
-    error("No container runtime found. Please install Docker, Podman, or OrbStack.");
+    error(noRuntimeGuidance(os));
     process.exit(1);
   }
 
-  // 4. Resolve compose bin/subcommand, validate runtime works
+  // 4. Resolve compose bin/subcommand
   const { bin, subcommand } = resolveComposeBin(platform);
+
+  // 5. Run pre-flight checks (daemon running, disk space, port 80)
+  const preflightWarnings = await runPreflightChecks(bin, platform);
+  for (const w of preflightWarnings) {
+    warn(w.message);
+    if (w.detail) {
+      for (const line of w.detail.split("\n")) {
+        info(`  ${line}`);
+      }
+    }
+    log("");
+  }
+
+  // Daemon not running is fatal — we can't proceed
+  const daemonWarning = preflightWarnings.find((w) =>
+    w.message.includes("daemon is not running")
+  );
+  if (daemonWarning) {
+    process.exit(1);
+  }
+
+  // 6. Validate compose works
   const isValid = await validateRuntime(bin, subcommand);
   if (!isValid) {
-    error(`Container runtime validation failed for ${bin} ${subcommand}`);
+    error(noComposeGuidance(platform));
     process.exit(1);
   }
 
-  // 5. Print detected info
+  // 7. Print detected info
   log(bold("Detected environment:"));
   info(`  OS: ${cyan(os)}`);
   info(`  Architecture: ${cyan(arch)}`);
   info(`  Container runtime: ${cyan(platform)}`);
   info(`  Compose command: ${cyan(`${bin} ${subcommand}`)}\n`);
 
-  // 6. Resolve assets (download if needed)
+  // 8. Resolve assets (download if needed)
   const spin1 = spinner("Resolving assets...");
   const assetsDir = await resolveAssets(options.ref);
   spin1.stop(green("Assets resolved"));
 
-  // 7. Verify compose file exists in repository
+  // 9. Verify compose file exists in repository
   const assetComposeFile = join(process.cwd(), "assets", "state", "docker-compose.yml");
   const composeFileExists = await Bun.file(assetComposeFile).exists();
   if (!composeFileExists) {
@@ -68,21 +86,23 @@ export async function install(options: InstallOptions): Promise<void> {
     process.exit(1);
   }
 
-  // 8. Resolve XDG paths, print them
+  // 10. Resolve XDG paths, print them
   const xdg = resolveXDGPaths();
   log(bold("\nXDG paths:"));
   info(`  Data: ${dim(xdg.data)}`);
   info(`  Config: ${dim(xdg.config)}`);
   info(`  State: ${dim(xdg.state)}\n`);
 
-  // 9. Check if .env exists in CWD, generate if not
+  // 11. Check if .env exists in CWD, generate if not
   const envPath = join(process.cwd(), ".env");
   const envExists = await Bun.file(envPath).exists();
 
+  let generatedAdminToken = "";
   if (!envExists) {
     const spin2 = spinner("Generating .env file...");
+    generatedAdminToken = generateToken();
     const overrides: Record<string, string> = {
-      ADMIN_TOKEN: generateToken(),
+      ADMIN_TOKEN: generatedAdminToken,
       POSTGRES_PASSWORD: generateToken(),
       CHANNEL_CHAT_SECRET: generateToken(),
       CHANNEL_DISCORD_SECRET: generateToken(),
@@ -92,14 +112,21 @@ export async function install(options: InstallOptions): Promise<void> {
     const envSeed = Object.entries(overrides).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
     await writeFile(envPath, envSeed, "utf8");
     spin2.stop(green(".env file created"));
+
+    // Display admin token prominently
     log("");
-    info("  Your admin token is in .env (ADMIN_TOKEN). You will need it during setup.");
+    log(bold(green("  YOUR ADMIN PASSWORD (save this!)")));
+    log("");
+    log(`  ${yellow(generatedAdminToken)}`);
+    log("");
+    info("  You will need this password to log in to the admin dashboard.");
+    info(`  It is also saved in: ${dim(envPath)}`);
     log("");
   } else {
     info("Using existing .env file");
   }
 
-  // 10. Upsert runtime config vars into .env
+  // 12. Upsert runtime config vars into .env
   const socketPath = resolveSocketPath(platform, os);
   await upsertEnvVar(envPath, "OPENPALM_DATA_HOME", xdg.data);
   await upsertEnvVar(envPath, "OPENPALM_CONFIG_HOME", xdg.config);
@@ -113,42 +140,41 @@ export async function install(options: InstallOptions): Promise<void> {
   await upsertEnvVar(envPath, "OPENPALM_IMAGE_TAG", `latest-${arch}`);
   await upsertEnvVar(envPath, "OPENPALM_ENABLED_CHANNELS", "");
 
-  // 11. Create XDG directory tree
+  // 13. Create XDG directory tree
   const spin3 = spinner("Creating directory structure...");
   await createDirectoryTree(xdg);
   spin3.stop(green("Directory structure created"));
 
-  // 12. Copy compose file and .env to state home
+  // 14. Copy compose file and .env to state home
   const stateComposeFile = join(xdg.state, "docker-compose.yml");
   const stateEnvFile = join(xdg.state, ".env");
   await copyFile(assetComposeFile, stateComposeFile);
   await copyFile(envPath, stateEnvFile);
 
-  // 13. Seed config files
+  // 15. Seed config files
   const spin4 = spinner("Seeding configuration files...");
   await seedConfigFiles(assetsDir, xdg.config);
   spin4.stop(green("Configuration files seeded"));
 
-  // 14. Reset setup wizard state so every install/reinstall starts from first boot
+  // 16. Reset setup wizard state so every install/reinstall starts from first boot
   await rm(join(xdg.data, "admin", "setup-state.json"), { force: true });
 
-  // 15. Write uninstall script to state home
+  // 17. Write uninstall script to state home
   const uninstallDst = join(xdg.state, "uninstall.sh");
   await writeFile(uninstallDst, "#!/usr/bin/env bash\nopenpalm uninstall\n", "utf8");
   try {
     await chmod(uninstallDst, 0o755);
   } catch {
-    // may not exist if seedFile skipped
+    // chmod may fail on Windows — non-critical
   }
 
-  // 16. Detect AI providers, write seed file
+  // 18. Detect AI providers, write seed file
   const spin5 = spinner("Detecting AI providers...");
   const { providers, existingConfigPath } = await detectAllProviders();
   const providerSeedPath = join(xdg.data, "admin", "detected-providers.json");
   await writeProviderSeedFile(providers, providerSeedPath);
   spin5.stop(green(`Detected ${providers.length} AI provider(s)`));
 
-  // Print detected providers
   for (const p of providers) {
     if (p.type === "local") {
       info(`  ${green("+")} ${p.name} (running locally — ${p.models.length} models available)`);
@@ -159,14 +185,13 @@ export async function install(options: InstallOptions): Promise<void> {
     }
   }
 
-  // 16. If existingConfigPath found, print info
   if (existingConfigPath) {
     log("");
     info(`Found existing AI configuration at: ${dim(existingConfigPath)}`);
     info("You can review this file to configure your AI providers.");
   }
 
-  // 17. If small model candidates exist, let user pick one
+  // 19. If small model candidates exist, let user pick one
   const smallModels = getSmallModelCandidates(providers);
   if (smallModels.length > 0) {
     log("");
@@ -188,9 +213,8 @@ export async function install(options: InstallOptions): Promise<void> {
   // Phase 2: Early UI access
   // ============================================================================
 
-  log(bold("\nStarting core services...\n"));
+  log(bold("\nDownloading OpenPalm services (this may take a few minutes on first install)...\n"));
 
-  // 1. Build ComposeConfig
   const composeConfig: ComposeConfig = {
     bin,
     subcommand,
@@ -198,7 +222,6 @@ export async function install(options: InstallOptions): Promise<void> {
     envFile: stateEnvFile,
   };
 
-  // 2. Pull + start minimal services
   const coreServices = ["caddy", "postgres", "admin"];
 
   const spin6 = spinner("Pulling core service images...");
@@ -209,7 +232,7 @@ export async function install(options: InstallOptions): Promise<void> {
   await composeUp(composeConfig, coreServices, { detach: true });
   spin7.stop(green("Core services started"));
 
-  // 3. Wait for admin health check
+  // Wait for admin health check
   const adminUrl = "http://localhost/admin";
   const healthUrl = `${adminUrl}/api/setup/status`;
   const spin8 = spinner("Waiting for admin interface...");
@@ -230,27 +253,24 @@ export async function install(options: InstallOptions): Promise<void> {
 
   if (!healthy) {
     spin8.stop(yellow("Admin interface did not become healthy in time"));
-    warn("Continuing with installation, but the admin interface may not be ready yet.");
   } else {
     spin8.stop(green("Admin interface ready"));
   }
 
-  // 4. Open browser
+  // Open browser
   if (!options.noOpen && healthy) {
     try {
       if (os === "macos") {
         Bun.spawn(["open", adminUrl]);
-      } else {
+      } else if (os === "linux") {
         Bun.spawn(["xdg-open", adminUrl]);
+      } else {
+        // Windows — use cmd /c start
+        Bun.spawn(["cmd", "/c", "start", adminUrl]);
       }
-      info(`Opened setup UI in your default browser: ${adminUrl}`);
     } catch {
-      warn(`Could not open browser automatically. Visit: ${adminUrl}`);
+      // Ignore — we print the URL below
     }
-  } else if (!healthy) {
-    info(`Complete setup at: ${adminUrl}`);
-  } else {
-    info(`Auto-open skipped (--no-open). Complete setup at: ${adminUrl}`);
   }
 
   // ============================================================================
@@ -273,30 +293,58 @@ export async function install(options: InstallOptions): Promise<void> {
   await composeUp(composeConfig, undefined, { detach: true, pull: "always" });
   spin10.stop(green("All services started"));
 
-  // Print final status
-  log(bold("\nInstallation complete!\n"));
+  // ============================================================================
+  // Final output
+  // ============================================================================
 
-  log(bold("Service URLs:"));
-  info(`  Admin:       ${cyan(adminUrl)}`);
-  info(`  OpenMemory:  ${cyan(`${adminUrl}/openmemory`)}`);
+  if (healthy) {
+    log("");
+    log(bold(green("  OpenPalm is ready!")));
+    log("");
+    info(`  Setup wizard: ${cyan(adminUrl)}`);
+    log("");
+    if (generatedAdminToken) {
+      info(`  Admin password: ${yellow(generatedAdminToken)}`);
+      log("");
+    }
+    log(bold("  What happens next:"));
+    info("    1. A setup wizard opens in your browser");
+    info("    2. Enter your AI provider API key (e.g. from console.anthropic.com)");
+    info("    3. Paste your admin password when prompted");
+    info("    4. Pick which channels to enable (chat, Discord, etc.)");
+    info("    5. Done! Start chatting with your assistant");
+    log("");
+    if (!options.noOpen) {
+      info("  Opening setup wizard in your browser...");
+    } else {
+      info(`  Open this URL in your browser to continue: ${adminUrl}`);
+    }
+  } else {
+    log("");
+    log(bold(yellow("  Setup did not come online within 90 seconds")));
+    log("");
+    info("  This usually means containers are still starting. Try these steps:");
+    log("");
+    info(`  1. Wait a minute, then open: ${adminUrl}`);
+    log("");
+    info("  2. Check if containers are running:");
+    info("     openpalm status");
+    log("");
+    info("  3. Check logs for errors:");
+    info("     openpalm logs");
+    log("");
+    info("  4. Common fixes:");
+    info("     - Make sure port 80 is not used by another service");
+    info("     - Restart Docker/Podman and try again");
+    info("     - Check that you have internet access (images need to download)");
+  }
+
+  log("");
+  log(bold("  Useful commands:"));
+  info("    View logs:  openpalm logs");
+  info("    Stop:       openpalm stop");
+  info("    Uninstall:  openpalm uninstall");
   log("");
 
-  log(bold("Container runtime:"));
-  info(`  Platform:    ${cyan(platform)}`);
-  info(`  Compose:     ${cyan(`${bin} ${subcommand}`)}`);
-  info(`  Compose file: ${dim(stateComposeFile)}`);
-  info(`  Socket:      ${dim(socketPath)}`);
-  log("");
-
-  log(bold("Host directories:"));
-  info(`  Data:   ${dim(xdg.data)}`);
-  info(`  Config: ${dim(xdg.config)}`);
-  info(`  State:  ${dim(xdg.state)}`);
-  log("");
-
-  info("If you want channel adapters: openpalm start --profile channels");
-  log("");
-
-  // Clean up any temp directories created during asset downloads
   await cleanupTempAssets();
 }

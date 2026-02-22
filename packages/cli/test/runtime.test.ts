@@ -7,7 +7,7 @@ describe("runtime", () => {
   describe("detectOS", () => {
     it("returns a valid HostOS", () => {
       const os = detectOS();
-      expect(["linux", "macos", "windows-bash", "unknown"]).toContain(os);
+      expect(["linux", "macos", "windows", "unknown"]).toContain(os);
     });
 
     it("returns linux on this machine", () => {

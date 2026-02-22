@@ -2,7 +2,7 @@
 export type ContainerPlatform = "docker" | "podman" | "orbstack";
 
 /** Supported host operating systems. */
-export type HostOS = "linux" | "macos" | "windows-bash" | "unknown";
+export type HostOS = "linux" | "macos" | "windows" | "unknown";
 
 /** Supported CPU architectures. */
 export type HostArch = "amd64" | "arm64";
