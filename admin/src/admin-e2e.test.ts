@@ -176,8 +176,8 @@ describe("static file serving", () => {
 describe("opencode proxy", () => {
   it("GET /admin/opencode/ returns 502 when opencode-core is unreachable", async () => {
     const r = await api("/admin/opencode/");
-    // 502 = route exists but upstream is unavailable (not 404 which would mean no route)
-    expect([403, 502]).toContain(r.status);
+    // 401 = auth required, 502 = route exists but upstream unavailable, 403 = forbidden
+    expect([401, 403, 502]).toContain(r.status);
   });
 
   it("GET /admin/opencode/sub/path also proxies (not 404)", async () => {

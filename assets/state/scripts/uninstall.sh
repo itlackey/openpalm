@@ -166,4 +166,11 @@ if [ "$REMOVE_ALL" -eq 1 ]; then
   echo "Removed OpenPalm data/config/state and local .env."
 fi
 
+# Remove CLI binary if it exists in the standard install location
+CLI_PATH="$HOME/.local/bin/openpalm"
+if [ -f "$CLI_PATH" ]; then
+  echo "Removing CLI binary at $CLI_PATH"
+  rm -f "$CLI_PATH"
+fi
+
 echo "Uninstall complete."

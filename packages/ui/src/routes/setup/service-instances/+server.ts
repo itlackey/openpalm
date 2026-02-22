@@ -6,6 +6,7 @@ import {
 	updateSecretsEnv,
 	readSecretsEnv
 } from '$lib/server/env-helpers';
+import { isLocalRequest } from '$lib/server/auth';
 import { applySmallModelToOpencodeConfig } from '$lib/server/opencode-config';
 import type { RequestHandler } from './$types';
 
@@ -25,6 +26,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const current = setupManager.getState();
 	if (current.completed && !locals.authenticated) return unauthorizedJson();
+
+	// SECURITY: During initial setup, restrict to local/private IPs only.
+	if (!current.completed && !isLocalRequest(request)) {
+		return json(403, { error: 'setup endpoints are restricted to local network access' });
+	}
 
 	const openmemory = sanitizeEnvScalar(body.openmemory);
 	const psql = sanitizeEnvScalar(body.psql);

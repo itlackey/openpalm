@@ -24,12 +24,13 @@ describe("uninstall command source validation", () => {
 
   it("falls back to CWD .env if state .env fails", () => {
     // Validates fallback mechanism when state .env doesn't exist
-    expect(uninstallSource).toContain('await readEnvFile(".env")');
+    // Uses resolve(process.cwd(), ".env") for an absolute path
+    expect(uninstallSource).toContain('await readEnvFile(resolve(process.cwd(), ".env"))');
     // Should be in a catch block after trying stateEnvPath
     const stateEnvIndex = uninstallSource.indexOf(
       "await readEnvFile(stateEnvPath)"
     );
-    const cwdEnvIndex = uninstallSource.indexOf('await readEnvFile(".env")');
+    const cwdEnvIndex = uninstallSource.indexOf('await readEnvFile(resolve(process.cwd(), ".env"))');
     expect(stateEnvIndex).toBeGreaterThan(-1);
     expect(cwdEnvIndex).toBeGreaterThan(stateEnvIndex);
   });
@@ -93,12 +94,12 @@ describe("uninstall command source validation", () => {
   });
 
   it("removes CWD .env with --remove-all", () => {
-    // Validates that .env in current directory is removed
+    // Validates that .env in current directory is removed using an absolute path
     expect(uninstallSource).toContain("if (options.removeAll)");
-    expect(uninstallSource).toContain('await unlink(".env")');
+    expect(uninstallSource).toContain('await unlink(resolve(process.cwd(), ".env"))');
     // unlink should be after the removeAll check
     const removeAllIndex = uninstallSource.indexOf("if (options.removeAll)");
-    const unlinkIndex = uninstallSource.indexOf('await unlink(".env")');
+    const unlinkIndex = uninstallSource.indexOf('await unlink(resolve(process.cwd(), ".env"))');
     expect(unlinkIndex).toBeGreaterThan(removeAllIndex);
   });
 
@@ -137,9 +138,10 @@ describe("extensions command source validation", () => {
 
   it("uses correct base URL fallback chain", () => {
     // Validates the URL fallback: ADMIN_APP_URL -> GATEWAY_URL -> localhost
+    // Base URL is "http://localhost" (not "/admin") because fetch paths already include /admin prefix
     expect(extensionsSource).toContain("Bun.env.ADMIN_APP_URL");
     expect(extensionsSource).toContain("Bun.env.GATEWAY_URL");
-    expect(extensionsSource).toContain('"http://localhost/admin"');
+    expect(extensionsSource).toContain('"http://localhost"');
     // Should use nullish coalescing operator (??) for fallback chain
     expect(extensionsSource).toContain("??");
   });

@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:f
 import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import type { StackAutomation } from "./stack-spec.ts";
+import { validateCron } from "./cron.ts";
 
 const cronDir = Bun.env.CRON_DIR ?? "/state/automations";
 const scriptsDir = join(cronDir, "scripts");
@@ -39,6 +40,8 @@ export function syncAutomations(automations: StackAutomation[]): void {
   const activeIds = new Set<string>();
 
   for (const automation of automations) {
+    const cronError = validateCron(automation.schedule);
+    if (cronError) throw new Error("invalid_cron_schedule");
     const id = fileSafeId(automation.id);
     activeIds.add(id);
     const scriptPath = join(scriptsDir, `${id}.sh`);

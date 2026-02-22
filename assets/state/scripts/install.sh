@@ -152,6 +152,27 @@ if ! curl -fsSL --connect-timeout 10 --max-time 120 "$DOWNLOAD_URL" -o "$BINARY_
   exit 1
 fi
 
+# Verify checksum if a .sha256 file is published alongside the binary
+CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
+CHECKSUM_TMP="$(mktemp)"
+if curl -fsSL --connect-timeout 10 --max-time 30 "$CHECKSUM_URL" -o "$CHECKSUM_TMP" 2>/dev/null; then
+  EXPECTED_HASH=$(awk '{print $1}' "$CHECKSUM_TMP")
+  ACTUAL_HASH=$(sha256sum "$BINARY_TMP" | awk '{print $1}')
+  rm -f "$CHECKSUM_TMP"
+  if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+    echo "ERROR: Checksum verification failed!" >&2
+    echo "  Expected: $EXPECTED_HASH" >&2
+    echo "  Got:      $ACTUAL_HASH" >&2
+    cleanup
+    exit 1
+  fi
+  echo "Checksum verified."
+else
+  rm -f "$CHECKSUM_TMP"
+  echo "WARNING: Could not download checksum file. Skipping verification." >&2
+  echo "         This is less secure. Consider verifying the binary manually." >&2
+fi
+
 chmod +x "$BINARY_TMP"
 
 # Quick sanity check — the binary should respond to version

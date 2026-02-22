@@ -7,7 +7,12 @@
           "listen": [":80"],
           "routes": [
             {
-              "match": [{ "path": ["/admin*"] }],
+              "match": [{
+                "path": ["/admin*"],
+                "remote_ip": {
+                  "ranges": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fd00::/8"]
+                }
+              }],
               "handle": [{
                 "handler": "subroute",
                 "routes": [

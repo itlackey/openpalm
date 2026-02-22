@@ -13,11 +13,26 @@ describe("paths", () => {
       expect(paths).toHaveProperty("state");
     });
 
-    it("all paths end with openpalm", () => {
-      const paths = resolveXDGPaths();
-      expect(paths.data).toMatch(/openpalm$/);
-      expect(paths.config).toMatch(/openpalm$/);
-      expect(paths.state).toMatch(/openpalm$/);
+    it("all paths end with openpalm (without env overrides)", () => {
+      // Clear OPENPALM_*_HOME env vars that may be set by .env
+      const saved = {
+        data: Bun.env.OPENPALM_DATA_HOME,
+        config: Bun.env.OPENPALM_CONFIG_HOME,
+        state: Bun.env.OPENPALM_STATE_HOME,
+      };
+      try {
+        delete Bun.env.OPENPALM_DATA_HOME;
+        delete Bun.env.OPENPALM_CONFIG_HOME;
+        delete Bun.env.OPENPALM_STATE_HOME;
+        const paths = resolveXDGPaths();
+        expect(paths.data).toMatch(/openpalm$/);
+        expect(paths.config).toMatch(/openpalm$/);
+        expect(paths.state).toMatch(/openpalm$/);
+      } finally {
+        if (saved.data !== undefined) Bun.env.OPENPALM_DATA_HOME = saved.data;
+        if (saved.config !== undefined) Bun.env.OPENPALM_CONFIG_HOME = saved.config;
+        if (saved.state !== undefined) Bun.env.OPENPALM_STATE_HOME = saved.state;
+      }
     });
   });
 

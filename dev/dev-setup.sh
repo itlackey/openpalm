@@ -11,6 +11,9 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 fi
 
 if [[ "${1:-}" == "--clean" ]]; then
+  echo "WARNING: This will delete all data in .dev/ including databases."
+  echo "Press Enter to continue or Ctrl+C to abort..."
+  read -r
   rm -rf "$DEV_DIR"
   rm -f "$REPO_ROOT/.env"
 fi
@@ -29,8 +32,9 @@ for svc in gateway openmemory postgres qdrant assistant channel-chat channel-dis
 done
 mkdir -p "$HOME/openpalm"
 
-cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" 2>/dev/null || true
-cp -n "$REPO_ROOT/assets/config/stack-spec.json" "$DEV_DIR/config/stack-spec.json" 2>/dev/null || true
-cp -n "$REPO_ROOT/assets/state/caddy/caddy.json" "$DEV_DIR/state/rendered/caddy/caddy.json" 2>/dev/null || true
+cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" || echo "Note: secrets.env already exists, skipping"
+# stack-spec.json is the v2 seed; ensureStackSpec() migrates it to openpalm.yaml (v3) at runtime
+cp -n "$REPO_ROOT/assets/config/stack-spec.json" "$DEV_DIR/config/stack-spec.json" || echo "Note: stack-spec.json already exists, skipping"
+cp -n "$REPO_ROOT/assets/state/caddy/caddy.json" "$DEV_DIR/state/rendered/caddy/caddy.json" || echo "Note: caddy.json already exists, skipping"
 
 echo "Dev environment ready under .dev/ and ~/openpalm"

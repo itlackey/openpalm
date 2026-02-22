@@ -8,7 +8,7 @@
 #   pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 
 param(
-  [ValidateSet("docker", "podman")]
+  [ValidateSet("docker", "podman", "orbstack")]
   [string]$Runtime,
   [string]$Ref,
   [switch]$NoOpen

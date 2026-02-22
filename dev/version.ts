@@ -95,6 +95,9 @@ type BumpType = "patch" | "minor" | "major";
 // ---------------------------------------------------------------------------
 
 function readJson(path: string): any {
+  if (!existsSync(path)) {
+    throw new Error(`File not found: ${path}`);
+  }
   return JSON.parse(readFileSync(path, "utf-8"));
 }
 
@@ -181,7 +184,10 @@ function yellow(s: string): string {
  */
 function patchPackageJson(relPath: string, version: string): void {
   const absPath = resolve(ROOT, relPath);
-  if (!existsSync(absPath)) return;
+  if (!existsSync(absPath)) {
+    console.warn(`Warning: ${relPath} not found, skipping version patch`);
+    return;
+  }
   const pkg = readJson(absPath);
   pkg.version = version;
   writeJson(absPath, pkg);
@@ -196,7 +202,10 @@ function patchExtraFiles(component: string, version: string): void {
   if (!meta?.extraFiles) return;
   for (const ef of meta.extraFiles) {
     const absPath = resolve(ROOT, ef.path);
-    if (!existsSync(absPath)) continue;
+    if (!existsSync(absPath)) {
+      console.warn(`Warning: ${ef.path} not found, skipping patch`);
+      continue;
+    }
     let content = readFileSync(absPath, "utf-8");
     content = content.replace(ef.pattern, ef.replacement(version));
     writeFileSync(absPath, content);

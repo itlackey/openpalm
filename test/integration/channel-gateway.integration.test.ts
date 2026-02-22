@@ -57,7 +57,7 @@ describe("integration: channel adapters -> gateway", () => {
     const telegram = Bun.serve({ port: 0, fetch: createTelegramFetch(`http://localhost:${gateway.port}`, "secret", "") });
 
     try {
-      await fetch(`http://localhost:${discord.port}/discord/webhook`, { method: "POST", body: JSON.stringify({ text: "hello" }) });
+      await fetch(`http://localhost:${discord.port}/discord/webhook`, { method: "POST", body: JSON.stringify({ userId: "testuser", text: "hello" }) });
       await fetch(`http://localhost:${telegram.port}/telegram/webhook`, { method: "POST", body: JSON.stringify({ message: { text: "hi", from: { id: 1 }, chat: { id: 2 } } }) });
       expect(received.length).toBe(2);
       expect((JSON.parse(received[0]) as Record<string, unknown>).channel).toBe("discord");

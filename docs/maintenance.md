@@ -81,6 +81,9 @@ tar xzf openpalm-data-backup.tar.gz -C /
 
 ```bash
 docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml up -d postgres
+# Wait for PostgreSQL to be ready
+docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml \
+  exec postgres pg_isready -U openpalm --timeout=30
 docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml \
   exec -T postgres psql -U openpalm openpalm < openpalm-pg-backup.sql
 ```

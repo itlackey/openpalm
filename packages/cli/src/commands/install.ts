@@ -50,9 +50,13 @@ export async function install(options: InstallOptions): Promise<void> {
     log("");
   }
 
-  // Daemon not running is fatal — we can't proceed
+  // Daemon not running is fatal — we can't proceed.
+  // Check for daemon-related warnings by looking for known preflight patterns
+  // rather than relying on a single exact string match.
   const daemonWarning = preflightWarnings.find((w) =>
-    w.message.includes("daemon is not running")
+    w.message.includes("daemon is not running") ||
+    w.message.includes("daemon") ||
+    w.message.includes("Could not verify")
   );
   if (daemonWarning) {
     process.exit(1);
@@ -96,7 +100,7 @@ export async function install(options: InstallOptions): Promise<void> {
       CHANNEL_TELEGRAM_SECRET: generateToken(),
     };
     const envSeed = Object.entries(overrides).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
-    await writeFile(envPath, envSeed, "utf8");
+    await writeFile(envPath, envSeed, { encoding: "utf8", mode: 0o600 });
     spin2.stop(green(".env file created"));
 
     // Display admin token prominently

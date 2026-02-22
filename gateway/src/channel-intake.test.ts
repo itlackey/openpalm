@@ -14,7 +14,10 @@ describe("channel intake", () => {
 
     expect(command).toContain("strict JSON");
     expect(command).toContain('"valid": boolean');
-    expect(command).toContain('"channel":"discord"');
+    expect(command).toContain('channel: "discord"');
+    expect(command).toContain("<user_message>");
+    expect(command).toContain("</user_message>");
+    expect(command).toContain("hello");
   });
 
   it("parses valid JSON decisions", () => {

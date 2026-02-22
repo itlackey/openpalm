@@ -2,7 +2,7 @@
 
 Use this checklist before merging admin/gateway stack changes.
 
-- [ ] Keep `stack-spec.json` intent-only (channels, access, channel config, automations).
+- [ ] Keep `openpalm.yaml` intent-only (channels, access, channel config, automations).
 - [ ] Route-level code stays thin: validation + orchestration live in `packages/lib/admin/*` when possible.
 - [ ] Admin errors return consistent shape: `{ error, details?, code? }`.
 - [ ] Any new secret or connection flow is documented in `dev/docs/api-reference.md`.

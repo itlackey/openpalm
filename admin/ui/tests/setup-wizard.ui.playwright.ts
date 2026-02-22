@@ -87,10 +87,9 @@ test.describe("Setup Wizard", () => {
       () => (window as any).openPalmSetup !== undefined,
       { timeout: 10_000 }
     );
-    // Give the JS a moment to call checkSetup and hide/show the overlay
-    await page.waitForTimeout(2000);
+    // Wait for the overlay to gain the hidden class after checkSetup runs
     const overlay = page.locator("#setup-overlay");
-    await expect(overlay).toHaveClass(/hidden/);
+    await expect(overlay).toHaveClass(/hidden/, { timeout: 10_000 });
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   });
 });
