@@ -278,6 +278,11 @@
       serviceInstances = serviceResult.data?.state?.serviceInstances || { openmemory, psql, qdrant };
       openmemoryProvider = serviceResult.data?.openmemoryProvider || openmemoryProvider;
       smallModelProvider = serviceResult.data?.smallModelProvider || smallModelProvider;
+      // Fire and forget — start pulling core services in background
+      api("/admin/command", {
+        method: "POST",
+        body: JSON.stringify({ type: "setup.start_core", payload: {} })
+      });
     }
     if (STEPS[wizardStep] === "security") {
       const a = document.getElementById("wiz-admin");

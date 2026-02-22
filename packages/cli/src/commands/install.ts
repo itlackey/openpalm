@@ -8,9 +8,8 @@ import { upsertEnvVar } from "@openpalm/lib/env.ts";
 import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { resolveAssets, seedConfigFiles, cleanupTempAssets } from "@openpalm/lib/assets.ts";
-import { detectAllProviders, getSmallModelCandidates, writeProviderSeedFile } from "@openpalm/lib/detect-providers.ts";
 import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
-import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, select } from "@openpalm/lib/ui.ts";
+import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner } from "@openpalm/lib/ui.ts";
 
 export async function install(options: InstallOptions): Promise<void> {
   // ============================================================================
@@ -168,46 +167,32 @@ export async function install(options: InstallOptions): Promise<void> {
     // chmod may fail on Windows — non-critical
   }
 
-  // 18. Detect AI providers, write seed file
-  const spin5 = spinner("Detecting AI providers...");
-  const { providers, existingConfigPath } = await detectAllProviders();
-  const providerSeedPath = join(xdg.data, "admin", "detected-providers.json");
-  await writeProviderSeedFile(providers, providerSeedPath);
-  spin5.stop(green(`Detected ${providers.length} AI provider(s)`));
-
-  for (const p of providers) {
-    if (p.type === "local") {
-      info(`  ${green("+")} ${p.name} (running locally — ${p.models.length} models available)`);
-    } else if (p.apiKeyPresent) {
-      info(`  ${green("+")} ${p.name} (API key found)`);
-    } else {
-      info(`  ${dim("-")} ${p.name} (no API key)`);
-    }
-  }
-
-  if (existingConfigPath) {
-    log("");
-    info(`Found existing AI configuration at: ${dim(existingConfigPath)}`);
-    info("You can review this file to configure your AI providers.");
-  }
-
-  // 19. If small model candidates exist, let user pick one
-  const smallModels = getSmallModelCandidates(providers);
-  if (smallModels.length > 0) {
-    log("");
-    log(bold("Small model selection:"));
-    info("OpenPalm uses a small model for certain fast operations.");
-    log("");
-
-    const modelOptions = smallModels.map((m) => `${m.name} (${m.provider})`);
-    const selectedIndex = await select("Choose a small model", modelOptions);
-    const selectedModel = smallModels[selectedIndex];
-
-    await upsertEnvVar(envPath, "OPENPALM_SMALL_MODEL", selectedModel.id);
-    await upsertEnvVar(stateEnvFile, "OPENPALM_SMALL_MODEL", selectedModel.id);
-
-    info(green(`Selected: ${selectedModel.name}\n`));
-  }
+  // 18. Write minimal setup-only Caddyfile (admin routes only)
+  const minimalCaddyfile = [
+    "{",
+    "\tadmin off",
+    "}",
+    "",
+    ":80 {",
+    "\thandle /admin* {",
+    "\t\troute {",
+    "\t\t\thandle /admin/api* {",
+    "\t\t\t\turi replace /admin/api /admin",
+    "\t\t\t\treverse_proxy admin:8100",
+    "\t\t\t}",
+    "\t\t\turi strip_prefix /admin",
+    "\t\t\treverse_proxy admin:8100",
+    "\t\t}",
+    "\t}",
+    "",
+    "\thandle {",
+    '\t\trespond "OpenPalm is starting... Please visit /admin/ to complete setup." 503',
+    "\t}",
+    "}",
+    "",
+  ].join("\n");
+  const caddyfilePath = join(xdg.state, "rendered", "caddy", "Caddyfile");
+  await writeFile(caddyfilePath, minimalCaddyfile, "utf8");
 
   // ============================================================================
   // Phase 2: Early UI access
@@ -222,7 +207,7 @@ export async function install(options: InstallOptions): Promise<void> {
     envFile: stateEnvFile,
   };
 
-  const coreServices = ["caddy", "postgres", "admin"];
+  const coreServices = ["caddy", "admin"];
 
   const spin6 = spinner("Pulling core service images...");
   await composePull(composeConfig, coreServices);
@@ -274,32 +259,12 @@ export async function install(options: InstallOptions): Promise<void> {
   }
 
   // ============================================================================
-  // Phase 3: Background pull
-  // ============================================================================
-
-  log(bold("\nPulling remaining images...\n"));
-
-  const spin9 = spinner("Pulling remaining service images...");
-  await composePull(composeConfig);
-  spin9.stop(green("All images pulled"));
-
-  // ============================================================================
-  // Phase 4: Full stack
-  // ============================================================================
-
-  log(bold("\nStarting full stack...\n"));
-
-  const spin10 = spinner("Starting all services...");
-  await composeUp(composeConfig, undefined, { detach: true, pull: "always" });
-  spin10.stop(green("All services started"));
-
-  // ============================================================================
   // Final output
   // ============================================================================
 
   if (healthy) {
     log("");
-    log(bold(green("  OpenPalm is ready!")));
+    log(bold(green("  OpenPalm setup wizard is ready!")));
     log("");
     info(`  Setup wizard: ${cyan(adminUrl)}`);
     log("");
@@ -308,9 +273,9 @@ export async function install(options: InstallOptions): Promise<void> {
       log("");
     }
     log(bold("  What happens next:"));
-    info("    1. A setup wizard opens in your browser");
+    info("    1. The setup wizard opens in your browser");
     info("    2. Enter your AI provider API key (e.g. from console.anthropic.com)");
-    info("    3. Paste your admin password when prompted");
+    info("    3. The wizard will download and start remaining services automatically");
     info("    4. Pick which channels to enable (chat, Discord, etc.)");
     info("    5. Done! Start chatting with your assistant");
     log("");

@@ -147,3 +147,17 @@ If something goes wrong after an upgrade:
 ### Automatic updates
 
 The `admin` container includes a system cron job that periodically pulls image updates and restarts services. Check `~/.local/state/openpalm/observability/maintenance/` for update logs. See [Admin Service README](../admin/README.md#system-maintenance-cron-jobs) for the full cron schedule.
+
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash
+```
+
+```powershell
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
+```
+
+Use `--remove-all` to delete all config/state/data directories and `--remove-images` to remove container images.
+PowerShell: `& $env:TEMP/openpalm-uninstall.ps1 -RemoveAll -RemoveImages`.

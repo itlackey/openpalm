@@ -8,7 +8,7 @@ import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "@openpalm/lib/admin/runtime-env.ts";
 import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
 import { isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
-import { allowedServiceSet, composeAction } from "@openpalm/lib/admin/compose-runner.ts";
+import { allowedServiceSet, composeAction, composePull } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import { parseJsonc, stringifyPretty } from "@openpalm/lib/admin/jsonc.ts";
 
@@ -259,12 +259,32 @@ data: {"ok":true,"service":"admin"}
             const state = setupManager.completeStep(step as "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels");
             return cors(json(200, { ok: true, data: state }));
           }
+          if (type === "setup.start_core") {
+            stackManager.renderArtifacts();
+            // Fire and forget — pull in parallel, then start in dependency order
+            (async () => {
+              const services = ["postgres", "qdrant", "openmemory", "openmemory-ui", "assistant", "gateway"];
+              await Promise.allSettled(services.map(svc => composePull(svc)));
+              for (const svc of services) {
+                await composeAction("up", svc).catch(e => console.error(`Start ${svc}:`, e));
+              }
+              // Reload caddy with full Caddyfile (now that upstreams exist)
+              await composeAction("restart", "caddy").catch(e => console.error("Caddy reload:", e));
+            })().catch(e => console.error("Core startup failed:", e));
+            return cors(json(200, { ok: true, status: "starting" }));
+          }
           if (type === "setup.access_scope") {
             const scope = payload.scope;
             if (scope !== "host" && scope !== "lan" && scope !== "public") return cors(json(400, { ok: false, error: "invalid_scope", code: "invalid_scope" }));
             stackManager.setAccessScope(scope);
             setRuntimeBindScope(scope);
-            await Promise.all([composeAction("up", "caddy"), composeAction("up", "openmemory"), composeAction("up", "assistant")]);
+            if (setupManager.getState().completed) {
+              // Re-running wizard — restart all affected services
+              await Promise.all([composeAction("up", "caddy"), composeAction("up", "openmemory"), composeAction("up", "assistant")]);
+            } else {
+              // First run — only reload caddy (core services starting via setup.start_core)
+              await composeAction("up", "caddy").catch(() => {});
+            }
             return cors(json(200, { ok: true, data: setupManager.setAccessScope(scope) }));
           }
           if (type === "setup.service_instances") {
@@ -425,11 +445,17 @@ data: {"ok":true,"service":"admin"}
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         stackManager.setAccessScope(body.scope);
         setRuntimeBindScope(body.scope);
-        await Promise.all([
-          composeAction("up", "caddy"),
-          composeAction("up", "openmemory"),
-          composeAction("up", "assistant"),
-        ]);
+        if (current.completed) {
+          // Re-running wizard — restart all affected services
+          await Promise.all([
+            composeAction("up", "caddy"),
+            composeAction("up", "openmemory"),
+            composeAction("up", "assistant"),
+          ]);
+        } else {
+          // First run — only reload caddy (core services starting via setup.start_core)
+          await composeAction("up", "caddy").catch(() => {});
+        }
         const state = setupManager.setAccessScope(body.scope);
         return cors(json(200, { ok: true, state }));
       }

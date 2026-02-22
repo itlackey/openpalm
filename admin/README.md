@@ -14,32 +14,9 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 
 ```
 ~/.local/share/openpalm/      (OPENPALM_DATA_HOME — databases, blobs)
-  postgres/
-  qdrant/
-  openmemory/
-  shared/
-  admin/
-  assistant/
-
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — source-of-truth inputs)
-  stack-spec.json
-  secrets.env
-
 ~/.local/state/openpalm/       (OPENPALM_STATE_HOME — rendered artifacts + runtime state)
-  rendered/
-    docker-compose.yml
-    caddy/
-    env/
-  gateway/
-  caddy/
-  logs/
-  tmp/
-  observability/
-  backups/
-  uninstall.sh
 ```
-
-> `OPENPALM_CONFIG_HOME` is the host-side XDG path (e.g., `~/.config/openpalm/`). Inside the `assistant` container this directory is volume-mounted and referenced as `OPENCODE_CONFIG_DIR`.
 
 ## Authentication
 
@@ -122,19 +99,6 @@ Logs are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPEN
 Admin is the control-plane executor and performs allowlisted compose operations directly using the mounted container socket.
 
 **Compose service allowlist:** `assistant`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`. Additional services can be allowed via `OPENPALM_EXTRA_SERVICES` (comma-separated).
-
-## Uninstall
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash
-```
-
-```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
-```
-
-Use `--remove-all` to delete all config/state/data directories and `--remove-images` to remove container images.
-PowerShell: `& $env:TEMP/openpalm-uninstall.ps1 -RemoveAll -RemoveImages`.
 
 ## Related docs
 

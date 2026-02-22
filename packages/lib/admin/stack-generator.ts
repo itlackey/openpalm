@@ -218,7 +218,6 @@ function renderCaddyComposeService(): string {
     "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
     "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
     "    networks: [assistant_net]",
-    "    depends_on: [gateway, admin, openmemory-ui]",
   ].join("\n");
 }
 
@@ -354,6 +353,8 @@ function renderAdminComposeService(): string {
     "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
     "      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
     "      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
+    "      - COMPOSE_PROJECT_PATH=/state",
+    "      - OPENPALM_COMPOSE_FILE=docker-compose.yml",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}:/data",
     "      - ${OPENPALM_CONFIG_HOME}:/config",
@@ -361,7 +362,6 @@ function renderAdminComposeService(): string {
     "      - ${HOME}/openpalm:/work",
     "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
     "    networks: [assistant_net]",
-    "    depends_on: [gateway, assistant]",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]",
     "      interval: 30s",
