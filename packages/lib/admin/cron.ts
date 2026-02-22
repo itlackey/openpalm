@@ -1,16 +1,54 @@
+const CRON_FIELDS = [
+  { name: "minute", min: 0, max: 59 },
+  { name: "hour", min: 0, max: 23 },
+  { name: "day-of-month", min: 1, max: 31 },
+  { name: "month", min: 1, max: 12 },
+  { name: "day-of-week", min: 0, max: 7 },
+] as const;
+
+function validateCronField(field: string, min: number, max: number, label: string): string | null {
+  for (const segment of field.split(",")) {
+    const [range, step] = segment.split("/");
+    if (step !== undefined) {
+      if (!/^\d+$/.test(step) || Number(step) < 1 || Number(step) > max - min + 1) {
+        return `invalid step value in ${label} field: "${field}"`;
+      }
+    }
+    if (range === "*") continue;
+    const dashIdx = range.indexOf("-");
+    if (dashIdx !== -1) {
+      const lo = range.slice(0, dashIdx);
+      const hi = range.slice(dashIdx + 1);
+      if (!/^\d+$/.test(lo) || !/^\d+$/.test(hi)) {
+        return `invalid range in ${label} field: "${field}"`;
+      }
+      const loNum = Number(lo);
+      const hiNum = Number(hi);
+      if (loNum < min || hiNum > max || loNum > hiNum) {
+        return `range out of bounds [${min}-${max}] in ${label} field: "${field}"`;
+      }
+    } else {
+      if (!/^\d+$/.test(range)) return `invalid value in ${label} field: "${field}"`;
+      const val = Number(range);
+      if (val < min || val > max) {
+        return `value ${val} out of range [${min}-${max}] in ${label} field`;
+      }
+    }
+  }
+  return null;
+}
+
 /**
- * Basic validation for 5-field cron expressions.
+ * Validates a 5-field cron expression, checking field count, characters, and value ranges.
  * Returns null if valid, or an error message string.
  */
 export function validateCron(expr: string): string | null {
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return "cron expression must have exactly 5 fields";
-  const fieldPattern = /^[\d*\/\-,]+$/;
-  const labels = ["minute", "hour", "day-of-month", "month", "day-of-week"];
   for (let i = 0; i < 5; i++) {
-    if (!fieldPattern.test(parts[i])) {
-      return `invalid characters in ${labels[i]} field: "${parts[i]}"`;
-    }
+    const { name, min, max } = CRON_FIELDS[i];
+    const error = validateCronField(parts[i], min, max, name);
+    if (error) return error;
   }
   return null;
 }

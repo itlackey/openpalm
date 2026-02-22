@@ -201,19 +201,11 @@ function renderChannelComposeService(name: string, config: StackChannelConfig): 
     `      - "${portBinding}"`,
     "    networks: [assistant_net]",
     "    depends_on: [gateway]",
-    "",
   ].join("\n");
 }
 
-function renderFullComposeFile(spec: StackSpec): string {
-  const allChannelNames = Object.keys(spec.channels);
-  const channelServices = allChannelNames
-    .filter((name) => spec.channels[name].enabled)
-    .map((name) => renderChannelComposeService(name, spec.channels[name]))
-    .join("\n");
-
+function renderCaddyComposeService(): string {
   return [
-    "services:",
     "  caddy:",
     "    image: caddy:2-alpine",
     "    restart: unless-stopped",
@@ -227,7 +219,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
     "    networks: [assistant_net]",
     "    depends_on: [gateway, admin, openmemory-ui]",
-    "",
+  ].join("\n");
+}
+
+function renderPostgresComposeService(): string {
+  return [
     "  postgres:",
     "    image: postgres:16-alpine",
     "    restart: unless-stopped",
@@ -240,7 +236,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data",
     "    networks: [assistant_net]",
-    "",
+  ].join("\n");
+}
+
+function renderQdrantComposeService(): string {
+  return [
     "  qdrant:",
     "    image: qdrant/qdrant:latest",
     "    restart: unless-stopped",
@@ -249,7 +249,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage",
     "    networks: [assistant_net]",
-    "",
+  ].join("\n");
+}
+
+function renderOpenMemoryComposeService(): string {
+  return [
     "  openmemory:",
     "    image: mem0/openmemory-mcp:latest",
     "    restart: unless-stopped",
@@ -261,7 +265,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - ${OPENPALM_DATA_HOME}/openmemory:/data",
     "    networks: [assistant_net]",
     "    depends_on: [qdrant]",
-    "",
+  ].join("\n");
+}
+
+function renderOpenMemoryUiComposeService(): string {
+  return [
     "  openmemory-ui:",
     "    image: mem0/openmemory-ui:latest",
     "    restart: unless-stopped",
@@ -272,7 +280,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      - \"${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-127.0.0.1}:3000:3000\"",
     "    networks: [assistant_net]",
     "    depends_on: [openmemory]",
-    "",
+  ].join("\n");
+}
+
+function renderAssistantComposeService(): string {
+  return [
     "  assistant:",
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
@@ -299,7 +311,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      timeout: 10s",
     "      retries: 5",
     "      start_period: 30s",
-    "",
+  ].join("\n");
+}
+
+function renderGatewayComposeService(): string {
+  return [
     "  gateway:",
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
@@ -320,7 +336,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      timeout: 5s",
     "      retries: 3",
     "      start_period: 10s",
-    "",
+  ].join("\n");
+}
+
+function renderAdminComposeService(): string {
+  return [
     "  admin:",
     "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
     "    restart: unless-stopped",
@@ -348,10 +368,76 @@ function renderFullComposeFile(spec: StackSpec): string {
     "      timeout: 5s",
     "      retries: 3",
     "      start_period: 10s",
+  ].join("\n");
+}
+
+function renderFullComposeFile(spec: StackSpec): string {
+  const coreBlocks = [
+    renderCaddyComposeService(),
+    renderPostgresComposeService(),
+    renderQdrantComposeService(),
+    renderOpenMemoryComposeService(),
+    renderOpenMemoryUiComposeService(),
+    renderAssistantComposeService(),
+    renderGatewayComposeService(),
+    renderAdminComposeService(),
+  ];
+
+  const channelBlocks = Object.keys(spec.channels)
+    .filter((name) => spec.channels[name].enabled)
+    .map((name) => renderChannelComposeService(name, spec.channels[name]));
+
+  const allBlocks = [...coreBlocks, ...channelBlocks];
+
+  return `services:\n${allBlocks.join("\n\n")}\n\nnetworks:\n  assistant_net:\n`;
+}
+
+function renderCaddyAdminSnippet(): string {
+  return [
+    "# Admin and defaults (generated from stack spec)",
+    "@assistant_host host assistant",
+    "handle @assistant_host {",
+    "\tabort @not_lan",
+    "\treverse_proxy assistant:4096",
+    "}",
     "",
-    ...(channelServices.length > 0 ? [channelServices.trimEnd(), ""] : []),
-    "networks:",
-    "  assistant_net:",
+    "@admin_host host admin",
+    "handle @admin_host {",
+    "\tabort @not_lan",
+    "\treverse_proxy admin:8100",
+    "}",
+    "",
+    "@openmemory_host host openmemory",
+    "handle @openmemory_host {",
+    "\tabort @not_lan",
+    "\treverse_proxy openmemory-ui:3000",
+    "}",
+    "",
+    "handle /admin* {",
+    "\tabort @not_lan",
+    "\troute {",
+    "\t\thandle /admin/api* {",
+    "\t\t\turi replace /admin/api /admin",
+    "\t\t\treverse_proxy admin:8100",
+    "\t\t}",
+    "",
+    "\t\thandle_path /admin/opencode* {",
+    "\t\t\treverse_proxy assistant:4096",
+    "\t\t}",
+    "",
+    "\t\thandle_path /admin/openmemory* {",
+    "\t\t\treverse_proxy openmemory-ui:3000",
+    "\t\t}",
+    "",
+    "\t\turi strip_prefix /admin",
+    "\t\treverse_proxy admin:8100",
+    "\t}",
+    "}",
+    "",
+    "handle {",
+    "\tabort @not_lan",
+    "\treverse_proxy assistant:4096",
+    "}",
     "",
   ].join("\n");
 }
@@ -399,56 +485,8 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
 
   const caddyfile = caddyfileParts.join("\n");
 
-  const caddyAdminRoute = [
-    "# Admin and defaults (generated from stack spec)",
-    "@assistant_host host assistant",
-    "handle @assistant_host {",
-    "\tabort @not_lan",
-    "\treverse_proxy assistant:4096",
-    "}",
-    "",
-    "@admin_host host admin",
-    "handle @admin_host {",
-    "\tabort @not_lan",
-    "\treverse_proxy admin:8100",
-    "}",
-    "",
-    "@openmemory_host host openmemory",
-    "handle @openmemory_host {",
-    "\tabort @not_lan",
-    "\treverse_proxy openmemory-ui:3000",
-    "}",
-    "",
-    "handle /admin* {",
-    "\tabort @not_lan",
-    "\troute {",
-    "\t\thandle /admin/api* {",
-    "\t\t\turi replace /admin/api /admin",
-    "\t\t\treverse_proxy admin:8100",
-    "\t\t}",
-    "",
-    "\t\thandle_path /admin/opencode* {",
-    "\t\t\treverse_proxy assistant:4096",
-    "\t\t}",
-    "",
-    "\t\thandle_path /admin/openmemory* {",
-    "\t\t\treverse_proxy openmemory-ui:3000",
-    "\t\t}",
-    "",
-    "\t\turi strip_prefix /admin",
-    "\t\treverse_proxy admin:8100",
-    "\t}",
-    "}",
-    "",
-    "handle {",
-    "\tabort @not_lan",
-    "\treverse_proxy assistant:4096",
-    "}",
-    "",
-  ].join("\n");
-
   const caddyRoutes: Record<string, string> = {
-    "admin.caddy": caddyAdminRoute,
+    "admin.caddy": renderCaddyAdminSnippet(),
     "extra-user-overrides.caddy": "# user-managed overrides\n",
     ...channelRoutes,
   };
