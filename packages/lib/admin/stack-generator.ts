@@ -561,6 +561,7 @@ function renderGatewayComposeService(): string {
     "      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
     "    volumes:",
     "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
+    "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
     "    networks: [channel_net, assistant_net]",
     "    depends_on:",
     "      assistant:",

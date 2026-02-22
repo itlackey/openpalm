@@ -191,6 +191,8 @@ export async function install(options: InstallOptions): Promise<void> {
     ["OPENPALM_IMAGE_NAMESPACE", "openpalm"],
     ["OPENPALM_IMAGE_TAG", `latest-${arch}`],
     ["OPENPALM_WORK_HOME", normPath(resolveWorkHome())],
+    ["OPENPALM_UID", String(process.getuid?.() ?? 1000)],
+    ["OPENPALM_GID", String(process.getgid?.() ?? 1000)],
     ["OPENPALM_ENABLED_CHANNELS", ""],
   ]);
 
