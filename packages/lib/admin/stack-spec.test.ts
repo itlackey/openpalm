@@ -7,14 +7,14 @@ import { createDefaultStackSpec, ensureStackSpec, parseStackSpec, parseSecretRef
 describe("stack spec", () => {
   it("creates a default stack spec when missing", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
-    const path = join(dir, "stack-spec.json");
+    const path = join(dir, "openpalm.yaml");
     const spec = ensureStackSpec(path);
     expect(spec.version).toBe(StackSpecVersion);
     expect(spec.channels.chat.enabled).toBe(true);
     expect(spec.channels.chat.config).toHaveProperty("CHAT_INBOUND_TOKEN");
     expect(spec.channels.chat.config).toHaveProperty("CHANNEL_CHAT_SECRET");
     expect(Array.isArray(spec.automations)).toBe(true);
-    expect(readFileSync(path, "utf8")).toContain(`"version": ${StackSpecVersion}`);
+    expect(readFileSync(path, "utf8")).toContain(`version: ${StackSpecVersion}`);
   });
 
   it("keeps default stack spec focused on user intent fields only", () => {
@@ -23,6 +23,7 @@ describe("stack spec", () => {
       "accessScope",
       "automations",
       "channels",
+      "services",
       "version",
     ]);
   });
@@ -105,7 +106,7 @@ describe("stack spec", () => {
 
   it("writes valid stack spec content", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
-    const path = join(dir, "stack-spec.json");
+    const path = join(dir, "openpalm.yaml");
     const spec = createDefaultStackSpec();
     spec.channels.discord.exposure = "public";
     writeStackSpec(path, spec);
@@ -431,13 +432,18 @@ describe("stack spec", () => {
     expect(Object.keys(parsed.channels["svc-b"].config)).toEqual(["WEBHOOK_URL", "RETRY_COUNT", "LOG_LEVEL"]);
   });
 
-  it("reads version 1 specs and upgrades to version 2", () => {
+  it("reads version 1 specs and upgrades to current version", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
-    const path = join(dir, "stack-spec.json");
+    const jsonPath = join(dir, "stack-spec.json");
+    const yamlPath = join(dir, "openpalm.yaml");
     const v1 = createDefaultStackSpec();
     const v1Json = JSON.stringify({ ...v1, version: 1 }, null, 2);
-    require("node:fs").writeFileSync(path, v1Json, "utf8");
-    const spec = ensureStackSpec(path);
+    require("node:fs").writeFileSync(jsonPath, v1Json, "utf8");
+    // Migration: ensureStackSpec on YAML path finds legacy JSON, upgrades, and creates YAML
+    const spec = ensureStackSpec(yamlPath);
     expect(spec.version).toBe(StackSpecVersion);
+    // Verify YAML file was created and JSON was backed up
+    expect(require("node:fs").existsSync(yamlPath)).toBe(true);
+    expect(require("node:fs").existsSync(`${jsonPath}.bak`)).toBe(true);
   });
 });

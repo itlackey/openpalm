@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./*.ts": "./src/*.ts",
     "./admin/*.ts": "./admin/*.ts",
-    "./shared/*.ts": "./src/shared/*.ts"
+    "./shared/*.ts": "./src/shared/*.ts",
+    "./assets/*": "./assets/*"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

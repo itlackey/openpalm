@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
+import { stringify as yamlStringify } from "yaml";
 import { StackManager } from "./stack-manager.ts";
 import { applyStack } from "./stack-apply-engine.ts";
 
@@ -12,7 +13,7 @@ function createManager(dir: string) {
     composeFilePath: join(dir, "docker-compose.yml"),
     systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
-    stackSpecPath: join(dir, "stack-spec.json"),
+    stackSpecPath: join(dir, "openpalm.yaml"),
     gatewayEnvPath: join(dir, "gateway", ".env"),
     openmemoryEnvPath: join(dir, "openmemory", ".env"),
     postgresEnvPath: join(dir, "postgres", ".env"),
@@ -117,8 +118,8 @@ describe("applyStack impact detection", () => {
   it("throws when secrets reference is missing for enabled channel", async () => {
     const dir = mkdtempSync(join(tmpdir(), "apply-engine-"));
     writeFileSync(join(dir, "secrets.env"), "\n", "utf8");
-    writeFileSync(join(dir, "stack-spec.json"), JSON.stringify({
-      version: 2,
+    writeFileSync(join(dir, "openpalm.yaml"), yamlStringify({
+      version: 3,
       accessScope: "lan",
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING}", CHANNEL_CHAT_SECRET: "" } },
@@ -126,8 +127,9 @@ describe("applyStack impact detection", () => {
         voice: { enabled: true, exposure: "lan", config: { CHANNEL_VOICE_SECRET: "" } },
         telegram: { enabled: true, exposure: "lan", config: { TELEGRAM_BOT_TOKEN: "", TELEGRAM_WEBHOOK_SECRET: "", CHANNEL_TELEGRAM_SECRET: "" } },
       },
+      services: {},
       automations: [],
-    }, null, 2), "utf8");
+    }), "utf8");
 
     const manager = createManager(dir);
     expect(applyStack(manager, { apply: false })).rejects.toThrow("unresolved_secret_reference");

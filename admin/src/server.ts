@@ -7,7 +7,10 @@ import { getLatestRun } from "@openpalm/lib/admin/automation-history.ts";
 import { validateCron } from "@openpalm/lib/admin/cron.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "@openpalm/lib/admin/runtime-env.ts";
 import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-manager.ts";
-import { isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
+import { isBuiltInChannel, parseStackSpec, parseSecretReference, type StackChannelConfig, type StackServiceConfig, type StackAutomation } from "@openpalm/lib/admin/stack-spec.ts";
+import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
+import { CORE_AUTOMATIONS } from "@openpalm/lib/assets/automations/index.ts";
+import { parse as yamlParse } from "yaml";
 import { allowedServiceSet, composeAction, composePull } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import { parseJsonc, stringifyPretty } from "@openpalm/lib/admin/jsonc.ts";
@@ -28,7 +31,7 @@ const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://assistant:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
-const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/stack-spec.json`;
+const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/openpalm.yaml`;
 const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
 const SYSTEM_ENV_PATH = Bun.env.SYSTEM_ENV_PATH ?? `${STATE_ROOT}/system.env`;
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
@@ -37,9 +40,14 @@ function allChannelServiceNames(): string[] {
   return stackManager.listChannelNames().map((name) => `channel-${name}`);
 }
 
+function allServiceNames(): string[] {
+  return stackManager.listServiceNames().map((name) => `service-${name}`);
+}
+
 function knownServices(): Set<string> {
   const base = allowedServiceSet();
   for (const svc of allChannelServiceNames()) base.add(svc);
+  for (const svc of allServiceNames()) base.add(svc);
   return base;
 }
 
@@ -58,6 +66,22 @@ const stackManager = new StackManager({
   composeFilePath: COMPOSE_FILE_PATH,
 });
 
+// Merge core automations into the spec (can be disabled but not deleted)
+function ensureCoreAutomations() {
+  const spec = stackManager.getSpec();
+  let changed = false;
+  for (const core of CORE_AUTOMATIONS) {
+    if (!spec.automations.some((a) => a.id === core.id)) {
+      spec.automations.push({ ...core, core: true });
+      changed = true;
+    }
+  }
+  if (changed) {
+    stackManager.setSpec(spec);
+  }
+}
+
+ensureCoreAutomations();
 ensureCronDirs();
 syncAutomations(stackManager.listAutomations());
 
@@ -390,9 +414,46 @@ data: {"ok":true,"service":"admin"}
           if (type === "automation.delete") {
             const id = typeof payload.id === "string" ? payload.id : "";
             if (!id) return cors(json(400, { ok: false, error: "id is required", code: "invalid_payload" }));
-            const removed = stackManager.deleteAutomation(id);
-            syncAutomations(stackManager.listAutomations());
-            return cors(json(200, { ok: true, data: { removed } }));
+            try {
+              const removed = stackManager.deleteAutomation(id);
+              syncAutomations(stackManager.listAutomations());
+              return cors(json(200, { ok: true, data: { removed } }));
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              if (message === "cannot_delete_core_automation") return cors(json(400, { ok: false, error: message, code: message }));
+              throw error;
+            }
+          }
+          if (type === "snippet.import") {
+            const yamlStr = typeof payload.yaml === "string" ? payload.yaml : "";
+            const section = typeof payload.section === "string" ? payload.section : "";
+            if (!yamlStr) return cors(json(400, { ok: false, error: "yaml is required", code: "invalid_payload" }));
+            if (section !== "channel" && section !== "service" && section !== "automation") {
+              return cors(json(400, { ok: false, error: "section must be 'channel', 'service', or 'automation'", code: "invalid_payload" }));
+            }
+            const parsed = yamlParse(yamlStr);
+            const spec = stackManager.getSpec();
+            if (section === "channel") {
+              if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+                return cors(json(400, { ok: false, error: "channel snippet must be a YAML object", code: "invalid_snippet" }));
+              }
+              for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+                spec.channels[name] = value as StackChannelConfig;
+              }
+            } else if (section === "service") {
+              if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+                return cors(json(400, { ok: false, error: "service snippet must be a YAML object", code: "invalid_snippet" }));
+              }
+              for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+                spec.services[name] = value as StackServiceConfig;
+              }
+            } else {
+              const items = Array.isArray(parsed) ? parsed : [parsed];
+              spec.automations.push(...items as StackAutomation[]);
+            }
+            // Validate and save via setSpec (calls parseStackSpec internally)
+            const validated = stackManager.setSpec(spec);
+            return cors(json(200, { ok: true, data: { spec: validated } }));
           }
           if (type === "automation.trigger") {
             const id = sanitizeEnvScalar(payload.id);
@@ -426,6 +487,12 @@ data: {"ok":true,"service":"admin"}
 
       // ── Meta (display names + channel fields for wizard) ──────────
       if (url.pathname === "/admin/meta" && req.method === "GET") {
+        // Derive channel service names from BUILTIN_CHANNELS
+        const channelServiceNames: Record<string, { label: string; description: string }> = {};
+        for (const [key, def] of Object.entries(BUILTIN_CHANNELS)) {
+          channelServiceNames[`channel-${key}`] = { label: `${def.name} Channel`, description: `${def.name} adapter for OpenPalm` };
+        }
+
         return cors(json(200, {
           serviceNames: {
             gateway: { label: "Message Router", description: "Routes messages between channels and your assistant" },
@@ -433,10 +500,7 @@ data: {"ok":true,"service":"admin"}
             openmemory: { label: "Memory", description: "Stores conversation history and context" },
             "openmemory-ui": { label: "Memory Dashboard", description: "Visual interface for memory data" },
             admin: { label: "Admin Panel", description: "This management interface" },
-            "channel-chat": { label: "Chat Channel", description: "Web chat interface" },
-            "channel-discord": { label: "Discord Channel", description: "Discord bot connection" },
-            "channel-voice": { label: "Voice Channel", description: "Voice input interface" },
-            "channel-telegram": { label: "Telegram Channel", description: "Telegram bot connection" },
+            ...channelServiceNames,
             caddy: { label: "Web Server", description: "Handles secure connections" }
           },
           channelFields: {
@@ -453,6 +517,7 @@ data: {"ok":true,"service":"admin"}
               { key: "TELEGRAM_WEBHOOK_SECRET", label: "Webhook Secret", type: "password", required: false, helpText: "A secret string to verify incoming webhook requests" }
             ]
           },
+          builtInChannels: BUILTIN_CHANNELS,
           requiredCoreSecrets: CoreSecretRequirements
         }));
       }
@@ -733,10 +798,16 @@ data: {"ok":true,"service":"admin"}
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
-        const deleted = stackManager.deleteAutomation(body.id);
-        if (!deleted) return cors(json(404, { error: "automation not found" }));
-        syncAutomations(stackManager.listAutomations());
-        return cors(json(200, { ok: true, deleted: body.id }));
+        try {
+          const deleted = stackManager.deleteAutomation(body.id);
+          if (!deleted) return cors(json(404, { error: "automation not found" }));
+          syncAutomations(stackManager.listAutomations());
+          return cors(json(200, { ok: true, deleted: body.id }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === "cannot_delete_core_automation") return cors(json(400, { error: message }));
+          throw error;
+        }
       }
 
       if (url.pathname === "/admin/automations/trigger" && req.method === "POST") {
@@ -762,6 +833,27 @@ data: {"ok":true,"service":"admin"}
             config: { ...spec.channels[channelName].config },
             channelSpec: spec.channels[channelName],
           }))
+        }));
+      }
+
+      // ── Snippets catalog ──────────────────────────────────────────
+      if (url.pathname === "/admin/snippets" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        return cors(json(200, {
+          ok: true,
+          builtInChannels: Object.entries(BUILTIN_CHANNELS).map(([key, def]) => ({
+            key,
+            name: def.name,
+            containerPort: def.containerPort,
+            rewritePath: def.rewritePath,
+            configKeys: def.configKeys,
+          })),
+          coreAutomations: CORE_AUTOMATIONS.map((a) => ({
+            id: a.id,
+            name: a.name,
+            description: a.description,
+            schedule: a.schedule,
+          })),
         }));
       }
 

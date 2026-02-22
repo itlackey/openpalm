@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
+import { stringify as yamlStringify } from "yaml";
 import { StackManager } from "./stack-manager.ts";
 
 function createManager(dir: string) {
@@ -11,7 +12,7 @@ function createManager(dir: string) {
     composeFilePath: join(dir, "docker-compose.yml"),
     systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
-    stackSpecPath: join(dir, "stack-spec.json"),
+    stackSpecPath: join(dir, "openpalm.yaml"),
     gatewayEnvPath: join(dir, "gateway", ".env"),
     openmemoryEnvPath: join(dir, "openmemory", ".env"),
     postgresEnvPath: join(dir, "postgres", ".env"),
@@ -53,7 +54,7 @@ describe("stack manager", () => {
       composeFilePath: join(dir, "rendered", "docker-compose.yml"),
       systemEnvPath: join(dir, "system.env"),
       secretsEnvPath: join(dir, "secrets.env"),
-      stackSpecPath: join(dir, "stack-spec.json"),
+      stackSpecPath: join(dir, "openpalm.yaml"),
       gatewayEnvPath: join(dir, "gateway", ".env"),
       openmemoryEnvPath: join(dir, "openmemory", ".env"),
       postgresEnvPath: join(dir, "postgres", ".env"),
@@ -122,8 +123,8 @@ describe("stack manager", () => {
   it("validates missing referenced secrets for enabled channels", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     writeFileSync(join(dir, "secrets.env"), "\n", "utf8");
-    writeFileSync(join(dir, "stack-spec.json"), JSON.stringify({
-      version: 2,
+    writeFileSync(join(dir, "openpalm.yaml"), yamlStringify({
+      version: 3,
       accessScope: "lan",
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING_CHAT_TOKEN}", CHANNEL_CHAT_SECRET: "" } },
@@ -131,8 +132,9 @@ describe("stack manager", () => {
         voice: { enabled: true, exposure: "lan", config: { CHANNEL_VOICE_SECRET: "" } },
         telegram: { enabled: true, exposure: "lan", config: { TELEGRAM_BOT_TOKEN: "", TELEGRAM_WEBHOOK_SECRET: "", CHANNEL_TELEGRAM_SECRET: "" } },
       },
+      services: {},
       automations: [],
-    }, null, 2), "utf8");
+    }), "utf8");
     const manager = createManager(dir);
 
     expect(manager.validateReferencedSecrets()).toContain("missing_secret_reference_chat_CHAT_INBOUND_TOKEN_MISSING_CHAT_TOKEN");
@@ -346,8 +348,8 @@ describe("stack manager", () => {
   it("custom channel secrets are validated by validateReferencedSecrets", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     writeFileSync(join(dir, "secrets.env"), "KNOWN_SECRET=value\n", "utf8");
-    writeFileSync(join(dir, "stack-spec.json"), JSON.stringify({
-      version: 2,
+    writeFileSync(join(dir, "openpalm.yaml"), yamlStringify({
+      version: 3,
       accessScope: "lan",
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "", CHANNEL_CHAT_SECRET: "" } },
@@ -363,8 +365,9 @@ describe("stack manager", () => {
           },
         },
       },
+      services: {},
       automations: [],
-    }, null, 2), "utf8");
+    }), "utf8");
 
     const manager = createManager(dir);
     const errors = manager.validateReferencedSecrets();

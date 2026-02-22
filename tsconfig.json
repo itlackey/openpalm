@@ -20,6 +20,9 @@
       ],
       "@openpalm/lib/admin/*": [
         "packages/lib/admin/*"
+      ],
+      "@openpalm/lib/assets/*": [
+        "packages/lib/assets/*"
       ]
     }
   },
@@ -30,7 +33,8 @@
     "packages/cli/src/**/*.ts",
     "packages/lib/src/**/*.ts",
     "dev/**/*.ts",
-    "packages/lib/admin/**/*.ts"
+    "packages/lib/admin/**/*.ts",
+    "packages/lib/assets/**/*.ts"
   ],
   "exclude": [
     "node_modules"
