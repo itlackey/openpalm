@@ -4,15 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 let cronDir = "";
+let savedCronDir: string | undefined;
 
 describe("automations sync", () => {
   beforeEach(() => {
+    savedCronDir = Bun.env.CRON_DIR;
     cronDir = mkdtempSync(join(tmpdir(), "openpalm-automations-"));
     Bun.env.CRON_DIR = cronDir;
   });
 
   afterEach(() => {
     rmSync(cronDir, { recursive: true, force: true });
+    if (savedCronDir !== undefined) Bun.env.CRON_DIR = savedCronDir;
+    else delete Bun.env.CRON_DIR;
   });
 
   it("writes enabled and disabled cron entries to separate directories", async () => {

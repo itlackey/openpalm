@@ -46,6 +46,10 @@ on:
           - channel-voice
           - channel-telegram
 
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # -----------------------------------------------------------------------
   # Determine which images to build and the version tag to apply.
@@ -53,6 +57,7 @@ jobs:
   # -----------------------------------------------------------------------
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.matrix.outputs.result }}
       version_tag: ${{ steps.resolve.outputs.tag }}
@@ -126,6 +131,7 @@ jobs:
   publish:
     needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
@@ -172,6 +178,7 @@ jobs:
   publish-manifests:
     needs: [prepare, publish]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         image: ${{ fromJson(needs.prepare.outputs.images) }}
@@ -203,3 +210,20 @@ jobs:
             -t "${IMAGE}:${TAG}" \
             "${IMAGE}:${TAG}-amd64" \
             "${IMAGE}:${TAG}-arm64"
+
+      - name: Verify manifest architectures
+        run: |
+          IMAGE="${{ vars.DOCKERHUB_NAMESPACE || 'openpalm' }}/${{ matrix.image }}"
+          TAG="${{ needs.prepare.outputs.version_tag }}"
+          echo "Verifying ${IMAGE}:${TAG}..."
+          INSPECT=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" 2>&1)
+          echo "$INSPECT"
+          if ! echo "$INSPECT" | grep -q "linux/amd64"; then
+            echo "::error::Missing linux/amd64 in manifest for ${IMAGE}:${TAG}"
+            exit 1
+          fi
+          if ! echo "$INSPECT" | grep -q "linux/arm64"; then
+            echo "::error::Missing linux/arm64 in manifest for ${IMAGE}:${TAG}"
+            exit 1
+          fi
+          echo "Manifest verified: both architectures present."

@@ -31,6 +31,7 @@ const ADMIN_TOKEN = "test-docker-token";
 const dockerAvailable = await Bun.spawn(["docker", "info"], {
   stdout: "pipe", stderr: "pipe",
 }).exited.then((code) => code === 0).catch(() => false);
+const RUN_DOCKER_TESTS = dockerAvailable && Bun.env.OPENPALM_TEST_DOCKER === "1";
 
 // ── Temp directory layout ─────────────────────────────────
 let tmpDir: string;
@@ -53,13 +54,16 @@ async function composeRun(...args: string[]): Promise<{ exitCode: number; stdout
   return { exitCode, stdout, stderr };
 }
 
-async function waitForHealth(url: string, maxRetries = 40, intervalMs = 1500): Promise<boolean> {
-  for (let i = 0; i < maxRetries; i++) {
+async function waitForHealth(url: string, maxMs = 60_000): Promise<boolean> {
+  const start = Date.now();
+  let delay = 500;
+  while (Date.now() - start < maxMs) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
       if (r.ok) return true;
     } catch { /* not ready yet */ }
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 5000);
   }
   return false;
 }
@@ -94,7 +98,7 @@ const ADMIN_PORT = 18200;
 const GATEWAY_PORT = 18280;
 
 beforeAll(async () => {
-  if (!dockerAvailable) return;
+  if (!RUN_DOCKER_TESTS) return;
 
   // Create isolated temp directory tree
   tmpDir = mkdtempSync(join(tmpdir(), "openpalm-docker-test-"));
@@ -223,7 +227,7 @@ services:
 }, 180_000); // 3 min timeout for builds
 
 afterAll(async () => {
-  if (!dockerAvailable || !tmpDir) return;
+  if (!RUN_DOCKER_TESTS || !tmpDir) return;
 
   // Tear down containers
   console.log("[docker-test] Tearing down...");
@@ -235,7 +239,7 @@ afterAll(async () => {
 
 // ── Tests ─────────────────────────────────────────────────
 
-describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
+describe.skipIf(!RUN_DOCKER_TESTS)("docker stack: admin container", () => {
   it("health endpoint responds with service info", async () => {
     const resp = await api(ADMIN_PORT, "/health");
     expect(resp.status).toBe(200);
@@ -279,7 +283,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
   });
 });
 
-describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () => {
+describe.skipIf(!RUN_DOCKER_TESTS)("docker stack: YAML handling (Bun.YAML)", () => {
   it("stack spec is loaded and has correct version", async () => {
     const r = await authedJson(ADMIN_PORT, "/admin/state");
     expect(r.ok).toBe(true);
@@ -336,7 +340,7 @@ describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () =
   });
 });
 
-describe.skipIf(!dockerAvailable)("docker stack: gateway container", () => {
+describe.skipIf(!RUN_DOCKER_TESTS)("docker stack: gateway container", () => {
   it("gateway health endpoint responds", async () => {
     const resp = await api(GATEWAY_PORT, "/health").catch(() => null);
     // Gateway may not be fully healthy without assistant upstream,

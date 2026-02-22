@@ -1,6 +1,7 @@
-FROM oven/bun:1.1.42
+FROM oven/bun:1.3.5
 
-RUN bun add -g opencode-ai@latest \
+ARG OPENCODE_VERSION=0.1.75
+RUN bun add -g opencode-ai@${OPENCODE_VERSION} \
   && chmod o+x /root \
   && chmod -R o+rX /root/.bun
 RUN apt-get update && apt-get install -y tini curl openssh-server nodejs git && rm -rf /var/lib/apt/lists/*

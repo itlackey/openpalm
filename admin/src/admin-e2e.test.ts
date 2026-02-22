@@ -81,8 +81,10 @@ beforeAll(async () => {
     writeFileSync(join(channelSecretDir, `${ch}.env`), "", "utf8");
   }
 
-  // Pick a random port
-  const port = 18100 + Math.floor(Math.random() * 1000);
+  // Use Bun.serve to find an available port, then close it
+  const portFinder = Bun.serve({ port: 0, fetch: () => new Response("") });
+  const port = portFinder.port;
+  portFinder.stop();
   base = `http://127.0.0.1:${port}`;
 
   proc = Bun.spawn(["bun", "run", "admin/src/server.ts"], {
@@ -114,18 +116,22 @@ beforeAll(async () => {
     stderr: "pipe",
   });
 
-  // Wait for the server to be ready
-  for (let i = 0; i < 40; i++) {
+  // Wait for the server to be ready (exponential backoff, max 15s)
+  const startWait = Date.now();
+  let delay = 100;
+  while (Date.now() - startWait < 15_000) {
     try {
       const r = await fetch(`${base}/health`);
       if (r.ok) break;
     } catch { /* not ready yet */ }
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 2000);
   }
 });
 
-afterAll(() => {
+afterAll(async () => {
   proc?.kill();
+  if (proc) await proc.exited;
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 });
 

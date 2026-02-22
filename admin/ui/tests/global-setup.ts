@@ -24,18 +24,18 @@ export default async function globalSetup() {
     rmSync(STATE_FILE);
   }
 
-  // Wait for admin server to be fully ready
+  // Wait for admin server to be fully ready (exponential backoff)
   const deadline = Date.now() + 30_000;
+  let delay = 500;
   while (Date.now() < deadline) {
     try {
       const resp = await fetch("http://localhost/admin/api/setup/status");
-      // Any status < 500 means the server is running and responsive.
-      // 401/403 are expected if auth is required - the server is still "ready".
       if (resp.status < 500) break;
     } catch {
       // ignore - server may not be up yet
     }
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 5000);
   }
 
   // Check if we actually reached the server
