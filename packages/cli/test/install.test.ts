@@ -36,7 +36,7 @@ describe("install command source validation", () => {
   });
 
   it("generates .env with secure tokens", () => {
-    expect(installSource).toContain("writeFile(envPath, envSeed");
+    expect(installSource).toContain("writeFile(stateEnvFile, envSeed");
     expect(installSource).toContain("ADMIN_TOKEN: generatedAdminToken");
     expect(installSource).toContain("POSTGRES_PASSWORD: generateToken()");
     expect(installSource).toContain("CHANNEL_CHAT_SECRET: generateToken()");
@@ -57,10 +57,10 @@ describe("install command source validation", () => {
   });
 
   it("upserts XDG paths and runtime config into .env", () => {
-    expect(installSource).toContain("upsertEnvVars(envPath,");
-    expect(installSource).toContain("\"OPENPALM_DATA_HOME\", xdg.data");
-    expect(installSource).toContain("\"OPENPALM_CONFIG_HOME\", xdg.config");
-    expect(installSource).toContain("\"OPENPALM_STATE_HOME\", xdg.state");
+    expect(installSource).toContain("upsertEnvVars(stateEnvFile,");
+    expect(installSource).toContain("\"OPENPALM_DATA_HOME\", normPath(xdg.data)");
+    expect(installSource).toContain("\"OPENPALM_CONFIG_HOME\", normPath(xdg.config)");
+    expect(installSource).toContain("\"OPENPALM_STATE_HOME\", normPath(xdg.state)");
     expect(installSource).toContain("\"OPENPALM_CONTAINER_PLATFORM\", platform");
     expect(installSource).toContain("\"OPENPALM_COMPOSE_BIN\", bin");
     expect(installSource).toContain("\"OPENPALM_COMPOSE_SUBCOMMAND\", subcommand");
@@ -127,7 +127,7 @@ describe("staged install flow - Phase 2: Early UI access", () => {
   });
 
   it("prints troubleshooting guidance when setup times out", () => {
-    expect(installSource).toContain("Setup did not come online within 90 seconds");
+    expect(installSource).toContain("Setup did not come online within 3 minutes");
     expect(installSource).toContain("openpalm status");
     expect(installSource).toContain("Common fixes:");
   });

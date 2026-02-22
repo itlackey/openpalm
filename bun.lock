@@ -11,26 +11,26 @@
     },
     "admin": {
       "name": "@openpalm/admin",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "devDependencies": {
         "@playwright/test": "^1.40.0",
       },
     },
     "channels/chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.2.2",
+      "version": "0.2.3",
     },
     "channels/discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.2.2",
+      "version": "0.2.3",
     },
     "channels/telegram": {
       "name": "@openpalm/channel-telegram",
-      "version": "0.2.2",
+      "version": "0.2.3",
     },
     "channels/voice": {
       "name": "@openpalm/channel-voice",
-      "version": "0.2.2",
+      "version": "0.2.3",
     },
     "channels/webhook": {
       "name": "@openpalm/channel-webhook",
@@ -38,11 +38,11 @@
     },
     "gateway": {
       "name": "@openpalm/gateway",
-      "version": "0.2.2",
+      "version": "0.2.3",
     },
     "packages/cli": {
       "name": "@openpalm/cli",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "bin": {
         "openpalm": "./src/main.ts",
       },
@@ -53,9 +53,6 @@
     "packages/lib": {
       "name": "@openpalm/lib",
       "version": "0.2.0",
-      "dependencies": {
-        "yaml": "^2.8.2",
-      },
       "devDependencies": {
         "ajv": "^8.17.1",
         "ajv-formats": "^3.0.1",

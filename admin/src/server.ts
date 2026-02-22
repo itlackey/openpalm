@@ -10,7 +10,6 @@ import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-
 import { isBuiltInChannel, parseStackSpec, parseSecretReference, type StackChannelConfig, type StackServiceConfig, type StackAutomation } from "@openpalm/lib/admin/stack-spec.ts";
 import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
 import { CORE_AUTOMATIONS } from "@openpalm/lib/assets/automations/index.ts";
-import { parse as yamlParse } from "yaml";
 import { allowedServiceSet, composeAction, composePull } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import { parseJsonc, stringifyPretty } from "@openpalm/lib/admin/jsonc.ts";
@@ -457,7 +456,7 @@ data: {"ok":true,"service":"admin"}
             if (section !== "channel" && section !== "service" && section !== "automation") {
               return cors(json(400, { ok: false, error: "section must be 'channel', 'service', or 'automation'", code: "invalid_payload" }));
             }
-            const parsed = yamlParse(yamlStr);
+            const parsed = Bun.YAML.parse(yamlStr);
             const spec = stackManager.getSpec();
             if (section === "channel") {
               if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -567,8 +566,8 @@ data: {"ok":true,"service":"admin"}
       // Caddy is the sole ingress point as designed.
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
-        if (state.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!state.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
+        if (state.completed === true && !auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        if (!state.completed && !isLocalRequest(req)) return cors(json(403, { ok: false, error: "setup endpoints are restricted to local network access", code: "local_access_required" }));
         const secrets = readSecretsEnv();
         return cors(json(200, {
           ...state,
@@ -596,8 +595,8 @@ data: {"ok":true,"service":"admin"}
         if (!["host", "lan", "public"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
         const current = setupManager.getState();
         // Auth check MUST happen before any state mutation
-        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
+        if (current.completed && !auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { ok: false, error: "setup endpoints are restricted to local network access", code: "local_access_required" }));
         stackManager.setAccessScope(body.scope);
         setRuntimeBindScope(body.scope);
         if (current.completed) {
@@ -617,8 +616,8 @@ data: {"ok":true,"service":"admin"}
 
       if (url.pathname === "/admin/setup/complete" && req.method === "POST") {
         const current = setupManager.getState();
-        if (current.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
+        if (current.completed === true && !auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { ok: false, error: "setup endpoints are restricted to local network access", code: "local_access_required" }));
         const state = setupManager.completeSetup();
         return cors(json(200, { ok: true, state }));
       }
@@ -626,8 +625,8 @@ data: {"ok":true,"service":"admin"}
       if (url.pathname === "/admin/setup/service-instances" && req.method === "POST") {
         const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string; anthropicApiKey?: string; smallModelEndpoint?: string; smallModelApiKey?: string; smallModelId?: string };
         const current = setupManager.getState();
-        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
+        if (current.completed && !auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { ok: false, error: "setup endpoints are restricted to local network access", code: "local_access_required" }));
         const openmemory = sanitizeEnvScalar(body.openmemory);
         const psql = sanitizeEnvScalar(body.psql);
         const qdrant = sanitizeEnvScalar(body.qdrant);
@@ -660,8 +659,8 @@ data: {"ok":true,"service":"admin"}
       if (url.pathname === "/admin/setup/channels" && req.method === "POST") {
         const body = (await req.json()) as { channels?: unknown; channelConfigs?: Record<string, Record<string, string>> };
         const current = setupManager.getState();
-        if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
-        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
+        if (current.completed && !auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { ok: false, error: "setup endpoints are restricted to local network access", code: "local_access_required" }));
         const channels = normalizeSelectedChannels(body.channels);
         updateRuntimeEnv({ OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(",") : undefined });
 

@@ -1,0 +1,26 @@
+# This file is a reference template only.
+# The actual test overlay is generated dynamically by docker-stack.test.ts
+# with hardcoded volume paths pointing to an isolated temp directory.
+#
+# See docker-stack.test.ts beforeAll() for the generated compose content.
+services:
+  admin:
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+    ports:
+      - "18200:8100"
+    volumes:
+      - .:/compose:ro
+    environment:
+      OPENCODE_CORE_URL: "http://assistant:4096"
+      COMPOSE_PROJECT_PATH: /compose
+      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
+      ADMIN_TOKEN: "test-docker-token"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "18280:8080"

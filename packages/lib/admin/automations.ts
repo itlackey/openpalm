@@ -4,14 +4,15 @@ import { join } from "node:path";
 import type { StackAutomation } from "./stack-spec.ts";
 import { validateCron } from "./cron.ts";
 
-const cronDir = Bun.env.CRON_DIR ?? "/state/automations";
-const scriptsDir = join(cronDir, "scripts");
-const logDir = join(cronDir, "log");
-const lockDir = join(cronDir, "lock");
-const cronEnabledDir = join(cronDir, "cron.d.enabled");
-const cronDisabledDir = join(cronDir, "cron.d.disabled");
-const combinedSchedulePath = join(cronDir, "cron.schedule");
-const runnerPath = join(cronDir, "run-automation");
+// Lazy getters: env var is read at call time so callers can set CRON_DIR before first use.
+function cronDir(): string { return Bun.env.CRON_DIR ?? "/state/automations"; }
+function scriptsDir(): string { return join(cronDir(), "scripts"); }
+function logDir(): string { return join(cronDir(), "log"); }
+function lockDir(): string { return join(cronDir(), "lock"); }
+function cronEnabledDir(): string { return join(cronDir(), "cron.d.enabled"); }
+function cronDisabledDir(): string { return join(cronDir(), "cron.d.disabled"); }
+function combinedSchedulePath(): string { return join(cronDir(), "cron.schedule"); }
+function runnerPath(): string { return join(cronDir(), "run-automation"); }
 
 function fileSafeId(id: string): string {
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("invalid_automation_id");
@@ -29,7 +30,7 @@ function clearCronEntries(dir: string): void {
 }
 
 export function ensureCronDirs(): void {
-  for (const dir of [cronDir, scriptsDir, logDir, lockDir, cronEnabledDir, cronDisabledDir]) {
+  for (const dir of [cronDir(), scriptsDir(), logDir(), lockDir(), cronEnabledDir(), cronDisabledDir()]) {
     mkdirSync(dir, { recursive: true });
   }
   writeRunner();
@@ -44,19 +45,19 @@ export function syncAutomations(automations: StackAutomation[]): void {
     if (cronError) throw new Error("invalid_cron_schedule");
     const id = fileSafeId(automation.id);
     activeIds.add(id);
-    const scriptPath = join(scriptsDir, `${id}.sh`);
+    const scriptPath = join(scriptsDir(), `${id}.sh`);
     writeFileSync(scriptPath, automation.script, "utf8");
     chmodSync(scriptPath, 0o755);
   }
 
-  for (const file of readdirSync(scriptsDir)) {
+  for (const file of readdirSync(scriptsDir())) {
     if (!file.endsWith(".sh")) continue;
     const id = file.slice(0, -3);
-    if (!activeIds.has(id)) rmSync(join(scriptsDir, file), { force: true });
+    if (!activeIds.has(id)) rmSync(join(scriptsDir(), file), { force: true });
   }
 
-  clearCronEntries(cronEnabledDir);
-  clearCronEntries(cronDisabledDir);
+  clearCronEntries(cronEnabledDir());
+  clearCronEntries(cronDisabledDir());
 
   const combinedLines = ["# OpenPalm automations — managed by admin, do not edit", ""];
   const sortedAutomations = [...automations].sort((a, b) => a.id.localeCompare(b.id));
@@ -67,24 +68,24 @@ export function syncAutomations(automations: StackAutomation[]): void {
     const entry = [
       "# OpenPalm automation (managed)",
       `# ${automation.name} (${id})`,
-      `${automation.schedule} ${runnerPath} ${id}`,
+      `${automation.schedule} ${runnerPath()} ${id}`,
       "",
     ].join("\n");
 
     if (automation.enabled) {
-      writeFileSync(join(cronEnabledDir, fileName), entry, "utf8");
+      writeFileSync(join(cronEnabledDir(), fileName), entry, "utf8");
       combinedLines.push(`# ${automation.name} (${id})`);
-      combinedLines.push(`${automation.schedule} ${runnerPath} ${id}`);
+      combinedLines.push(`${automation.schedule} ${runnerPath()} ${id}`);
       combinedLines.push("");
     } else {
-      writeFileSync(join(cronDisabledDir, fileName), entry, "utf8");
+      writeFileSync(join(cronDisabledDir(), fileName), entry, "utf8");
     }
   }
 
-  writeFileSync(combinedSchedulePath, `${combinedLines.join("\n")}`.trimEnd() + "\n", "utf8");
+  writeFileSync(combinedSchedulePath(), `${combinedLines.join("\n")}`.trimEnd() + "\n", "utf8");
 
   try {
-    execSync(`crontab ${combinedSchedulePath}`, { stdio: "pipe" });
+    execSync(`crontab ${combinedSchedulePath()}`, { stdio: "pipe" });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("crontab: not found")) {
@@ -98,7 +99,7 @@ export function syncAutomations(automations: StackAutomation[]): void {
 export function triggerAutomation(idRaw: string): Promise<{ ok: boolean; error?: string }> {
   const id = fileSafeId(idRaw);
   return new Promise((resolve) => {
-    const proc = spawn(runnerPath, [id], { stdio: "pipe" });
+    const proc = spawn(runnerPath(), [id], { stdio: "pipe" });
     let stderr = "";
     proc.stderr.on("data", (chunk) => {
       stderr += String(chunk);
@@ -118,9 +119,9 @@ function writeRunner(): void {
 set -uo pipefail
 
 ID="\${1:?automation ID required}"
-SCRIPT="${scriptsDir}/\${ID}.sh"
-LOG_FILE="${logDir}/\${ID}.jsonl"
-LOCK_FILE="${lockDir}/\${ID}.lock"
+SCRIPT="${scriptsDir()}/\${ID}.sh"
+LOG_FILE="${logDir()}/\${ID}.jsonl"
+LOCK_FILE="${lockDir()}/\${ID}.lock"
 
 if [[ ! -f "$SCRIPT" ]]; then
   printf '{"ts":"%s","id":"%s","status":"error","error":"script_not_found"}\\n' \\
@@ -150,6 +151,6 @@ printf '{"ts":"%s","id":"%s","status":"%s","exit":%d,"dur":%d,"preview":"%s"}\\n
   >> "$LOG_FILE"
 `;
 
-  writeFileSync(runnerPath, script, "utf8");
-  chmodSync(runnerPath, 0o755);
+  writeFileSync(runnerPath(), script, "utf8");
+  chmodSync(runnerPath(), 0o755);
 }

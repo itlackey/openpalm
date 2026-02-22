@@ -432,6 +432,43 @@ describe("stack spec", () => {
     expect(Object.keys(parsed.channels["svc-b"].config)).toEqual(["WEBHOOK_URL", "RETRY_COUNT", "LOG_LEVEL"]);
   });
 
+  it("Bun.YAML roundtrip preserves all spec fields", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels.discord.exposure = "public";
+    spec.automations = [{
+      id: "test-auto",
+      name: "Test Automation",
+      schedule: "0 9 * * *",
+      script: "echo hello",
+      enabled: true,
+    }];
+    const yaml = Bun.YAML.stringify(spec, null, 2);
+    expect(yaml).toContain("version:");
+    expect(yaml).toContain("accessScope:");
+    expect(yaml).toContain("channels:");
+    const parsed = Bun.YAML.parse(yaml) as unknown;
+    const result = parseStackSpec(parsed);
+    expect(result.version).toBe(StackSpecVersion);
+    expect(result.channels.discord.exposure).toBe("public");
+    expect(result.automations[0].id).toBe("test-auto");
+    expect(result.automations[0].script).toBe("echo hello");
+  });
+
+  it("Bun.YAML write/read roundtrip through file system", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-yaml-roundtrip-"));
+    const path = join(dir, "openpalm.yaml");
+    const spec = createDefaultStackSpec();
+    spec.accessScope = "public";
+    spec.caddy = { email: "admin@example.com" };
+    writeStackSpec(path, spec);
+    const content = readFileSync(path, "utf8");
+    expect(content).toContain("version:");
+    expect(content).toContain("public");
+    const loaded = ensureStackSpec(path);
+    expect(loaded.accessScope).toBe("public");
+    expect(loaded.caddy?.email).toBe("admin@example.com");
+  });
+
   it("reads version 1 specs and upgrades to current version", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
     const jsonPath = join(dir, "stack-spec.json");

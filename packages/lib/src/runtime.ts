@@ -55,6 +55,10 @@ export async function detectRuntime(os: HostOS): Promise<ContainerPlatform | nul
 export function resolveSocketPath(platform: ContainerPlatform, os: HostOS): string {
   switch (platform) {
     case "docker":
+      if (os === "windows") {
+        // Docker Desktop for Windows uses a named pipe
+        return "//./pipe/docker_engine";
+      }
       return "/var/run/docker.sock";
     case "orbstack":
       try {
@@ -66,6 +70,9 @@ export function resolveSocketPath(platform: ContainerPlatform, os: HostOS): stri
       if (os === "linux") {
         const uid = process.getuid?.() ?? 1000;
         return `/run/user/${uid}/podman/podman.sock`;
+      }
+      if (os === "windows") {
+        return "//./pipe/podman-machine-default";
       }
       return "/var/run/docker.sock";
   }
@@ -79,6 +86,24 @@ export function resolveComposeBin(platform: ContainerPlatform): { bin: string; s
     case "podman":
       return { bin: "podman", subcommand: "compose" };
   }
+}
+
+export function resolveSocketUri(platform: ContainerPlatform, os: HostOS): string {
+  const socketPath = resolveSocketPath(platform, os);
+  if (os === "windows") {
+    // Docker Desktop for Windows uses npipe protocol
+    return `npipe://${socketPath}`;
+  }
+  return `unix://${socketPath}`;
+}
+
+export function resolveInContainerSocketPath(platform: ContainerPlatform): string {
+  // Inside containers (which always run Linux), the socket is always at the Unix path.
+  // Docker Desktop maps the host named pipe to this path automatically.
+  if (platform === "podman") {
+    return "/var/run/docker.sock";
+  }
+  return "/var/run/docker.sock";
 }
 
 export async function validateRuntime(bin: string, subcommand: string): Promise<boolean> {

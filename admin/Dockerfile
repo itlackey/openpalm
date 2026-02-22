@@ -1,6 +1,6 @@
 FROM oven/bun:1.3.5
 RUN apt-get update \
-  && apt-get install -y cron curl ca-certificates gnupg \
+  && apt-get install -y cron curl ca-certificates gnupg gosu \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && chmod a+r /etc/apt/keyrings/docker.gpg \
@@ -8,6 +8,13 @@ RUN apt-get update \
   && apt-get update \
   && apt-get install -y docker-ce-cli \
   && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for runtime (UID/GID match compose OPENPALM_UID/GID defaults).
+# The oven/bun base image ships a "bun" user at 1000:1000 — rename it to openpalm
+# so the user name is consistent across all OpenPalm containers.
+RUN groupmod -n openpalm bun && \
+    usermod -l openpalm -d /home/openpalm -m bun
+
 WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the
 # raw TypeScript source of @openpalm/lib directly into node_modules.
@@ -17,6 +24,7 @@ COPY admin/package.json ./
 COPY admin/src ./src
 COPY admin/ui ./ui
 RUN bun install --production
+RUN chown -R openpalm:openpalm /app
 EXPOSE 8100
 COPY admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
 RUN chmod +x /usr/local/bin/admin-entrypoint.sh
