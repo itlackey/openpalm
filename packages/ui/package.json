@@ -16,6 +16,10 @@
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright test"
 	},
+	"dependencies": {
+		"@openpalm/lib": "workspace:*",
+		"yaml": "^2.7.0"
+	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.2",
 		"@eslint/js": "^9.39.2",

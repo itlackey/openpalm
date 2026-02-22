@@ -11,7 +11,8 @@
     "channels/telegram",
     "channels/webhook",
     "packages/lib",
-    "packages/cli"
+    "packages/cli",
+    "packages/ui"
   ],
   "scripts": {
     "test": "bun test",
