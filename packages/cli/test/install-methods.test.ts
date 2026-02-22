@@ -164,7 +164,7 @@ describe("install methods verification", () => {
     });
 
     it("supports -Runtime parameter", () => {
-      expect(installPs1).toContain('[ValidateSet("docker", "podman")]');
+      expect(installPs1).toContain('[ValidateSet("docker", "podman", "orbstack")]');
     });
 
     it("supports -Ref parameter", () => {

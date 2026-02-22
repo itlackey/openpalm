@@ -91,6 +91,8 @@ function getPositionalArgs(args: string[]): string[] {
   return result;
 }
 
+const VALID_RUNTIMES: readonly ContainerPlatform[] = ["docker", "podman", "orbstack"] as const;
+
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
 
@@ -107,8 +109,13 @@ async function main(): Promise<void> {
   try {
     switch (command) {
       case "install": {
+        const runtimeArg = parseArg(args, "runtime");
+        if (runtimeArg && !VALID_RUNTIMES.includes(runtimeArg as ContainerPlatform)) {
+          error(`Invalid runtime "${runtimeArg}". Must be one of: ${VALID_RUNTIMES.join(", ")}`);
+          process.exit(1);
+        }
         const options: InstallOptions = {
-          runtime: parseArg(args, "runtime") as ContainerPlatform | undefined,
+          runtime: runtimeArg as ContainerPlatform | undefined,
           noOpen: hasFlag(args, "no-open"),
           ref: parseArg(args, "ref"),
         };
@@ -117,8 +124,13 @@ async function main(): Promise<void> {
       }
 
       case "uninstall": {
+        const uninstallRuntimeArg = parseArg(args, "runtime");
+        if (uninstallRuntimeArg && !VALID_RUNTIMES.includes(uninstallRuntimeArg as ContainerPlatform)) {
+          error(`Invalid runtime "${uninstallRuntimeArg}". Must be one of: ${VALID_RUNTIMES.join(", ")}`);
+          process.exit(1);
+        }
         const options: UninstallOptions = {
-          runtime: parseArg(args, "runtime") as ContainerPlatform | undefined,
+          runtime: uninstallRuntimeArg as ContainerPlatform | undefined,
           removeAll: hasFlag(args, "remove-all"),
           removeImages: hasFlag(args, "remove-images"),
           yes: hasFlag(args, "yes"),

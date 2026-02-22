@@ -16,7 +16,15 @@ if (-not $RunningOnWindows) {
   exit 1
 }
 
-$RootDir = Split-Path -Parent $PSScriptRoot
+# Resolve the root directory robustly: try $PSScriptRoot parent, then
+# fall back to a known install location or the current directory.
+if ($PSScriptRoot -and (Test-Path (Split-Path -Parent $PSScriptRoot))) {
+  $RootDir = Split-Path -Parent $PSScriptRoot
+} elseif (Test-Path (Join-Path $env:LOCALAPPDATA "OpenPalm")) {
+  $RootDir = Join-Path $env:LOCALAPPDATA "OpenPalm"
+} else {
+  $RootDir = (Get-Location).Path
+}
 Set-Location $RootDir
 
 function Get-EnvValueFromFile {
@@ -113,6 +121,13 @@ if ($RemoveAll) {
     Remove-Item -LiteralPath $envPath -Force
   }
   Write-Host "Removed OpenPalm data/config/state and local .env."
+}
+
+# Remove CLI binary if it exists in the standard install location
+$CliPath = Join-Path $env:LOCALAPPDATA "OpenPalm\openpalm.exe"
+if (Test-Path $CliPath) {
+  Write-Host "Removing CLI binary at $CliPath"
+  Remove-Item -LiteralPath $CliPath -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "Uninstall complete."
