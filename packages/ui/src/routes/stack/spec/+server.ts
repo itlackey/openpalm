@@ -20,6 +20,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (secretErrors.length > 0) {
 		return errorJson(400, 'secret_reference_validation_failed', secretErrors);
 	}
-	const spec = stackManager.setSpec(body.spec);
+	// Save the parsed/validated result, not the raw input
+	const spec = stackManager.setSpec(parsed);
 	return json(200, { ok: true, spec });
 };

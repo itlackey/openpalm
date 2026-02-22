@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual, createHmac } from "node:crypto";
 import { dirname } from "node:path";
 import { SetupManager } from "@openpalm/lib/admin/setup-manager.ts";
 import { ensureCronDirs, syncAutomations, triggerAutomation } from "@openpalm/lib/admin/automations.ts";
@@ -98,20 +98,46 @@ function errorJson(status: number, error: string, details?: unknown) {
   return json(status, payload);
 }
 
+const ALLOWED_ORIGIN = "http://localhost";
+
 function cors(resp: Response): Response {
-  resp.headers.set("access-control-allow-origin", "*");
+  resp.headers.set("access-control-allow-origin", ALLOWED_ORIGIN);
   resp.headers.set("access-control-allow-headers", "content-type, x-admin-token, x-request-id");
   resp.headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+  resp.headers.set("vary", "Origin");
   return resp;
 }
 
 const DEFAULT_INSECURE_TOKEN = "change-me-admin-token";
 
+/**
+ * Check if a request originates from a local/private IP address.
+ * Used to restrict unauthenticated setup endpoints to local network access only.
+ */
+function isLocalRequest(req: Request): boolean {
+  const forwarded = req.headers.get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0]?.trim() ?? "127.0.0.1";
+  const localPatterns = ["127.0.0.1", "::1", "10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.", "192.168."];
+  return localPatterns.some(p => ip.startsWith(p));
+}
+
+const TOKEN_HMAC_KEY = "openpalm-token-compare";
+
+/**
+ * Constant-time token comparison using HMAC to avoid timing side-channels.
+ * Unlike length-check-then-compare, HMAC comparison does not leak token length.
+ */
+function hmacCompare(a: string, b: string): boolean {
+  const hmacA = createHmac("sha256", TOKEN_HMAC_KEY).update(a).digest();
+  const hmacB = createHmac("sha256", TOKEN_HMAC_KEY).update(b).digest();
+  return timingSafeEqual(hmacA, hmacB);
+}
+
 function auth(req: Request): boolean {
   if (ADMIN_TOKEN === DEFAULT_INSECURE_TOKEN) return false;
   const token = req.headers.get("x-admin-token") ?? "";
-  if (token.length !== ADMIN_TOKEN.length) return false;
-  return timingSafeEqual(Buffer.from(token, "utf8"), Buffer.from(ADMIN_TOKEN, "utf8"));
+  if (!ADMIN_TOKEN) return false;
+  return hmacCompare(token, ADMIN_TOKEN);
 }
 
 function readRuntimeEnv() {
@@ -272,7 +298,7 @@ data: {"ok":true,"service":"admin"}
             "content-type": "text/event-stream",
             "cache-control": "no-cache",
             connection: "keep-alive",
-            "access-control-allow-origin": "*",
+            "access-control-allow-origin": ALLOWED_ORIGIN,
           },
         });
       }
@@ -438,6 +464,9 @@ data: {"ok":true,"service":"admin"}
                 return cors(json(400, { ok: false, error: "channel snippet must be a YAML object", code: "invalid_snippet" }));
               }
               for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+                if (typeof value !== "object" || value === null || !(value as Record<string, unknown>).image) {
+                  return cors(json(400, { ok: false, error: `invalid_snippet: channel '${name}' must have an 'image' field`, code: "invalid_snippet" }));
+                }
                 spec.channels[name] = value as StackChannelConfig;
               }
             } else if (section === "service") {
@@ -445,10 +474,18 @@ data: {"ok":true,"service":"admin"}
                 return cors(json(400, { ok: false, error: "service snippet must be a YAML object", code: "invalid_snippet" }));
               }
               for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+                if (typeof value !== "object" || value === null || !(value as Record<string, unknown>).image) {
+                  return cors(json(400, { ok: false, error: `invalid_snippet: service '${name}' must have an 'image' field`, code: "invalid_snippet" }));
+                }
                 spec.services[name] = value as StackServiceConfig;
               }
             } else {
               const items = Array.isArray(parsed) ? parsed : [parsed];
+              for (const item of items) {
+                if (typeof item !== "object" || item === null || !item.schedule || (!item.prompt && !item.script)) {
+                  return cors(json(400, { ok: false, error: "invalid_snippet: automation must have 'schedule' and 'script' (or 'prompt') fields", code: "invalid_snippet" }));
+                }
+              }
               spec.automations.push(...items as StackAutomation[]);
             }
             // Validate and save via setSpec (calls parseStackSpec internally)
@@ -523,9 +560,15 @@ data: {"ok":true,"service":"admin"}
       }
 
       // ── Setup wizard ──────────────────────────────────────────────
+      // SECURITY NOTE: Setup endpoints are accessible without authentication during
+      // initial setup (completed=false). This is by design as no admin token exists yet.
+      // Mitigation: restrict unauthenticated setup access to local/private IP ranges.
+      // The Caddy reverse proxy sets x-forwarded-for, so this check is reliable when
+      // Caddy is the sole ingress point as designed.
       if (url.pathname === "/admin/setup/status" && req.method === "GET") {
         const state = setupManager.getState();
         if (state.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!state.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
         const secrets = readSecretsEnv();
         return cors(json(200, {
           ...state,
@@ -538,6 +581,9 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/setup/step" && req.method === "POST") {
+        const stepCurrent = setupManager.getState();
+        if (stepCurrent.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!stepCurrent.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
         const body = (await req.json()) as { step: string };
         const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels"];
         if (!validSteps.includes(body.step)) return cors(json(400, { error: "invalid step" }));
@@ -549,7 +595,9 @@ data: {"ok":true,"service":"admin"}
         const body = (await req.json()) as { scope: "host" | "lan" | "public" };
         if (!["host", "lan", "public"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
         const current = setupManager.getState();
+        // Auth check MUST happen before any state mutation
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
         stackManager.setAccessScope(body.scope);
         setRuntimeBindScope(body.scope);
         if (current.completed) {
@@ -570,6 +618,7 @@ data: {"ok":true,"service":"admin"}
       if (url.pathname === "/admin/setup/complete" && req.method === "POST") {
         const current = setupManager.getState();
         if (current.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
         const state = setupManager.completeSetup();
         return cors(json(200, { ok: true, state }));
       }
@@ -578,6 +627,7 @@ data: {"ok":true,"service":"admin"}
         const body = (await req.json()) as { openmemory?: string; psql?: string; qdrant?: string; openaiBaseUrl?: string; openaiApiKey?: string; anthropicApiKey?: string; smallModelEndpoint?: string; smallModelApiKey?: string; smallModelId?: string };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
         const openmemory = sanitizeEnvScalar(body.openmemory);
         const psql = sanitizeEnvScalar(body.psql);
         const qdrant = sanitizeEnvScalar(body.qdrant);
@@ -611,6 +661,7 @@ data: {"ok":true,"service":"admin"}
         const body = (await req.json()) as { channels?: unknown; channelConfigs?: Record<string, Record<string, string>> };
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!current.completed && !isLocalRequest(req)) return cors(json(403, { error: "setup endpoints are restricted to local network access" }));
         const channels = normalizeSelectedChannels(body.channels);
         updateRuntimeEnv({ OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(",") : undefined });
 
@@ -666,7 +717,8 @@ data: {"ok":true,"service":"admin"}
         if (secretErrors.length > 0) {
           return cors(errorJson(400, "secret_reference_validation_failed", secretErrors));
         }
-        const spec = stackManager.setSpec(body.spec);
+        // Save the parsed/validated result, not the raw input
+        const spec = stackManager.setSpec(parsed);
         return cors(json(200, { ok: true, spec }));
       }
 
@@ -720,7 +772,7 @@ data: {"ok":true,"service":"admin"}
       if (url.pathname === "/admin/secrets/raw" && req.method === "GET") {
         if (!auth(req)) return cors(json(401, { error: "admin token required" }));
         const content = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, "utf8") : "";
-        return cors(new Response(content, { headers: { "content-type": "text/plain" } }));
+        return cors(new Response(content, { headers: { "content-type": "text/plain", "cache-control": "no-store, no-cache, must-revalidate", "x-content-type-options": "nosniff", "pragma": "no-cache" } }));
       }
 
       if (url.pathname === "/admin/secrets/raw" && req.method === "POST") {
@@ -869,10 +921,17 @@ data: {"ok":true,"service":"admin"}
 
       // ── Static UI ─────────────────────────────────────────────────
       if (url.pathname.startsWith("/admin/opencode")) {
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const subpath = url.pathname.slice("/admin/opencode".length) || "/";
         const target = `${OPENCODE_CORE_URL}${subpath}${url.search}`;
         try {
-          const proxyResp = await fetch(target, { signal: AbortSignal.timeout(5000) });
+          // Only forward safe headers to internal assistant container
+          const safeHeaders = new Headers();
+          for (const name of ["content-type", "accept", "content-length"]) {
+            const value = req.headers.get(name);
+            if (value) safeHeaders.set(name, value);
+          }
+          const proxyResp = await fetch(target, { headers: safeHeaders, signal: AbortSignal.timeout(5000) });
           return new Response(proxyResp.body, { status: proxyResp.status, headers: proxyResp.headers });
         } catch {
           return cors(json(502, { error: "assistant_unavailable" }));

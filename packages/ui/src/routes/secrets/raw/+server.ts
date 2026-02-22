@@ -9,7 +9,9 @@ export const GET: RequestHandler = async ({ locals }) => {
 	return new Response(content, {
 		headers: {
 			'content-type': 'text/plain',
-			'access-control-allow-origin': '*'
+			'cache-control': 'no-store, no-cache, must-revalidate',
+			'x-content-type-options': 'nosniff',
+			pragma: 'no-cache'
 		}
 	});
 };

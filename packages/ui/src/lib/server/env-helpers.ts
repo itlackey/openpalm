@@ -8,21 +8,48 @@ import { RUNTIME_ENV_PATH, SECRETS_ENV_PATH } from './config.ts';
 
 const MAX_SECRETS_RAW_SIZE = 64 * 1024;
 
+/**
+ * Simple async mutex keyed by file path. Ensures read-modify-write sequences
+ * for env files are serialized, preventing data loss from concurrent writes.
+ */
+const fileLocks = new Map<string, Promise<void>>();
+
+async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+	const existing = fileLocks.get(path) ?? Promise.resolve();
+	let resolve: () => void;
+	const next = new Promise<void>((r) => {
+		resolve = r;
+	});
+	fileLocks.set(path, next);
+	await existing;
+	try {
+		return await fn();
+	} finally {
+		resolve!();
+	}
+}
+
 export function readRuntimeEnv(): Record<string, string> {
 	if (!existsSync(RUNTIME_ENV_PATH)) return {};
 	return parseRuntimeEnvContent(readFileSync(RUNTIME_ENV_PATH, 'utf8'));
 }
 
 export function updateRuntimeEnv(entries: Record<string, string | undefined>) {
-	const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
-	const next = updateRuntimeEnvContent(current, entries);
-	writeFileSync(RUNTIME_ENV_PATH, next, 'utf8');
+	// Wrap in file lock to prevent concurrent read-modify-write races.
+	// Using void return since callers treat this as sync-like (fire and forget lock).
+	void withFileLock(RUNTIME_ENV_PATH, async () => {
+		const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
+		const next = updateRuntimeEnvContent(current, entries);
+		writeFileSync(RUNTIME_ENV_PATH, next, 'utf8');
+	});
 }
 
 export function setRuntimeBindScope(scope: 'host' | 'lan' | 'public') {
-	const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
-	const next = setRuntimeBindScopeContent(current, scope);
-	writeFileSync(RUNTIME_ENV_PATH, next, 'utf8');
+	void withFileLock(RUNTIME_ENV_PATH, async () => {
+		const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
+		const next = setRuntimeBindScopeContent(current, scope);
+		writeFileSync(RUNTIME_ENV_PATH, next, 'utf8');
+	});
 }
 
 export function readSecretsEnv(): Record<string, string> {
@@ -31,9 +58,11 @@ export function readSecretsEnv(): Record<string, string> {
 }
 
 export function updateSecretsEnv(entries: Record<string, string | undefined>) {
-	const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, 'utf8') : '';
-	const next = updateRuntimeEnvContent(current, entries);
-	writeFileSync(SECRETS_ENV_PATH, next, 'utf8');
+	void withFileLock(SECRETS_ENV_PATH, async () => {
+		const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, 'utf8') : '';
+		const next = updateRuntimeEnvContent(current, entries);
+		writeFileSync(SECRETS_ENV_PATH, next, 'utf8');
+	});
 }
 
 export function readSecretsRaw(): string {
@@ -42,7 +71,9 @@ export function readSecretsRaw(): string {
 }
 
 export function writeSecretsRaw(content: string) {
-	writeFileSync(SECRETS_ENV_PATH, content, 'utf8');
+	void withFileLock(SECRETS_ENV_PATH, async () => {
+		writeFileSync(SECRETS_ENV_PATH, content, 'utf8');
+	});
 }
 
 export function validateSecretsRawContent(content: string): string | null {

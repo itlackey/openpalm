@@ -1,6 +1,7 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { getSetupManager, getStackManager, allChannelServiceNames } from '$lib/server/init';
 import { updateRuntimeEnv } from '$lib/server/env-helpers';
+import { isLocalRequest } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
 
 async function normalizeSelectedChannels(value: unknown): Promise<string[]> {
@@ -25,6 +26,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	};
 	const current = setupManager.getState();
 	if (current.completed && !locals.authenticated) return unauthorizedJson();
+
+	// SECURITY: During initial setup, restrict to local/private IPs only.
+	if (!current.completed && !isLocalRequest(request)) {
+		return json(403, { error: 'setup endpoints are restricted to local network access' });
+	}
 
 	const channels = await normalizeSelectedChannels(body.channels);
 	updateRuntimeEnv({
