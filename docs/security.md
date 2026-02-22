@@ -10,6 +10,8 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 - Setup wizard can harden further with `host` scope (localhost-only matchers + localhost compose bindings).
 - Unknown routes are rejected at the edge.
 
+**Initial bootstrap config (first boot):** The initial Caddy config (`assets/state/caddy/caddy.json`) serves HTTP only on port 80 with LAN-restricted IP ranges. This is acceptable because the bootstrap config is LAN-only and is replaced post-setup by the stack generator, which renders a full Caddy config with proper TLS settings once a domain is configured. If you need HTTPS during initial setup, configure a domain and run the setup wizard to generate the production Caddy config with automatic TLS.
+
 **Why:** keep management surfaces private by default and reduce internet-exposed attack surface.
 
 ## 2) Signed channel ingress and throttling (Gateway)

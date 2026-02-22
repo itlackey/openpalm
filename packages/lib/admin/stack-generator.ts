@@ -404,7 +404,14 @@ function renderChannelComposeService(name: string, config: StackChannelConfig): 
     "    ports:",
     `      - "${portBinding}"`,
     "    networks: [channel_net]",
-    "    depends_on: [gateway]",
+    "    depends_on:",
+    "      gateway:",
+    "        condition: service_healthy",
+    "    healthcheck:",
+    `      test: ["CMD-SHELL", "curl -sf http://localhost:${containerPort}/health || exit 1"]`,
+    "      interval: 10s",
+    "      timeout: 5s",
+    "      retries: 3",
   ].join("\n");
 }
 
@@ -421,7 +428,7 @@ function renderCaddyComposeService(): string {
     "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
     "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
     "    command: caddy run --config /etc/caddy/caddy.json",
-    "    networks: [assistant_net]",
+    "    networks: [assistant_net, channel_net]",
   ].join("\n");
 }
 
@@ -435,10 +442,15 @@ function renderPostgresComposeService(): string {
     "    environment:",
     "      POSTGRES_DB: ${POSTGRES_DB:-openpalm}",
     "      POSTGRES_USER: ${POSTGRES_USER:-openpalm}",
-    "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-pg-password}",
+    "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data",
     "    networks: [assistant_net]",
+    "    healthcheck:",
+    "      test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER:-openpalm}\"]",
+    "      interval: 10s",
+    "      timeout: 5s",
+    "      retries: 5",
   ].join("\n");
 }
 
@@ -452,6 +464,11 @@ function renderQdrantComposeService(): string {
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage",
     "    networks: [assistant_net]",
+    "    healthcheck:",
+    "      test: [\"CMD-SHELL\", \"curl -sf http://localhost:6333/readyz || exit 1\"]",
+    "      interval: 10s",
+    "      timeout: 5s",
+    "      retries: 5",
   ].join("\n");
 }
 
@@ -467,7 +484,16 @@ function renderOpenMemoryComposeService(): string {
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/openmemory:/data",
     "    networks: [assistant_net]",
-    "    depends_on: [qdrant]",
+    "    depends_on:",
+    "      qdrant:",
+    "        condition: service_healthy",
+    "      postgres:",
+    "        condition: service_healthy",
+    "    healthcheck:",
+    "      test: [\"CMD-SHELL\", \"curl -sf http://localhost:8765/ || exit 1\"]",
+    "      interval: 15s",
+    "      timeout: 10s",
+    "      retries: 5",
   ].join("\n");
 }
 
@@ -482,7 +508,9 @@ function renderOpenMemoryUiComposeService(): string {
     "    ports:",
     "      - \"${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-127.0.0.1}:3000:3000\"",
     "    networks: [assistant_net]",
-    "    depends_on: [openmemory]",
+    "    depends_on:",
+    "      openmemory:",
+    "        condition: service_healthy",
   ].join("\n");
 }
 
@@ -507,7 +535,9 @@ function renderAssistantComposeService(): string {
     "    working_dir: /work",
     "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
     "    networks: [assistant_net]",
-    "    depends_on: [openmemory]",
+    "    depends_on:",
+    "      openmemory:",
+    "        condition: service_healthy",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:4096/\"]",
     "      interval: 30s",
@@ -532,7 +562,9 @@ function renderGatewayComposeService(): string {
     "    volumes:",
     "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
     "    networks: [channel_net, assistant_net]",
-    "    depends_on: [assistant]",
+    "    depends_on:",
+    "      assistant:",
+    "        condition: service_healthy",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]",
     "      interval: 30s",
@@ -551,7 +583,7 @@ function renderAdminComposeService(): string {
     "      - ${OPENPALM_STATE_HOME}/system.env",
     "    environment:",
     "      - PORT=8100",
-    "      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-admin-token}",
+    "      - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
     "      - GATEWAY_URL=http://gateway:8080",
     "      - OPENCODE_CORE_URL=http://assistant:4096",
     "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
