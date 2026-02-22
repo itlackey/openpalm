@@ -50,12 +50,12 @@ Notes:
 
 ---
 
-## Admin App API (routed via Caddy at /admin/*, LAN only)
+## Admin App API (routed via Caddy at /*, LAN only)
 
 Headers for all protected admin endpoints:
 - `x-admin-token` (required — the admin password set during install)
 
-**Exceptions (no auth required):** `/health`, `/admin/setup/*` (before setup completes), `/admin/meta`, static UI assets (`/`, `/index.html`, `/setup-ui.js`, `/logo.png`).
+**Exceptions (no auth required):** `/health`, `/setup/*` (before setup completes), `/meta`, static UI assets (`/`, `/index.html`, `/setup-ui.js`, `/logo.png`).
 
 ### GET /health
 Health status for the admin app.
@@ -76,83 +76,83 @@ This keeps the UI implementation simple and predictable for non-technical users 
 ### Secrets contract (canonical)
 The secret manager is the source of truth for key/value entries in `secrets.env`.
 
-- `GET /admin/secrets` — list available secret keys and where each key is used.
+- `GET /secrets` — list available secret keys and where each key is used.
 
 Channel configuration values in `openpalm.yaml` (stack spec) can reference secrets directly with `${SECRET_NAME}`. During stack rendering/apply, unresolved references fail validation.
 
 ### Container management
-- `GET /admin/containers/list` — list running containers
-- `POST /admin/containers/down` — stop a service `{ "service": "channel-discord" }`
+- `GET /containers/list` — list running containers
+- `POST /containers/down` — stop a service `{ "service": "channel-discord" }`
 
 ### Channel management
-- `GET /admin/channels` — list channel services, network access mode, and editable config keys
-- `POST /admin/channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "host" | "lan" | "public" }`
-- `GET /admin/channels/config?service=channel-chat` — read channel-specific env overrides
-- `POST /admin/channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }`
+- `GET /channels` — list channel services, network access mode, and editable config keys
+- `POST /channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "host" | "lan" | "public" }`
+- `GET /channels/config?service=channel-chat` — read channel-specific env overrides
+- `POST /channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }`
 
 ### Config editor
-- `GET /admin/config` — read `opencode.jsonc` (returns text/plain)
-- `POST /admin/config` — write config `{ "config": "...", "restart": true }` (denies permission widening to `allow`)
+- `GET /config` — read `opencode.jsonc` (returns text/plain)
+- `POST /config` — write config `{ "config": "...", "restart": true }` (denies permission widening to `allow`)
 
 **Policy lint rule:** The config editor parses the submitted JSONC and inspects the `permission` object. If any permission value is set to `"allow"`, the request is rejected with `400 policy lint failed: permission widening blocked`. Only `"ask"` and `"deny"` are permitted permission values. This prevents operators from accidentally removing approval gates on sensitive tool operations.
 
 ### Setup wizard
-- `GET /admin/setup/status` — returns current setup wizard state (completed steps, channels, first-boot flag), current service-instance overrides, provider setup, and small model config
-- `GET /admin/system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows
-- `GET /admin/setup/health-check` — run health checks against gateway, assistant, and OpenMemory; returns `{ services: { gateway, assistant, openmemory, admin } }`
+- `GET /setup/status` — returns current setup wizard state (completed steps, channels, first-boot flag), current service-instance overrides, provider setup, and small model config
+- `GET /system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows
+- `GET /setup/health-check` — run health checks against gateway, assistant, and OpenMemory; returns `{ services: { gateway, assistant, openmemory, admin } }`
 
 ### Plugin management
-- `POST /admin/plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
-- `POST /admin/plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
+- `POST /plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
+- `POST /plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
 
 ### Installed status
-- `GET /admin/installed` — returns currently installed plugins and setup state
+- `GET /installed` — returns currently installed plugins and setup state
 
 ### Meta
-- `GET /admin/meta` — returns service display names, channel field definitions, and required core secrets (no auth required)
+- `GET /meta` — returns service display names, channel field definitions, and required core secrets (no auth required)
 
 ### Canonical admin control surface (hard-break)
-- `POST /admin/command` — single mutating command endpoint (auth required). Supported command types: `stack.render`, `stack.apply`, `channel.configure`, `secret.upsert`, `secret.delete`, `automation.upsert`, `automation.delete`, `service.restart`.
-- `GET /admin/state` — normalized admin state snapshot (auth required).
-- `GET /admin/events` — server-sent event stream for command lifecycle events (auth required).
+- `POST /command` — single mutating command endpoint (auth required). Supported command types: `stack.render`, `stack.apply`, `channel.configure`, `secret.upsert`, `secret.delete`, `automation.upsert`, `automation.delete`, `service.restart`.
+- `GET /state` — normalized admin state snapshot (auth required).
+- `GET /events` — server-sent event stream for command lifecycle events (auth required).
 
 ### Stack spec
-- `GET /admin/stack/render` — returns generated Caddyfile, compose file, and env artifacts from the current spec (auth required)
-- `GET /admin/stack/impact` — preview what a stack apply would change without applying (auth required)
-- `GET /admin/compose/capabilities` — preview compose operations available (auth required)
+- `GET /stack/render` — returns generated Caddyfile, compose file, and env artifacts from the current spec (auth required)
+- `GET /stack/impact` — preview what a stack apply would change without applying (auth required)
+- `GET /compose/capabilities` — preview compose operations available (auth required)
 
 ### Secret management
-- `GET /admin/secrets` — list all secrets with usage info, configured status, and constraint metadata (auth required)
+- `GET /secrets` — list all secrets with usage info, configured status, and constraint metadata (auth required)
 
 ### Automations
-Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. Generated schedules are written to `cron.d.enabled/` and `cron.d.disabled/` with a combined `cron.schedule` render used for crontab loading. The API routes use `/admin/automations`.
+Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. Generated schedules are written to `cron.d.enabled/` and `cron.d.disabled/` with a combined `cron.schedule` render used for crontab loading. The API routes use `/automations`.
 
-- `GET /admin/automations` — list all automations with last run info (auth required)
-- `POST /admin/automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no assistant restart required).
-- `GET /admin/automations/history?id=&limit=` — get execution history for an automation (auth required). Returns up to `limit` (default 20, max 100) recent runs.
+- `GET /automations` — list all automations with last run info (auth required)
+- `POST /automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no assistant restart required).
+- `GET /automations/history?id=&limit=` — get execution history for an automation (auth required). Returns up to `limit` (default 20, max 100) recent runs.
 
 ---
 
 ## LAN Web UIs and service endpoints
 
-These are available on the internal Docker network for service-to-service API/MCP use, and are also exposed via Caddy as LAN-only web routes under `/admin/*`:
+These are available on the internal Docker network for service-to-service API/MCP use, and are also exposed via Caddy as LAN-only web routes:
 
 - OpenCode Core UI/API:
   - Internal service URL: `http://assistant:4096`
-  - LAN routes via Caddy: `/services/opencode*` (legacy `/admin/opencode*` retained for future cleanup)
+  - LAN route via Caddy: `/services/opencode*`
 - OpenMemory UI/API/MCP:
   - Internal service URL: `http://openmemory:8765` (API/MCP)
-  - LAN routes via Caddy: `/services/openmemory*` (legacy `/admin/openmemory*` retained for future cleanup)
+  - LAN route via Caddy: `/services/openmemory*`
 - Admin UI/API:
   - Local route via Caddy (no DNS required): `http://localhost`
-  - LAN route via Caddy: `/admin*`
-  - API namespace: `/api*` (legacy `/admin/api*` retained for future cleanup)
+  - LAN route via Caddy: `/` (catch-all)
+  - API namespace: `/api*`
 
 ---
 
 ## Channel Adapter APIs
 
-All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /admin/channels/access`).
+All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /channels/access`).
 
 ### Channel Environment Variables
 

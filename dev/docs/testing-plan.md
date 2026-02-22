@@ -15,7 +15,7 @@ The following items from this plan are now implemented in-repo:
 - ✅ Layer 2 integration suites for channel→gateway and admin→admin flows.
 - ✅ Layer 3 contract suites for channel-message validation and docs parity checks.
 - ✅ Layer 4 security suites for auth, HMAC edge rejection, and input bounds.
-- ⚠️ Layer 5 admin UI Playwright tests are scaffolded under `admin/ui/tests/` and require expansion to full page-object coverage listed below.
+- ⚠️ Layer 5 admin UI Playwright tests are scaffolded under `packages/ui/e2e/` and require expansion to full page-object coverage listed below.
 
 Run status-oriented lanes with:
 
@@ -161,7 +161,7 @@ Run: `bun test --filter security`
 | **Auth** | Every admin endpoint without `x-admin-token` → 401; admin without `x-admin-token` → 401 |
 | **Input bounds** | text > 10,000 chars → 400; userId with injection chars handled; nonce length limits |
 | **Channel isolation** | channel-intake agent has tools denied (verify agent config); valid intake cannot escalate to tool use |
-| **Config safety** | `POST /admin/config` with permission widening to `allow` → rejected |
+| **Config safety** | `POST /config` with permission widening to `allow` → rejected |
 | **Secret detection** | memory write-back with API keys, tokens, connection strings → blocked |
 | **Rate limiting** | per-user enforcement; different users have independent limits |
 
@@ -169,7 +169,7 @@ Run: `bun test --filter security`
 
 ## Layer 5: Admin UI Tests
 
-The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`) with hash-based routing, no framework. UI tests use Playwright (headless Chromium) against a real admin server with mocked backend dependencies (admin, gateway, assistant).
+The admin UI is a vanilla JS SPA (SvelteKit app in `packages/ui/src/routes/+page.svelte`) with hash-based routing, no framework. UI tests use Playwright (headless Chromium) against a real admin server with mocked backend dependencies (admin, gateway, assistant).
 
 ### Test tooling
 
@@ -177,7 +177,7 @@ The admin UI is a vanilla JS SPA (`admin/ui/index.html` + `admin/ui/setup-ui.js`
 - Real admin `Bun.serve()` instance started per test suite on a random port
 - Mock admin and mock gateway via `Bun.serve()` on random ports
 - Temp filesystem for admin state (setup.json, cron-store.json (Automations backend), config files)
-- Tests in `admin/ui/tests/` directory
+- Tests in `packages/ui/e2e/` directory
 
 Run: `bun run test:ui` — target < 30 seconds.
 
@@ -200,12 +200,12 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Back button | click Back → returns to previous step; Back hidden on step 1 |
 | Progress dots | correct dot highlighted for current step |
 | **Welcome step** | renders overview text; Next button enabled |
-| **Access scope step** | radio buttons for "Host only" / "LAN"; selection persists on Next/Back; calls `POST /admin/command` (`setup.access_scope`) |
-| **Service instances step** | form fields for OpenMemory URL, Postgres URL, Qdrant URL, OpenAI endpoint, OpenAI API key; calls `POST /admin/command` (`setup.service_instances`) on Next |
-| **Health check step** | shows status dots for gateway, admin, assistant, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
+| **Access scope step** | radio buttons for "Host only" / "LAN"; selection persists on Next/Back; calls `POST /command` (`setup.access_scope`) |
+| **Service instances step** | form fields for OpenMemory URL, Postgres URL, Qdrant URL, OpenAI endpoint, OpenAI API key; calls `POST /command` (`setup.service_instances`) on Next |
+| **Health check step** | shows status dots for gateway, admin, assistant, openmemory, admin; calls `GET /setup/health-check`; green dots for healthy, red for failed |
 | **Security step** | admin password input; password saved to localStorage; displays active protections list |
-| **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /admin/command` (`setup.channels`) |
-| **Complete step** | calls `POST /admin/command` (`setup.complete`); shows "Continue to Admin" button; clicking dismisses overlay |
+| **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /command` (`setup.channels`) |
+| **Complete step** | calls `POST /command` (`setup.complete`); shows "Continue to Admin" button; clicking dismisses overlay |
 | Wizard not shown after complete | reload page with `setupComplete: true` → no overlay |
 | Re-run wizard from settings | click "Open Setup Wizard" in settings → overlay reappears |
 
@@ -214,8 +214,8 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Test | Assertions |
 |------|------------|
 | Lists installed plugins | page shows plugins currently in opencode.json `plugin[]` array |
-| Install plugin | enter plugin ID → click Install → calls `POST /admin/plugins/install` → plugin appears in list |
-| Uninstall plugin | click Uninstall → confirm → calls `POST /admin/plugins/uninstall` → plugin removed from list |
+| Install plugin | enter plugin ID → click Install → calls `POST /plugins/install` → plugin appears in list |
+| Uninstall plugin | click Uninstall → confirm → calls `POST /plugins/uninstall` → plugin removed from list |
 | Install requires auth | install without admin token → error alert |
 | Requires auth | page without admin token shows auth-required message or empty |
 
@@ -227,11 +227,11 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Healthy service dot | mock returns healthy → green dot |
 | Unhealthy service dot | mock returns error → red dot |
 | Channel cards | shows chat, discord, voice, telegram with access badge (LAN/PUBLIC) |
-| Toggle channel access | click "Set Public" → confirm → calls `POST /admin/channels/access` → badge updates |
-| Edit channel config | click "Edit Config" → prompt with key=value → calls `POST /admin/channels/config` |
-| Container action: restart | click Restart on a service → calls `POST /admin/command` (`service.restart`) → success message |
-| Container action: up | click Up → calls `POST /admin/command` (`service.up`) |
-| Container action: down | click Down → calls `POST /admin/containers/down` |
+| Toggle channel access | click "Set Public" → confirm → calls `POST /channels/access` → badge updates |
+| Edit channel config | click "Edit Config" → prompt with key=value → calls `POST /channels/config` |
+| Container action: restart | click Restart on a service → calls `POST /command` (`service.restart`) → success message |
+| Container action: up | click Up → calls `POST /command` (`service.up`) |
+| Container action: down | click Down → calls `POST /containers/down` |
 | Container actions require auth | without token → error |
 | All known services listed | grid includes: gateway, assistant, openmemory, openmemory-ui, admin, admin, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
 
@@ -240,14 +240,14 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Test | Assertions |
 |------|------------|
 | Empty state | no automations → shows empty message or empty list |
-| Create automation | fill name, schedule, prompt → click Create → automation appears in list; calls `POST /admin/automations` |
+| Create automation | fill name, schedule, prompt → click Create → automation appears in list; calls `POST /automations` |
 | Automation card content | shows name, enabled/disabled badge, schedule in `<code>`, prompt preview (truncated 120 chars) |
 | Validation: missing fields | submit with empty name → "All fields are required" error |
 | Validation: invalid schedule | submit with bad expression → server error shown |
-| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /admin/command` (`automation.upsert`) |
-| Delete automation | click Delete → confirm → automation removed from list; calls `POST /admin/command` (`automation.delete`) |
-| Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /admin/command` (`automation.upsert`) |
-| Run Now | click Run Now → calls `POST /admin/command` (`automation.trigger`) → success message |
+| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /command` (`automation.upsert`) |
+| Delete automation | click Delete → confirm → automation removed from list; calls `POST /command` (`automation.delete`) |
+| Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /command` (`automation.upsert`) |
+| Run Now | click Run Now → calls `POST /command` (`automation.trigger`) → success message |
 | Multiple automations | create 3 automations → all 3 visible in list |
 | Persistence | create automation → reload page → automation still listed (re-fetched from API) |
 
@@ -258,7 +258,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Admin password field | type password → stored in localStorage under `op_admin` |
 | Password sent as header | after setting password, API calls include `x-admin-token` header |
 | Service instances form | fields for OpenMemory, Postgres, Qdrant, OpenAI endpoint, OpenAI key |
-| Save service instances | fill fields → click Save → calls `POST /admin/command` (`setup.service_instances`) |
+| Save service instances | fill fields → click Save → calls `POST /command` (`setup.service_instances`) |
 | Warning displayed | shows warning about breaking workflows |
 | Re-run setup button | click "Open Setup Wizard" → wizard overlay appears |
 
@@ -294,7 +294,7 @@ Channel configs reference secrets directly from `secrets.env` using `${SECRET_NA
 ### UI Test File Organization
 
 ```
-admin/ui/tests/
+packages/ui/e2e/
 ├── setup-wizard.ui.test.ts
 ├── extensions.ui.test.ts       # Plugin management page
 ├── services.ui.test.ts
@@ -329,8 +329,8 @@ Requires the full Docker Compose stack running (`bun run dev:up`).
 | Test | How |
 |------|-----|
 | All services healthy | `GET /health` on every service port; all return `{ ok: true }` |
-| Caddy routing | request to `/admin*` routes to admin; `/channels/chat*` routes to chat |
-| LAN restriction | `/admin*` not accessible from non-LAN IP (test with Caddy config parsing) |
+| Caddy routing | request to `/` routes to admin; `/channels/chat*` routes to chat |
+| LAN restriction | `/` not accessible from non-LAN IP (test with Caddy config parsing) |
 | Service discovery | gateway can reach `assistant:4096`; channels can reach `gateway:8080` |
 
 ### E2E API flow tests
@@ -339,7 +339,7 @@ Requires the full Docker Compose stack running (`bun run dev:up`).
 |------|------|
 | Chat roundtrip | POST `/channels/chat` → chat adapter → gateway → assistant → response |
 | Discord webhook roundtrip | POST `/channels/discord` → discord adapter → gateway → assistant → response |
-| Admin container lifecycle | `POST /admin/command` (`service.restart`) → admin restarts service → service comes back healthy |
+| Admin container lifecycle | `POST /command` (`service.restart`) → admin restarts service → service comes back healthy |
 | Plugin install/uninstall | install plugin via admin API → verify config updated → uninstall → verify removed |
 | Setup wizard flow | complete setup wizard steps in order → verify `setupComplete: true` |
 | Memory integration | send message → verify openmemory receives write-back → send follow-up → verify recall injected |
@@ -467,7 +467,7 @@ This covers: `test`, `publish-images`, `publish-cli`, `release`, `validate-regis
 │   ├── module.ts
 │   ├── module.test.ts              # unit tests (Layer 1)
 │   └── module.integration.test.ts  # integration tests (Layer 2)
-admin/ui/tests/                     # admin UI tests (Layer 5)
+packages/ui/e2e/                     # admin UI tests (Layer 5)
 ├── setup-wizard.ui.test.ts
 ├── extensions.ui.test.ts           # Plugin management page
 ├── services.ui.test.ts

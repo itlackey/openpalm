@@ -92,7 +92,7 @@ Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webho
 | `channels/` | Channel adapter services |
 | `packages/lib/` | Shared library (`@openpalm/lib`) used by all services |
 | `packages/cli/` | CLI tool (installer, management commands) |
-| `packages/ui/` | SvelteKit admin UI (replacement for static admin/ui/) |
+| `packages/ui/` | SvelteKit admin UI (admin UI implementation) |
 | `assets/` | Docker Compose base, Caddy config, install scripts |
 | `dev/` | Dev utilities, setup scripts, dev compose overlay |
 | `test/` | Cross-service tests (integration, contract, security) |
@@ -115,14 +115,14 @@ The `dev:*` scripts handle this automatically.
 └── state/     (OPENPALM_STATE_HOME)  — rendered artifacts, runtime state
 ```
 
-Delete `.dev/data/admin/setup-state.json` to reset the admin wizard to first-boot state.
+Delete `.dev/data/setup-state.json` to reset the admin wizard to first-boot state.
 
 ## Code Conventions
 
 - **Runtime**: Bun with ES modules (`"type": "module"`)
 - **TypeScript**: Strict mode, target ES2022, module ESNext, bundler resolution
 - **No linter/formatter configured** — follow existing patterns
-- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/admin/*`, `@openpalm/lib/assets/*`
+- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/*`, `@openpalm/lib/assets/*`
 - **File names**: kebab-case (`channel-intake.ts`)
 - **Imports**: Use `import type` for type-only imports; use full `.ts` extensions in relative paths
 - **Env vars**: Access via `Bun.env` with defaults: `const PORT = Number(Bun.env.PORT ?? 8090);`
@@ -132,12 +132,12 @@ Delete `.dev/data/admin/setup-state.json` to reset the admin wizard to first-boo
 
 ## Playwright E2E Tests
 
-Located in `admin/ui/tests/`. Config at `admin/playwright.config.ts`. Runs sequentially (1 worker, not parallel) due to shared state file. Global setup resets `setup-state.json` before each run.
+Located in `packages/ui/e2e/`. Config at `packages/ui/playwright.config.ts`.
 
 ## Dev Access URLs
 
-- Admin UI: `http://localhost/admin/`
-- OpenCode UI: `http://localhost/admin/opencode/`
+- Admin UI: `http://localhost/`
+- OpenCode UI: `http://localhost/opencode/`
 - OpenMemory UI: `http://localhost:3000/`
 - Admin API (direct): `http://localhost:8100/`
 

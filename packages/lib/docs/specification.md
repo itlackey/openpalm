@@ -538,7 +538,7 @@ type GeneratedStackArtifacts = {
 A Caddy JSON API configuration document. The generator produces a native Caddy JSON config (not a Caddyfile) with servers, routes, handlers, and matchers. This is loaded directly by Caddy using its native JSON config format.
 
 The JSON includes routes for:
-- Admin UI subroute (`/admin*` path)
+- Admin UI subroute (`/` catch-all path)
 - Channel path-based routes (`/channels/{name}*`)
 - Channel domain-based routes (when domains are specified)
 - Hostname routes for core services (assistant, admin, openmemory)

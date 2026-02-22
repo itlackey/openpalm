@@ -20,10 +20,8 @@ WORKDIR /app
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 # See packages/lib/README.md "Docker Build" for details.
 COPY packages/lib /app/node_modules/@openpalm/lib
-COPY admin/package.json ./
-COPY admin/src ./src
-COPY admin/ui ./ui
-RUN bun install --production
+COPY packages/ui ./packages/ui
+RUN cd /app/packages/ui && bun install --production && bun run build
 RUN chown -R openpalm:openpalm /app
 EXPOSE 8100
 COPY admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh

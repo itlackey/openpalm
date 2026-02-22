@@ -278,19 +278,19 @@ describe("seed caddy.json validation", () => {
     expect(valid).toBe(true);
   });
 
-  it("seed caddy.json has admin route and 503 catch-all", async () => {
+  it("seed caddy.json has API route and admin fallback", async () => {
     const seedPath = join(process.cwd(), "assets/state/caddy/caddy.json");
     const content = await Bun.file(seedPath).text();
     const parsed = JSON.parse(content);
     expect(parsed.admin.disabled).toBe(true);
     const routes = parsed.apps.http.servers.main.routes;
-    // First route should be /admin*
-    expect(routes[0].match[0].path).toContain("/admin*");
-    // Last route should be 503 catch-all
+    // First route should be /api*
+    expect(routes[0].match[0].path).toContain("/api*");
+    // Last route should proxy to admin
     const lastRoute = routes[routes.length - 1];
     const json = JSON.stringify(lastRoute);
-    expect(json).toContain("503");
-    expect(json).toContain("static_response");
+    expect(json).toContain("reverse_proxy");
+    expect(json).toContain("admin:8100");
   });
 });
 

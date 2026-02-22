@@ -5,7 +5,7 @@ test.describe('automations', () => {
 	let createdId: string;
 
 	test('GET /automations returns list with core automations', async ({ request }) => {
-		const res = await authedGet(request, '/admin/automations');
+		const res = await authedGet(request, '/automations');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.automations).toBeDefined();
@@ -13,7 +13,7 @@ test.describe('automations', () => {
 	});
 
 	test('POST /automations creates new automation', async ({ request }) => {
-		const res = await authedPost(request, '/admin/automations', {
+		const res = await authedPost(request, '/automations', {
 			name: 'Test Automation',
 			schedule: '0 * * * *',
 			script: 'echo hello'
@@ -26,7 +26,7 @@ test.describe('automations', () => {
 	});
 
 	test('POST /automations with invalid cron returns 400', async ({ request }) => {
-		const res = await authedPost(request, '/admin/automations', {
+		const res = await authedPost(request, '/automations', {
 			name: 'Bad Cron',
 			schedule: 'not-a-cron',
 			script: 'echo bad'
@@ -36,14 +36,14 @@ test.describe('automations', () => {
 
 	test('POST /automations/update updates automation', async ({ request }) => {
 		// Get all automations to find one to update
-		const listRes = await authedGet(request, '/admin/automations');
+		const listRes = await authedGet(request, '/automations');
 		const listBody = await listRes.json();
 		const nonCore = listBody.automations.find(
 			(a: { core?: boolean }) => !a.core
 		);
 		if (!nonCore) return;
 
-		const res = await authedPost(request, '/admin/automations/update', {
+		const res = await authedPost(request, '/automations/update', {
 			id: nonCore.id,
 			name: 'Updated Automation',
 			schedule: '30 * * * *',
@@ -56,14 +56,14 @@ test.describe('automations', () => {
 
 	test('POST /automations/delete deletes automation', async ({ request }) => {
 		// Get automations and find a non-core one to delete
-		const listRes = await authedGet(request, '/admin/automations');
+		const listRes = await authedGet(request, '/automations');
 		const listBody = await listRes.json();
 		const nonCore = listBody.automations.find(
 			(a: { core?: boolean }) => !a.core
 		);
 		if (!nonCore) return;
 
-		const res = await authedPost(request, '/admin/automations/delete', {
+		const res = await authedPost(request, '/automations/delete', {
 			id: nonCore.id
 		});
 		expect(res.status()).toBe(200);
@@ -72,14 +72,14 @@ test.describe('automations', () => {
 	});
 
 	test('core automations cannot be deleted', async ({ request }) => {
-		const listRes = await authedGet(request, '/admin/automations');
+		const listRes = await authedGet(request, '/automations');
 		const listBody = await listRes.json();
 		const core = listBody.automations.find(
 			(a: { core?: boolean }) => a.core === true
 		);
 		if (!core) return;
 
-		const res = await authedPost(request, '/admin/automations/delete', {
+		const res = await authedPost(request, '/automations/delete', {
 			id: core.id
 		});
 		expect(res.status()).toBe(400);

@@ -83,7 +83,7 @@ function authedJson(port: number, path: string, opts?: RequestInit) {
 }
 
 function cmd(port: number, type: string, payload: Record<string, unknown> = {}) {
-  return authedJson(port, "/admin/command", {
+  return authedJson(port, "/command", {
     method: "POST",
     body: JSON.stringify({ type, payload }),
   });
@@ -246,7 +246,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
   });
 
   it("meta endpoint returns service names and channel fields", async () => {
-    const resp = await api(ADMIN_PORT, "/admin/meta");
+    const resp = await api(ADMIN_PORT, "/meta");
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body).toHaveProperty("serviceNames");
@@ -255,7 +255,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
   });
 
   it("setup status returns first-boot state", async () => {
-    const resp = await api(ADMIN_PORT, "/admin/setup/status");
+    const resp = await api(ADMIN_PORT, "/setup/status");
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body.completed).toBe(false);
@@ -263,7 +263,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
   });
 
   it("protected endpoints reject requests without token", async () => {
-    for (const path of ["/admin/state", "/admin/secrets", "/admin/automations", "/admin/channels"]) {
+    for (const path of ["/state", "/secrets", "/automations", "/channels"]) {
       const resp = await api(ADMIN_PORT, path);
       expect(resp.status).toBe(401);
       const body = await resp.json() as Record<string, unknown>;
@@ -273,7 +273,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
   });
 
   it("protected endpoints accept requests with valid token", async () => {
-    const r = await authedJson(ADMIN_PORT, "/admin/state");
+    const r = await authedJson(ADMIN_PORT, "/state");
     expect(r.ok).toBe(true);
     expect(r.status).toBe(200);
   });
@@ -281,7 +281,7 @@ describe.skipIf(!dockerAvailable)("docker stack: admin container", () => {
 
 describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () => {
   it("stack spec is loaded and has correct version", async () => {
-    const r = await authedJson(ADMIN_PORT, "/admin/state");
+    const r = await authedJson(ADMIN_PORT, "/state");
     expect(r.ok).toBe(true);
     const data = r.data.data as Record<string, unknown>;
     const spec = data.spec as Record<string, unknown>;
@@ -302,14 +302,14 @@ describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () =
     expect(r.ok).toBe(true);
 
     // Verify the automation was persisted
-    const state = await authedJson(ADMIN_PORT, "/admin/state");
+    const state = await authedJson(ADMIN_PORT, "/state");
     const spec = (state.data.data as Record<string, unknown>).spec as Record<string, unknown>;
     const automations = spec.automations as Array<{ id: string }>;
     expect(automations.some((a) => a.id === "docker-test-auto")).toBe(true);
   });
 
   it("stack.spec.set roundtrips spec through YAML serialize/deserialize", async () => {
-    const state = await authedJson(ADMIN_PORT, "/admin/state");
+    const state = await authedJson(ADMIN_PORT, "/state");
     const currentSpec = (state.data.data as Record<string, unknown>).spec as Record<string, unknown>;
 
     // Modify access scope and save
@@ -319,14 +319,14 @@ describe.skipIf(!dockerAvailable)("docker stack: YAML handling (Bun.YAML)", () =
     expect(r.ok).toBe(true);
 
     // Read back and verify
-    const updated = await authedJson(ADMIN_PORT, "/admin/state");
+    const updated = await authedJson(ADMIN_PORT, "/state");
     const updatedSpec = (updated.data.data as Record<string, unknown>).spec as Record<string, unknown>;
     expect(updatedSpec.accessScope).toBe("host");
     expect(updatedSpec.version).toBe(3);
   });
 
   it("core automations are auto-merged on startup", async () => {
-    const r = await authedJson(ADMIN_PORT, "/admin/automations", {
+    const r = await authedJson(ADMIN_PORT, "/automations", {
       headers: { "x-admin-token": ADMIN_TOKEN },
     });
     expect(r.ok).toBe(true);
