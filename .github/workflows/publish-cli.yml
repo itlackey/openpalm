@@ -39,6 +39,8 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - run: bun install --frozen-lockfile
+
       # Ensure npm is new enough for trusted publishing (>= 11.5.1)
       - name: Update npm
         run: npm install -g npm@latest
@@ -69,6 +71,7 @@ jobs:
     permissions:
       contents: read
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: bun-linux-x64
@@ -81,12 +84,10 @@ jobs:
             artifact: openpalm-darwin-arm64
           - target: bun-windows-x64
             artifact: openpalm-windows-x64.exe
-          - target: bun-windows-arm64
-            artifact: openpalm-windows-arm64.exe
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - name: Build ${{ matrix.artifact }}
         run: bun build packages/cli/src/main.ts --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.artifact }}
       - uses: actions/upload-artifact@v4
@@ -97,15 +98,28 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: build-binaries
+    if: ${{ !cancelled() && needs.build-binaries.result != 'cancelled' }}
     permissions:
       contents: write
     steps:
+      - name: Resolve tag name
+        id: tag
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          echo "tag_name=${REF}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > checksums-sha256.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
           generate_release_notes: true
           files: dist/*
