@@ -70,13 +70,6 @@ export const COMPONENTS: Record<string, ComponentMeta> = {
     context: "packages/cli",
     packageJson: "packages/cli/package.json",
     image: false,
-    extraFiles: [
-      {
-        path: "packages/cli/src/main.ts",
-        pattern: /const VERSION = "[^"]+"/,
-        replacement: (v: string) => `const VERSION = "${v}"`,
-      },
-    ],
   },
 };
 
