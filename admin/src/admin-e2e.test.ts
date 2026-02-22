@@ -337,7 +337,7 @@ describe("stack spec endpoints", () => {
   it("GET /admin/stack/spec returns default spec with auth", async () => {
     const r = await authed("/admin/state");
     expect(r.ok).toBe(true);
-    expect(((r.data.data as Record<string, unknown>).spec as Record<string, unknown>).version).toBe(2);
+    expect(((r.data.data as Record<string, unknown>).spec as Record<string, unknown>).version).toBe(3);
   });
 
   it.skip("POST /admin/stack/spec validates and saves custom spec", async () => {

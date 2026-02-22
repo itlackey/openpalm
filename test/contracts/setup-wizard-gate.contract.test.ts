@@ -6,24 +6,28 @@ const ADMIN_BASE = "http://localhost:8100";
 const ADMIN_TOKEN = "dev-admin-token";
 const STATE_FILE_HOST = ".dev/data/admin/setup-state.json";
 
+const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
+  .then(r => r.ok)
+  .catch(() => false);
+
 let savedState: string | null = null;
 
-beforeAll(() => {
-  if (existsSync(STATE_FILE_HOST)) {
-    savedState = readFileSync(STATE_FILE_HOST, "utf8");
-  }
-});
+describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
+  beforeAll(() => {
+    if (existsSync(STATE_FILE_HOST)) {
+      savedState = readFileSync(STATE_FILE_HOST, "utf8");
+    }
+  });
 
-afterAll(() => {
-  if (savedState !== null) {
-    mkdirSync(dirname(STATE_FILE_HOST), { recursive: true });
-    writeFileSync(STATE_FILE_HOST, savedState, "utf8");
-  } else if (existsSync(STATE_FILE_HOST)) {
-    rmSync(STATE_FILE_HOST);
-  }
-});
+  afterAll(() => {
+    if (savedState !== null) {
+      mkdirSync(dirname(STATE_FILE_HOST), { recursive: true });
+      writeFileSync(STATE_FILE_HOST, savedState, "utf8");
+    } else if (existsSync(STATE_FILE_HOST)) {
+      rmSync(STATE_FILE_HOST);
+    }
+  });
 
-describe("contract: setup wizard gate", () => {
   describe("first boot (no state file)", () => {
     beforeAll(() => {
       if (existsSync(STATE_FILE_HOST)) rmSync(STATE_FILE_HOST);

@@ -7,7 +7,11 @@ import { describe, expect, it } from "bun:test";
 const TIMEOUT = 5_000;
 const ADMIN_BASE = "http://localhost:8100";
 
-describe("integration: admin health-check", () => {
+const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
+  .then(r => r.ok)
+  .catch(() => false);
+
+describe.skipIf(!stackAvailable)("integration: admin health-check", () => {
   it("GET /admin/setup/health-check → 200", async () => {
     const resp = await fetch(`${ADMIN_BASE}/admin/setup/health-check`, {
       signal: AbortSignal.timeout(TIMEOUT),

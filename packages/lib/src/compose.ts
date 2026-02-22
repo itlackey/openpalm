@@ -13,7 +13,7 @@ export function buildComposeArgs(config: ComposeConfig): string[] {
 export async function composeExec(
   config: ComposeConfig,
   args: string[],
-  options?: { stream?: boolean }
+  options?: { stream?: boolean; timeout?: number }
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const fullArgs = [...buildComposeArgs(config), ...args];
 
@@ -23,7 +23,22 @@ export async function composeExec(
     stdin: "inherit",
   });
 
-  await proc.exited;
+  // Default: 30s timeout for piped output, no timeout for streaming
+  const timeoutMs = options?.timeout ?? (options?.stream ? 0 : 30_000);
+
+  if (timeoutMs > 0) {
+    const result = await Promise.race([
+      proc.exited.then(() => "done" as const),
+      new Promise<"timeout">((r) => setTimeout(() => r("timeout"), timeoutMs)),
+    ]);
+
+    if (result === "timeout") {
+      proc.kill();
+      return { exitCode: 1, stdout: "", stderr: `compose command timed out after ${timeoutMs}ms` };
+    }
+  } else {
+    await proc.exited;
+  }
 
   const exitCode = proc.exitCode ?? 1;
   const stdout = options?.stream ? "" : await new Response(proc.stdout).text();

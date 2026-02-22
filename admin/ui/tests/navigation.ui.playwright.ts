@@ -6,42 +6,54 @@ const ADMIN_API = "http://localhost/admin/api";
 const ADMIN_URL = "http://localhost/admin/";
 
 test.describe("Admin UI Navigation", () => {
+  let adminReachable = false;
+
   // Ensure setup is complete before any navigation test runs.
   // This makes the suite self-sufficient — it can run standalone or after
   // the setup-wizard suite.
   test.beforeAll(async ({ request }) => {
-    const resp = await request.get(`${ADMIN_API}/setup/status`, {
-      headers: AUTH_HEADERS,
-    });
-    const body = await resp.json();
-    if (!body.completed) {
-      // Complete all wizard steps programmatically via API
-      await request.post(`${ADMIN_API}/setup/step`, {
-        data: { step: "welcome" },
+    try {
+      const resp = await request.get(`${ADMIN_API}/setup/status`, {
         headers: AUTH_HEADERS,
       });
-      await request.post(`${ADMIN_API}/setup/step`, {
-        data: { step: "serviceInstances" },
-        headers: AUTH_HEADERS,
-      });
-      await request.post(`${ADMIN_API}/setup/step`, {
-        data: { step: "security" },
-        headers: AUTH_HEADERS,
-      });
-      await request.post(`${ADMIN_API}/setup/step`, {
-        data: { step: "channels" },
-        headers: AUTH_HEADERS,
-      });
-      await request.post(`${ADMIN_API}/setup/access-scope`, {
-        data: { scope: "host" },
-        headers: AUTH_HEADERS,
-      });
-      await request.post(`${ADMIN_API}/setup/step`, {
-        data: { step: "healthCheck" },
-        headers: AUTH_HEADERS,
-      });
-      await request.post(`${ADMIN_API}/setup/complete`, { headers: AUTH_HEADERS });
+      adminReachable = true;
+      const body = await resp.json();
+      if (!body.completed) {
+        // Complete all wizard steps programmatically via API
+        await request.post(`${ADMIN_API}/setup/step`, {
+          data: { step: "welcome" },
+          headers: AUTH_HEADERS,
+        });
+        await request.post(`${ADMIN_API}/setup/step`, {
+          data: { step: "serviceInstances" },
+          headers: AUTH_HEADERS,
+        });
+        await request.post(`${ADMIN_API}/setup/step`, {
+          data: { step: "security" },
+          headers: AUTH_HEADERS,
+        });
+        await request.post(`${ADMIN_API}/setup/step`, {
+          data: { step: "channels" },
+          headers: AUTH_HEADERS,
+        });
+        await request.post(`${ADMIN_API}/setup/access-scope`, {
+          data: { scope: "host" },
+          headers: AUTH_HEADERS,
+        });
+        await request.post(`${ADMIN_API}/setup/step`, {
+          data: { step: "healthCheck" },
+          headers: AUTH_HEADERS,
+        });
+        await request.post(`${ADMIN_API}/setup/complete`, { headers: AUTH_HEADERS });
+      }
+    } catch {
+      // Admin server not reachable — tests will be skipped in beforeEach
     }
+  });
+
+  // Skip all tests when admin server is not reachable
+  test.beforeEach(() => {
+    test.skip(!adminReachable, "Docker stack not running");
   });
 
   test("dashboard loads and wizard is hidden", async ({ page }) => {

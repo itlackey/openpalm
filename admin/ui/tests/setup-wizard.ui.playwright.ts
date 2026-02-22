@@ -15,6 +15,14 @@ test.describe("Setup Wizard", () => {
     if (existsSync(STATE_FILE)) rmSync(STATE_FILE);
   });
 
+  // Skip all tests in this suite when admin server is not reachable
+  test.beforeEach(async () => {
+    const reachable = await fetch(ADMIN_URL, { signal: AbortSignal.timeout(2_000) })
+      .then(() => true)
+      .catch(() => false);
+    test.skip(!reachable, "Docker stack not running");
+  });
+
   // Wizard runs compose operations — allow plenty of time
   test.setTimeout(180_000);
 

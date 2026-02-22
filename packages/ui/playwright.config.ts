@@ -6,6 +6,7 @@ const BASE = `http://localhost:${PORT}`;
 export default defineConfig({
 	globalTeardown: './e2e/global-teardown.ts',
 	testDir: 'e2e',
+	testMatch: '**/*.pw.ts',
 	workers: 1,
 	fullyParallel: false,
 	timeout: 30_000,
