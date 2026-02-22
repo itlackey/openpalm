@@ -249,7 +249,7 @@ data: {"ok":true,"service":"admin"}
             return cors(json(200, { ok: true, data: stackManager.setSpec(spec) }));
           }
           if (type === "stack.apply") {
-            const result = await applyStack({ manager: stackManager, shouldApply: true });
+            const result = await applyStack(stackManager, { apply: true });
             return cors(json(200, { ok: true, data: result }));
           }
           if (type === "setup.step") {
