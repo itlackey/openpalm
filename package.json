@@ -15,6 +15,7 @@
     "packages/ui"
   ],
   "scripts": {
+    "prepare": "git config core.hooksPath dev/hooks",
     "test": "bun test",
     "typecheck": "bunx tsc",
     "preflight": "bun run packages/cli/src/main.ts dev preflight",

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Verify bun.lock stays in sync with package.json dependency changes.
+# Installed automatically via the "prepare" script in package.json.
+
+# Check if any package.json is staged
+STAGED_PKG=$(git diff --cached --name-only -- '**/package.json' 'package.json')
+
+if [ -n "$STAGED_PKG" ]; then
+  # Check if any dependency-related fields actually changed
+  DEPS_CHANGED=$(git diff --cached -G '"(dependencies|devDependencies|peerDependencies|optionalDependencies|overrides)"' -- '**/package.json' 'package.json')
+  if [ -n "$DEPS_CHANGED" ]; then
+    # Dependency fields changed — lockfile should also be staged
+    STAGED_LOCK=$(git diff --cached --name-only -- 'bun.lock')
+    if [ -z "$STAGED_LOCK" ]; then
+      echo ""
+      echo "ERROR: package.json dependencies changed but bun.lock was not updated."
+      echo "Run 'bun install' and stage the updated bun.lock."
+      echo ""
+      exit 1
+    fi
+  fi
+fi
