@@ -7,11 +7,12 @@ import { readFileSync } from 'node:fs';
 
 /**
  * Vite plugin to shim `Bun` globals used by @openpalm/lib when running
- * under Node.js (SvelteKit build / SSR). Maps Bun.env → process.env and
- * stubs Bun.spawn / Bun.spawnSync so module-level code doesn't crash.
+ * under Node.js (SvelteKit build / SSR). Maps Bun.env → process.env,
+ * Bun.YAML → npm yaml package, and stubs Bun.spawn / Bun.spawnSync
+ * so module-level code doesn't crash.
  */
 function bunShim(): Plugin {
-	const shimCode = [
+	const baseShimCode = [
 		'if(typeof globalThis.Bun==="undefined"){',
 		'  globalThis.Bun={',
 		'    env:typeof process!=="undefined"?process.env:{},',
@@ -26,10 +27,28 @@ function bunShim(): Plugin {
 		// Run before other transforms so the shim is available immediately
 		enforce: 'pre',
 		transform(code, id) {
-			// Only shim server-side modules from @openpalm/lib that reference Bun
-			if (id.includes('packages/lib') && code.includes('Bun.')) {
-				return { code: shimCode + '\n' + code, map: null };
+			// Shim server-side modules from @openpalm/lib that reference Bun
+			if (!id.includes('packages/lib') || !code.includes('Bun.')) return;
+
+			if (code.includes('Bun.YAML')) {
+				// Module needs Bun.YAML — import the npm yaml package as a polyfill
+				const yamlShimCode = [
+					'import{parse as __bun_yaml_parse,stringify as __bun_yaml_stringify}from"yaml";',
+					'if(typeof globalThis.Bun==="undefined"){',
+					'  globalThis.Bun={',
+					'    env:typeof process!=="undefined"?process.env:{},',
+					'    YAML:{parse:__bun_yaml_parse,stringify:(v,r,s)=>__bun_yaml_stringify(v,typeof s==="number"?{indent:s}:undefined)},',
+					'    spawn(){throw new Error("Bun.spawn not available in Node")},',
+					'    spawnSync(){throw new Error("Bun.spawnSync not available in Node")}',
+					'  };',
+					'}else if(!globalThis.Bun.YAML){',
+					'  globalThis.Bun.YAML={parse:__bun_yaml_parse,stringify:(v,r,s)=>__bun_yaml_stringify(v,typeof s==="number"?{indent:s}:undefined)};',
+					'}'
+				].join('\n');
+				return { code: yamlShimCode + '\n' + code, map: null };
 			}
+
+			return { code: baseShimCode + '\n' + code, map: null };
 		}
 	};
 }

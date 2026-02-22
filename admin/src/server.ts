@@ -10,7 +10,6 @@ import { StackManager, CoreSecretRequirements } from "@openpalm/lib/admin/stack-
 import { isBuiltInChannel, parseStackSpec, parseSecretReference, type StackChannelConfig, type StackServiceConfig, type StackAutomation } from "@openpalm/lib/admin/stack-spec.ts";
 import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
 import { CORE_AUTOMATIONS } from "@openpalm/lib/assets/automations/index.ts";
-import { parse as yamlParse } from "yaml";
 import { allowedServiceSet, composeAction, composePull } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import { parseJsonc, stringifyPretty } from "@openpalm/lib/admin/jsonc.ts";
@@ -431,7 +430,7 @@ data: {"ok":true,"service":"admin"}
             if (section !== "channel" && section !== "service" && section !== "automation") {
               return cors(json(400, { ok: false, error: "section must be 'channel', 'service', or 'automation'", code: "invalid_payload" }));
             }
-            const parsed = yamlParse(yamlStr);
+            const parsed = Bun.YAML.parse(yamlStr);
             const spec = stackManager.getSpec();
             if (section === "channel") {
               if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {

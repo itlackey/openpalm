@@ -401,6 +401,39 @@ describe("channel config secret references", () => {
   });
 });
 
+// ── Snippet Import (YAML parsing) ────────────────────────
+
+describe("snippet import (Bun.YAML parsing)", () => {
+  it("imports an automation snippet via YAML parsing", async () => {
+    const yamlSnippet = `
+- id: test-snippet-auto
+  name: Snippet Test Automation
+  schedule: "0 12 * * *"
+  script: echo snippet-test
+  enabled: true
+`;
+    const r = await cmd("snippet.import", { yaml: yamlSnippet, section: "automation" });
+    expect(r.ok).toBe(true);
+    // Verify the automation was added
+    const state = await authed("/admin/state");
+    const spec = (state.data.data as Record<string, unknown>).spec as Record<string, unknown>;
+    const automations = spec.automations as Array<{ id: string; name: string }>;
+    expect(automations.some((a) => a.id === "test-snippet-auto")).toBe(true);
+  });
+
+  it("rejects invalid YAML section", async () => {
+    const r = await cmd("snippet.import", { yaml: "name: test", section: "invalid" });
+    expect(r.ok).toBe(false);
+    expect(r.data.code).toBe("invalid_payload");
+  });
+
+  it("rejects empty YAML", async () => {
+    const r = await cmd("snippet.import", { yaml: "", section: "automation" });
+    expect(r.ok).toBe(false);
+    expect(r.data.code).toBe("invalid_payload");
+  });
+});
+
 // ── Secrets ──────────────────────────────────────────────
 
 describe("secrets endpoints", () => {

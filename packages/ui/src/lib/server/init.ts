@@ -8,7 +8,8 @@ import {
 	SYSTEM_ENV_PATH,
 	COMPOSE_FILE_PATH,
 	ADMIN_TOKEN,
-	DEFAULT_INSECURE_TOKEN
+	DEFAULT_INSECURE_TOKEN,
+	CRON_DIR
 } from './config';
 import { env } from '$env/dynamic/private';
 
@@ -60,6 +61,9 @@ export async function getStackManager(): Promise<StackManager> {
 export async function ensureInitialized(): Promise<void> {
 	if (_initialized || building) return;
 	_initialized = true;
+
+	// Propagate CRON_DIR so @openpalm/lib/admin/automations reads it at module scope
+	process.env.CRON_DIR = CRON_DIR;
 
 	const sm = await getStackManager();
 	const { CORE_AUTOMATIONS } = await import('@openpalm/lib/assets/automations/index');

@@ -21,7 +21,7 @@ fi
 
 mkdir -p "$DEV_DIR/data"/{postgres,qdrant,openmemory,assistant,admin}
 mkdir -p "$DEV_DIR/config"
-mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,channel-discord,channel-voice,channel-telegram,rendered/caddy,caddy/config,caddy/data,logs,tmp}
+mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,channel-discord,channel-voice,channel-telegram,rendered/caddy,caddy/config,caddy/data,logs,tmp,automations}
 # Create empty env files so docker-compose doesn't error on missing env_file
 touch "$DEV_DIR/state/system.env"
 for svc in gateway openmemory postgres qdrant assistant channel-chat channel-discord channel-voice channel-telegram; do
