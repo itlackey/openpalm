@@ -5,6 +5,11 @@ import { readFileSync } from "node:fs";
 const REPO_ROOT = join(import.meta.dir, "../../..");
 const CliVersion = JSON.parse(readFileSync(join(REPO_ROOT, "packages/cli/package.json"), "utf8")).version as string;
 
+const dockerAvailable = await Bun.spawn(["docker", "info"], {
+  stdout: "pipe",
+  stderr: "pipe",
+}).exited.then((code) => code === 0).catch(() => false);
+
 /**
  * Helper function to run the CLI as a subprocess and capture output
  */
@@ -142,7 +147,7 @@ describe("CLI entry point", () => {
     expect(stdout).toContain("Commands:");
   });
 
-  it("supports ps as alias for status", async () => {
+  it.skipIf(!dockerAvailable)("supports ps as alias for status", async () => {
     const { stderr, exitCode } = await runCli("ps");
 
     expect(exitCode).not.toBe(0);
