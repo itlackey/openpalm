@@ -4,6 +4,7 @@
   const STEP_TITLES = ["Welcome", "AI Providers", "Security", "Channels", "Access", "Health Check", "Complete"];
   let wizardStep = 0;
   let accessScope = "host";
+  let caddyEmail = "";
   let serviceInstances = { openmemory: "", psql: "", qdrant: "" };
   let openmemoryProvider = { openaiBaseUrl: "", openaiApiKeyConfigured: false };
   let smallModelProvider = { endpoint: "", modelId: "", apiKeyConfigured: false };
@@ -50,6 +51,7 @@
     if (!r.ok) return;
     setupState = r.data;
     accessScope = setupState.accessScope || "host";
+    caddyEmail = setupState.caddyEmail || "";
     serviceInstances = setupState.serviceInstances || { openmemory: "", psql: "", qdrant: "" };
     openmemoryProvider = setupState.openmemoryProvider || { openaiBaseUrl: "", openaiApiKeyConfigured: false };
     smallModelProvider = setupState.smallModelProvider || { endpoint: "", modelId: "", apiKeyConfigured: false };
@@ -153,7 +155,11 @@
           + '<label class="card" style="display:flex;gap:.7rem;align-items:start;cursor:pointer">'
           + '<input type="radio" name="wiz-scope" value="lan" ' + (accessScope === "lan" ? "checked" : "") + ' style="width:auto;margin-top:4px" />'
           + '<div><strong>Any device on my home network</strong><div class="muted" style="font-size:13px">Other devices on your local network can access your assistant.</div></div>'
-          + '</label>';
+          + '</label>'
+          + '<div class="sec-box" style="margin-top:1rem"><div class="sec-title">Email Address</div>'
+          + '<div class="muted" style="font-size:12px;margin-bottom:.5rem">Required. Used by Caddy for automatic HTTPS certificate management (Let\'s Encrypt). You\'ll only receive notices if a certificate fails to renew.</div>'
+          + '<input id="wiz-caddy-email" type="email" placeholder="you@example.com" value="' + esc(caddyEmail) + '" />'
+          + '</div>';
       case "healthCheck":
         return '<p>Checking core service health...</p><div id="wiz-health">Loading...</div><div id="wiz-step-error" class="error-text" style="display:none"></div>';
       case "complete":
@@ -290,12 +296,19 @@
     if (STEPS[wizardStep] === "accessScope") {
       const selected = document.querySelector('input[name="wiz-scope"]:checked');
       const scope = selected ? selected.value : "host";
-      const scopeResult = await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.access_scope", payload: { scope } }) });
+      const emailInput = document.getElementById("wiz-caddy-email");
+      const email = emailInput ? emailInput.value.trim() : "";
+      if (!email || !email.includes("@")) {
+        showStepError("Please enter a valid email address. This is required for HTTPS certificate management.");
+        return;
+      }
+      const scopeResult = await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.access_scope", payload: { scope, email } }) });
       if (!scopeResult.ok) {
         showStepError("Could not save your access preference. Please try again.");
         return;
       }
       accessScope = scope;
+      caddyEmail = email;
     }
     await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.step", payload: { step: STEPS[wizardStep] } }) });
     wizardStep++;

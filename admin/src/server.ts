@@ -262,7 +262,11 @@ data: {"ok":true,"service":"admin"}
           if (type === "setup.access_scope") {
             const scope = payload.scope;
             if (scope !== "host" && scope !== "lan" && scope !== "public") return cors(json(400, { ok: false, error: "invalid_scope", code: "invalid_scope" }));
+            const email = sanitizeEnvScalar(payload.email);
+            if (!email || !email.includes("@")) return cors(json(400, { ok: false, error: "email_required", code: "email_required" }));
             stackManager.setAccessScope(scope);
+            stackManager.setCaddyEmail(email);
+            setupManager.setCaddyEmail(email);
             setRuntimeBindScope(scope);
             await Promise.all([composeAction("up", "caddy"), composeAction("up", "openmemory"), composeAction("up", "assistant")]);
             return cors(json(200, { ok: true, data: setupManager.setAccessScope(scope) }));
@@ -400,8 +404,10 @@ data: {"ok":true,"service":"admin"}
         const state = setupManager.getState();
         if (state.completed === true && !auth(req)) return cors(json(401, { error: "admin token required" }));
         const secrets = readSecretsEnv();
+        const spec = stackManager.getSpec();
         return cors(json(200, {
           ...state,
+          caddyEmail: state.caddyEmail || spec.caddy?.email || "",
           serviceInstances: getConfiguredServiceInstances(),
           openmemoryProvider: getConfiguredOpenmemoryProvider(),
           smallModelProvider: getConfiguredSmallModel(),
@@ -419,11 +425,15 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/setup/access-scope" && req.method === "POST") {
-        const body = (await req.json()) as { scope: "host" | "lan" | "public" };
+        const body = (await req.json()) as { scope: "host" | "lan" | "public"; email?: string };
         if (!["host", "lan", "public"].includes(body.scope)) return cors(json(400, { error: "invalid scope" }));
+        const email = sanitizeEnvScalar(body.email);
+        if (!email || !email.includes("@")) return cors(json(400, { error: "email is required for certificate management" }));
         const current = setupManager.getState();
         if (current.completed && !auth(req)) return cors(json(401, { error: "admin token required" }));
         stackManager.setAccessScope(body.scope);
+        stackManager.setCaddyEmail(email);
+        setupManager.setCaddyEmail(email);
         setRuntimeBindScope(body.scope);
         await Promise.all([
           composeAction("up", "caddy"),

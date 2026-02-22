@@ -12,6 +12,7 @@ describe("SetupManager service instance configuration", () => {
       const state = manager.getState();
       expect(state.serviceInstances).toEqual({ openmemory: "", psql: "", qdrant: "" });
       expect(state.steps.serviceInstances).toBe(false);
+      expect(state.caddyEmail).toBe("");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -143,6 +144,32 @@ describe("SetupManager service instance configuration", () => {
       }, null, 2), "utf8");
       const state = manager.getState();
       expect(state.smallModel).toEqual({ endpoint: "", modelId: "" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists caddy email for certificate management", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      manager.setCaddyEmail("admin@example.com");
+      const state = manager.getState();
+      expect(state.caddyEmail).toBe("admin@example.com");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sanitizes non-string caddy email from persisted state", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    try {
+      const manager = new SetupManager(dir);
+      writeFileSync(join(dir, "setup-state.json"), JSON.stringify({
+        caddyEmail: 12345
+      }, null, 2), "utf8");
+      const state = manager.getState();
+      expect(state.caddyEmail).toBe("");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -216,14 +216,25 @@ describe("setup wizard", () => {
   });
 
   it("POST /admin/setup/access-scope validates scope", async () => {
-    const bad = await cmd("setup.access_scope", { scope: "internet" });
+    const bad = await cmd("setup.access_scope", { scope: "internet", email: "test@example.com" });
     expect(bad.status).toBe(400);
   });
 
+  it("POST /admin/setup/access-scope requires email", async () => {
+    const noEmail = await cmd("setup.access_scope", { scope: "host" });
+    expect(noEmail.status).toBe(400);
+    expect(noEmail.data.code).toBe("email_required");
+  });
+
   it("POST /admin/setup/access-scope sets scope and writes artifacts", async () => {
-    const r = await cmd("setup.access_scope", { scope: "host" });
+    const r = await cmd("setup.access_scope", { scope: "host", email: "admin@example.com" });
     expect(r.ok).toBe(true);
     expect(((r.data.data as Record<string, unknown>)?.accessScope)).toBe("host");
+  });
+
+  it("POST /admin/setup/access-scope saves caddy email to setup state", async () => {
+    const status = await authed("/admin/setup/status");
+    expect(status.data.caddyEmail).toBe("admin@example.com");
   });
 
   it("POST /admin/setup/service-instances saves config", async () => {
@@ -250,12 +261,12 @@ describe("setup wizard", () => {
   });
 
   it("after completion, write endpoints require auth", async () => {
-    const r = await cmd("setup.access_scope", { scope: "lan" });
+    const r = await cmd("setup.access_scope", { scope: "lan", email: "admin@example.com" });
     expect([200,401]).toContain(r.status);
   });
 
   it.skip("after completion, write endpoints work with auth", async () => {
-    const r = await cmd("setup.access_scope", { scope: "lan" });
+    const r = await cmd("setup.access_scope", { scope: "lan", email: "admin@example.com" });
     expect(r.ok).toBe(true);
   });
 });
@@ -468,6 +479,8 @@ describe("UI content", () => {
     expect(text).toContain("checkSetup");
     expect(text).toContain("finishSetup");
     expect(text).toContain("pollUntilReady");
+    expect(text).toContain("wiz-caddy-email");
+    expect(text).toContain("caddyEmail");
   });
 
   it("setup-ui.js includes channel configuration fields", async () => {

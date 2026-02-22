@@ -96,6 +96,14 @@ export class StackManager {
     return this.renderArtifacts();
   }
 
+  setCaddyEmail(email: string) {
+    const spec = this.getSpec();
+    if (!spec.caddy) spec.caddy = {};
+    spec.caddy.email = email || undefined;
+    this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    return this.renderArtifacts();
+  }
+
   renderPreview() {
     return generateStackArtifacts(this.getSpec(), this.readSecretsEnv());
   }

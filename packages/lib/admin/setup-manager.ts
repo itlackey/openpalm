@@ -10,6 +10,7 @@ export type SetupState = {
   completed: boolean;
   completedAt?: string;
   accessScope: "host" | "lan" | "public";
+  caddyEmail: string;
   serviceInstances: {
     openmemory: string;
     psql: string;
@@ -32,6 +33,7 @@ export type SetupState = {
 const DEFAULT_STATE: SetupState = {
   completed: false,
   accessScope: "host",
+  caddyEmail: "",
   serviceInstances: {
     openmemory: "",
     psql: "",
@@ -99,6 +101,7 @@ function normalizeState(parsed: Partial<SetupState>): SetupState {
     completed: parsed.completed === true,
     completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
     accessScope,
+    caddyEmail: typeof parsed.caddyEmail === "string" ? parsed.caddyEmail : "",
     serviceInstances: sanitizeServiceInstances(parsed.serviceInstances),
     smallModel: sanitizeSmallModel(parsed.smallModel),
     steps: sanitizeSteps(parsed.steps),
@@ -139,6 +142,13 @@ export class SetupManager {
   setAccessScope(scope: "host" | "lan" | "public") {
     const state = this.getState();
     state.accessScope = scope;
+    this.save(state);
+    return state;
+  }
+
+  setCaddyEmail(email: string) {
+    const state = this.getState();
+    state.caddyEmail = email;
     this.save(state);
     return state;
   }
