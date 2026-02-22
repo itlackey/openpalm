@@ -10,37 +10,37 @@
     },
     "admin": {
       "name": "@openpalm/admin",
-      "version": "0.1.1",
+      "version": "0.2.1",
       "devDependencies": {
         "@playwright/test": "^1.40.0",
       },
     },
     "channels/chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.1.1",
+      "version": "0.2.1",
     },
     "channels/discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.1.1",
+      "version": "0.2.1",
     },
     "channels/telegram": {
       "name": "@openpalm/channel-telegram",
-      "version": "0.1.1",
+      "version": "0.2.1",
     },
     "channels/voice": {
       "name": "@openpalm/channel-voice",
-      "version": "0.1.1",
+      "version": "0.2.1",
     },
     "channels/webhook": {
       "name": "@openpalm/channel-webhook",
     },
     "gateway": {
       "name": "@openpalm/gateway",
-      "version": "0.1.1",
+      "version": "0.2.1",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.1.1",
+      "version": "0.2.1",
       "bin": {
         "openpalm": "./src/main.ts",
       },
