@@ -389,53 +389,87 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 name: test
 on: [push, pull_request]
 
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test
+      - run: bun test 2>&1 | tee test-output.log
+      - name: Report skipped tests
+        if: always()
+        run: |
+          if grep -q "skipped" test-output.log 2>/dev/null; then
+            echo "::warning::Some test suites were skipped."
+          fi
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Docker builds
+        run: |
+          # Validates all Dockerfiles build successfully
+          for df in gateway/Dockerfile admin/Dockerfile channels/*/Dockerfile; do
+            docker build -f "$df" . --no-cache -t "test-$(basename $(dirname $df)):ci"
+          done
 
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: unit
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun test --filter integration
 
   contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: unit
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun test --filter contract
 
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: unit
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun test --filter security
 
   ui:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: unit
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
       - run: bun run test:ui
 ```
+
+Key CI reliability features:
+- **Concurrency controls**: Duplicate runs on the same branch are cancelled.
+- **Timeouts**: Every job has a timeout to prevent hangs.
+- **Docker build validation**: Catches Dockerfile build context errors before release.
+- **Skipped test reporting**: Warns when tests are skipped due to missing environment.
+- **Frozen lockfile**: Ensures reproducible dependency installation.
 
 ### Workflow tests (local pre-push verification)
 
