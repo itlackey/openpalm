@@ -255,6 +255,18 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]");
   });
 
+  it("includes LAN hostname routes for core web containers", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    const adminRoute = out.caddyRoutes["admin.caddy"];
+    expect(adminRoute).toContain("@assistant_host host assistant");
+    expect(adminRoute).toContain("@admin_host host admin");
+    expect(adminRoute).toContain("@openmemory_host host openmemory");
+    expect(adminRoute).toContain("handle @assistant_host");
+    expect(adminRoute).toContain("handle @admin_host");
+    expect(adminRoute).toContain("handle @openmemory_host");
+  });
+
   // --- Multi-channel artifact generation with unique requirements ---
 
   it("generates correct compose services for multiple custom channels with diverse configs", () => {
@@ -423,6 +435,51 @@ describe("stack generator", () => {
 
     expect(() => generateStackArtifacts(spec, { RESOLVED_SECRET: "ok" }))
       .toThrow("unresolved_secret_reference_bad-svc_BAD_KEY_MISSING_SECRET");
+  });
+
+  it("generates systemEnv with access scope and enabled channel service names", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    expect(out.systemEnv).toContain("OPENPALM_ACCESS_SCOPE=lan");
+    expect(out.systemEnv).toContain("OPENPALM_ENABLED_CHANNELS=");
+    // All four built-in channels are enabled by default
+    expect(out.systemEnv).toContain("channel-chat");
+    expect(out.systemEnv).toContain("channel-discord");
+  });
+
+  it("systemEnv reflects accessScope from spec", () => {
+    const spec = createDefaultStackSpec();
+    spec.accessScope = "host";
+    const out = generateStackArtifacts(spec, {});
+    expect(out.systemEnv).toContain("OPENPALM_ACCESS_SCOPE=host");
+  });
+
+  it("systemEnv OPENPALM_ENABLED_CHANNELS excludes disabled channels", () => {
+    const spec = createDefaultStackSpec();
+    spec.channels.discord.enabled = false;
+    spec.channels.voice.enabled = false;
+    const out = generateStackArtifacts(spec, {});
+    expect(out.systemEnv).toContain("channel-chat");
+    expect(out.systemEnv).toContain("channel-telegram");
+    expect(out.systemEnv).not.toContain("channel-discord");
+    expect(out.systemEnv).not.toContain("channel-voice");
+  });
+
+  it("systemEnv is empty-channels string when all channels disabled", () => {
+    const spec = createDefaultStackSpec();
+    for (const name of Object.keys(spec.channels)) spec.channels[name].enabled = false;
+    const out = generateStackArtifacts(spec, {});
+    expect(out.systemEnv).toContain("OPENPALM_ENABLED_CHANNELS=\n");
+  });
+
+  it("generated compose loads system.env for admin and gateway", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    // system.env must appear in both the admin and gateway env_file lists.
+    // Count occurrences: at minimum one for admin, one for gateway.
+    const matches = out.composeFile.match(/\$\{OPENPALM_STATE_HOME\}\/system\.env/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(2);
   });
 
   it("produces clean compose output with no channels enabled", () => {

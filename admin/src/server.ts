@@ -29,6 +29,7 @@ const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
 const SECRETS_ENV_PATH = Bun.env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
 const STACK_SPEC_PATH = Bun.env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/stack-spec.json`;
 const COMPOSE_FILE_PATH = Bun.env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
+const SYSTEM_ENV_PATH = Bun.env.SYSTEM_ENV_PATH ?? `${STATE_ROOT}/system.env`;
 const UI_DIR = Bun.env.UI_DIR ?? "/app/ui";
 
 function allChannelServiceNames(): string[] {
@@ -49,6 +50,7 @@ const stackManager = new StackManager({
   caddyRoutesDir: CADDY_ROUTES_DIR,
   secretsEnvPath: SECRETS_ENV_PATH,
   stackSpecPath: STACK_SPEC_PATH,
+  systemEnvPath: SYSTEM_ENV_PATH,
   gatewayEnvPath: Bun.env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/gateway/.env`,
   openmemoryEnvPath: Bun.env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/openmemory/.env`,
   postgresEnvPath: Bun.env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { copyFile, chmod, writeFile } from "node:fs/promises";
+import { copyFile, chmod, writeFile, rm } from "node:fs/promises";
 import type { InstallOptions } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
 import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
@@ -129,7 +129,10 @@ export async function install(options: InstallOptions): Promise<void> {
   await seedConfigFiles(assetsDir, xdg.config);
   spin4.stop(green("Configuration files seeded"));
 
-  // 14. Write uninstall script to state home
+  // 14. Reset setup wizard state so every install/reinstall starts from first boot
+  await rm(join(xdg.data, "admin", "setup-state.json"), { force: true });
+
+  // 15. Write uninstall script to state home
   const uninstallDst = join(xdg.state, "uninstall.sh");
   await writeFile(uninstallDst, "#!/usr/bin/env bash\nopenpalm uninstall\n", "utf8");
   try {
@@ -138,7 +141,7 @@ export async function install(options: InstallOptions): Promise<void> {
     // may not exist if seedFile skipped
   }
 
-  // 15. Detect AI providers, write seed file
+  // 16. Detect AI providers, write seed file
   const spin5 = spinner("Detecting AI providers...");
   const { providers, existingConfigPath } = await detectAllProviders();
   const providerSeedPath = join(xdg.data, "admin", "detected-providers.json");

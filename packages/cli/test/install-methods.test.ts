@@ -130,6 +130,10 @@ describe("install methods verification", () => {
       expect(installSh).toContain("OPENPALM_STATE_HOME");
     });
 
+    it("bash fallback resets setup wizard state on reinstall", () => {
+      expect(installSh).toContain("rm -f \"$OPENPALM_DATA_HOME/admin/setup-state.json\"");
+    });
+
     it("supports --runtime flag", () => {
       expect(installSh).toContain("--runtime");
     });

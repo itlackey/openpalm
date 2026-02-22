@@ -6,6 +6,24 @@
 	@lan remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
 	@not_lan not remote_ip 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8
 
+	@assistant_host host assistant
+	handle @assistant_host {
+		abort @not_lan
+		reverse_proxy assistant:4096
+	}
+
+	@admin_host host admin
+	handle @admin_host {
+		abort @not_lan
+		reverse_proxy admin:8100
+	}
+
+	@openmemory_host host openmemory
+	handle @openmemory_host {
+		abort @not_lan
+		reverse_proxy openmemory-ui:3000
+	}
+
 	# Channel ingress (LAN by default; configurable by admin API)
 	handle /channels/chat* {
 		abort @not_lan
