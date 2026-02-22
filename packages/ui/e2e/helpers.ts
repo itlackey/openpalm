@@ -30,5 +30,5 @@ export async function cmd(
 	type: string,
 	payload: Record<string, unknown> = {}
 ) {
-	return authedPost(request, '/admin/command', { type, payload });
+	return authedPost(request, '/command', { type, payload });
 }

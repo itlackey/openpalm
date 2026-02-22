@@ -223,7 +223,7 @@ export async function install(options: InstallOptions): Promise<void> {
     await writeFile(systemEnvPath, "# Generated system env — populated on first stack apply\n", "utf8");
   }
 
-  // 19. Write minimal setup-only Caddy JSON config (admin routes only)
+  // 19. Write minimal setup-only Caddy JSON config
   const minimalCaddyJson = JSON.stringify({
     admin: { disabled: true },
     apps: {
@@ -233,21 +233,13 @@ export async function install(options: InstallOptions): Promise<void> {
             listen: [":80"],
             routes: [
               {
-                match: [{ path: ["/admin*"] }],
+                match: [{ path: ["/api*"] }],
                 handle: [{
                   handler: "subroute",
                   routes: [
                     {
-                      match: [{ path: ["/admin/api*"] }],
                       handle: [
-                        { handler: "rewrite", uri_substring: [{ find: "/admin/api", replace: "/admin" }] },
-                        { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
-                      ],
-                      terminal: true,
-                    },
-                    {
-                      handle: [
-                        { handler: "rewrite", strip_path_prefix: "/admin" },
+                        { handler: "rewrite", strip_path_prefix: "/api" },
                         { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
                       ],
                     },
@@ -257,9 +249,9 @@ export async function install(options: InstallOptions): Promise<void> {
               },
               {
                 handle: [{
-                  handler: "static_response",
-                  body: "OpenPalm is starting... Please visit /admin/ to complete setup.",
-                  status_code: "503",
+                  // Let admin own bootstrap UI rendering at root while stack is being generated.
+                  handler: "reverse_proxy",
+                  upstreams: [{ dial: "admin:8100" }],
                 }],
               },
             ],
@@ -361,8 +353,8 @@ networks:
   spin7.stop(green("Core services started"));
 
   // Wait for admin health check with exponential backoff
-  const adminUrl = "http://localhost/admin";
-  const healthUrl = `${adminUrl}/api/setup/status`;
+  const adminUrl = "http://localhost";
+  const healthUrl = `${adminUrl}/setup/status`;
   const spin8 = spinner("Waiting for admin interface...");
 
   let healthy = false;

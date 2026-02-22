@@ -29,7 +29,7 @@ For implementation details of the installer flow and directory layout, see the [
 
 ## Admin console
 
-Access the admin dashboard at `http://localhost/admin`. Log in with the admin password from your `.env` file.
+Access the admin dashboard at `http://localhost`. Log in with the admin password from your `.env` file.
 
 | Page | What it does |
 |---|---|

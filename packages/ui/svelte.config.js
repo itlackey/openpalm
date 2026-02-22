@@ -5,9 +5,6 @@ import { resolve } from 'node:path';
 const config = {
 	kit: {
 		adapter: adapter(),
-		paths: {
-			base: '/admin'
-		},
 		alias: {
 			'@openpalm/lib': resolve('../../packages/lib'),
 			'@openpalm/lib/*': resolve('../../packages/lib/*')

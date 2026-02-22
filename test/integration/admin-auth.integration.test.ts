@@ -13,10 +13,10 @@ const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal
   .catch(() => false);
 
 const protectedEndpoints = [
-  "/admin/state",
-  "/admin/secrets",
-  "/admin/automations",
-  "/admin/channels",
+  "/state",
+  "/secrets",
+  "/automations",
+  "/channels",
 ];
 
 describe.skipIf(!stackAvailable)("integration: admin auth rejection", () => {

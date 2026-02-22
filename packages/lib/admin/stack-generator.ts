@@ -122,7 +122,7 @@ function caddyHostRoute(hostname: string, upstream: string, guardRanges: string[
 
 function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
   return {
-    match: [{ path: ["/api*", "/services/opencode*", "/services/openmemory*", "/admin*"] }],
+    match: [{ path: ["/api*", "/services/opencode*", "/services/openmemory*"] }],
     handle: [
       {
         handler: "subroute",
@@ -133,20 +133,11 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
             handle: [caddyGuardHandler()],
             terminal: true,
           },
-          // /api* → rewrite + proxy to admin:8100
+          // /api* → strip API prefix and proxy to admin:8100
           {
             match: [{ path: ["/api*"] }],
             handle: [
-              { handler: "rewrite", uri_substring: [{ find: "/api", replace: "/admin" }] },
-              { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
-            ],
-            terminal: true,
-          },
-          // /admin/api* → rewrite + proxy to admin:8100
-          {
-            match: [{ path: ["/admin/api*"] }],
-            handle: [
-              { handler: "rewrite", uri_substring: [{ find: "/admin/api", replace: "/admin" }] },
+              { handler: "rewrite", strip_path_prefix: "/api" },
               { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
             ],
             terminal: true,
@@ -160,15 +151,6 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
             ],
             terminal: true,
           },
-          // /admin/opencode* → strip prefix + proxy to assistant:4096
-          {
-            match: [{ path: ["/admin/opencode*"] }],
-            handle: [
-              { handler: "rewrite", strip_path_prefix: "/admin/opencode" },
-              { handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] },
-            ],
-            terminal: true,
-          },
           // /services/openmemory* → strip prefix + proxy to openmemory-ui:3000
           {
             match: [{ path: ["/services/openmemory*"] }],
@@ -177,22 +159,6 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
               { handler: "reverse_proxy", upstreams: [{ dial: "openmemory-ui:3000" }] },
             ],
             terminal: true,
-          },
-          // /admin/openmemory* → strip prefix + proxy to openmemory-ui:3000
-          {
-            match: [{ path: ["/admin/openmemory*"] }],
-            handle: [
-              { handler: "rewrite", strip_path_prefix: "/admin/openmemory" },
-              { handler: "reverse_proxy", upstreams: [{ dial: "openmemory-ui:3000" }] },
-            ],
-            terminal: true,
-          },
-          // /admin/* → strip prefix + proxy to admin:8100
-          {
-            handle: [
-              { handler: "rewrite", strip_path_prefix: "/admin" },
-              { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
-            ],
           },
         ],
       },
@@ -315,6 +281,7 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
   }
 
   // Default catch-all → admin
+  // The SvelteKit admin UI is served at "/" through this catch-all route.
   mainRoutes.push({
     handle: [
       {

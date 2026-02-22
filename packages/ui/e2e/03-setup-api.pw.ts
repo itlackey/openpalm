@@ -3,7 +3,7 @@ import { authedGet, authedPost, cmd } from './helpers';
 
 test.describe('setup wizard API (sequential, modifies state)', () => {
 	test('POST setup step "welcome" marks complete', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/step', { step: 'welcome' });
+		const res = await authedPost(request, '/setup/step', { step: 'welcome' });
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -11,12 +11,12 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup step "bogus" returns 400', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/step', { step: 'bogus' });
+		const res = await authedPost(request, '/setup/step', { step: 'bogus' });
 		expect(res.status()).toBe(400);
 	});
 
 	test('POST setup/service-instances saves config', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/service-instances', {
+		const res = await authedPost(request, '/setup/service-instances', {
 			openmemory: 'http://test:8765',
 			psql: '',
 			qdrant: ''
@@ -27,7 +27,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup step "serviceInstances" marks complete', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/step', {
+		const res = await authedPost(request, '/setup/step', {
 			step: 'serviceInstances'
 		});
 		expect(res.status()).toBe(200);
@@ -37,7 +37,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup step "security" marks complete', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/step', { step: 'security' });
+		const res = await authedPost(request, '/setup/step', { step: 'security' });
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -45,7 +45,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup/channels with channel-chat saves', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/channels', {
+		const res = await authedPost(request, '/setup/channels', {
 			channels: ['channel-chat'],
 			channelConfigs: { 'channel-chat': { CHAT_INBOUND_TOKEN: 'test-token' } }
 		});
@@ -55,7 +55,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup step "channels" marks complete', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/step', { step: 'channels' });
+		const res = await authedPost(request, '/setup/step', { step: 'channels' });
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -63,7 +63,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup/access-scope "host" saves', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/access-scope', {
+		const res = await authedPost(request, '/setup/access-scope', {
 			scope: 'host'
 		});
 		expect(res.status()).toBe(200);
@@ -73,14 +73,14 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup/access-scope "internet" returns 400', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/access-scope', {
+		const res = await authedPost(request, '/setup/access-scope', {
 			scope: 'internet'
 		});
 		expect(res.status()).toBe(400);
 	});
 
 	test('POST setup step "healthCheck" marks complete', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/step', {
+		const res = await authedPost(request, '/setup/step', {
 			step: 'healthCheck'
 		});
 		expect(res.status()).toBe(200);
@@ -90,7 +90,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('GET setup/health-check returns services with admin.ok', async ({ request }) => {
-		const res = await request.get('/admin/setup/health-check');
+		const res = await request.get('/setup/health-check');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.services).toBeDefined();
@@ -98,7 +98,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('POST setup/complete marks setup as complete', async ({ request }) => {
-		const res = await authedPost(request, '/admin/setup/complete', {});
+		const res = await authedPost(request, '/setup/complete', {});
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.ok).toBe(true);
@@ -106,7 +106,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	});
 
 	test('GET setup/status now shows completed: true', async ({ request }) => {
-		const res = await authedGet(request, '/admin/setup/status');
+		const res = await authedGet(request, '/setup/status');
 		expect(res.status()).toBe(200);
 		const body = await res.json();
 		expect(body.completed).toBe(true);
@@ -115,7 +115,7 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 	test('GET setup/status without auth returns 401 after completion', async ({
 		request
 	}) => {
-		const res = await request.get('/admin/setup/status');
+		const res = await request.get('/setup/status');
 		expect(res.status()).toBe(401);
 	});
 });

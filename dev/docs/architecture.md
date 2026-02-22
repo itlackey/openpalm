@@ -16,8 +16,8 @@ graph TB
     subgraph Caddy["Caddy Reverse Proxy (:80/:443)"]
         direction LR
         Public["/channels/*<br/><small>LAN by default; configurable</small>"]
-        LAN["/api/*, /services/opencode/*, /services/openmemory/* (legacy /admin/* retained)<br/><small>LAN only</small>"]
-        GW_Route["/channels/*, /admin/*"]
+        LAN["/api/*, /services/opencode/*, /services/openmemory/* (legacy /* retained)<br/><small>LAN only</small>"]
+        GW_Route["/channels/*, /*"]
     end
 
     subgraph Apps["Applications (Layer 2)"]
@@ -139,7 +139,7 @@ The `channel-intake` agent is defined in a standalone Markdown file at `gateway/
 
 ### Admin operations
 ```
-Admin (LAN) -> Caddy (/admin/*) -> Admin App -> Compose Runtime
+Admin (LAN) -> Caddy (/*) -> Admin App -> Compose Runtime
 ```
 
 The admin app provides the API for all admin functions:
@@ -155,18 +155,15 @@ The admin app provides the API for all admin functions:
 | `/channels/voice*` | channel-voice:8183 | `/voice/transcription` | LAN by default (public toggle via Admin API) |
 | `/channels/discord*` | channel-discord:8184 | `/discord/webhook` | LAN by default (public toggle via Admin API) |
 | `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
-| `/api*` | admin:8100 | prefix rewritten to `/admin*` | LAN only |
+| `/api*` | admin:8100 | prefix rewritten to `/*` | LAN only |
 | `/services/opencode*` | assistant:4096 | prefix stripped to `/*` | LAN only |
 | `/services/openmemory*` | openmemory-ui:3000 | prefix stripped to `/*` | LAN only |
-| `/admin/api*` | admin:8100 | legacy prefix rewritten to `/admin*` | LAN only |
-| `/admin/opencode*` | assistant:4096 | legacy prefix stripped to `/*` | LAN only |
-| `/admin/openmemory*` | openmemory-ui:3000 | legacy prefix stripped to `/*` | LAN only |
-| `/admin*` (legacy catch-all) | admin:8100 | `/admin` prefix stripped before proxy | LAN only |
+| `/` (catch-all) | admin:8100 | direct proxy | LAN only |
 | `/*` (default route) | admin:8100 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
 
-Legacy routes are intentionally retained for compatibility and should be removed in a future cleanup once clients migrate: `/admin/api*`, `/admin/opencode*`, `/admin/openmemory*`, and `/admin*`.
+Admin routing uses `/api*` for API prefix compatibility plus `/services/opencode*`, `/services/openmemory*`, and a `/` catch-all.
 
 
 Caddy runtime configuration is mounted from rendered state paths (`${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile` and `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/`).
@@ -223,7 +220,7 @@ Secrets are key/value credentials for external services stored in `secrets.env`.
 Automations are user-defined scheduled prompts, distinct from the admin's system-level maintenance cron jobs. They allow users to configure proactive assistant behavior (e.g. daily summaries, nightly data pulls) without writing code.
 
 - **Properties**: Each automation has an ID (UUID), Name, Prompt (the text sent to the assistant), Schedule (standard Unix cron expression), and Status (enabled/disabled).
-- **Implementation**: Automations run inside `admin` via a cron daemon (`cron && bun run src/server.ts`). Jobs call gateway/admin endpoints or local scripts under `/work`.
+- **Implementation**: Automations run inside `admin` via a cron daemon (`cron && node /app/packages/ui/build/index.js`). Jobs call gateway/admin endpoints or local scripts under `/work`.
 - **Payload storage**: Automation payloads are stored as JSON files in `cron-payloads/` (under `$OPENPALM_CONFIG_HOME/cron/`).
 - **Session isolation**: Each automation run executes in its own session, identified as `cron-<job-id>`, so runs do not bleed context into each other.
 - **Manual trigger**: Automations can be triggered immediately via a "Run Now" action in the admin UI, independent of the schedule.
@@ -238,10 +235,10 @@ See [Security Guide](../../docs/security.md) for the full defense-in-depth secur
 
 | Concern | Source of truth | Notes |
 |---|---|---|
-| User intent for stack behavior | `config/openpalm.yaml` via `packages/lib/admin/stack-spec.ts` | Keep this file intent-only (no derived runtime state). |
+| User intent for stack behavior | `config/openpalm.yaml` via `packages/lib/stack-spec.ts` | Keep this file intent-only (no derived runtime state). |
 | Secret values and key inventory | `config/secrets.env` via `StackManager` secret APIs | UI should always use live secret inventory from API. |
-| Rendered compose/caddy/env artifacts | `packages/lib/admin/stack-generator.ts` output | Generated under `state/rendered/*`; never hand-edit. |
-| Compose service allowlist | `packages/lib/admin/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |
-| Admin transport routes | `admin/src/server.ts` | Prefer delegating business rules to `packages/lib/admin/*`. |
+| Rendered compose/caddy/env artifacts | `packages/lib/stack-generator.ts` output | Generated under `state/rendered/*`; never hand-edit. |
+| Compose service allowlist | `packages/lib/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |
+| Admin transport routes | `admin/src/server.ts` | Prefer delegating business rules to `packages/lib/*`. |
 | Security/routing ingress | `gateway/src/server.ts` and `gateway/src/channel-*` | Gateway remains the only inbound message path. |
 | API contract documentation | `dev/docs/api-reference.md` | Update this doc when route behavior or payloads change. |

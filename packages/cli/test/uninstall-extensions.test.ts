@@ -138,7 +138,7 @@ describe("extensions command source validation", () => {
 
   it("uses correct base URL fallback chain", () => {
     // Validates the URL fallback: ADMIN_APP_URL -> GATEWAY_URL -> localhost
-    // Base URL is "http://localhost" (not "/admin") because fetch paths already include /admin prefix
+    // Base URL is "http://localhost" because fetch paths already include endpoint paths
     expect(extensionsSource).toContain("Bun.env.ADMIN_APP_URL");
     expect(extensionsSource).toContain("Bun.env.GATEWAY_URL");
     expect(extensionsSource).toContain('"http://localhost"');
@@ -146,24 +146,24 @@ describe("extensions command source validation", () => {
     expect(extensionsSource).toContain("??");
   });
 
-  it("install subcommand POSTs to /admin/plugins/install", () => {
+  it("install subcommand POSTs to /plugins/install", () => {
     // Validates install endpoint and method
     expect(extensionsSource).toContain('case "install"');
-    expect(extensionsSource).toContain('`${base}/admin/plugins/install`');
+    expect(extensionsSource).toContain('`${base}/plugins/install`');
     expect(extensionsSource).toContain('method: "POST"');
   });
 
-  it("uninstall subcommand POSTs to /admin/plugins/uninstall", () => {
+  it("uninstall subcommand POSTs to /plugins/uninstall", () => {
     // Validates uninstall endpoint and method
     expect(extensionsSource).toContain('case "uninstall"');
-    expect(extensionsSource).toContain('`${base}/admin/plugins/uninstall`');
+    expect(extensionsSource).toContain('`${base}/plugins/uninstall`');
     expect(extensionsSource).toContain('method: "POST"');
   });
 
-  it("list subcommand GETs /admin/installed", () => {
+  it("list subcommand GETs /installed", () => {
     // Validates list endpoint and method
     expect(extensionsSource).toContain('case "list"');
-    expect(extensionsSource).toContain('`${base}/admin/installed`');
+    expect(extensionsSource).toContain('`${base}/installed`');
     expect(extensionsSource).toContain('method: "GET"');
   });
 

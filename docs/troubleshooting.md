@@ -25,7 +25,7 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 
 ## Admin UI shows "Server unreachable"
 
-**Symptoms:** The admin dashboard at `http://localhost/admin` cannot connect to the backend.
+**Symptoms:** The admin dashboard at `http://localhost` cannot connect to the backend.
 
 **Steps:**
 1. Verify the admin container is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps admin`
@@ -78,5 +78,5 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 ## Still stuck?
 
 - Check the [Architecture guide](../dev/docs/architecture.md) to understand how services connect.
-- Review [Admin Guide](../admin/docs/admin-guide.md) for configuration details.
+- Review [Admin Guide](../docs/admin-guide.md) for configuration details.
 - Open an issue at [github.com/itlackey/openpalm](https://github.com/itlackey/openpalm/issues).
