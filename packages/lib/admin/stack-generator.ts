@@ -416,7 +416,7 @@ function renderChannelComposeService(name: string, config: StackChannelConfig): 
     "      - GATEWAY_URL=http://gateway:8080",
     "    ports:",
     `      - "${portBinding}"`,
-    "    networks: [assistant_net]",
+    "    networks: [channel_net]",
     "    depends_on: [gateway]",
   ].join("\n");
 }
@@ -434,7 +434,7 @@ function renderCaddyComposeService(): string {
     "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
     "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
     "    command: caddy run --config /etc/caddy/caddy.json",
-    "    networks: [assistant_net]",
+    "    networks: [channel_net, internal_net]",
   ].join("\n");
 }
 
@@ -451,7 +451,7 @@ function renderPostgresComposeService(): string {
     "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-pg-password}",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data",
-    "    networks: [assistant_net]",
+    "    networks: [data_net]",
   ].join("\n");
 }
 
@@ -464,7 +464,7 @@ function renderQdrantComposeService(): string {
     "      - ${OPENPALM_STATE_HOME}/qdrant/.env",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage",
-    "    networks: [assistant_net]",
+    "    networks: [data_net]",
   ].join("\n");
 }
 
@@ -479,7 +479,7 @@ function renderOpenMemoryComposeService(): string {
     "      - \"${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765\"",
     "    volumes:",
     "      - ${OPENPALM_DATA_HOME}/openmemory:/data",
-    "    networks: [assistant_net]",
+    "    networks: [internal_net, data_net]",
     "    depends_on: [qdrant]",
   ].join("\n");
 }
@@ -494,7 +494,7 @@ function renderOpenMemoryUiComposeService(): string {
     "      - NEXT_PUBLIC_USER_ID=${OPENMEMORY_USER_ID:-default-user}",
     "    ports:",
     "      - \"${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-127.0.0.1}:3000:3000\"",
-    "    networks: [assistant_net]",
+    "    networks: [internal_net]",
     "    depends_on: [openmemory]",
   ].join("\n");
 }
@@ -519,7 +519,7 @@ function renderAssistantComposeService(): string {
     "      - ${HOME}/openpalm:/work",
     "    working_dir: /work",
     "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
-    "    networks: [assistant_net]",
+    "    networks: [internal_net]",
     "    depends_on: [openmemory]",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:4096/\"]",
@@ -544,7 +544,7 @@ function renderGatewayComposeService(): string {
     "      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
     "    volumes:",
     "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
-    "    networks: [assistant_net]",
+    "    networks: [channel_net, internal_net]",
     "    depends_on: [assistant]",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]",
@@ -578,7 +578,7 @@ function renderAdminComposeService(): string {
     "      - ${OPENPALM_STATE_HOME}:/state",
     "      - ${HOME}/openpalm:/work",
     "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
-    "    networks: [assistant_net]",
+    "    networks: [internal_net]",
     "    healthcheck:",
     "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]",
     "      interval: 30s",
@@ -606,7 +606,7 @@ function renderFullComposeFile(spec: StackSpec): string {
 
   const allBlocks = [...coreBlocks, ...channelBlocks];
 
-  return `services:\n${allBlocks.join("\n\n")}\n\nnetworks:\n  assistant_net:\n`;
+  return `services:\n${allBlocks.join("\n\n")}\n\nnetworks:\n  channel_net:\n  internal_net:\n  data_net:\n`;
 }
 
 // ── Main generator ───────────────────────────────────────────────────

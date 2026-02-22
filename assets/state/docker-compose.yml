@@ -10,7 +10,7 @@ services:
       - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy
       - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy
     command: caddy run --config /etc/caddy/caddy.json
-    networks: [assistant_net]
+    networks: [channel_net, internal_net]
 
   postgres:
     image: postgres:16-alpine
@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-pg-password}
     volumes:
       - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data
-    networks: [assistant_net]
+    networks: [data_net]
 
   qdrant:
     image: qdrant/qdrant:v1.13.2
@@ -32,7 +32,7 @@ services:
       - ${OPENPALM_STATE_HOME}/qdrant/.env
     volumes:
       - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage
-    networks: [assistant_net]
+    networks: [data_net]
 
   openmemory:
     image: mem0/openmemory-mcp:latest
@@ -43,7 +43,7 @@ services:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME}/openmemory:/data
-    networks: [assistant_net]
+    networks: [internal_net, data_net]
     depends_on: [qdrant]
 
   openmemory-ui:
@@ -54,7 +54,7 @@ services:
       - NEXT_PUBLIC_USER_ID=${OPENMEMORY_USER_ID:-default-user}
     ports:
       - "${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-127.0.0.1}:3000:3000"
-    networks: [assistant_net]
+    networks: [internal_net]
     depends_on: [openmemory]
 
   assistant:
@@ -75,7 +75,7 @@ services:
       - ${HOME}/openpalm:/work
     working_dir: /work
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
-    networks: [assistant_net]
+    networks: [internal_net]
     depends_on: [openmemory]
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:4096/"]
@@ -96,7 +96,7 @@ services:
       - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
-    networks: [assistant_net]
+    networks: [channel_net, internal_net]
     depends_on: [assistant]
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
@@ -126,7 +126,7 @@ services:
       - ${OPENPALM_STATE_HOME}:/state
       - ${HOME}/openpalm:/work
       - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}
-    networks: [assistant_net]
+    networks: [internal_net]
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8100/health"]
       interval: 30s
@@ -143,7 +143,7 @@ services:
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
-    networks: [assistant_net]
+    networks: [channel_net]
     depends_on: [gateway]
 
   channel-discord:
@@ -155,7 +155,7 @@ services:
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
-    networks: [assistant_net]
+    networks: [channel_net]
     depends_on: [gateway]
 
   channel-voice:
@@ -167,7 +167,7 @@ services:
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
-    networks: [assistant_net]
+    networks: [channel_net]
     depends_on: [gateway]
 
   channel-telegram:
@@ -179,8 +179,10 @@ services:
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
-    networks: [assistant_net]
+    networks: [channel_net]
     depends_on: [gateway]
 
 networks:
-  assistant_net:
+  channel_net:
+  internal_net:
+  data_net:

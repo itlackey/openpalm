@@ -5,14 +5,14 @@ const devDir = ".dev";
 const envFile = ".env";
 
 const requiredDirs = [
-  "config/caddy",
-  "config/channels",
+  "config",
   "data/postgres",
   "data/qdrant",
   "data/openmemory",
-  "data/home",
-  "state/workspace",
+  "data/assistant",
   "state/gateway",
+  "state/caddy",
+  "state/rendered/caddy",
 ];
 
 export function preflight(): void {

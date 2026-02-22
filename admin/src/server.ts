@@ -11,6 +11,9 @@ import { isBuiltInChannel, parseStackSpec } from "@openpalm/lib/admin/stack-spec
 import { allowedServiceSet, composeAction, composePull } from "@openpalm/lib/admin/compose-runner.ts";
 import { applyStack } from "@openpalm/lib/admin/stack-apply-engine.ts";
 import { parseJsonc, stringifyPretty } from "@openpalm/lib/admin/jsonc.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
+
+const log = createLogger("admin");
 
 const PORT = Number(Bun.env.PORT ?? 8100);
 const ADMIN_TOKEN = Bun.env.ADMIN_TOKEN ?? "change-me-admin-token";
@@ -281,11 +284,11 @@ data: {"ok":true,"service":"admin"}
               const services = ["postgres", "qdrant", "openmemory", "openmemory-ui", "assistant", "gateway"];
               await Promise.allSettled(services.map(svc => composePull(svc)));
               for (const svc of services) {
-                await composeAction("up", svc).catch(e => console.error(`Start ${svc}:`, e));
+                await composeAction("up", svc).catch(e => log.error(`Start ${svc} failed`, { error: String(e) }));
               }
               // Reload caddy with full Caddyfile (now that upstreams exist)
-              await composeAction("restart", "caddy").catch(e => console.error("Caddy reload:", e));
-            })().catch(e => console.error("Core startup failed:", e));
+              await composeAction("restart", "caddy").catch(e => log.error("Caddy reload failed", { error: String(e) }));
+            })().catch(e => log.error("Core startup failed", { error: String(e) }));
             return cors(json(200, { ok: true, status: "starting" }));
           }
           if (type === "setup.access_scope") {
@@ -808,15 +811,15 @@ data: {"ok":true,"service":"admin"}
       const isNotFound = message.includes("not found") || message.includes("missing");
       const status = isNotFound ? 404 : 500;
       const errorCode = isNotFound ? "not_found" : "internal_error";
-      console.error(`[${requestId}] ${errorCode}:`, error);
+      log.error(errorCode, { requestId, error: message });
       const clientMessage = status === 500 ? "An internal error occurred" : message;
       return cors(errorJson(status, errorCode, { message: clientMessage, requestId }));
     }
   }
 });
 
-console.log(JSON.stringify({ kind: "startup", service: "admin", port: server.port }));
+log.info("Server started", { port: server.port });
 if (ADMIN_TOKEN === "change-me-admin-token") {
-  console.error("[SECURITY] Default admin token detected. Set ADMIN_TOKEN environment variable before exposing to network.");
-  console.error("[SECURITY] The admin server will reject authenticated requests until a custom token is configured.");
+  log.warn("Default admin token detected. Set ADMIN_TOKEN environment variable before exposing to network.");
+  log.warn("The admin server will reject authenticated requests until a custom token is configured.");
 }

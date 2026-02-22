@@ -9,6 +9,9 @@ RUN apt-get update \
   && apt-get install -y docker-ce-cli \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+# Bun workspace symlinks are not available inside Docker builds, so we copy the
+# raw TypeScript source of @openpalm/lib directly into node_modules.
+# See packages/lib/README.md "Docker Build" for details.
 COPY packages/lib /app/node_modules/@openpalm/lib
 COPY admin/package.json ./
 COPY admin/src ./src

@@ -12,7 +12,7 @@ const extraServices = (Bun.env.OPENPALM_EXTRA_SERVICES ?? "")
   .map((value) => value.trim())
   .filter((value) => value.length > 0);
 
-const ComposeProjectPath = Bun.env.COMPOSE_PROJECT_PATH ?? "/workspace";
+const ComposeProjectPath = Bun.env.COMPOSE_PROJECT_PATH ?? "/state";
 const ComposeBin = Bun.env.OPENPALM_COMPOSE_BIN ?? "docker";
 const ComposeSubcommand = Bun.env.OPENPALM_COMPOSE_SUBCOMMAND ?? "compose";
 const ComposeFile = Bun.env.OPENPALM_COMPOSE_FILE ?? "docker-compose.yml";
