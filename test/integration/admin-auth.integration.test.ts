@@ -8,6 +8,10 @@ const TIMEOUT = 5_000;
 const ADMIN_BASE = "http://localhost:8100";
 const ADMIN_TOKEN = "dev-admin-token";
 
+const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
+  .then(r => r.ok)
+  .catch(() => false);
+
 const protectedEndpoints = [
   "/admin/state",
   "/admin/secrets",
@@ -15,7 +19,7 @@ const protectedEndpoints = [
   "/admin/channels",
 ];
 
-describe("integration: admin auth rejection", () => {
+describe.skipIf(!stackAvailable)("integration: admin auth rejection", () => {
   for (const path of protectedEndpoints) {
     it(`GET ${path} without token → 401`, async () => {
       const resp = await fetch(`${ADMIN_BASE}${path}`, {

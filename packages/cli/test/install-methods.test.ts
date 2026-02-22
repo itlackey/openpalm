@@ -211,29 +211,17 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("--no-open");
     });
 
-    it("documents --ref flag", () => {
-      expect(cliDocs).toContain("--ref");
-    });
   });
 
-  describe("CLI docs covers 4-phase install", () => {
+  describe("CLI docs covers 2-phase install", () => {
     it("documents Phase 1 (Setup)", () => {
       expect(cliDocs).toContain("Phase 1");
     });
 
-    it("documents Phase 2 (Core Services)", () => {
+    it("documents Phase 2 (Early UI Access)", () => {
       expect(cliDocs).toContain("Phase 2");
       expect(cliDocs).toContain("Caddy");
-      expect(cliDocs).toContain("PostgreSQL");
       expect(cliDocs).toContain("Admin");
-    });
-
-    it("documents Phase 3 (Image Preparation)", () => {
-      expect(cliDocs).toContain("Phase 3");
-    });
-
-    it("documents Phase 4 (Full Stack)", () => {
-      expect(cliDocs).toContain("Phase 4");
     });
   });
 
