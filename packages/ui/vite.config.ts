@@ -26,8 +26,9 @@ function bunShim(): Plugin {
 		name: 'bun-shim',
 		// Run before other transforms so the shim is available immediately
 		enforce: 'pre',
-		transform(code, id) {
-			// Shim server-side modules from @openpalm/lib that reference Bun
+		transform(code: string, id: string) {
+			// Only shim server-side (SSR) modules from @openpalm/lib that reference Bun.
+			// Client-side code should never import from packages/lib directly.
 			if (!id.includes('packages/lib') || !code.includes('Bun.')) return;
 
 			if (code.includes('Bun.YAML')) {
@@ -61,13 +62,17 @@ function bunShim(): Plugin {
 function yamlTextImport(): Plugin {
 	return {
 		name: 'yaml-text-import',
-		transform(_code, id) {
+		transform(_code: string, id: string) {
 			if (id.endsWith('.yaml') || id.endsWith('.yml')) {
-				const content = readFileSync(id, 'utf8');
-				return {
-					code: `export default ${JSON.stringify(content)};`,
-					map: null
-				};
+				try {
+					const content = readFileSync(id, 'utf8');
+					return {
+						code: `export default ${JSON.stringify(content)};`,
+						map: null
+					};
+				} catch (err) {
+					throw new Error(`Failed to read YAML file: ${id}: ${err}`);
+				}
 			}
 		}
 	};

@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { validateCron } from "./cron.ts";
 import type { ChannelExposure, StackAutomation, StackSpec } from "./stack-spec.ts";
 
 export type ChannelName = string;
@@ -245,6 +247,8 @@ export class StackManager {
     if (!id) throw new Error("invalid_automation_id");
     if (!name) throw new Error("invalid_automation_name");
     if (!schedule) throw new Error("invalid_automation_schedule");
+    const cronError = validateCron(schedule);
+    if (cronError) throw new Error("invalid_cron_schedule");
     if (!script) throw new Error("invalid_automation_script");
     if (typeof input.enabled !== "boolean") throw new Error("invalid_automation_enabled");
 
@@ -304,7 +308,7 @@ export class StackManager {
   }
 
   private writeStackSpecAtomically(content: string) {
-    const tempPath = `${this.paths.stackSpecPath}.${Date.now()}.tmp`;
+    const tempPath = `${this.paths.stackSpecPath}.${randomUUID()}.tmp`;
     mkdirSync(dirname(this.paths.stackSpecPath), { recursive: true });
     writeFileSync(tempPath, content, "utf8");
     renameSync(tempPath, this.paths.stackSpecPath);

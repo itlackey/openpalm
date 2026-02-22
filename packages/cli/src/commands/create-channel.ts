@@ -26,7 +26,7 @@ export function createChannel(args: string[]): void {
     throw new Error("Error: --port must be a number between 1024 and 65535");
   }
 
-  const root = resolve(import.meta.dir, "../../../..");
+  const root = process.cwd();
   const channelDir = join(root, "channels", name);
   if (existsSync(channelDir)) throw new Error(`Error: channels/${name}/ already exists.`);
 

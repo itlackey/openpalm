@@ -199,4 +199,5 @@ echo ""
 echo "Note: ~/openpalm (assistant working directory) was not removed."
 echo "  Delete it manually if you no longer need it: rm -rf ~/openpalm"
 echo ""
+
 echo "Uninstall complete."

@@ -33,11 +33,14 @@
     "channels/**/*.ts",
     "packages/cli/src/**/*.ts",
     "packages/lib/src/**/*.ts",
+    "packages/ui/src/**/*.ts",
     "dev/**/*.ts",
+    "test/**/*.ts",
     "packages/lib/admin/**/*.ts",
     "packages/lib/assets/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "packages/ui"
   ]
 }

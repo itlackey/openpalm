@@ -27,7 +27,7 @@ bun run typecheck
 
 # Tests (5 layers)
 bun test                          # All tests
-bun test --filter unit            # Unit only
+bun run test:unit                 # Unit only
 bun test --filter integration     # Integration only
 bun test --filter contract        # Contract tests
 bun test --filter security        # Security tests
@@ -70,7 +70,7 @@ Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webho
 
 | Directory | Purpose |
 |-----------|---------|
-| `admin/` | Control-plane service (UI, API, lifecycle manager, cron daemon) |
+| `admin/` | Control-plane service (legacy Bun server in src/, being replaced by packages/ui/) |
 | `gateway/` | Security layer (HMAC, rate limiting, intake validation, audit) |
 | `assistant/` | OpenCode agent runtime with built-in extensions |
 | `channels/` | Channel adapter services |
@@ -126,6 +126,8 @@ Located in `admin/ui/tests/`. Config at `admin/playwright.config.ts`. Runs seque
 - Admin API (direct): `http://localhost:8100/`
 
 ## Documentation Map
+
+<!-- Last verified: 2026-02-22 -->
 
 | Question | Location |
 |----------|----------|

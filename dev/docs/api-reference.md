@@ -78,7 +78,7 @@ The secret manager is the source of truth for key/value entries in `secrets.env`
 
 - `GET /admin/secrets` — list available secret keys and where each key is used.
 
-Channel configuration values in `stack-spec` can reference secrets directly with `${SECRET_NAME}`. During stack rendering/apply, unresolved references fail validation.
+Channel configuration values in `openpalm.yaml` (stack spec) can reference secrets directly with `${SECRET_NAME}`. During stack rendering/apply, unresolved references fail validation.
 
 ### Container management
 - `GET /admin/containers/list` — list running containers

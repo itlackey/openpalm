@@ -144,8 +144,6 @@ export async function generateEnvFromTemplate(
   const templateContent = await template.text();
   await Bun.write(outputPath, templateContent);
 
-  // Apply all overrides
-  for (const [key, value] of Object.entries(overrides)) {
-    await upsertEnvVar(outputPath, key, value);
-  }
+  // Apply all overrides in a single read-write cycle
+  await upsertEnvVars(outputPath, Object.entries(overrides));
 }

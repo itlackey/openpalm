@@ -39,7 +39,7 @@ export async function extensions(
   const base =
     Bun.env.ADMIN_APP_URL ??
     Bun.env.GATEWAY_URL ??
-    "http://localhost/admin";
+    "http://localhost";
 
   // Build headers
   const headers = {

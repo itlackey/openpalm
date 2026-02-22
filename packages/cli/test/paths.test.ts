@@ -13,11 +13,13 @@ describe("paths", () => {
       expect(paths).toHaveProperty("state");
     });
 
-    it("all paths end with openpalm", () => {
+    it("all paths end with openpalm (without env overrides)", () => {
       // Save and clear explicit overrides so we test the XDG/default fallback paths
-      const origData = Bun.env.OPENPALM_DATA_HOME;
-      const origConfig = Bun.env.OPENPALM_CONFIG_HOME;
-      const origState = Bun.env.OPENPALM_STATE_HOME;
+      const saved = {
+        data: Bun.env.OPENPALM_DATA_HOME,
+        config: Bun.env.OPENPALM_CONFIG_HOME,
+        state: Bun.env.OPENPALM_STATE_HOME,
+      };
       try {
         delete Bun.env.OPENPALM_DATA_HOME;
         delete Bun.env.OPENPALM_CONFIG_HOME;
@@ -27,9 +29,9 @@ describe("paths", () => {
         expect(paths.config).toMatch(/openpalm$/);
         expect(paths.state).toMatch(/openpalm$/);
       } finally {
-        if (origData !== undefined) Bun.env.OPENPALM_DATA_HOME = origData; else delete Bun.env.OPENPALM_DATA_HOME;
-        if (origConfig !== undefined) Bun.env.OPENPALM_CONFIG_HOME = origConfig; else delete Bun.env.OPENPALM_CONFIG_HOME;
-        if (origState !== undefined) Bun.env.OPENPALM_STATE_HOME = origState; else delete Bun.env.OPENPALM_STATE_HOME;
+        if (saved.data !== undefined) Bun.env.OPENPALM_DATA_HOME = saved.data; else delete Bun.env.OPENPALM_DATA_HOME;
+        if (saved.config !== undefined) Bun.env.OPENPALM_CONFIG_HOME = saved.config; else delete Bun.env.OPENPALM_CONFIG_HOME;
+        if (saved.state !== undefined) Bun.env.OPENPALM_STATE_HOME = saved.state; else delete Bun.env.OPENPALM_STATE_HOME;
       }
     });
   });

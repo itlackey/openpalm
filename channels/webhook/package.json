@@ -1,5 +1,6 @@
 {
   "name": "@openpalm/channel-webhook",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {

@@ -20,31 +20,26 @@ test.describe("Admin UI Navigation", () => {
       const body = await resp.json();
       if (!body.completed) {
         // Complete all wizard steps programmatically via API
-        await request.post(`${ADMIN_API}/setup/step`, {
-          data: { step: "welcome" },
-          headers: AUTH_HEADERS,
-        });
-        await request.post(`${ADMIN_API}/setup/step`, {
-          data: { step: "serviceInstances" },
-          headers: AUTH_HEADERS,
-        });
-        await request.post(`${ADMIN_API}/setup/step`, {
-          data: { step: "security" },
-          headers: AUTH_HEADERS,
-        });
-        await request.post(`${ADMIN_API}/setup/step`, {
-          data: { step: "channels" },
-          headers: AUTH_HEADERS,
-        });
-        await request.post(`${ADMIN_API}/setup/access-scope`, {
-          data: { scope: "host" },
-          headers: AUTH_HEADERS,
-        });
-        await request.post(`${ADMIN_API}/setup/step`, {
-          data: { step: "healthCheck" },
-          headers: AUTH_HEADERS,
-        });
-        await request.post(`${ADMIN_API}/setup/complete`, { headers: AUTH_HEADERS });
+        const steps: Array<{ url: string; data?: object }> = [
+          { url: `${ADMIN_API}/setup/step`, data: { step: "welcome" } },
+          { url: `${ADMIN_API}/setup/step`, data: { step: "serviceInstances" } },
+          { url: `${ADMIN_API}/setup/step`, data: { step: "security" } },
+          { url: `${ADMIN_API}/setup/step`, data: { step: "channels" } },
+          { url: `${ADMIN_API}/setup/access-scope`, data: { scope: "host" } },
+          { url: `${ADMIN_API}/setup/step`, data: { step: "healthCheck" } },
+          { url: `${ADMIN_API}/setup/complete` },
+        ];
+        for (const step of steps) {
+          const stepResp = await request.post(step.url, {
+            ...(step.data ? { data: step.data } : {}),
+            headers: AUTH_HEADERS,
+          });
+          if (!stepResp.ok()) {
+            throw new Error(
+              `Setup step failed: ${step.url} returned ${stepResp.status()} ${await stepResp.text()}`
+            );
+          }
+        }
       }
     } catch {
       // Admin server not reachable — tests will be skipped in beforeEach
@@ -63,8 +58,7 @@ test.describe("Admin UI Navigation", () => {
     });
     // Wizard overlay must not be visible after setup is complete
     const overlay = page.locator("#setup-overlay");
-    await page.waitForTimeout(1500);
-    await expect(overlay).toHaveClass(/hidden/);
+    await expect(overlay).toHaveClass(/hidden/, { timeout: 10_000 });
   });
 
   test("dashboard shows OpenCode and OpenMemory links", async ({ page }) => {

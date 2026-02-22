@@ -1,5 +1,5 @@
 import { rm, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { UninstallOptions, ContainerPlatform } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
@@ -20,7 +20,7 @@ export async function uninstall(options: UninstallOptions): Promise<void> {
     env = await readEnvFile(stateEnvPath);
   } catch {
     try {
-      env = await readEnvFile(".env");
+      env = await readEnvFile(resolve(process.cwd(), ".env"));
     } catch {
       // No env file found, continue with empty env
     }
@@ -113,7 +113,7 @@ export async function uninstall(options: UninstallOptions): Promise<void> {
     }
 
     try {
-      await unlink(".env");
+      await unlink(resolve(process.cwd(), ".env"));
     } catch {
       // .env may not exist in CWD, continue
     }

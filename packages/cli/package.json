@@ -1,6 +1,6 @@
 {
-  "name": "openpalm",
-  "version": "0.2.2",
+  "name": "@openpalm/cli",
+  "version": "0.2.3",
   "description": "CLI tool for installing and managing an OpenPalm stack",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "src/**/*.ts"
   ],
   "engines": {
-    "bun": ">=1.0.0"
+    "bun": ">=1.2.0"
   },
   "scripts": {
     "start": "bun run src/main.ts",

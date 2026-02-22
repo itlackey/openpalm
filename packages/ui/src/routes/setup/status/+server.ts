@@ -1,13 +1,19 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { getSetupManager } from '$lib/server/init';
 import { readSecretsEnv, readRuntimeEnv } from '$lib/server/env-helpers';
+import { isLocalRequest } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ locals, request }) => {
 	const setupManager = await getSetupManager();
 	const state = setupManager.getState();
 	if (state.completed === true && !locals.authenticated)
 		return unauthorizedJson();
+
+	// SECURITY: During initial setup, restrict to local/private IPs only.
+	if (!state.completed && !isLocalRequest(request)) {
+		return json(403, { error: 'setup endpoints are restricted to local network access' });
+	}
 
 	const secrets = readSecretsEnv();
 	const runtime = readRuntimeEnv();

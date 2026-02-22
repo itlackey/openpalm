@@ -56,7 +56,7 @@ describe("install methods verification", () => {
 
   describe("package.json enables npx/bunx usage", () => {
     it("has correct package name for npx/bunx", () => {
-      expect(pkgJson.name).toBe("openpalm");
+      expect(pkgJson.name).toBe("@openpalm/cli");
     });
 
     it("has bin entry pointing to main.ts", () => {
@@ -73,7 +73,7 @@ describe("install methods verification", () => {
     });
 
     it("has engines.bun requirement", () => {
-      expect(pkgJson.engines?.bun).toBe(">=1.0.0");
+      expect(pkgJson.engines?.bun).toBe(">=1.2.0");
     });
   });
 
@@ -164,7 +164,7 @@ describe("install methods verification", () => {
     });
 
     it("supports -Runtime parameter", () => {
-      expect(installPs1).toContain('[ValidateSet("docker", "podman")]');
+      expect(installPs1).toContain('[ValidateSet("docker", "podman", "orbstack")]');
     });
 
     it("supports -Ref parameter", () => {

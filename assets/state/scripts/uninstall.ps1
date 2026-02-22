@@ -17,6 +17,17 @@ if (-not $RunningOnWindows) {
   exit 1
 }
 
+# Resolve the root directory robustly: try $PSScriptRoot parent, then
+# fall back to a known install location or the current directory.
+if ($PSScriptRoot -and (Test-Path (Split-Path -Parent $PSScriptRoot))) {
+  $RootDir = Split-Path -Parent $PSScriptRoot
+} elseif (Test-Path (Join-Path $env:LOCALAPPDATA "OpenPalm")) {
+  $RootDir = Join-Path $env:LOCALAPPDATA "OpenPalm"
+} else {
+  $RootDir = (Get-Location).Path
+}
+Set-Location $RootDir
+
 # Resolve .env from XDG state home or common locations
 
 function Get-EnvValueFromFile {
@@ -130,7 +141,7 @@ if ($RemoveAll -or $RemoveBinary) {
   $installDir = Join-Path $env:LOCALAPPDATA "OpenPalm"
   $binaryPath = Join-Path $installDir "openpalm.exe"
   if (Test-Path $binaryPath) {
-    Remove-Item -LiteralPath $binaryPath -Force
+    Remove-Item -LiteralPath $binaryPath -Force -ErrorAction SilentlyContinue
     Write-Host "Removed CLI binary: $binaryPath"
   } else {
     Write-Host "CLI binary not found at $binaryPath — it may have been installed elsewhere."
@@ -149,4 +160,5 @@ Write-Host ""
 Write-Host "Note: $workDir (assistant working directory) was not removed."
 Write-Host "  Delete it manually if you no longer need it."
 Write-Host ""
+
 Write-Host "Uninstall complete."

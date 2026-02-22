@@ -31,7 +31,7 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 1. Verify the admin container is healthy: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps admin`
 2. Check that port 8100 is accessible inside the container: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml exec admin curl -s http://localhost:8100/health`
 3. Check Caddy is routing correctly: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs caddy --tail=20`
-4. Verify the Caddyfile has the admin route: check `~/.local/state/openpalm/rendered/caddy/Caddyfile`
+4. Verify the Caddy config has the admin route: check `~/.local/state/openpalm/rendered/caddy/caddy.json`
 
 ## Memory not working
 
@@ -41,7 +41,7 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 1. Verify `OPENAI_API_KEY` is set in `~/.config/openpalm/secrets.env` (OpenMemory uses OpenAI for embeddings).
 2. Check OpenMemory logs: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml logs openmemory --tail=50`
 3. Check Qdrant is running: `docker compose -f ~/.local/state/openpalm/rendered/docker-compose.yml ps qdrant`
-4. Test the OpenMemory API directly: `curl http://localhost:8765/health`
+4. Test the OpenMemory API directly: `curl http://localhost:8765/api/v1/apps/`
 5. Verify the `openmemory-http` plugin is loaded by checking assistant logs for plugin initialization messages.
 
 ## Channels not responding

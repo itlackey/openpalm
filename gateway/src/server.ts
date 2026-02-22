@@ -4,9 +4,20 @@ import { AuditLog } from "./audit.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 import { verifySignature } from "./channel-security.ts";
 import { allowRequest } from "./rate-limit.ts";
+import { nonceCache } from "./nonce-cache.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
 import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { safeRequestId, validatePayload } from "./server-utils.ts";
+
+const MAX_SUMMARY_LENGTH = 2_000;
+
+function sanitizeSummary(summary: string): string {
+  let sanitized = summary.replace(/<\/?[^>]+(>|$)/g, "");
+  if (sanitized.length > MAX_SUMMARY_LENGTH) {
+    sanitized = sanitized.slice(0, MAX_SUMMARY_LENGTH);
+  }
+  return sanitized;
+}
 
 export type GatewayDeps = {
   channelSecrets: Record<string, string>;
@@ -21,7 +32,7 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
     const sessionId = randomUUID();
 
     const rlKey = payload.userId;
-    if (!allowRequest(rlKey, 120, 60_000)) {
+    if (!allowRequest(rlKey, 120, 60_000) || !allowRequest(`channel:${payload.channel}`, 200, 60_000)) {
       audit.write({
         ts: new Date().toISOString(),
         requestId,
@@ -85,15 +96,17 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
       });
     }
 
+    const sanitizedSummary = sanitizeSummary(intake.summary);
+
     try {
       const coreResult = await openCode.send({
-        message: intake.summary,
+        message: sanitizedSummary,
         userId: payload.userId,
         sessionId,
         channel: payload.channel,
         metadata: {
           ...payload.metadata,
-          intakeSummary: intake.summary,
+          intakeSummary: sanitizedSummary,
           intakeValid: true,
         },
       });
@@ -115,7 +128,7 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
         answer: coreResult.response,
         intake: {
           valid: true,
-          summary: intake.summary,
+          summary: sanitizedSummary,
         },
         metadata: coreResult.metadata,
       });
@@ -161,6 +174,9 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
 
         if (!validatePayload(payload))
           return json(400, { error: "invalid_payload", requestId });
+
+        if (!nonceCache.checkAndStore(payload.nonce, payload.timestamp))
+          return json(409, { error: "replay_detected", requestId });
 
         return processChannelInbound(payload, requestId);
       }

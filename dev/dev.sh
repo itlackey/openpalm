@@ -53,6 +53,9 @@ trap cleanup EXIT INT TERM
 start_admin() {
   echo "[dev] Starting admin on :8100 (hot reload)"
   cd "$ROOT/admin"
+  if [ ! -f "src/server.ts" ]; then
+    echo "WARNING: admin/src/server.ts not found. Has it been moved to packages/ui?" >&2
+  fi
   PORT=8100 bun run --hot src/server.ts &
   PIDS+=($!)
 }

@@ -364,6 +364,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				for (const [name, value] of Object.entries(
 					parsed as Record<string, unknown>
 				)) {
+					if (typeof value !== 'object' || value === null || !(value as Record<string, unknown>).image) {
+						return json(400, {
+							ok: false,
+							error: `invalid_snippet: channel '${name}' must have an 'image' field`,
+							code: 'invalid_snippet'
+						});
+					}
 					spec.channels[name] = value as StackChannelConfig;
 				}
 			} else if (section === 'service') {
@@ -377,10 +384,26 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				for (const [name, value] of Object.entries(
 					parsed as Record<string, unknown>
 				)) {
+					if (typeof value !== 'object' || value === null || !(value as Record<string, unknown>).image) {
+						return json(400, {
+							ok: false,
+							error: `invalid_snippet: service '${name}' must have an 'image' field`,
+							code: 'invalid_snippet'
+						});
+					}
 					spec.services[name] = value as StackServiceConfig;
 				}
 			} else {
 				const items = Array.isArray(parsed) ? parsed : [parsed];
+				for (const item of items) {
+					if (typeof item !== 'object' || item === null || !item.schedule || !item.prompt && !item.script) {
+						return json(400, {
+							ok: false,
+							error: "invalid_snippet: automation must have 'schedule' and 'script' (or 'prompt') fields",
+							code: 'invalid_snippet'
+						});
+					}
+				}
 				spec.automations.push(...(items as StackAutomation[]));
 			}
 			const validated = stackManager.setSpec(spec);

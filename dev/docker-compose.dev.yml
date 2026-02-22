@@ -27,7 +27,8 @@ services:
     ports:
       - "8100:8100"
     volumes:
-      - .:/compose:ro
+      - ./assets/state/docker-compose.yml:/compose/assets/state/docker-compose.yml:ro
+      - ./dev/docker-compose.dev.yml:/compose/dev/docker-compose.dev.yml:ro
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
