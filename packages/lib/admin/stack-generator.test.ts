@@ -255,6 +255,18 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]");
   });
 
+  it("includes LAN hostname routes for core web containers", () => {
+    const spec = createDefaultStackSpec();
+    const out = generateStackArtifacts(spec, {});
+    const adminRoute = out.caddyRoutes["admin.caddy"];
+    expect(adminRoute).toContain("@assistant_host host assistant");
+    expect(adminRoute).toContain("@admin_host host admin");
+    expect(adminRoute).toContain("@openmemory_host host openmemory");
+    expect(adminRoute).toContain("handle @assistant_host");
+    expect(adminRoute).toContain("handle @admin_host");
+    expect(adminRoute).toContain("handle @openmemory_host");
+  });
+
   // --- Multi-channel artifact generation with unique requirements ---
 
   it("generates correct compose services for multiple custom channels with diverse configs", () => {
