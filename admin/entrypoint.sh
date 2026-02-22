@@ -15,15 +15,13 @@ if [ "$TARGET_UID" != "$CURRENT_UID" ]; then
 fi
 
 # ── Fix ownership on bind-mounted volumes ─────────────────────────────────────
-# Top-level mount points only (non-recursive — fast)
-for dir in /data /config /state; do
-  [ -d "$dir" ] && chown "$TARGET_UID:$TARGET_GID" "$dir"
-done
-
-# Small write-heavy subdirs (recursive — still fast, few files)
-for dir in /state/automations /data/admin; do
+# /config and /state contain only small env files and rendered configs — safe
+# to recursively chown. /data is large (postgres, qdrant) so only fix /data/admin.
+for dir in /config /state; do
   [ -d "$dir" ] && chown -R "$TARGET_UID:$TARGET_GID" "$dir"
 done
+[ -d /data ] && chown "$TARGET_UID:$TARGET_GID" /data
+[ -d /data/admin ] && chown -R "$TARGET_UID:$TARGET_GID" /data/admin
 
 # ── Docker socket access ──────────────────────────────────────────────────────
 # Detect the GID of the Docker socket and add openpalm to that group
