@@ -16,9 +16,12 @@ RUN groupmod -n openpalm bun && \
     usermod -l openpalm -d /home/openpalm -m bun
 
 WORKDIR /app
-COPY packages/lib /app/node_modules/@openpalm/lib
+COPY packages/lib ./packages/lib
 COPY packages/ui ./packages/ui
-RUN cd /app/packages/ui && bun install --production && bun run build
+RUN cd /app/packages/ui \
+  && sed -i 's|"@openpalm/lib": "workspace:\*"|"@openpalm/lib": "file:../lib"|' package.json \
+  && bun install --production \
+  && bun run build
 RUN chown -R openpalm:openpalm /app
 EXPOSE 8100
 COPY admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
