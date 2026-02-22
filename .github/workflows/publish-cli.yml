@@ -54,6 +54,22 @@ jobs:
           cd packages/cli
           npm version "$TAG" --no-git-tag-version --allow-same-version
 
+      - name: Bundle CLI for npm
+        working-directory: packages/cli
+        run: |
+          # Bundle all source (including @openpalm/lib) into a single file
+          bun build src/main.ts --outfile dist/openpalm.js --target bun
+
+          # Rewrite package.json: point bin at bundle, drop workspace dependency
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.bin = { openpalm: "./dist/openpalm.js" };
+            pkg.files = ["dist/**"];
+            delete pkg.dependencies;
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          '
+
       - name: Publish to npm
         run: npm publish --provenance --access public
         working-directory: packages/cli
