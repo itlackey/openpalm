@@ -232,7 +232,7 @@ See [Security Guide](../../docs/security.md) for the full defense-in-depth secur
 
 | Concern | Source of truth | Notes |
 |---|---|---|
-| User intent for stack behavior | `config/stack-spec.json` via `packages/lib/admin/stack-spec.ts` | Keep this file intent-only (no derived runtime state). |
+| User intent for stack behavior | `config/openpalm.yaml` via `packages/lib/admin/stack-spec.ts` | Keep this file intent-only (no derived runtime state). |
 | Secret values and key inventory | `config/secrets.env` via `StackManager` secret APIs | UI should always use live secret inventory from API. |
 | Rendered compose/caddy/env artifacts | `packages/lib/admin/stack-generator.ts` output | Generated under `state/rendered/*`; never hand-edit. |
 | Compose service allowlist | `packages/lib/admin/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |

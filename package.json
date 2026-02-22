@@ -31,7 +31,7 @@
     "dev:fresh": "bun run dev:setup:clean && bun run dev:compose -- up -d --build",
     "create:channel": "bun run packages/cli/src/main.ts dev create-channel",
     "admin:extensions": "bun run packages/cli/src/main.ts extensions",
-    "test:unit": "bun test --filter '!integration|contract|security|compose|ui'",
+    "test:unit": "bun test --filter '!(integration|contract|security|compose|ui)'",
     "test:integration": "bun test --filter integration",
     "test:contracts": "bun test --filter contract",
     "test:security": "bun test --filter security",
@@ -52,6 +52,7 @@
     "ver:release": "bun run dev/version.ts release"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.9"
+    "@types/bun": "^1.3.9",
+    "typescript": "^5.9.3"
   }
 }
