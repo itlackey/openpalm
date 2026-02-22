@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { json } from "@openpalm/lib/shared/http.ts";
 import { AuditLog } from "./audit.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 import { verifySignature } from "./channel-security.ts";
 import { allowRequest } from "./rate-limit.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
-import type { ChannelMessage } from "./types.ts";
+import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 
 const PORT = Number(Bun.env.PORT ?? 8080);
 const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://assistant:4096";
@@ -23,13 +24,6 @@ const audit = new AuditLog("/app/data/audit.log");
 function safeRequestId(header: string | null): string {
   if (header && /^[a-zA-Z0-9_-]{1,64}$/.test(header)) return header;
   return randomUUID();
-}
-
-function json(status: number, payload: unknown) {
-  return new Response(JSON.stringify(payload, null, 2), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
 }
 
 function validatePayload(payload: Partial<ChannelMessage>): payload is ChannelMessage {

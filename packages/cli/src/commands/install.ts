@@ -167,32 +167,53 @@ export async function install(options: InstallOptions): Promise<void> {
     // chmod may fail on Windows — non-critical
   }
 
-  // 18. Write minimal setup-only Caddyfile (admin routes only)
-  const minimalCaddyfile = [
-    "{",
-    "\tadmin off",
-    "}",
-    "",
-    ":80 {",
-    "\thandle /admin* {",
-    "\t\troute {",
-    "\t\t\thandle /admin/api* {",
-    "\t\t\t\turi replace /admin/api /admin",
-    "\t\t\t\treverse_proxy admin:8100",
-    "\t\t\t}",
-    "\t\t\turi strip_prefix /admin",
-    "\t\t\treverse_proxy admin:8100",
-    "\t\t}",
-    "\t}",
-    "",
-    "\thandle {",
-    '\t\trespond "OpenPalm is starting... Please visit /admin/ to complete setup." 503',
-    "\t}",
-    "}",
-    "",
-  ].join("\n");
-  const caddyfilePath = join(xdg.state, "rendered", "caddy", "Caddyfile");
-  await writeFile(caddyfilePath, minimalCaddyfile, "utf8");
+  // 18. Write minimal setup-only Caddy JSON config (admin routes only)
+  const minimalCaddyJson = JSON.stringify({
+    admin: { disabled: true },
+    apps: {
+      http: {
+        servers: {
+          main: {
+            listen: [":80"],
+            routes: [
+              {
+                match: [{ path: ["/admin*"] }],
+                handle: [{
+                  handler: "subroute",
+                  routes: [
+                    {
+                      match: [{ path: ["/admin/api*"] }],
+                      handle: [
+                        { handler: "rewrite", uri_substring: [{ find: "/admin/api", replace: "/admin" }] },
+                        { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
+                      ],
+                      terminal: true,
+                    },
+                    {
+                      handle: [
+                        { handler: "rewrite", strip_path_prefix: "/admin" },
+                        { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
+                      ],
+                    },
+                  ],
+                }],
+                terminal: true,
+              },
+              {
+                handle: [{
+                  handler: "static_response",
+                  body: "OpenPalm is starting... Please visit /admin/ to complete setup.",
+                  status_code: "503",
+                }],
+              },
+            ],
+          },
+        },
+      },
+    },
+  }, null, 2) + "\n";
+  const caddyJsonPath = join(xdg.state, "rendered", "caddy", "caddy.json");
+  await writeFile(caddyJsonPath, minimalCaddyJson, "utf8");
 
   // ============================================================================
   // Phase 2: Early UI access

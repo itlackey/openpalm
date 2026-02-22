@@ -1,12 +1,5 @@
-export type ChannelMessage = {
-  userId: string;
-  channel: string;
-  text: string;
-  attachments?: string[];
-  metadata?: Record<string, unknown>;
-  nonce: string;
-  timestamp: number;
-};
+// Re-export the canonical ChannelMessage from the shared library
+export type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 
 export type AuditEvent = {
   ts: string;

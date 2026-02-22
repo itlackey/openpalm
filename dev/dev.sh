@@ -27,7 +27,6 @@ export OPENCODE_CORE_BASE_URL="${OPENCODE_CORE_BASE_URL:-http://localhost:4096}"
 export OPENCODE_CONFIG_PATH="${OPENCODE_CONFIG_PATH:-$ROOT/opencode/extensions/opencode.jsonc}"
 export DATA_DIR="${DATA_DIR:-$ROOT/.dev/data}"
 export CHANNEL_ENV_DIR="${CHANNEL_ENV_DIR:-$ROOT/assets/config/channels}"
-export CADDYFILE_PATH="${CADDYFILE_PATH:-$ROOT/assets/config/Caddyfile}"
 
 # Channel shared secrets for gateway
 export CHANNEL_CHAT_SECRET="${CHANNEL_CHAT_SECRET:-dev-chat-secret}"

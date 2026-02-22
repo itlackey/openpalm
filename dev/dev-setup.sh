@@ -21,7 +21,7 @@ fi
 
 mkdir -p "$DEV_DIR/data"/{postgres,qdrant,openmemory,assistant,admin}
 mkdir -p "$DEV_DIR/config"
-mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,channel-discord,channel-voice,channel-telegram,rendered/caddy/snippets,caddy/config,caddy/data,logs,tmp}
+mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,channel-discord,channel-voice,channel-telegram,rendered/caddy,caddy/config,caddy/data,logs,tmp}
 # Create empty env files so docker-compose doesn't error on missing env_file
 touch "$DEV_DIR/state/system.env"
 for svc in gateway openmemory postgres qdrant assistant channel-chat channel-discord channel-voice channel-telegram; do
@@ -31,9 +31,6 @@ mkdir -p "$HOME/openpalm"
 
 cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" 2>/dev/null || true
 cp -n "$REPO_ROOT/assets/config/stack-spec.json" "$DEV_DIR/config/stack-spec.json" 2>/dev/null || true
-cp -n "$REPO_ROOT/assets/state/caddy/Caddyfile" "$DEV_DIR/state/rendered/caddy/Caddyfile" 2>/dev/null || true
-cat > "$DEV_DIR/state/rendered/caddy/snippets/extra-user-overrides.caddy" <<'EOF'
-# user-managed overrides
-EOF
+cp -n "$REPO_ROOT/assets/state/caddy/caddy.json" "$DEV_DIR/state/rendered/caddy/caddy.json" 2>/dev/null || true
 
 echo "Dev environment ready under .dev/ and ~/openpalm"

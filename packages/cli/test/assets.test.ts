@@ -214,7 +214,7 @@ describe("installer required assets", () => {
     "config/secrets.env",
     "config/stack-spec.json",
     "state/docker-compose.yml",
-    "state/caddy/Caddyfile",
+    "state/caddy/caddy.json",
     "state/scripts/install.sh",
     "state/scripts/uninstall.sh",
   ];

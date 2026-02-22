@@ -94,7 +94,8 @@ function sanitizeSteps(value: unknown): SetupState["steps"] {
 }
 
 function normalizeState(parsed: Partial<SetupState>): SetupState {
-  const accessScope = parsed.accessScope === "lan" ? "lan" : "host";
+  const validScopes = new Set<SetupState["accessScope"]>(["host", "lan", "public"]);
+  const accessScope = validScopes.has(parsed.accessScope as SetupState["accessScope"]) ? parsed.accessScope as SetupState["accessScope"] : "host";
   return {
     completed: parsed.completed === true,
     completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,

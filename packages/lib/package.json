@@ -9,5 +9,9 @@
     "./*.ts": "./src/*.ts",
     "./admin/*.ts": "./admin/*.ts",
     "./shared/*.ts": "./src/shared/*.ts"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
   }
 }

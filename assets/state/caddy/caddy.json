@@ -1,0 +1,44 @@
+{
+  "admin": { "disabled": true },
+  "apps": {
+    "http": {
+      "servers": {
+        "main": {
+          "listen": [":80"],
+          "routes": [
+            {
+              "match": [{ "path": ["/admin*"] }],
+              "handle": [{
+                "handler": "subroute",
+                "routes": [
+                  {
+                    "match": [{ "path": ["/admin/api*"] }],
+                    "handle": [
+                      { "handler": "rewrite", "uri_substring": [{ "find": "/admin/api", "replace": "/admin" }] },
+                      { "handler": "reverse_proxy", "upstreams": [{ "dial": "admin:8100" }] }
+                    ],
+                    "terminal": true
+                  },
+                  {
+                    "handle": [
+                      { "handler": "rewrite", "strip_path_prefix": "/admin" },
+                      { "handler": "reverse_proxy", "upstreams": [{ "dial": "admin:8100" }] }
+                    ]
+                  }
+                ]
+              }],
+              "terminal": true
+            },
+            {
+              "handle": [{
+                "handler": "static_response",
+                "body": "OpenPalm is starting... Please visit /admin/ to complete setup.",
+                "status_code": "503"
+              }]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -49,9 +49,7 @@ function composeServiceName(name: string): string {
 }
 
 export type GeneratedStackArtifacts = {
-  caddyfile: string;
   caddyJson: string;
-  caddyRoutes: Record<string, string>;
   composeFile: string;
   systemEnv: string;
   gatewayEnv: string;
@@ -68,84 +66,301 @@ export type GeneratedStackArtifacts = {
   };
 };
 
-function renderChannelRoute(name: string, spec: StackSpec): string {
-  const cfg = spec.channels[name];
-  if (!cfg.enabled) return "";
-  if (cfg.domains && cfg.domains.length > 0) return "";
+// ── Caddy JSON API config types ──────────────────────────────────────
+
+type CaddyRoute = {
+  match?: Array<Record<string, unknown>>;
+  handle: Array<Record<string, unknown>>;
+  terminal?: boolean;
+};
+
+type CaddyServer = {
+  listen: string[];
+  routes: CaddyRoute[];
+};
+
+type CaddyJsonConfig = {
+  admin: { disabled: boolean };
+  apps: {
+    http: {
+      servers: Record<string, CaddyServer>;
+    };
+    tls?: Record<string, unknown>;
+  };
+};
+
+// ── Caddy JSON helpers ───────────────────────────────────────────────
+
+function renderLanRanges(scope: StackSpec["accessScope"]): string[] {
+  if (scope === "host") return ["127.0.0.0/8", "::1"];
+  return ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1", "fd00::/8"];
+}
+
+function caddyGuardHandler(ranges: string[]): Record<string, unknown> {
+  return {
+    handler: "static_response",
+    status_code: "403",
+    headers: { Connection: ["close"] },
+  };
+}
+
+function caddyGuardMatcher(ranges: string[], negate: boolean): Record<string, unknown> {
+  if (negate) {
+    return { not: [{ remote_ip: { ranges } }] };
+  }
+  return { remote_ip: { ranges } };
+}
+
+function caddyHostRoute(hostname: string, upstream: string, guardRanges: string[]): CaddyRoute {
+  return {
+    match: [{ host: [hostname] }],
+    handle: [
+      {
+        handler: "subroute",
+        routes: [
+          {
+            match: [caddyGuardMatcher(guardRanges, true)],
+            handle: [caddyGuardHandler(guardRanges)],
+            terminal: true,
+          },
+          {
+            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }],
+          },
+        ],
+      },
+    ],
+    terminal: true,
+  };
+}
+
+function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
+  return {
+    match: [{ path: ["/admin*"] }],
+    handle: [
+      {
+        handler: "subroute",
+        routes: [
+          // Guard: block non-LAN
+          {
+            match: [caddyGuardMatcher(guardRanges, true)],
+            handle: [caddyGuardHandler(guardRanges)],
+            terminal: true,
+          },
+          // /admin/api* → rewrite + proxy to admin:8100
+          {
+            match: [{ path: ["/admin/api*"] }],
+            handle: [
+              { handler: "rewrite", uri_substring: [{ find: "/admin/api", replace: "/admin" }] },
+              { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
+            ],
+            terminal: true,
+          },
+          // /admin/opencode* → strip prefix + proxy to assistant:4096
+          {
+            match: [{ path: ["/admin/opencode*"] }],
+            handle: [
+              { handler: "rewrite", strip_path_prefix: "/admin/opencode" },
+              { handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] },
+            ],
+            terminal: true,
+          },
+          // /admin/openmemory* → strip prefix + proxy to openmemory-ui:3000
+          {
+            match: [{ path: ["/admin/openmemory*"] }],
+            handle: [
+              { handler: "rewrite", strip_path_prefix: "/admin/openmemory" },
+              { handler: "reverse_proxy", upstreams: [{ dial: "openmemory-ui:3000" }] },
+            ],
+            terminal: true,
+          },
+          // /admin/* → strip prefix + proxy to admin:8100
+          {
+            handle: [
+              { handler: "rewrite", strip_path_prefix: "/admin" },
+              { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
+            ],
+          },
+        ],
+      },
+    ],
+    terminal: true,
+  };
+}
+
+function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpec): CaddyRoute | null {
+  if (!cfg.enabled) return null;
+  if (cfg.domains && cfg.domains.length > 0) return null;
 
   const containerPort = resolveChannelPort(name, cfg);
   const svcName = `channel-${composeServiceName(name)}`;
+  const guardRanges = renderLanRanges(spec.accessScope);
+  const subrouteHandlers: CaddyRoute[] = [];
+
+  // Add IP guard for non-public channels
+  if (cfg.exposure === "lan" || cfg.exposure === "host") {
+    const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
+    subrouteHandlers.push({
+      match: [caddyGuardMatcher(ranges, true)],
+      handle: [caddyGuardHandler(ranges)],
+      terminal: true,
+    });
+  }
 
   if (isBuiltInChannel(name)) {
+    // Built-in channels: rewrite to their specific path, then proxy
     const rewritePath = BuiltInChannelRewritePaths[name];
-    const lines = [`handle /channels/${name}* {`];
-    if (cfg.exposure === "lan") lines.push("\tabort @not_lan");
-    if (cfg.exposure === "host") lines.push("\tabort @not_host");
-    lines.push(`\trewrite * ${rewritePath}`);
-    lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
-    lines.push("}");
-    return `${lines.join("\n")}\n`;
+    subrouteHandlers.push({
+      handle: [
+        { handler: "rewrite", uri: rewritePath },
+        { handler: "reverse_proxy", upstreams: [{ dial: `${svcName}:${containerPort}` }] },
+      ],
+    });
+  } else {
+    // Custom channels: strip prefix and proxy
+    subrouteHandlers.push({
+      handle: [
+        { handler: "rewrite", strip_path_prefix: `/channels/${name}` },
+        { handler: "reverse_proxy", upstreams: [{ dial: `${svcName}:${containerPort}` }] },
+      ],
+    });
   }
 
-  // Custom channels: strip the /channels/{name} prefix and forward the rest of the path
-  const lines = [`handle_path /channels/${name}* {`];
-  if (cfg.exposure === "lan") lines.push("\tabort @not_lan");
-  if (cfg.exposure === "host") lines.push("\tabort @not_host");
-  lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
-  lines.push("}");
-  return `${lines.join("\n")}\n`;
+  return {
+    match: [{ path: [`/channels/${name}*`] }],
+    handle: [{ handler: "subroute", routes: subrouteHandlers }],
+    terminal: true,
+  };
 }
 
-function renderDomainBlocks(spec: StackSpec): string {
-  const blocks: string[] = [];
-  const lanMatcher = renderLanMatcher(spec.accessScope);
+function caddyDomainRoute(domain: string, svcName: string, port: number, cfg: StackChannelConfig, spec: StackSpec): CaddyRoute[] {
+  const routes: CaddyRoute[] = [];
+  const guardRanges = renderLanRanges(spec.accessScope);
 
+  const subrouteHandlers: CaddyRoute[] = [];
+
+  // Add IP guard for non-public channels
+  if (cfg.exposure === "lan" || cfg.exposure === "host") {
+    const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
+    subrouteHandlers.push({
+      match: [caddyGuardMatcher(ranges, true)],
+      handle: [caddyGuardHandler(ranges)],
+      terminal: true,
+    });
+  }
+
+  const paths = cfg.pathPrefixes?.length ? cfg.pathPrefixes : ["/"];
+  for (const p of paths) {
+    const prefix = p.startsWith("/") ? p : `/${p}`;
+    if (prefix === "/" || prefix === "/*") {
+      subrouteHandlers.push({
+        handle: [{ handler: "reverse_proxy", upstreams: [{ dial: `${svcName}:${port}` }] }],
+      });
+    } else {
+      subrouteHandlers.push({
+        match: [{ path: [`${prefix}*`] }],
+        handle: [
+          { handler: "rewrite", strip_path_prefix: prefix },
+          { handler: "reverse_proxy", upstreams: [{ dial: `${svcName}:${port}` }] },
+        ],
+        terminal: true,
+      });
+    }
+  }
+
+  return [{
+    match: [{ host: cfg.domains! }],
+    handle: [{ handler: "subroute", routes: subrouteHandlers }],
+    terminal: true,
+  }];
+}
+
+function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
+  const guardRanges = renderLanRanges(spec.accessScope);
+  const mainRoutes: CaddyRoute[] = [];
+  const domainRoutes: CaddyRoute[] = [];
+
+  // Hostname routes for core services
+  mainRoutes.push(caddyHostRoute("assistant", "assistant:4096", guardRanges));
+  mainRoutes.push(caddyHostRoute("admin", "admin:8100", guardRanges));
+  mainRoutes.push(caddyHostRoute("openmemory", "openmemory-ui:3000", guardRanges));
+
+  // Admin subroute
+  mainRoutes.push(caddyAdminSubroute(guardRanges));
+
+  // Channel routes (path-based and domain-based)
   for (const [name, cfg] of Object.entries(spec.channels)) {
     if (!cfg.enabled) continue;
-    if (!cfg.domains || cfg.domains.length === 0) continue;
 
-    const containerPort = resolveChannelPort(name, cfg);
-    const svcName = `channel-${composeServiceName(name)}`;
-    const paths = cfg.pathPrefixes?.length ? cfg.pathPrefixes : ["/"];
-    const siteLabel = cfg.domains.join(", ");
-
-    const lines: string[] = [`${siteLabel} {`];
-
-    const useInternalTls = cfg.exposure !== "public";
-    if (useInternalTls) {
-      lines.push("\ttls internal");
+    if (cfg.domains && cfg.domains.length > 0) {
+      const containerPort = resolveChannelPort(name, cfg);
+      const svcName = `channel-${composeServiceName(name)}`;
+      domainRoutes.push(...caddyDomainRoute(cfg.domains[0], svcName, containerPort, cfg, spec));
+      continue;
     }
 
-    if (cfg.exposure === "lan") {
-      lines.push(`\t@not_lan not remote_ip ${lanMatcher}`);
-      lines.push("\tabort @not_lan");
-    } else if (cfg.exposure === "host") {
-      lines.push("\t@not_host not remote_ip 127.0.0.0/8 ::1");
-      lines.push("\tabort @not_host");
-    }
-
-    for (const p of paths) {
-      const prefix = p.startsWith("/") ? p : `/${p}`;
-      if (prefix === "/" || prefix === "/*") {
-        lines.push(`\treverse_proxy ${svcName}:${containerPort}`);
-      } else {
-        lines.push(`\thandle_path ${prefix}* {`);
-        lines.push(`\t\treverse_proxy ${svcName}:${containerPort}`);
-        lines.push("\t}");
-      }
-    }
-
-    lines.push("}");
-    blocks.push(lines.join("\n"));
+    const route = caddyChannelRoute(name, cfg, spec);
+    if (route) mainRoutes.push(route);
   }
 
-  return blocks.join("\n\n");
+  // Default catch-all → assistant
+  mainRoutes.push({
+    handle: [
+      {
+        handler: "subroute",
+        routes: [
+          {
+            match: [caddyGuardMatcher(guardRanges, true)],
+            handle: [caddyGuardHandler(guardRanges)],
+            terminal: true,
+          },
+          {
+            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] }],
+          },
+        ],
+      },
+    ],
+  });
+
+  const servers: Record<string, CaddyServer> = {
+    main: {
+      listen: [":80"],
+      routes: mainRoutes,
+    },
+  };
+
+  // Domain routes go into an HTTPS server if any domains are configured
+  if (domainRoutes.length > 0) {
+    servers.tls_domains = {
+      listen: [":443"],
+      routes: domainRoutes,
+    };
+  }
+
+  const config: CaddyJsonConfig = {
+    admin: { disabled: true },
+    apps: {
+      http: { servers },
+    },
+  };
+
+  // Add TLS config if email is set
+  if (spec.caddy?.email) {
+    config.apps.tls = {
+      automation: {
+        policies: [{
+          issuers: [{
+            module: "acme",
+            email: spec.caddy.email,
+          }],
+        }],
+      },
+    };
+  }
+
+  return config;
 }
 
-function renderLanMatcher(scope: StackSpec["accessScope"]): string {
-  if (scope === "host") return "127.0.0.0/8 ::1";
-  return "127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 ::1 fd00::/8";
-}
+// ── Env helpers ──────────────────────────────────────────────────────
 
 function envWithHeader(header: string, entries: Record<string, string>): string {
   const lines = [header];
@@ -182,6 +397,8 @@ function resolveChannelConfig(name: string, cfg: StackChannelConfig, secrets: Re
   return channelEnv;
 }
 
+// ── Compose service renderers ────────────────────────────────────────
+
 function renderChannelComposeService(name: string, config: StackChannelConfig): string {
   const svcName = `channel-${composeServiceName(name)}`;
   const image = resolveChannelImage(name, config);
@@ -213,10 +430,10 @@ function renderCaddyComposeService(): string {
     "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80\"",
     "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443\"",
     "    volumes:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
-    "      - ${OPENPALM_STATE_HOME}/rendered/caddy/snippets:/etc/caddy/snippets:ro",
+    "      - ${OPENPALM_STATE_HOME}/rendered/caddy/caddy.json:/etc/caddy/caddy.json:ro",
     "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
     "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
+    "    command: caddy run --config /etc/caddy/caddy.json",
     "    networks: [assistant_net]",
   ].join("\n");
 }
@@ -392,105 +609,11 @@ function renderFullComposeFile(spec: StackSpec): string {
   return `services:\n${allBlocks.join("\n\n")}\n\nnetworks:\n  assistant_net:\n`;
 }
 
-function renderCaddyAdminSnippet(): string {
-  return [
-    "# Admin and defaults (generated from stack spec)",
-    "@assistant_host host assistant",
-    "handle @assistant_host {",
-    "\tabort @not_lan",
-    "\treverse_proxy assistant:4096",
-    "}",
-    "",
-    "@admin_host host admin",
-    "handle @admin_host {",
-    "\tabort @not_lan",
-    "\treverse_proxy admin:8100",
-    "}",
-    "",
-    "@openmemory_host host openmemory",
-    "handle @openmemory_host {",
-    "\tabort @not_lan",
-    "\treverse_proxy openmemory-ui:3000",
-    "}",
-    "",
-    "handle /admin* {",
-    "\tabort @not_lan",
-    "\troute {",
-    "\t\thandle /admin/api* {",
-    "\t\t\turi replace /admin/api /admin",
-    "\t\t\treverse_proxy admin:8100",
-    "\t\t}",
-    "",
-    "\t\thandle_path /admin/opencode* {",
-    "\t\t\treverse_proxy assistant:4096",
-    "\t\t}",
-    "",
-    "\t\thandle_path /admin/openmemory* {",
-    "\t\t\treverse_proxy openmemory-ui:3000",
-    "\t\t}",
-    "",
-    "\t\turi strip_prefix /admin",
-    "\t\treverse_proxy admin:8100",
-    "\t}",
-    "}",
-    "",
-    "handle {",
-    "\tabort @not_lan",
-    "\treverse_proxy assistant:4096",
-    "}",
-    "",
-  ].join("\n");
-}
+// ── Main generator ───────────────────────────────────────────────────
 
 export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, string>): GeneratedStackArtifacts {
-  const lanMatcher = renderLanMatcher(spec.accessScope);
-  const channelRoutes: Record<string, string> = {};
-
-  for (const name of Object.keys(spec.channels)) {
-    const route = renderChannelRoute(name, spec);
-    if (route.length > 0) channelRoutes[`channels/${name}.caddy`] = route;
-  }
-
-  const domainBlocks = renderDomainBlocks(spec);
-
-  const globalBlock: string[] = ["{", "\tadmin off"];
-  if (spec.caddy?.email) {
-    globalBlock.push(`\temail ${spec.caddy.email}`);
-  }
-  globalBlock.push("}");
-
-  const caddyfileParts: string[] = [
-    globalBlock.join("\n"),
-    "",
-  ];
-
-  if (domainBlocks.length > 0) {
-    caddyfileParts.push(domainBlocks);
-    caddyfileParts.push("");
-  }
-
-  caddyfileParts.push(
-    ":80 {",
-    `\t@lan remote_ip ${lanMatcher}`,
-    `\t@not_lan not remote_ip ${lanMatcher}`,
-    "\t@host remote_ip 127.0.0.0/8 ::1",
-    "\t@not_host not remote_ip 127.0.0.0/8 ::1",
-    "",
-    "\timport /etc/caddy/snippets/admin.caddy",
-    "\timport /etc/caddy/snippets/channels/*.caddy",
-    "\timport /etc/caddy/snippets/extra-user-overrides.caddy",
-    "}",
-    "",
-  );
-
-  const caddyfile = caddyfileParts.join("\n");
-
-  const caddyRoutes: Record<string, string> = {
-    "admin.caddy": renderCaddyAdminSnippet(),
-    "extra-user-overrides.caddy": "# user-managed overrides\n",
-    ...channelRoutes,
-  };
-  const caddyJson = `${JSON.stringify({ caddyfile, caddyRoutes }, null, 2)}\n`;
+  const caddyConfig = renderCaddyJsonConfig(spec);
+  const caddyJson = JSON.stringify(caddyConfig, null, 2) + "\n";
 
   const channelEnvs: Record<string, string> = {};
   for (const [name, cfg] of Object.entries(spec.channels)) {
@@ -526,9 +649,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
   });
 
   return {
-    caddyfile,
     caddyJson,
-    caddyRoutes,
     composeFile: renderFullComposeFile(spec),
     systemEnv,
     gatewayEnv,

@@ -49,16 +49,15 @@ beforeAll(async () => {
   const configDir = join(tmpDir, "config");
   opencodeConfigPath = join(configDir, "opencode.jsonc");
   const stackSpecPath = join(configDir, "stack-spec.json");
-  const caddyDir = join(tmpDir, "caddy");
   const channelEnvDir = join(tmpDir, "channel-env");
   const channelSecretDir = join(tmpDir, "secrets", "channels");
   const gatewaySecretDir = join(tmpDir, "secrets", "gateway");
   const cronDir = join(tmpDir, "cron");
   const stateRoot = join(tmpDir, "state");
   const renderedDir = join(tmpDir, "rendered");
-  const caddyRoutesDir = join(renderedDir, "caddy", "snippets");
+  const caddyJsonDir = join(renderedDir, "caddy");
 
-  for (const d of [dataDir, uiDir, configDir, caddyDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, stateRoot, caddyRoutesDir]) mkdirSync(d, { recursive: true });
+  for (const d of [dataDir, uiDir, configDir, channelEnvDir, channelSecretDir, gatewaySecretDir, cronDir, stateRoot, caddyJsonDir]) mkdirSync(d, { recursive: true });
 
   // Copy UI files
   for (const f of ["index.html", "setup-ui.js", "logo.png"]) {
@@ -67,7 +66,6 @@ beforeAll(async () => {
 
   // Copy config files
   copyFileSync(join(REPO_ROOT, "assistant/extensions/opencode.jsonc"), opencodeConfigPath);
-  copyFileSync(join(REPO_ROOT, "assets/state/caddy/Caddyfile"), join(caddyDir, "Caddyfile"));
 
   // Create required env/secrets files
   writeFileSync(join(tmpDir, ".env"), "", "utf8");
@@ -97,7 +95,6 @@ beforeAll(async () => {
       DATA_DIR: dataDir,
       UI_DIR: uiDir,
       OPENCODE_CONFIG_PATH: opencodeConfigPath,
-      CADDYFILE_PATH: join(caddyDir, "Caddyfile"),
       CHANNEL_ENV_DIR: channelEnvDir,
       CRON_DIR: cronDir,
       RUNTIME_ENV_PATH: join(tmpDir, ".env"),
@@ -105,7 +102,6 @@ beforeAll(async () => {
       STACK_SPEC_PATH: stackSpecPath,
       CHANNEL_SECRET_DIR: channelSecretDir,
       GATEWAY_CHANNEL_SECRETS_PATH: join(gatewaySecretDir, "channels.env"),
-      CADDY_ROUTES_DIR: caddyRoutesDir,
       CADDY_JSON_PATH: join(renderedDir, "caddy", "caddy.json"),
       COMPOSE_FILE_PATH: join(renderedDir, "docker-compose.yml"),
       GATEWAY_ENV_PATH: join(stateRoot, "gateway", ".env"),

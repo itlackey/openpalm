@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { composeAction, composeConfigValidate, composeExec, composeServiceNames, composeLogsValidateTail } from "./compose-runner.ts";
 import { computeImpactFromChanges, type StackImpact } from "./impact-plan.ts";
@@ -12,8 +12,7 @@ export type StackApplyResult = {
 };
 
 type ExistingArtifacts = {
-  caddyfile: string;
-  caddyRoutes: Record<string, string>;
+  caddyJson: string;
   composeFile: string;
   systemEnv: string;
   gatewayEnv: string;
@@ -29,24 +28,8 @@ function readIfExists(path: string): string {
   return readFileSync(path, "utf8");
 }
 
-function listRouteFiles(root: string, prefix = ""): string[] {
-  if (!existsSync(root)) return [];
-  const names: string[] = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const next = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) names.push(...listRouteFiles(join(root, entry.name), next));
-    if (entry.isFile() && entry.name.endsWith(".caddy")) names.push(next);
-  }
-  return names;
-}
-
 function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
   const paths = manager.getPaths();
-  const routeFiles = listRouteFiles(paths.caddyRoutesDir);
-  const caddyRoutes: Record<string, string> = {};
-  for (const routeFile of routeFiles) {
-    caddyRoutes[routeFile] = readIfExists(join(paths.caddyRoutesDir, routeFile));
-  }
 
   const channelEnvs: Record<string, string> = {};
   for (const serviceName of manager.enabledChannelServiceNames()) {
@@ -54,8 +37,7 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
   }
 
   return {
-    caddyfile: readIfExists(paths.caddyfilePath),
-    caddyRoutes,
+    caddyJson: readIfExists(paths.caddyJsonPath),
     composeFile: readIfExists(paths.composeFilePath),
     systemEnv: readIfExists(paths.systemEnvPath),
     gatewayEnv: readIfExists(paths.gatewayEnvPath),
@@ -65,14 +47,6 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     assistantEnv: readIfExists(paths.assistantEnvPath),
     channelEnvs,
   };
-}
-
-function caddyRoutesChanged(previous: Record<string, string>, next: Record<string, string>): boolean {
-  const keys = new Set<string>([...Object.keys(previous), ...Object.keys(next)]);
-  for (const key of keys) {
-    if ((previous[key] ?? "") !== (next[key] ?? "")) return true;
-  }
-  return false;
 }
 
 function enabledChannelServices(manager: StackManager): string[] {
@@ -96,9 +70,7 @@ function parseComposeServiceNames(composeContent: string): Set<string> {
 }
 
 function deriveImpact(manager: StackManager, existing: ExistingArtifacts, generated: ReturnType<StackManager["renderPreview"]>): StackImpact {
-  const caddyChanged =
-    existing.caddyfile !== generated.caddyfile ||
-    caddyRoutesChanged(existing.caddyRoutes, generated.caddyRoutes);
+  const caddyChanged = existing.caddyJson !== generated.caddyJson;
 
   const channelEnvServices = new Set<string>([...Object.keys(existing.channelEnvs), ...Object.keys(generated.channelEnvs)]);
   const channelsEnvChanged = Array.from(channelEnvServices).some((serviceName) => (
@@ -166,7 +138,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
     }
     for (const service of impact.reload) {
       if (service === "caddy") {
-        const result = await composeExec("caddy", ["caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]);
+        const result = await composeExec("caddy", ["caddy", "reload", "--config", "/etc/caddy/caddy.json"]);
         if (!result.ok) throw new Error(`compose_reload_failed:${service}:${result.stderr}`);
         continue;
       }

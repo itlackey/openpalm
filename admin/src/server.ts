@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { dirname } from "node:path";
 import { SetupManager } from "@openpalm/lib/admin/setup-manager.ts";
 import { ensureCronDirs, syncAutomations, triggerAutomation } from "@openpalm/lib/admin/automations.ts";
@@ -21,8 +21,6 @@ const STATE_ROOT = Bun.env.OPENPALM_STATE_ROOT ?? "/state";
 const OPENCODE_CONFIG_PATH = Bun.env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/assistant/.config/opencode/opencode.json`;
 const DATA_DIR = Bun.env.DATA_DIR ?? `${DATA_ROOT}/admin`;
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
-const CADDYFILE_PATH = Bun.env.CADDYFILE_PATH ?? `${STATE_ROOT}/rendered/caddy/Caddyfile`;
-const CADDY_ROUTES_DIR = Bun.env.CADDY_ROUTES_DIR ?? `${STATE_ROOT}/rendered/caddy/snippets`;
 const OPENCODE_CORE_URL = Bun.env.OPENCODE_CORE_URL ?? "http://assistant:4096";
 const OPENMEMORY_URL = Bun.env.OPENMEMORY_URL ?? "http://openmemory:8765";
 const RUNTIME_ENV_PATH = Bun.env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
@@ -45,9 +43,7 @@ function knownServices(): Set<string> {
 const setupManager = new SetupManager(DATA_DIR);
 const stackManager = new StackManager({
   stateRootPath: STATE_ROOT,
-  caddyfilePath: CADDYFILE_PATH,
   caddyJsonPath: Bun.env.CADDY_JSON_PATH ?? `${STATE_ROOT}/rendered/caddy/caddy.json`,
-  caddyRoutesDir: CADDY_ROUTES_DIR,
   secretsEnvPath: SECRETS_ENV_PATH,
   stackSpecPath: STACK_SPEC_PATH,
   systemEnvPath: SYSTEM_ENV_PATH,
@@ -82,13 +78,32 @@ function cors(resp: Response): Response {
   return resp;
 }
 
-function auth(req: Request) {
-  return req.headers.get("x-admin-token") === ADMIN_TOKEN;
+const DEFAULT_INSECURE_TOKEN = "change-me-admin-token";
+
+function auth(req: Request): boolean {
+  if (ADMIN_TOKEN === DEFAULT_INSECURE_TOKEN) return false;
+  const token = req.headers.get("x-admin-token") ?? "";
+  if (token.length !== ADMIN_TOKEN.length) return false;
+  return timingSafeEqual(Buffer.from(token, "utf8"), Buffer.from(ADMIN_TOKEN, "utf8"));
 }
 
 function readRuntimeEnv() {
   if (!existsSync(RUNTIME_ENV_PATH)) return {};
   return parseRuntimeEnvContent(readFileSync(RUNTIME_ENV_PATH, "utf8"));
+}
+
+const MAX_SECRETS_RAW_SIZE = 64 * 1024; // 64 KB max for raw secrets file
+
+function validateSecretsRawContent(content: string): string | null {
+  if (content.length > MAX_SECRETS_RAW_SIZE) return "content exceeds maximum size (64 KB)";
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!trimmed.includes("=")) return `invalid env line (missing '='): ${trimmed.slice(0, 40)}`;
+    const key = trimmed.split("=")[0].trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return `invalid env key: ${key.slice(0, 40)}`;
+  }
+  return null;
 }
 
 function readSecretsEnv() {
@@ -776,5 +791,6 @@ data: {"ok":true,"service":"admin"}
 
 console.log(JSON.stringify({ kind: "startup", service: "admin", port: server.port }));
 if (ADMIN_TOKEN === "change-me-admin-token") {
-  console.warn("[WARN] Using default admin token. Set ADMIN_TOKEN environment variable for security.");
+  console.error("[SECURITY] Default admin token detected. Set ADMIN_TOKEN environment variable before exposing to network.");
+  console.error("[SECURITY] The admin server will reject authenticated requests until a custom token is configured.");
 }

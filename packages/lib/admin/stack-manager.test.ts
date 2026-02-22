@@ -7,9 +7,7 @@ import { StackManager } from "./stack-manager.ts";
 function createManager(dir: string) {
   return new StackManager({
     stateRootPath: dir,
-    caddyfilePath: join(dir, "Caddyfile"),
     caddyJsonPath: join(dir, "caddy.json"),
-    caddyRoutesDir: join(dir, "routes"),
     composeFilePath: join(dir, "docker-compose.yml"),
     systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
@@ -25,8 +23,6 @@ function createManager(dir: string) {
 describe("stack manager", () => {
   it("writes all generated stack artifacts", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
-    const caddyDir = join(dir, "caddy");
-    mkdirSync(join(caddyDir, "routes"), { recursive: true });
     const manager = createManager(dir);
 
     manager.upsertSecret("CHAT_TOKEN_SECRET", "abc");
@@ -37,7 +33,12 @@ describe("stack manager", () => {
     });
     manager.renderArtifacts();
 
-    expect(readFileSync(join(dir, "routes", "channels", "chat.caddy"), "utf8")).toContain("handle /channels/chat*");
+    // Caddy JSON is written
+    const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
+    const caddyConfig = JSON.parse(caddyJson);
+    expect(caddyConfig.admin.disabled).toBe(true);
+    expect(caddyConfig.apps.http.servers.main).toBeDefined();
+
     expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("assistant:");
     expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
@@ -45,14 +46,10 @@ describe("stack manager", () => {
   });
 
   it("creates all required directories from scratch when they do not pre-exist", () => {
-    // Uses nested paths that mirror production (e.g. /state/rendered/caddy/) with NO pre-created dirs.
-    // This test would have failed before the renderArtifacts() mkdir fix.
     const dir = mkdtempSync(join(tmpdir(), "openpalm-mkdir-test-"));
     const manager = new StackManager({
       stateRootPath: dir,
-      caddyfilePath: join(dir, "rendered", "caddy", "Caddyfile"),
       caddyJsonPath: join(dir, "rendered", "caddy", "caddy.json"),
-      caddyRoutesDir: join(dir, "rendered", "caddy", "snippets"),
       composeFilePath: join(dir, "rendered", "docker-compose.yml"),
       systemEnvPath: join(dir, "system.env"),
       secretsEnvPath: join(dir, "secrets.env"),
@@ -65,7 +62,6 @@ describe("stack manager", () => {
     });
 
     expect(() => manager.renderArtifacts()).not.toThrow();
-    expect(existsSync(join(dir, "rendered", "caddy", "Caddyfile"))).toBeTrue();
     expect(existsSync(join(dir, "rendered", "caddy", "caddy.json"))).toBeTrue();
     expect(existsSync(join(dir, "rendered", "docker-compose.yml"))).toBeTrue();
     expect(existsSync(join(dir, "system.env"))).toBeTrue();
@@ -104,18 +100,23 @@ describe("stack manager", () => {
     expect(() => manager.deleteSecret("CHAT_TOKEN_SECRET")).toThrow("secret_in_use");
   });
 
-  it("removes stale channel route snippets when channels are disabled", () => {
+  it("caddy.json updates when channels are disabled", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
 
     manager.renderArtifacts();
-    expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeTrue();
+    const caddyBefore = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyBefore).toContain("chat");
 
     const spec = manager.getSpec();
     spec.channels.chat.enabled = false;
     manager.setSpec(spec);
 
-    expect(existsSync(join(dir, "routes", "channels", "chat.caddy"))).toBeFalse();
+    const caddyAfter = readFileSync(join(dir, "caddy.json"), "utf8");
+    // Chat channel route should no longer be in the JSON
+    const config = JSON.parse(caddyAfter);
+    const json = JSON.stringify(config);
+    expect(json).not.toContain("/channels/chat*");
   });
 
   it("validates missing referenced secrets for enabled channels", () => {
@@ -182,10 +183,10 @@ describe("stack manager", () => {
     expect(compose).toContain("image: openpalm/channel-slack:latest");
     expect(compose).toContain("PORT=8500");
 
-    // Caddy route is created
-    const route = readFileSync(join(dir, "routes", "channels", "slack.caddy"), "utf8");
-    expect(route).toContain("handle_path /channels/slack*");
-    expect(route).toContain("reverse_proxy channel-slack:8500");
+    // Caddy JSON contains the channel route
+    const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyJson).toContain("/channels/slack*");
+    expect(caddyJson).toContain("channel-slack:8500");
 
     // Channels env contains the config values
     const channelsEnv = readFileSync(join(dir, "channel-slack", ".env"), "utf8");
@@ -197,7 +198,6 @@ describe("stack manager", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
 
-    // Add a custom channel
     const spec = manager.getSpec();
     spec.channels["webhook-relay"] = {
       enabled: true,
@@ -208,12 +208,10 @@ describe("stack manager", () => {
     };
     manager.setSpec(spec);
 
-    // Read config back
     const config = manager.getChannelConfig("webhook-relay");
     expect(config.RELAY_TARGET).toBe("https://target.example.com");
     expect(config.AUTH_HEADER).toBe("Bearer xyz");
 
-    // Update config with setChannelConfig (custom channels allow arbitrary key changes)
     manager.setChannelConfig("webhook-relay", {
       RELAY_TARGET: "https://new-target.example.com",
       AUTH_HEADER: "Bearer new-token",
@@ -224,7 +222,6 @@ describe("stack manager", () => {
     expect(updatedConfig.RELAY_TARGET).toBe("https://new-target.example.com");
     expect(updatedConfig.NEW_KEY).toBe("added-value");
 
-    // Channels env reflects the updated config
     const channelsEnv = readFileSync(join(dir, "channel-webhook-relay", ".env"), "utf8");
     expect(channelsEnv).toContain("RELAY_TARGET=https://new-target.example.com");
     expect(channelsEnv).toContain("NEW_KEY=added-value");
@@ -250,9 +247,9 @@ describe("stack manager", () => {
     manager.setChannelAccess("my-api", "host");
     expect(manager.getChannelAccess("my-api")).toBe("host");
 
-    // Route reflects the change
-    const route = readFileSync(join(dir, "routes", "channels", "my-api.caddy"), "utf8");
-    expect(route).toContain("abort @not_host");
+    // Caddy JSON reflects the change (host guard should have 127.0.0.0/8)
+    const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyJson).toContain("127.0.0.0/8");
 
     // Compose reflects loopback binding
     const compose = readFileSync(join(dir, "docker-compose.yml"), "utf8");
@@ -260,8 +257,21 @@ describe("stack manager", () => {
 
     // Change to public (no guard)
     manager.setChannelAccess("my-api", "public");
-    const publicRoute = readFileSync(join(dir, "routes", "channels", "my-api.caddy"), "utf8");
-    expect(publicRoute).not.toContain("abort");
+    const publicJson = readFileSync(join(dir, "caddy.json"), "utf8");
+    const config = JSON.parse(publicJson);
+    const routes = config.apps.http.servers.main.routes;
+    const apiRoute = routes.find((r: Record<string, unknown>) =>
+      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
+        Array.isArray(m.path) && (m.path as string[]).includes("/channels/my-api*")
+      )
+    );
+    expect(apiRoute).toBeDefined();
+    // Public channel should not have IP guard in its subroute
+    const subroute = apiRoute.handle[0];
+    const hasGuard = subroute.routes.some((r: Record<string, unknown>) =>
+      Array.isArray(r.handle) && (r.handle as Array<Record<string, unknown>>).some((h: Record<string, unknown>) => h.handler === "static_response")
+    );
+    expect(hasGuard).toBe(false);
   });
 
   it("lists custom channels alongside built-in channels", () => {
@@ -285,14 +295,13 @@ describe("stack manager", () => {
     expect(names).toContain("slack");
     expect(names).toContain("matrix");
 
-    // Only enabled channels appear in enabledChannelServiceNames
     const enabled = manager.enabledChannelServiceNames();
     expect(enabled).toContain("channel-chat");
     expect(enabled).toContain("channel-slack");
     expect(enabled).not.toContain("channel-matrix");
   });
 
-  it("removes custom channel route files when channel is disabled", () => {
+  it("caddy.json updates when custom channel is disabled", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
 
@@ -302,13 +311,14 @@ describe("stack manager", () => {
       image: "temp:latest", containerPort: 7777, config: {},
     };
     manager.setSpec(spec);
-    expect(existsSync(join(dir, "routes", "channels", "temp-svc.caddy"))).toBeTrue();
+    const caddyBefore = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyBefore).toContain("/channels/temp-svc*");
 
-    // Disable the custom channel
     const updated = manager.getSpec();
     updated.channels["temp-svc"].enabled = false;
     manager.setSpec(updated);
-    expect(existsSync(join(dir, "routes", "channels", "temp-svc.caddy"))).toBeFalse();
+    const caddyAfter = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyAfter).not.toContain("/channels/temp-svc*");
   });
 
   it("removes custom channel from compose when channel is removed from spec", () => {
@@ -323,14 +333,14 @@ describe("stack manager", () => {
     manager.setSpec(spec);
     expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("channel-ephemeral:");
 
-    // Remove the channel entirely from spec
     const updated = manager.getSpec();
     delete updated.channels["ephemeral"];
     manager.setSpec(updated);
 
     const compose = readFileSync(join(dir, "docker-compose.yml"), "utf8");
     expect(compose).not.toContain("channel-ephemeral:");
-    expect(existsSync(join(dir, "routes", "channels", "ephemeral.caddy"))).toBeFalse();
+    const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyJson).not.toContain("channel-ephemeral");
   });
 
   it("custom channel secrets are validated by validateReferencedSecrets", () => {
@@ -359,7 +369,6 @@ describe("stack manager", () => {
     const manager = createManager(dir);
     const errors = manager.validateReferencedSecrets();
     expect(errors).toContain("missing_secret_reference_my-svc_BAD_REF_UNKNOWN_SECRET");
-    // GOOD_REF should NOT produce an error since KNOWN_SECRET exists
     expect(errors.filter((e) => e.includes("GOOD_REF"))).toHaveLength(0);
   });
 
@@ -437,11 +446,10 @@ describe("stack manager", () => {
     expect(compose).toContain("image: jira-hook:v3");
     expect(compose).toContain("\"9101:9100\"");
 
-    // Verify Caddy: slack gets path-based route, jira gets domain-based block
-    expect(existsSync(join(dir, "routes", "channels", "slack.caddy"))).toBeTrue();
-    expect(existsSync(join(dir, "routes", "channels", "jira-webhook.caddy"))).toBeFalse();
-    const caddyfile = readFileSync(join(dir, "Caddyfile"), "utf8");
-    expect(caddyfile).toContain("jira.example.com {");
+    // Verify Caddy JSON: slack gets path-based route, jira gets domain-based route
+    const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
+    expect(caddyJson).toContain("/channels/slack*");
+    expect(caddyJson).toContain("jira.example.com");
 
     // Verify channels env has resolved secrets
     const slackEnv = readFileSync(join(dir, "channel-slack", ".env"), "utf8");

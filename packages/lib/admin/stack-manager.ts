@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
@@ -9,9 +9,7 @@ export type ChannelName = string;
 
 export type StackManagerPaths = {
   stateRootPath: string;
-  caddyfilePath: string;
   caddyJsonPath: string;
-  caddyRoutesDir: string;
   composeFilePath: string;
   systemEnvPath: string;
   secretsEnvPath: string;
@@ -105,17 +103,7 @@ export class StackManager {
     const changedArtifacts: string[] = [];
     const write = (path: string, content: string) => this.writeArtifact(path, content, changedArtifacts);
 
-    write(this.paths.caddyfilePath, generated.caddyfile);
     write(this.paths.caddyJsonPath, generated.caddyJson);
-    mkdirSync(this.paths.caddyRoutesDir, { recursive: true });
-    this.removeStaleRouteFiles(generated.caddyRoutes);
-    for (const [routeFile, content] of Object.entries(generated.caddyRoutes)) {
-      const path = join(this.paths.caddyRoutesDir, routeFile);
-      mkdirSync(dirname(path), { recursive: true });
-      if (routeFile === "extra-user-overrides.caddy" && existsSync(path)) continue;
-      write(path, content);
-    }
-
     write(this.paths.composeFilePath, generated.composeFile);
     write(this.paths.systemEnvPath, generated.systemEnv);
     write(this.paths.gatewayEnvPath, generated.gatewayEnv);
@@ -298,24 +286,5 @@ export class StackManager {
 
   private isValidSecretName(name: string) {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
-  }
-
-  private removeStaleRouteFiles(nextRoutes: Record<string, string>) {
-    const keepPaths = new Set(Object.keys(nextRoutes).map((value) => join(this.paths.caddyRoutesDir, value)));
-    const walk = (dirPath: string) => {
-      if (!existsSync(dirPath)) return;
-      for (const entry of readdirSync(dirPath)) {
-        const path = join(dirPath, entry);
-        const stat = statSync(path);
-        if (stat.isDirectory()) {
-          walk(path);
-          continue;
-        }
-        if (keepPaths.has(path)) continue;
-        if (path === join(this.paths.caddyRoutesDir, "extra-user-overrides.caddy")) continue;
-        rmSync(path);
-      }
-    };
-    walk(this.paths.caddyRoutesDir);
   }
 }

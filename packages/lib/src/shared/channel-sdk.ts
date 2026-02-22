@@ -4,6 +4,7 @@ export type ChannelMessage = {
   userId: string;
   channel: string;
   text: string;
+  attachments?: string[];
   metadata?: Record<string, unknown>;
   nonce: string;
   timestamp: number;
