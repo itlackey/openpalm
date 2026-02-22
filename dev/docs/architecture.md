@@ -226,7 +226,7 @@ Automations are user-defined scheduled prompts, distinct from the admin's system
 
 ## Security model
 
-See [Security Guide](../../admin/docs/security.md) for the full defense-in-depth security model.
+See [Security Guide](../../docs/security.md) for the full defense-in-depth security model.
 
 ## Single source of truth map
 

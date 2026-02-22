@@ -158,7 +158,5 @@ To enable:
 
 ## Related docs
 
-- [Extensions Guide](../dev/docs/extensions-guide.md) — Extension types and installing extensions
-- [Extensions Reference](../dev/docs/extensions-reference.md) — Full technical reference
 - [Architecture](../dev/docs/architecture.md) — Container architecture and data flow
-- [Security Guide](../admin/docs/security.md) — Security model
+- [Security Guide](../docs/security.md) — Security model

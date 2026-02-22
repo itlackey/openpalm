@@ -61,10 +61,10 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 - Password auth is disabled; key auth only via `assistant/ssh/authorized_keys`.
 - Bind defaults are localhost unless explicitly opened to LAN.
 
-See [assistant/README.md](../../assistant/README.md#ssh-access-optional) for setup steps and environment variables.
+See [assistant/README.md](../assistant/README.md#ssh-access-optional) for setup steps and environment variables.
 
 **Why:** allow controlled remote administration while preserving secure-by-default local-only operation.
 
 ---
 
-For architecture and route details, see [architecture.md](../../dev/docs/architecture.md). For API controls, see [api-reference.md](../../dev/docs/api-reference.md).
+For architecture and route details, see [architecture.md](../dev/docs/architecture.md). For API controls, see [api-reference.md](../dev/docs/api-reference.md).

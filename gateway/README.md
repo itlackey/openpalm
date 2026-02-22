@@ -106,5 +106,5 @@ Headers: `x-channel-signature` (HMAC-SHA256)
 ## Related docs
 
 - [Architecture](../dev/docs/architecture.md) — Full container architecture and data flow
-- [Security Guide](../admin/docs/security.md) — Defense-in-depth security model
+- [Security Guide](../docs/security.md) — Defense-in-depth security model
 - [API Reference](../dev/docs/api-reference.md) — All service endpoints

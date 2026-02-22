@@ -118,17 +118,15 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | Guide | What's inside |
 |---|---|
 | [CLI](docs/cli.md) | Install methods, commands, flags, and building from source |
-| [User Concepts](docs/user-concepts.md) | What OpenPalm is and how end users interact with it |
+| [User Concepts](docs/concepts.md) | What OpenPalm is and how end users interact with it |
 | [Admin Guide](admin/docs/admin-guide.md) | Installation, admin console, authentication |
 | [Admin Concepts](admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
-| [Security Guide](admin/docs/security.md) | Security controls by layer and why they exist |
-| [Host System Reference](admin/docs/host-system-reference.md) | Host paths, environment variables, system requirements |
-| [Maintenance](admin/docs/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
-| [Troubleshooting](admin/docs/troubleshooting.md) | Common issues and how to resolve them |
+| [Security Guide](docs/security.md) | Security controls by layer and why they exist |
+| [Host System Reference](docs/host-system-reference.md) | Host paths, environment variables, system requirements |
+| [Maintenance](docs/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and how to resolve them |
 | [Architecture](dev/docs/architecture.md) | Container inventory, data flow diagrams, URL routing |
 | [API Reference](dev/docs/api-reference.md) | All service endpoints: gateway, admin, channels |
-| [Extensions Guide](dev/docs/extensions-guide.md) | Extension types and installing extensions |
-| [Extensions Reference](dev/docs/extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 
 ### Project READMEs
 

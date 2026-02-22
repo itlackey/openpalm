@@ -1,6 +1,6 @@
 # OpenPalm Architecture Concepts
 
-These five concepts — Extensions, Secrets, Channels, Automations, and Gateway — form the complete vocabulary for the admin UI, documentation, API naming, and internal development. For user-facing descriptions of each concept, see [User Concepts](../../docs/user-concepts.md).
+These five concepts — Extensions, Secrets, Channels, Automations, and Gateway — form the complete vocabulary for the admin UI, documentation, API naming, and internal development. For user-facing descriptions of each concept, see [User Concepts](../../docs/concepts.md).
 
 ---
 
@@ -18,7 +18,7 @@ An extension is the umbrella term for all types of [OpenCode](https://opencode.a
 
 > **Note on directory naming:** OpenCode uses [plural directory names](https://opencode.ai/docs/config/#custom-directory) (`skills/`, `agents/`, `commands/`, `tools/`, `plugins/`, `modes/`, `themes/`) as the standard convention. All OpenPalm extension directories use the plural form.
 
-The admin UI manages only plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory. For extension loading, install mechanics, and built-in extensions, see the [Extensions Reference](../../dev/docs/extensions-reference.md).
+The admin UI manages only plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
 
 ---
 
@@ -81,4 +81,4 @@ The Gateway enforces a critical architectural invariant: **no channel can talk t
 - The Gateway is stateless — it does not store messages, sessions, or user data. Audit logs are the only persistent artifact.
 - The Gateway does not implement channel-specific logic. It receives a normalized payload and doesn't care whether it came from Discord, Telegram, voice, or chat.
 
-For the full 6-step processing pipeline, see [Architecture — Message processing](../../dev/docs/architecture.md#message-processing-channel-inbound) and [Security Guide](security.md).
+For the full 6-step processing pipeline, see [Architecture — Message processing](../../dev/docs/architecture.md#message-processing-channel-inbound) and [Security Guide](../../docs/security.md).

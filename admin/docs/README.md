@@ -8,11 +8,11 @@ Guides for operating, configuring, and maintaining your OpenPalm instance.
 |---|---|
 | [Admin Guide](admin-guide.md) | Installation, admin console, authentication |
 | [Admin Concepts](admin-concepts.md) | Core concepts: extensions, secrets, channels, automations, gateway |
-| [Security](security.md) | Defense-in-depth security model, layer by layer |
-| [Host System Reference](host-system-reference.md) | Host paths, environment variables, XDG directory layout |
-| [Maintenance](maintenance.md) | Backup, restore, upgrade, and rollback procedures |
-| [Versioning](versioning.md) | Release process, version bumping, and CI workflows |
-| [Troubleshooting](troubleshooting.md) | Common issues and how to resolve them |
+| [Security](../../docs/security.md) | Defense-in-depth security model, layer by layer |
+| [Host System Reference](../../docs/host-system-reference.md) | Host paths, environment variables, XDG directory layout |
+| [Maintenance](../../docs/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
+| [Versioning](../../dev/docs/versioning.md) | Release process, version bumping, and CI workflows |
+| [Troubleshooting](../../docs/troubleshooting.md) | Common issues and how to resolve them |
 
 ## Related
 
