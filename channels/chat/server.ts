@@ -16,7 +16,18 @@ export function createChatFetch(gatewayUrl: string, sharedSecret: string, inboun
     if (url.pathname !== "/chat" || req.method !== "POST") return json(404, { error: "not_found" });
     if (inboundToken && req.headers.get("x-chat-token") !== inboundToken) return json(401, { error: "unauthorized" });
 
-    const body = await req.json() as { userId?: string; text?: string; metadata?: Record<string, unknown> };
+    const contentLength = Number(req.headers.get("content-length") ?? "0");
+    if (contentLength > 1_048_576) {
+      return new Response(JSON.stringify({ error: "payload_too_large" }), { status: 413 });
+    }
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
+    }
+
     if (!body.text) return json(400, { error: "text_required" });
 
     const payload = buildChannelMessage({
@@ -28,11 +39,22 @@ export function createChatFetch(gatewayUrl: string, sharedSecret: string, inboun
 
     const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
 
+    if (!resp.ok) {
+      return new Response(JSON.stringify({ error: "gateway_error", status: resp.status }), {
+        status: resp.status >= 500 ? 502 : resp.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     return new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } });
   };
 }
 
 if (import.meta.main) {
+  if (!SHARED_SECRET) {
+    console.error("[channel-chat] FATAL: CHANNEL_CHAT_SECRET environment variable is not set. Exiting.");
+    process.exit(1);
+  }
   Bun.serve({ port: PORT, fetch: createChatFetch(GATEWAY_URL, SHARED_SECRET, INBOUND_TOKEN) });
   console.log(`chat channel listening on ${PORT}`);
 }
