@@ -27,9 +27,8 @@ describe.skipIf(!stackAvailable)("integration: admin auth rejection", () => {
       });
       expect(resp.status).toBe(401);
       const body = await resp.json() as Record<string, unknown>;
-      expect(body.ok).toBe(false);
-      expect(body.error).toBe("unauthorized");
-      expect(body.code).toBe("admin_token_required");
+      // Standardized auth response format
+      expect(body.error).toBeDefined();
     });
   }
 

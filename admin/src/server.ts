@@ -703,13 +703,13 @@ data: {"ok":true,"service":"admin"}
 
       // ── Stack spec (for admin editor) ─────────────────────────────
       if (url.pathname === "/admin/stack/spec" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const spec = stackManager.getSpec();
         return cors(json(200, { ok: true, spec }));
       }
 
       if (url.pathname === "/admin/stack/spec" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { spec?: unknown };
         if (!body.spec) return cors(json(400, { error: "spec is required" }));
         const parsed = parseStackSpec(body.spec);
@@ -723,7 +723,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/stack/apply" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         try {
           const result = await applyStack(stackManager);
           syncAutomations(stackManager.listAutomations());
@@ -739,12 +739,12 @@ data: {"ok":true,"service":"admin"}
 
       // ── Secrets (for admin editor) ────────────────────────────────
       if (url.pathname === "/admin/secrets" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         return cors(json(200, { ok: true, ...stackManager.listSecretManagerState() }));
       }
 
       if (url.pathname === "/admin/secrets" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { name?: string; value?: string };
         try {
           const name = stackManager.upsertSecret(body.name, body.value);
@@ -757,7 +757,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/secrets/delete" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { name?: string };
         try {
           const deleted = stackManager.deleteSecret(body.name);
@@ -770,13 +770,13 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/secrets/raw" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const content = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, "utf8") : "";
         return cors(new Response(content, { headers: { "content-type": "text/plain", "cache-control": "no-store, no-cache, must-revalidate", "x-content-type-options": "nosniff", "pragma": "no-cache" } }));
       }
 
       if (url.pathname === "/admin/secrets/raw" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { content?: string };
         if (typeof body.content !== "string") return cors(json(400, { error: "content is required" }));
         const validationError = validateSecretsRawContent(body.content);
@@ -788,7 +788,7 @@ data: {"ok":true,"service":"admin"}
 
       // ── Container management (minimal) ────────────────────────────
       if (url.pathname === "/admin/containers/restart" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await composeAction("restart", body.service);
@@ -796,7 +796,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/containers/up" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { service: string };
         if (!body.service || !knownServices().has(body.service)) return cors(json(400, { error: "unknown service name" }));
         await composeAction("up", body.service);
@@ -805,7 +805,7 @@ data: {"ok":true,"service":"admin"}
 
       // ── Automations ───────────────────────────────────────────────
       if (url.pathname === "/admin/automations" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const automations = stackManager.listAutomations().map((automation) => ({
           ...automation,
           lastRun: getLatestRun(automation.id),
@@ -814,7 +814,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/automations" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { name?: string; schedule?: string; script?: string; enabled?: boolean };
         if (!body.name || !body.schedule || !body.script) {
           return cors(json(400, { error: "name, schedule, and script are required" }));
@@ -833,7 +833,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/automations/update" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { id?: string; name?: string; schedule?: string; script?: string; enabled?: boolean };
         if (!body.id) return cors(json(400, { error: "id is required" }));
         const existing = stackManager.getAutomation(body.id);
@@ -847,7 +847,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/automations/delete" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
         try {
@@ -863,7 +863,7 @@ data: {"ok":true,"service":"admin"}
       }
 
       if (url.pathname === "/admin/automations/trigger" && req.method === "POST") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const body = (await req.json()) as { id?: string };
         if (!body.id) return cors(json(400, { error: "id is required" }));
         if (!stackManager.getAutomation(body.id)) return cors(json(404, { error: "automation not found" }));
@@ -873,7 +873,7 @@ data: {"ok":true,"service":"admin"}
 
       // ── Channels (for wizard) ─────────────────────────────────────
       if (url.pathname === "/admin/channels" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         const spec = stackManager.getSpec();
         const channelNames = stackManager.listChannelNames();
         return cors(json(200, {
@@ -890,7 +890,7 @@ data: {"ok":true,"service":"admin"}
 
       // ── Snippets catalog ──────────────────────────────────────────
       if (url.pathname === "/admin/snippets" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         return cors(json(200, {
           ok: true,
           builtInChannels: Object.entries(BUILTIN_CHANNELS).map(([key, def]) => ({
@@ -911,7 +911,7 @@ data: {"ok":true,"service":"admin"}
 
       // ── Installed plugins (read-only list) ────────────────────────
       if (url.pathname === "/admin/installed" && req.method === "GET") {
-        if (!auth(req)) return cors(json(401, { error: "admin token required" }));
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
         ensureOpencodeConfigPath();
         const raw = readFileSync(OPENCODE_CONFIG_PATH, "utf8");
         const doc = parseJsonc(raw) as { plugin?: string[] };

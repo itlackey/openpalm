@@ -65,10 +65,12 @@ export function createDiscordFetch(gatewayUrl: string, sharedSecret: string, for
         return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
       }
 
-      // Verify Discord Ed25519 signature
-      const isValid = await verifyDiscordSignature(req, rawBody);
-      if (!isValid) {
-        return json(401, { error: "invalid_signature" });
+      // Verify Discord Ed25519 signature (skip if no public key configured)
+      if (DISCORD_PUBLIC_KEY) {
+        const isValid = await verifyDiscordSignature(req, rawBody);
+        if (!isValid) {
+          return json(401, { error: "invalid_signature" });
+        }
       }
 
       let body: {
