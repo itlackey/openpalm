@@ -14,7 +14,7 @@ OpenPalm uses a deterministic 3-root contract plus one user workdir mount.
 
 Only these files are edited directly:
 
-- `${OPENPALM_CONFIG_HOME}/stack-spec.json`
+- `${OPENPALM_CONFIG_HOME}/openpalm.yaml`
 - `${OPENPALM_CONFIG_HOME}/secrets.env`
 
 ## Generated outputs
@@ -22,8 +22,7 @@ Only these files are edited directly:
 Admin renders and maintains generated stack outputs under:
 
 - `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`
-- `${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile`
-- `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/*.caddy`
+- `${OPENPALM_STATE_HOME}/rendered/caddy/caddy.json`
 - `${OPENPALM_STATE_HOME}/*/.env`
 
 ## Persistent data

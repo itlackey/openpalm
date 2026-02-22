@@ -8,7 +8,7 @@ All installer logic is centralized in the CLI binary. The shell scripts (`instal
 
 **Package Information:**
 - npm package name: `openpalm`
-- Version: 0.1.1
+- Version: 0.2.0
 - Runtime requirement: Bun >= 1.0.0
 
 ## Installation
@@ -47,7 +47,7 @@ bunx openpalm install
 
 ### `install`
 
-Install and start OpenPalm with a 4-phase staged installation process.
+Install and start OpenPalm with a 2-phase installation process.
 
 ```bash
 openpalm install [options]
@@ -56,7 +56,6 @@ openpalm install [options]
 **Options:**
 - `--runtime <docker|podman|orbstack>` - Specify container runtime (auto-detected if not provided)
 - `--no-open` - Skip opening browser after installation
-- `--ref <branch|tag>` - Install from specific git branch or tag
 
 **Pre-flight Checks:**
 
@@ -70,23 +69,18 @@ Before starting, the installer automatically checks:
 1. **Phase 1: Setup**
    - Run pre-flight checks
    - Detect container runtime (with actionable guidance if missing)
-   - Download assets
    - Generate `.env` file with secure tokens
    - Display admin password prominently
-   - Create directories
-   - Seed configurations
-   - Detect AI providers
+   - Create XDG directory tree
+   - Seed configuration files (embedded templates — no network download)
+   - Reset setup wizard state
+   - Write minimal Caddy JSON config for setup-only mode
 
-2. **Phase 2: Core Services**
-   - Start core services: Caddy, PostgreSQL, Admin
-   - Perform health checks
-   - Open browser (unless `--no-open` is specified)
-
-3. **Phase 3: Image Preparation**
-   - Pull remaining container images
-
-4. **Phase 4: Full Stack**
-   - Bring up complete service stack
+2. **Phase 2: Early UI Access**
+   - Pull and start core services (Caddy, Admin)
+   - Wait for admin health check
+   - Open browser to setup wizard (unless `--no-open`)
+   - The setup wizard handles remaining service provisioning
 
 ### `uninstall`
 

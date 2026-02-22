@@ -28,17 +28,17 @@ This document is the authoritative technical reference for the OpenPalm stack ge
    - 3.9 [Step 9 — Generate System Env](#39-step-9--generate-system-env)
    - 3.10 [Step 10 — Assemble Output Bundle](#310-step-10--assemble-output-bundle)
 4. [Output Artifacts](#4-output-artifacts)
-   - 4.1 [caddyfile](#41-caddyfile)
-   - 4.2 [caddyJson](#42-caddyjson)
-   - 4.3 [caddyRoutes](#43-caddyroutes)
-   - 4.4 [composeFile](#44-composefile)
-   - 4.5 [systemEnv](#45-systemenv)
-   - 4.6 [gatewayEnv](#46-gatewayenv)
-   - 4.7 [openmemoryEnv](#47-openmemoryenv)
-   - 4.8 [postgresEnv](#48-postgresenv)
-   - 4.9 [qdrantEnv](#49-qdrantenv)
-   - 4.10 [assistantEnv](#410-assistantenv)
-   - 4.11 [channelEnvs](#411-channelenvsrecord)
+   - 4.1 [caddyJson](#41-caddyjson)
+   - 4.2 [composeFile](#42-composefile)
+   - 4.3 [systemEnv](#43-systemenv)
+   - 4.4 [gatewayEnv](#44-gatewayenv)
+   - 4.5 [openmemoryEnv](#45-openmemoryenv)
+   - 4.6 [postgresEnv](#46-postgresenv)
+   - 4.7 [qdrantEnv](#47-qdrantenv)
+   - 4.8 [assistantEnv](#48-assistantenv)
+   - 4.9 [channelEnvs](#49-channelenvsrecord)
+   - 4.10 [serviceEnvs](#410-serviceenvsrecord)
+   - 4.11 [renderReport](#411-renderreport)
 5. [Defaults](#5-defaults)
    - 5.1 [Built-in Channel Ports](#51-built-in-channel-ports)
    - 5.2 [Built-in Channel Images](#52-built-in-channel-images)
@@ -71,7 +71,7 @@ This document is the authoritative technical reference for the OpenPalm stack ge
 The **stack generator** converts a declarative user intent document (the _StackSpec_) plus a flat secrets store (`secrets.env`) into a complete set of deployment artifacts that Docker Compose, Caddy, and each containerised service can consume directly.
 
 ```
-StackSpec (JSON) ──┐
+StackSpec (YAML) ──┐
                    ├──► generateStackArtifacts() ──► GeneratedStackArtifacts
 secrets.env ───────┘
 ```
@@ -92,19 +92,22 @@ Callers of the generator:
 
 ### 2.1 StackSpec Schema
 
-The `StackSpec` is a JSON document stored at `$OPENPALM_CONFIG_HOME/stack-spec.json`. It captures the user's intent for the stack: which channels to run, how to expose them, what secrets they need, and what automations to schedule. It is **not** a runtime state file — it contains no ephemeral values.
+The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yaml` (v3). Legacy JSON files at `stack-spec.json` are automatically migrated on first read. It captures the user's intent for the stack: which channels to run, how to expose them, what secrets they need, what services to add, and what automations to schedule. It is **not** a runtime state file — it contains no ephemeral values.
 
 #### 2.1.1 Top-level Fields
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `version` | `1 | 2` | Yes | Schema version. Version 1 is read and silently upgraded to version 2 at parse time. |
+| `version` | `1 | 2 | 3` | Yes | Schema version. Versions 1 and 2 are read and silently upgraded to version 3 at parse time. |
 | `accessScope` | `"host" | "lan" | "public"` | Yes | Default network exposure for the whole stack. Controls LAN IP matchers in Caddy. |
 | `caddy` | `CaddyConfig` | No | Optional Caddy-specific configuration. |
 | `channels` | `Record<string, StackChannelConfig>` | Yes | Map of channel name → channel configuration. Must include all four built-in channels. |
+| `services` | `Record<string, StackServiceConfig>` | No | Map of service name → service configuration. Internal-only containers (no Caddy routing). Defaults to `{}`. |
 | `automations` | `StackAutomation[]` | No | List of scheduled automation definitions. Defaults to `[]`. |
 
 Unknown top-level keys are rejected with error `unknown_stack_spec_field_<key>`.
+
+> **Note:** The `services` section was added in v3. Services are internal-only containers — they have no `exposure`, `domains`, or `pathPrefixes` fields, and no Caddy routing is generated for them. They always require `image` and `containerPort`.
 
 #### 2.1.2 `accessScope`
 
@@ -134,11 +137,14 @@ Each entry maps a _channel name_ to a `StackChannelConfig`:
 type StackChannelConfig = {
   enabled:        boolean;
   exposure:       "host" | "lan" | "public";
+  name?:          string;           // Friendly display name
+  description?:   string;           // What this channel does
   image?:         string;           // Docker image (required for custom channels)
   containerPort?: number;           // Port the container listens on (required for custom channels)
   hostPort?:      number;           // Port published on the host (defaults to containerPort)
   domains?:       string[];         // If set, a dedicated Caddy site block is emitted per domain
   pathPrefixes?:  string[];         // Path prefixes routed into the domain block (default: ["/"])
+  volumes?:       string[];         // Persistent data mounts
   config:         Record<string, string>;  // Channel env config; values may be secret references
 };
 ```
@@ -174,11 +180,13 @@ Each automation is a `StackAutomation`:
 
 ```typescript
 type StackAutomation = {
-  id:       string;   // Unique identifier; must match /^[a-zA-Z0-9_-]+$/
-  name:     string;   // Human-readable label
-  schedule: string;   // Standard Unix cron expression (e.g. "0 9 * * *")
-  script:   string;   // Shell script body executed on each run
-  enabled:  boolean;  // Whether the cron job is active
+  id:           string;   // Unique identifier; must match /^[a-zA-Z0-9_-]+$/
+  name:         string;   // Human-readable label
+  description?: string;   // What this automation does
+  schedule:     string;   // Standard Unix cron expression (e.g. "0 9 * * *")
+  script:       string;   // Shell script body executed on each run
+  enabled:      boolean;  // Whether the cron job is active
+  core?:        boolean;  // System automations cannot be deleted
 };
 ```
 
@@ -230,8 +238,8 @@ Before `generateStackArtifacts` is called, the spec must have already passed thr
 `parseStackSpec` performs the following validations in order:
 
 1. Asserts the root value is a non-null object.
-2. Rejects any key not in the allowed set `{version, accessScope, caddy, channels, automations}`.
-3. Validates `version` is `1` or `2`.
+2. Rejects any key not in the allowed set `{version, accessScope, caddy, channels, services, automations}`.
+3. Validates `version` is `1`, `2`, or `3`.
 4. Validates `accessScope` is one of `"host"`, `"lan"`, `"public"`.
 5. Parses the optional `caddy` sub-object.
 6. Asserts `channels` is a non-null object.
@@ -239,7 +247,7 @@ Before `generateStackArtifacts` is called, the spec must have already passed thr
 8. Validates and parses each channel entry (see [Section 6](#6-validation-rules-and-error-codes)).
 9. Parses the optional `automations` array.
 
-Version 1 specs are accepted and the output spec is written back with `version: 2`.
+Version 1 and 2 specs are accepted and the output spec is upgraded to `version: 3` with `services: {}` added if missing.
 
 ### 3.2 Step 2 — Read and Parse secrets.env
 
@@ -315,9 +323,11 @@ The port binding (`<portBinding>`) is:
 
 Disabled channels are **excluded entirely** from the compose file.
 
-### 3.5 Step 5 — Generate Caddyfile
+### 3.5 Step 5 — Generate Caddy Configuration
 
-The Caddyfile is assembled in three parts:
+> **Note:** As of v3, the generator produces Caddy JSON API configuration directly (not a Caddyfile). The Caddyfile examples below describe the logical routing rules; the actual output is JSON.
+
+The Caddy config is assembled from:
 
 #### Part 1 — Global block
 
@@ -381,9 +391,11 @@ The `<lanMatcher>` is determined by `spec.accessScope`:
 
 The site block delegates all routing to imported snippets. Per-channel snippets are loaded from `channels/*.caddy` inside the snippets directory. An `extra-user-overrides.caddy` file allows users to add custom directives that are never overwritten by the generator.
 
-### 3.6 Step 6 — Generate Channel Route Snippets
+### 3.6 Step 6 — Generate Channel Routes
 
-For each enabled channel that does **not** have a `domains` array, a Caddy route snippet is generated and placed in `caddyRoutes["channels/<name>.caddy"]`.
+> **Note:** As of v3, channel routes are part of the single `caddy.json` output, not separate snippet files.
+
+For each enabled channel that does **not** have a `domains` array, a route is generated in the Caddy JSON config.
 
 **Built-in channels** use `handle` + `rewrite`:
 
@@ -504,9 +516,7 @@ The `caddyJson` field is a JSON serialisation of `{ caddyfile, caddyRoutes }` �
 
 ```typescript
 type GeneratedStackArtifacts = {
-  caddyfile:     string;
   caddyJson:     string;
-  caddyRoutes:   Record<string, string>;
   composeFile:   string;
   systemEnv:     string;
   gatewayEnv:    string;
@@ -515,80 +525,26 @@ type GeneratedStackArtifacts = {
   qdrantEnv:     string;
   assistantEnv:  string;
   channelEnvs:   Record<string, string>;
+  serviceEnvs:   Record<string, string>;
+  renderReport:  string;
 };
 ```
 
-### 4.1 `caddyfile`
+### 4.1 `caddyJson`
 
-**Type**: `string`  
-**Written to**: `$OPENPALM_STATE_HOME/rendered/caddy/Caddyfile`
-
-The complete Caddyfile content. Imported by the `caddy` container at `/etc/caddy/Caddyfile`. Contains the global block, optional domain site blocks, and the main `:80` site block (which imports snippets). This file is managed entirely by the generator; do not hand-edit.
-
-### 4.2 `caddyJson`
-
-**Type**: `string` (JSON-encoded)  
+**Type**: `string` (JSON-encoded)
 **Written to**: `$OPENPALM_STATE_HOME/rendered/caddy/caddy.json`
 
-A JSON bundle with the schema:
+A Caddy JSON API configuration document. The generator produces a native Caddy JSON config (not a Caddyfile) with servers, routes, handlers, and matchers. This is loaded directly by Caddy using its native JSON config format.
 
-```json
-{
-  "caddyfile": "<string>",
-  "caddyRoutes": {
-    "admin.caddy": "<string>",
-    "extra-user-overrides.caddy": "<string>",
-    "channels/chat.caddy": "<string>",
-    ...
-  }
-}
-```
+The JSON includes routes for:
+- Admin UI subroute (`/admin*` path)
+- Channel path-based routes (`/channels/{name}*`)
+- Channel domain-based routes (when domains are specified)
+- Hostname routes for core services (assistant, admin, openmemory)
+- Default catch-all to assistant
 
-Used by the admin service to atomically write all caddy route snippets without re-running the full generator. Formatted with 2-space indentation.
-
-### 4.3 `caddyRoutes`
-
-**Type**: `Record<string, string>`  
-**Written to**: `$OPENPALM_STATE_HOME/rendered/caddy/snippets/<key>` for each entry
-
-A map of relative file path → snippet content. Always includes:
-
-| Key | Description |
-|---|---|
-| `admin.caddy` | Admin, OpenCode UI, and OpenMemory UI routing block (LAN-only). Always present. |
-| `extra-user-overrides.caddy` | User-managed override file. Never overwritten if it already exists on disk. |
-| `channels/<name>.caddy` | One entry per enabled channel that uses path-based routing (no `domains`). |
-
-The `admin.caddy` snippet always contains the following fixed routes:
-
-```caddy
-# Admin and defaults (generated from stack spec)
-handle /admin* {
-    abort @not_lan
-    route {
-        handle /admin/api* {
-            uri replace /admin/api /admin
-            reverse_proxy admin:8100
-        }
-
-        handle_path /admin/opencode* {
-            reverse_proxy assistant:4096
-        }
-
-        handle_path /admin/openmemory* {
-            reverse_proxy openmemory-ui:3000
-        }
-
-        uri strip_prefix /admin
-        reverse_proxy admin:8100
-    }
-}
-
-handle {
-    abort @not_lan
-    reverse_proxy assistant:4096
-}
-```
+> **Note:** Prior to v3, the generator produced a Caddyfile with route snippets. The v3 generator produces Caddy JSON API format directly. The `caddyfile` and `caddyRoutes` artifacts no longer exist.
 
 ### 4.4 `composeFile`
 
@@ -652,6 +608,19 @@ Env file for the `assistant` container. Contains all secrets with keys prefixed 
 **Written to**: `$OPENPALM_STATE_HOME/<serviceName>/.env` for each entry
 
 One entry per enabled channel, keyed by compose service name (e.g. `channel-chat`). Each value is the fully-resolved env file content for that channel, containing all config key=value pairs after secret resolution.
+
+### 4.12 `serviceEnvs` (Record)
+
+**Type**: `Record<string, string>`
+**Written to**: `$OPENPALM_STATE_HOME/<serviceName>/.env` for each entry
+
+One entry per enabled service, keyed by compose service name (e.g. `service-n8n`). Each value is the fully-resolved env file content for that service.
+
+### 4.13 `renderReport`
+
+**Type**: `object`
+
+Contains metadata about the generation run: `applySafe` (boolean), `warnings` (array), `missingSecretReferences` (array), and `changedArtifacts` (array). Used by the apply engine to communicate issues back to the caller.
 
 ---
 
@@ -736,21 +705,40 @@ Note: `"public"` and `"lan"` use the same CIDR list for the matcher. The distinc
 
 `createDefaultStackSpec()` produces:
 
-```json
-{
-  "version": 2,
-  "accessScope": "lan",
-  "channels": {
-    "chat":     { "enabled": true, "exposure": "lan", "config": { "CHAT_INBOUND_TOKEN": "", "CHANNEL_CHAT_SECRET": "" } },
-    "discord":  { "enabled": true, "exposure": "lan", "config": { "DISCORD_BOT_TOKEN": "", "DISCORD_PUBLIC_KEY": "", "CHANNEL_DISCORD_SECRET": "" } },
-    "voice":    { "enabled": true, "exposure": "lan", "config": { "CHANNEL_VOICE_SECRET": "" } },
-    "telegram": { "enabled": true, "exposure": "lan", "config": { "TELEGRAM_BOT_TOKEN": "", "TELEGRAM_WEBHOOK_SECRET": "", "CHANNEL_TELEGRAM_SECRET": "" } }
-  },
-  "automations": []
-}
+```yaml
+version: 3
+accessScope: lan
+channels:
+  chat:
+    enabled: true
+    exposure: lan
+    config:
+      CHAT_INBOUND_TOKEN: ""
+      CHANNEL_CHAT_SECRET: ""
+  discord:
+    enabled: true
+    exposure: lan
+    config:
+      DISCORD_BOT_TOKEN: ""
+      DISCORD_PUBLIC_KEY: ""
+      CHANNEL_DISCORD_SECRET: ""
+  voice:
+    enabled: true
+    exposure: lan
+    config:
+      CHANNEL_VOICE_SECRET: ""
+  telegram:
+    enabled: true
+    exposure: lan
+    config:
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_WEBHOOK_SECRET: ""
+      CHANNEL_TELEGRAM_SECRET: ""
+services: {}
+automations: []
 ```
 
-All four built-in channels are enabled with `"lan"` exposure and empty config values. No `caddy` key is present in the default spec.
+All four built-in channels are enabled with `"lan"` exposure and empty config values. No `caddy` key is present in the default spec. The `services` section is empty by default.
 
 ---
 
@@ -764,7 +752,7 @@ All validation happens in `parseStackSpec` and `parseChannel`. Error messages us
 |---|---|
 | Root value is not a non-null object | `invalid_stack_spec` |
 | Unknown top-level key present | `unknown_stack_spec_field_<key>` |
-| `version` is not `1` or `2` | `invalid_stack_spec_version` |
+| `version` is not `1`, `2`, or `3` | `invalid_stack_spec_version` |
 | `accessScope` not one of host/lan/public | `invalid_access_scope` |
 | `channels` is missing or not an object | `missing_channels` |
 | Built-in channel `chat` missing | `missing_built_in_channel_chat` |
@@ -873,7 +861,7 @@ The engine reads the current on-disk artifacts through `readExistingArtifacts()`
 
 | Change type | How detected |
 |---|---|
-| Caddy config changed | `caddyfile` string differs OR any route snippet in `caddyRoutes` differs |
+| Caddy config changed | `caddyJson` string differs |
 | Gateway secrets changed | `gatewayEnv` string differs |
 | System env changed | `systemEnv` string differs |
 | Channel config changed | Any entry in `channelEnvs` differs (keyed by service name) |
@@ -906,7 +894,7 @@ Services scheduled for `up` are removed from the `restart` list (`up` takes prec
 
 1. **`up`** — `docker compose up -d <service>` for each new service.
 2. **`restart`** — `docker compose restart <service>` for each changed service.
-3. **`reload`** — For `caddy`: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`. For all other services in the reload list: `docker compose restart <service>`.
+3. **`reload`** — For `caddy`: `docker compose exec caddy caddy reload --config /etc/caddy/caddy.json`. For all other services in the reload list: `docker compose restart <service>`.
 
 Any failure in a compose operation throws immediately with `compose_<op>_failed:<service>:<stderr>`.
 
@@ -928,15 +916,7 @@ $OPENPALM_STATE_HOME/
 ├── system.env                         # systemEnv artifact (loaded by admin + gateway)
 ├── rendered/
 │   ├── caddy/
-│   │   ├── Caddyfile                   # caddyfile artifact
-│   │   ├── caddy.json                  # caddyJson artifact
-│   │   └── snippets/
-│   │       ├── admin.caddy             # always present
-│   │       ├── extra-user-overrides.caddy  # never overwritten if exists
-│   │       └── channels/
-│   │           ├── chat.caddy          # one per enabled path-routed channel
-│   │           ├── discord.caddy
-│   │           └── ...
+│   │   └── caddy.json                  # caddyJson artifact (Caddy JSON API format)
 │   └── docker-compose.yml             # composeFile artifact
 ├── gateway/
 │   └── .env                           # gatewayEnv artifact
@@ -960,7 +940,7 @@ $OPENPALM_STATE_HOME/
 
 ```
 $OPENPALM_CONFIG_HOME/
-├── stack-spec.json                    # StackSpec input
+├── openpalm.yaml                      # StackSpec input (v3 YAML)
 └── secrets.env                        # secrets input
 ```
 
@@ -968,7 +948,7 @@ $OPENPALM_CONFIG_HOME/
 
 ## 9. Atomic Write Behaviour
 
-`StackManager.writeStackSpecAtomically` writes `stack-spec.json` atomically:
+`StackManager.writeStackSpecAtomically` writes `openpalm.yaml` atomically:
 
 1. Write content to a temporary file at `<path>.<timestamp>.tmp`.
 2. Rename the temporary file to the target path.

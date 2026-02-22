@@ -59,9 +59,9 @@ Documentation is organized by audience and proximity to code. Start at the top l
 
 | Location | What's there | When to read it |
 |---|---|---|
-| `docs/` | User-facing guides: `cli.md`, `user-concepts.md` | Understanding what OpenPalm is; install and CLI usage |
-| `admin/docs/` | Admin and operations: admin-guide, admin-concepts, security, troubleshooting, maintenance, host-system-reference, versioning | Setting up, securing, maintaining, or troubleshooting a running instance |
-| `dev/docs/` | Developer references: architecture, API reference, extensions guide and reference, testing plan | Building features, understanding internals, writing extensions, API integration |
+| `docs/` | User-facing guides: `cli.md`, `concepts.md`, `security.md`, `maintenance.md`, `troubleshooting.md`, `host-system-reference.md` | Understanding what OpenPalm is; install, CLI usage, security, maintenance |
+| `admin/docs/` | Admin and operations: admin-guide, admin-concepts | Setting up and understanding the admin service |
+| `dev/docs/` | Developer references: architecture, API reference, testing plan, versioning | Building features, understanding internals, API integration |
 | `admin/README.md` | Admin service implementation: installer flow, cron jobs, compose lifecycle, directory layout | Changing or understanding the admin container itself |
 | `gateway/README.md` | Gateway service: message pipeline, HMAC verification, channel intake agent | Changing or understanding the gateway container |
 | `assistant/README.md` | Assistant service: extension architecture, built-in plugins/skills/tools, SSH access | Changing or understanding the assistant container |
@@ -71,9 +71,9 @@ Documentation is organized by audience and proximity to code. Start at the top l
 - *How does a message flow from Discord to the assistant?* → `dev/docs/architecture.md`
 - *What admin API endpoints exist?* → `dev/docs/api-reference.md`
 - *How do I set up a Discord bot token?* → `channels/discord/README.md`
-- *How do I back up or upgrade?* → `admin/docs/maintenance.md`
-- *What security controls are in place?* → `admin/docs/security.md`
-- *How do I add an extension?* → `dev/docs/extensions-guide.md`
+- *How do I back up or upgrade?* → `docs/maintenance.md`
+- *What security controls are in place?* → `docs/security.md`
+- *How do I add an extension?* → `assistant/README.md`
 
 ## Directory Structure
 
@@ -140,9 +140,6 @@ cd gateway && bun run start
 
 # Admin
 cd admin && bun run start
-
-# Controller
-cd controller && bun run start
 ```
 
 ## Code Style Guidelines

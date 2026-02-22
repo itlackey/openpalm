@@ -66,7 +66,7 @@ Admin (control plane: UI, API, Docker Compose lifecycle, cron automations)
 
 ## Monorepo Structure
 
-Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`.
+Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui`.
 
 | Directory | Purpose |
 |-----------|---------|
@@ -76,6 +76,7 @@ Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webho
 | `channels/` | Channel adapter services |
 | `packages/lib/` | Shared library (`@openpalm/lib`) used by all services |
 | `packages/cli/` | CLI tool (installer, management commands) |
+| `packages/ui/` | SvelteKit admin UI (replacement for static admin/ui/) |
 | `assets/` | Docker Compose base, Caddy config, install scripts |
 | `dev/` | Dev utilities, setup scripts, dev compose overlay |
 | `test/` | Cross-service tests (integration, contract, security) |
@@ -105,7 +106,7 @@ Delete `.dev/data/admin/setup-state.json` to reset the admin wizard to first-boo
 - **Runtime**: Bun with ES modules (`"type": "module"`)
 - **TypeScript**: Strict mode, target ES2022, module ESNext, bundler resolution
 - **No linter/formatter configured** — follow existing patterns
-- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/admin/*`
+- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/admin/*`, `@openpalm/lib/assets/*`
 - **File names**: kebab-case (`channel-intake.ts`)
 - **Imports**: Use `import type` for type-only imports; use full `.ts` extensions in relative paths
 - **Env vars**: Access via `Bun.env` with defaults: `const PORT = Number(Bun.env.PORT ?? 8090);`
@@ -130,8 +131,9 @@ Located in `admin/ui/tests/`. Config at `admin/playwright.config.ts`. Runs seque
 |----------|----------|
 | Message flow / container layout | `dev/docs/architecture.md` |
 | API endpoints (gateway, admin, channels) | `dev/docs/api-reference.md` |
-| Extension development | `dev/docs/extensions-guide.md` |
-| Security model | `admin/docs/security.md` |
-| Backup, restore, upgrade | `admin/docs/maintenance.md` |
-| Troubleshooting | `admin/docs/troubleshooting.md` |
+| Security model | `docs/security.md` |
+| Backup, restore, upgrade | `docs/maintenance.md` |
+| Troubleshooting | `docs/troubleshooting.md` |
+| Host paths and XDG layout | `docs/host-system-reference.md` |
+| Stack generation spec | `packages/lib/docs/specification.md` |
 | Channel setup | `channels/<name>/README.md` |

@@ -1,6 +1,23 @@
 import { defineConfig } from '@playwright/test';
+import { PORT, webServerEnv } from './e2e/env';
+
+const BASE = `http://localhost:${PORT}`;
 
 export default defineConfig({
-	webServer: { command: 'npm run build && npm run preview', port: 4173 },
-	testDir: 'e2e'
+	globalTeardown: './e2e/global-teardown.ts',
+	testDir: 'e2e',
+	workers: 1,
+	fullyParallel: false,
+	timeout: 30_000,
+	expect: { timeout: 5_000 },
+	use: {
+		baseURL: BASE
+	},
+	webServer: {
+		command: `node build/index.js`,
+		port: PORT,
+		timeout: 60_000,
+		reuseExistingServer: false,
+		env: webServerEnv()
+	}
 });

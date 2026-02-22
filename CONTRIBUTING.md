@@ -45,7 +45,7 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 ```
 .dev/
 ├── config/          ← OPENPALM_CONFIG_HOME
-│   ├── caddy/Caddyfile
+│   ├── caddy/caddy.json
 │   ├── assistant/opencode.jsonc
 │   ├── channels/{chat,discord,voice,telegram}.env
 │   ├── cron/        ← Automation definitions and cron payloads
@@ -67,8 +67,8 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 
 ### Environment files
 
-- `assets/config/system.env` — system-managed template; do not edit unless you know what you're doing.
-- `assets/config/user.env` — user-specific overrides (API keys, model preferences, etc.).
+- `packages/lib/assets/templates/system.env` — system-managed template (bundled into CLI binary).
+- `packages/lib/assets/templates/secrets.env` — secrets template (bundled into CLI binary).
 - `dev/.env.example` — local dev template. `dev/dev-setup.sh` creates `.env` from this automatically.
 
 ### Compose architecture
@@ -87,7 +87,7 @@ bun test
 bun run typecheck
 ```
 
-Workspaces: `gateway`, `admin`, `admin`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`.
+Workspaces: `gateway`, `admin`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`, `channels/webhook`, `packages/lib`, `packages/cli`, `packages/ui`.
 
 ### OpenMemory Dashboard
 
