@@ -44,6 +44,8 @@
     "cli:build:linux-arm64": "bun build packages/cli/src/main.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-linux-arm64",
     "cli:build:darwin-x64": "bun build packages/cli/src/main.ts --compile --target=bun-darwin-x64 --outfile dist/openpalm-darwin-x64",
     "cli:build:darwin-arm64": "bun build packages/cli/src/main.ts --compile --target=bun-darwin-arm64 --outfile dist/openpalm-darwin-arm64",
+    "cli:build:windows-x64": "bun build packages/cli/src/main.ts --compile --target=bun-windows-x64 --outfile dist/openpalm-windows-x64.exe",
+    "cli:build:windows-arm64": "bun build packages/cli/src/main.ts --compile --target=bun-windows-arm64 --outfile dist/openpalm-windows-arm64.exe",
     "ver": "bun run dev/version.ts",
     "ver:status": "bun run dev/version.ts status",
     "ver:bump": "bun run dev/version.ts bump",

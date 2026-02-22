@@ -13,15 +13,14 @@ describe("install command source validation", () => {
     expect(installSource).toContain("from \"@openpalm/lib/compose.ts\"");
     expect(installSource).toContain("from \"@openpalm/lib/assets.ts\"");
     expect(installSource).toContain("from \"@openpalm/lib/detect-providers.ts\"");
+    expect(installSource).toContain("from \"@openpalm/lib/preflight.ts\"");
     expect(installSource).toContain("from \"@openpalm/lib/ui.ts\"");
   });
 
-  it("detects OS and rejects unknown/windows", () => {
+  it("detects OS and rejects unknown", () => {
     expect(installSource).toContain("detectOS()");
     expect(installSource).toContain("os === \"unknown\"");
-    expect(installSource).toContain("os === \"windows-bash\"");
     expect(installSource).toContain("Unable to detect operating system");
-    expect(installSource).toContain("Windows detected");
   });
 
   it("detects CPU architecture", () => {
@@ -43,12 +42,23 @@ describe("install command source validation", () => {
 
   it("generates .env with secure tokens", () => {
     expect(installSource).toContain("writeFile(envPath, envSeed");
-    expect(installSource).toContain("ADMIN_TOKEN: generateToken()");
+    expect(installSource).toContain("ADMIN_TOKEN: generatedAdminToken");
     expect(installSource).toContain("POSTGRES_PASSWORD: generateToken()");
     expect(installSource).toContain("CHANNEL_CHAT_SECRET: generateToken()");
     expect(installSource).toContain("CHANNEL_DISCORD_SECRET: generateToken()");
     expect(installSource).toContain("CHANNEL_VOICE_SECRET: generateToken()");
     expect(installSource).toContain("CHANNEL_TELEGRAM_SECRET: generateToken()");
+  });
+
+  it("runs preflight checks before proceeding", () => {
+    expect(installSource).toContain("runPreflightChecks(bin, platform)");
+    expect(installSource).toContain("noRuntimeGuidance");
+    expect(installSource).toContain("noComposeGuidance");
+  });
+
+  it("displays admin token prominently when generated", () => {
+    expect(installSource).toContain("YOUR ADMIN PASSWORD");
+    expect(installSource).toContain("generatedAdminToken");
   });
 
   it("upserts XDG paths and runtime config into .env", () => {
@@ -131,8 +141,11 @@ describe("staged install flow - Phase 2: Early UI access", () => {
   it("opens browser to admin URL (unless --no-open)", () => {
     expect(installSource).toContain("options.noOpen");
     expect(installSource).toContain("os === \"macos\"");
+    expect(installSource).toContain("os === \"linux\"");
     expect(installSource).toContain("Bun.spawn([\"open\", adminUrl])");
     expect(installSource).toContain("Bun.spawn([\"xdg-open\", adminUrl])");
+    // Windows support
+    expect(installSource).toContain("Bun.spawn([\"cmd\"");
   });
 });
 
@@ -160,22 +173,20 @@ describe("staged install flow - Phase 4: Full stack", () => {
     expect(fullPullIdx).toBeLessThan(fullUpIdx);
   });
 
-  it("prints service URLs in final summary", () => {
-    expect(installSource).toContain("Service URLs:");
-    expect(installSource).toContain("Admin:");
-    expect(installSource).toContain("adminUrl");
+  it("prints success message with next steps", () => {
+    expect(installSource).toContain("OpenPalm is ready!");
+    expect(installSource).toContain("What happens next:");
+    expect(installSource).toContain("Setup wizard");
+    expect(installSource).toContain("Useful commands:");
+    expect(installSource).toContain("openpalm logs");
+    expect(installSource).toContain("openpalm stop");
+    expect(installSource).toContain("openpalm uninstall");
   });
 
-  it("prints XDG paths in final summary", () => {
-    const summaryStartIdx = installSource.indexOf("Installation complete!");
-    const dataPathIdx = installSource.indexOf("xdg.data", summaryStartIdx);
-    const configPathIdx = installSource.indexOf("xdg.config", summaryStartIdx);
-    const statePathIdx = installSource.indexOf("xdg.state", summaryStartIdx);
-
-    expect(summaryStartIdx).toBeGreaterThan(-1);
-    expect(dataPathIdx).toBeGreaterThan(summaryStartIdx);
-    expect(configPathIdx).toBeGreaterThan(summaryStartIdx);
-    expect(statePathIdx).toBeGreaterThan(summaryStartIdx);
+  it("prints troubleshooting guidance when setup times out", () => {
+    expect(installSource).toContain("Setup did not come online within 90 seconds");
+    expect(installSource).toContain("openpalm status");
+    expect(installSource).toContain("Common fixes:");
   });
 });
 

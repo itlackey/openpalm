@@ -4,9 +4,11 @@
 
 OpenPalm is a Bun-compiled command-line tool for managing the OpenPalm platform. The CLI provides commands for installation, service management, updates, and extension handling.
 
+All installer logic is centralized in the CLI binary. The shell scripts (`install.sh` and `install.ps1`) are thin wrappers that download the pre-compiled CLI and delegate to `openpalm install`.
+
 **Package Information:**
 - npm package name: `openpalm`
-- Version: 0.0.5
+- Version: 0.1.1
 - Runtime requirement: Bun >= 1.0.0
 
 ## Installation
@@ -19,11 +21,15 @@ OpenPalm can be installed using one of four methods:
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
 ```
 
+This downloads the `openpalm` CLI binary to `~/.local/bin/` and runs `openpalm install`.
+
 ### 2. PowerShell (Windows)
 
 ```powershell
 pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
+
+This downloads the `openpalm` CLI binary to `%LOCALAPPDATA%\OpenPalm\` (automatically added to PATH) and runs `openpalm install`.
 
 ### 3. npx (Node.js)
 
@@ -52,12 +58,21 @@ openpalm install [options]
 - `--no-open` - Skip opening browser after installation
 - `--ref <branch|tag>` - Install from specific git branch or tag
 
+**Pre-flight Checks:**
+
+Before starting, the installer automatically checks:
+- Disk space (warns if less than 3 GB available)
+- Port 80 availability (required for the web interface)
+- Container daemon status (detects Docker/Podman installed but not running)
+
 **Installation Phases:**
 
 1. **Phase 1: Setup**
-   - Detect container runtime
+   - Run pre-flight checks
+   - Detect container runtime (with actionable guidance if missing)
    - Download assets
-   - Generate `.env` file
+   - Generate `.env` file with secure tokens
+   - Display admin password prominently
    - Create directories
    - Seed configurations
    - Detect AI providers
@@ -304,6 +319,16 @@ bun build packages/cli/src/main.ts --compile --target=bun-darwin-x64 --outfile d
 **macOS ARM64 (Apple Silicon):**
 ```bash
 bun build packages/cli/src/main.ts --compile --target=bun-darwin-arm64 --outfile dist/openpalm-darwin-arm64
+```
+
+**Windows x64:**
+```bash
+bun build packages/cli/src/main.ts --compile --target=bun-windows-x64 --outfile dist/openpalm-windows-x64.exe
+```
+
+**Windows ARM64:**
+```bash
+bun build packages/cli/src/main.ts --compile --target=bun-windows-arm64 --outfile dist/openpalm-windows-arm64.exe
 ```
 
 ## Support

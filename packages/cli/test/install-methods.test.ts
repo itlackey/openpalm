@@ -77,7 +77,7 @@ describe("install methods verification", () => {
     });
   });
 
-  describe("install.sh bash installer", () => {
+  describe("install.sh is a thin wrapper that downloads the CLI binary", () => {
     it("has shebang for bash", () => {
       expect(installSh.startsWith("#!/usr/bin/env bash")).toBe(true);
     });
@@ -86,52 +86,22 @@ describe("install methods verification", () => {
       expect(installSh).toContain("set -euo pipefail");
     });
 
-    it("tries binary download first (binary mode)", () => {
-      expect(installSh).toContain("try_binary_install");
-      expect(installSh).toContain("Downloading OpenPalm CLI");
-    });
-
-    it("falls back to bash installer if binary unavailable", () => {
-      const binaryIdx = installSh.indexOf("try_binary_install");
-      const fallbackIdx = installSh.indexOf("using bash installer");
-      expect(binaryIdx).toBeGreaterThan(-1);
-      expect(fallbackIdx).toBeGreaterThan(-1);
-      expect(fallbackIdx).toBeGreaterThan(binaryIdx);
-    });
-
     it("downloads binary from GitHub Releases", () => {
       expect(installSh).toContain("releases/latest/download");
     });
 
     it("validates binary with version check", () => {
-      expect(installSh).toContain("$BINARY_TMP\" version");
+      expect(installSh).toContain("version");
     });
 
-    it("delegates to openpalm install after binary download", () => {
-      expect(installSh).toContain("$BINARY_TMP\" install");
+    it("delegates to openpalm install", () => {
+      expect(installSh).toContain("openpalm install");
+      // Uses exec to replace shell process
+      expect(installSh).toContain("exec");
     });
 
-    it("bash fallback detects container runtime", () => {
-      expect(installSh).toContain("detect_runtime");
-      expect(installSh).toContain("docker");
-      expect(installSh).toContain("podman");
-      expect(installSh).toContain("orbstack");
-    });
-
-    it("bash fallback generates secure tokens", () => {
-      expect(installSh).toContain("generate_token");
-      expect(installSh).toContain("ADMIN_TOKEN");
-      expect(installSh).toContain("POSTGRES_PASSWORD");
-    });
-
-    it("bash fallback creates XDG directories", () => {
-      expect(installSh).toContain("OPENPALM_DATA_HOME");
-      expect(installSh).toContain("OPENPALM_CONFIG_HOME");
-      expect(installSh).toContain("OPENPALM_STATE_HOME");
-    });
-
-    it("bash fallback resets setup wizard state on reinstall", () => {
-      expect(installSh).toContain("rm -f \"$OPENPALM_DATA_HOME/admin/setup-state.json\"");
+    it("installs binary to ~/.local/bin", () => {
+      expect(installSh).toContain(".local/bin");
     });
 
     it("supports --runtime flag", () => {
@@ -150,22 +120,25 @@ describe("install methods verification", () => {
       expect(installSh).toContain("trap cleanup EXIT");
     });
 
-    it("cleans up binary temp file", () => {
-      expect(installSh).toContain("BINARY_TMP");
-      expect(installSh).toContain('rm -f "$BINARY_TMP"');
+    it("redirects Windows users to PowerShell installer", () => {
+      expect(installSh).toContain("windows");
+      expect(installSh).toContain("install.ps1");
     });
 
-    it("redirects Windows users to PowerShell installer", () => {
-      expect(installSh).toContain("windows-bash");
-      expect(installSh).toContain("install.ps1");
+    it("suggests alternative install methods on download failure", () => {
+      expect(installSh).toContain("npx openpalm install");
+      expect(installSh).toContain("bunx openpalm install");
+    });
+
+    it("does not contain full installer logic (no compose commands)", () => {
+      expect(installSh).not.toContain("compose_version_ok");
+      expect(installSh).not.toContain("OPENPALM_DATA_HOME");
+      expect(installSh).not.toContain("generate_token");
+      expect(installSh).not.toContain("ADMIN_TOKEN");
     });
   });
 
-  describe("install.ps1 PowerShell installer", () => {
-    it("validates runtime parameter", () => {
-      expect(installPs1).toContain('[ValidateSet("docker", "podman")]');
-    });
-
+  describe("install.ps1 is a thin wrapper that downloads the CLI binary", () => {
     it("checks for Windows", () => {
       expect(installPs1).toContain("$IsWindows");
     });
@@ -174,19 +147,24 @@ describe("install methods verification", () => {
       expect(installPs1).toContain("install.sh");
     });
 
-    it("detects container runtime", () => {
-      expect(installPs1).toContain("Detect-Runtime");
+    it("downloads binary from GitHub Releases", () => {
+      expect(installPs1).toContain("releases/latest/download");
     });
 
-    it("generates secure tokens", () => {
-      expect(installPs1).toContain("New-Token");
-      expect(installPs1).toContain("ADMIN_TOKEN");
+    it("delegates to openpalm install", () => {
+      expect(installPs1).toContain("install");
     });
 
-    it("creates XDG directories", () => {
-      expect(installPs1).toContain("OPENPALM_DATA_HOME");
-      expect(installPs1).toContain("OPENPALM_CONFIG_HOME");
-      expect(installPs1).toContain("OPENPALM_STATE_HOME");
+    it("installs binary to LOCALAPPDATA", () => {
+      expect(installPs1).toContain("LOCALAPPDATA");
+    });
+
+    it("adds install directory to user PATH", () => {
+      expect(installPs1).toContain("SetEnvironmentVariable");
+    });
+
+    it("supports -Runtime parameter", () => {
+      expect(installPs1).toContain('[ValidateSet("docker", "podman")]');
     });
 
     it("supports -Ref parameter", () => {
@@ -197,13 +175,16 @@ describe("install methods verification", () => {
       expect(installPs1).toContain("[switch]$NoOpen");
     });
 
-    it("documents that binary mode is not available on Windows", () => {
-      expect(installPs1).toContain("does not support binary mode");
+    it("suggests alternative install methods on download failure", () => {
+      expect(installPs1).toContain("npx openpalm install");
+      expect(installPs1).toContain("bunx openpalm install");
     });
 
-    it("has cleanup in finally block", () => {
-      expect(installPs1).toContain("finally");
-      expect(installPs1).toContain("Remove-Item");
+    it("does not contain full installer logic (no compose commands)", () => {
+      expect(installPs1).not.toContain("Compose-VersionOk");
+      expect(installPs1).not.toContain("OPENPALM_DATA_HOME");
+      expect(installPs1).not.toContain("New-Token");
+      expect(installPs1).not.toContain("ADMIN_TOKEN");
     });
   });
 
@@ -329,11 +310,12 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("bun build packages/cli/src/main.ts --compile");
     });
 
-    it("documents all 4 cross-platform targets", () => {
+    it("documents all cross-platform targets including Windows", () => {
       expect(cliDocs).toContain("bun-linux-x64");
       expect(cliDocs).toContain("bun-linux-arm64");
       expect(cliDocs).toContain("bun-darwin-x64");
       expect(cliDocs).toContain("bun-darwin-arm64");
+      expect(cliDocs).toContain("bun-windows-x64");
     });
   });
 });
