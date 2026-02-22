@@ -122,7 +122,7 @@ Delete `.dev/data/setup-state.json` to reset the admin wizard to first-boot stat
 - **Runtime**: Bun with ES modules (`"type": "module"`)
 - **TypeScript**: Strict mode, target ES2022, module ESNext, bundler resolution
 - **No linter/formatter configured** — follow existing patterns
-- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/*`, `@openpalm/lib/assets/*`
+- **Path aliases**: `@openpalm/lib`, `@openpalm/lib/*`, `@openpalm/lib/assets/*`
 - **File names**: kebab-case (`channel-intake.ts`)
 - **Imports**: Use `import type` for type-only imports; use full `.ts` extensions in relative paths
 - **Env vars**: Access via `Bun.env` with defaults: `const PORT = Number(Bun.env.PORT ?? 8090);`

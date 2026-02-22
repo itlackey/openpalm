@@ -249,6 +249,7 @@ export async function install(options: InstallOptions): Promise<void> {
               },
               {
                 handle: [{
+                  // Let admin own bootstrap UI rendering at root while stack is being generated.
                   handler: "reverse_proxy",
                   upstreams: [{ dial: "admin:8100" }],
                 }],

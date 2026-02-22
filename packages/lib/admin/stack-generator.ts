@@ -133,7 +133,7 @@ function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
             handle: [caddyGuardHandler()],
             terminal: true,
           },
-          // /api* → rewrite + proxy to admin:8100
+          // /api* → strip API prefix and proxy to admin:8100
           {
             match: [{ path: ["/api*"] }],
             handle: [
@@ -281,6 +281,7 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
   }
 
   // Default catch-all → admin
+  // The SvelteKit admin UI is served at "/" through this catch-all route.
   mainRoutes.push({
     handle: [
       {
