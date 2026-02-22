@@ -500,6 +500,9 @@ EOF
 cp "$INSTALL_ASSETS_DIR/state/scripts/uninstall.sh" "$OPENPALM_STATE_HOME/uninstall.sh"
 chmod +x "$OPENPALM_STATE_HOME/uninstall.sh"
 
+# Always reset setup wizard state on install/reinstall.
+rm -f "$OPENPALM_DATA_HOME/admin/setup-state.json"
+
 echo ""
 echo "Directory structure created. Config seeded from defaults."
 echo ""
