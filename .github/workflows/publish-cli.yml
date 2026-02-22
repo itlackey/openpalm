@@ -45,35 +45,51 @@ jobs:
       - name: Update npm
         run: npm install -g npm@latest
 
-      - name: Bundle CLI for npm
-        working-directory: packages/cli
-        run: |
-          # Bundle all source (including @openpalm/lib) into a single file
-          bun build src/main.ts --outfile dist/openpalm.js --target bun
-
-          # Rewrite package.json: point bin at bundle, drop workspace dependency
-          # Must happen before npm version/publish — npm rejects workspace: protocol
-          node -e '
-            const fs = require("fs");
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            pkg.bin = { openpalm: "./dist/openpalm.js" };
-            pkg.files = ["dist/**"];
-            delete pkg.dependencies;
-            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
-          '
-
-      - name: Set version from tag
+      - name: Resolve version from tag
+        id: version
         run: |
           REF="${GITHUB_REF#refs/tags/}"
           # Strip component prefix if present (cli/v1.2.3 → 1.2.3)
           TAG="${REF#cli/}"
           TAG="${TAG#v}"
-          cd packages/cli
-          npm version "$TAG" --no-git-tag-version --allow-same-version
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Bundle CLI for npm
+        env:
+          CLI_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          rm -rf .npm-publish
+          mkdir -p .npm-publish/dist
+
+          # Bundle all source (including @openpalm/lib) into a single file.
+          bun build packages/cli/src/main.ts --outfile .npm-publish/dist/openpalm.js --target bun
+
+          # Create a publishable package manifest outside the monorepo workspace.
+          node -e '
+            const fs = require("fs");
+            const src = JSON.parse(fs.readFileSync("packages/cli/package.json", "utf8"));
+            const out = {
+              name: src.name,
+              version: process.env.CLI_VERSION,
+              description: src.description,
+              type: src.type,
+              license: src.license,
+              repository: src.repository,
+              homepage: src.homepage,
+              keywords: src.keywords,
+              bin: { openpalm: "./dist/openpalm.js" },
+              files: ["dist/**", "README.md", "LICENSE"],
+              engines: src.engines
+            };
+            fs.writeFileSync(".npm-publish/package.json", JSON.stringify(out, null, 2) + "\n");
+          '
+
+          cp packages/cli/README.md .npm-publish/README.md
+          cp LICENSE .npm-publish/LICENSE
 
       - name: Publish to npm
         run: npm publish --provenance --access public
-        working-directory: packages/cli
+        working-directory: .npm-publish
         # No NODE_AUTH_TOKEN needed — uses OIDC trusted publishing.
         # Configure the trusted publisher for the "openpalm" package at:
         # https://www.npmjs.com/package/openpalm/access

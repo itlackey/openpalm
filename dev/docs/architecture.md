@@ -16,7 +16,7 @@ graph TB
     subgraph Caddy["Caddy Reverse Proxy (:80/:443)"]
         direction LR
         Public["/channels/*<br/><small>LAN by default; configurable</small>"]
-        LAN["/admin/* (includes /admin/opencode*, /admin/openmemory*)<br/><small>LAN only</small>"]
+        LAN["/api/*, /services/opencode/*, /services/openmemory/* (legacy /admin/* retained)<br/><small>LAN only</small>"]
         GW_Route["/channels/*, /admin/*"]
     end
 
@@ -155,13 +155,19 @@ The admin app provides the API for all admin functions:
 | `/channels/voice*` | channel-voice:8183 | `/voice/transcription` | LAN by default (public toggle via Admin API) |
 | `/channels/discord*` | channel-discord:8184 | `/discord/webhook` | LAN by default (public toggle via Admin API) |
 | `/channels/telegram*` | channel-telegram:8182 | `/telegram/webhook` | LAN by default (public toggle via Admin API) |
-| `/admin/api*` | admin:8100 | prefix stripped to `/admin/*` | LAN only |
-| `/admin/opencode*` | assistant:4096 | prefix stripped to `/*` | LAN only |
-| `/admin/openmemory*` | openmemory-ui:3000 | prefix stripped to `/*` | LAN only |
-| `/admin*` (catch-all) | admin:8100 | `/admin` prefix stripped before proxy | LAN only |
-| `/*` (default route) | assistant:4096 | pass-through | LAN only |
+| `/api*` | admin:8100 | prefix rewritten to `/admin*` | LAN only |
+| `/services/opencode*` | assistant:4096 | prefix stripped to `/*` | LAN only |
+| `/services/openmemory*` | openmemory-ui:3000 | prefix stripped to `/*` | LAN only |
+| `/admin/api*` | admin:8100 | legacy prefix rewritten to `/admin*` | LAN only |
+| `/admin/opencode*` | assistant:4096 | legacy prefix stripped to `/*` | LAN only |
+| `/admin/openmemory*` | openmemory-ui:3000 | legacy prefix stripped to `/*` | LAN only |
+| `/admin*` (legacy catch-all) | admin:8100 | `/admin` prefix stripped before proxy | LAN only |
+| `/*` (default route) | admin:8100 | pass-through | LAN only |
 
 Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin API can rewrite channel blocks to remove the LAN restriction, making them publicly accessible.
+
+Legacy routes are intentionally retained for compatibility and should be removed in a future cleanup once clients migrate: `/admin/api*`, `/admin/opencode*`, `/admin/openmemory*`, and `/admin*`.
+
 
 Caddy runtime configuration is mounted from rendered state paths (`${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile` and `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/`).
 
