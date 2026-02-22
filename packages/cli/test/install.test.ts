@@ -70,6 +70,10 @@ describe("install command source validation", () => {
     expect(installSource).toContain("seedConfigFiles(assetsDir, xdg.config)");
   });
 
+  it("resets admin setup wizard state on install/reinstall", () => {
+    expect(installSource).toContain("rm(join(xdg.data, \"admin\", \"setup-state.json\"), { force: true })");
+  });
+
   it("detects all AI providers during install", () => {
     expect(installSource).toContain("detectAllProviders()");
   });
