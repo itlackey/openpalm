@@ -33,9 +33,9 @@ describe.skipIf(!stackAvailable)("integration: container health", () => {
     const resp = await fetch("http://localhost:8765/api/v1/apps/", {
       signal: AbortSignal.timeout(TIMEOUT),
     });
-    // Any non-connection-error response is acceptable
+    // Require a successful 2xx response
     expect(resp.status).toBeGreaterThanOrEqual(200);
-    expect(resp.status).toBeLessThan(600);
+    expect(resp.status).toBeLessThan(300);
   });
 
   it("admin health-check endpoint reports all services", async () => {

@@ -29,10 +29,18 @@ export default async function globalSetup() {
   while (Date.now() < deadline) {
     try {
       const resp = await fetch("http://localhost/admin/api/setup/status");
+      // Any status < 500 means the server is running and responsive.
+      // 401/403 are expected if auth is required - the server is still "ready".
       if (resp.status < 500) break;
     } catch {
       // ignore - server may not be up yet
     }
     await new Promise((r) => setTimeout(r, 1000));
+  }
+
+  // Check if we actually reached the server
+  const finalCheck = await fetch("http://localhost/admin/api/setup/status").catch(() => null);
+  if (!finalCheck || finalCheck.status >= 500) {
+    throw new Error("Admin server did not become reachable within 30 seconds. Is the dev stack running?");
   }
 }
