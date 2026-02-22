@@ -8,8 +8,8 @@ export function signPayload(secret: string, body: string): string {
 export function verifySignature(secret: string, body: string, incomingSig: string): boolean {
   if (!secret || !incomingSig) return false;
   const expected = signPayload(secret, body);
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(incomingSig, "utf8");
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(incomingSig, "hex");
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

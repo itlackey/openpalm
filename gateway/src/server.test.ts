@@ -1,4 +1,5 @@
 import { describe, expect, it, afterAll } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { safeRequestId, validatePayload } from "./server-utils.ts";
 import { createGatewayFetch, type GatewayDeps } from "./server.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
@@ -144,14 +145,17 @@ describe("gateway HTTP pipeline", () => {
     });
   }
 
-  const validPayload = {
-    userId: "u1",
-    channel: "chat",
-    text: "hello",
-    nonce: "n1",
-    timestamp: Date.now(),
-    metadata: {},
-  };
+  function freshPayload(overrides?: Record<string, unknown>) {
+    return {
+      userId: "u1",
+      channel: "chat",
+      text: "hello",
+      nonce: randomUUID(),
+      timestamp: Date.now(),
+      metadata: {},
+      ...overrides,
+    };
+  }
 
   afterAll(() => {
     mockAssistant.stop(true);
@@ -167,7 +171,7 @@ describe("gateway HTTP pipeline", () => {
 
   it("POST /channel/inbound valid HMAC + valid payload → 200 with answer", async () => {
     callCount = 0;
-    const resp = await gatewayFetch(signedRequest(validPayload));
+    const resp = await gatewayFetch(signedRequest(freshPayload()));
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body.answer).toBe("core answer");
@@ -178,7 +182,7 @@ describe("gateway HTTP pipeline", () => {
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(validPayload),
+      body: JSON.stringify(freshPayload()),
     });
     const resp = await gatewayFetch(req);
     expect(resp.status).toBe(403);
@@ -187,7 +191,7 @@ describe("gateway HTTP pipeline", () => {
   });
 
   it("POST /channel/inbound wrong signature → 403 invalid_signature", async () => {
-    const body = JSON.stringify(validPayload);
+    const body = JSON.stringify(freshPayload());
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",
       headers: {
@@ -203,7 +207,7 @@ describe("gateway HTTP pipeline", () => {
   });
 
   it("POST /channel/inbound unknown channel → 403 channel_not_configured", async () => {
-    const payload = { ...validPayload, channel: "smoke-signal" };
+    const payload = freshPayload({ channel: "smoke-signal" });
     const body = JSON.stringify(payload);
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",
@@ -220,7 +224,7 @@ describe("gateway HTTP pipeline", () => {
   });
 
   it("POST /channel/inbound empty channel → 403 channel_not_configured", async () => {
-    const payload = { ...validPayload, channel: "" };
+    const payload = freshPayload({ channel: "" });
     const body = JSON.stringify(payload);
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",
@@ -237,7 +241,7 @@ describe("gateway HTTP pipeline", () => {
   });
 
   it("POST /channel/inbound valid HMAC + invalid payload → 400 invalid_payload", async () => {
-    const payload = { ...validPayload, text: "" };
+    const payload = freshPayload({ text: "" });
     const resp = await gatewayFetch(signedRequest(payload));
     expect(resp.status).toBe(400);
     const data = await resp.json() as Record<string, unknown>;
@@ -268,7 +272,8 @@ describe("gateway HTTP pipeline", () => {
 
   it("x-request-id echoed when valid", async () => {
     callCount = 0;
-    const body = JSON.stringify(validPayload);
+    const payload = freshPayload();
+    const body = JSON.stringify(payload);
     const sig = signPayload(SECRET, body);
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",
@@ -286,7 +291,8 @@ describe("gateway HTTP pipeline", () => {
   });
 
   it("x-request-id replaced when invalid", async () => {
-    const body = JSON.stringify(validPayload);
+    const payload = freshPayload();
+    const body = JSON.stringify(payload);
     const sig = signPayload(SECRET, body);
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",

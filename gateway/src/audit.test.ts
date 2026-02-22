@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AuditLog } from "./audit.ts";
 
 describe("audit log", () => {
-  it("creates the parent directory and writes one JSONL event per line", () => {
+  it("creates the parent directory and writes one JSONL event per line", async () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-audit-"));
     const filePath = join(dir, "nested", "audit.log");
     const audit = new AuditLog(filePath);
@@ -25,6 +25,7 @@ describe("audit log", () => {
       details: { reason: "timeout" },
     });
 
+    await audit.flush();
     const lines = readFileSync(filePath, "utf8").trim().split("\n");
     expect(lines.length).toBe(2);
 
