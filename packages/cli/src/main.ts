@@ -13,7 +13,7 @@ import { preflight } from "./commands/preflight.ts";
 import { createChannel } from "./commands/create-channel.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 
 function printHelp(): void {
   log(bold("openpalm") + dim(` v${VERSION}`));
