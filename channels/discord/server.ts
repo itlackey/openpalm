@@ -1,7 +1,5 @@
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
-
-export { signPayload };
 
 const PORT = Number(Bun.env.PORT ?? 8184);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -15,22 +13,8 @@ async function forwardToGateway(
   text: string,
   metadata: Record<string, unknown>
 ) {
-  const payload = {
-    userId,
-    channel: "discord",
-    text,
-    metadata,
-    nonce: crypto.randomUUID(),
-    timestamp: Date.now()
-  };
-  const serialized = JSON.stringify(payload);
-  const sig = signPayload(sharedSecret, serialized);
-
-  const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-channel-signature": sig },
-    body: serialized
-  });
+  const payload = buildChannelMessage({ userId, channel: "discord", text, metadata });
+  const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
 
   return { status: resp.status, body: await resp.json() as Record<string, unknown> };
 }

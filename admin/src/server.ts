@@ -199,6 +199,162 @@ const server = Bun.serve({
     try {
       const url = new URL(req.url);
 
+      if (url.pathname === "/admin/state" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        return cors(json(200, {
+          ok: true,
+          data: {
+            setup: setupManager.getState(),
+            spec: stackManager.getSpec(),
+            secrets: stackManager.listSecretManagerState(),
+            channels: stackManager.listChannelNames().map((name) => ({
+              name,
+              exposure: stackManager.getChannelAccess(name),
+              config: stackManager.getChannelConfig(name),
+            })),
+            automations: stackManager.listAutomations(),
+          }
+        }));
+      }
+
+      if (url.pathname === "/admin/events" && req.method === "GET") {
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        return new Response(`event: ready
+data: {"ok":true,"service":"admin"}
+
+`, {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+            connection: "keep-alive",
+            "access-control-allow-origin": "*",
+          },
+        });
+      }
+
+      if (url.pathname === "/admin/command" && req.method === "POST") {
+        if (!auth(req)) return cors(json(401, { ok: false, error: "unauthorized", code: "admin_token_required" }));
+        const body = (await req.json()) as { type?: string; payload?: Record<string, unknown> };
+        const payload = body.payload ?? {};
+        const type = body.type ?? "";
+        try {
+          if (type === "stack.render") return cors(json(200, { ok: true, data: stackManager.renderPreview() }));
+          if (type === "stack.spec.set") {
+            const spec = parseStackSpec(payload.spec);
+            const missing = stackManager.validateReferencedSecrets(spec);
+            if (missing.length > 0) return cors(json(400, { ok: false, error: "missing secret references", code: "missing_secret_references", details: missing }));
+            return cors(json(200, { ok: true, data: stackManager.setSpec(spec) }));
+          }
+          if (type === "stack.apply") {
+            const result = await applyStack({ manager: stackManager, shouldApply: true });
+            return cors(json(200, { ok: true, data: result }));
+          }
+          if (type === "setup.step") {
+            const step = sanitizeEnvScalar(payload.step);
+            const validSteps = ["welcome", "accessScope", "serviceInstances", "healthCheck", "security", "channels"];
+            if (!validSteps.includes(step)) return cors(json(400, { ok: false, error: "invalid_step", code: "invalid_step" }));
+            const state = setupManager.completeStep(step as "welcome" | "accessScope" | "serviceInstances" | "healthCheck" | "security" | "channels");
+            return cors(json(200, { ok: true, data: state }));
+          }
+          if (type === "setup.access_scope") {
+            const scope = payload.scope;
+            if (scope !== "host" && scope !== "lan" && scope !== "public") return cors(json(400, { ok: false, error: "invalid_scope", code: "invalid_scope" }));
+            stackManager.setAccessScope(scope);
+            setRuntimeBindScope(scope);
+            await Promise.all([composeAction("up", "caddy"), composeAction("up", "openmemory"), composeAction("up", "assistant")]);
+            return cors(json(200, { ok: true, data: setupManager.setAccessScope(scope) }));
+          }
+          if (type === "setup.service_instances") {
+            const openmemory = sanitizeEnvScalar(payload.openmemory);
+            const psql = sanitizeEnvScalar(payload.psql);
+            const qdrant = sanitizeEnvScalar(payload.qdrant);
+            const openaiBaseUrl = sanitizeEnvScalar(payload.openaiBaseUrl);
+            const openaiApiKey = sanitizeEnvScalar(payload.openaiApiKey);
+            const anthropicApiKey = sanitizeEnvScalar(payload.anthropicApiKey);
+            const smallModelEndpoint = sanitizeEnvScalar(payload.smallModelEndpoint);
+            const smallModelApiKey = sanitizeEnvScalar(payload.smallModelApiKey);
+            const smallModelId = sanitizeEnvScalar(payload.smallModelId);
+            updateRuntimeEnv({ OPENMEMORY_URL: openmemory || undefined, OPENMEMORY_POSTGRES_URL: psql || undefined, OPENMEMORY_QDRANT_URL: qdrant || undefined });
+            const secretEntries: Record<string, string | undefined> = { OPENAI_BASE_URL: openaiBaseUrl || undefined };
+            if (openaiApiKey.length > 0) secretEntries.OPENAI_API_KEY = openaiApiKey;
+            if (anthropicApiKey.length > 0) secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
+            if (smallModelApiKey.length > 0) secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
+            updateSecretsEnv(secretEntries);
+            const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
+            if (smallModelId) {
+              setupManager.setSmallModel({ endpoint: smallModelEndpoint, modelId: smallModelId });
+              applySmallModelToOpencodeConfig(smallModelEndpoint, smallModelId);
+            }
+            return cors(json(200, { ok: true, data: { state, openmemoryProvider: getConfiguredOpenmemoryProvider(), smallModelProvider: getConfiguredSmallModel() } }));
+          }
+          if (type === "setup.channels") {
+            const channels = normalizeSelectedChannels(payload.channels);
+            updateRuntimeEnv({ OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(",") : undefined });
+            const channelConfigs = payload.channelConfigs;
+            if (channelConfigs && typeof channelConfigs === "object") {
+              const validServices = new Set(allChannelServiceNames());
+              for (const [service, values] of Object.entries(channelConfigs)) {
+                if (!validServices.has(service) || typeof values !== "object" || values === null) continue;
+                const channelName = service.replace(/^channel-/, "");
+                stackManager.setChannelConfig(channelName, values as Record<string, string>);
+              }
+            }
+            return cors(json(200, { ok: true, data: setupManager.setEnabledChannels(channels) }));
+          }
+          if (type === "setup.complete") return cors(json(200, { ok: true, data: setupManager.completeSetup() }));
+          if (type === "channel.configure") {
+            const channel = sanitizeEnvScalar(payload.channel);
+            const exposure = payload.exposure;
+            const config = (payload.config ?? {}) as Record<string, string>;
+            if (!channel) return cors(json(400, { ok: false, error: "invalid_channel", code: "invalid_channel" }));
+            if (exposure === "host" || exposure === "lan" || exposure === "public") stackManager.setChannelAccess(channel, exposure);
+            if (payload.config !== undefined) stackManager.setChannelConfig(channel, config);
+            return cors(json(200, { ok: true, data: { channel, exposure: stackManager.getChannelAccess(channel), config: stackManager.getChannelConfig(channel) } }));
+          }
+          if (type === "secret.upsert") return cors(json(200, { ok: true, data: { name: stackManager.upsertSecret(payload.name, payload.value) } }));
+          if (type === "secret.delete") return cors(json(200, { ok: true, data: { name: stackManager.deleteSecret(payload.name) } }));
+          if (type === "secret.raw.set") {
+            const content = typeof payload.content === "string" ? payload.content : "";
+            writeFileSync(SECRETS_ENV_PATH, content, "utf8");
+            stackManager.renderArtifacts();
+            return cors(json(200, { ok: true, data: { updated: true } }));
+          }
+          if (type === "automation.upsert") {
+            const automation = stackManager.upsertAutomation({ id: payload.id ?? randomUUID(), name: payload.name, schedule: payload.schedule, enabled: payload.enabled ?? true, script: payload.script });
+            syncAutomations(stackManager.listAutomations());
+            return cors(json(200, { ok: true, data: automation }));
+          }
+          if (type === "automation.delete") {
+            const removed = stackManager.deleteAutomation(payload.id);
+            syncAutomations(stackManager.listAutomations());
+            return cors(json(200, { ok: true, data: { removed } }));
+          }
+          if (type === "automation.trigger") {
+            const id = sanitizeEnvScalar(payload.id);
+            if (!id) return cors(json(400, { ok: false, error: "id_required", code: "id_required" }));
+            if (!stackManager.getAutomation(id)) return cors(json(404, { ok: false, error: "automation_not_found", code: "automation_not_found" }));
+            const result = await triggerAutomation(id);
+            return cors(json(200, { ok: true, data: { id, ...result } }));
+          }
+          if (type === "service.restart") {
+            const service = sanitizeEnvScalar(payload.service);
+            if (!knownServices().has(service)) return cors(json(400, { ok: false, error: "service_not_allowed", code: "service_not_allowed" }));
+            await composeAction("restart", service);
+            return cors(json(200, { ok: true, data: { service } }));
+          }
+          if (type === "service.up") {
+            const service = sanitizeEnvScalar(payload.service);
+            if (!knownServices().has(service)) return cors(json(400, { ok: false, error: "service_not_allowed", code: "service_not_allowed" }));
+            await composeAction("up", service);
+            return cors(json(200, { ok: true, data: { service } }));
+          }
+          return cors(json(400, { ok: false, error: "unknown_command", code: "unknown_command" }));
+        } catch (error) {
+          return cors(json(400, { ok: false, error: String(error), code: "command_failed" }));
+        }
+      }
+
       // ── Health ────────────────────────────────────────────────────
       if (url.pathname === "/health" && req.method === "GET") {
         return cors(json(200, { ok: true, service: "admin", time: new Date().toISOString() }));

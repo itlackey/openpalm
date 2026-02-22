@@ -247,7 +247,7 @@ async function loadStackSpec() {
   var editor = document.getElementById('stack-spec-editor');
   if (!editor) return;
   if (!adminToken) { editor.value = '(Enter admin password above to load)'; return; }
-  var r = await api('/admin/stack/spec');
+  var r = await api('/admin/state');
   if (r.ok && r.data && r.data.spec) {
     editor.value = JSON.stringify(r.data.spec, null, 2);
   } else {
@@ -261,7 +261,7 @@ async function saveStackSpec() {
   if (!editor || !adminToken) { showToast('Enter admin password first.', 'error'); return; }
   var spec;
   try { spec = JSON.parse(editor.value); } catch (e) { showToast('Invalid JSON: ' + e.message, 'error'); return; }
-  var r = await api('/admin/stack/spec', { method: 'POST', body: JSON.stringify({ spec: spec }) });
+  var r = await api('/admin/command', { method: 'POST', body: JSON.stringify({ type: 'stack.spec.set', payload: { spec: spec } }) });
   if (r.ok) {
     showToast('Stack spec saved.', 'success');
     if (status) status.textContent = 'Saved. Click "Apply Changes" to regenerate configs and restart services.';
@@ -275,7 +275,7 @@ async function applyStack() {
   var status = document.getElementById('stack-spec-status');
   if (!adminToken) { showToast('Enter admin password first.', 'error'); return; }
   if (status) status.innerHTML = '<span class="muted">Applying...</span>';
-  var r = await api('/admin/stack/apply', { method: 'POST' });
+  var r = await api('/admin/command', { method: 'POST', body: JSON.stringify({ type: 'stack.apply', payload: {} }) });
   if (r.ok) {
     showToast('Stack applied successfully.', 'success');
     if (status) {
@@ -308,7 +308,7 @@ async function saveSecrets() {
   var editor = document.getElementById('secrets-editor');
   var status = document.getElementById('secrets-status');
   if (!editor || !adminToken) { showToast('Enter admin password first.', 'error'); return; }
-  var r = await api('/admin/secrets/raw', { method: 'POST', body: JSON.stringify({ content: editor.value }) });
+  var r = await api('/admin/command', { method: 'POST', body: JSON.stringify({ type: 'secret.raw.set', payload: { content: editor.value } }) });
   if (r.ok) {
     showToast('Secrets saved.', 'success');
     if (status) status.textContent = 'Saved. Apply the stack to propagate changes to services.';

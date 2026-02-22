@@ -1,5 +1,6 @@
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 
 export { signPayload };
 
@@ -22,7 +23,7 @@ export function createVoiceFetch(gatewayUrl: string, sharedSecret: string, forwa
       };
       if (!body.text) return json(400, { error: "text_required" });
 
-      const payload = {
+      const payload = buildChannelMessage({
         userId: body.userId ?? "voice-user",
         channel: "voice",
         text: body.text,
@@ -30,19 +31,10 @@ export function createVoiceFetch(gatewayUrl: string, sharedSecret: string, forwa
           ...body.metadata,
           audioRef: body.audioRef,
           language: body.language ?? "en"
-        },
-        nonce: crypto.randomUUID(),
-        timestamp: Date.now()
-      };
-      const serialized = JSON.stringify(payload);
-      const sig = signPayload(sharedSecret, serialized);
-
-      const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-channel-signature": sig },
-        body: serialized
+        }
       });
 
+      const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
       return new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } });
     }
 

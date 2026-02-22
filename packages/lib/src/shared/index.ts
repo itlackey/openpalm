@@ -7,3 +7,6 @@ export type {
   InboundResult,
   HealthStatus,
 } from "./channel.ts";
+
+export { buildChannelMessage, forwardChannelMessage } from "./channel-sdk.ts";
+export type { ChannelMessage } from "./channel-sdk.ts";
