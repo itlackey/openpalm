@@ -200,12 +200,12 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Back button | click Back → returns to previous step; Back hidden on step 1 |
 | Progress dots | correct dot highlighted for current step |
 | **Welcome step** | renders overview text; Next button enabled |
-| **Access scope step** | radio buttons for "Host only" / "LAN"; selection persists on Next/Back; calls `POST /admin/setup/access-scope` |
-| **Service instances step** | form fields for OpenMemory URL, Postgres URL, Qdrant URL, OpenAI endpoint, OpenAI API key; calls `POST /admin/setup/service-instances` on Next |
+| **Access scope step** | radio buttons for "Host only" / "LAN"; selection persists on Next/Back; calls `POST /admin/command` (`setup.access_scope`) |
+| **Service instances step** | form fields for OpenMemory URL, Postgres URL, Qdrant URL, OpenAI endpoint, OpenAI API key; calls `POST /admin/command` (`setup.service_instances`) on Next |
 | **Health check step** | shows status dots for gateway, admin, assistant, openmemory, admin; calls `GET /admin/setup/health-check`; green dots for healthy, red for failed |
 | **Security step** | admin password input; password saved to localStorage; displays active protections list |
-| **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /admin/setup/channels` |
-| **Complete step** | calls `POST /admin/setup/complete`; shows "Continue to Admin" button; clicking dismisses overlay |
+| **Channels step** | checkboxes for chat, discord, voice, telegram; selection posted to `POST /admin/command` (`setup.channels`) |
+| **Complete step** | calls `POST /admin/command` (`setup.complete`); shows "Continue to Admin" button; clicking dismisses overlay |
 | Wizard not shown after complete | reload page with `setupComplete: true` → no overlay |
 | Re-run wizard from settings | click "Open Setup Wizard" in settings → overlay reappears |
 
@@ -229,8 +229,8 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Channel cards | shows chat, discord, voice, telegram with access badge (LAN/PUBLIC) |
 | Toggle channel access | click "Set Public" → confirm → calls `POST /admin/channels/access` → badge updates |
 | Edit channel config | click "Edit Config" → prompt with key=value → calls `POST /admin/channels/config` |
-| Container action: restart | click Restart on a service → calls `POST /admin/containers/restart` → success message |
-| Container action: up | click Up → calls `POST /admin/containers/up` |
+| Container action: restart | click Restart on a service → calls `POST /admin/command` (`service.restart`) → success message |
+| Container action: up | click Up → calls `POST /admin/command` (`service.up`) |
 | Container action: down | click Down → calls `POST /admin/containers/down` |
 | Container actions require auth | without token → error |
 | All known services listed | grid includes: gateway, assistant, openmemory, openmemory-ui, admin, admin, channel-chat, channel-discord, channel-voice, channel-telegram, caddy |
@@ -244,10 +244,10 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Automation card content | shows name, enabled/disabled badge, schedule in `<code>`, prompt preview (truncated 120 chars) |
 | Validation: missing fields | submit with empty name → "All fields are required" error |
 | Validation: invalid schedule | submit with bad expression → server error shown |
-| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /admin/automations/update` |
-| Delete automation | click Delete → confirm → automation removed from list; calls `POST /admin/automations/delete` |
-| Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /admin/automations/update` |
-| Run Now | click Run Now → calls `POST /admin/automations/trigger` → success message |
+| Edit automation | click Edit → form populated with automation data → modify → save → list updated; calls `POST /admin/command` (`automation.upsert`) |
+| Delete automation | click Delete → confirm → automation removed from list; calls `POST /admin/command` (`automation.delete`) |
+| Toggle enable/disable | click Enable/Disable → badge toggles; calls `POST /admin/command` (`automation.upsert`) |
+| Run Now | click Run Now → calls `POST /admin/command` (`automation.trigger`) → success message |
 | Multiple automations | create 3 automations → all 3 visible in list |
 | Persistence | create automation → reload page → automation still listed (re-fetched from API) |
 
@@ -258,7 +258,7 @@ Run: `bun run test:ui` — target < 30 seconds.
 | Admin password field | type password → stored in localStorage under `op_admin` |
 | Password sent as header | after setting password, API calls include `x-admin-token` header |
 | Service instances form | fields for OpenMemory, Postgres, Qdrant, OpenAI endpoint, OpenAI key |
-| Save service instances | fill fields → click Save → calls `POST /admin/setup/service-instances` |
+| Save service instances | fill fields → click Save → calls `POST /admin/command` (`setup.service_instances`) |
 | Warning displayed | shows warning about breaking workflows |
 | Re-run setup button | click "Open Setup Wizard" → wizard overlay appears |
 
@@ -339,7 +339,7 @@ Requires the full Docker Compose stack running (`bun run dev:up`).
 |------|------|
 | Chat roundtrip | POST `/channels/chat` → chat adapter → gateway → assistant → response |
 | Discord webhook roundtrip | POST `/channels/discord` → discord adapter → gateway → assistant → response |
-| Admin container lifecycle | `POST /admin/containers/restart` → admin restarts service → service comes back healthy |
+| Admin container lifecycle | `POST /admin/command` (`service.restart`) → admin restarts service → service comes back healthy |
 | Plugin install/uninstall | install plugin via admin API → verify config updated → uninstall → verify removed |
 | Setup wizard flow | complete setup wizard steps in order → verify `setupComplete: true` |
 | Memory integration | send message → verify openmemory receives write-back → send follow-up → verify recall injected |

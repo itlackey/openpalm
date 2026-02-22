@@ -21,6 +21,7 @@ export type StackManagerPaths = {
   postgresEnvPath: string;
   qdrantEnvPath: string;
   assistantEnvPath: string;
+  renderReportPath?: string;
 };
 
 export const CoreSecretRequirements = [
@@ -101,8 +102,15 @@ export class StackManager {
 
   renderArtifacts() {
     const generated = this.renderPreview();
+    const changedArtifacts: string[] = [];
+    const trackChange = (path: string, content: string) => {
+      if (!existsSync(path) || readFileSync(path, "utf8") !== content) changedArtifacts.push(path);
+    };
+
+    trackChange(this.paths.caddyfilePath, generated.caddyfile);
     mkdirSync(dirname(this.paths.caddyfilePath), { recursive: true });
     writeFileSync(this.paths.caddyfilePath, generated.caddyfile, "utf8");
+    trackChange(this.paths.caddyJsonPath, generated.caddyJson);
     mkdirSync(dirname(this.paths.caddyJsonPath), { recursive: true });
     writeFileSync(this.paths.caddyJsonPath, generated.caddyJson, "utf8");
     mkdirSync(this.paths.caddyRoutesDir, { recursive: true });
@@ -111,32 +119,49 @@ export class StackManager {
       const path = join(this.paths.caddyRoutesDir, routeFile);
       mkdirSync(dirname(path), { recursive: true });
       if (routeFile === "extra-user-overrides.caddy" && existsSync(path)) continue;
+      trackChange(path, content);
       writeFileSync(path, content, "utf8");
     }
 
+    trackChange(this.paths.composeFilePath, generated.composeFile);
     mkdirSync(dirname(this.paths.composeFilePath), { recursive: true });
     writeFileSync(this.paths.composeFilePath, generated.composeFile, "utf8");
 
+    trackChange(this.paths.gatewayEnvPath, generated.gatewayEnv);
     mkdirSync(dirname(this.paths.systemEnvPath), { recursive: true });
     writeFileSync(this.paths.systemEnvPath, generated.systemEnv, "utf8");
 
     mkdirSync(dirname(this.paths.gatewayEnvPath), { recursive: true });
     writeFileSync(this.paths.gatewayEnvPath, generated.gatewayEnv, "utf8");
+    trackChange(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
     mkdirSync(dirname(this.paths.openmemoryEnvPath), { recursive: true });
     writeFileSync(this.paths.openmemoryEnvPath, generated.openmemoryEnv, "utf8");
+    trackChange(this.paths.postgresEnvPath, generated.postgresEnv);
     mkdirSync(dirname(this.paths.postgresEnvPath), { recursive: true });
     writeFileSync(this.paths.postgresEnvPath, generated.postgresEnv, "utf8");
+    trackChange(this.paths.qdrantEnvPath, generated.qdrantEnv);
     mkdirSync(dirname(this.paths.qdrantEnvPath), { recursive: true });
     writeFileSync(this.paths.qdrantEnvPath, generated.qdrantEnv, "utf8");
+    trackChange(this.paths.assistantEnvPath, generated.assistantEnv);
     mkdirSync(dirname(this.paths.assistantEnvPath), { recursive: true });
     writeFileSync(this.paths.assistantEnvPath, generated.assistantEnv, "utf8");
     for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
       const path = join(this.paths.stateRootPath, serviceName, ".env");
       mkdirSync(dirname(path), { recursive: true });
+      trackChange(path, content);
       writeFileSync(path, content, "utf8");
     }
 
-    return generated;
+    const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "rendered", "render-report.json");
+    const renderReport = {
+      ...generated.renderReport,
+      changedArtifacts,
+      applySafe: generated.renderReport.missingSecretReferences.length === 0,
+    };
+    mkdirSync(dirname(renderReportPath), { recursive: true });
+    writeFileSync(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`, "utf8");
+
+    return { ...generated, renderReport };
   }
 
   validateReferencedSecrets(specOverride?: StackSpec) {

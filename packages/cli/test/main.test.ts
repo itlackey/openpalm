@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 
 const REPO_ROOT = join(import.meta.dir, "../../..");
+const CliVersion = JSON.parse(readFileSync(join(REPO_ROOT, "packages/cli/package.json"), "utf8")).version as string;
 
 /**
  * Helper function to run the CLI as a subprocess and capture output
@@ -48,14 +50,14 @@ describe("CLI entry point", () => {
     const { stdout, exitCode } = await runCli("version");
 
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("0.0.5");
+    expect(stdout).toContain(CliVersion);
   });
 
   it("prints version with --version flag", async () => {
     const { stdout, exitCode } = await runCli("--version");
 
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("0.0.5");
+    expect(stdout).toContain(CliVersion);
   });
 
   it("exits with error for unknown command", async () => {
@@ -129,7 +131,7 @@ describe("CLI entry point", () => {
     const { stdout, exitCode } = await runCli("-v");
 
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("0.0.5");
+    expect(stdout).toContain(CliVersion);
   });
 
   it("prints help with -h flag", async () => {

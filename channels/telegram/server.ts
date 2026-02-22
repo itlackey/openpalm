@@ -1,5 +1,6 @@
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 
 export { signPayload };
 
@@ -26,26 +27,17 @@ export function createTelegramFetch(gatewayUrl: string, sharedSecret: string, we
 
     const user = update.message?.from;
     const userId = user?.id ? `telegram:${user.id}` : `telegram:${user?.username ?? "unknown"}`;
-    const payload = {
+    const payload = buildChannelMessage({
       userId,
       channel: "telegram",
       text,
       metadata: {
         chatId: update.message?.chat?.id,
         username: user?.username
-      },
-      nonce: crypto.randomUUID(),
-      timestamp: Date.now()
-    };
-
-    const serialized = JSON.stringify(payload);
-    const sig = signPayload(sharedSecret, serialized);
-    const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-channel-signature": sig },
-      body: serialized
+      }
     });
 
+    const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
     return new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } });
   };
 }

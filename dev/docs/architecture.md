@@ -118,7 +118,7 @@ User -> Channel Adapter -> Gateway -> AI Assistant -> Gateway -> Channel Adapter
 
 More specifically, the inbound path through the gateway is:
 ```
-User -> Channel Adapter -> [HMAC sign] -> Gateway (/channel/inbound) -> OpenCode Core (channel-intake agent: validate/summarize)
+User -> Channel Adapter -> [shared channel-sdk normalize/sign/forward] -> Gateway (/channel/inbound) -> OpenCode Core (channel-intake agent: validate/summarize)
   -> Gateway -> OpenCode Core (default agent: full processing) -> Open Memory -> Response -> Gateway -> Channel Adapter -> User
 ```
 

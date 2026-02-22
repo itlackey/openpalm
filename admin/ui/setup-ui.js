@@ -266,9 +266,9 @@
       if (openaiApiKey.trim()) servicePayload.openaiApiKey = openaiApiKey.trim();
       if (anthropicApiKey.trim()) servicePayload.anthropicApiKey = anthropicApiKey.trim();
       if (smallModelApiKey.trim()) servicePayload.smallModelApiKey = smallModelApiKey.trim();
-      const serviceResult = await api("/admin/setup/service-instances", {
+      const serviceResult = await api("/admin/command", {
         method: "POST",
-        body: JSON.stringify(servicePayload)
+        body: JSON.stringify({ type: "setup.service_instances", payload: servicePayload })
       });
       if (!serviceResult.ok) {
         showStepError("Could not save service settings. Please try again.");
@@ -289,14 +289,14 @@
     if (STEPS[wizardStep] === "accessScope") {
       const selected = document.querySelector('input[name="wiz-scope"]:checked');
       const scope = selected ? selected.value : "host";
-      const scopeResult = await api("/admin/setup/access-scope", { method: "POST", body: JSON.stringify({ scope }) });
+      const scopeResult = await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.access_scope", payload: { scope } }) });
       if (!scopeResult.ok) {
         showStepError("Could not save your access preference. Please try again.");
         return;
       }
       accessScope = scope;
     }
-    await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
+    await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.step", payload: { step: STEPS[wizardStep] } }) });
     wizardStep++;
     renderWizard();
     if (STEPS[wizardStep] === "healthCheck") setTimeout(wizHealthCheck, 100);
@@ -312,16 +312,16 @@
     clearStepError();
 
     // Save channel selections and configs to the backend
-    await api("/admin/setup/channels", {
+    await api("/admin/command", {
       method: "POST",
-      body: JSON.stringify({ channels: enabledChannels, channelConfigs: channelConfigs })
+      body: JSON.stringify({ type: "setup.channels", payload: { channels: enabledChannels, channelConfigs: channelConfigs } })
     });
 
     for (const channel of enabledChannels) {
-      await api("/admin/containers/up", { method: "POST", body: JSON.stringify({ service: channel }) });
+      await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "service.up", payload: { service: channel } }) });
     }
-    await api("/admin/setup/step", { method: "POST", body: JSON.stringify({ step: STEPS[wizardStep] }) });
-    await api("/admin/setup/complete", { method: "POST" });
+    await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.step", payload: { step: STEPS[wizardStep] } }) });
+    await api("/admin/command", { method: "POST", body: JSON.stringify({ type: "setup.complete", payload: {} }) });
     wizardStep = STEPS.length - 1;
     renderWizard();
     pollUntilReady();

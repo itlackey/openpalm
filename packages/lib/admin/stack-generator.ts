@@ -60,6 +60,12 @@ export type GeneratedStackArtifacts = {
   qdrantEnv: string;
   assistantEnv: string;
   channelEnvs: Record<string, string>;
+  renderReport: {
+    applySafe: boolean;
+    warnings: string[];
+    missingSecretReferences: string[];
+    changedArtifacts: string[];
+  };
 };
 
 function renderChannelRoute(name: string, spec: StackSpec): string {
@@ -495,5 +501,11 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
     }),
     channelEnvs,
+    renderReport: {
+      applySafe: true,
+      warnings: [],
+      missingSecretReferences: [],
+      changedArtifacts: [],
+    },
   };
 }

@@ -12,6 +12,7 @@ Technical references and developer guides for contributing to or extending OpenP
 | [Extensions Reference](extensions-reference.md) | Technical reference for all extension types (API/schema details) |
 | [Testing Plan](testing-plan.md) | Test strategy, coverage goals, and test categories |
 | [Contributor Checklist](contributor-checklist.md) | Architecture-safe change checklist |
+| [Architecture Simplification Proposals](architecture-simplification-proposals.md) | Three approved architecture simplifications with full implementation scope |
 
 ## Background / archived
 
