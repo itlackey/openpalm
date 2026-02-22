@@ -1,0 +1,8 @@
+name: Telegram
+containerPort: 8182
+rewritePath: /telegram/webhook
+sharedSecretEnv: CHANNEL_TELEGRAM_SECRET
+configKeys:
+  - TELEGRAM_BOT_TOKEN
+  - TELEGRAM_WEBHOOK_SECRET
+  - CHANNEL_TELEGRAM_SECRET

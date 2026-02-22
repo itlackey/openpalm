@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
-import type { ChannelExposure, StackSpec } from "./stack-spec.ts";
+import type { ChannelExposure, StackAutomation, StackSpec } from "./stack-spec.ts";
 
 export type ChannelName = string;
 
@@ -114,6 +114,9 @@ export class StackManager {
     for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
       write(join(this.paths.stateRootPath, serviceName, ".env"), content);
     }
+    for (const [serviceName, content] of Object.entries(generated.serviceEnvs)) {
+      write(join(this.paths.stateRootPath, serviceName, ".env"), content);
+    }
 
     const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "rendered", "render-report.json");
     const renderReport = {
@@ -139,6 +142,14 @@ export class StackManager {
         if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${channel}_${key}_${ref}`);
       }
     }
+    for (const [service, cfg] of Object.entries(spec.services)) {
+      if (!cfg.enabled) continue;
+      for (const [key, value] of Object.entries(cfg.config)) {
+        const ref = parseSecretReference(value);
+        if (!ref) continue;
+        if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${service}_${key}_${ref}`);
+      }
+    }
     return errors;
   }
 
@@ -159,6 +170,16 @@ export class StackManager {
         if (!ref) continue;
         const list = usedBy.get(ref) ?? [];
         list.push(`channel:${channel}:${key}`);
+        usedBy.set(ref, list);
+      }
+    }
+
+    for (const [service, cfg] of Object.entries(spec.services)) {
+      for (const [key, value] of Object.entries(cfg.config)) {
+        const ref = parseSecretReference(value);
+        if (!ref) continue;
+        const list = usedBy.get(ref) ?? [];
+        list.push(`service:${service}:${key}`);
         usedBy.set(ref, list);
       }
     }
@@ -215,7 +236,7 @@ export class StackManager {
     return this.getSpec().automations.find((automation) => automation.id === id);
   }
 
-  upsertAutomation(input: { id?: unknown; name?: unknown; schedule?: unknown; enabled?: unknown; script?: unknown }) {
+  upsertAutomation(input: { id?: unknown; name?: unknown; schedule?: unknown; enabled?: unknown; script?: unknown; description?: unknown; core?: boolean }) {
     const id = sanitizeEnvScalar(input.id);
     const name = sanitizeEnvScalar(input.name);
     const schedule = sanitizeEnvScalar(input.schedule);
@@ -228,7 +249,9 @@ export class StackManager {
     if (typeof input.enabled !== "boolean") throw new Error("invalid_automation_enabled");
 
     const spec = this.getSpec();
-    const automation = { id, name, schedule, enabled: input.enabled, script };
+    const automation: StackAutomation = { id, name, schedule, enabled: input.enabled, script };
+    if (typeof input.description === "string" && input.description.trim()) automation.description = input.description.trim();
+    if (input.core === true) automation.core = true;
     const index = spec.automations.findIndex((item) => item.id === id);
     if (index >= 0) spec.automations[index] = automation;
     else spec.automations.push(automation);
@@ -240,9 +263,10 @@ export class StackManager {
     const id = sanitizeEnvScalar(idRaw);
     if (!id) throw new Error("invalid_automation_id");
     const spec = this.getSpec();
-    const before = spec.automations.length;
+    const existing = spec.automations.find((automation) => automation.id === id);
+    if (!existing) return false;
+    if (existing.core) throw new Error("cannot_delete_core_automation");
     spec.automations = spec.automations.filter((automation) => automation.id !== id);
-    if (spec.automations.length === before) return false;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     return true;
   }
@@ -258,6 +282,19 @@ export class StackManager {
     return Object.keys(spec.channels)
       .filter((name) => spec.channels[name].enabled)
       .map((name) => `channel-${name}`);
+  }
+
+  /** Returns all service names from the spec. */
+  listServiceNames(): string[] {
+    return Object.keys(this.getSpec().services);
+  }
+
+  /** Returns enabled service names (e.g., "service-n8n"). */
+  enabledServiceNames(): string[] {
+    const spec = this.getSpec();
+    return Object.keys(spec.services)
+      .filter((name) => spec.services[name].enabled)
+      .map((name) => `service-${name}`);
   }
 
   private writeArtifact(path: string, content: string, changedList: string[]): void {

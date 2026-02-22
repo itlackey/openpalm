@@ -1,0 +1,11 @@
+- id: openpalm-health-check
+  name: System Health Check
+  description: Monitors core service availability every 5 minutes
+  schedule: "*/5 * * * *"
+  enabled: true
+  core: true
+  script: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    curl -fs --max-time 5 http://gateway:8080/health || echo "gateway: unreachable"
+    curl -fs --max-time 5 http://assistant:4096/ || echo "assistant: unreachable"

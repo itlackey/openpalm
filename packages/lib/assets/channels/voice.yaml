@@ -1,0 +1,6 @@
+name: Voice
+containerPort: 8183
+rewritePath: /voice/transcription
+sharedSecretEnv: CHANNEL_VOICE_SECRET
+configKeys:
+  - CHANNEL_VOICE_SECRET

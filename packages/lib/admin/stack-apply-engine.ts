@@ -21,6 +21,7 @@ type ExistingArtifacts = {
   qdrantEnv: string;
   assistantEnv: string;
   channelEnvs: Record<string, string>;
+  serviceEnvs: Record<string, string>;
 };
 
 function readIfExists(path: string): string {
@@ -36,6 +37,11 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     channelEnvs[serviceName] = readIfExists(join(paths.stateRootPath, serviceName, ".env"));
   }
 
+  const serviceEnvs: Record<string, string> = {};
+  for (const serviceName of manager.enabledServiceNames()) {
+    serviceEnvs[serviceName] = readIfExists(join(paths.stateRootPath, serviceName, ".env"));
+  }
+
   return {
     caddyJson: readIfExists(paths.caddyJsonPath),
     composeFile: readIfExists(paths.composeFilePath),
@@ -46,6 +52,7 @@ function readExistingArtifacts(manager: StackManager): ExistingArtifacts {
     qdrantEnv: readIfExists(paths.qdrantEnvPath),
     assistantEnv: readIfExists(paths.assistantEnvPath),
     channelEnvs,
+    serviceEnvs,
   };
 }
 
@@ -77,6 +84,11 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
     (existing.channelEnvs[serviceName] ?? "") !== (generated.channelEnvs[serviceName] ?? "")
   ));
 
+  const serviceEnvNames = new Set<string>([...Object.keys(existing.serviceEnvs), ...Object.keys(generated.serviceEnvs)]);
+  const serviceConfigChanged = Array.from(serviceEnvNames).filter((serviceName) => (
+    (existing.serviceEnvs[serviceName] ?? "") !== (generated.serviceEnvs[serviceName] ?? "")
+  ));
+
   const changed = {
     caddyChanged,
     gatewaySecretsChanged: existing.gatewayEnv !== generated.gatewayEnv,
@@ -89,6 +101,7 @@ function deriveImpact(manager: StackManager, existing: ExistingArtifacts, genera
   };
 
   const impact = computeImpactFromChanges(changed);
+  for (const svc of serviceConfigChanged) impact.restart.push(svc);
   if (existing.systemEnv !== generated.systemEnv) {
     impact.restart = Array.from(new Set([...impact.restart, "admin", "gateway"]));
   }

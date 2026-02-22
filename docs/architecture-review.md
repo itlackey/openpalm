@@ -9,7 +9,7 @@
 
 OpenPalm is an early-stage (v0.1.1) self-hosted AI assistant platform with a well-conceived architecture: channel adapters normalize messages, a gateway enforces security (HMAC, rate limiting, intake validation), and an OpenCode runtime handles AI processing. The codebase demonstrates strong fundamentals -- clean separation of concerns, consistent patterns, type-safe interfaces, and a thoughtful shared library. However, several issues across security, maintainability, and code quality should be addressed before any production exposure.
 
-**Total issues found: 46** (2 Critical, 10 High, 22 Medium, 12 Low)
+**Total issues found: 45** (2 Critical, 9 High, 22 Medium, 12 Low)
 
 ---
 
@@ -41,7 +41,7 @@ The webhook channel exists as a workspace but is not integrated into the stack. 
 
 ### 1.7 [Low] Flat Docker network topology -- FIXED
 
-Replaced single `assistant_net` with 3-tier network segmentation: `channel_net` (ingress), `internal_net` (services), `data_net` (databases). Updated both static compose file and stack generator. Channels can no longer reach databases or internal services directly.
+Replaced single flat network with 2-tier segmentation: `channel_net` (channels only) and `assistant_net` (all other services). Gateway bridges both networks. Channels can no longer reach databases or internal services directly.
 
 ---
 
@@ -199,10 +199,6 @@ Pinned to `qdrant/qdrant:v1.13.2` in both the static compose file and the stack 
 
 ## 7. Integration Points
 
-### 7.1 [High] AI-powered intake validation is a reliability bottleneck -- DEFERRED
-
-Skipped per user request. Every message requires two LLM calls.
-
 ### 7.2 [Medium] Gateway has no retry logic for AI runtime calls -- OPEN
 
 `OpenCodeClient.send()` makes a single attempt with no retry on transient errors.
@@ -234,9 +230,9 @@ No linter, formatter, or CI configured beyond `tsc --noEmit`.
 | Status | Count |
 |--------|-------|
 | FIXED | 26 |
-| DEFERRED | 2 |
+| DEFERRED | 1 |
 | OPEN | 18 |
-| **Total** | **46** |
+| **Total** | **45** |
 
 ### Remaining OPEN items
 

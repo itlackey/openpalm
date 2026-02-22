@@ -1,19 +1,5 @@
-import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, BuiltInChannelNames } from "./stack-spec.ts";
-import type { BuiltInChannelName, StackChannelConfig, StackSpec } from "./stack-spec.ts";
-
-const BuiltInChannelRewritePaths: Record<BuiltInChannelName, string> = {
-  chat: "/chat",
-  discord: "/discord/webhook",
-  voice: "/voice/transcription",
-  telegram: "/telegram/webhook",
-};
-
-const BuiltInChannelSharedSecretEnv: Record<BuiltInChannelName, string> = {
-  chat: "CHANNEL_CHAT_SECRET",
-  discord: "CHANNEL_DISCORD_SECRET",
-  voice: "CHANNEL_VOICE_SECRET",
-  telegram: "CHANNEL_TELEGRAM_SECRET",
-};
+import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, BuiltInChannelNames, getBuiltInChannelDef } from "./stack-spec.ts";
+import type { BuiltInChannelName, StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
 
 function resolveChannelPort(name: string, config: StackChannelConfig): number {
   if (config.containerPort) return config.containerPort;
@@ -58,6 +44,7 @@ export type GeneratedStackArtifacts = {
   qdrantEnv: string;
   assistantEnv: string;
   channelEnvs: Record<string, string>;
+  serviceEnvs: Record<string, string>;
   renderReport: {
     applySafe: boolean;
     warnings: string[];
@@ -208,7 +195,7 @@ function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpe
 
   if (isBuiltInChannel(name)) {
     // Built-in channels: rewrite to their specific path, then proxy
-    const rewritePath = BuiltInChannelRewritePaths[name];
+    const rewritePath = getBuiltInChannelDef(name).rewritePath;
     subrouteHandlers.push({
       handle: [
         { handler: "rewrite", uri: rewritePath },
@@ -588,6 +575,34 @@ function renderAdminComposeService(): string {
   ].join("\n");
 }
 
+function renderServiceComposeService(name: string, config: StackServiceConfig): string {
+  const svcName = `service-${composeServiceName(name)}`;
+  const lines = [
+    `  ${svcName}:`,
+    `    image: ${config.image}`,
+    "    restart: unless-stopped",
+    "    env_file:",
+    `      - \${OPENPALM_STATE_HOME}/${svcName}/.env`,
+    "    environment:",
+    `      - PORT=${config.containerPort}`,
+  ];
+
+  if (config.volumes && config.volumes.length > 0) {
+    lines.push("    volumes:");
+    for (const v of config.volumes) {
+      lines.push(`      - ${v}`);
+    }
+  }
+
+  lines.push("    networks: [assistant_net]");
+
+  if (config.dependsOn && config.dependsOn.length > 0) {
+    lines.push(`    depends_on: [${config.dependsOn.join(", ")}]`);
+  }
+
+  return lines.join("\n");
+}
+
 function renderFullComposeFile(spec: StackSpec): string {
   const coreBlocks = [
     renderCaddyComposeService(),
@@ -604,7 +619,11 @@ function renderFullComposeFile(spec: StackSpec): string {
     .filter((name) => spec.channels[name].enabled)
     .map((name) => renderChannelComposeService(name, spec.channels[name]));
 
-  const allBlocks = [...coreBlocks, ...channelBlocks];
+  const serviceBlocks = Object.keys(spec.services)
+    .filter((name) => spec.services[name].enabled)
+    .map((name) => renderServiceComposeService(name, spec.services[name]));
+
+  const allBlocks = [...coreBlocks, ...channelBlocks, ...serviceBlocks];
 
   return `services:\n${allBlocks.join("\n\n")}\n\nnetworks:\n  channel_net:\n  assistant_net:\n`;
 }
@@ -639,7 +658,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
   for (const name of BuiltInChannelNames) {
     const channel = spec.channels[name];
     if (!channel) throw new Error(`missing_built_in_channel_${name}`);
-    const secretEnvKey = BuiltInChannelSharedSecretEnv[name];
+    const secretEnvKey = getBuiltInChannelDef(name).sharedSecretEnv;
     gatewayChannelSecrets[secretEnvKey] = resolveChannelConfig(name, channel, secrets)[secretEnvKey] ?? "";
   }
 
@@ -647,6 +666,17 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
     ...gatewayChannelSecrets,
   });
+
+  const serviceEnvs: Record<string, string> = {};
+  for (const [name, cfg] of Object.entries(spec.services)) {
+    if (!cfg.enabled) continue;
+    const svcName = `service-${composeServiceName(name)}`;
+    const resolved: Record<string, string> = {};
+    for (const [key, value] of Object.entries(cfg.config)) {
+      resolved[key] = resolveScalar(value, secrets, `${name}_${key}`);
+    }
+    serviceEnvs[svcName] = envWithHeader(`# Generated service env (${name})`, resolved);
+  }
 
   return {
     caddyJson,
@@ -660,6 +690,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
     }),
     channelEnvs,
+    serviceEnvs,
     renderReport: {
       applySafe: true,
       warnings: [],

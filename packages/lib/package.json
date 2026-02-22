@@ -13,5 +13,8 @@
   "devDependencies": {
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
   }
 }
