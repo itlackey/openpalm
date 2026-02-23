@@ -23,13 +23,14 @@ Guides for setting up, securing, maintaining, and troubleshooting a running inst
 | [Host System Reference](host-system-reference.md) | Host paths, environment variables, XDG layout |
 | [Maintenance](maintenance.md) | Backup, restore, upgrade, rollback |
 | [Versioning](../dev/docs/versioning.md) | Release process and CI workflows |
+| [Changelog](../CHANGELOG.md) | Platform release notes across all projects |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 
 ## Developer references
 
 Guides for building features, writing extensions, and integrating with APIs:
 
-→ **[dev/docs/](../dev/README.md)**
+→ **[dev/docs/](../dev/docs/README.md)**
 
 | Guide | What's inside |
 |---|---|
