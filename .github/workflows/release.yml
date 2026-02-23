@@ -50,7 +50,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Validate token
         run: |
@@ -76,6 +76,58 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Validate Docker builds
+        if: inputs.component != 'cli'
+        run: |
+          FAILED=0
+          # Select Dockerfiles based on component
+          if [ "${{ inputs.component }}" = "platform" ]; then
+            DOCKERFILES="core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile"
+          elif [ "${{ inputs.component }}" = "assistant" ]; then
+            DOCKERFILES="core/assistant/Dockerfile"
+          else
+            # Map component name to Dockerfile path
+            case "${{ inputs.component }}" in
+              gateway)           DOCKERFILES="core/gateway/Dockerfile" ;;
+              admin)             DOCKERFILES="core/admin/Dockerfile" ;;
+              channel-chat)      DOCKERFILES="channels/chat/Dockerfile" ;;
+              channel-discord)   DOCKERFILES="channels/discord/Dockerfile" ;;
+              channel-voice)     DOCKERFILES="channels/voice/Dockerfile" ;;
+              channel-telegram)  DOCKERFILES="channels/telegram/Dockerfile" ;;
+            esac
+          fi
+
+          for df in $DOCKERFILES; do
+            echo "::group::Building $df"
+            if [ -f "$df" ]; then
+              if grep -q "packages/lib" "$df"; then
+                CTX="."
+              else
+                CTX="$(dirname "$df")"
+              fi
+              if ! docker build -f "$df" "$CTX" --no-cache --progress=plain -t "validate-$(basename $(dirname $df)):ci" 2>&1; then
+                echo "::error::Docker build failed for $df"
+                FAILED=$((FAILED + 1))
+              fi
+            fi
+            echo "::endgroup::"
+          done
+
+          # Assistant uses its own context
+          if [ "${{ inputs.component }}" = "platform" ] || [ "${{ inputs.component }}" = "assistant" ]; then
+            echo "::group::Building core/assistant/Dockerfile"
+            if ! docker build -f core/assistant/Dockerfile ./core/assistant --no-cache --progress=plain -t "validate-assistant:ci" 2>&1; then
+              echo "::error::Docker build failed for core/assistant/Dockerfile"
+              FAILED=$((FAILED + 1))
+            fi
+            echo "::endgroup::"
+          fi
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "$FAILED Docker build(s) failed"
+            exit 1
+          fi
 
       - name: Bump version
         run: bun run dev/version.ts bump ${{ inputs.component }} ${{ inputs.bump }}
