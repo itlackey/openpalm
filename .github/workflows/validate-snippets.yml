@@ -22,7 +22,8 @@ jobs:
 
       - name: Install yq
         run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          YQ_VERSION=v4.44.6
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           sudo chmod +x /usr/local/bin/yq
 
       - name: Validate changed snippet files
@@ -158,7 +159,8 @@ jobs:
           echo "errors=$ERRORS" >> $GITHUB_OUTPUT
           echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
 
-          # Write summary
+          # Write summary (use printf %b to expand \n; avoid echo -e which
+          # could be abused via Actions command injection in snippet metadata)
           {
             echo "## Snippet Validation Report"
             echo ""
@@ -167,11 +169,11 @@ jobs:
             elif [ "$WARNINGS" -gt 0 ]; then
               echo "**$WARNINGS warning(s)** — review before merging."
             else
-              echo "**All snippets are valid.** ✓"
+              echo "**All snippets are valid.**"
             fi
             echo ""
-            echo -e "$REPORT"
-          } >> $GITHUB_STEP_SUMMARY
+            printf '%b\n' "$REPORT"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$ERRORS" -gt 0 ]; then
             exit 1

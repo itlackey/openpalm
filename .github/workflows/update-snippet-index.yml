@@ -24,7 +24,8 @@ jobs:
 
       - name: Install yq
         run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          YQ_VERSION=v4.44.6
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           sudo chmod +x /usr/local/bin/yq
 
       - name: Validate and convert snippets to JSON
@@ -116,9 +117,17 @@ jobs:
             echo "index.json is already up to date — nothing to commit."
           else
             git commit -m "chore: regenerate community/snippets/index.json [skip ci]"
+            PUSHED=false
             for attempt in 1 2 3; do
-              git push && break
+              if git push; then
+                PUSHED=true
+                break
+              fi
               echo "::warning::Push failed, retrying in $((2 ** attempt))s..."
               sleep $((2 ** attempt))
             done
+            if [ "$PUSHED" != "true" ]; then
+              echo "::error::All push attempts failed"
+              exit 1
+            fi
           fi

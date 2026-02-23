@@ -129,18 +129,10 @@ export type SnippetSource = {
 /** Default snippet sources shipped with OpenPalm. */
 export const DEFAULT_SNIPPET_SOURCES: SnippetSource[] = [
   {
-    id: "openpalm-builtin",
-    name: "OpenPalm Built-in",
-    type: "index-url",
-    target: "",
-    trust: "official",
-    enabled: true,
-  },
-  {
     id: "openpalm-community",
     name: "OpenPalm Community",
     type: "index-url",
-    target: "https://raw.githubusercontent.com/itlackey/openpalm/main/community/snippets/index.yaml",
+    target: "https://raw.githubusercontent.com/itlackey/openpalm/main/community/snippets/index.json",
     trust: "curated",
     enabled: true,
   },
