@@ -54,7 +54,7 @@ The `package.json` `exports` field defines four entry points:
 {
   ".":              "./src/index.ts",        // barrel re-export of src/
   "./*.ts":         "./src/*.ts",            // direct file imports from src/
-  "./admin/*.ts":   "./admin/*.ts",          // admin zone
+  "./admin/*.ts":   "./src/admin/*.ts",          // admin zone
   "./shared/*.ts":  "./src/shared/*.ts"      // shared zone
 }
 ```
@@ -139,15 +139,15 @@ needed.
 All service Dockerfiles that import from `@openpalm/lib` must include the COPY
 line. Currently:
 
-- `admin/Dockerfile`
-- `gateway/Dockerfile`
+- `core/admin/Dockerfile`
+- `core/gateway/Dockerfile`
 - `channels/chat/Dockerfile`
 - `channels/discord/Dockerfile`
 - `channels/voice/Dockerfile`
 - `channels/telegram/Dockerfile`
 - `channels/webhook/Dockerfile`
 
-The `assistant/` service does not import from `@openpalm/lib` and does not need
+The `core/assistant/` service does not import from `@openpalm/lib` and does not need
 this line.
 
 ### If the lib structure changes

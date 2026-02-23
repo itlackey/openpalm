@@ -60,11 +60,11 @@ Documentation is organized by audience and proximity to code. Start at the top l
 | Location | What's there | When to read it |
 |---|---|---|
 | `docs/` | User-facing guides: `cli.md`, `concepts.md`, `security.md`, `maintenance.md`, `troubleshooting.md`, `host-system-reference.md` | Understanding what OpenPalm is; install, CLI usage, security, maintenance |
-| `admin/docs/` | Admin and operations: admin-guide, admin-concepts | Setting up and understanding the admin service |
+| `core/admin/docs/` | Admin and operations: admin-guide, admin-concepts | Setting up and understanding the admin service |
 | `dev/docs/` | Developer references: architecture, API reference, testing plan, versioning | Building features, understanding internals, API integration |
-| `admin/README.md` | Admin service implementation: installer flow, cron jobs, compose lifecycle, directory layout | Changing or understanding the admin container itself |
-| `gateway/README.md` | Gateway service: message pipeline, HMAC verification, channel intake agent | Changing or understanding the gateway container |
-| `assistant/README.md` | Assistant service: extension architecture, built-in plugins/skills/tools, SSH access | Changing or understanding the assistant container |
+| `core/admin/README.md` | Admin service implementation: installer flow, cron jobs, compose lifecycle, directory layout | Changing or understanding the admin container itself |
+| `core/gateway/README.md` | Gateway service: message pipeline, HMAC verification, channel intake agent | Changing or understanding the gateway container |
+| `core/assistant/README.md` | Assistant service: extension architecture, built-in plugins/skills/tools, SSH access | Changing or understanding the assistant container |
 | `channels/<name>/README.md` | Per-channel: endpoints, env vars, setup instructions | Setting up or modifying a specific channel adapter |
 
 **Finding information quickly:**
@@ -73,22 +73,23 @@ Documentation is organized by audience and proximity to code. Start at the top l
 - *How do I set up a Discord bot token?* → `channels/discord/README.md`
 - *How do I back up or upgrade?* → `docs/maintenance.md`
 - *What security controls are in place?* → `docs/security.md`
-- *How do I add an extension?* → `assistant/README.md`
+- *How do I add an extension?* → `core/assistant/README.md`
 
 ## Directory Structure
 
 ```
 ./openpalm
-├── admin/          # Admin UI service
+├── core/
+│   ├── admin/      # Admin UI service
+│   ├── assistant/  # OpenCode extensions
+│   └── gateway/    # Main API gateway (entry point)
 ├── channels/       # Channel adapters
 │   ├── chat/
 │   ├── discord/
 │   ├── telegram/
 │   ├── voice/
 │   └── webhook/
-├── gateway/       # Main API gateway (entry point)
-├── assistant/      # OpenCode extensions
-└── assets/        # Templates, scripts, state
+└── packages/       # Shared library, CLI, UI
 ```
 
 ## Build, Test, and Development Commands
@@ -100,13 +101,13 @@ Documentation is organized by audience and proximity to code. Start at the top l
 bun test
 
 # Run tests in a specific workspace
-cd gateway && bun test
-cd admin && bun test
+cd core/gateway && bun test
+cd core/admin && bun test
 cd channels/discord && bun test
 
 # Run a single test file
-bun test gateway/src/channel-intake.test.ts
-bun test ./gateway/src/assistant-client.test.ts
+bun test core/gateway/src/channel-intake.test.ts
+bun test ./core/gateway/src/assistant-client.test.ts
 
 # Run tests matching a pattern
 bun test --match "channel intake"
@@ -136,10 +137,10 @@ bun run dev:fresh       # Full fresh-install test
 
 ```bash
 # Gateway
-cd gateway && bun run start
+cd core/gateway && bun run start
 
 # Admin
-cd admin && bun run start
+cd core/admin && bun run start
 ```
 
 ## Code Style Guidelines

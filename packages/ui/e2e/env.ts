@@ -34,8 +34,6 @@ function createTempDir(): string {
 	const stateRoot = join(tmpDir, 'state');
 	const cronDir = join(tmpDir, 'cron');
 	const opencodeDir = join(tmpDir, 'data', 'assistant', '.config', 'opencode');
-	const renderedDir = join(stateRoot, 'rendered');
-	const caddyDir = join(renderedDir, 'caddy');
 	const gatewayDir = join(stateRoot, 'gateway');
 	const openmemoryDir = join(stateRoot, 'openmemory');
 	const postgresDir = join(stateRoot, 'postgres');
@@ -44,7 +42,7 @@ function createTempDir(): string {
 
 	for (const d of [
 		dataDir, configDir, stateRoot, cronDir, opencodeDir,
-		renderedDir, caddyDir, gatewayDir, openmemoryDir,
+		gatewayDir, openmemoryDir,
 		postgresDir, qdrantDir, assistantDir
 	]) {
 		mkdirSync(d, { recursive: true });
@@ -87,13 +85,16 @@ export function webServerEnv(): Record<string, string> {
 		STACK_SPEC_PATH: join(configDir, 'openpalm.yaml'),
 		RUNTIME_ENV_PATH: join(stateRoot, '.env'),
 		SYSTEM_ENV_PATH: join(stateRoot, 'system.env'),
-		COMPOSE_FILE_PATH: join(stateRoot, 'rendered', 'docker-compose.yml'),
-		CADDY_JSON_PATH: join(stateRoot, 'rendered', 'caddy', 'caddy.json'),
+		COMPOSE_FILE_PATH: join(stateRoot, 'docker-compose.yml'),
+		CADDY_JSON_PATH: join(stateRoot, 'caddy.json'),
 		GATEWAY_ENV_PATH: join(stateRoot, 'gateway', '.env'),
 		OPENMEMORY_ENV_PATH: join(stateRoot, 'openmemory', '.env'),
 		POSTGRES_ENV_PATH: join(stateRoot, 'postgres', '.env'),
 		QDRANT_ENV_PATH: join(stateRoot, 'qdrant', '.env'),
 		ASSISTANT_ENV_PATH: join(stateRoot, 'assistant', '.env'),
-		CRON_DIR: join(tmpDir, 'cron')
+		COMPOSE_PROJECT_PATH: stateRoot,
+		OPENPALM_COMPOSE_FILE: 'docker-compose.yml',
+		CRON_DIR: join(tmpDir, 'cron'),
+		OPENPALM_COMPOSE_BIN: '/usr/bin/true',
 	};
 }

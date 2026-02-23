@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { parseJsonc, stringifyPretty } from '@openpalm/lib/admin/jsonc';
+import { parseJsonc, stringifyPretty } from '@openpalm/lib/admin/jsonc.ts';
 import { OPENCODE_CONFIG_PATH } from './config.ts';
 
 export function ensureOpencodeConfigPath() {

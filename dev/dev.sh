@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 #   - Bun installed (https://bun.sh)
-#   - Dependencies installed: cd admin && bun install; cd gateway && bun install
+#   - Dependencies installed: cd core/admin && bun install; cd core/gateway && bun install
 #   - Supporting services running (opencode-core, openmemory) via
 #     docker compose, or point the env vars at your own instances.
 #
@@ -26,7 +26,7 @@ export OPENCODE_CORE_URL="${OPENCODE_CORE_URL:-http://localhost:4096}"
 export OPENCODE_CORE_BASE_URL="${OPENCODE_CORE_BASE_URL:-http://localhost:4096}"
 export OPENCODE_CONFIG_PATH="${OPENCODE_CONFIG_PATH:-$ROOT/opencode/extensions/opencode.jsonc}"
 export DATA_DIR="${DATA_DIR:-$ROOT/.dev/data}"
-export CHANNEL_ENV_DIR="${CHANNEL_ENV_DIR:-$ROOT/assets/config/channels}"
+export CHANNEL_ENV_DIR="${CHANNEL_ENV_DIR:-$ROOT/.dev/config/channels}"
 
 # Channel shared secrets for gateway
 export CHANNEL_CHAT_SECRET="${CHANNEL_CHAT_SECRET:-dev-chat-secret}"
@@ -59,7 +59,7 @@ start_admin() {
 
 start_gateway() {
   echo "[dev] Starting gateway on :8080 (hot reload)"
-  cd "$ROOT/gateway"
+  cd "$ROOT/core/gateway"
   PORT=8080 bun run --hot src/server.ts &
   PIDS+=($!)
 }

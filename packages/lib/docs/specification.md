@@ -1,6 +1,6 @@
 # Stack Generation Specification
 
-This document is the authoritative technical reference for the OpenPalm stack generation pipeline implemented in `packages/lib/admin/`. It describes every input, transformation step, default value, validation rule, output artifact, and error code produced by the generator.
+This document is the authoritative technical reference for the OpenPalm stack generation pipeline implemented in `packages/lib/src/admin/`. It describes every input, transformation step, default value, validation rule, output artifact, and error code produced by the generator.
 
 ---
 
@@ -98,10 +98,10 @@ The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yam
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `version` | `1 | 2 | 3` | Yes | Schema version. Versions 1 and 2 are read and silently upgraded to version 3 at parse time. |
+| `version` | `3` | Yes | Schema version. Must be `3` (YAML format). |
 | `accessScope` | `"host" | "lan" | "public"` | Yes | Default network exposure for the whole stack. Controls LAN IP matchers in Caddy. |
 | `caddy` | `CaddyConfig` | No | Optional Caddy-specific configuration. |
-| `channels` | `Record<string, StackChannelConfig>` | Yes | Map of channel name → channel configuration. Must include all four built-in channels. |
+| `channels` | `Record<string, StackChannelConfig>` | Yes | Map of channel name → channel configuration. Built-in channels are default examples, but any non-empty community channel names are supported. |
 | `services` | `Record<string, StackServiceConfig>` | No | Map of service name → service configuration. Internal-only containers (no Caddy routing). Defaults to `{}`. |
 | `automations` | `StackAutomation[]` | No | List of scheduled automation definitions. Defaults to `[]`. |
 
@@ -239,7 +239,7 @@ Before `generateStackArtifacts` is called, the spec must have already passed thr
 
 1. Asserts the root value is a non-null object.
 2. Rejects any key not in the allowed set `{version, accessScope, caddy, channels, services, automations}`.
-3. Validates `version` is `1`, `2`, or `3`.
+3. Validates `version` is `3`.
 4. Validates `accessScope` is one of `"host"`, `"lan"`, `"public"`.
 5. Parses the optional `caddy` sub-object.
 6. Asserts `channels` is a non-null object.
@@ -286,7 +286,7 @@ The compose file is built as a multi-line string from a static template for core
 
 | Service | Image | Key mounts / env |
 |---|---|---|
-| `caddy` | `caddy:2-alpine` | Mounts rendered Caddyfile and snippets from state; data dir from data |
+| `caddy` | `caddy:2-alpine` | Mounts generated caddy.json from state; data dir from data |
 | `postgres` | `postgres:16-alpine` | Mounts data dir; env_file from state; POSTGRES_* env vars |
 | `qdrant` | `qdrant/qdrant:latest` | Mounts storage dir from data; env_file from state |
 | `openmemory` | `mem0/openmemory-mcp:latest` | Port 8765; mounts data dir; env_file from state |
@@ -397,7 +397,7 @@ The site block delegates all routing to imported snippets. Per-channel snippets 
 
 For each enabled channel that does **not** have a `domains` array, a route is generated in the Caddy JSON config.
 
-**Built-in channels** use `handle` + `rewrite`:
+Channels with `rewritePath` use `handle` + `rewrite`:
 
 ```caddy
 handle /channels/<name>* {
@@ -407,7 +407,7 @@ handle /channels/<name>* {
 }
 ```
 
-The rewrite paths for built-in channels are fixed:
+Default bundled channels include the following rewrite paths (community channels can define their own `rewritePath`):
 
 | Channel | Rewrite path |
 |---|---|
@@ -459,10 +459,7 @@ KEY2=value2
 
 **Gateway env** (`gatewayEnv`):
 
-Assembled from two sources:
-
-1. All secrets whose keys start with any of: `OPENPALM_GATEWAY_`, `GATEWAY_`, `OPENPALM_SMALL_MODEL_API_KEY`, `ANTHROPIC_API_KEY` — picked by prefix from the full secrets map.
-2. The shared secret env var for each built-in channel: `CHANNEL_CHAT_SECRET`, `CHANNEL_DISCORD_SECRET`, `CHANNEL_VOICE_SECRET`, `CHANNEL_TELEGRAM_SECRET`. These are resolved from the built-in channel configs using the same secret resolution logic as step 7.
+Assembled from prefixed secrets only (`OPENPALM_GATEWAY_`, `GATEWAY_`, `OPENPALM_SMALL_MODEL_API_KEY`, `ANTHROPIC_API_KEY`). Channel shared secrets are not copied here; gateway discovers them from mounted `STATE/channel-*/.env` files at runtime.
 
 **OpenMemory env** (`openmemoryEnv`):
 
@@ -533,7 +530,7 @@ type GeneratedStackArtifacts = {
 ### 4.1 `caddyJson`
 
 **Type**: `string` (JSON-encoded)
-**Written to**: `$OPENPALM_STATE_HOME/rendered/caddy/caddy.json`
+**Written to**: `$OPENPALM_STATE_HOME/caddy.json`
 
 A Caddy JSON API configuration document. The generator produces a native Caddy JSON config (not a Caddyfile) with servers, routes, handlers, and matchers. This is loaded directly by Caddy using its native JSON config format.
 
@@ -549,7 +546,7 @@ The JSON includes routes for:
 ### 4.4 `composeFile`
 
 **Type**: `string` (YAML)
-**Written to**: `$OPENPALM_STATE_HOME/rendered/docker-compose.yml`
+**Written to**: `$OPENPALM_STATE_HOME/docker-compose.yml`
 
 The complete Docker Compose file. Contains all core services and all enabled channel services. The `networks:` section always defines `assistant_net`. Never hand-edit this file — it is regenerated on every `renderArtifacts()` call.
 
@@ -572,7 +569,7 @@ An empty placeholder is seeded by `install.sh` and `dev-setup.sh` so Docker Comp
 **Type**: `string`  
 **Written to**: `$OPENPALM_STATE_HOME/gateway/.env`
 
-Env file for the `gateway` container. Contains all secrets with keys prefixed by `OPENPALM_GATEWAY_`, `GATEWAY_`, `OPENPALM_SMALL_MODEL_API_KEY`, or `ANTHROPIC_API_KEY`, plus the four built-in channel shared secrets.
+Env file for the `gateway` container. Contains only secrets with keys prefixed by `OPENPALM_GATEWAY_`, `GATEWAY_`, `OPENPALM_SMALL_MODEL_API_KEY`, or `ANTHROPIC_API_KEY`. Channel shared secrets are discovered from `STATE/channel-*/.env` at runtime.
 
 ### 4.7 `openmemoryEnv`
 
@@ -663,7 +660,7 @@ Each built-in channel has a fixed set of config keys. These keys are always pres
 | `voice` | `CHANNEL_VOICE_SECRET` |
 | `telegram` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CHANNEL_TELEGRAM_SECRET` |
 
-For built-in channels, only the keys listed above are accepted. Extra keys in the parsed config are silently ignored. For custom channels, all keys present in `config` are accepted (subject to the key naming pattern).
+For bundled default channels, the listed keys are the defaults generated by `createDefaultStackSpec()`. Community channels can use arbitrary non-empty config keys.
 
 ### 5.4 Built-in Channel Rewrite Paths
 
@@ -678,18 +675,15 @@ Built-in channels use Caddy's `rewrite` directive to remap the public path to th
 
 Custom channels use `handle_path` instead of `handle` + `rewrite`, which strips the matched prefix and forwards the remainder of the path.
 
-### 5.5 Built-in Channel Shared Secret Env Keys
+### 5.5 Channel shared secret discovery
 
-The gateway receives a shared HMAC secret for each built-in channel to verify inbound requests. The env key names are:
+Gateway verifies inbound channel signatures using per-channel shared secrets discovered from mounted state files at runtime:
 
-| Channel | Gateway env key |
-|---|---|
-| `chat` | `CHANNEL_CHAT_SECRET` |
-| `discord` | `CHANNEL_DISCORD_SECRET` |
-| `voice` | `CHANNEL_VOICE_SECRET` |
-| `telegram` | `CHANNEL_TELEGRAM_SECRET` |
+- State path pattern: `STATE/channel-*/.env`
+- Default key derivation: `CHANNEL_<CHANNEL_NAME>_SECRET` (channel name uppercased, non-alnum → `_`)
+- Fallback: first non-empty `CHANNEL_*_SECRET` key found in that channel `.env`
 
-These values are extracted from each built-in channel's resolved config and written into `gatewayEnv`.
+These values are read directly by gateway from mounted state files and are not duplicated into `gatewayEnv`.
 
 ### 5.6 Access Scope LAN Matchers
 
@@ -752,19 +746,15 @@ All validation happens in `parseStackSpec` and `parseChannel`. Error messages us
 |---|---|
 | Root value is not a non-null object | `invalid_stack_spec` |
 | Unknown top-level key present | `unknown_stack_spec_field_<key>` |
-| `version` is not `1`, `2`, or `3` | `invalid_stack_spec_version` |
+| `version` is not `3` | `invalid_stack_spec_version` |
 | `accessScope` not one of host/lan/public | `invalid_access_scope` |
 | `channels` is missing or not an object | `missing_channels` |
-| Built-in channel `chat` missing | `missing_built_in_channel_chat` |
-| Built-in channel `discord` missing | `missing_built_in_channel_discord` |
-| Built-in channel `voice` missing | `missing_built_in_channel_voice` |
-| Built-in channel `telegram` missing | `missing_built_in_channel_telegram` |
 
 ### 6.2 Channel Name Validation
 
 | Condition | Error code |
 |---|---|
-| Name fails `/^[a-z][a-z0-9-]*$/` or length > 63 | `invalid_channel_name_<name>` |
+| Channel name is empty/whitespace | `invalid_channel_name_<name>` |
 
 ### 6.3 Channel Field Validation
 
@@ -794,24 +784,19 @@ All validation happens in `parseStackSpec` and `parseChannel`. Error messages us
 | Path prefix | `/^\/[a-z0-9\/_-]*$/i` (must start with `/`) |
 | Image name | `/^[a-z0-9]+([._\/:@-][a-z0-9]+)*$/i` |
 | Email | `/^[^\s{}"#]+@[^\s{}"#]+\.[^\s{}"#]+$/` |
-| Config key | `/^[A-Z][A-Z0-9_]*$/` |
+| Config key | must be non-empty |
 
 These patterns are intentionally restrictive to prevent injection of control characters into generated Caddy, YAML, and env files. Newlines in domain/image/email values would allow injection of arbitrary Caddy directives or YAML keys.
 
 **Config value sanitisation**: All config values (whether from built-in or custom channels) have `\r` and `\n` stripped and are trimmed at parse time. This prevents multi-line env var injection even if the spec file is hand-edited.
 
-### 6.4 Custom Channel Requirements
+### 6.4 Channel and service config key validation
 
-| Condition | Error code |
-|---|---|
-| Custom channel has no `image` | `custom_channel_requires_image_<name>` |
-| Custom channel has no `containerPort` | `custom_channel_requires_container_port_<name>` |
+Channel and service config keys must be non-empty strings.
 
-These checks do not apply to built-in channels.
+### 6.5 Name validation
 
-### 6.5 Config Key Validation
-
-For custom channels, every key in the `config` map must match `/^[A-Z][A-Z0-9_]*$/`:
+Channel and service names must be non-empty strings. Bundled channels remain defaults, but community names are allowed.
 
 | Condition | Error code |
 |---|---|
@@ -906,7 +891,7 @@ The generator produces artifacts scoped to two root directories, resolved from e
 
 | Env var | Default location | Purpose |
 |---|---|---|
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Generated (rendered) runtime state |
+| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime state |
 | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User intent files (spec, secrets) |
 
 **Generated artifact paths** (under `$OPENPALM_STATE_HOME`):
@@ -914,10 +899,10 @@ The generator produces artifacts scoped to two root directories, resolved from e
 ```
 $OPENPALM_STATE_HOME/
 ├── system.env                         # systemEnv artifact (loaded by admin + gateway)
-├── rendered/
-│   ├── caddy/
-│   │   └── caddy.json                  # caddyJson artifact (Caddy JSON API format)
-│   └── docker-compose.yml             # composeFile artifact
+├── caddy.json                         # caddyJson artifact (Caddy JSON API format)
+├── docker-compose.yml                 # composeFile artifact
+├── docker-compose-fallback.yml        # emergency admin+caddy compose
+├── caddy-fallback.json                # emergency caddy config (admin reverse-proxy)
 ├── gateway/
 │   └── .env                           # gatewayEnv artifact
 ├── openmemory/
@@ -926,7 +911,7 @@ $OPENPALM_STATE_HOME/
 │   └── .env                           # postgresEnv artifact
 ├── qdrant/
 │   └── .env                           # qdrantEnv artifact
-├── assistant/
+├── core/assistant/
 │   └── .env                           # assistantEnv artifact
 ├── channel-chat/
 │   └── .env                           # channelEnvs["channel-chat"]
@@ -963,12 +948,12 @@ The `extra-user-overrides.caddy` snippet is **never overwritten** if it already 
 
 | File | Purpose |
 |---|---|
-| `packages/lib/admin/stack-spec.ts` | `StackSpec` type definitions, `parseStackSpec`, `createDefaultStackSpec`, `parseSecretReference` |
-| `packages/lib/admin/stack-generator.ts` | `generateStackArtifacts` — the pure generation function |
-| `packages/lib/admin/stack-manager.ts` | `StackManager` — file I/O orchestration, secret CRUD, channel/automation management |
-| `packages/lib/admin/stack-apply-engine.ts` | `applyStack` — diff, impact computation, and compose operations |
-| `packages/lib/admin/impact-plan.ts` | `computeImpactFromChanges` — maps diffs to reload/restart/up/down actions |
-| `packages/lib/admin/runtime-env.ts` | Env file parsing/updating utilities and `sanitizeEnvScalar` |
-| `packages/lib/admin/automations.ts` | Cron file generation and automation runner script |
-| `packages/lib/admin/stack-generator.test.ts` | Comprehensive tests for artifact generation |
-| `packages/lib/admin/stack-spec.test.ts` | Comprehensive tests for spec parsing and validation |
+| `packages/lib/src/admin/stack-spec.ts` | `StackSpec` type definitions, `parseStackSpec`, `createDefaultStackSpec`, `parseSecretReference` |
+| `packages/lib/src/admin/stack-generator.ts` | `generateStackArtifacts` — the pure generation function |
+| `packages/lib/src/admin/stack-manager.ts` | `StackManager` — file I/O orchestration, secret CRUD, channel/automation management |
+| `packages/lib/src/admin/stack-apply-engine.ts` | `applyStack` — diff, impact computation, and compose operations |
+| `packages/lib/src/admin/impact-plan.ts` | `computeImpactFromChanges` — maps diffs to reload/restart/up/down actions |
+| `packages/lib/src/admin/runtime-env.ts` | Env file parsing/updating utilities and `sanitizeEnvScalar` |
+| `packages/lib/src/admin/automations.ts` | Cron file generation and automation runner script |
+| `packages/lib/src/admin/stack-generator.test.ts` | Comprehensive tests for artifact generation |
+| `packages/lib/src/admin/stack-spec.test.ts` | Comprehensive tests for spec parsing and validation |

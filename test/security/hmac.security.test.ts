@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { signPayload, verifySignature } from "../../gateway/src/channel-security.ts";
+import { signPayload, verifySignature } from "../../core/gateway/src/channel-security.ts";
 
 // ---------------------------------------------------------------------------
 // Helper: produce a deterministic valid signature for tests that need one.

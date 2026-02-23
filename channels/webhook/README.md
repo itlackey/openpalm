@@ -37,9 +37,9 @@ This channel is not included in the default Caddy routing. To expose it, add a r
 
 No external platform account is needed. Configure any HTTP-capable service to `POST` to `/webhook` with a JSON body containing at least a `text` field. Set `WEBHOOK_INBOUND_TOKEN` to restrict access to known callers.
 
-Manage credentials via `POST /admin/channels/config` with `service: "channel-webhook"`.
+Manage credentials via `POST /channels/config` with `service: "channel-webhook"`.
 
 ## Related
 
 - [API Reference](../../dev/docs/api-reference.md) — Gateway and admin API details
-- [Gateway README](../../gateway/README.md) — How signed payloads are processed
+- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed

@@ -2,7 +2,7 @@ name: Publish Docker images
 
 # Releases are controlled via version tags:
 #   v*                    → platform release  (all images)
-#   assistant/v*      → single component release
+#   core/assistant/v*      → single component release
 #   gateway/v*            → single component release
 #   admin/v*              → single component release
 #   channel-chat/v*       → single component release
@@ -99,9 +99,9 @@ jobs:
           # Components that copy from packages/lib (outside their own dir) use
           # the repo root as context so all paths are accessible.
           ALL_IMAGES='[
-            {"image":"assistant","context":"./assistant","file":"./assistant/Dockerfile"},
-            {"image":"gateway","context":".","file":"./gateway/Dockerfile"},
-            {"image":"admin","context":".","file":"./admin/Dockerfile"},
+            {"image":"assistant","context":"./core/assistant","file":"./core/assistant/Dockerfile"},
+            {"image":"gateway","context":".","file":"./core/gateway/Dockerfile"},
+            {"image":"admin","context":".","file":"./core/admin/Dockerfile"},
             {"image":"channel-chat","context":".","file":"./channels/chat/Dockerfile"},
             {"image":"channel-discord","context":".","file":"./channels/discord/Dockerfile"},
             {"image":"channel-voice","context":".","file":"./channels/voice/Dockerfile"},

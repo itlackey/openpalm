@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
-const COMPOSE_BASE = join(REPO_ROOT, "assets/state/docker-compose.yml");
+const COMPOSE_BASE = join(REPO_ROOT, "packages/lib/src/embedded/state/docker-compose.yml");
 const PROJECT_NAME = "openpalm-test";
 const TIMEOUT = 10_000;
 const ADMIN_TOKEN = "test-docker-token";
@@ -114,7 +114,7 @@ beforeAll(async () => {
     join(stateDir, "qdrant"), join(stateDir, "assistant"),
     join(stateDir, "channel-chat"), join(stateDir, "channel-discord"),
     join(stateDir, "channel-voice"), join(stateDir, "channel-telegram"),
-    join(stateDir, "rendered", "caddy"), join(stateDir, "caddy", "config"),
+    stateDir, join(stateDir, "caddy", "config"),
     join(stateDir, "caddy", "data"), join(stateDir, "automations"),
   ]) mkdirSync(d, { recursive: true });
 
@@ -126,7 +126,7 @@ beforeAll(async () => {
   }
 
   // Write minimal caddy.json so caddy can start
-  writeFileSync(join(stateDir, "rendered/caddy/caddy.json"), JSON.stringify({
+  writeFileSync(join(stateDir, "caddy.json"), JSON.stringify({
     admin: { disabled: true },
     apps: {
       http: {
@@ -174,7 +174,7 @@ services:
   admin:
     build:
       context: .
-      dockerfile: admin/Dockerfile
+      dockerfile: core/admin/Dockerfile
     ports:
       - "${ADMIN_PORT}:8100"
     volumes:
@@ -185,13 +185,13 @@ services:
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
+      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
       ADMIN_TOKEN: "${ADMIN_TOKEN}"
 
   gateway:
     build:
       context: .
-      dockerfile: gateway/Dockerfile
+      dockerfile: core/gateway/Dockerfile
     ports:
       - "${GATEWAY_PORT}:8080"
 `;

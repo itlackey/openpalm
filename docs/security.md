@@ -10,7 +10,7 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 - Setup wizard can harden further with `host` scope (localhost-only matchers + localhost compose bindings).
 - Unknown routes are rejected at the edge.
 
-**Initial bootstrap config (first boot):** The initial Caddy config (`assets/state/caddy/caddy.json`) serves HTTP only on port 80 with LAN-restricted IP ranges. This is acceptable because the bootstrap config is LAN-only and is replaced post-setup by the stack generator, which renders a full Caddy config with proper TLS settings once a domain is configured. If you need HTTPS during initial setup, configure a domain and run the setup wizard to generate the production Caddy config with automatic TLS.
+**Initial bootstrap config (first boot):** The initial Caddy config (`packages/lib/src/embedded/state/caddy/caddy.json`) serves HTTP only on port 80 with LAN-restricted IP ranges. This is acceptable because the bootstrap config is LAN-only and is replaced post-setup by the stack generator, which renders a full Caddy config with proper TLS settings once a domain is configured. If you need HTTPS during initial setup, configure a domain and run the setup wizard to generate the production Caddy config with automatic TLS.
 
 **Why:** keep management surfaces private by default and reduce internet-exposed attack surface.
 
@@ -60,10 +60,10 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 ## 7) Optional LAN SSH for assistant (disabled by default)
 
 - SSH is opt-in (`OPENCODE_ENABLE_SSH=1`).
-- Password auth is disabled; key auth only via `assistant/ssh/authorized_keys`.
+- Password auth is disabled; key auth only via `core/assistant/ssh/authorized_keys`.
 - Bind defaults are localhost unless explicitly opened to LAN.
 
-See [assistant/README.md](../assistant/README.md#ssh-access-optional) for setup steps and environment variables.
+See [core/assistant/README.md](../core/assistant/README.md#ssh-access-optional) for setup steps and environment variables.
 
 **Why:** allow controlled remote administration while preserving secure-by-default local-only operation.
 

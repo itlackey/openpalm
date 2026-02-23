@@ -1,4 +1,4 @@
-<img src="assets/state/content/banner.png" alt="OpenPalm" width="500" />
+<img src="packages/lib/src/embedded/state/content/banner.png" alt="OpenPalm" width="500" />
 
 <p>
   <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
@@ -35,12 +35,12 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 
 **Mac or Linux** — open Terminal and paste:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
 ```
 
 **Windows** — open PowerShell and paste:
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 <details>
@@ -119,8 +119,8 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 |---|---|
 | [CLI](docs/cli.md) | Install methods, commands, flags, and building from source |
 | [User Concepts](docs/concepts.md) | What OpenPalm is and how end users interact with it |
-| [Admin Guide](admin/docs/admin-guide.md) | Installation, admin console, authentication |
-| [Admin Concepts](admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
+| [Admin Guide](core/admin/docs/admin-guide.md) | Installation, admin console, authentication |
+| [Admin Concepts](core/admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 | [Host System Reference](docs/host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Maintenance](docs/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
@@ -132,9 +132,9 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 
 | Service | README |
 |---|---|
-| Admin service | [admin/README.md](admin/README.md) |
-| Gateway service | [gateway/README.md](gateway/README.md) |
-| Assistant service | [assistant/README.md](assistant/README.md) |
+| Admin service | [core/admin/README.md](core/admin/README.md) |
+| Gateway service | [core/gateway/README.md](core/gateway/README.md) |
+| Assistant service | [core/assistant/README.md](core/assistant/README.md) |
 | Chat channel | [channels/chat/README.md](channels/chat/README.md) |
 | Discord channel | [channels/discord/README.md](channels/discord/README.md) |
 | Voice channel | [channels/voice/README.md](channels/voice/README.md) |

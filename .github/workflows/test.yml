@@ -33,7 +33,7 @@ jobs:
       - name: Validate Docker builds
         run: |
           FAILED=0
-          for df in gateway/Dockerfile admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile; do
+          for df in core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile; do
             echo "::group::Building $df"
             if [ -f "$df" ]; then
               # Determine context: if Dockerfile copies from packages/lib, use repo root
@@ -50,9 +50,9 @@ jobs:
             echo "::endgroup::"
           done
           # Assistant uses its own context
-          echo "::group::Building assistant/Dockerfile"
-          if ! docker build -f assistant/Dockerfile ./assistant --no-cache --progress=plain -t "test-assistant:ci" 2>&1; then
-            echo "::error::Docker build failed for assistant/Dockerfile"
+          echo "::group::Building core/assistant/Dockerfile"
+          if ! docker build -f core/assistant/Dockerfile ./core/assistant --no-cache --progress=plain -t "test-assistant:ci" 2>&1; then
+            echo "::error::Docker build failed for core/assistant/Dockerfile"
             FAILED=$((FAILED + 1))
           fi
           echo "::endgroup::"

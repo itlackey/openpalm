@@ -39,9 +39,9 @@ Headers:
 3. Set your webhook URL with Telegram: `https://api.telegram.org/bot<token>/setWebhook?url=<your-public-url>/channels/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>`
 4. Verify: `https://api.telegram.org/bot<token>/getMe`
 
-Manage credentials via `POST /admin/channels/config` with `service: "channel-telegram"`.
+Manage credentials via `POST /channels/config` with `service: "channel-telegram"`.
 
 ## Related
 
 - [API Reference](../../dev/docs/api-reference.md#telegram-channel-telegram-8182) — Full endpoint and payload details
-- [Gateway README](../../gateway/README.md) — How signed payloads are processed
+- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed

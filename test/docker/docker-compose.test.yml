@@ -7,7 +7,7 @@ services:
   admin:
     build:
       context: .
-      dockerfile: admin/Dockerfile
+      dockerfile: core/admin/Dockerfile
     ports:
       - "18200:8100"
     volumes:
@@ -15,12 +15,12 @@ services:
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
+      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
       ADMIN_TOKEN: "test-docker-token"
 
   gateway:
     build:
       context: .
-      dockerfile: gateway/Dockerfile
+      dockerfile: core/gateway/Dockerfile
     ports:
       - "18280:8080"

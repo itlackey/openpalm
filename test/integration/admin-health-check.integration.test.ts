@@ -12,15 +12,15 @@ const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal
   .catch(() => false);
 
 describe.skipIf(!stackAvailable)("integration: admin health-check", () => {
-  it("GET /admin/setup/health-check → 200", async () => {
-    const resp = await fetch(`${ADMIN_BASE}/admin/setup/health-check`, {
+  it("GET /setup/health-check → 200", async () => {
+    const resp = await fetch(`${ADMIN_BASE}/setup/health-check`, {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     expect(resp.status).toBe(200);
   });
 
   it("response has services with gateway, assistant, openmemory, admin", async () => {
-    const resp = await fetch(`${ADMIN_BASE}/admin/setup/health-check`, {
+    const resp = await fetch(`${ADMIN_BASE}/setup/health-check`, {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     const body = await resp.json() as {
@@ -33,7 +33,7 @@ describe.skipIf(!stackAvailable)("integration: admin health-check", () => {
   });
 
   it("services.admin.ok is true", async () => {
-    const resp = await fetch(`${ADMIN_BASE}/admin/setup/health-check`, {
+    const resp = await fetch(`${ADMIN_BASE}/setup/health-check`, {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     const body = await resp.json() as {
@@ -43,7 +43,7 @@ describe.skipIf(!stackAvailable)("integration: admin health-check", () => {
   });
 
   it("response has serviceInstances with openmemory, psql, qdrant", async () => {
-    const resp = await fetch(`${ADMIN_BASE}/admin/setup/health-check`, {
+    const resp = await fetch(`${ADMIN_BASE}/setup/health-check`, {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     const body = await resp.json() as {
@@ -56,7 +56,7 @@ describe.skipIf(!stackAvailable)("integration: admin health-check", () => {
   });
 
   it("all services ok when stack is healthy", async () => {
-    const resp = await fetch(`${ADMIN_BASE}/admin/setup/health-check`, {
+    const resp = await fetch(`${ADMIN_BASE}/setup/health-check`, {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     const body = await resp.json() as {

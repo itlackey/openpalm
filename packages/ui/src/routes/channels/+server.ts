@@ -1,6 +1,6 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { getStackManager } from '$lib/server/init';
-import { isBuiltInChannel } from '@openpalm/lib/admin/stack-spec';
+import { isBuiltInChannel } from '@openpalm/lib/admin/stack-spec.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals }) => {

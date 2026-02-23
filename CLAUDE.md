@@ -31,17 +31,17 @@ bun run test:unit                 # Unit only
 bun test --filter integration     # Integration only
 bun test --filter contract        # Contract tests
 bun test --filter security        # Security tests
-bun run test:ui                   # Playwright E2E (or: cd admin && npx playwright test)
+bun run test:ui                   # Playwright E2E (or: cd core/admin && npx playwright test)
 
 # Single test file
-bun test gateway/src/channel-intake.test.ts
+bun test core/gateway/src/channel-intake.test.ts
 
 # Tests matching a pattern
 bun test --match "channel intake"
 
 # Workspace tests
-cd gateway && bun test
-cd admin && bun test
+cd core/gateway && bun test
+cd core/admin && bun test
 
 # Workflow tests (requires: act — https://github.com/nektos/act)
 bun run test:workflows             # Test all GitHub Actions workflows locally
@@ -82,18 +82,18 @@ Admin (control plane: UI, API, Docker Compose lifecycle, cron automations)
 
 ## Monorepo Structure
 
-Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui`.
+Bun workspaces: `core/gateway`, `core/admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui`.
 
 | Directory | Purpose |
 |-----------|---------|
-| `admin/` | Control-plane service (legacy Bun server in src/, being replaced by packages/ui/) |
-| `gateway/` | Security layer (HMAC, rate limiting, intake validation, audit) |
-| `assistant/` | OpenCode agent runtime with built-in extensions |
+| `core/admin/` | Control-plane service (legacy Bun server in src/, being replaced by packages/ui/) |
+| `core/gateway/` | Security layer (HMAC, rate limiting, intake validation, audit) |
+| `core/assistant/` | OpenCode agent runtime with built-in extensions |
 | `channels/` | Channel adapter services |
 | `packages/lib/` | Shared library (`@openpalm/lib`) used by all services |
 | `packages/cli/` | CLI tool (installer, management commands) |
 | `packages/ui/` | SvelteKit admin UI (admin UI implementation) |
-| `assets/` | Docker Compose base, Caddy config, install scripts |
+| `packages/lib/src/embedded/` | Embedded Docker Compose/Caddy/config seed resources |
 | `dev/` | Dev utilities, setup scripts, dev compose overlay |
 | `test/` | Cross-service tests (integration, contract, security) |
 | `docs/` | User-facing documentation |
@@ -101,7 +101,7 @@ Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webho
 ## Compose Layer Stacking
 
 Two compose files are layered; `--project-directory .` is required so paths resolve from repo root:
-1. `assets/state/docker-compose.yml` — production base
+1. `packages/lib/src/embedded/state/docker-compose.yml` — production base
 2. `dev/docker-compose.dev.yml` — dev overlay (local builds from source)
 
 The `dev:*` scripts handle this automatically.
@@ -112,7 +112,7 @@ The `dev:*` scripts handle this automatically.
 .dev/
 ├── config/    (OPENPALM_CONFIG_HOME) — secrets.env, channel envs, caddy, opencode.jsonc
 ├── data/      (OPENPALM_DATA_HOME)   — postgres, qdrant, openmemory, admin, assistant
-└── state/     (OPENPALM_STATE_HOME)  — rendered artifacts, runtime state
+└── state/     (OPENPALM_STATE_HOME)  — runtime artifacts, state envs
 ```
 
 Delete `.dev/data/setup-state.json` to reset the admin wizard to first-boot state.

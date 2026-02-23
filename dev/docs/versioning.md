@@ -7,8 +7,8 @@ OpenPalm supports both coordinated platform releases and independent component r
 | Target | Version source |
 |---|---|
 | Platform tag (`vX.Y.Z`) | `/package.json` |
-| `assistant` | `/assistant/package.json` |
-| `gateway` | `/gateway/package.json` |
+| `assistant` | `/core/assistant/package.json` |
+| `gateway` | `/core/gateway/package.json` |
 | `admin` | `/packages/ui/package.json` |
 | `channel-chat` | `/channels/chat/package.json` |
 | `channel-discord` | `/channels/discord/package.json` |

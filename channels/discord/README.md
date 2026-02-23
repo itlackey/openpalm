@@ -37,9 +37,9 @@ The `channel-discord` adapter connects a Discord bot to the OpenPalm assistant. 
 3. Invite the bot to your server with the required permissions (Send Messages, Read Message History).
 4. Configure the Interactions Endpoint URL in the Discord developer portal to point to `/channels/discord` (your public URL, if applicable).
 
-Manage credentials via `POST /admin/channels/config` with `service: "channel-discord"`.
+Manage credentials via `POST /channels/config` with `service: "channel-discord"`.
 
 ## Related
 
 - [API Reference](../../dev/docs/api-reference.md#discord-channel-discord-8184) — Full endpoint and payload details
-- [Gateway README](../../gateway/README.md) — How signed payloads are processed
+- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed

@@ -20,7 +20,7 @@
         "packages/lib/src/*"
       ],
       "@openpalm/lib/admin/*": [
-        "packages/lib/admin/*"
+        "packages/lib/src/admin/*"
       ],
       "@openpalm/lib/assets/*": [
         "packages/lib/assets/*"
@@ -28,15 +28,13 @@
     }
   },
   "include": [
-    "admin/src/**/*.ts",
-    "gateway/src/**/*.ts",
+    "core/gateway/src/**/*.ts",
     "channels/**/*.ts",
     "packages/cli/src/**/*.ts",
     "packages/lib/src/**/*.ts",
     "packages/ui/src/**/*.ts",
     "dev/**/*.ts",
     "test/**/*.ts",
-    "packages/lib/admin/**/*.ts",
     "packages/lib/assets/**/*.ts"
   ],
   "exclude": [

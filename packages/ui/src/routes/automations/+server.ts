@@ -1,8 +1,8 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { getStackManager } from '$lib/server/init';
-import { getLatestRun } from '@openpalm/lib/admin/automation-history';
-import { validateCron } from '@openpalm/lib/admin/cron';
-import { syncAutomations } from '@openpalm/lib/admin/automations';
+import { getLatestRun } from '@openpalm/lib/admin/automation-history.ts';
+import { validateCron } from '@openpalm/lib/admin/cron.ts';
+import { syncAutomations } from '@openpalm/lib/admin/automations.ts';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types';
 

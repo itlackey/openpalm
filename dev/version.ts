@@ -51,9 +51,9 @@ interface ComponentMeta {
 }
 
 export const COMPONENTS: Record<string, ComponentMeta> = {
-  assistant: { context: "assistant", packageJson: "assistant/package.json", image: true },
-  gateway: { context: "gateway", packageJson: "gateway/package.json", image: true },
-  admin: { context: "admin", packageJson: "admin/package.json", image: true },
+  assistant: { context: "core/assistant", packageJson: "core/assistant/package.json", image: true },
+  gateway: { context: "core/gateway", packageJson: "core/gateway/package.json", image: true },
+  admin: { context: "core/admin", packageJson: "core/admin/package.json", image: true },
   "channel-chat": { context: "channels/chat", packageJson: "channels/chat/package.json", image: true },
   "channel-discord": {
     context: "channels/discord",
