@@ -8,10 +8,10 @@ set -euo pipefail
 # `openpalm install`. All installer logic lives in the CLI itself.
 #
 # Usage (no arguments):
-#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
 #
 # Usage (with arguments — note the -s -- before flags):
-#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash -s -- --runtime docker
+#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash -s -- --runtime docker
 #   curl -fsSL ... | bash -s -- --runtime podman --no-open
 #   curl -fsSL ... | bash -s -- --ref v1.0.0
 #
@@ -110,7 +110,7 @@ fi
 if [ "$OS_NAME" = "windows" ]; then
   echo "This installer is for Linux/macOS shells."
   echo "On Windows, run the PowerShell installer instead:"
-  echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"'
+  echo '  pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"'
   exit 1
 fi
 

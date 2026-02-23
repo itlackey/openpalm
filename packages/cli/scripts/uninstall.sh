@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./assets/state/scripts/uninstall.sh [--runtime docker|podman|orbstack] [--remove-all] [--remove-images] [--yes]
+Usage: ./packages/cli/scripts/uninstall.sh [--runtime docker|podman|orbstack] [--remove-all] [--remove-images] [--yes]
 
 Options:
   --runtime        Force a container runtime platform selection.
@@ -53,7 +53,7 @@ HELP
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Run ./assets/state/scripts/uninstall.sh --help for usage."
+      echo "Run ./packages/cli/scripts/uninstall.sh --help for usage."
       exit 1
       ;;
   esac
@@ -77,7 +77,7 @@ esac
 if [ "$OS_NAME" = "windows-bash" ]; then
   echo "This uninstaller is for Linux/macOS shells."
   echo "On Windows, run the PowerShell uninstaller instead:"
-  echo "  1) iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile \$env:TEMP/openpalm-uninstall.ps1"
+  echo "  1) iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.ps1 -OutFile \$env:TEMP/openpalm-uninstall.ps1"
   echo "  2) & \$env:TEMP/openpalm-uninstall.ps1"
   exit 1
 fi

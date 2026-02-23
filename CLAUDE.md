@@ -101,7 +101,7 @@ Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webho
 ## Compose Layer Stacking
 
 Two compose files are layered; `--project-directory .` is required so paths resolve from repo root:
-1. `assets/state/docker-compose.yml` — production base
+1. `packages/lib/src/embedded/state/docker-compose.yml` — production base
 2. `dev/docker-compose.dev.yml` — dev overlay (local builds from source)
 
 The `dev:*` scripts handle this automatically.

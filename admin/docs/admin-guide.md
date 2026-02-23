@@ -8,12 +8,12 @@ Pick whichever method suits your system:
 
 **Bash** (Linux / macOS):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
 ```
 
 **PowerShell** (Windows):
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 **npx** / **bunx**:
@@ -66,11 +66,11 @@ Channels send HMAC-signed payloads through the Gateway. The Gateway verifies sig
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.sh | bash
 ```
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
 ```
 
 Use `--remove-all` to delete all config/state/data directories and `--remove-images` to remove container images.

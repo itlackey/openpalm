@@ -13,7 +13,7 @@ $RunningOnWindows = ((($PSVersionTable.PSVersion.Major -ge 6) -and $IsWindows) -
 if (-not $RunningOnWindows) {
   Write-Host "This uninstaller is for Windows PowerShell."
   Write-Host "On Linux/macOS, run the shell uninstaller instead:"
-  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/uninstall.sh | bash"
+  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.sh | bash"
   exit 1
 }
 

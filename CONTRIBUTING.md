@@ -75,7 +75,7 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 
 The dev stack layers two compose files:
 
-1. `assets/state/docker-compose.yml` — production base (images, volumes, networking)
+1. `packages/lib/src/embedded/state/docker-compose.yml` — production base (images, volumes, networking)
 2. `dev/docker-compose.dev.yml` — dev override (local builds from source)
 
 `--project-directory .` is required so build contexts and volume paths resolve from the repo root rather than the compose file's directory. The `dev:*` scripts handle this automatically.

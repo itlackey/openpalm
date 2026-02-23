@@ -24,7 +24,7 @@ Admin (control plane, not in request path) ────────────�
 Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui` (SvelteKit, replacing `admin/ui/`).
 
 ```
-assets/state/docker-compose.yml   — production compose base
+packages/lib/src/embedded/state/docker-compose.yml   — production compose base
 dev/docker-compose.dev.yml        — dev overlay (local builds)
 .dev/config/                      — secrets.env, caddy, opencode.jsonc  (OPENPALM_CONFIG_HOME)
 .dev/data/                        — postgres, qdrant, assistant home      (OPENPALM_DATA_HOME)

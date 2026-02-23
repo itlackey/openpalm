@@ -260,8 +260,8 @@ describe("seed caddy.json validation", () => {
   const ajv = new Ajv({ strict: false, allErrors: true });
   addFormats(ajv);
 
-  it("assets/state/caddy/caddy.json is valid JSON and validates against caddy schema", async () => {
-    const seedPath = join(process.cwd(), "assets/state/caddy/caddy.json");
+  it("packages/lib/src/embedded/state/caddy/caddy.json is valid JSON and validates against caddy schema", async () => {
+    const seedPath = join(process.cwd(), "packages/lib/src/embedded/state/caddy/caddy.json");
     const content = await Bun.file(seedPath).text();
     const parsed = JSON.parse(content);
 
@@ -279,8 +279,8 @@ describe("seed caddy.json validation", () => {
   });
 
 
-  it("assets/state/caddy/fallback-caddy.json is valid JSON and validates against caddy schema", async () => {
-    const seedPath = join(process.cwd(), "assets/state/caddy/fallback-caddy.json");
+  it("packages/lib/src/embedded/state/caddy/fallback-caddy.json is valid JSON and validates against caddy schema", async () => {
+    const seedPath = join(process.cwd(), "packages/lib/src/embedded/state/caddy/fallback-caddy.json");
     const content = await Bun.file(seedPath).text();
     const parsed = JSON.parse(content);
 
@@ -296,7 +296,7 @@ describe("seed caddy.json validation", () => {
   });
 
   it("seed caddy.json has API route and admin fallback", async () => {
-    const seedPath = join(process.cwd(), "assets/state/caddy/caddy.json");
+    const seedPath = join(process.cwd(), "packages/lib/src/embedded/state/caddy/caddy.json");
     const content = await Bun.file(seedPath).text();
     const parsed = JSON.parse(content);
     expect(parsed.admin.disabled).toBe(true);

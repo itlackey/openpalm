@@ -1,10 +1,10 @@
 # Development-only compose overlay.
-# Runtime orchestration is generated into assets/state/docker-compose.yml (and state-root runtime artifact paths at install/runtime).
+# Runtime orchestration is generated into packages/lib/src/embedded/state/docker-compose.yml (and state-root runtime artifact paths at install/runtime).
 services:
   assistant:
     build: ./assistant
     # Extensions are baked into the image from opencode/extensions/.
-    # For local dev, layer this over assets/state/docker-compose.yml.
+    # For local dev, layer this over packages/lib/src/embedded/state/docker-compose.yml.
     environment:
       # OpenMemory HTTP API plugin configuration
       OPENPALM_MEMORY_MODE: "api"
@@ -27,12 +27,12 @@ services:
     ports:
       - "8100:8100"
     volumes:
-      - ./assets/state/docker-compose.yml:/compose/assets/state/docker-compose.yml:ro
+      - ./packages/lib/src/embedded/state/docker-compose.yml:/compose/packages/lib/src/embedded/state/docker-compose.yml:ro
       - ./dev/docker-compose.dev.yml:/compose/dev/docker-compose.dev.yml:ro
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
+      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
 
   channel-chat:
     build:

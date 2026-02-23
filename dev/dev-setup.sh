@@ -38,11 +38,11 @@ for svc in gateway openmemory postgres qdrant assistant channel-chat channel-dis
 done
 mkdir -p "$HOME/openpalm"
 
-cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" || echo "Note: secrets.env already exists, skipping"
+cp -n "$REPO_ROOT/packages/lib/src/embedded/config/secrets.env" "$DEV_DIR/config/secrets.env" || echo "Note: secrets.env already exists, skipping"
 # Seed the v3 YAML stack spec
 cp -n "$REPO_ROOT/packages/lib/assets/templates/openpalm.yaml" "$DEV_DIR/config/openpalm.yaml" || echo "Note: openpalm.yaml already exists, skipping"
-cp -n "$REPO_ROOT/assets/state/caddy/caddy.json" "$DEV_DIR/state/caddy.json" || echo "Note: caddy.json already exists, skipping"
-cp -n "$REPO_ROOT/assets/state/caddy/fallback-caddy.json" "$DEV_DIR/state/caddy-fallback.json" || echo "Note: caddy-fallback.json already exists, skipping"
-cp -n "$REPO_ROOT/assets/state/docker-compose-fallback.yml" "$DEV_DIR/state/docker-compose-fallback.yml" || echo "Note: docker-compose-fallback.yml already exists, skipping"
+cp -n "$REPO_ROOT/packages/lib/src/embedded/state/caddy/caddy.json" "$DEV_DIR/state/caddy.json" || echo "Note: caddy.json already exists, skipping"
+cp -n "$REPO_ROOT/packages/lib/src/embedded/state/caddy/fallback-caddy.json" "$DEV_DIR/state/caddy-fallback.json" || echo "Note: caddy-fallback.json already exists, skipping"
+cp -n "$REPO_ROOT/packages/lib/src/embedded/state/docker-compose-fallback.yml" "$DEV_DIR/state/docker-compose-fallback.yml" || echo "Note: docker-compose-fallback.yml already exists, skipping"
 
 echo "Dev environment ready under .dev/ and ~/openpalm"

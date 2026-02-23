@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
-const COMPOSE_BASE = join(REPO_ROOT, "assets/state/docker-compose.yml");
+const COMPOSE_BASE = join(REPO_ROOT, "packages/lib/src/embedded/state/docker-compose.yml");
 const PROJECT_NAME = "openpalm-test";
 const TIMEOUT = 10_000;
 const ADMIN_TOKEN = "test-docker-token";
@@ -185,7 +185,7 @@ services:
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
+      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
       ADMIN_TOKEN: "${ADMIN_TOKEN}"
 
   gateway:

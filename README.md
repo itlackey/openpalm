@@ -1,4 +1,4 @@
-<img src="assets/state/content/banner.png" alt="OpenPalm" width="500" />
+<img src="packages/lib/src/embedded/state/content/banner.png" alt="OpenPalm" width="500" />
 
 <p>
   <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
@@ -35,12 +35,12 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 
 **Mac or Linux** — open Terminal and paste:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
 ```
 
 **Windows** — open PowerShell and paste:
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/assets/state/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 <details>

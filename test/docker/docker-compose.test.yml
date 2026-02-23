@@ -15,7 +15,7 @@ services:
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: assets/state/docker-compose.yml
+      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
       ADMIN_TOKEN: "test-docker-token"
 
   gateway:
