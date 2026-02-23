@@ -1,6 +1,6 @@
 const { spawnSync, spawn } = require("node:child_process");
 
-const buildResult = spawnSync("npm", ["run", "build"], { stdio: "inherit" });
+const buildResult = spawnSync("bun", ["run", "build"], { stdio: "inherit" });
 if (buildResult.status !== 0) {
 	process.exit(buildResult.status);
 }
