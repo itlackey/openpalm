@@ -37,7 +37,7 @@ The `channel-voice` adapter accepts voice transcriptions (pre-converted to text)
 
 This channel accepts pre-transcribed text. Pair it with a speech-to-text service that can `POST` to `/voice/transcription`. No platform credentials are required by the channel itself.
 
-Manage credentials via `POST /admin/channels/config` with `service: "channel-voice"`.
+Manage credentials via `POST /channels/config` with `service: "channel-voice"`.
 
 ## Related
 
