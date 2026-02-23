@@ -121,6 +121,16 @@ openpalm extensions install --plugin @scope/plugin-name
 
 This adds the plugin to `plugin[]` in the host's `opencode.json` and restarts the assistant.
 
+### Stack management via admin API (no Docker socket in assistant)
+
+When the CLI is available in the assistant container workspace, use:
+
+```bash
+openpalm admin command --type service.restart --payload '{"service":"assistant"}'
+```
+
+The command uses `OPENPALM_ADMIN_API_URL` + `OPENPALM_ADMIN_TOKEN` to call admin over HTTP. This keeps compose/socket access isolated to the admin container.
+
 ### Manual host override (no rebuild)
 
 Place files in `${OPENPALM_DATA_HOME}/assistant/.config/opencode/`:

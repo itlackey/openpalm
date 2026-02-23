@@ -29,6 +29,9 @@ import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env.ts';
 import { applyStack } from '@openpalm/lib/admin/stack-apply-engine.ts';
 import {
 	composeAction,
+	composeList,
+	composeLogs,
+	composeLogsValidateTail,
 	composePull,
 	allowedServiceSet
 } from '@openpalm/lib/admin/compose-runner.ts';
@@ -470,6 +473,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			await composeAction('restart', service);
 			return json(200, { ok: true, data: { service } });
 		}
+		if (type === 'service.stop') {
+			const service = sanitizeEnvScalar(payload.service);
+			if (!(await knownServices()).has(service))
+				return json(400, {
+					ok: false,
+					error: 'service_not_allowed',
+					code: 'service_not_allowed'
+				});
+			await composeAction('down', service);
+			return json(200, { ok: true, data: { service } });
+		}
 		if (type === 'service.up') {
 			const service = sanitizeEnvScalar(payload.service);
 			if (!(await knownServices()).has(service))
@@ -480,6 +494,45 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				});
 			await composeAction('up', service);
 			return json(200, { ok: true, data: { service } });
+		}
+		if (type === 'service.update') {
+			const service = sanitizeEnvScalar(payload.service);
+			if (!(await knownServices()).has(service))
+				return json(400, {
+					ok: false,
+					error: 'service_not_allowed',
+					code: 'service_not_allowed'
+				});
+			const pullResult = await composePull(service);
+			if (!pullResult.ok) throw new Error(pullResult.stderr || 'service_pull_failed');
+			await composeAction('up', service);
+			return json(200, { ok: true, data: { service } });
+		}
+		if (type === 'service.logs') {
+			const service = sanitizeEnvScalar(payload.service);
+			const tail = typeof payload.tail === 'number' ? payload.tail : 200;
+			if (!(await knownServices()).has(service))
+				return json(400, {
+					ok: false,
+					error: 'service_not_allowed',
+					code: 'service_not_allowed'
+				});
+			if (!composeLogsValidateTail(tail))
+				return json(400, { ok: false, error: 'invalid_tail', code: 'invalid_tail' });
+			const result = await composeLogs(service, tail);
+			if (!result.ok) throw new Error(result.stderr || 'service_logs_failed');
+			return json(200, { ok: true, data: { service, tail, logs: result.stdout } });
+		}
+		if (type === 'service.status') {
+			const result = await composeList();
+			if (!result.ok) throw new Error(result.stderr || 'service_status_failed');
+			let services: unknown = result.stdout;
+			try {
+				services = JSON.parse(result.stdout);
+			} catch {
+				services = result.stdout;
+			}
+			return json(200, { ok: true, data: { services } });
 		}
 		return json(400, { ok: false, error: 'unknown_command', code: 'unknown_command' });
 	} catch (error) {

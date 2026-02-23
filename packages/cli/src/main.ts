@@ -11,6 +11,7 @@ import { status } from "./commands/status.ts";
 import { extensions } from "./commands/extensions.ts";
 import { preflight } from "./commands/preflight.ts";
 import { createChannel } from "./commands/create-channel.ts";
+import { admin } from "./commands/admin.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 import pkg from "../package.json";
 
@@ -32,6 +33,7 @@ function printHelp(): void {
   log("  logs           View container logs");
   log("  status         Show container status");
   log("  extensions     Manage extensions (install, uninstall, list)");
+  log("  admin          Execute authenticated admin API commands");
   log("  dev            Development helpers (preflight, create-channel)");
   log("  version        Print version");
   log("  help           Show this help");
@@ -59,6 +61,9 @@ function printHelp(): void {
   log("  openpalm extensions install --plugin <id>");
   log("  openpalm extensions uninstall --plugin <id>");
   log("  openpalm extensions list");
+  log("");
+  log(bold("Admin API command execution:"));
+  log("  openpalm admin command --type service.up --payload '{\"service\":\"assistant\"}'");
 }
 
 function parseArg(args: string[], name: string): string | undefined {
@@ -187,6 +192,16 @@ async function main(): Promise<void> {
           process.exit(1);
         }
         await extensions(subcommand, extArgs);
+        break;
+      }
+
+      case "admin": {
+        const [subcommand, ...adminArgs] = args;
+        if (!subcommand) {
+          error("Missing subcommand. Usage: openpalm admin command --type <command-type> [--payload '{\"k\":\"v\"}']");
+          process.exit(1);
+        }
+        await admin(subcommand, adminArgs);
         break;
       }
 

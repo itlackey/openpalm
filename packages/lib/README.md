@@ -30,7 +30,7 @@ Contains the primitives that services running inside Docker need: HMAC
 cryptography, HTTP response helpers, channel message types, and the channel SDK
 for building and forwarding messages to the gateway.
 
-**Files**: `crypto.ts`, `http.ts`, `channel.ts`, `channel-sdk.ts`
+**Files**: `crypto.ts`, `http.ts`, `channel.ts`, `channel-sdk.ts`, `admin-client.ts`
 
 ### 3. `admin/` — Admin service modules
 

@@ -417,6 +417,8 @@ function renderAssistantComposeService(): string {
     "      - OPENCODE_CONFIG_DIR=/opt/opencode",
     "      - OPENCODE_PORT=4096",
     "      - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}",
+    "      - OPENPALM_ADMIN_API_URL=http://admin:8100",
+    "      - OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
     "      - HOME=/home/opencode",
     "    ports:",
     "      - \"${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096\"",

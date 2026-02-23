@@ -67,6 +67,27 @@ See [core/assistant/README.md](../core/assistant/README.md#ssh-access-optional) 
 
 **Why:** allow controlled remote administration while preserving secure-by-default local-only operation.
 
+## 8) Assistant → Admin orchestration model
+
+OpenPalm uses token-authenticated Admin API calls for assistant-initiated stack management.
+
+- Assistant uses the CLI `openpalm admin command --type ...` path.
+- CLI calls admin over internal network (`assistant_net`) with `x-admin-token`.
+- Assistant does **not** receive Docker socket mounts or elevated container privileges.
+- Admin remains the only component with compose/socket access and enforces service allowlists.
+
+Option comparison used for this design:
+
+| Option | Security | Reliability | Maintainability | Decision |
+|---|---|---|---|---|
+| Direct `docker exec` from assistant | Weak (requires socket/privilege expansion) | Medium | Medium | Rejected |
+| Constrained socket access in assistant | Better but still high-risk breakout surface | High | Medium/Low | Rejected |
+| SSH remote execution | Strong with key controls, but larger ops surface | Medium | Low/Medium | Kept optional only |
+| Shared queue/fs or DB pub/sub (psql) | Can be secure, but adds queue semantics + worker complexity | High | Lower clarity | Deferred |
+| Direct Admin API (chosen) | Strong (token auth + existing authz path) | High | High | Adopted |
+
+The selected model keeps orchestration logic centralized in admin and minimizes privileged surfaces.
+
 ---
 
 For architecture and route details, see [architecture.md](../dev/docs/architecture.md). For API controls, see [api-reference.md](../dev/docs/api-reference.md).

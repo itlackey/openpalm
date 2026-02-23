@@ -207,6 +207,34 @@ List all installed extensions.
 openpalm extensions list
 ```
 
+### `admin`
+
+Execute authenticated admin API commands over HTTP. This is the recommended non-root orchestration path for assistant-driven stack management.
+
+```bash
+openpalm admin command --type <command-type> [--payload '<json-object>']
+```
+
+**Environment variables (optional):**
+
+- `OPENPALM_ADMIN_API_URL` (preferred), `ADMIN_APP_URL`, `GATEWAY_URL`
+- `OPENPALM_ADMIN_TOKEN` (preferred), `ADMIN_TOKEN`
+- `OPENPALM_ADMIN_TIMEOUT_MS` (default: `15000`)
+- `OPENPALM_ALLOW_INSECURE_ADMIN_HTTP=1` (only if you explicitly need public HTTP)
+
+**Examples:**
+
+```bash
+openpalm admin command --type service.up --payload '{"service":"assistant"}'
+openpalm admin command --type service.stop --payload '{"service":"channel-discord"}'
+openpalm admin command --type service.restart --payload '{"service":"gateway"}'
+openpalm admin command --type service.update --payload '{"service":"gateway"}'
+openpalm admin command --type service.logs --payload '{"service":"gateway","tail":200}'
+openpalm admin command --type service.status
+openpalm admin command --type channel.configure --payload '{"channel":"discord","exposure":"lan"}'
+openpalm admin command --type automation.trigger --payload '{"id":"health-check"}'
+```
+
 ### `dev preflight`
 
 Validate local development prerequisites (`.env` and `.dev/` directory tree).
