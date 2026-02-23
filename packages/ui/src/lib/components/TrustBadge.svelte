@@ -1,6 +1,8 @@
 <script lang="ts">
+	import type { SnippetTrust } from '@openpalm/lib/shared/snippet-types';
+
 	interface Props {
-		trust: 'official' | 'curated' | 'community';
+		trust: SnippetTrust;
 	}
 
 	let { trust }: Props = $props();

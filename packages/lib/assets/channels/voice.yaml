@@ -2,8 +2,6 @@ name: Voice
 containerPort: 8183
 rewritePath: /voice/transcription
 sharedSecretEnv: CHANNEL_VOICE_SECRET
-configKeys:
-  - CHANNEL_VOICE_SECRET
 env:
   - name: CHANNEL_VOICE_SECRET
     label: Channel Secret

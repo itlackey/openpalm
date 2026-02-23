@@ -23,9 +23,16 @@ function parseBuiltInChannel(raw: string, source: string): BuiltInChannelDef {
   if (typeof obj.containerPort !== "number") throw new Error(`Channel YAML (${source}): 'containerPort' must be a number`);
   if (typeof obj.rewritePath !== "string") throw new Error(`Channel YAML (${source}): missing 'rewritePath'`);
   if (typeof obj.sharedSecretEnv !== "string") throw new Error(`Channel YAML (${source}): missing 'sharedSecretEnv'`);
-  if (!Array.isArray(obj.configKeys)) throw new Error(`Channel YAML (${source}): 'configKeys' must be an array`);
   if (!Array.isArray(obj.env)) throw new Error(`Channel YAML (${source}): 'env' must be an array`);
-  return obj as BuiltInChannelDef;
+  const env = obj.env as EnvVarDef[];
+  return {
+    name: obj.name,
+    containerPort: obj.containerPort,
+    rewritePath: obj.rewritePath,
+    sharedSecretEnv: obj.sharedSecretEnv,
+    configKeys: env.map((e) => e.name),
+    env,
+  };
 }
 
 export const BUILTIN_CHANNELS: Record<string, BuiltInChannelDef> = Object.fromEntries(

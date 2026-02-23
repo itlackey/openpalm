@@ -2,10 +2,6 @@ name: Discord
 containerPort: 8184
 rewritePath: /discord/webhook
 sharedSecretEnv: CHANNEL_DISCORD_SECRET
-configKeys:
-  - DISCORD_BOT_TOKEN
-  - DISCORD_PUBLIC_KEY
-  - CHANNEL_DISCORD_SECRET
 env:
   - name: DISCORD_BOT_TOKEN
     label: Bot Token
