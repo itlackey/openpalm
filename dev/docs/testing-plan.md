@@ -375,7 +375,7 @@ Full browser-driven tests against the live compose stack. These exercise the rea
 | Guard | Implementation |
 |-------|---------------|
 | `ChannelMessage` type matches test contracts | if type changes, contract tests fail |
-| Stack spec schema validation | validate `assets/config/stack-spec.json` against expected schema |
+| Stack spec schema validation | validate `packages/lib/assets/templates/openpalm.yaml` against expected schema |
 | Admin API routes match docs | test enumerates all routes in server source; compare to `docs/API.md` endpoint list |
 | UI fetch calls match API routes | test extracts all `fetch()` URLs from `index.html` and `setup-ui.js`; verify each has a corresponding server route |
 

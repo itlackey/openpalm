@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores/toast.svelte';
 	import { getAdminToken } from '$lib/stores/auth.svelte';
@@ -15,9 +16,9 @@
 		}
 		const r = await api('/state');
 		if (r.ok && r.data?.data?.spec) {
-			specText = JSON.stringify(r.data.data.spec, null, 2);
+			specText = yamlStringify(r.data.data.spec, { indent: 2 });
 		} else {
-			specText = '// Could not load stack spec: ' + (r.data?.error || 'unknown error');
+			specText = '# Could not load stack spec: ' + (r.data?.error || 'unknown error');
 		}
 	}
 
@@ -28,9 +29,9 @@
 		}
 		let spec: unknown;
 		try {
-			spec = JSON.parse(specText);
+			spec = yamlParse(specText);
 		} catch (e) {
-			showToast('Invalid JSON: ' + (e instanceof Error ? e.message : String(e)), 'error');
+			showToast('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), 'error');
 			return;
 		}
 		const r = await api('/command', {
@@ -84,8 +85,8 @@
 <div class="card">
 	<h3>Stack Spec</h3>
 	<p class="muted" style="font-size:13px">
-		Edit the stack specification to configure channels, automations, and access scope. Save,
-		then Apply to regenerate configuration files and restart services.
+		Edit the stack specification (YAML) to configure channels, automations, and access scope.
+		Save, then Apply to regenerate configuration files and restart services.
 	</p>
 	<textarea bind:value={specText} rows="16" style="width:100%;margin:0.5rem 0" placeholder="Loading..."></textarea>
 	<div style="display:flex;gap:0.5rem">

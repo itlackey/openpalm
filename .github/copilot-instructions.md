@@ -78,7 +78,7 @@ Always use `.ts` extension in relative imports.
 
 ## Adding things
 
-- **New channel**: add JSON to `assets/config/stack-spec.json`, run generator — no code changes needed.
+- **New channel**: add a channel entry to `packages/lib/assets/templates/openpalm.yaml`, run generator — no code changes needed.
 - **New OpenCode extension**: edit `DATA/assistant/.config/opencode/opencode.json` (plugins) or drop files in `assistant/extensions/`.
 - **Gateway intake changes**: edit `gateway/opencode/agents/channel-intake.md` or `gateway/opencode/skills/channel-intake/SKILL.md`.
 
