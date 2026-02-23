@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('dashboard browser tests', () => {
 	test('page loads at / with Dashboard heading', async ({ page }) => {
 		await page.goto('/');
-		await expect(page.locator('h2')).toContainText('Dashboard');
+		await expect(page.locator('h2', { hasText: 'Dashboard' })).toBeVisible();
 	});
 
 	test('nav bar shows OpenPalm branding, dashboard button, and theme toggle', async ({
@@ -31,6 +31,6 @@ test.describe('dashboard browser tests', () => {
 
 	test('Setup Wizard "Run Setup Wizard" button visible', async ({ page }) => {
 		await page.goto('/');
-		await expect(page.locator('text=Run Setup Wizard')).toBeVisible();
+		await expect(page.locator('button', { hasText: 'Run Setup Wizard' })).toBeVisible();
 	});
 });

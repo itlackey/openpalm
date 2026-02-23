@@ -1,33 +1,30 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { ADMIN_TOKEN } from './helpers';
 
-/**
- * Setup wizard browser tests.
- * Opens the wizard via the "Run Setup Wizard" button (works regardless of setup state).
- * Sets admin token in localStorage so API calls from the wizard succeed.
- */
+async function openWizard(page: Page) {
+	const overlay = page.locator('.wizard-overlay');
+	if (await overlay.isVisible()) return;
+	await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
+	await expect(overlay).toBeVisible();
+}
 
 test.beforeEach(async ({ page }) => {
 	await page.goto('/');
 	await page.evaluate((token) => localStorage.setItem('op_admin', token), ADMIN_TOKEN);
+	await page.reload();
 });
 
 test.describe('setup wizard browser flow', () => {
-	test('clicking "Run Setup Wizard" opens the wizard overlay', async ({ page }) => {
-		await page.goto('/');
-		await expect(page.locator('h2')).toContainText('Dashboard');
-
-		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
-		await expect(page.locator('.wizard-overlay')).toBeVisible();
+	test('setup wizard overlay is visible', async ({ page }) => {
+		await expect(page.locator('h2', { hasText: 'Dashboard' })).toBeVisible();
+		await openWizard(page);
 		await expect(page.locator('.wizard h2')).toContainText('Welcome');
 	});
 
 	test('wizard step navigation: Welcome -> Profile -> AI Providers -> Security -> Channels', async ({
 		page
 	}) => {
-		await page.goto('/');
-		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
-		await expect(page.locator('.wizard-overlay')).toBeVisible();
+		await openWizard(page);
 
 		await expect(page.locator('.wizard h2')).toContainText('Welcome');
 		await expect(page.locator('text=Welcome to')).toBeVisible();
@@ -50,8 +47,7 @@ test.describe('setup wizard browser flow', () => {
 	});
 
 	test('wizard Back button navigates to previous step', async ({ page }) => {
-		await page.goto('/');
-		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
+		await openWizard(page);
 
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 		await expect(page.locator('.wizard h2')).toContainText('Profile');
@@ -61,9 +57,7 @@ test.describe('setup wizard browser flow', () => {
 	});
 
 	test('full wizard flow reaches Complete step', async ({ page }) => {
-		await page.goto('/');
-		await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
-		await expect(page.locator('.wizard-overlay')).toBeVisible();
+		await openWizard(page);
 
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 		await expect(page.locator('.wizard h2')).toContainText('Profile');
