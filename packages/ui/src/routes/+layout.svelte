@@ -33,7 +33,7 @@
 <nav>
 	<span class="logo">
 		<img src="{base}/logo.png" alt="OpenPalm logo" />
-		OpenPalm 🤗
+		OpenPalm
 	</span>
 	<a href="{base}/" style="text-decoration:none">
 		<button class="nav-btn active">Dashboard</button>
