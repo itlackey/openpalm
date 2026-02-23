@@ -80,14 +80,7 @@ jobs:
       - run: bun test --filter security
 
   ui:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
-      - run: bun run test:ui
+    uses: ./.github/workflows/test-ui.yml
 
   docker-build:
     if: inputs.component != 'cli'
