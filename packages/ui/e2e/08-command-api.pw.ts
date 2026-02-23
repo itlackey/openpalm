@@ -2,6 +2,23 @@ import { test, expect } from '@playwright/test';
 import { cmd } from './helpers';
 
 test.describe('command endpoint coverage', () => {
+	test('setup commands allow unauthenticated local requests before setup is complete', async ({
+		request
+	}) => {
+		const status = await request.get('/setup/status');
+		expect(status.status()).toBe(200);
+		const setup = await status.json();
+		test.skip(setup.completed === true, 'Instance is already configured; setup commands require auth.');
+
+		const res = await request.post('/command', {
+			headers: { 'content-type': 'application/json' },
+			data: { type: 'setup.step', payload: { step: 'welcome' } }
+		});
+		expect(res.status()).toBe(200);
+		const body = await res.json();
+		expect(body.ok).toBe(true);
+	});
+
 	test('setup.step command works', async ({ request }) => {
 		// Re-completing an already complete step should still succeed
 		const res = await cmd(request, 'setup.step', { step: 'welcome' });
