@@ -1,5 +1,6 @@
-import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, BuiltInChannelNames, getBuiltInChannelDef } from "./stack-spec.ts";
+import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, getBuiltInChannelDef } from "./stack-spec.ts";
 import type { BuiltInChannelName, StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
+import { renderCaddyComposeService, renderOpenMemoryComposeService, renderOpenMemoryUiComposeService, renderPostgresComposeService, renderQdrantComposeService } from "./core-services.ts";
 
 function resolveChannelPort(name: string, config: StackChannelConfig): number {
   if (config.containerPort) return config.containerPort;
@@ -186,9 +187,8 @@ function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpe
     });
   }
 
-  if (isBuiltInChannel(name)) {
-    // Built-in channels: rewrite to their specific path, then proxy
-    const rewritePath = getBuiltInChannelDef(name).rewritePath;
+  const rewritePath = cfg.rewritePath ?? (isBuiltInChannel(name) ? getBuiltInChannelDef(name).rewritePath : undefined);
+  if (rewritePath) {
     subrouteHandlers.push({
       handle: [
         { handler: "rewrite", uri: rewritePath },
@@ -196,7 +196,6 @@ function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpe
       ],
     });
   } else {
-    // Custom channels: strip prefix and proxy
     subrouteHandlers.push({
       handle: [
         { handler: "rewrite", strip_path_prefix: `/channels/${name}` },
@@ -407,105 +406,6 @@ function renderChannelComposeService(name: string, config: StackChannelConfig): 
   ].join("\n");
 }
 
-function renderCaddyComposeService(): string {
-  return [
-    "  caddy:",
-    "    image: caddy:2-alpine",
-    "    restart: unless-stopped",
-    "    ports:",
-    "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80\"",
-    "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443\"",
-    "    volumes:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/caddy/caddy.json:/etc/caddy/caddy.json:ro",
-    "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
-    "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
-    "    command: caddy run --config /etc/caddy/caddy.json",
-    "    networks: [assistant_net, channel_net]",
-  ].join("\n");
-}
-
-function renderPostgresComposeService(): string {
-  return [
-    "  postgres:",
-    "    image: postgres:16-alpine",
-    "    restart: unless-stopped",
-    "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/postgres/.env",
-    "    environment:",
-    "      POSTGRES_DB: ${POSTGRES_DB:-openpalm}",
-    "      POSTGRES_USER: ${POSTGRES_USER:-openpalm}",
-    "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}",
-    "    volumes:",
-    "      - ${OPENPALM_DATA_HOME}/postgres:/var/lib/postgresql/data",
-    "    networks: [assistant_net]",
-    "    healthcheck:",
-    "      test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER:-openpalm}\"]",
-    "      interval: 10s",
-    "      timeout: 5s",
-    "      retries: 5",
-  ].join("\n");
-}
-
-function renderQdrantComposeService(): string {
-  return [
-    "  qdrant:",
-    "    image: qdrant/qdrant:v1.13.2",
-    "    restart: unless-stopped",
-    "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/qdrant/.env",
-    "    volumes:",
-    "      - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage",
-    "    networks: [assistant_net]",
-    "    healthcheck:",
-    "      test: [\"CMD-SHELL\", \"curl -sf http://localhost:6333/readyz || exit 1\"]",
-    "      interval: 10s",
-    "      timeout: 5s",
-    "      retries: 5",
-  ].join("\n");
-}
-
-function renderOpenMemoryComposeService(): string {
-  return [
-    "  openmemory:",
-    "    image: mem0/openmemory-mcp:latest",
-    "    restart: unless-stopped",
-    "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/openmemory/.env",
-    "    ports:",
-    "      - \"${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765\"",
-    "    volumes:",
-    "      - ${OPENPALM_DATA_HOME}/openmemory:/data",
-    "    networks: [assistant_net]",
-    "    depends_on:",
-    "      qdrant:",
-    "        condition: service_healthy",
-    "      postgres:",
-    "        condition: service_healthy",
-    "    healthcheck:",
-    "      test: [\"CMD-SHELL\", \"curl -sf http://localhost:8765/ || exit 1\"]",
-    "      interval: 15s",
-    "      timeout: 10s",
-    "      retries: 5",
-  ].join("\n");
-}
-
-function renderOpenMemoryUiComposeService(): string {
-  return [
-    "  openmemory-ui:",
-    "    image: mem0/openmemory-ui:latest",
-    "    restart: unless-stopped",
-    "    environment:",
-    "      - NEXT_PUBLIC_API_URL=${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}",
-    "      - NEXT_PUBLIC_USER_ID=${OPENMEMORY_USER_ID:-default-user}",
-    "    ports:",
-    "      - \"${OPENPALM_OPENMEMORY_UI_BIND_ADDRESS:-127.0.0.1}:3000:3000\"",
-    "    networks: [assistant_net]",
-    "    depends_on:",
-    "      openmemory:",
-    "        condition: service_healthy",
-  ].join("\n");
-}
-
 function renderAssistantComposeService(): string {
   return [
     "  assistant:",
@@ -553,6 +453,7 @@ function renderGatewayComposeService(): string {
     "      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
     "    volumes:",
     "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
+    "      - ${OPENPALM_STATE_HOME}:/state:ro",
     "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
     "    networks: [channel_net, assistant_net]",
     "    depends_on:",
@@ -679,17 +580,8 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     OPENPALM_ENABLED_CHANNELS: enabledChannels,
   });
 
-  const gatewayChannelSecrets: Record<string, string> = {};
-  for (const name of BuiltInChannelNames) {
-    const channel = spec.channels[name];
-    if (!channel) throw new Error(`missing_built_in_channel_${name}`);
-    const secretEnvKey = getBuiltInChannelDef(name).sharedSecretEnv;
-    gatewayChannelSecrets[secretEnvKey] = resolveChannelConfig(name, channel, secrets)[secretEnvKey] ?? "";
-  }
-
   const gatewayEnv = envWithHeader("# Generated gateway env", {
     ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
-    ...gatewayChannelSecrets,
   });
 
   const serviceEnvs: Record<string, string> = {};

@@ -3,8 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 export const CoreServices = [
   "assistant", "gateway", "openmemory", "admin",
-  "channel-chat", "channel-discord", "channel-voice",
-  "channel-telegram", "caddy", "openmemory-ui", "postgres", "qdrant"
+  "caddy", "openmemory-ui", "postgres", "qdrant"
 ] as const;
 
 const extraServices = (Bun.env.OPENPALM_EXTRA_SERVICES ?? "")

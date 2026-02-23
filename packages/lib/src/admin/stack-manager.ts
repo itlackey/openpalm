@@ -29,6 +29,11 @@ export const CoreSecretRequirements = [
   { service: "postgres", key: "POSTGRES_PASSWORD", required: true },
 ] as const;
 
+
+function composeServiceName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+}
+
 export class StackManager {
   constructor(private readonly paths: StackManagerPaths) {}
 
@@ -285,7 +290,7 @@ export class StackManager {
     const spec = this.getSpec();
     return Object.keys(spec.channels)
       .filter((name) => spec.channels[name].enabled)
-      .map((name) => `channel-${name}`);
+      .map((name) => `channel-${composeServiceName(name)}`);
   }
 
   /** Returns all service names from the spec. */
@@ -298,7 +303,7 @@ export class StackManager {
     const spec = this.getSpec();
     return Object.keys(spec.services)
       .filter((name) => spec.services[name].enabled)
-      .map((name) => `service-${name}`);
+      .map((name) => `service-${composeServiceName(name)}`);
   }
 
   private writeArtifact(path: string, content: string, changedList: string[]): void {

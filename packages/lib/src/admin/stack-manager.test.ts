@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { StackManager } from "./stack-manager.ts";
+import { stringifyYamlDocument } from "../shared/yaml.ts";
 
-const yamlStringify = (obj: unknown) => Bun.YAML.stringify(obj, null, 2);
+const yamlStringify = (obj: unknown) => stringifyYamlDocument(obj);
 
 function createManager(dir: string) {
   return new StackManager({
@@ -42,7 +43,7 @@ describe("stack manager", () => {
     expect(caddyConfig.apps.http.servers.main).toBeDefined();
 
     expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toContain("assistant:");
-    expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
+    expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).not.toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
     expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");
   });
@@ -463,4 +464,46 @@ describe("stack manager", () => {
     expect(jiraEnv).toContain("JIRA_API_KEY=jira-key-123");
     expect(jiraEnv).toContain("JIRA_PROJECT=PROJ");
   });
+
+  it("renders community channels and services from stack spec yaml into artifacts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-community-yaml-"));
+    writeFileSync(join(dir, "secrets.env"), "COMMUNITY_SECRET=abc\n", "utf8");
+    writeFileSync(join(dir, "openpalm.yaml"), yamlStringify({
+      version: 3,
+      accessScope: "lan",
+      channels: {
+        "community/slack adapter": {
+          enabled: true,
+          exposure: "public",
+          image: "ghcr.io/community/slack:latest",
+          containerPort: 8210,
+          rewritePath: "/slack/events",
+          sharedSecretEnv: "CHANNEL_COMMUNITY_SLACK_SECRET",
+          config: {
+            CHANNEL_COMMUNITY_SLACK_SECRET: "${COMMUNITY_SECRET}",
+            "x.extra-key": "on",
+          },
+        },
+      },
+      services: {
+        "jobs worker@nightly": {
+          enabled: true,
+          image: "ghcr.io/community/jobs:latest",
+          containerPort: 9010,
+          config: { "worker.mode": "nightly" },
+        },
+      },
+      automations: [],
+    }), "utf8");
+
+    const manager = createManager(dir);
+    const rendered = manager.renderArtifacts();
+
+    expect(rendered.composeFile).toContain("channel-community-slack-adapter:");
+    expect(rendered.composeFile).toContain("service-jobs-worker-nightly:");
+    expect(rendered.caddyJson).toContain("/channels/community/slack adapter*");
+    expect(readFileSync(join(dir, "channel-community-slack-adapter", ".env"), "utf8")).toContain("CHANNEL_COMMUNITY_SLACK_SECRET=abc");
+    expect(readFileSync(join(dir, "service-jobs-worker-nightly", ".env"), "utf8")).toContain("worker.mode=nightly");
+  });
+
 });

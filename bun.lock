@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "openpalm",
@@ -11,26 +10,26 @@
     },
     "admin": {
       "name": "@openpalm/admin",
-      "version": "0.2.9",
+      "version": "0.2.8",
       "devDependencies": {
         "@playwright/test": "^1.40.0",
       },
     },
     "channels/chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.2.9",
+      "version": "0.2.8",
     },
     "channels/discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.2.9",
+      "version": "0.2.8",
     },
     "channels/telegram": {
       "name": "@openpalm/channel-telegram",
-      "version": "0.2.9",
+      "version": "0.2.8",
     },
     "channels/voice": {
       "name": "@openpalm/channel-voice",
-      "version": "0.2.9",
+      "version": "0.2.8",
     },
     "channels/webhook": {
       "name": "@openpalm/channel-webhook",
@@ -38,11 +37,11 @@
     },
     "gateway": {
       "name": "@openpalm/gateway",
-      "version": "0.2.9",
+      "version": "0.2.8",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.2.9",
+      "version": "0.2.8",
       "bin": {
         "openpalm": "./src/main.ts",
       },
@@ -53,6 +52,9 @@
     "packages/lib": {
       "name": "@openpalm/lib",
       "version": "0.2.0",
+      "dependencies": {
+        "yaml": "^2.8.2",
+      },
       "devDependencies": {
         "ajv": "^8.17.1",
         "ajv-formats": "^3.0.1",

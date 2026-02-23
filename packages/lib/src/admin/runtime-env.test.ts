@@ -1,4 +1,3 @@
-// @ts-ignore Bun test types are provided at runtime in Bun-based test execution.
 import { describe, expect, it } from "bun:test";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
 

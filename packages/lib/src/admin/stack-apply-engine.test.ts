@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { StackManager } from "./stack-manager.ts";
+import { stringifyYamlDocument } from "../shared/yaml.ts";
 
-const yamlStringify = (obj: unknown) => Bun.YAML.stringify(obj, null, 2);
+const yamlStringify = (obj: unknown) => stringifyYamlDocument(obj);
 import { applyStack } from "./stack-apply-engine.ts";
 
 function createManager(dir: string) {

@@ -1,15 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { BUILTIN_CHANNELS } from "../assets/channels/index.ts";
-import type { BuiltInChannelDef } from "../assets/channels/index.ts";
+import { BUILTIN_CHANNELS } from "../../assets/channels/index.ts";
+import type { BuiltInChannelDef } from "../../assets/channels/index.ts";
+import { parseYamlDocument, stringifyYamlDocument } from "../shared/yaml.ts";
 
 export const StackSpecVersion = 3;
 
 export type StackAccessScope = "host" | "lan" | "public";
 export type ChannelExposure = "host" | "lan" | "public";
 
-/** Built-in channel names that have known defaults for image, port, and config keys. */
-export type BuiltInChannelName = "chat" | "discord" | "voice" | "telegram";
+export type BuiltInChannelName = string;
 
 export type StackChannelConfig = {
   enabled: boolean;
@@ -21,6 +21,8 @@ export type StackChannelConfig = {
   hostPort?: number;
   domains?: string[];
   pathPrefixes?: string[];
+  rewritePath?: string;
+  sharedSecretEnv?: string;
   volumes?: string[];
   config: Record<string, string>;
 };
@@ -61,7 +63,7 @@ export type StackSpec = {
 
 // --- Derive built-in channel data from YAML snippets ---
 
-export const BuiltInChannelNames: BuiltInChannelName[] = Object.keys(BUILTIN_CHANNELS) as BuiltInChannelName[];
+export const BuiltInChannelNames: BuiltInChannelName[] = Object.keys(BUILTIN_CHANNELS);
 
 export const BuiltInChannelConfigKeys: Record<BuiltInChannelName, string[]> = Object.fromEntries(
   Object.entries(BUILTIN_CHANNELS).map(([name, def]) => [name, def.configKeys]),
@@ -93,15 +95,6 @@ const IMAGE_PATTERN = /^[a-z0-9]+([._\/:@-][a-z0-9]+)*$/i;
 /** Email: basic validation — no whitespace, newlines, or Caddy metacharacters. */
 const EMAIL_PATTERN = /^[^\s{}"#]+@[^\s{}"#]+\.[^\s{}"#]+$/;
 
-/** Custom config keys: uppercase letters, digits, underscores. Must start with a letter. */
-const CONFIG_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
-
-/** Maximum channel/service name length (DNS label limit). */
-const MAX_NAME_LENGTH = 63;
-
-/** Volume mount: path:path or named_volume:path with optional :ro/:rw suffix. */
-const VOLUME_PATTERN = /^[a-zA-Z0-9_./${}:-]+$/;
-
 function defaultAutomations(): StackAutomation[] {
   return [];
 }
@@ -112,16 +105,24 @@ function defaultChannelConfig(channel: BuiltInChannelName): Record<string, strin
   return result;
 }
 
+function defaultChannelEntry(channelName: string): StackChannelConfig {
+  const builtIn = BUILTIN_CHANNELS[channelName];
+  const config = defaultChannelConfig(channelName);
+  return {
+    enabled: true,
+    exposure: "lan",
+    containerPort: builtIn.containerPort,
+    rewritePath: builtIn.rewritePath,
+    sharedSecretEnv: builtIn.sharedSecretEnv,
+    config,
+  };
+}
+
 export function createDefaultStackSpec(): StackSpec {
   return {
     version: StackSpecVersion,
     accessScope: "lan",
-    channels: {
-      chat: { enabled: true, exposure: "lan", config: defaultChannelConfig("chat") },
-      discord: { enabled: true, exposure: "lan", config: defaultChannelConfig("discord") },
-      voice: { enabled: true, exposure: "lan", config: defaultChannelConfig("voice") },
-      telegram: { enabled: true, exposure: "lan", config: defaultChannelConfig("telegram") },
-    },
+    channels: Object.fromEntries(BuiltInChannelNames.map((name) => [name, defaultChannelEntry(name)])),
     services: {},
     automations: defaultAutomations(),
   };
@@ -143,7 +144,6 @@ function parseOptionalVolumes(value: unknown, errorCode: string): string[] | und
   if (!Array.isArray(value)) throw new Error(errorCode);
   for (const v of value) {
     if (typeof v !== "string" || !v.trim()) throw new Error(errorCode);
-    if (!VOLUME_PATTERN.test(v.trim())) throw new Error(errorCode);
   }
   return value.map((v: string) => v.trim());
 }
@@ -163,7 +163,7 @@ function parseChannelConfig(raw: unknown, channelName: string): Record<string, s
 
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
-    if (!CONFIG_KEY_PATTERN.test(key)) throw new Error(`invalid_channel_config_key_${channelName}_${key}`);
+    if (!key.trim()) throw new Error(`invalid_channel_config_key_${channelName}_empty`);
     if (typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
     result[key] = value.replace(/[\r\n]+/g, "").trim();
   }
@@ -224,13 +224,20 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
     result.pathPrefixes = channel.pathPrefixes.map((p: string) => p.trim());
   }
 
+  if (channel.rewritePath !== undefined) {
+    if (typeof channel.rewritePath !== "string" || !channel.rewritePath.trim()) throw new Error(`invalid_channel_rewrite_path_${channelName}`);
+    const rewritePath = channel.rewritePath.trim();
+    if (!rewritePath.startsWith("/")) throw new Error(`invalid_channel_rewrite_path_${channelName}`);
+    result.rewritePath = rewritePath;
+  }
+
+  if (channel.sharedSecretEnv !== undefined) {
+    if (typeof channel.sharedSecretEnv !== "string" || !channel.sharedSecretEnv.trim()) throw new Error(`invalid_channel_shared_secret_env_${channelName}`);
+    result.sharedSecretEnv = channel.sharedSecretEnv.trim();
+  }
+
   const volumes = parseOptionalVolumes(channel.volumes, `invalid_channel_volumes_${channelName}`);
   if (volumes) result.volumes = volumes;
-
-  if (!isBuiltInChannel(channelName)) {
-    if (!result.image) throw new Error(`custom_channel_requires_image_${channelName}`);
-    if (!result.containerPort) throw new Error(`custom_channel_requires_container_port_${channelName}`);
-  }
 
   return result;
 }
@@ -239,7 +246,7 @@ function parseServiceConfig(raw: unknown, serviceName: string): Record<string, s
   const config = assertRecord(raw ?? {}, `invalid_service_config_${serviceName}`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
-    if (!CONFIG_KEY_PATTERN.test(key)) throw new Error(`invalid_service_config_key_${serviceName}_${key}`);
+    if (!key.trim()) throw new Error(`invalid_service_config_key_${serviceName}_empty`);
     if (typeof value !== "string") throw new Error(`invalid_service_config_value_${serviceName}_${key}`);
     result[key] = value.replace(/[\r\n]+/g, "").trim();
   }
@@ -293,7 +300,7 @@ function parseServices(raw: unknown): Record<string, StackServiceConfig> {
   const doc = assertRecord(raw, "invalid_services");
   const services: Record<string, StackServiceConfig> = {};
   for (const [name, value] of Object.entries(doc)) {
-    if (!/^[a-z][a-z0-9-]*$/.test(name) || name.length > MAX_NAME_LENGTH) throw new Error(`invalid_service_name_${name}`);
+    if (!name.trim()) throw new Error(`invalid_service_name_${name}`);
     services[name] = parseService(value, name);
   }
   return services;
@@ -348,13 +355,9 @@ export function parseStackSpec(raw: unknown): StackSpec {
 
   const channelsDoc = assertRecord(doc.channels, "missing_channels");
 
-  for (const name of BuiltInChannelNames) {
-    if (channelsDoc[name] === undefined) throw new Error(`missing_built_in_channel_${name}`);
-  }
-
   const channels: Record<string, StackChannelConfig> = {};
   for (const [name, value] of Object.entries(channelsDoc)) {
-    if (!/^[a-z][a-z0-9-]*$/.test(name) || name.length > MAX_NAME_LENGTH) throw new Error(`invalid_channel_name_${name}`);
+    if (!name.trim()) throw new Error(`invalid_channel_name_${name}`);
     channels[name] = parseChannel(value, name);
   }
 
@@ -372,13 +375,27 @@ export function parseStackSpec(raw: unknown): StackSpec {
 }
 
 export function stringifyStackSpec(spec: StackSpec): string {
-  return Bun.YAML.stringify(spec, null, 2);
+  return `${stringifyYamlDocument(spec)}\n`;
 }
 
 export function ensureStackSpec(path: string): StackSpec {
   if (existsSync(path)) {
     const content = readFileSync(path, "utf8");
-    return parseStackSpec(Bun.YAML.parse(content) as unknown);
+    const parsed = path.endsWith(".json") ? JSON.parse(content) as unknown : parseYamlDocument(content);
+    return parseStackSpec(parsed);
+  }
+
+  // Migration: check for legacy stack-spec.json in the same directory
+  const legacyJsonPath = path.replace(/openpalm\.yaml$/, "stack-spec.json");
+  if (legacyJsonPath !== path && existsSync(legacyJsonPath)) {
+    const content = readFileSync(legacyJsonPath, "utf8");
+    const parsed = JSON.parse(content) as unknown;
+    const spec = parseStackSpec(parsed);
+    // Write as YAML and back up legacy file
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, stringifyStackSpec(spec), "utf8");
+    renameSync(legacyJsonPath, `${legacyJsonPath}.bak`);
+    return spec;
   }
 
   // Create default

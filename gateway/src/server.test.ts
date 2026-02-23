@@ -1,11 +1,11 @@
 import { describe, expect, it, afterAll } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { safeRequestId, validatePayload } from "./server-utils.ts";
-import { createGatewayFetch, type GatewayDeps } from "./server.ts";
+import { createGatewayFetch, discoverChannelSecretsFromState, type GatewayDeps } from "./server.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { AuditLog } from "./audit.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -64,8 +64,8 @@ describe("validatePayload", () => {
     expect(validatePayload({ ...valid, userId: "  " })).toBe(false);
   });
 
-  it("unknown channel → false", () => {
-    expect(validatePayload({ ...valid, channel: "smoke-signal" })).toBe(false);
+  it("non-empty arbitrary channel → true", () => {
+    expect(validatePayload({ ...valid, channel: "smoke-signal" })).toBe(true);
   });
 
   it("missing text → false", () => {
@@ -90,6 +90,41 @@ describe("validatePayload", () => {
 
   it("non-number timestamp → false", () => {
     expect(validatePayload({ ...valid, timestamp: "not-a-number" as unknown as number })).toBe(false);
+  });
+});
+
+
+describe("discoverChannelSecretsFromState", () => {
+  it("loads shared secrets from /state/channel-*/.env files", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "gw-state-"));
+    try {
+      mkdirSync(join(stateDir, "channel-community-slack"), { recursive: true });
+      writeFileSync(
+        join(stateDir, "channel-community-slack", ".env"),
+        "CHANNEL_COMMUNITY_SLACK_SECRET=secret-123\nOTHER=value\n",
+        "utf8",
+      );
+
+      const secrets = discoverChannelSecretsFromState(stateDir);
+      expect(secrets["community-slack"]).toBe("secret-123");
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to provided env when channel env file does not contain default key", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "gw-state-"));
+    try {
+      mkdirSync(join(stateDir, "channel-custom"), { recursive: true });
+      writeFileSync(join(stateDir, "channel-custom", ".env"), "FOO=bar\n", "utf8");
+
+      const secrets = discoverChannelSecretsFromState(stateDir, {
+        CHANNEL_CUSTOM_SECRET: "from-env",
+      });
+      expect(secrets.custom).toBe("from-env");
+    } finally {
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -255,7 +290,7 @@ describe("gateway HTTP pipeline", () => {
     expect(data.error).toBe("not_found");
   });
 
-  it("malformed JSON → 500 internal_error", async () => {
+  it("malformed JSON → 400 invalid_json", async () => {
     const req = new Request("http://gateway/channel/inbound", {
       method: "POST",
       headers: {
@@ -265,9 +300,9 @@ describe("gateway HTTP pipeline", () => {
       body: "not-json{{{",
     });
     const resp = await gatewayFetch(req);
-    expect(resp.status).toBe(500);
+    expect(resp.status).toBe(400);
     const data = await resp.json() as Record<string, unknown>;
-    expect(data.error).toBe("internal_error");
+    expect(data.error).toBe("invalid_json");
   });
 
   it("x-request-id echoed when valid", async () => {

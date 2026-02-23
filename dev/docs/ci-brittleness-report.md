@@ -105,7 +105,7 @@ Three distinct problems here:
 - No test isolation -- env var mutations leak between tests
 
 **Files involved:**
-- `admin/src/automations.test.ts` (mutates `Bun.env.CRON_DIR` without restore)
+- `packages/lib/src/admin/automations.test.ts` (mutates `Bun.env.CRON_DIR` without restore)
 - `assistant/extensions/plugins/openmemory-http.test.ts` (shallow env copy doesn't delete added keys)
 - `test/integration/*.test.ts` (all use `skipIf`)
 

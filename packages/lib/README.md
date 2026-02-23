@@ -54,7 +54,7 @@ The `package.json` `exports` field defines four entry points:
 {
   ".":              "./src/index.ts",        // barrel re-export of src/
   "./*.ts":         "./src/*.ts",            // direct file imports from src/
-  "./admin/*.ts":   "./admin/*.ts",          // admin zone
+  "./admin/*.ts":   "./src/admin/*.ts",          // admin zone
   "./shared/*.ts":  "./src/shared/*.ts"      // shared zone
 }
 ```

@@ -15,7 +15,7 @@ describe("automation history", () => {
     ].join("\n"), "utf8");
 
     Bun.env.CRON_DIR = cronDir;
-    const mod = await import(`@openpalm/lib/admin/automation-history.ts?${Date.now()}`);
+    const mod = await import(`./automation-history.ts?${Date.now()}`);
 
     const runs = mod.readHistory("daily", 2);
     expect(runs.length).toBe(2);

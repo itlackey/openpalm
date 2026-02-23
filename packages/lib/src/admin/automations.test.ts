@@ -20,7 +20,7 @@ describe("automations sync", () => {
   });
 
   it("writes enabled and disabled cron entries to separate directories", async () => {
-    const { ensureCronDirs, syncAutomations } = await import(`@openpalm/lib/admin/automations.ts?cron=${Date.now()}`);
+    const { ensureCronDirs, syncAutomations } = await import(`./automations.ts?cron=${Date.now()}`);
     ensureCronDirs();
     syncAutomations([
       { id: "daily", name: "Daily", schedule: "0 9 * * *", script: "echo hi", enabled: true },

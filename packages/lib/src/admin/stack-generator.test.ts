@@ -95,7 +95,7 @@ describe("stack generator", () => {
       CHAT_TOKEN_SECRET: "chat-token",
       CHANNEL_CHAT_SECRET_VALUE: "chat-secret",
     });
-    expect(out.gatewayEnv).toContain("CHANNEL_CHAT_SECRET=chat-secret");
+    expect(out.gatewayEnv).not.toContain("CHANNEL_CHAT_SECRET=chat-secret");
     expect(out.channelEnvs["channel-chat"]).toContain("CHANNEL_CHAT_SECRET=chat-secret");
     expect(out.channelEnvs["channel-chat"]).toContain("CHAT_INBOUND_TOKEN=chat-token");
   });

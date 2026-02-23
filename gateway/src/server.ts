@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { AuditLog } from "./audit.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
@@ -10,6 +12,7 @@ import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { safeRequestId, validatePayload } from "./server-utils.ts";
 
 const MAX_SUMMARY_LENGTH = 2_000;
+const CHANNEL_SECRET_PATTERN = /^CHANNEL_[A-Z0-9_]+_SECRET$/;
 
 function sanitizeSummary(summary: string): string {
   let sanitized = summary.replace(/<\/?[^>]+(>|$)/g, "");
@@ -17,6 +20,57 @@ function sanitizeSummary(summary: string): string {
     sanitized = sanitized.slice(0, MAX_SUMMARY_LENGTH);
   }
   return sanitized;
+}
+
+function parseEnvContent(content: string): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const idx = line.indexOf("=");
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    values[key] = value;
+  }
+  return values;
+}
+
+function defaultSecretKeyForChannel(channelName: string): string {
+  return `CHANNEL_${channelName.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_SECRET`;
+}
+
+export function discoverChannelSecretsFromState(stateRoot: string, fallbackEnv: Record<string, string | undefined> = Bun.env): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  if (!existsSync(stateRoot)) return secrets;
+
+  for (const dirName of readdirSync(stateRoot)) {
+    if (!dirName.startsWith("channel-")) continue;
+    const channelName = dirName.slice("channel-".length);
+    if (!channelName) continue;
+
+    const envPath = join(stateRoot, dirName, ".env");
+    if (!existsSync(envPath)) continue;
+
+    const envValues = parseEnvContent(readFileSync(envPath, "utf8"));
+    const defaultSecretKey = defaultSecretKeyForChannel(channelName);
+
+    if (envValues[defaultSecretKey]) {
+      secrets[channelName] = envValues[defaultSecretKey];
+      continue;
+    }
+
+    const explicitSecretEntry = Object.entries(envValues).find(([key, value]) => CHANNEL_SECRET_PATTERN.test(key) && value);
+    if (explicitSecretEntry?.[1]) {
+      secrets[channelName] = explicitSecretEntry[1];
+      continue;
+    }
+
+    const envFallback = fallbackEnv[defaultSecretKey];
+    if (envFallback) secrets[channelName] = envFallback;
+  }
+
+  return secrets;
 }
 
 export type GatewayDeps = {
@@ -160,7 +214,12 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
 
       if (url.pathname === "/channel/inbound" && req.method === "POST") {
         const raw = await req.text();
-        const payload = JSON.parse(raw) as Partial<ChannelMessage>;
+        let payload: Partial<ChannelMessage>;
+        try {
+          payload = JSON.parse(raw) as Partial<ChannelMessage>;
+        } catch {
+          return json(400, { error: "invalid_json", requestId });
+        }
         const incomingSig = req.headers.get("x-channel-signature") ?? "";
 
         const channelName = typeof payload.channel === "string" ? payload.channel : "";
@@ -199,12 +258,7 @@ if (import.meta.main) {
   const PORT = Number(Bun.env.PORT ?? 8080);
   const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://assistant:4096";
 
-  const CHANNEL_SHARED_SECRETS: Record<string, string> = {
-    chat: Bun.env.CHANNEL_CHAT_SECRET ?? "",
-    discord: Bun.env.CHANNEL_DISCORD_SECRET ?? "",
-    voice: Bun.env.CHANNEL_VOICE_SECRET ?? "",
-    telegram: Bun.env.CHANNEL_TELEGRAM_SECRET ?? "",
-  };
+  const CHANNEL_SHARED_SECRETS = discoverChannelSecretsFromState("/state", Bun.env);
 
   const openCode = new OpenCodeClient(OPENCODE_CORE_BASE_URL);
   const audit = new AuditLog("/app/data/audit.log");

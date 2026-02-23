@@ -54,9 +54,10 @@ The gateway has no host config volume — its extensions are fully baked and not
 
 ## Channel security hardening
 
-- Each channel has a unique HMAC shared secret generated at install time
+- Each channel has a unique HMAC shared secret generated at install time and written to `STATE/channel-<name>/.env`
 - Secrets are never exposed to users
 - Replay protection: timestamp + nonce validation
+- Replay nonce cache persists to `STATE/gateway/nonce-cache.json` so replay protection survives gateway restarts
 - Max message size limits
 - Per-user rate limiting
 
