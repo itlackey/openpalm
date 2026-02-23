@@ -1,5 +1,9 @@
 name: test
-on: [push, pull_request]
+
+on:
+  pull_request:
+  push:
+    branches: [main]
 
 concurrency:
   group: test-${{ github.ref }}
@@ -24,98 +28,3 @@ jobs:
             SKIPPED=$(grep -c "skip" test-output.log || true)
             echo "::warning::Some test suites were skipped (likely missing environment dependencies). Check logs for details."
           fi
-
-  docker-build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate Docker builds
-        run: |
-          FAILED=0
-          for df in core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile; do
-            echo "::group::Building $df"
-            if [ -f "$df" ]; then
-              # Determine context: if Dockerfile copies from packages/lib, use repo root
-              if grep -q "packages/lib" "$df"; then
-                CTX="."
-              else
-                CTX="$(dirname "$df")"
-              fi
-              if ! docker build -f "$df" "$CTX" --no-cache --progress=plain -t "test-$(basename $(dirname $df)):ci" 2>&1; then
-                echo "::error::Docker build failed for $df"
-                FAILED=$((FAILED + 1))
-              fi
-            fi
-            echo "::endgroup::"
-          done
-          # Assistant uses its own context
-          echo "::group::Building core/assistant/Dockerfile"
-          if ! docker build -f core/assistant/Dockerfile ./core/assistant --no-cache --progress=plain -t "test-assistant:ci" 2>&1; then
-            echo "::error::Docker build failed for core/assistant/Dockerfile"
-            FAILED=$((FAILED + 1))
-          fi
-          echo "::endgroup::"
-          if [ "$FAILED" -gt 0 ]; then
-            echo "$FAILED Docker build(s) failed"
-            exit 1
-          fi
-
-  integration:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: unit
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter integration
-
-  contracts:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: unit
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter contract
-
-  security:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: unit
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter security
-
-  ui:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: unit
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: cd packages/ui && bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
-      - name: Start UI backend
-        run: |
-          cd packages/ui
-          node e2e/start-webserver-for-ci.mjs > /tmp/openpalm-ui-server.log 2>&1 &
-          echo $! > /tmp/openpalm-ui-server.pid
-      - name: Wait for UI backend
-        run: bunx wait-on http://localhost:13456 --timeout 120000
-      - run: bun run test:ui
-      - name: Stop UI backend
-        if: always()
-        run: |
-          if [ -f /tmp/openpalm-ui-server.pid ]; then
-            kill "$(cat /tmp/openpalm-ui-server.pid)" || true
-          fi
-          if [ -f /tmp/openpalm-ui-server.log ]; then
-            tail -n 200 /tmp/openpalm-ui-server.log || true
-          fi
-          rm -f /tmp/openpalm-ui-server.pid

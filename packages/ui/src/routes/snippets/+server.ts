@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 			name: def.name,
 			containerPort: def.containerPort,
 			rewritePath: def.rewritePath,
-			configKeys: def.configKeys
+			env: def.env
 		})),
 		coreAutomations: CORE_AUTOMATIONS.map((a) => ({
 			id: a.id,

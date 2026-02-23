@@ -1,8 +1,15 @@
 name: Discord
+description: Connect your assistant to a Discord server
 containerPort: 8184
 rewritePath: /discord/webhook
 sharedSecretEnv: CHANNEL_DISCORD_SECRET
-configKeys:
-  - DISCORD_BOT_TOKEN
-  - DISCORD_PUBLIC_KEY
-  - CHANNEL_DISCORD_SECRET
+env:
+  - name: DISCORD_BOT_TOKEN
+    description: Create a bot at discord.com/developers and copy the token
+    required: true
+  - name: DISCORD_PUBLIC_KEY
+    description: Found on the same page as your bot token
+    required: true
+  - name: CHANNEL_DISCORD_SECRET
+    description: HMAC signing key for gateway communication. Auto-generated if left blank.
+    required: false

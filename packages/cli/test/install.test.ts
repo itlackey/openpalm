@@ -39,10 +39,10 @@ describe("install command source validation", () => {
     expect(installSource).toContain("writeFile(stateEnvFile, envSeed");
     expect(installSource).toContain("ADMIN_TOKEN: generatedAdminToken");
     expect(installSource).toContain("POSTGRES_PASSWORD: generateToken()");
-    expect(installSource).toContain("CHANNEL_CHAT_SECRET: generateToken()");
-    expect(installSource).toContain("CHANNEL_DISCORD_SECRET: generateToken()");
-    expect(installSource).toContain("CHANNEL_VOICE_SECRET: generateToken()");
-    expect(installSource).toContain("CHANNEL_TELEGRAM_SECRET: generateToken()");
+    // Channel secrets are now derived from BUILTIN_CHANNELS dynamically
+    expect(installSource).toContain("BUILTIN_CHANNELS");
+    expect(installSource).toContain("def.sharedSecretEnv");
+    expect(installSource).toContain("channelSecrets");
   });
 
   it("runs preflight checks before proceeding", () => {

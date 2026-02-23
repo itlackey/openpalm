@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/itlackey/openpalm/community/snippets/snippet-schema.json",
+  "title": "OpenPalm Community Snippet",
+  "description": "Schema for a community-contributed OpenPalm channel, service, or automation snippet. Aligns with the stack-spec schema used by the compose generator.",
+  "type": "object",
+  "required": ["kind", "name", "env"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["channel", "service", "automation"],
+      "description": "The type of resource this snippet defines"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Display name"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "One or two sentences describing what this snippet does"
+    },
+    "image": {
+      "type": "string",
+      "description": "Docker image reference"
+    },
+    "containerPort": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "Container port the service listens on"
+    },
+    "rewritePath": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "URL rewrite path (must start with /)"
+    },
+    "sharedSecretEnv": {
+      "type": "string",
+      "description": "Environment variable name for the shared HMAC secret"
+    },
+    "volumes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Volume mounts"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Compose service dependencies"
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "description": "Environment variable name (UPPER_CASE)"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Help text describing the variable's purpose"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether a value or secret reference must be provided"
+          },
+          "default": {
+            "type": "string",
+            "description": "Default value if none is provided"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,8 +1,15 @@
 name: Telegram
+description: Connect your assistant to Telegram
 containerPort: 8182
 rewritePath: /telegram/webhook
 sharedSecretEnv: CHANNEL_TELEGRAM_SECRET
-configKeys:
-  - TELEGRAM_BOT_TOKEN
-  - TELEGRAM_WEBHOOK_SECRET
-  - CHANNEL_TELEGRAM_SECRET
+env:
+  - name: TELEGRAM_BOT_TOKEN
+    description: Get a bot token from @BotFather on Telegram
+    required: true
+  - name: TELEGRAM_WEBHOOK_SECRET
+    description: A secret string to verify incoming webhook requests
+    required: false
+  - name: CHANNEL_TELEGRAM_SECRET
+    description: HMAC signing key for gateway communication. Auto-generated if left blank.
+    required: false

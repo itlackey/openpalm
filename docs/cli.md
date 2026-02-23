@@ -8,7 +8,7 @@ All installer logic is centralized in the CLI binary. The shell scripts (`instal
 
 **Package Information:**
 - npm package name: `openpalm`
-- Version: 0.2.0
+- Version: 0.3.0
 - Runtime requirement: Bun >= 1.0.0
 
 ## Installation

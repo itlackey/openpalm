@@ -8,6 +8,7 @@ import { readEnvFile, upsertEnvVar, upsertEnvVars } from "@openpalm/lib/env.ts";
 import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { seedConfigFiles } from "@openpalm/lib/assets.ts";
+import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
 import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, confirm } from "@openpalm/lib/ui.ts";
 
@@ -137,13 +138,14 @@ export async function install(options: InstallOptions): Promise<void> {
   } else {
     const spin2 = spinner("Generating .env file...");
     generatedAdminToken = generateToken();
+    const channelSecrets: Record<string, string> = {};
+    for (const def of Object.values(BUILTIN_CHANNELS)) {
+      channelSecrets[def.sharedSecretEnv] = generateToken();
+    }
     const overrides: Record<string, string> = {
       ADMIN_TOKEN: generatedAdminToken,
       POSTGRES_PASSWORD: generateToken(),
-      CHANNEL_CHAT_SECRET: generateToken(),
-      CHANNEL_DISCORD_SECRET: generateToken(),
-      CHANNEL_VOICE_SECRET: generateToken(),
-      CHANNEL_TELEGRAM_SECRET: generateToken(),
+      ...channelSecrets,
     };
     const envSeed = Object.entries(overrides).map(([key, value]) => `${key}=${value}`).join("\n") + "\n";
     await writeFile(stateEnvFile, envSeed, { encoding: "utf8", mode: 0o600 });

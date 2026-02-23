@@ -1,7 +1,12 @@
 name: Chat
+description: Chat with your assistant through the built-in web interface
 containerPort: 8181
 rewritePath: /chat
 sharedSecretEnv: CHANNEL_CHAT_SECRET
-configKeys:
-  - CHAT_INBOUND_TOKEN
-  - CHANNEL_CHAT_SECRET
+env:
+  - name: CHAT_INBOUND_TOKEN
+    description: Token for authenticating incoming chat messages
+    required: false
+  - name: CHANNEL_CHAT_SECRET
+    description: HMAC signing key for gateway communication. Auto-generated if left blank.
+    required: false

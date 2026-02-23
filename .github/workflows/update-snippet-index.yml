@@ -1,0 +1,133 @@
+name: Update Snippet Index
+
+# Runs when community snippets are added or modified on main.
+# Regenerates community/snippets/index.json from the individual YAML snippet files.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "community/snippets/**/*.yaml"
+      - "community/snippets/**/*.yml"
+      - "!community/snippets/index.json"
+
+jobs:
+  rebuild-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          YQ_VERSION=v4.44.6
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Validate and convert snippets to JSON
+        run: |
+          SNIPPET_FILES=$(find community/snippets -name "*.yaml" -o -name "*.yml" \
+            | grep -v "index\." \
+            | grep -v "snippet-schema" \
+            | grep -v "CONTRIBUTING" \
+            | sort)
+
+          ERRORS=0
+          for f in $SNIPPET_FILES; do
+            echo "Validating $f ..."
+            if ! yq eval '.' "$f" > /dev/null 2>&1; then
+              echo "  ERROR: $f is not valid YAML"
+              ERRORS=$((ERRORS + 1))
+              continue
+            fi
+
+            # Check required fields
+            for field in apiVersion kind; do
+              VAL=$(yq eval ".$field" "$f" 2>/dev/null)
+              if [ "$VAL" = "null" ] || [ -z "$VAL" ]; then
+                echo "  ERROR: $f missing .$field"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            ID=$(yq eval ".metadata.id" "$f" 2>/dev/null)
+            if [ "$ID" = "null" ] || [ -z "$ID" ]; then
+              echo "  ERROR: $f missing .metadata.id"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  OK ($ID)"
+            fi
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "Validation failed with $ERRORS error(s). Aborting index rebuild."
+            exit 1
+          fi
+
+      - name: Rebuild index.json
+        run: |
+          SNIPPET_FILES=$(find community/snippets -name "*.yaml" -o -name "*.yml" \
+            | grep -v "index\." \
+            | grep -v "snippet-schema" \
+            | grep -v "CONTRIBUTING" \
+            | sort)
+
+          if [ -z "$SNIPPET_FILES" ]; then
+            echo "[]" > community/snippets/index.json
+            echo "No snippets found — wrote empty index."
+          else
+            # Convert each YAML to JSON and combine into an array
+            echo "[" > /tmp/snippets-combined.json
+            FIRST=true
+            for f in $SNIPPET_FILES; do
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                echo "," >> /tmp/snippets-combined.json
+              fi
+              yq eval -o=json '.' "$f" >> /tmp/snippets-combined.json
+            done
+            echo "]" >> /tmp/snippets-combined.json
+
+            # Pretty-print with jq
+            jq '.' /tmp/snippets-combined.json > community/snippets/index.json
+            COUNT=$(jq length community/snippets/index.json)
+            echo "Wrote $COUNT snippets to community/snippets/index.json"
+          fi
+
+      - name: Validate rebuilt index
+        run: |
+          if ! jq empty community/snippets/index.json; then
+            echo "::error::Generated index.json is not valid JSON"
+            exit 1
+          fi
+          COUNT=$(jq length community/snippets/index.json)
+          echo "Index contains $COUNT snippets"
+
+      - name: Commit and push updated index
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add community/snippets/index.json
+          if git diff --cached --quiet; then
+            echo "index.json is already up to date — nothing to commit."
+          else
+            git commit -m "chore: regenerate community/snippets/index.json [skip ci]"
+            PUSHED=false
+            for attempt in 1 2 3; do
+              if git push; then
+                PUSHED=true
+                break
+              fi
+              echo "::warning::Push failed, retrying in $((2 ** attempt))s..."
+              sleep $((2 ** attempt))
+            done
+            if [ "$PUSHED" != "true" ]; then
+              echo "::error::All push attempts failed"
+              exit 1
+            fi
+          fi
