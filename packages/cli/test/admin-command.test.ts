@@ -11,7 +11,7 @@ describe("admin command source validation", () => {
   });
 
   it("loads state env, assistant state env, then merges with Bun.env", () => {
-    expect(source).toContain("join(resolveXDGPaths().state, \".env\")");
+    expect(source).toContain("join(stateRoot, \".env\")");
     expect(source).toContain("assistant/.env");
     expect(source).toContain("await readEnvFile(stateEnvPath)");
     expect(source).toContain("await readEnvFile(assistantStateEnvPath)");
