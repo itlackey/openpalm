@@ -11,7 +11,7 @@ async function readYaml(args: string[]): Promise<string> {
   const yaml = getArg(args, "yaml");
   if (yaml) return yaml;
   const file = getArg(args, "file");
-  if (!file) throw new Error("missing_channel_yaml");
+  if (!file) throw new Error("Either --yaml or --file is required");
   return await readFile(file, "utf8");
 }
 
@@ -38,11 +38,15 @@ export async function channel(subcommand: string, args: string[]): Promise<void>
     if (configRaw) {
       try {
         const parsed = JSON.parse(configRaw) as unknown;
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
-          throw new Error("invalid_channel_config");
+        const parsedType =
+          parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed;
+        if (parsedType !== "object")
+          throw new Error(`channel config must be a JSON object, received: ${parsedType}`);
         config = parsed as Record<string, unknown>;
-      } catch {
-        throw new Error("invalid_channel_config");
+      } catch (parseError) {
+        if (parseError instanceof Error && parseError.message.startsWith("channel config must be"))
+          throw parseError;
+        throw new Error("channel config must be a valid JSON object");
       }
     }
     const result = await executeAdminCommand(

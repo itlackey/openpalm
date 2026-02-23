@@ -37,14 +37,15 @@ function getServices(args: string[]): string[] {
 
 export async function service(subcommand: string, args: string[]): Promise<void> {
   const services = getServices(args);
+  const selectedServices = services.length > 0 ? services : undefined;
   const { explicit } = await adminEnvContext();
   const serviceName = services[0];
 
   if (!explicit) {
-    if (subcommand === "up") return await start(services.length > 0 ? services : undefined);
-    if (subcommand === "stop") return await stop(services.length > 0 ? services : undefined);
-    if (subcommand === "restart") return await restart(services.length > 0 ? services : undefined);
-    if (subcommand === "logs") return await logs(services.length > 0 ? services : undefined);
+    if (subcommand === "up") return await start(selectedServices);
+    if (subcommand === "stop") return await stop(selectedServices);
+    if (subcommand === "restart") return await restart(selectedServices);
+    if (subcommand === "logs") return await logs(selectedServices);
     if (subcommand === "status") return await status();
     if (subcommand === "update") {
       const config = await loadComposeConfig();
@@ -95,6 +96,9 @@ export async function service(subcommand: string, args: string[]): Promise<void>
   if (subcommand === "logs") {
     const tailRaw = getArg(args, "tail");
     const tail = tailRaw ? Number(tailRaw) : undefined;
+    if (tailRaw && (!Number.isInteger(tail) || tail < 1)) {
+      throw new Error("The --tail parameter must be a positive integer");
+    }
     const result = await executeAdminCommand("service.logs", {
       service: serviceName,
       ...(tail !== undefined ? { tail } : {}),

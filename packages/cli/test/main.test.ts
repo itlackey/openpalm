@@ -79,21 +79,21 @@ describe("CLI entry point", () => {
 
     // Verify all command names are present
     const commands = [
+      "automation",
+      "channel",
+      "dev",
+      "extensions",
+      "help",
       "install",
+      "logs",
+      "restart",
+      "service",
+      "start",
+      "status",
+      "stop",
       "uninstall",
       "update",
-      "start",
-      "stop",
-      "restart",
-      "logs",
-      "status",
-      "service",
-      "channel",
-      "automation",
-      "extensions",
-      "dev",
-      "version",
-      "help"
+      "version"
     ];
 
     for (const command of commands) {

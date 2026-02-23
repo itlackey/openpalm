@@ -35,9 +35,9 @@ function printHelp(): void {
   log("  restart        Restart services");
   log("  logs           View container logs");
   log("  status         Show container status");
-  log("  service        Service lifecycle operations");
-  log("  channel        Channel management operations");
-  log("  automation     Automation operations");
+  log("  service        Service lifecycle operations (up, stop, restart, logs, update, status)");
+  log("  channel        Channel operations (add, configure)");
+  log("  automation     Automation operations (run, trigger)");
   log("  extensions     Manage extensions (install, uninstall, list)");
   log("  dev            Development helpers (preflight, create-channel)");
   log("  version        Print version");

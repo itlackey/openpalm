@@ -10,6 +10,7 @@ import {
 import { error, info } from "@openpalm/lib/ui.ts";
 
 const DEFAULT_ADMIN_TIMEOUT_MS = 15000;
+const DEFAULT_LOCAL_ADMIN_API_URL = "http://localhost:8100";
 
 function getArg(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -79,7 +80,7 @@ export async function executeAdminCommand(
   const env = await mergedEnv();
   let baseUrl = resolveAdminBaseUrl(env);
   if (options?.localFallback && !hasExplicitAdminApiConfig(env)) {
-    baseUrl = "http://localhost:8100";
+    baseUrl = DEFAULT_LOCAL_ADMIN_API_URL;
   }
   const token = resolveAdminToken(env);
   if (!token) {
