@@ -86,26 +86,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: cd packages/ui && bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      - name: Start UI backend
-        run: |
-          cd packages/ui
-          node e2e/start-webserver-for-ci.mjs > /tmp/openpalm-ui-server.log 2>&1 &
-          echo $! > /tmp/openpalm-ui-server.pid
-      - name: Wait for UI backend
-        run: bunx wait-on http://localhost:13456 --timeout 120000
       - run: bun run test:ui
-      - name: Stop UI backend
-        if: always()
-        run: |
-          if [ -f /tmp/openpalm-ui-server.pid ]; then
-            kill "$(cat /tmp/openpalm-ui-server.pid)" || true
-          fi
-          if [ -f /tmp/openpalm-ui-server.log ]; then
-            tail -n 200 /tmp/openpalm-ui-server.log || true
-          fi
-          rm -f /tmp/openpalm-ui-server.pid
 
   docker-build:
     if: inputs.component != 'cli'
