@@ -22,8 +22,10 @@ bunx openpalm install
 | `restart [service...]` | Restart services |
 | `logs [service...]` | View container logs |
 | `status` | Show container status |
+| `service <up\|stop\|restart\|logs\|update\|status>` | Domain-based service operations |
+| `channel <add\|configure>` | Domain-based channel operations |
+| `automation <run\|trigger>` | Domain-based automation operations |
 | `extensions <install\|uninstall\|list>` | Manage extensions |
-| `admin command --type <type> [--payload <json>]` | Execute authenticated Admin API commands |
 | `dev preflight` | Validate development environment |
 | `dev create-channel` | Scaffold a new channel adapter |
 
@@ -63,9 +65,12 @@ cd packages/cli && bun test
 
 Depends on `@openpalm/lib` (workspace package) for shared utilities like path resolution, runtime detection, and compose generation.
 
-## Admin API mode (assistant-safe orchestration path)
+## Execution modes (same commands for local and remote admin)
 
-The `admin command` subcommand calls the admin container over HTTP using `x-admin-token` auth, so callers do not need Docker socket access.
+Domain commands automatically choose execution mode:
+
+- **Local mode (default):** if admin API env vars are not explicitly set, service commands run locally via compose.
+- **Remote admin API mode:** if admin API env vars are set, domain commands call admin over HTTP (`x-admin-token`), so callers do not need Docker socket access.
 
 Environment variables (all optional):
 
@@ -77,21 +82,19 @@ Environment variables (all optional):
 Examples:
 
 ```bash
-# Start a specific service
-openpalm admin command --type service.up --payload '{"service":"channel-discord"}'
+# Local default service execution
+openpalm service restart assistant
 
-# Stop a specific service
-openpalm admin command --type service.stop --payload '{"service":"channel-discord"}'
+# Remote admin API execution (same command shape)
+export OPENPALM_ADMIN_API_URL=http://admin:8100
+export OPENPALM_ADMIN_TOKEN=...
+openpalm service restart --service assistant
 
-# Restart/update a specific service
-openpalm admin command --type service.restart --payload '{"service":"assistant"}'
+# Domain commands for channels/automations
+openpalm channel add --file /path/to/channel.yaml
+openpalm channel configure --channel discord --exposure lan
+openpalm automation run --id example-job
+
+# Backward-compatible generic command path
 openpalm admin command --type service.update --payload '{"service":"assistant"}'
-
-# Read service logs and current stack status
-openpalm admin command --type service.logs --payload '{"service":"gateway","tail":200}'
-openpalm admin command --type service.status
-
-# Trigger automation and configure channels
-openpalm admin command --type automation.trigger --payload '{"id":"example-job"}'
-openpalm admin command --type channel.configure --payload '{"channel":"discord","exposure":"lan"}'
 ```

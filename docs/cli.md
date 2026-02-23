@@ -172,6 +172,44 @@ openpalm status
 openpalm ps                 # Alias
 ```
 
+### `service`
+
+Domain-based service lifecycle command. Uses local compose execution by default, and switches to admin API mode when admin URL/token env vars are configured.
+
+```bash
+openpalm service <up|stop|restart|logs|update|status> [--service <name>|<name>...]
+```
+
+**Examples:**
+```bash
+openpalm service restart assistant
+openpalm service logs --service gateway --tail 200
+openpalm service status
+```
+
+### `channel`
+
+Domain-based channel management command.
+
+```bash
+openpalm channel <add|configure> [options]
+```
+
+**Examples:**
+```bash
+openpalm channel add --file /path/to/channel.yaml
+openpalm channel add --yaml "discord:\n  image: ghcr.io/example/channel:latest"
+openpalm channel configure --channel discord --exposure lan
+```
+
+### `automation`
+
+Domain-based automation execution command.
+
+```bash
+openpalm automation <run|trigger> --id <automation-id>
+```
+
 ### `extensions`
 
 Manage OpenPalm extensions and plugins.
@@ -209,7 +247,7 @@ openpalm extensions list
 
 ### `admin`
 
-Execute authenticated admin API commands over HTTP. This is the recommended non-root orchestration path for assistant-driven stack management.
+Backward-compatible generic admin API command executor. Domain-based commands (`service`, `channel`, `automation`) are preferred.
 
 ```bash
 openpalm admin command --type <command-type> [--payload '<json-object>']
@@ -293,6 +331,13 @@ OpenPalm uses XDG Base Directory specification for storing data and configuratio
 - **State Directory:** `~/.local/state/openpalm/` (or `$OPENPALM_STATE_HOME`)
 
 These directories can be customized by setting the corresponding environment variables.
+
+## Admin API mode variables
+
+- `OPENPALM_ADMIN_API_URL` (preferred), `ADMIN_APP_URL`, `GATEWAY_URL`
+- `OPENPALM_ADMIN_TOKEN` (preferred), `ADMIN_TOKEN`
+- `OPENPALM_ADMIN_TIMEOUT_MS` (default: `15000`)
+- `OPENPALM_ALLOW_INSECURE_ADMIN_HTTP=1` (only when explicitly needed)
 
 ## Container Runtimes
 

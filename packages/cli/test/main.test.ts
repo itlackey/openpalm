@@ -87,8 +87,10 @@ describe("CLI entry point", () => {
       "restart",
       "logs",
       "status",
+      "service",
+      "channel",
+      "automation",
       "extensions",
-      "admin",
       "dev",
       "version",
       "help"
@@ -136,6 +138,27 @@ describe("CLI entry point", () => {
 
   it("supports admin command with subcommand validation", async () => {
     const { stderr, exitCode } = await runCli("admin");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
+
+  it("supports service command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("service");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
+
+  it("supports channel command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("channel");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
+
+  it("supports automation command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("automation");
 
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("Missing subcommand");

@@ -31,18 +31,7 @@ function parsePayload(args: string[]): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-export async function admin(subcommand: string, args: string[]): Promise<void> {
-  if (subcommand !== "command") {
-    error(`Unknown admin subcommand: ${subcommand}`);
-    info("Usage: openpalm admin command --type <command-type> [--payload '{\"k\":\"v\"}']");
-    process.exit(1);
-  }
-  const commandType = getArg(args, "type");
-  if (!commandType) {
-    error("--type <command-type> is required");
-    process.exit(1);
-  }
-
+async function mergedEnv(): Promise<Record<string, string | undefined>> {
   const stateEnvPath = join(resolveXDGPaths().state, ".env");
   let stateEnv: Record<string, string> = {};
   try {
@@ -54,25 +43,71 @@ export async function admin(subcommand: string, args: string[]): Promise<void> {
     ...stateEnv,
     ...Bun.env,
   };
-  const token = resolveAdminToken(env);
-  if (!token) {
-    error("OPENPALM_ADMIN_TOKEN or ADMIN_TOKEN is required");
-    process.exit(1);
-  }
-  const baseUrl = resolveAdminBaseUrl(env);
-  validateAdminBaseUrl(baseUrl, Bun.env.OPENPALM_ALLOW_INSECURE_ADMIN_HTTP === "1");
-  const rawTimeout = Bun.env.OPENPALM_ADMIN_TIMEOUT_MS;
+  return env;
+}
+
+function parseTimeoutMs(rawTimeout: string | undefined): number {
   const timeoutCandidate = rawTimeout !== undefined ? Number(rawTimeout) : DEFAULT_ADMIN_TIMEOUT_MS;
   const timeoutMs = Number.isFinite(timeoutCandidate) && Number.isInteger(timeoutCandidate) && timeoutCandidate > 0
     ? timeoutCandidate
     : DEFAULT_ADMIN_TIMEOUT_MS;
-  const payload = parsePayload(args);
+  return timeoutMs;
+}
+
+export function hasExplicitAdminApiConfig(env: Record<string, string | undefined>): boolean {
+  return Boolean(
+    env.OPENPALM_ADMIN_API_URL ||
+    env.OPENPALM_ADMIN_TOKEN ||
+    env.ADMIN_APP_URL ||
+    env.GATEWAY_URL
+  );
+}
+
+export async function adminEnvContext(): Promise<{ env: Record<string, string | undefined>; explicit: boolean }> {
+  const env = await mergedEnv();
+  return {
+    env,
+    explicit: hasExplicitAdminApiConfig(env),
+  };
+}
+
+export async function executeAdminCommand(
+  commandType: string,
+  payload: Record<string, unknown> = {},
+  options?: { localFallback?: boolean }
+): Promise<unknown> {
+  const env = await mergedEnv();
+  let baseUrl = resolveAdminBaseUrl(env);
+  if (options?.localFallback && !hasExplicitAdminApiConfig(env)) {
+    baseUrl = "http://localhost:8100";
+  }
+  const token = resolveAdminToken(env);
+  if (!token) {
+    throw new Error("OPENPALM_ADMIN_TOKEN or ADMIN_TOKEN is required");
+  }
+  validateAdminBaseUrl(baseUrl, Bun.env.OPENPALM_ALLOW_INSECURE_ADMIN_HTTP === "1");
+  const timeoutMs = parseTimeoutMs(Bun.env.OPENPALM_ADMIN_TIMEOUT_MS);
 
   const client = new AdminApiClient({
     baseUrl,
     token,
     timeoutMs,
   });
-  const result = await client.command(commandType, payload);
+  return await client.command(commandType, payload);
+}
+
+export async function admin(subcommand: string, args: string[]): Promise<void> {
+  if (subcommand !== "command") {
+    error(`Unknown admin subcommand: ${subcommand}`);
+    info("Usage: openpalm admin command --type <command-type> [--payload '{\"k\":\"v\"}']");
+    process.exit(1);
+  }
+  const commandType = getArg(args, "type");
+  if (!commandType) {
+    error("--type <command-type> is required");
+    process.exit(1);
+  }
+  const payload = parsePayload(args);
+  const result = await executeAdminCommand(commandType, payload, { localFallback: true });
   info(JSON.stringify(result, null, 2));
 }
