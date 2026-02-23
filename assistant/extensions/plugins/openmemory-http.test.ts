@@ -129,6 +129,10 @@ describe("loadConfig", () => {
       expect(cfg.writebackEnabled).toBe(true);
       expect(cfg.temporalEnabled).toBe(false);
     } finally {
+      // Restore original env: delete keys we added, restore original values
+      for (const key of Object.keys(process.env)) {
+        if (!(key in saved)) delete process.env[key];
+      }
       Object.assign(process.env, saved);
     }
   });
@@ -149,6 +153,10 @@ describe("loadConfig", () => {
       expect(cfg.writebackEnabled).toBe(false);
       expect(cfg.temporalEnabled).toBe(true);
     } finally {
+      // Restore original env: delete keys we added, restore original values
+      for (const key of Object.keys(process.env)) {
+        if (!(key in saved)) delete process.env[key];
+      }
       Object.assign(process.env, saved);
     }
   });
@@ -163,6 +171,10 @@ describe("loadConfig", () => {
       expect(cfg.recallLimit).toBe(50);
       expect(cfg.recallMaxChars).toBe(100);
     } finally {
+      // Restore original env: delete keys we added, restore original values
+      for (const key of Object.keys(process.env)) {
+        if (!(key in saved)) delete process.env[key];
+      }
       Object.assign(process.env, saved);
     }
   });

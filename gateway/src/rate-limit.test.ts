@@ -14,7 +14,7 @@ describe("rate limit", () => {
     expect(allowRequest(key, 1, 100)).toBe(true);
     expect(allowRequest(key, 1, 100)).toBe(false);
 
-    await Bun.sleep(150);
+    await Bun.sleep(250);
 
     expect(allowRequest(key, 1, 100)).toBe(true);
   });

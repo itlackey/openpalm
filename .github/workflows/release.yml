@@ -43,9 +43,14 @@ on:
 # Minimal top-level permissions; the job uses RELEASE_TOKEN for push.
 permissions: {}
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Validate token
         run: |
@@ -103,8 +108,19 @@ jobs:
 
       - name: Push commit and tag
         run: |
-          git push origin HEAD
-          git push origin "${{ steps.version.outputs.tag }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          # Push commit and tag together with retry logic
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD && git push origin "${TAG}"; then
+              echo "Push succeeded on attempt $attempt"
+              exit 0
+            fi
+            WAIT=$((2 ** attempt))
+            echo "::warning::Push failed on attempt $attempt, retrying in ${WAIT}s..."
+            sleep "$WAIT"
+          done
+          echo "::error::Push failed after 4 attempts"
+          exit 1
 
       - name: Summary
         run: |

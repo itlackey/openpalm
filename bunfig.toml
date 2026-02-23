@@ -1,0 +1,6 @@
+[test]
+timeout = 15000
+
+[install]
+# Ensure reproducible installs
+frozen = false

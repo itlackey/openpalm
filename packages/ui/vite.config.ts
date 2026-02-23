@@ -2,8 +2,14 @@ import devtoolsJson from 'vite-plugin-devtools-json';
 import { defineConfig, type Plugin } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { resolve } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
+const _require = createRequire(import.meta.url);
+// Resolve the yaml ESM browser build via package location, not hardcoded ../../node_modules.
+// This works in both the monorepo (hoisted node_modules) and Docker (local node_modules).
+const yamlBrowserPath = join(dirname(_require.resolve('yaml/package.json')), 'browser/index.js');
 
 /**
  * Vite plugin to shim `Bun` globals used by @openpalm/lib when running
@@ -89,7 +95,7 @@ export default defineConfig({
 		alias: {
 			// yaml's "node" export condition points to CJS dist/index.js which
 			// breaks in Vite 7's ESModulesEvaluator. Redirect to the ESM browser build.
-			yaml: resolve('../../node_modules/yaml/browser/index.js')
+			yaml: yamlBrowserPath
 		}
 	},
 	server: {

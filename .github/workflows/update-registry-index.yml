@@ -14,6 +14,7 @@ on:
 jobs:
   rebuild-index:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
 
@@ -23,7 +24,7 @@ jobs:
 
       - name: Validate entries against schema
         run: |
-          npm install -g ajv-cli ajv-formats 2>/dev/null || true
+          npm install -g ajv-cli ajv-formats || echo "::warning::ajv-cli install failed (non-fatal)"
           # Collect all entry files (exclude index.json and schema.json)
           ENTRY_FILES=$(find assets/state/registry -maxdepth 1 -name "*.json" \
             ! -name "index.json" ! -name "schema.json" | sort)
@@ -38,7 +39,7 @@ jobs:
                 "installAction","installTarget" ]
               | map(select(. as $k | input? | has($k) | not))
               | if length > 0 then "Missing fields: " + join(", ") else empty end
-            ' "$f" 2>/dev/null || echo "")
+            ' "$f" || echo "jq validation query failed for $f")
 
             if ! jq empty "$f" 2>/dev/null; then
               echo "  ERROR: $f is not valid JSON"
@@ -71,6 +72,19 @@ jobs:
             echo "Wrote $COUNT entries to assets/state/registry/index.json"
           fi
 
+      - name: Validate rebuilt index
+        run: |
+          if ! jq empty assets/state/registry/index.json; then
+            echo "::error::Generated index.json is not valid JSON"
+            exit 1
+          fi
+          COUNT=$(jq length assets/state/registry/index.json)
+          echo "Index contains $COUNT entries"
+          if [ "$COUNT" -eq 0 ] && [ -n "$(find assets/state/registry -maxdepth 1 -name '*.json' ! -name index.json ! -name schema.json)" ]; then
+            echo "::error::Index is empty but entry files exist"
+            exit 1
+          fi
+
       - name: Commit and push updated index
         run: |
           git config user.name  "github-actions[bot]"
@@ -80,5 +94,9 @@ jobs:
             echo "index.json is already up to date — nothing to commit."
           else
             git commit -m "chore: regenerate assets/state/registry/index.json [skip ci]"
-            git push
+            for attempt in 1 2 3; do
+              git push && break
+              echo "::warning::Push failed, retrying in $((2 ** attempt))s..."
+              sleep $((2 ** attempt))
+            done
           fi

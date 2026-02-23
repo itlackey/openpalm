@@ -18,9 +18,12 @@ RUN groupmod -n openpalm bun && \
 WORKDIR /app
 COPY packages/lib ./packages/lib
 COPY packages/ui ./packages/ui
+# @openpalm/lib is resolved by SvelteKit alias (svelte.config.js) pointing to
+# ../../packages/lib — no workspace:* dependency needed in package.json.
+# The built output is a bundled Node.js server; no runtime resolution required.
 RUN cd /app/packages/ui \
-  && sed -i 's|"@openpalm/lib": "workspace:\*"|"@openpalm/lib": "file:../lib"|' package.json \
-  && bun install --production \
+  && rm -f bun.lock \
+  && bun install \
   && bun run build
 RUN chown -R openpalm:openpalm /app
 EXPOSE 8100

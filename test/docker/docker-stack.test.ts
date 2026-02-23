@@ -54,13 +54,16 @@ async function composeRun(...args: string[]): Promise<{ exitCode: number; stdout
   return { exitCode, stdout, stderr };
 }
 
-async function waitForHealth(url: string, maxRetries = 40, intervalMs = 1500): Promise<boolean> {
-  for (let i = 0; i < maxRetries; i++) {
+async function waitForHealth(url: string, maxMs = 60_000): Promise<boolean> {
+  const start = Date.now();
+  let delay = 500;
+  while (Date.now() - start < maxMs) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
       if (r.ok) return true;
     } catch { /* not ready yet */ }
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 2, 5000);
   }
   return false;
 }
