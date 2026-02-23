@@ -1,6 +1,6 @@
 {
   "name": "openpalm",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "CLI tool for installing and managing an OpenPalm stack",
   "type": "module",
   "license": "MIT",
