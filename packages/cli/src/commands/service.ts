@@ -93,9 +93,12 @@ export async function service(subcommand: string, args: string[]): Promise<void>
   }
   if (subcommand === "logs") {
     const tailRaw = getArg(args, "tail");
-    const tail = tailRaw ? Number(tailRaw) : undefined;
-    if (tailRaw && (!Number.isInteger(tail) || tail < 1)) {
-      throw new Error("The --tail parameter must be a positive integer");
+    let tail: number | undefined;
+    if (tailRaw) {
+      tail = Number(tailRaw);
+      if (!Number.isInteger(tail) || tail < 1) {
+        throw new Error("The --tail parameter must be a positive integer");
+      }
     }
     const result = await executeAdminCommand("service.logs", {
       service: serviceName,
