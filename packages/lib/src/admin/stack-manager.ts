@@ -23,6 +23,7 @@ export type StackManagerPaths = {
   assistantEnvPath: string;
   renderReportPath?: string;
   fallbackComposeFilePath?: string;
+  fallbackCaddyJsonPath?: string;
 };
 
 export const CoreSecretRequirements = [
@@ -135,6 +136,11 @@ export class StackManager {
     const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
     if (!existsSync(fallbackComposeFilePath)) {
       writeFileSync(fallbackComposeFilePath, this.buildFallbackCompose(), "utf8");
+    }
+
+    const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
+    if (!existsSync(fallbackCaddyJsonPath)) {
+      writeFileSync(fallbackCaddyJsonPath, this.buildFallbackCaddyJson(), "utf8");
     }
 
     mkdirSync(dirname(renderReportPath), { recursive: true });
@@ -340,6 +346,23 @@ export class StackManager {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
   }
 
+
+  private buildFallbackCaddyJson(): string {
+    return `${JSON.stringify({
+      admin: { disabled: true },
+      apps: {
+        http: {
+          servers: {
+            main: {
+              listen: [":80"],
+              routes: [{ handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }] }],
+            },
+          },
+        },
+      },
+    }, null, 2)}
+`;
+  }
   private buildFallbackCompose(): string {
     return [
       "services:",

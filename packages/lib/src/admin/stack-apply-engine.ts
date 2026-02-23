@@ -88,20 +88,24 @@ async function fallbackToAdminAndCaddy(manager: StackManager): Promise<void> {
   const paths = manager.getPaths();
   const fallbackComposeFile = paths.fallbackComposeFilePath ?? "docker-compose-fallback.yml";
 
-  writeArtifact(paths.caddyJsonPath, `${JSON.stringify({
-    admin: { disabled: true },
-    apps: {
-      http: {
-        servers: {
-          main: {
-            listen: [":80"],
-            routes: [{ handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }] }],
+  const fallbackCaddyJsonPath = paths.fallbackCaddyJsonPath ?? join(paths.stateRootPath, "caddy-fallback.json");
+  if (existsSync(fallbackCaddyJsonPath)) {
+    writeArtifact(paths.caddyJsonPath, readFileSync(fallbackCaddyJsonPath, "utf8"));
+  } else {
+    writeArtifact(paths.caddyJsonPath, `${JSON.stringify({
+      admin: { disabled: true },
+      apps: {
+        http: {
+          servers: {
+            main: {
+              listen: [":80"],
+              routes: [{ handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }] }],
+            },
           },
         },
       },
-    },
-  }, null, 2)}
-`);
+    }, null, 2)}\n`);
+  }
 
   const validate = await composeConfigValidateForFile(fallbackComposeFile);
   if (!validate.ok) throw new Error(`fallback_compose_validation_failed:${validate.stderr}`);

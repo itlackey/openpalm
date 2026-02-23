@@ -21,6 +21,7 @@ function createManager(dir: string) {
     postgresEnvPath: join(dir, "postgres", ".env"),
     qdrantEnvPath: join(dir, "qdrant", ".env"),
     assistantEnvPath: join(dir, "assistant", ".env"),
+    fallbackCaddyJsonPath: join(dir, "caddy-fallback.json"),
   });
 }
 

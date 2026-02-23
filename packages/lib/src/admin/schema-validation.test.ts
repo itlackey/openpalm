@@ -278,6 +278,23 @@ describe("seed caddy.json validation", () => {
     expect(valid).toBe(true);
   });
 
+
+  it("assets/state/caddy/fallback-caddy.json is valid JSON and validates against caddy schema", async () => {
+    const seedPath = join(process.cwd(), "assets/state/caddy/fallback-caddy.json");
+    const content = await Bun.file(seedPath).text();
+    const parsed = JSON.parse(content);
+
+    const runtimeResult = validateCaddyConfig(parsed);
+    expect(runtimeResult.valid).toBe(true);
+
+    const validate = ajv.compile(caddyConfigSchema);
+    const valid = validate(parsed);
+    if (!valid) {
+      console.error("Fallback caddy.json schema errors:", validate.errors);
+    }
+    expect(valid).toBe(true);
+  });
+
   it("seed caddy.json has API route and admin fallback", async () => {
     const seedPath = join(process.cwd(), "assets/state/caddy/caddy.json");
     const content = await Bun.file(seedPath).text();

@@ -23,6 +23,7 @@ Admin renders and maintains generated stack outputs under:
 
 - `${OPENPALM_STATE_HOME}/docker-compose.yml`
 - `${OPENPALM_STATE_HOME}/caddy.json`
+- `${OPENPALM_STATE_HOME}/caddy-fallback.json`
 - `${OPENPALM_STATE_HOME}/*/.env`
 
 ## Persistent data

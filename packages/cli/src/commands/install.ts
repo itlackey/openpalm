@@ -262,6 +262,11 @@ export async function install(options: InstallOptions): Promise<void> {
   }, null, 2) + "\n";
   const caddyJsonPath = join(xdg.state, "caddy.json");
   await writeFile(caddyJsonPath, minimalCaddyJson, "utf8");
+  const fallbackCaddyJsonPath = join(xdg.state, "caddy-fallback.json");
+  const fallbackCaddyJsonExists = await Bun.file(fallbackCaddyJsonPath).exists();
+  if (!fallbackCaddyJsonExists) {
+    await writeFile(fallbackCaddyJsonPath, minimalCaddyJson, "utf8");
+  }
 
   // ============================================================================
   // Phase 2: Early UI access

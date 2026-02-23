@@ -902,6 +902,7 @@ $OPENPALM_STATE_HOME/
 ├── caddy.json                         # caddyJson artifact (Caddy JSON API format)
 ├── docker-compose.yml                 # composeFile artifact
 ├── docker-compose-fallback.yml        # emergency admin+caddy compose
+├── caddy-fallback.json                # emergency caddy config (admin reverse-proxy)
 ├── gateway/
 │   └── .env                           # gatewayEnv artifact
 ├── openmemory/
