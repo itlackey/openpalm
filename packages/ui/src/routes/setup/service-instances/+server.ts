@@ -1,6 +1,6 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { getSetupManager } from '$lib/server/init';
-import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env';
+import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env.ts';
 import {
 	updateRuntimeEnv,
 	updateSecretsEnv,

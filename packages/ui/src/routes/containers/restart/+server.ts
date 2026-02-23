@@ -1,6 +1,6 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { knownServices } from '$lib/server/init';
-import { composeAction } from '@openpalm/lib/admin/compose-runner';
+import { composeAction } from '@openpalm/lib/admin/compose-runner.ts';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {

@@ -22,15 +22,15 @@ import {
 	type StackChannelConfig,
 	type StackServiceConfig,
 	type StackAutomation
-} from '@openpalm/lib/admin/stack-spec';
-import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env';
-import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
+} from '@openpalm/lib/admin/stack-spec.ts';
+import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env.ts';
+import { applyStack } from '@openpalm/lib/admin/stack-apply-engine.ts';
 import {
 	composeAction,
 	composePull,
 	allowedServiceSet
-} from '@openpalm/lib/admin/compose-runner';
-import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations';
+} from '@openpalm/lib/admin/compose-runner.ts';
+import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations.ts';
 import { parse as yamlParse } from 'yaml';
 import { randomUUID } from 'node:crypto';
 import { SECRETS_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib/server/config';

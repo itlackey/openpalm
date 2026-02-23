@@ -3,7 +3,7 @@ import {
 	parseRuntimeEnvContent,
 	updateRuntimeEnvContent,
 	setRuntimeBindScopeContent
-} from '@openpalm/lib/admin/runtime-env';
+} from '@openpalm/lib/admin/runtime-env.ts';
 import { RUNTIME_ENV_PATH, SECRETS_ENV_PATH } from './config.ts';
 
 const MAX_SECRETS_RAW_SIZE = 64 * 1024;

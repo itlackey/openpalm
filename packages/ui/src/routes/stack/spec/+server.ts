@@ -1,6 +1,6 @@
 import { json, unauthorizedJson, errorJson } from '$lib/server/json';
 import { getStackManager } from '$lib/server/init';
-import { parseStackSpec, stringifyStackSpec } from '@openpalm/lib/admin/stack-spec';
+import { parseStackSpec, stringifyStackSpec } from '@openpalm/lib/admin/stack-spec.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals }) => {

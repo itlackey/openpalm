@@ -6,33 +6,57 @@ export const CoreServices = [
   "caddy", "openmemory-ui", "postgres", "qdrant"
 ] as const;
 
-const extraServices = (Bun.env.OPENPALM_EXTRA_SERVICES ?? "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter((value) => value.length > 0);
+type RuntimeEnv = Record<string, string | undefined>;
 
-const ComposeProjectPath = Bun.env.COMPOSE_PROJECT_PATH ?? "/state";
-const ComposeBin = Bun.env.OPENPALM_COMPOSE_BIN ?? "docker";
-const ComposeSubcommand = Bun.env.OPENPALM_COMPOSE_SUBCOMMAND ?? "compose";
-const ComposeFile = Bun.env.OPENPALM_COMPOSE_FILE ?? "docker-compose.yml";
-const ContainerSocketUri = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///var/run/docker.sock";
+function envValue(name: string): string | undefined {
+  const bunEnv = (globalThis as { Bun?: { env?: RuntimeEnv } }).Bun?.env;
+  return bunEnv?.[name] ?? process.env[name];
+}
+
+function composeProjectPath(): string {
+  return envValue("COMPOSE_PROJECT_PATH") ?? "/state";
+}
+
+function composeBin(): string {
+  return envValue("OPENPALM_COMPOSE_BIN") ?? "docker";
+}
+
+function composeSubcommand(): string {
+  return envValue("OPENPALM_COMPOSE_SUBCOMMAND") ?? "compose";
+}
+
+function composeFilePath(): string {
+  return envValue("OPENPALM_COMPOSE_FILE") ?? "docker-compose.yml";
+}
+
+function containerSocketUri(): string {
+  return envValue("OPENPALM_CONTAINER_SOCKET_URI") ?? "unix:///var/run/docker.sock";
+}
+
+function extraServicesFromEnv(): string[] {
+  return (envValue("OPENPALM_EXTRA_SERVICES") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
 
 export type ComposeResult = { ok: boolean; stdout: string; stderr: string };
 
 function runCompose(args: string[], composeFileOverride?: string): Promise<ComposeResult> {
   return new Promise((resolve) => {
-    const composeFile = composeFileOverride ?? ComposeFile;
-    const composeArgs = ComposeSubcommand
-      ? [ComposeSubcommand, "-f", composeFile, ...args]
+    const composeFile = composeFileOverride ?? composeFilePath();
+    const subcommand = composeSubcommand();
+    const composeArgs = subcommand
+      ? [subcommand, "-f", composeFile, ...args]
       : ["-f", composeFile, ...args];
     let proc;
     try {
-      proc = spawn(ComposeBin, composeArgs, {
-        cwd: ComposeProjectPath,
+      proc = spawn(composeBin(), composeArgs, {
+        cwd: composeProjectPath(),
         env: {
           ...process.env,
-          DOCKER_HOST: ContainerSocketUri,
-          CONTAINER_HOST: ContainerSocketUri,
+          DOCKER_HOST: containerSocketUri(),
+          CONTAINER_HOST: containerSocketUri(),
         },
       });
     } catch (spawnError) {
@@ -59,7 +83,7 @@ function runCompose(args: string[], composeFileOverride?: string): Promise<Compo
 }
 
 function parseServiceNamesFromComposeFile(): string[] {
-  const path = `${ComposeProjectPath}/${ComposeFile}`;
+  const path = `${composeProjectPath()}/${composeFilePath()}`;
   if (!existsSync(path)) return [];
   const content = readFileSync(path, "utf8");
   const lines = content.split(/\r?\n/);
@@ -79,7 +103,7 @@ function parseServiceNamesFromComposeFile(): string[] {
 
 export function allowedServiceSet(): Set<string> {
   const fromCompose = parseServiceNamesFromComposeFile();
-  const declared = [...CoreServices, ...extraServices, ...fromCompose];
+  const declared = [...CoreServices, ...extraServicesFromEnv(), ...fromCompose];
   return new Set<string>(declared);
 }
 
