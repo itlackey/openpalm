@@ -114,7 +114,7 @@ beforeAll(async () => {
     join(stateDir, "qdrant"), join(stateDir, "assistant"),
     join(stateDir, "channel-chat"), join(stateDir, "channel-discord"),
     join(stateDir, "channel-voice"), join(stateDir, "channel-telegram"),
-    join(stateDir, "rendered", "caddy"), join(stateDir, "caddy", "config"),
+    stateDir, join(stateDir, "caddy", "config"),
     join(stateDir, "caddy", "data"), join(stateDir, "automations"),
   ]) mkdirSync(d, { recursive: true });
 
@@ -126,7 +126,7 @@ beforeAll(async () => {
   }
 
   // Write minimal caddy.json so caddy can start
-  writeFileSync(join(stateDir, "rendered/caddy/caddy.json"), JSON.stringify({
+  writeFileSync(join(stateDir, "caddy.json"), JSON.stringify({
     admin: { disabled: true },
     apps: {
       http: {

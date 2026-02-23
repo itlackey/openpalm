@@ -10,7 +10,7 @@ describe("stack generator", () => {
     expect(caddyConfig.admin.disabled).toBe(true);
     expect(caddyConfig.apps.http.servers.main.listen).toContain(":80");
     expect(out.composeFile).toContain("caddy:");
-    expect(out.composeFile).toContain("/rendered/caddy/caddy.json:/etc/caddy/caddy.json:ro");
+    expect(out.composeFile).toContain("/caddy.json:/etc/caddy/caddy.json:ro");
     expect(out.composeFile).toContain("assistant:");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/assistant:/home/opencode");
     expect(out.composeFile).toContain("${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work");

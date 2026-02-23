@@ -260,7 +260,7 @@ export async function install(options: InstallOptions): Promise<void> {
       },
     },
   }, null, 2) + "\n";
-  const caddyJsonPath = join(xdg.state, "rendered", "caddy", "caddy.json");
+  const caddyJsonPath = join(xdg.state, "caddy.json");
   await writeFile(caddyJsonPath, minimalCaddyJson, "utf8");
 
   // ============================================================================
@@ -279,7 +279,7 @@ export async function install(options: InstallOptions): Promise<void> {
       - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80"
       - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
-      - \${OPENPALM_STATE_HOME}/rendered/caddy/caddy.json:/etc/caddy/caddy.json:ro
+      - \${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro
       - \${OPENPALM_STATE_HOME}/caddy/data:/data/caddy
       - \${OPENPALM_STATE_HOME}/caddy/config:/config/caddy
     command: caddy run --config /etc/caddy/caddy.json
@@ -319,6 +319,12 @@ networks:
   assistant_net:
 `;
   await writeFile(stateComposeFile, minimalCompose, "utf8");
+
+  const fallbackComposePath = join(xdg.state, "docker-compose-fallback.yml");
+  const fallbackComposeExists = await Bun.file(fallbackComposePath).exists();
+  if (!fallbackComposeExists) {
+    await writeFile(fallbackComposePath, minimalCompose, "utf8");
+  }
 
   const composeConfig: ComposeConfig = {
     bin,

@@ -11,7 +11,7 @@ import { applyStack } from "./stack-apply-engine.ts";
 function createManager(dir: string) {
   return new StackManager({
     stateRootPath: dir,
-    caddyJsonPath: join(dir, "rendered", "caddy", "caddy.json"),
+    caddyJsonPath: join(dir, "caddy.json"),
     composeFilePath: join(dir, "docker-compose.yml"),
     systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
@@ -46,7 +46,7 @@ describe("applyStack impact detection", () => {
     manager.renderArtifacts();
 
     // Mutate the caddy.json on disk to simulate old state
-    const caddyPath = join(dir, "rendered", "caddy", "caddy.json");
+    const caddyPath = join(dir, "caddy.json");
     writeFileSync(caddyPath, '{"admin":{"disabled":true},"apps":{"http":{"servers":{}}}}', "utf8");
 
     const result = await applyStack(manager, { apply: false });
@@ -144,8 +144,8 @@ describe("applyStack impact detection", () => {
     const manager = createManager(dir);
     manager.renderArtifacts();
 
-    // The caddy.json file should exist at the rendered path
-    const caddyJson = readFileSync(join(dir, "rendered", "caddy", "caddy.json"), "utf8");
+    // The caddy.json file should exist at the state-root path
+    const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
     const config = JSON.parse(caddyJson);
     expect(config.admin.disabled).toBe(true);
 

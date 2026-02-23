@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { composeAction, composeConfigValidate, composeExec, composeServiceNames, composeLogsValidateTail } from "./compose-runner.ts";
+import { composeAction, composeActionForFile, composeConfigValidate, composeConfigValidateForFile, composeExec, composeServiceNames, composeLogsValidateTail } from "./compose-runner.ts";
 import { computeImpactFromChanges, type StackImpact } from "./impact-plan.ts";
 import { StackManager } from "./stack-manager.ts";
 
@@ -84,53 +84,9 @@ function restoreArtifacts(manager: StackManager, artifacts: ExistingArtifacts): 
   }
 }
 
-function buildEmergencyCompose(manager: StackManager): string {
-  const paths = manager.getPaths();
-  return `services:
-  admin:
-    image: \${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:\${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    env_file:
-      - \${OPENPALM_STATE_HOME}/system.env
-    environment:
-      - PORT=8100
-      - ADMIN_TOKEN=\${ADMIN_TOKEN:?ADMIN_TOKEN must be set}
-      - OPENPALM_COMPOSE_BIN=\${OPENPALM_COMPOSE_BIN:-docker}
-      - OPENPALM_COMPOSE_SUBCOMMAND=\${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
-      - OPENPALM_CONTAINER_SOCKET_URI=\${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
-      - COMPOSE_PROJECT_PATH=/state
-      - OPENPALM_COMPOSE_FILE=docker-compose.yml
-    volumes:
-      - \${OPENPALM_DATA_HOME}:/data
-      - \${OPENPALM_CONFIG_HOME}:/config
-      - \${OPENPALM_STATE_HOME}:/state
-      - \${OPENPALM_WORK_HOME:-\${HOME}/openpalm}:/work
-      - \${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:\${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}
-    networks: [assistant_net]
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80"
-      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443"
-    volumes:
-      - ${paths.caddyJsonPath}:/etc/caddy/caddy.json:ro
-      - \${OPENPALM_STATE_HOME}/caddy/data:/data/caddy
-      - \${OPENPALM_STATE_HOME}/caddy/config:/config/caddy
-    command: caddy run --config /etc/caddy/caddy.json
-    depends_on:
-      admin:
-        condition: service_started
-    networks: [assistant_net]
-
-networks:
-  assistant_net:
-`;
-}
-
 async function fallbackToAdminAndCaddy(manager: StackManager): Promise<void> {
   const paths = manager.getPaths();
+  const fallbackComposeFile = paths.fallbackComposeFilePath ?? "docker-compose-fallback.yml";
 
   writeArtifact(paths.caddyJsonPath, `${JSON.stringify({
     admin: { disabled: true },
@@ -144,17 +100,16 @@ async function fallbackToAdminAndCaddy(manager: StackManager): Promise<void> {
         },
       },
     },
-  }, null, 2)}\n`);
+  }, null, 2)}
+`);
 
-  writeArtifact(paths.composeFilePath, buildEmergencyCompose(manager));
-
-  const validate = await composeConfigValidate();
+  const validate = await composeConfigValidateForFile(fallbackComposeFile);
   if (!validate.ok) throw new Error(`fallback_compose_validation_failed:${validate.stderr}`);
 
-  const upAdmin = await composeAction("up", "admin");
+  const upAdmin = await composeActionForFile("up", "admin", fallbackComposeFile);
   if (!upAdmin.ok) throw new Error(`fallback_compose_up_failed:admin:${upAdmin.stderr}`);
 
-  const upCaddy = await composeAction("up", "caddy");
+  const upCaddy = await composeActionForFile("up", "caddy", fallbackComposeFile);
   if (!upCaddy.ok) throw new Error(`fallback_compose_up_failed:caddy:${upCaddy.stderr}`);
 }
 

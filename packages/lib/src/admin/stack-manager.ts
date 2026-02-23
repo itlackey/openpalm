@@ -22,6 +22,7 @@ export type StackManagerPaths = {
   qdrantEnvPath: string;
   assistantEnvPath: string;
   renderReportPath?: string;
+  fallbackComposeFilePath?: string;
 };
 
 export const CoreSecretRequirements = [
@@ -125,12 +126,17 @@ export class StackManager {
       write(join(this.paths.stateRootPath, serviceName, ".env"), content);
     }
 
-    const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "rendered", "render-report.json");
+    const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
     const renderReport = {
       ...generated.renderReport,
       changedArtifacts,
       applySafe: generated.renderReport.missingSecretReferences.length === 0,
     };
+    const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
+    if (!existsSync(fallbackComposeFilePath)) {
+      writeFileSync(fallbackComposeFilePath, this.buildFallbackCompose(), "utf8");
+    }
+
     mkdirSync(dirname(renderReportPath), { recursive: true });
     writeFileSync(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`, "utf8");
 
@@ -332,5 +338,51 @@ export class StackManager {
 
   private isValidSecretName(name: string) {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
+  }
+
+  private buildFallbackCompose(): string {
+    return [
+      "services:",
+      "  admin:",
+      "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
+      "    restart: unless-stopped",
+      "    env_file:",
+      "      - ${OPENPALM_STATE_HOME}/system.env",
+      "    environment:",
+      "      - PORT=8100",
+      "      - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
+      "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
+      "      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
+      "      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
+      "      - COMPOSE_PROJECT_PATH=/state",
+      "      - OPENPALM_COMPOSE_FILE=docker-compose.yml",
+      "    volumes:",
+      "      - ${OPENPALM_DATA_HOME}:/data",
+      "      - ${OPENPALM_CONFIG_HOME}:/config",
+      "      - ${OPENPALM_STATE_HOME}:/state",
+      "      - ${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
+      "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
+      "    networks: [assistant_net]",
+      "",
+      "  caddy:",
+      "    image: caddy:2-alpine",
+      "    restart: unless-stopped",
+      "    ports:",
+      "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80\"",
+      "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443\"",
+      "    volumes:",
+      "      - ${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro",
+      "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
+      "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
+      "    command: caddy run --config /etc/caddy/caddy.json",
+      "    depends_on:",
+      "      admin:",
+      "        condition: service_started",
+      "    networks: [assistant_net]",
+      "",
+      "networks:",
+      "  assistant_net:",
+      "",
+    ].join("\n");
   }
 }

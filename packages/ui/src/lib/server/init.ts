@@ -42,7 +42,7 @@ export async function getStackManager(): Promise<StackManager> {
 		const { StackManager } = await import('@openpalm/lib/admin/stack-manager');
 		_stackManager = new StackManager({
 			stateRootPath: STATE_ROOT,
-			caddyJsonPath: env.CADDY_JSON_PATH ?? `${STATE_ROOT}/rendered/caddy/caddy.json`,
+			caddyJsonPath: env.CADDY_JSON_PATH ?? `${STATE_ROOT}/caddy.json`,
 			secretsEnvPath: SECRETS_ENV_PATH,
 			stackSpecPath: STACK_SPEC_PATH,
 			systemEnvPath: SYSTEM_ENV_PATH,
@@ -51,7 +51,9 @@ export async function getStackManager(): Promise<StackManager> {
 			postgresEnvPath: env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,
 			qdrantEnvPath: env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/qdrant/.env`,
 			assistantEnvPath: env.ASSISTANT_ENV_PATH ?? `${STATE_ROOT}/assistant/.env`,
-			composeFilePath: COMPOSE_FILE_PATH
+			composeFilePath: COMPOSE_FILE_PATH,
+			fallbackComposeFilePath:
+				env.FALLBACK_COMPOSE_FILE_PATH ?? `${STATE_ROOT}/docker-compose-fallback.yml`
 		});
 	}
 	return _stackManager;

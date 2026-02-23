@@ -39,6 +39,6 @@ export const RUNTIME_ENV_PATH = env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
 export const SECRETS_ENV_PATH = env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
 export const STACK_SPEC_PATH = env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/openpalm.yaml`;
 export const COMPOSE_FILE_PATH =
-	env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/rendered/docker-compose.yml`;
+	env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/docker-compose.yml`;
 export const SYSTEM_ENV_PATH = env.SYSTEM_ENV_PATH ?? `${STATE_ROOT}/system.env`;
 export const CRON_DIR = devDefault('CRON_DIR', '/state/automations', '../../.dev/state/automations');

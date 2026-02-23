@@ -46,14 +46,15 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).not.toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
     expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");
+    expect(existsSync(join(dir, "docker-compose-fallback.yml"))).toBeTrue();
   });
 
   it("creates all required directories from scratch when they do not pre-exist", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-mkdir-test-"));
     const manager = new StackManager({
       stateRootPath: dir,
-      caddyJsonPath: join(dir, "rendered", "caddy", "caddy.json"),
-      composeFilePath: join(dir, "rendered", "docker-compose.yml"),
+      caddyJsonPath: join(dir, "caddy.json"),
+      composeFilePath: join(dir, "docker-compose.yml"),
       systemEnvPath: join(dir, "system.env"),
       secretsEnvPath: join(dir, "secrets.env"),
       stackSpecPath: join(dir, "openpalm.yaml"),
@@ -65,8 +66,8 @@ describe("stack manager", () => {
     });
 
     expect(() => manager.renderArtifacts()).not.toThrow();
-    expect(existsSync(join(dir, "rendered", "caddy", "caddy.json"))).toBeTrue();
-    expect(existsSync(join(dir, "rendered", "docker-compose.yml"))).toBeTrue();
+    expect(existsSync(join(dir, "caddy.json"))).toBeTrue();
+    expect(existsSync(join(dir, "docker-compose.yml"))).toBeTrue();
     expect(existsSync(join(dir, "system.env"))).toBeTrue();
     expect(existsSync(join(dir, "gateway", ".env"))).toBeTrue();
   });

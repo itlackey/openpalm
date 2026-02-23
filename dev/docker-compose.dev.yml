@@ -1,5 +1,5 @@
 # Development-only compose overlay.
-# Runtime orchestration is generated into assets/state/docker-compose.yml (and rendered state paths at install/runtime).
+# Runtime orchestration is generated into assets/state/docker-compose.yml (and state-root runtime artifact paths at install/runtime).
 services:
   assistant:
     build: ./assistant

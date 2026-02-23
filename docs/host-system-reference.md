@@ -21,8 +21,8 @@ Only these files are edited directly:
 
 Admin renders and maintains generated stack outputs under:
 
-- `${OPENPALM_STATE_HOME}/rendered/docker-compose.yml`
-- `${OPENPALM_STATE_HOME}/rendered/caddy/caddy.json`
+- `${OPENPALM_STATE_HOME}/docker-compose.yml`
+- `${OPENPALM_STATE_HOME}/caddy.json`
 - `${OPENPALM_STATE_HOME}/*/.env`
 
 ## Persistent data
@@ -39,6 +39,6 @@ Admin renders and maintains generated stack outputs under:
 
 ## Compose invariant
 
-OpenPalm always applies compose using the rendered file:
+OpenPalm always applies compose using the state-root compose file:
 
-- `docker compose -f ${OPENPALM_STATE_HOME}/rendered/docker-compose.yml up -d`
+- `docker compose -f ${OPENPALM_STATE_HOME}/docker-compose.yml up -d`

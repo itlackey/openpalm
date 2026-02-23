@@ -166,7 +166,7 @@ Channel access defaults to LAN-only (`abort @not_lan` in Caddyfile). The Admin A
 Admin routing uses `/api*` for API prefix compatibility plus `/services/opencode*`, `/services/openmemory*`, and a `/` catch-all.
 
 
-Caddy runtime configuration is mounted from rendered state paths (`${OPENPALM_STATE_HOME}/rendered/caddy/Caddyfile` and `${OPENPALM_STATE_HOME}/rendered/caddy/snippets/`).
+Caddy runtime configuration is mounted from `${OPENPALM_STATE_HOME}/caddy.json`.
 
 During first-boot setup, users can choose `host` vs `lan` scope. `host` scope rewrites Caddy LAN matchers to localhost-only and sets compose bind addresses to `127.0.0.1` for ingress and exposed service ports.
 
@@ -237,7 +237,7 @@ See [Security Guide](../../docs/security.md) for the full defense-in-depth secur
 |---|---|---|
 | User intent for stack behavior | `config/openpalm.yaml` via `packages/lib/stack-spec.ts` | Keep this file intent-only (no derived runtime state). |
 | Secret values and key inventory | `config/secrets.env` via `StackManager` secret APIs | UI should always use live secret inventory from API. |
-| Rendered compose/caddy/env artifacts | `packages/lib/stack-generator.ts` output | Generated under `state/rendered/*`; never hand-edit. |
+| Rendered compose/caddy/env artifacts | `packages/lib/stack-generator.ts` output | Generated under `state/*`; never hand-edit. |
 | Compose service allowlist | `packages/lib/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |
 | Admin transport routes | `admin/src/server.ts` | Prefer delegating business rules to `packages/lib/*`. |
 | Security/routing ingress | `gateway/src/server.ts` and `gateway/src/channel-*` | Gateway remains the only inbound message path. |

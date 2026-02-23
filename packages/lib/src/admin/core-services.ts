@@ -7,7 +7,7 @@ export function renderCaddyComposeService(): string {
     "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80\"",
     "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443\"",
     "    volumes:",
-    "      - ${OPENPALM_STATE_HOME}/rendered/caddy/caddy.json:/etc/caddy/caddy.json:ro",
+    "      - ${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro",
     "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
     "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
     "    command: caddy run --config /etc/caddy/caddy.json",

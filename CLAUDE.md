@@ -112,7 +112,7 @@ The `dev:*` scripts handle this automatically.
 .dev/
 ├── config/    (OPENPALM_CONFIG_HOME) — secrets.env, channel envs, caddy, opencode.jsonc
 ├── data/      (OPENPALM_DATA_HOME)   — postgres, qdrant, openmemory, admin, assistant
-└── state/     (OPENPALM_STATE_HOME)  — rendered artifacts, runtime state
+└── state/     (OPENPALM_STATE_HOME)  — runtime artifacts, state envs
 ```
 
 Delete `.dev/data/setup-state.json` to reset the admin wizard to first-boot state.

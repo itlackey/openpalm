@@ -19,11 +19,12 @@ const ContainerSocketUri = Bun.env.OPENPALM_CONTAINER_SOCKET_URI ?? "unix:///var
 
 export type ComposeResult = { ok: boolean; stdout: string; stderr: string };
 
-function runCompose(args: string[]): Promise<ComposeResult> {
+function runCompose(args: string[], composeFileOverride?: string): Promise<ComposeResult> {
   return new Promise((resolve) => {
+    const composeFile = composeFileOverride ?? ComposeFile;
     const composeArgs = ComposeSubcommand
-      ? [ComposeSubcommand, "-f", ComposeFile, ...args]
-      : ["-f", ComposeFile, ...args];
+      ? [ComposeSubcommand, "-f", composeFile, ...args]
+      : ["-f", composeFile, ...args];
     let proc;
     try {
       proc = spawn(ComposeBin, composeArgs, {
@@ -94,6 +95,10 @@ export async function composeConfigValidate(): Promise<ComposeResult> {
   return runCompose(["config"]);
 }
 
+export async function composeConfigValidateForFile(composeFile: string): Promise<ComposeResult> {
+  return runCompose(["config"], composeFile);
+}
+
 export async function composeList(): Promise<ComposeResult> {
   return runCompose(["ps", "--format", "json"]);
 }
@@ -129,6 +134,13 @@ export async function composeAction(action: "up" | "down" | "restart", service: 
   if (action === "up") return runCompose(["up", "-d", ...services]);
   if (action === "down") return runCompose(["stop", ...services]);
   return runCompose(["restart", ...services]);
+}
+
+export async function composeActionForFile(action: "up" | "down" | "restart", service: string | string[], composeFile: string): Promise<ComposeResult> {
+  const services = Array.isArray(service) ? service : [service];
+  if (action === "up") return runCompose(["up", "-d", ...services], composeFile);
+  if (action === "down") return runCompose(["stop", ...services], composeFile);
+  return runCompose(["restart", ...services], composeFile);
 }
 
 export async function composeExec(service: string, args: string[]): Promise<ComposeResult> {

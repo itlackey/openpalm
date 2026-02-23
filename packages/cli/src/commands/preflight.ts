@@ -12,7 +12,6 @@ const requiredDirs = [
   "data/assistant",
   "state/gateway",
   "state/caddy",
-  "state/rendered/caddy",
 ];
 
 export function preflight(): void {

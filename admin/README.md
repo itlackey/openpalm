@@ -15,7 +15,7 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 ```
 ~/.local/share/openpalm/      (OPENPALM_DATA_HOME — databases, blobs)
 ~/.config/openpalm/            (OPENPALM_CONFIG_HOME — source-of-truth inputs)
-~/.local/state/openpalm/       (OPENPALM_STATE_HOME — rendered artifacts + runtime state)
+~/.local/state/openpalm/       (OPENPALM_STATE_HOME — runtime artifacts + state env/config)
 ```
 
 ## Authentication

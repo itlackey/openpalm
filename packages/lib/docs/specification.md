@@ -286,7 +286,7 @@ The compose file is built as a multi-line string from a static template for core
 
 | Service | Image | Key mounts / env |
 |---|---|---|
-| `caddy` | `caddy:2-alpine` | Mounts rendered Caddyfile and snippets from state; data dir from data |
+| `caddy` | `caddy:2-alpine` | Mounts generated caddy.json from state; data dir from data |
 | `postgres` | `postgres:16-alpine` | Mounts data dir; env_file from state; POSTGRES_* env vars |
 | `qdrant` | `qdrant/qdrant:latest` | Mounts storage dir from data; env_file from state |
 | `openmemory` | `mem0/openmemory-mcp:latest` | Port 8765; mounts data dir; env_file from state |
@@ -530,7 +530,7 @@ type GeneratedStackArtifacts = {
 ### 4.1 `caddyJson`
 
 **Type**: `string` (JSON-encoded)
-**Written to**: `$OPENPALM_STATE_HOME/rendered/caddy/caddy.json`
+**Written to**: `$OPENPALM_STATE_HOME/caddy.json`
 
 A Caddy JSON API configuration document. The generator produces a native Caddy JSON config (not a Caddyfile) with servers, routes, handlers, and matchers. This is loaded directly by Caddy using its native JSON config format.
 
@@ -546,7 +546,7 @@ The JSON includes routes for:
 ### 4.4 `composeFile`
 
 **Type**: `string` (YAML)
-**Written to**: `$OPENPALM_STATE_HOME/rendered/docker-compose.yml`
+**Written to**: `$OPENPALM_STATE_HOME/docker-compose.yml`
 
 The complete Docker Compose file. Contains all core services and all enabled channel services. The `networks:` section always defines `assistant_net`. Never hand-edit this file — it is regenerated on every `renderArtifacts()` call.
 
@@ -891,7 +891,7 @@ The generator produces artifacts scoped to two root directories, resolved from e
 
 | Env var | Default location | Purpose |
 |---|---|---|
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Generated (rendered) runtime state |
+| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Generated runtime state |
 | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User intent files (spec, secrets) |
 
 **Generated artifact paths** (under `$OPENPALM_STATE_HOME`):
@@ -899,10 +899,9 @@ The generator produces artifacts scoped to two root directories, resolved from e
 ```
 $OPENPALM_STATE_HOME/
 ├── system.env                         # systemEnv artifact (loaded by admin + gateway)
-├── rendered/
-│   ├── caddy/
-│   │   └── caddy.json                  # caddyJson artifact (Caddy JSON API format)
-│   └── docker-compose.yml             # composeFile artifact
+├── caddy.json                         # caddyJson artifact (Caddy JSON API format)
+├── docker-compose.yml                 # composeFile artifact
+├── docker-compose-fallback.yml        # emergency admin+caddy compose
 ├── gateway/
 │   └── .env                           # gatewayEnv artifact
 ├── openmemory/
