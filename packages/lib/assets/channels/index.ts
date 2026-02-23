@@ -1,4 +1,5 @@
 import { parseYamlDocument } from "../../src/shared/yaml.ts";
+import type { EnvVarDef } from "../../src/shared/snippet-types.ts";
 import chatYaml from "./chat.yaml" with { type: "text" };
 import discordYaml from "./discord.yaml" with { type: "text" };
 import voiceYaml from "./voice.yaml" with { type: "text" };
@@ -9,6 +10,7 @@ export type BuiltInChannelDef = {
   rewritePath: string;
   sharedSecretEnv: string;
   configKeys: string[];
+  env: EnvVarDef[];
 };
 
 export const BUILTIN_CHANNELS: Record<string, BuiltInChannelDef> = Object.fromEntries(

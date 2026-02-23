@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../snippet-schema.json
+apiVersion: v1
+kind: channel
+
+metadata:
+  id: openpalm-slack-channel
+  name: Slack
+  description: Slack bot adapter for OpenPalm. Receives messages via the Slack Events API and routes them through the gateway.
+  author: OpenPalm
+  version: 1.0.0
+  tags: [channel, slack, bot, messaging]
+  docUrl: https://api.slack.com/apps
+
+container:
+  image: openpalm/channel-slack:latest
+  port: 8185
+  rewritePath: /slack/webhook
+  sharedSecretEnv: CHANNEL_SLACK_SECRET
+
+env:
+  - name: SLACK_BOT_TOKEN
+    label: Bot Token
+    description: OAuth bot token from your Slack app settings
+    type: secret
+    required: true
+    helpUrl: https://api.slack.com/authentication/token-types
+
+  - name: SLACK_SIGNING_SECRET
+    label: Signing Secret
+    description: Used to verify that requests come from Slack
+    type: secret
+    required: true
+
+  - name: CHANNEL_SLACK_SECRET
+    label: Channel Secret
+    description: HMAC signing key for gateway communication. Auto-generated if left blank.
+    type: secret
+    required: false
+    generate: random(64)
+
+security:
+  risk: medium
+  permissions:
+    - "Network: outbound to gateway + Slack API"
+    - "HMAC channel signing"
+  notes: >
+    Requires Slack bot token and signing secret stored as secrets, never in
+    the container. Validates Slack request signatures on every webhook.

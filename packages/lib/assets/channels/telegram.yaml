@@ -6,3 +6,20 @@ configKeys:
   - TELEGRAM_BOT_TOKEN
   - TELEGRAM_WEBHOOK_SECRET
   - CHANNEL_TELEGRAM_SECRET
+env:
+  - name: TELEGRAM_BOT_TOKEN
+    label: Bot Token
+    description: Get a bot token from @BotFather on Telegram
+    type: secret
+    required: true
+  - name: TELEGRAM_WEBHOOK_SECRET
+    label: Webhook Secret
+    description: A secret string to verify incoming webhook requests
+    type: secret
+    required: false
+  - name: CHANNEL_TELEGRAM_SECRET
+    label: Channel Secret
+    description: HMAC signing key for gateway communication. Auto-generated if left blank.
+    type: secret
+    required: false
+    generate: random(64)

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getSetupState } from '$lib/stores/setup.svelte';
+	import { BUILTIN_CHANNELS } from '@openpalm/lib/assets/channels/index';
+	import type { EnvVarDef } from '@openpalm/lib/shared/snippet-types';
 
 	interface Props {
 		error: string;
@@ -23,70 +25,37 @@
 		}>;
 	}
 
-	const CHANNELS: ChannelDef[] = [
-		{
-			id: 'channel-chat',
-			name: 'Chat',
-			desc: 'Chat with your assistant through the built-in web interface',
-			fields: [
-				{
-					key: 'CHAT_INBOUND_TOKEN',
-					label: 'Inbound Token',
-					type: 'password',
-					required: false,
-					helpText: 'Token for authenticating incoming chat messages'
-				}
-			]
-		},
-		{
-			id: 'channel-discord',
-			name: 'Discord',
-			desc: 'Connect your assistant to a Discord server',
-			fields: [
-				{
-					key: 'DISCORD_BOT_TOKEN',
-					label: 'Bot Token',
-					type: 'password',
-					required: true,
-					helpText: 'Create a bot at discord.com/developers and copy the token'
-				},
-				{
-					key: 'DISCORD_PUBLIC_KEY',
-					label: 'Public Key',
-					type: 'text',
-					required: true,
-					helpText: 'Found on the same page as your bot token'
-				}
-			]
-		},
-		{
-			id: 'channel-voice',
-			name: 'Voice',
-			desc: 'Talk to your assistant using voice',
-			fields: []
-		},
-		{
-			id: 'channel-telegram',
-			name: 'Telegram',
-			desc: 'Connect your assistant to Telegram',
-			fields: [
-				{
-					key: 'TELEGRAM_BOT_TOKEN',
-					label: 'Bot Token',
-					type: 'password',
-					required: true,
-					helpText: 'Get a bot token from @BotFather on Telegram'
-				},
-				{
-					key: 'TELEGRAM_WEBHOOK_SECRET',
-					label: 'Webhook Secret',
-					type: 'password',
-					required: false,
-					helpText: 'A secret string to verify incoming webhook requests'
-				}
-			]
+	/** Map EnvVarDef field type to HTML input type. */
+	function inputType(envType: EnvVarDef['type']): string {
+		switch (envType) {
+			case 'secret':
+				return 'password';
+			case 'number':
+				return 'number';
+			case 'email':
+				return 'email';
+			case 'url':
+				return 'url';
+			default:
+				return 'text';
 		}
-	];
+	}
+
+	/** Build ChannelDef list from YAML-driven env metadata. */
+	const CHANNELS: ChannelDef[] = Object.entries(BUILTIN_CHANNELS).map(([key, def]) => ({
+		id: `channel-${key}`,
+		name: def.name,
+		desc: '',
+		fields: (def.env ?? [])
+			.filter((e) => e.name !== def.sharedSecretEnv)
+			.map((e) => ({
+				key: e.name,
+				label: e.label,
+				type: inputType(e.type),
+				required: e.required,
+				helpText: e.description ?? ''
+			}))
+	}));
 
 	function isChecked(channelId: string): boolean {
 		return enabledChannels.includes(channelId);
@@ -115,7 +84,9 @@
 			/>
 			<div>
 				<strong>{channel.name}</strong>
-				<div class="muted" style="font-size:13px">{channel.desc}</div>
+				{#if channel.desc}
+					<div class="muted" style="font-size:13px">{channel.desc}</div>
+				{/if}
 			</div>
 		</label>
 		{#if channel.fields.length > 0}

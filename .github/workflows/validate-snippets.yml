@@ -1,0 +1,178 @@
+name: Validate Community Snippets
+
+# Validates new or modified community snippets on pull requests.
+# Checks YAML syntax, required fields, enum values, and unique IDs.
+
+on:
+  pull_request:
+    paths:
+      - "community/snippets/**/*.yaml"
+      - "community/snippets/**/*.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Validate changed snippet files
+        id: validate
+        run: |
+          ERRORS=0
+          WARNINGS=0
+          REPORT=""
+
+          SNIPPET_FILES=$(find community/snippets -name "*.yaml" -o -name "*.yml" \
+            | grep -v "snippet-schema.json" \
+            | grep -v "CONTRIBUTING.md" \
+            | grep -v "index.yaml" \
+            | grep -v "index.json" \
+            | sort)
+
+          if [ -z "$SNIPPET_FILES" ]; then
+            echo "No snippet files found."
+            exit 0
+          fi
+
+          for f in $SNIPPET_FILES; do
+            ENTRY_ERRORS=""
+
+            # 1. Valid YAML?
+            if ! yq eval '.' "$f" > /dev/null 2>&1; then
+              ENTRY_ERRORS="${ENTRY_ERRORS}\n- Not valid YAML"
+              ERRORS=$((ERRORS + 1))
+              REPORT="${REPORT}\n### ❌ \`$f\`\n${ENTRY_ERRORS}"
+              continue
+            fi
+
+            # 2. Required top-level fields
+            for field in apiVersion kind metadata env; do
+              VAL=$(yq eval ".$field" "$f" 2>/dev/null)
+              if [ "$VAL" = "null" ] || [ -z "$VAL" ]; then
+                ENTRY_ERRORS="${ENTRY_ERRORS}\n- Missing required field: \`$field\`"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            # 3. Required metadata fields
+            for field in id name description author version tags; do
+              VAL=$(yq eval ".metadata.$field" "$f" 2>/dev/null)
+              if [ "$VAL" = "null" ] || [ -z "$VAL" ]; then
+                ENTRY_ERRORS="${ENTRY_ERRORS}\n- Missing required metadata field: \`metadata.$field\`"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            # 4. Enum: kind
+            KIND=$(yq eval ".kind" "$f" 2>/dev/null)
+            if [[ "$KIND" != "channel" && "$KIND" != "service" && "$KIND" != "automation" ]]; then
+              ENTRY_ERRORS="${ENTRY_ERRORS}\n- \`kind\` must be one of: channel, service, automation (got: $KIND)"
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # 5. Enum: apiVersion
+            API_VERSION=$(yq eval ".apiVersion" "$f" 2>/dev/null)
+            if [ "$API_VERSION" != "v1" ]; then
+              ENTRY_ERRORS="${ENTRY_ERRORS}\n- \`apiVersion\` must be \`v1\` (got: $API_VERSION)"
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # 6. Validate env entries have required fields
+            ENV_COUNT=$(yq eval '.env | length' "$f" 2>/dev/null)
+            if [ "$ENV_COUNT" != "null" ] && [ "$ENV_COUNT" -gt 0 ] 2>/dev/null; then
+              for i in $(seq 0 $((ENV_COUNT - 1))); do
+                for envfield in name label type required; do
+                  VAL=$(yq eval ".env[$i].$envfield" "$f" 2>/dev/null)
+                  if [ "$VAL" = "null" ] || [ -z "$VAL" ]; then
+                    ENV_NAME=$(yq eval ".env[$i].name" "$f" 2>/dev/null)
+                    ENTRY_ERRORS="${ENTRY_ERRORS}\n- env[$i] ($ENV_NAME): missing \`$envfield\`"
+                    ERRORS=$((ERRORS + 1))
+                  fi
+                done
+
+                # Validate env type enum
+                ENV_TYPE=$(yq eval ".env[$i].type" "$f" 2>/dev/null)
+                case "$ENV_TYPE" in
+                  text|secret|number|boolean|select|url|email) ;;
+                  *)
+                    ENV_NAME=$(yq eval ".env[$i].name" "$f" 2>/dev/null)
+                    ENTRY_ERRORS="${ENTRY_ERRORS}\n- env[$i] ($ENV_NAME): \`type\` must be one of: text, secret, number, boolean, select, url, email"
+                    ERRORS=$((ERRORS + 1))
+                    ;;
+                esac
+
+                # If type is select, options must be present
+                if [ "$ENV_TYPE" = "select" ]; then
+                  OPTIONS=$(yq eval ".env[$i].options | length" "$f" 2>/dev/null)
+                  if [ "$OPTIONS" = "null" ] || [ "$OPTIONS" -lt 1 ] 2>/dev/null; then
+                    ENV_NAME=$(yq eval ".env[$i].name" "$f" 2>/dev/null)
+                    ENTRY_ERRORS="${ENTRY_ERRORS}\n- env[$i] ($ENV_NAME): select type requires \`options\`"
+                    ERRORS=$((ERRORS + 1))
+                  fi
+                fi
+              done
+            fi
+
+            # 7. Check snippet is in the correct subdirectory for its kind
+            EXPECTED_DIR=""
+            case "$KIND" in
+              channel) EXPECTED_DIR="channels" ;;
+              service) EXPECTED_DIR="services" ;;
+              automation) EXPECTED_DIR="automations" ;;
+            esac
+            if [ -n "$EXPECTED_DIR" ] && ! echo "$f" | grep -q "/$EXPECTED_DIR/"; then
+              ENTRY_ERRORS="${ENTRY_ERRORS}\n- ⚠️  Warning: snippet kind is \`$KIND\` but file is not in \`$EXPECTED_DIR/\` directory"
+              WARNINGS=$((WARNINGS + 1))
+            fi
+
+            # 8. Check for duplicate ID across all snippets
+            ENTRY_ID=$(yq eval ".metadata.id" "$f" 2>/dev/null)
+            if [ -n "$ENTRY_ID" ] && [ "$ENTRY_ID" != "null" ]; then
+              DUPES=$(find community/snippets -name "*.yaml" -o -name "*.yml" \
+                | grep -v "$f" \
+                | xargs -I{} yq eval ".metadata.id" {} 2>/dev/null \
+                | grep -c "^${ENTRY_ID}$" || true)
+              if [ "$DUPES" -gt 0 ]; then
+                ENTRY_ERRORS="${ENTRY_ERRORS}\n- ⚠️  Warning: ID \`$ENTRY_ID\` exists in another snippet file"
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            fi
+
+            if [ -z "$ENTRY_ERRORS" ]; then
+              REPORT="${REPORT}\n### ✅ \`$f\` (id: \`$ENTRY_ID\`, kind: \`$KIND\`)\nAll checks passed."
+            else
+              REPORT="${REPORT}\n### ❌ \`$f\`${ENTRY_ERRORS}"
+            fi
+          done
+
+          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+          echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
+
+          # Write summary
+          {
+            echo "## Snippet Validation Report"
+            echo ""
+            if [ "$ERRORS" -gt 0 ]; then
+              echo "**$ERRORS error(s) found** — please fix before merging."
+            elif [ "$WARNINGS" -gt 0 ]; then
+              echo "**$WARNINGS warning(s)** — review before merging."
+            else
+              echo "**All snippets are valid.** ✓"
+            fi
+            echo ""
+            echo -e "$REPORT"
+          } >> $GITHUB_STEP_SUMMARY
+
+          if [ "$ERRORS" -gt 0 ]; then
+            exit 1
+          fi
