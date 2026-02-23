@@ -6,6 +6,7 @@ import voiceYaml from "./voice.yaml" with { type: "text" };
 import telegramYaml from "./telegram.yaml" with { type: "text" };
 export type BuiltInChannelDef = {
   name: string;
+  description: string;
   containerPort: number;
   rewritePath: string;
   sharedSecretEnv: string;
@@ -27,6 +28,7 @@ function parseBuiltInChannel(raw: string, source: string): BuiltInChannelDef {
   const env = obj.env as EnvVarDef[];
   return {
     name: obj.name,
+    description: typeof obj.description === "string" ? obj.description : "",
     containerPort: obj.containerPort,
     rewritePath: obj.rewritePath,
     sharedSecretEnv: obj.sharedSecretEnv,

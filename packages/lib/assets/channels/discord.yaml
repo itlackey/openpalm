@@ -1,4 +1,5 @@
 name: Discord
+description: Connect your assistant to a Discord server
 containerPort: 8184
 rewritePath: /discord/webhook
 sharedSecretEnv: CHANNEL_DISCORD_SECRET

@@ -1,4 +1,5 @@
 name: Telegram
+description: Connect your assistant to Telegram
 containerPort: 8182
 rewritePath: /telegram/webhook
 sharedSecretEnv: CHANNEL_TELEGRAM_SECRET

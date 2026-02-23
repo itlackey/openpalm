@@ -1,4 +1,5 @@
 name: Voice
+description: Talk to your assistant using voice
 containerPort: 8183
 rewritePath: /voice/transcription
 sharedSecretEnv: CHANNEL_VOICE_SECRET

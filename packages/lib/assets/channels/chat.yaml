@@ -1,4 +1,5 @@
 name: Chat
+description: Chat with your assistant through the built-in web interface
 containerPort: 8181
 rewritePath: /chat
 sharedSecretEnv: CHANNEL_CHAT_SECRET

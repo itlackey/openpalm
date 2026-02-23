@@ -45,7 +45,7 @@
 	const CHANNELS: ChannelDef[] = Object.entries(BUILTIN_CHANNELS).map(([key, def]) => ({
 		id: `channel-${key}`,
 		name: def.name,
-		desc: '',
+		desc: def.description ?? '',
 		fields: (def.env ?? [])
 			.filter((e) => e.name !== def.sharedSecretEnv)
 			.map((e) => ({
