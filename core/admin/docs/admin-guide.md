@@ -34,7 +34,7 @@ Access the admin dashboard at `http://localhost`. Log in with the admin password
 | Page | What it does |
 |---|---|
 | System status | Service health indicators |
-| Config editor | Schema-aware JSONC editor |
+| Config editor | Schema-aware YAML editor |
 | Service control | Start / stop / restart containers |
 | Plugin management | Install and uninstall npm plugins |
 | Secrets | Manage API keys and credentials |

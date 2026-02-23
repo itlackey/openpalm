@@ -1,194 +1,58 @@
-# API Reference
+# API Reference (v0.3.0)
 
-## Gateway API (internal; channel adapters call gateway directly on the Docker network)
+This document summarizes the primary HTTP contracts developers depend on.
 
-### GET /health
-Health status for the gateway (internal).
+## Admin API (`core/admin`)
 
-### POST /channel/inbound
-Signed channel payload from adapters (internal). Gateway verifies a shared-secret HMAC and forwards to the OpenCode Core runtime for intake validation.
+### Purpose
+- Setup completion and install lifecycle.
+- Config render/apply and service control.
+- Secrets and automation management.
 
-Headers:
-- `x-channel-signature` (HMAC-SHA256)
+### Common expectations
+- Write operations require admin auth token/header.
+- Errors should use a consistent JSON shape (`error`, optional `details`/`code`).
+- Config writes are validated against YAML-first stack model before apply.
 
-Body:
-```json
-{
-  "userId": "discord:123",
-  "channel": "discord",
-  "text": "hello",
-  "metadata": {},
-  "nonce": "uuid",
-  "timestamp": 1730000000000
-}
-```
+### High-use endpoint groups
 
-Supported channels: `chat`, `discord`, `voice`, `telegram`
+### Key documented admin routes
+- `GET /setup/status`
+- `POST /command`
+- `GET /state`
+- `POST /plugins/install`
+- `GET|POST|PUT|DELETE /secrets`
+- `GET|POST|PUT|DELETE /automations`
 
-Processing behavior:
-1. Gateway verifies HMAC and payload shape (payload validation).
-2. Rate limiting: 120 requests per minute per user.
-3. Gateway sends a dedicated intake command to `assistant` using the `channel-intake` agent (all tools denied) — intake validation.
-4. Gateway parses intake JSON (`valid`, `summary`, `reason`).
-5. If valid, gateway forwards only the summary to `assistant` (default agent).
+- **Setup/Auth**: setup status, login/session, bootstrap operations.
+- **Config**: load/save/apply `openpalm.yaml` and related generated outputs.
+- **Compose control**: up/down/restart/status via allowlisted admin runner paths.
+- **Secrets**: CRUD for `secrets.env` keys used by channel/service refs.
+- **Automations**: CRUD + run-now for cron-based prompts.
 
-Possible errors:
-- `400 invalid_payload` when payload fails shape validation (missing fields, invalid channel, text too long).
-- `403 channel_not_configured` when the channel has no shared secret configured.
-- `403 invalid_signature` when HMAC verification fails.
-- `429 rate_limited` when user exceeds 120 requests per minute.
-- `422 invalid_channel_request` when channel intake rejects the request.
-- `502 channel_intake_unavailable` when intake runtime response is invalid/unavailable.
-- `502 core_runtime_unavailable` when core runtime fails.
+## Gateway API (`core/gateway`)
 
-Gateway runtime knobs:
-- `OPENCODE_TIMEOUT_MS` (default `15000`)
+### Purpose
+- Secure channel ingress endpoint for all adapters.
+- Input verification, rate limiting, and intake validation.
+- Dispatch to assistant runtime + audit logging.
 
-Notes:
-- All inbound user traffic is routed through `/channel/inbound` only.
-- Gateway uses the `channel-intake` agent on `assistant` to validate + summarize, then forwards valid summaries to `assistant` (default agent).
+### Intake contract
+Incoming channel payloads must include enough metadata for:
+- Signature verification/auth,
+- Replay/nonce protection,
+- channel/user/session attribution,
+- message content + optional attachments/metadata.
 
----
+Gateway rejects invalid payloads before assistant dispatch.
 
-## Admin App API (routed via Caddy at /*, LAN only)
+## Channel adapter expectations
+- Adapters under `channels/*` should treat platform payloads as untrusted input.
+- Normalize provider-specific updates into gateway contract payloads.
+- Return retry-safe status codes for webhook/platform delivery semantics.
 
-Headers for all protected admin endpoints:
-- `x-admin-token` (required — the admin password set during install)
-
-**Exceptions (no auth required):** `/health`, `/setup/*` (before setup completes), `/meta`, static UI assets (`/`, `/index.html`, `/setup-ui.js`, `/logo.png`).
-
-### GET /health
-Health status for the admin app.
-
-### Standard admin error shape
-All admin endpoints should return errors in the shape:
-
-```json
-{
-  "error": "machine_readable_error_code",
-  "details": "optional human-readable or structured details",
-  "code": "optional stable subcode"
-}
-```
-
-This keeps the UI implementation simple and predictable for non-technical users by avoiding endpoint-specific parsing rules.
-
-### Secrets contract (canonical)
-The secret manager is the source of truth for key/value entries in `secrets.env`.
-
-- `GET /secrets` — list available secret keys and where each key is used.
-
-Channel configuration values in `openpalm.yaml` (stack spec) can reference secrets directly with `${SECRET_NAME}`. During stack rendering/apply, unresolved references fail validation.
-
-### Container management
-- `GET /containers/list` — list running containers
-- `POST /containers/down` — stop a service `{ "service": "channel-discord" }`
-
-### Channel management
-- `GET /channels` — list channel services, network access mode, and editable config keys
-- `POST /channels/access` — set network access for channel ingress `{ "channel": "chat" | "voice" | "discord" | "telegram", "access": "host" | "lan" | "public" }`
-- `GET /channels/config?service=channel-chat` — read channel-specific env overrides
-- `POST /channels/config` — update channel env overrides `{ "service": "channel-discord", "config": { "DISCORD_BOT_TOKEN": "..." }, "restart": true }`
-
-### Config editor
-- `GET /config` — read `opencode.jsonc` (returns text/plain)
-- `POST /config` — write config `{ "config": "...", "restart": true }` (denies permission widening to `allow`)
-
-**Policy lint rule:** The config editor parses the submitted JSONC and inspects the `permission` object. If any permission value is set to `"allow"`, the request is rejected with `400 policy lint failed: permission widening blocked`. Only `"ask"` and `"deny"` are permitted permission values. This prevents operators from accidentally removing approval gates on sensitive tool operations.
-
-### Setup wizard
-- `GET /setup/status` — returns current setup wizard state (completed steps, channels, first-boot flag), current service-instance overrides, provider setup, and small model config
-- `GET /system/state` — capability-focused consolidated system snapshot for setup + stack + secret inventory, intended for configuration-editor UX flows
-- `GET /setup/health-check` — run health checks against gateway, assistant, and OpenMemory; returns `{ services: { gateway, assistant, openmemory, admin } }`
-
-### Plugin management
-- `POST /plugins/install` — install an npm plugin by adding it to `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
-- `POST /plugins/uninstall` — uninstall a plugin by removing it from `opencode.json` `plugin[]` array `{ "pluginId": "@scope/plugin-name" }` (restarts assistant)
-
-### Installed status
-- `GET /installed` — returns currently installed plugins and setup state
-
-### Meta
-- `GET /meta` — returns service display names, channel field definitions, and required core secrets (no auth required)
-
-### Canonical admin control surface (hard-break)
-- `POST /command` — single mutating command endpoint (auth required). Supported command types: `stack.render`, `stack.apply`, `channel.configure`, `secret.upsert`, `secret.delete`, `automation.upsert`, `automation.delete`, `service.restart`.
-- `GET /state` — normalized admin state snapshot (auth required).
-- `GET /events` — server-sent event stream for command lifecycle events (auth required).
-
-### Stack spec
-- `GET /stack/render` — returns generated Caddyfile, compose file, and env artifacts from the current spec (auth required)
-- `GET /stack/impact` — preview what a stack apply would change without applying (auth required)
-- `GET /compose/capabilities` — preview compose operations available (auth required)
-
-### Secret management
-- `GET /secrets` — list all secrets with usage info, configured status, and constraint metadata (auth required)
-
-### Automations
-Automations are scheduled prompts managed as cron jobs in the admin container. Each automation has an ID (UUID), Name, Script (prompt text), Schedule, and Status. Generated schedules are written to `cron.d.enabled/` and `cron.d.disabled/` with a combined `cron.schedule` render used for crontab loading. The API routes use `/automations`.
-
-- `GET /automations` — list all automations with last run info (auth required)
-- `POST /automations` — create a new automation `{ "name": "...", "schedule": "*/30 * * * *", "script": "..." }` (auth required). Returns `201` with the created automation. Validates cron expression syntax. Syncs crontab in admin container (no assistant restart required).
-- `GET /automations/history?id=&limit=` — get execution history for an automation (auth required). Returns up to `limit` (default 20, max 100) recent runs.
-
----
-
-## LAN Web UIs and service endpoints
-
-These are available on the internal Docker network for service-to-service API/MCP use, and are also exposed via Caddy as LAN-only web routes:
-
-- OpenCode Core UI/API:
-  - Internal service URL: `http://assistant:4096`
-  - LAN route via Caddy: `/services/opencode*`
-- OpenMemory UI/API/MCP:
-  - Internal service URL: `http://openmemory:8765` (API/MCP)
-  - LAN route via Caddy: `/services/openmemory*`
-- Admin UI/API:
-  - Local route via Caddy (no DNS required): `http://localhost`
-  - LAN route via Caddy: `/` (catch-all)
-  - API namespace: `/api*`
-
----
-
-## Channel Adapter APIs
-
-All channel adapters are LAN-only by default. Access can be toggled to public via the Admin API (`POST /channels/access`).
-
-### Channel Environment Variables
-
-Channel-specific configuration is managed through the Stack Spec and rendered into scoped env files under `${OPENPALM_STATE_HOME}/channel-*/.env`. The admin service manages channel config values through the stack manager API.
-
-Each channel adapter reads the following environment variables at startup:
-
-| Channel | Port | Env Var: `PORT` | Env Var: `GATEWAY_URL` | Env Var: Shared Secret | Env Var: Additional |
-|---------|------|----------------|----------------------|----------------------|---------------------|
-| chat | 8181 | `PORT` (default `8181`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_CHAT_SECRET` | `CHAT_INBOUND_TOKEN` — optional bearer token for inbound requests |
-| discord | 8184 | `PORT` (default `8184`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_DISCORD_SECRET` | `DISCORD_BOT_TOKEN` — Discord bot token |
-| voice | 8183 | `PORT` (default `8183`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_VOICE_SECRET` | — |
-| telegram | 8182 | `PORT` (default `8182`) | `GATEWAY_URL` (default `http://gateway:8080`) | `CHANNEL_TELEGRAM_SECRET` | `TELEGRAM_WEBHOOK_SECRET` — Telegram webhook verification secret |
-
-All adapters default `GATEWAY_URL` to `http://gateway:8080` (the gateway's internal Docker network address).
-
-### Chat (channel-chat, :8181)
-- Caddy ingress route: `/channels/chat*` (rewrites to `/chat`)
-- `GET /health`
-- `POST /chat` — `{ "userId": "...", "text": "...", "metadata": {} }`
-  - Header: `x-chat-token` (required if `CHAT_INBOUND_TOKEN` is set)
-
-### Discord (channel-discord, :8184)
-- Caddy ingress route: `/channels/discord*` (rewrites to `/discord/webhook`)
-- `GET /health`
-- `POST /discord/interactions` — Discord interactions endpoint (slash commands, type 1/2). Note: not routed through Caddy in the default config.
-- `POST /discord/webhook` — simple webhook `{ "userId": "...", "text": "...", "channelId": "...", "guildId": "..." }`
-
-### Voice (channel-voice, :8183)
-- Caddy ingress route: `/channels/voice*` (rewrites to `/voice/transcription`)
-- `GET /health`
-- `POST /voice/transcription` — `{ "userId": "...", "text": "...", "audioRef": "...", "language": "en" }`
-- `GET /voice/stream` — returns 501; WebSocket-based real-time streaming is not yet implemented
-
-### Telegram (channel-telegram, :8182)
-- Caddy ingress route: `/channels/telegram*` (rewrites to `/telegram/webhook`)
-- `GET /health`
-- `POST /telegram/webhook` — Telegram bot update JSON (non-text messages are silently skipped)
-  - Header: `x-telegram-bot-api-secret-token` (required if `TELEGRAM_WEBHOOK_SECRET` is set)
+## Change management
+When changing admin or gateway contracts:
+1. Update this document.
+2. Update consumer code (`packages/ui`, `packages/cli`, relevant channel adapters).
+3. Add or update tests at unit + integration boundaries.
