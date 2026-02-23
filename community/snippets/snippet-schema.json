@@ -2,132 +2,61 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/itlackey/openpalm/community/snippets/snippet-schema.json",
   "title": "OpenPalm Community Snippet",
-  "description": "Schema for a community-contributed OpenPalm channel, service, or automation snippet",
+  "description": "Schema for a community-contributed OpenPalm channel, service, or automation snippet. Aligns with the stack-spec schema used by the compose generator.",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "env"],
+  "required": ["kind", "name", "env"],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": {
-      "type": "string",
-      "const": "v1",
-      "description": "Schema version for forward compatibility"
-    },
     "kind": {
       "type": "string",
       "enum": ["channel", "service", "automation"],
       "description": "The type of resource this snippet defines"
     },
-    "metadata": {
-      "type": "object",
-      "required": ["id", "name", "description", "author", "version", "tags"],
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9._-]*[a-z0-9]$",
-          "minLength": 3,
-          "maxLength": 100,
-          "description": "Unique snippet identifier (kebab-case)"
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 80,
-          "description": "Display name"
-        },
-        "description": {
-          "type": "string",
-          "minLength": 10,
-          "maxLength": 500,
-          "description": "One or two sentences describing what this snippet does"
-        },
-        "author": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 100,
-          "description": "Author name, GitHub handle, or organization"
-        },
-        "version": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 30,
-          "description": "Semantic version string (e.g. 1.0.0)"
-        },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1, "maxLength": 40 },
-          "minItems": 1,
-          "maxItems": 20,
-          "description": "Keywords for search and filtering"
-        },
-        "docUrl": {
-          "type": "string",
-          "format": "uri",
-          "maxLength": 500,
-          "description": "Optional URL to documentation"
-        },
-        "icon": {
-          "type": "string",
-          "maxLength": 200,
-          "description": "Icon key or URL"
-        }
-      }
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Display name"
     },
-    "container": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "image": {
-          "type": "string",
-          "description": "Docker image reference"
-        },
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535,
-          "description": "Container port the service listens on"
-        },
-        "rewritePath": {
-          "type": "string",
-          "pattern": "^/",
-          "description": "URL rewrite path (must start with /)"
-        },
-        "sharedSecretEnv": {
-          "type": "string",
-          "description": "Environment variable name for the shared HMAC secret"
-        },
-        "volumes": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Volume mounts"
-        },
-        "dependsOn": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Compose service dependencies"
-        }
-      }
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "One or two sentences describing what this snippet does"
     },
-    "automation": {
-      "type": "object",
-      "required": ["schedule", "script"],
-      "additionalProperties": false,
-      "properties": {
-        "schedule": {
-          "type": "string",
-          "description": "Cron schedule expression"
-        },
-        "script": {
-          "type": "string",
-          "description": "Shell script to execute"
-        }
-      }
+    "image": {
+      "type": "string",
+      "description": "Docker image reference"
+    },
+    "containerPort": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "Container port the service listens on"
+    },
+    "rewritePath": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "URL rewrite path (must start with /)"
+    },
+    "sharedSecretEnv": {
+      "type": "string",
+      "description": "Environment variable name for the shared HMAC secret"
+    },
+    "volumes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Volume mounts"
+    },
+    "dependsOn": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Compose service dependencies"
     },
     "env": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "label", "type", "required"],
+        "required": ["name", "required"],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -135,91 +64,19 @@
             "pattern": "^[A-Z][A-Z0-9_]*$",
             "description": "Environment variable name (UPPER_CASE)"
           },
-          "label": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Human-readable label for the UI"
-          },
           "description": {
             "type": "string",
             "maxLength": 500,
             "description": "Help text describing the variable's purpose"
           },
-          "type": {
-            "type": "string",
-            "enum": ["text", "secret", "number", "boolean", "select", "url", "email"],
-            "description": "Input field type"
-          },
           "required": {
             "type": "boolean",
-            "description": "Whether a value must be provided"
+            "description": "Whether a value or secret reference must be provided"
           },
           "default": {
             "type": "string",
-            "description": "Default value"
-          },
-          "helpUrl": {
-            "type": "string",
-            "format": "uri",
-            "description": "URL to external documentation for this field"
-          },
-          "generate": {
-            "type": "string",
-            "description": "Auto-generation hint (e.g. random(64), uuid)"
-          },
-          "options": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["label", "value"],
-              "additionalProperties": false,
-              "properties": {
-                "label": { "type": "string" },
-                "value": { "type": "string" }
-              }
-            },
-            "description": "Options for select-type fields"
-          },
-          "min": {
-            "type": "number",
-            "description": "Minimum value (number fields)"
-          },
-          "max": {
-            "type": "number",
-            "description": "Maximum value (number fields)"
-          },
-          "pattern": {
-            "type": "string",
-            "description": "Validation regex pattern"
+            "description": "Default value if none is provided"
           }
-        },
-        "if": {
-          "properties": { "type": { "const": "select" } }
-        },
-        "then": {
-          "required": ["options"]
-        }
-      }
-    },
-    "security": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "risk": {
-          "type": "string",
-          "enum": ["lowest", "low", "medium", "medium-high", "highest"],
-          "description": "Risk level assessment"
-        },
-        "permissions": {
-          "type": "array",
-          "items": { "type": "string", "maxLength": 200 },
-          "maxItems": 20,
-          "description": "Plain-English list of what the snippet accesses"
-        },
-        "notes": {
-          "type": "string",
-          "maxLength": 1000,
-          "description": "Honest description of security characteristics"
         }
       }
     }

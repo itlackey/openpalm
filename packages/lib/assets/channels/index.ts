@@ -4,6 +4,7 @@ import chatYaml from "./chat.yaml" with { type: "text" };
 import discordYaml from "./discord.yaml" with { type: "text" };
 import voiceYaml from "./voice.yaml" with { type: "text" };
 import telegramYaml from "./telegram.yaml" with { type: "text" };
+
 export type BuiltInChannelDef = {
   name: string;
   description: string;

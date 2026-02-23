@@ -1,9 +1,8 @@
 # Contributing Snippets
 
 Community snippets let anyone share reusable channel, service, and automation
-configurations for OpenPalm. Each snippet is a single YAML file that describes
-what environment variables a container needs, their types, and how the UI should
-render them.
+configurations for OpenPalm. Each snippet is a single YAML file that uses the
+same schema as the stack-spec — no conversion needed.
 
 ## Quick Start
 
@@ -21,64 +20,33 @@ Every snippet file must include:
 
 ```yaml
 # yaml-language-server: $schema=../snippet-schema.json
-apiVersion: v1
 kind: channel          # channel | service | automation
-
-metadata:
-  id: my-unique-id     # kebab-case, globally unique
-  name: My Snippet
-  description: At least 10 characters describing what it does
-  author: your-github-handle
-  version: 1.0.0
-  tags: [channel, my-platform]
+name: My Channel
+description: One or two sentences describing what this does
+image: myuser/my-channel:latest
+containerPort: 8200
+rewritePath: /my-channel/webhook
+sharedSecretEnv: CHANNEL_MY_SECRET
 
 env:
   - name: MY_API_KEY
-    label: API Key
     description: Your API key from the provider dashboard
-    type: secret       # text | secret | number | boolean | select | url | email
     required: true
+  - name: CHANNEL_MY_SECRET
+    description: HMAC signing key. Auto-generated if left blank.
+    required: false
 ```
 
-For channels and services, add a `container` block:
-
-```yaml
-container:
-  image: myuser/my-channel:latest
-  port: 8200
-  rewritePath: /my-channel/webhook
-  sharedSecretEnv: CHANNEL_MY_SECRET
-```
-
-For automations, add an `automation` block:
-
-```yaml
-automation:
-  schedule: "0 8 * * *"
-  script: |
-    #!/usr/bin/env bash
-    set -euo pipefail
-    curl -X POST http://gateway:8080/api/message ...
-```
-
-## Field Types
-
-| Type | Renders As | Notes |
-|------|-----------|-------|
-| `text` | Text input | Plain string |
-| `secret` | Password input | Never displayed in logs |
-| `number` | Number input | Supports `min`/`max` |
-| `boolean` | Checkbox | |
-| `select` | Dropdown | Requires `options` array |
-| `url` | URL input | Format validation |
-| `email` | Email input | Format validation |
+All env vars are treated as strings. Values referencing secrets use the
+`${SECRET_NAME}` syntax. The UI masks fields whose name contains SECRET,
+TOKEN, KEY, or PASSWORD automatically.
 
 ## Self-Hosted Snippets (GitHub Topic Discovery)
 
 You can also host snippets in your own repo without submitting a PR:
 
 1. Create a repo with your snippet YAML files
-2. Add an `openpalm-snippet.yaml` at the repo root (or multiple files)
+2. Add an `openpalm-snippet.yaml` at the repo root
 3. Tag your repo with the appropriate GitHub topic:
    - `openpalm-channel` — for channel snippets
    - `openpalm-service` — for service snippets
@@ -109,9 +77,7 @@ Or add the YAML language server directive to get real-time validation in VS Code
 Before submitting your PR, verify:
 
 - [ ] YAML file is valid and in the correct subdirectory
-- [ ] `metadata.id` is unique (no conflict with existing snippets)
-- [ ] `metadata.description` is clear (10-500 characters)
-- [ ] All `env` entries have `name`, `label`, `type`, and `required`
-- [ ] `select` type fields include `options`
+- [ ] `name` is unique (no conflict with existing snippets)
+- [ ] `description` is clear
+- [ ] All `env` entries have `name` and `required`
 - [ ] You have tested the container image locally
-- [ ] `security` block honestly describes capabilities (if applicable)

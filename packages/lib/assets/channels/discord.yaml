@@ -5,19 +5,11 @@ rewritePath: /discord/webhook
 sharedSecretEnv: CHANNEL_DISCORD_SECRET
 env:
   - name: DISCORD_BOT_TOKEN
-    label: Bot Token
     description: Create a bot at discord.com/developers and copy the token
-    type: secret
     required: true
-    helpUrl: https://discord.com/developers/applications
   - name: DISCORD_PUBLIC_KEY
-    label: Public Key
     description: Found on the same page as your bot token
-    type: text
     required: true
   - name: CHANNEL_DISCORD_SECRET
-    label: Channel Secret
     description: HMAC signing key for gateway communication. Auto-generated if left blank.
-    type: secret
     required: false
-    generate: random(64)

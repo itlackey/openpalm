@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getSetupState } from '$lib/stores/setup.svelte';
 	import { BUILTIN_CHANNELS } from '@openpalm/lib/assets/channels/index';
-	import { envTypeToInputType } from '@openpalm/lib/shared/snippet-types';
+	import { inferInputType } from '@openpalm/lib/shared/snippet-types';
 
 	interface Props {
 		error: string;
@@ -12,17 +12,18 @@
 	const state = $derived(getSetupState());
 	const enabledChannels = $derived(state?.enabledChannels ?? []);
 
+	interface ChannelField {
+		key: string;
+		type: string;
+		required: boolean;
+		helpText: string;
+	}
+
 	interface ChannelDef {
 		id: string;
 		name: string;
 		desc: string;
-		fields: Array<{
-			key: string;
-			label: string;
-			type: string;
-			required: boolean;
-			helpText: string;
-		}>;
+		fields: ChannelField[];
 	}
 
 	/** Build ChannelDef list from YAML-driven env metadata. */
@@ -34,8 +35,7 @@
 			.filter((e) => e.name !== def.sharedSecretEnv)
 			.map((e) => ({
 				key: e.name,
-				label: e.label,
-				type: envTypeToInputType(e.type),
+				type: inferInputType(e.name),
 				required: e.required,
 				helpText: e.description ?? ''
 			}))
@@ -77,7 +77,7 @@
 			<div class="channel-fields" id="ch-fields-{channel.id}" style={checked ? '' : 'display:none'}>
 				{#each channel.fields as field}
 					<label style="display:block;margin:0.4rem 0 0.2rem;font-size:13px">
-						{field.label}{field.required ? ' *' : ''}
+						{field.key}{field.required ? ' *' : ''}
 					</label>
 					<input
 						class="wiz-ch-field"

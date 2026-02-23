@@ -2,7 +2,6 @@
  * Snippet discovery service.
  *
  * Discovers community snippets from multiple sources:
- * - Built-in snippets (shipped with the release)
  * - Curated index (fetched from the main repo via raw URL)
  * - GitHub topic discovery (repos tagged with openpalm-channel, etc.)
  *
@@ -61,11 +60,15 @@ async function fetchIndexUrl(source: SnippetSource): Promise<ResolvedSnippet[]> 
     if (!response.ok) return [];
 
     const text = await response.text();
-    // The index may be YAML or JSON — parseYamlDocument handles both.
     const entries = parseYamlDocument(text);
     if (!Array.isArray(entries)) return [];
 
-    const resolved = entries.map((entry) => resolveSnippet(entry, source));
+    const resolved: ResolvedSnippet[] = [];
+    for (const entry of entries) {
+      if (isSnippetDef(entry)) {
+        resolved.push(resolveSnippet(entry, source));
+      }
+    }
     setCache(source.id, resolved);
     return resolved;
   } catch {
@@ -75,7 +78,6 @@ async function fetchIndexUrl(source: SnippetSource): Promise<ResolvedSnippet[]> 
 
 // ── GitHub topic discovery ───────────────────────────────────────────
 
-/** Expected file at repo root for snippet discovery. */
 const SNIPPET_FILENAMES = ["openpalm-snippet.yaml", "openpalm-snippet.yml"];
 
 async function fetchGitHubTopic(source: SnippetSource): Promise<ResolvedSnippet[]> {
@@ -86,7 +88,6 @@ async function fetchGitHubTopic(source: SnippetSource): Promise<ResolvedSnippet[
   if (!topic) return [];
 
   try {
-    // Search for repos with the given topic
     const searchUrl = `https://api.github.com/search/repositories?q=topic:${encodeURIComponent(topic)}&sort=updated&per_page=50`;
     const searchResponse = await fetch(searchUrl, {
       headers: {
@@ -99,14 +100,12 @@ async function fetchGitHubTopic(source: SnippetSource): Promise<ResolvedSnippet[
     if (!searchResponse.ok) return [];
 
     const searchData = (await searchResponse.json()) as {
-      items?: Array<{ full_name: string; default_branch: string; topics?: string[] }>;
+      items?: Array<{ full_name: string; default_branch: string }>;
     };
 
     if (!searchData.items?.length) return [];
 
     const snippets: ResolvedSnippet[] = [];
-
-    // Fetch snippet YAML from each discovered repo
     for (const repo of searchData.items.slice(0, 20)) {
       const snippet = await fetchRepoSnippet(repo.full_name, repo.default_branch, source);
       if (snippet) snippets.push(snippet);
@@ -166,25 +165,19 @@ function resolveSnippet(
   };
 }
 
-const VALID_KINDS = new Set(["channel", "service", "automation"]);
+const VALID_KINDS = new Set<string>(["channel", "service", "automation"]);
 
 function isSnippetDef(value: unknown): value is SnippetDef {
   if (typeof value !== "object" || value === null) return false;
   const obj = value as Record<string, unknown>;
-  if (typeof obj.apiVersion !== "string") return false;
   if (typeof obj.kind !== "string" || !VALID_KINDS.has(obj.kind)) return false;
-  if (typeof obj.metadata !== "object" || obj.metadata === null) return false;
-  const meta = obj.metadata as Record<string, unknown>;
-  if (typeof meta.id !== "string" || typeof meta.name !== "string") return false;
+  if (typeof obj.name !== "string") return false;
   if (!Array.isArray(obj.env)) return false;
   return true;
 }
 
 // ── Public API ───────────────────────────────────────────────────────
 
-/**
- * Discover snippets from a single source.
- */
 export async function discoverFromSource(source: SnippetSource): Promise<ResolvedSnippet[]> {
   if (!source.enabled) return [];
 
@@ -198,10 +191,6 @@ export async function discoverFromSource(source: SnippetSource): Promise<Resolve
   }
 }
 
-/**
- * Discover snippets from all configured sources.
- * Returns a flat array of resolved snippets with trust information.
- */
 export async function discoverAllSnippets(
   sources: SnippetSource[] = DEFAULT_SNIPPET_SOURCES,
 ): Promise<ResolvedSnippet[]> {
@@ -216,23 +205,20 @@ export async function discoverAllSnippets(
     }
   }
 
-  // Deduplicate by metadata.id, preferring higher trust tiers
+  // Deduplicate by name, preferring higher trust tiers
   const trustOrder: Record<SnippetTrust, number> = { official: 0, curated: 1, community: 2 };
   const seen = new Map<string, ResolvedSnippet>();
 
   for (const snippet of snippets) {
-    const existing = seen.get(snippet.metadata.id);
+    const existing = seen.get(snippet.name);
     if (!existing || trustOrder[snippet.trust] < trustOrder[existing.trust]) {
-      seen.set(snippet.metadata.id, snippet);
+      seen.set(snippet.name, snippet);
     }
   }
 
   return Array.from(seen.values());
 }
 
-/**
- * Discover snippets filtered by kind.
- */
 export async function discoverSnippetsByKind(
   kind: SnippetKind,
   sources?: SnippetSource[],
@@ -241,16 +227,10 @@ export async function discoverSnippetsByKind(
   return all.filter((s) => s.kind === kind);
 }
 
-/**
- * Clear the discovery cache (e.g., when the user manually refreshes).
- */
 export function clearDiscoveryCache(): void {
   cache.clear();
 }
 
-/**
- * Get the GitHub topic for a given snippet kind.
- */
 export function getTopicForKind(kind: SnippetKind): string {
   return SNIPPET_TOPICS[kind];
 }

@@ -1,40 +1,20 @@
-/** Shared types for community snippet env var declarations and snippet metadata. */
+/**
+ * Shared types for channel/service/automation env var declarations.
+ *
+ * All environment variables are strings. Values that reference secrets use
+ * the ${SECRET_NAME} syntax validated by parseSecretReference() in stack-spec.
+ */
 
-/** Field types that the UI can render as form inputs. */
-export type EnvVarFieldType = "text" | "secret" | "number" | "boolean" | "select" | "url" | "email";
-
-/** A single option for select-type env var fields. */
-export type EnvVarSelectOption = {
-  label: string;
-  value: string;
-};
-
-/** Rich metadata for a single environment variable declaration. */
+/** A single environment variable declaration. */
 export type EnvVarDef = {
   /** Environment variable name (UPPER_CASE). */
   name: string;
-  /** Human-readable label for the UI. */
-  label: string;
   /** Help text describing the variable's purpose. */
   description?: string;
-  /** Input field type. Defaults to "text". */
-  type: EnvVarFieldType;
-  /** Whether the field must have a value before the snippet can be enabled. */
+  /** Whether a value or secret reference must be provided. */
   required: boolean;
-  /** Default value. */
+  /** Default value if none is provided. */
   default?: string;
-  /** URL to external documentation for this field. */
-  helpUrl?: string;
-  /** Auto-generation hint (e.g. "random(64)", "uuid"). UI may offer to generate a value. */
-  generate?: string;
-  /** Options for select-type fields. */
-  options?: EnvVarSelectOption[];
-  /** Minimum value (number fields). */
-  min?: number;
-  /** Maximum value (number fields). */
-  max?: number;
-  /** Validation regex pattern. */
-  pattern?: string;
 };
 
 /** Trust tier indicating the provenance of a snippet. */
@@ -43,77 +23,29 @@ export type SnippetTrust = "official" | "curated" | "community";
 /** The kind of resource a snippet defines. */
 export type SnippetKind = "channel" | "service" | "automation";
 
-/** Snippet metadata block. */
-export type SnippetMetadata = {
-  id: string;
+/**
+ * A community snippet definition (parsed from YAML).
+ * Aligns with StackChannelConfig / StackServiceConfig from stack-spec.
+ */
+export type SnippetDef = {
+  kind: SnippetKind;
   name: string;
-  description: string;
-  author: string;
-  version: string;
-  tags: string[];
-  docUrl?: string;
-  icon?: string;
-};
-
-/** Container configuration for channel/service snippets. */
-export type SnippetContainer = {
+  description?: string;
   image?: string;
-  port: number;
+  containerPort?: number;
   rewritePath?: string;
   sharedSecretEnv?: string;
   volumes?: string[];
   dependsOn?: string[];
-};
-
-/** Automation configuration for automation snippets. */
-export type SnippetAutomation = {
-  schedule: string;
-  script: string;
-};
-
-/** Security metadata for a snippet. */
-export type SnippetSecurity = {
-  risk?: "lowest" | "low" | "medium" | "medium-high" | "highest";
-  permissions?: string[];
-  notes?: string;
-};
-
-/** A fully-resolved snippet definition (parsed from YAML). */
-export type SnippetDef = {
-  apiVersion: string;
-  kind: SnippetKind;
-  metadata: SnippetMetadata;
-  container?: SnippetContainer;
-  automation?: SnippetAutomation;
   env: EnvVarDef[];
-  security?: SnippetSecurity;
 };
 
 /** A snippet with trust/provenance information attached at runtime. */
 export type ResolvedSnippet = SnippetDef & {
-  /** Where this snippet was discovered. */
   trust: SnippetTrust;
-  /** The source that provided this snippet. */
   sourceId: string;
-  /** Display name of the source. */
   sourceName: string;
 };
-
-/** Map an EnvVarFieldType to the corresponding HTML input type attribute. */
-export function envTypeToInputType(envType: EnvVarFieldType): string {
-  switch (envType) {
-    case "secret":
-      return "password";
-    case "number":
-      return "number";
-    case "email":
-      return "email";
-    case "url":
-      return "url";
-    default:
-      return "text";
-  }
-}
 
 /** GitHub topic conventions for snippet discovery.
  *  Each snippet type uses a dedicated topic so repos can be filtered by kind. */
@@ -131,7 +63,7 @@ export type SnippetSource = {
   name: string;
   /** Discovery method. */
   type: "index-url" | "github-topic";
-  /** URL to index.yaml (for index-url type) or GitHub topic string (for github-topic type). */
+  /** URL to index (for index-url type) or GitHub topic string (for github-topic type). */
   target: string;
   /** Trust tier for all snippets from this source. */
   trust: SnippetTrust;
@@ -174,3 +106,15 @@ export const DEFAULT_SNIPPET_SOURCES: SnippetSource[] = [
     enabled: true,
   },
 ];
+
+/**
+ * Return "password" for env var names that look like secrets, "text" otherwise.
+ * Convention: names containing SECRET, TOKEN, KEY, or PASSWORD are masked.
+ */
+export function inferInputType(envName: string): string {
+  const upper = envName.toUpperCase();
+  if (upper.includes("SECRET") || upper.includes("TOKEN") || upper.includes("KEY") || upper.includes("PASSWORD")) {
+    return "password";
+  }
+  return "text";
+}

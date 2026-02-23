@@ -5,8 +5,5 @@ rewritePath: /voice/transcription
 sharedSecretEnv: CHANNEL_VOICE_SECRET
 env:
   - name: CHANNEL_VOICE_SECRET
-    label: Channel Secret
     description: HMAC signing key for gateway communication. Auto-generated if left blank.
-    type: secret
     required: false
-    generate: random(64)
