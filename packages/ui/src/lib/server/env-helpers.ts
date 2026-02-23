@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
 	parseRuntimeEnvContent,
 	updateRuntimeEnvContent,
 	setRuntimeBindScopeContent
 } from '@openpalm/lib/admin/runtime-env.ts';
-import { RUNTIME_ENV_PATH, SECRETS_ENV_PATH } from './config.ts';
+import { dirname } from 'node:path';
+import { DATA_ENV_PATH, RUNTIME_ENV_PATH, SECRETS_ENV_PATH } from './config.ts';
 
 const MAX_SECRETS_RAW_SIZE = 64 * 1024;
 
@@ -40,6 +41,7 @@ export function updateRuntimeEnv(entries: Record<string, string | undefined>) {
 	void withFileLock(RUNTIME_ENV_PATH, async () => {
 		const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
 		const next = updateRuntimeEnvContent(current, entries);
+		mkdirSync(dirname(RUNTIME_ENV_PATH), { recursive: true });
 		writeFileSync(RUNTIME_ENV_PATH, next, 'utf8');
 	});
 }
@@ -48,6 +50,7 @@ export function setRuntimeBindScope(scope: 'host' | 'lan' | 'public') {
 	void withFileLock(RUNTIME_ENV_PATH, async () => {
 		const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
 		const next = setRuntimeBindScopeContent(current, scope);
+		mkdirSync(dirname(RUNTIME_ENV_PATH), { recursive: true });
 		writeFileSync(RUNTIME_ENV_PATH, next, 'utf8');
 	});
 }
@@ -61,6 +64,7 @@ export function updateSecretsEnv(entries: Record<string, string | undefined>) {
 	void withFileLock(SECRETS_ENV_PATH, async () => {
 		const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, 'utf8') : '';
 		const next = updateRuntimeEnvContent(current, entries);
+		mkdirSync(dirname(SECRETS_ENV_PATH), { recursive: true });
 		writeFileSync(SECRETS_ENV_PATH, next, 'utf8');
 	});
 }
@@ -72,6 +76,7 @@ export function readSecretsRaw(): string {
 
 export function writeSecretsRaw(content: string) {
 	void withFileLock(SECRETS_ENV_PATH, async () => {
+		mkdirSync(dirname(SECRETS_ENV_PATH), { recursive: true });
 		writeFileSync(SECRETS_ENV_PATH, content, 'utf8');
 	});
 }
@@ -87,4 +92,18 @@ export function validateSecretsRawContent(content: string): string | null {
 		if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return `invalid env key: ${key.slice(0, 40)}`;
 	}
 	return null;
+}
+
+export function readDataEnv(): Record<string, string> {
+	if (!existsSync(DATA_ENV_PATH)) return {};
+	return parseRuntimeEnvContent(readFileSync(DATA_ENV_PATH, 'utf8'));
+}
+
+export function updateDataEnv(entries: Record<string, string | undefined>) {
+	void withFileLock(DATA_ENV_PATH, async () => {
+		const current = existsSync(DATA_ENV_PATH) ? readFileSync(DATA_ENV_PATH, 'utf8') : '';
+		const next = updateRuntimeEnvContent(current, entries);
+		mkdirSync(dirname(DATA_ENV_PATH), { recursive: true });
+		writeFileSync(DATA_ENV_PATH, next, 'utf8');
+	});
 }

@@ -15,6 +15,27 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 		expect(res.status()).toBe(400);
 	});
 
+
+	test('POST setup/profile saves name/email', async ({ request }) => {
+		const res = await cmd(request, 'setup.profile', {
+			name: 'Taylor Palm',
+			email: 'taylor@example.com'
+		});
+		expect(res.status()).toBe(200);
+		const body = await res.json();
+		expect(body.ok).toBe(true);
+		expect(body.data.profile.name).toBe('Taylor Palm');
+		expect(body.data.profile.email).toBe('taylor@example.com');
+	});
+
+	test('POST setup step "profile" marks complete', async ({ request }) => {
+		const res = await authedPost(request, '/setup/step', { step: 'profile' });
+		expect(res.status()).toBe(200);
+		const body = await res.json();
+		expect(body.ok).toBe(true);
+		expect(body.state.steps.profile).toBe(true);
+	});
+
 	test('POST setup/service-instances saves config', async ({ request }) => {
 		const res = await authedPost(request, '/setup/service-instances', {
 			openmemory: 'http://test:8765',

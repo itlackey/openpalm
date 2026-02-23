@@ -2,6 +2,7 @@ import { building } from '$app/environment';
 import { createLogger } from './logger';
 import {
 	DATA_DIR,
+	DATA_ROOT,
 	STATE_ROOT,
 	SECRETS_ENV_PATH,
 	STACK_SPEC_PATH,
@@ -51,6 +52,7 @@ export async function getStackManager(): Promise<StackManager> {
 			postgresEnvPath: env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,
 			qdrantEnvPath: env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/qdrant/.env`,
 			assistantEnvPath: env.ASSISTANT_ENV_PATH ?? `${STATE_ROOT}/assistant/.env`,
+			dataEnvPath: env.DATA_ENV_PATH ?? `${DATA_ROOT}/.env`,
 			composeFilePath: COMPOSE_FILE_PATH,
 			fallbackComposeFilePath:
 				env.FALLBACK_COMPOSE_FILE_PATH ?? `${STATE_ROOT}/docker-compose-fallback.yml`,

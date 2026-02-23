@@ -7,6 +7,7 @@
 	import SecretsEditor from '$lib/components/SecretsEditor.svelte';
 	import HealthStatus from '$lib/components/HealthStatus.svelte';
 	import SetupWizard from '$lib/components/SetupWizard.svelte';
+	import ProfileCard from '$lib/components/ProfileCard.svelte';
 	import {
 		isWizardOpen,
 		setWizardOpen,
@@ -40,6 +41,10 @@
 <AdminAuth />
 <StackEditor />
 <SecretsEditor />
+
+{#if getSetupState()?.completed}
+	<ProfileCard />
+{/if}
 
 <div class="card">
 	<h3>Setup Wizard</h3>

@@ -605,6 +605,7 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     qdrantEnv: envWithHeader("# Generated qdrant env", {}),
     assistantEnv: envWithHeader("# Generated assistant env", {
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
+      ...pickEnvByKeys(secrets, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]),
     }),
     channelEnvs,
     serviceEnvs,

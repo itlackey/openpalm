@@ -11,6 +11,10 @@ export interface SetupState {
 		endpoint: string;
 		modelId: string;
 	};
+	profile?: {
+		name: string;
+		email: string;
+	};
 	steps: Record<string, boolean>;
 	enabledChannels: string[];
 	openmemoryProvider?: {

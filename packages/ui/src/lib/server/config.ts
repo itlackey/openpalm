@@ -42,3 +42,5 @@ export const COMPOSE_FILE_PATH =
 	env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/docker-compose.yml`;
 export const SYSTEM_ENV_PATH = env.SYSTEM_ENV_PATH ?? `${STATE_ROOT}/system.env`;
 export const CRON_DIR = devDefault('CRON_DIR', '/state/automations', '../../.dev/state/automations');
+
+export const DATA_ENV_PATH = env.DATA_ENV_PATH ?? `${DATA_ROOT}/.env`;

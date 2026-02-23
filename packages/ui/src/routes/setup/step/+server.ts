@@ -20,6 +20,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const body = (await request.json()) as { step: string };
 	const validSteps = [
 		'welcome',
+		'profile',
 		'accessScope',
 		'serviceInstances',
 		'healthCheck',
@@ -28,7 +29,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	];
 	if (!validSteps.includes(body.step)) return json(400, { error: 'invalid step' });
 	const state = setupManager.completeStep(
-		body.step as 'welcome' | 'accessScope' | 'serviceInstances' | 'healthCheck' | 'security' | 'channels'
+		body.step as 'welcome' | 'profile' | 'accessScope' | 'serviceInstances' | 'healthCheck' | 'security' | 'channels'
 	);
 	return json(200, { ok: true, state });
 };
