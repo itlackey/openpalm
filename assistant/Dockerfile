@@ -1,6 +1,6 @@
 FROM oven/bun:1.3.5
 
-ARG OPENCODE_VERSION=0.1.75
+ARG OPENCODE_VERSION=1.2.10
 RUN bun add -g opencode-ai@${OPENCODE_VERSION} \
   && chmod o+x /root \
   && chmod -R o+rX /root/.bun
