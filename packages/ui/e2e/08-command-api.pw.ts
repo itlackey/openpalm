@@ -1,11 +1,21 @@
 import { test, expect } from '@playwright/test';
-import { cmd } from './helpers';
+import { authedGet, cmd } from './helpers';
 
 test.describe('command endpoint coverage', () => {
 	test('setup commands allow unauthenticated local requests before setup is complete', async ({
 		request
 	}) => {
 		const status = await request.get('/setup/status');
+		if (status.status() === 401) {
+			const authedStatus = await authedGet(request, '/setup/status');
+			expect(authedStatus.status()).toBe(200);
+			const authedSetup = await authedStatus.json();
+			expect(authedSetup.completed).toBe(true);
+			test.skip(
+				true,
+				'Instance is already configured; setup status requires auth after completion.'
+			);
+		}
 		expect(status.status()).toBe(200);
 		const setup = await status.json();
 		test.skip(setup.completed === true, 'Instance is already configured; setup commands require auth.');
