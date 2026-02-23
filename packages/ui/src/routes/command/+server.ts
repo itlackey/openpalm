@@ -12,6 +12,8 @@ import {
 	updateRuntimeEnv,
 	updateSecretsEnv,
 	readSecretsEnv,
+	readDataEnv,
+	updateDataEnv,
 	setRuntimeBindScope,
 	writeSecretsRaw,
 	validateSecretsRawContent
@@ -118,6 +120,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const step = sanitizeEnvScalar(payload.step);
 			const validSteps = [
 				'welcome',
+				'profile',
 				'accessScope',
 				'serviceInstances',
 				'healthCheck',
@@ -129,6 +132,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const state = setupManager.completeStep(
 				step as
 					| 'welcome'
+					| 'profile'
 					| 'accessScope'
 					| 'serviceInstances'
 					| 'healthCheck'
@@ -177,6 +181,30 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			}
 			return json(200, { ok: true, data: setupManager.setAccessScope(scope) });
 		}
+
+		if (type === 'setup.profile') {
+			const name = sanitizeEnvScalar(payload.name);
+			const email = sanitizeEnvScalar(payload.email);
+			updateDataEnv({
+				OPENPALM_PROFILE_NAME: name || undefined,
+				OPENPALM_PROFILE_EMAIL: email || undefined
+			});
+			const state = setupManager.setProfile({ name, email });
+			stackManager.renderArtifacts();
+			if (setupManager.getState().completed) await composeAction('up', 'assistant').catch(() => {});
+			const dataEnv = readDataEnv();
+			return json(200, {
+				ok: true,
+				data: {
+					state,
+					profile: {
+						name: dataEnv.OPENPALM_PROFILE_NAME ?? state.profile.name,
+						email: dataEnv.OPENPALM_PROFILE_EMAIL ?? state.profile.email
+					}
+				}
+			});
+		}
+
 		if (type === 'setup.service_instances') {
 			const openmemory = sanitizeEnvScalar(payload.openmemory);
 			const psql = sanitizeEnvScalar(payload.psql);

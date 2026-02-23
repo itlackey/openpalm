@@ -6,10 +6,13 @@ test.describe('dashboard browser tests', () => {
 		await expect(page.locator('h2')).toContainText('Dashboard');
 	});
 
-	test('nav bar shows OpenPalm logo text and Dashboard button', async ({ page }) => {
+	test('nav bar shows OpenPalm branding, dashboard button, and theme toggle', async ({
+		page
+	}) => {
 		await page.goto('/');
 		await expect(page.locator('nav .logo')).toContainText('OpenPalm');
-		await expect(page.locator('nav button')).toContainText('Dashboard');
+		await expect(page.locator('nav .nav-btn')).toContainText('Dashboard');
+		await expect(page.locator('nav .theme-toggle')).toBeVisible();
 	});
 
 	test('QuickLinks card shows Open OpenCode and Open Memory Dashboard links', async ({

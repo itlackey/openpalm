@@ -21,6 +21,7 @@ export type StackManagerPaths = {
   postgresEnvPath: string;
   qdrantEnvPath: string;
   assistantEnvPath: string;
+  dataEnvPath?: string;
   renderReportPath?: string;
   fallbackComposeFilePath?: string;
   fallbackCaddyJsonPath?: string;
@@ -34,6 +35,15 @@ export const CoreSecretRequirements = [
 
 function composeServiceName(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+}
+
+function pickEnv(source: Record<string, string>, keys: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (value) out[key] = value;
+  }
+  return out;
 }
 
 export class StackManager {
@@ -332,8 +342,14 @@ export class StackManager {
   }
 
   private readSecretsEnv() {
-    if (!existsSync(this.paths.secretsEnvPath)) return {};
-    return parseRuntimeEnvContent(readFileSync(this.paths.secretsEnvPath, "utf8"));
+    const secrets = existsSync(this.paths.secretsEnvPath)
+      ? parseRuntimeEnvContent(readFileSync(this.paths.secretsEnvPath, "utf8"))
+      : {};
+    const dataEnvPath = this.paths.dataEnvPath;
+    if (!dataEnvPath || !existsSync(dataEnvPath)) return secrets;
+    const dataEnv = parseRuntimeEnvContent(readFileSync(dataEnvPath, "utf8"));
+    const profileEnv = pickEnv(dataEnv, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]);
+    return { ...secrets, ...profileEnv };
   }
 
   private updateSecretsEnv(entries: Record<string, string | undefined>) {

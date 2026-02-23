@@ -1,9 +1,29 @@
 <script lang="ts">
 	import { base } from '$app/paths';
+	import { browser } from '$app/environment';
 	import '../app.css';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
 	let { children } = $props();
+	let theme = $state<'light' | 'dark'>('dark');
+
+	function applyTheme(next: 'light' | 'dark') {
+		theme = next;
+		if (!browser) return;
+		document.documentElement.dataset.theme = next;
+		localStorage.setItem('openpalm-theme', next);
+	}
+
+	$effect(() => {
+		if (!browser) return;
+		const saved = localStorage.getItem('openpalm-theme');
+		if (saved === 'light' || saved === 'dark') {
+			applyTheme(saved);
+			return;
+		}
+		const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+		applyTheme(prefersLight ? 'light' : 'dark');
+	});
 </script>
 
 <svelte:head>
@@ -13,11 +33,18 @@
 <nav>
 	<span class="logo">
 		<img src="{base}/logo.png" alt="OpenPalm logo" />
-		OpenPalm
+		OpenPalm 🤗
 	</span>
 	<a href="{base}/" style="text-decoration:none">
-		<button class="active">Dashboard</button>
+		<button class="nav-btn active">Dashboard</button>
 	</a>
+	<button
+		class="theme-toggle"
+		onclick={() => applyTheme(theme === 'light' ? 'dark' : 'light')}
+		aria-label="Toggle color mode"
+	>
+		{theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+	</button>
 </nav>
 
 <div class="container">

@@ -24,10 +24,12 @@ describe("SetupManager.getState", () => {
       expect(state.accessScope).toBe("host");
       expect(state.serviceInstances).toEqual({ openmemory: "", psql: "", qdrant: "" });
       expect(state.smallModel).toEqual({ endpoint: "", modelId: "" });
+      expect(state.profile).toEqual({ name: "", email: "" });
       expect(state.enabledChannels).toEqual([]);
       expect(state.installedExtensions).toEqual([]);
       expect(state.steps).toEqual({
         welcome: false,
+        profile: false,
         accessScope: false,
         serviceInstances: false,
         healthCheck: false,
@@ -58,6 +60,7 @@ describe("SetupManager.completeStep", () => {
       const state = manager.getState();
       expect(state.steps.accessScope).toBe(true);
       expect(state.steps.welcome).toBe(false);
+      expect(state.steps.profile).toBe(false);
       expect(state.steps.serviceInstances).toBe(false);
       expect(state.steps.healthCheck).toBe(false);
       expect(state.steps.security).toBe(false);
@@ -202,6 +205,20 @@ describe("SetupManager.isFirstBoot", () => {
       const manager = new SetupManager(dir);
       manager.completeStep("welcome");
       expect(manager.isFirstBoot()).toBe(false);
+    });
+  });
+});
+
+
+describe("SetupManager.setProfile", () => {
+  it("persists name and email", () => {
+    withTempDir((dir) => {
+      const manager = new SetupManager(dir);
+      manager.setProfile({ name: "Taylor", email: "taylor@example.com" });
+      expect(manager.getState().profile).toEqual({
+        name: "Taylor",
+        email: "taylor@example.com",
+      });
     });
   });
 });

@@ -16,8 +16,13 @@ export type SetupState = {
     qdrant: string;
   };
   smallModel: SmallModelConfig;
+  profile: {
+    name: string;
+    email: string;
+  };
   steps: {
     welcome: boolean;
+    profile: boolean;
     accessScope: boolean;
     serviceInstances: boolean;
     healthCheck: boolean;
@@ -41,8 +46,13 @@ const DEFAULT_STATE: SetupState = {
     endpoint: "",
     modelId: ""
   },
+  profile: {
+    name: "",
+    email: ""
+  },
   steps: {
     welcome: false,
+    profile: false,
     accessScope: false,
     serviceInstances: false,
     healthCheck: false,
@@ -84,12 +94,21 @@ function sanitizeSteps(value: unknown): SetupState["steps"] {
   const source = (value && typeof value === "object") ? value as Partial<SetupState["steps"]> : {};
   return {
     welcome: source.welcome === true,
+    profile: source.profile === true,
     accessScope: source.accessScope === true,
     serviceInstances: source.serviceInstances === true,
     healthCheck: source.healthCheck === true,
     security: source.security === true,
     channels: source.channels === true,
     extensions: source.extensions === true,
+  };
+}
+
+function sanitizeProfile(value: unknown): SetupState["profile"] {
+  const source = (value && typeof value === "object") ? value as Partial<SetupState["profile"]> : {};
+  return {
+    name: typeof source.name === "string" ? source.name : "",
+    email: typeof source.email === "string" ? source.email : "",
   };
 }
 
@@ -102,6 +121,7 @@ function normalizeState(parsed: Partial<SetupState>): SetupState {
     accessScope,
     serviceInstances: sanitizeServiceInstances(parsed.serviceInstances),
     smallModel: sanitizeSmallModel(parsed.smallModel),
+    profile: sanitizeProfile(parsed.profile),
     steps: sanitizeSteps(parsed.steps),
     enabledChannels: sanitizeStringArray(parsed.enabledChannels),
     installedExtensions: sanitizeStringArray(parsed.installedExtensions),
@@ -127,6 +147,7 @@ export class SetupManager {
   }
 
   save(state: SetupState) {
+    mkdirSync(dirname(this.path), { recursive: true });
     writeFileSync(this.path, JSON.stringify(state, null, 2), "utf8");
   }
 
@@ -159,6 +180,16 @@ export class SetupManager {
     state.smallModel = {
       ...state.smallModel,
       ...smallModel
+    };
+    this.save(state);
+    return state;
+  }
+
+  setProfile(profile: Partial<SetupState["profile"]>) {
+    const state = this.getState();
+    state.profile = {
+      ...state.profile,
+      ...profile
     };
     this.save(state);
     return state;

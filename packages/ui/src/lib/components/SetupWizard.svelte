@@ -4,6 +4,7 @@
 	import { getWizardStep, setWizardStep } from '$lib/stores/setup.svelte';
 	import WizardSteps from './WizardSteps.svelte';
 	import WelcomeStep from './WelcomeStep.svelte';
+	import ProfileStep from './ProfileStep.svelte';
 	import ProvidersStep from './ProvidersStep.svelte';
 	import SecurityStep from './SecurityStep.svelte';
 	import ChannelsStep from './ChannelsStep.svelte';
@@ -19,6 +20,7 @@
 
 	const STEPS = [
 		'welcome',
+		'profile',
 		'serviceInstances',
 		'security',
 		'channels',
@@ -28,6 +30,7 @@
 	];
 	const STEP_TITLES = [
 		'Welcome',
+		'Profile',
 		'AI Providers',
 		'Security',
 		'Channels',
@@ -57,6 +60,24 @@
 
 	async function wizardNext() {
 		stepError = '';
+
+		if (currentStepName === 'profile') {
+			const name =
+				(document.getElementById('wiz-profile-name') as HTMLInputElement)?.value || '';
+			const email =
+				(document.getElementById('wiz-profile-email') as HTMLInputElement)?.value || '';
+			const profileResult = await api('/command', {
+				method: 'POST',
+				body: JSON.stringify({
+					type: 'setup.profile',
+					payload: { name, email }
+				})
+			});
+			if (!profileResult.ok) {
+				stepError = 'Could not save your profile. Please try again.';
+				return;
+			}
+		}
 
 		if (currentStepName === 'serviceInstances') {
 			const openmemory =
@@ -197,6 +218,8 @@
 		<div class="body">
 			{#if currentStepName === 'welcome'}
 				<WelcomeStep />
+			{:else if currentStepName === 'profile'}
+				<ProfileStep />
 			{:else if currentStepName === 'serviceInstances'}
 				<ProvidersStep error={stepError} />
 			{:else if currentStepName === 'security'}
