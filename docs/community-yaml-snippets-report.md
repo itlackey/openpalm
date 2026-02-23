@@ -6,17 +6,19 @@
 
 OpenPalm needs a way for the community to publish reusable YAML snippets that describe channels, services, and automations — including what environment variables each container requires, whether they're required or optional, whether they hold secrets, and how to configure them. The UI should be able to render a custom install/configure page from these snippets without any code changes to the core stack. The system must also be easy for AI agents to author, validate, and curate.
 
-## Current State
+## Current State (Phase 1 Complete)
 
-**What exists today:**
+**What has been implemented:**
 
-- **Channel YAML snippets** (`packages/lib/assets/channels/*.yaml`) define `name`, `containerPort`, `rewritePath`, `sharedSecretEnv`, and a flat `configKeys` string array. No descriptions, types, or required flags.
-- **UI field metadata is hardcoded** in `ChannelsStep.svelte` — each field's `label`, `type`, `required`, and `helpText` are duplicated in Svelte code, not derived from the YAML.
-- **Extension registry** (`packages/lib/src/embedded/state/registry/`) — JSON files per extension with a JSON Schema, CI validation on PR, and auto-rebuilt `index.json` on merge to main. Currently has one entry (Slack channel).
+- **Channel YAML snippets** (`packages/lib/assets/channels/*.yaml`) define `name`, `description`, `containerPort`, `rewritePath`, `sharedSecretEnv`, and a rich `env` array with typed `EnvVarDef` entries (name, label, description, type, required, helpUrl, generate).
+- **UI field metadata is data-driven** — `ChannelsStep.svelte` and `meta/+server.ts` derive all form fields from YAML `env` metadata using the shared `envTypeToInputType()` helper. No hardcoded field arrays.
+- **Shared types** in `packages/lib/src/shared/snippet-types.ts` define `EnvVarDef`, `SnippetDef`, `ResolvedSnippet`, `SnippetSource`, and `SnippetTrust` for the full snippet system.
+- **TrustBadge component** (`packages/ui/src/lib/components/TrustBadge.svelte`) renders provenance badges (Official / Curated / Community).
+- **Snippet discovery** supports `index-url` and `github-topic` source types with federated `SnippetSource[]` configuration.
+- **Extension registry** (`packages/lib/src/embedded/state/registry/`) — JSON files per extension with a JSON Schema, CI validation on PR, and auto-rebuilt `index.json` on merge to main.
 - **Secret references** use `${UPPER_CASE_NAME}` pattern, validated by `parseSecretReference()` in `stack-spec.ts`.
-- **Automations** (`StackAutomation`) have `id`, `name`, `description`, `schedule`, `script`, `enabled`, `core` — but no way to declare environment variables they consume.
 
-**The gap:** There is no structured, data-driven schema for describing environment variables with rich metadata. The UI can't generate configuration forms from snippet data alone. Community members have no clear path to publish reusable configurations.
+**What remains (Phase 2):** Community snippet directory with `index.json`, CI validation workflow, and runtime fetch from the admin dashboard.
 
 ---
 
@@ -414,28 +416,27 @@ This approach:
 
 ---
 
-## Implementation Sketch
+## Implementation Status
 
-### Phase 1: Enrich existing channel YAMLs (Option 3)
+### Phase 1: Enrich existing channel YAMLs (Option 3) — COMPLETE
 
-1. Update `packages/lib/assets/channels/discord.yaml` (and chat, telegram, voice) with `env` metadata
-2. Update `BuiltInChannelDef` type to include `env: EnvVarDef[]`
-3. Create `EnvVarDef` type matching the schema
-4. Update `ChannelsStep.svelte` to render fields from snippet `env` data
-5. Add `env` field to `StackAutomation` type for automation env var declarations
+1. ~~Update `packages/lib/assets/channels/discord.yaml` (and chat, telegram, voice) with `env` metadata~~
+2. ~~Update `BuiltInChannelDef` type to include `env: EnvVarDef[]`~~
+3. ~~Create `EnvVarDef` type matching the schema~~
+4. ~~Update `ChannelsStep.svelte` to render fields from snippet `env` data~~
+5. ~~Create shared `envTypeToInputType()` and `SnippetDef` / `ResolvedSnippet` types~~
+6. ~~Add `TrustBadge` component and `SnippetSource[]` federation abstraction~~
 
-### Phase 2: Community snippets directory (Option 1)
+### Phase 2: Community snippets directory (Option 1) — NEXT
 
 1. Create `community/snippets/` directory with `snippet-schema.json`
-2. Add CI workflow: validate YAML snippets on PR, rebuild `index.yaml` on merge
-3. Add `SnippetSource` abstraction to admin service
-4. Add runtime fetch of community `index.yaml` with caching
-5. UI: "Community" tab in channel/service/automation browsers
-6. Provide a PR template and `CONTRIBUTING.md` for snippet authors
+2. Add CI workflow: validate YAML snippets on PR, rebuild `index.json` on merge
+3. Add runtime fetch of community `index.json` with caching
+4. UI: "Community" tab in channel/service/automation browsers
+5. Provide a PR template and `CONTRIBUTING.md` for snippet authors
 
 ### Phase 3: Federation (Option 1 + 2 hybrid, future)
 
 1. Add "Snippet Sources" settings page to admin dashboard
 2. Support custom source URLs
-3. Optionally discover repos via `openpalm-snippet` GitHub topic
-4. Trust tier badges: Official / Verified / Community
+3. Optionally discover repos via `openpalm-channel` / `openpalm-service` / `openpalm-automation` GitHub topics

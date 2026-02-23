@@ -9,7 +9,7 @@
 # Prerequisites:
 #   - Bun installed (https://bun.sh)
 #   - Dependencies installed: cd core/admin && bun install; cd core/gateway && bun install
-#   - Supporting services running (opencode-core, openmemory) via
+#   - Supporting services running (assistant, openmemory) via
 #     docker compose, or point the env vars at your own instances.
 #
 # This script uses bun run --hot for hot reload so you can edit TypeScript

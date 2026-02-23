@@ -99,6 +99,22 @@ export type ResolvedSnippet = SnippetDef & {
   sourceName: string;
 };
 
+/** Map an EnvVarFieldType to the corresponding HTML input type attribute. */
+export function envTypeToInputType(envType: EnvVarFieldType): string {
+  switch (envType) {
+    case "secret":
+      return "password";
+    case "number":
+      return "number";
+    case "email":
+      return "email";
+    case "url":
+      return "url";
+    default:
+      return "text";
+  }
+}
+
 /** GitHub topic conventions for snippet discovery.
  *  Each snippet type uses a dedicated topic so repos can be filtered by kind. */
 export const SNIPPET_TOPICS = {
@@ -106,9 +122,6 @@ export const SNIPPET_TOPICS = {
   service: "openpalm-service",
   automation: "openpalm-automation",
 } as const satisfies Record<SnippetKind, string>;
-
-/** All snippet topics for broad discovery. */
-export const ALL_SNIPPET_TOPICS = Object.values(SNIPPET_TOPICS);
 
 /** A configured snippet source (for fetching remote indexes or discovering repos). */
 export type SnippetSource = {

@@ -74,10 +74,7 @@ export const COMPONENTS: Record<string, ComponentMeta> = {
 };
 
 const COMPONENT_NAMES = Object.keys(COMPONENTS);
-// Backward compatibility for previous component naming in local scripts/workflows.
-const TARGET_ALIASES: Record<string, string> = {
-  "opencode-core": "assistant",
-};
+const TARGET_ALIASES: Record<string, string> = {};
 
 // ---------------------------------------------------------------------------
 // Types

@@ -249,12 +249,11 @@ describe.skipIf(!runDockerStackTests)("docker stack: admin container", () => {
     expect(typeof body.time).toBe("string");
   });
 
-  it("meta endpoint returns service names and channel fields", async () => {
+  it("meta endpoint returns service names and built-in channels", async () => {
     const resp = await api(ADMIN_PORT, "/meta");
     expect(resp.status).toBe(200);
     const body = await resp.json() as Record<string, unknown>;
     expect(body).toHaveProperty("serviceNames");
-    expect(body).toHaveProperty("channelFields");
     expect(body).toHaveProperty("builtInChannels");
   });
 

@@ -66,7 +66,7 @@ export type StackSpec = {
 export const BuiltInChannelNames: BuiltInChannelName[] = Object.keys(BUILTIN_CHANNELS);
 
 export const BuiltInChannelConfigKeys: Record<BuiltInChannelName, string[]> = Object.fromEntries(
-  Object.entries(BUILTIN_CHANNELS).map(([name, def]) => [name, def.configKeys]),
+  Object.entries(BUILTIN_CHANNELS).map(([name, def]) => [name, def.env.map((e) => e.name)]),
 ) as Record<BuiltInChannelName, string[]>;
 
 export const BuiltInChannelPorts: Record<BuiltInChannelName, number> = Object.fromEntries(

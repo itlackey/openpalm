@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getSetupState } from '$lib/stores/setup.svelte';
 	import { BUILTIN_CHANNELS } from '@openpalm/lib/assets/channels/index';
-	import type { EnvVarDef } from '@openpalm/lib/shared/snippet-types';
+	import { envTypeToInputType } from '@openpalm/lib/shared/snippet-types';
 
 	interface Props {
 		error: string;
@@ -25,33 +25,17 @@
 		}>;
 	}
 
-	/** Map EnvVarDef field type to HTML input type. */
-	function inputType(envType: EnvVarDef['type']): string {
-		switch (envType) {
-			case 'secret':
-				return 'password';
-			case 'number':
-				return 'number';
-			case 'email':
-				return 'email';
-			case 'url':
-				return 'url';
-			default:
-				return 'text';
-		}
-	}
-
 	/** Build ChannelDef list from YAML-driven env metadata. */
 	const CHANNELS: ChannelDef[] = Object.entries(BUILTIN_CHANNELS).map(([key, def]) => ({
 		id: `channel-${key}`,
 		name: def.name,
-		desc: def.description ?? '',
-		fields: (def.env ?? [])
+		desc: def.description,
+		fields: def.env
 			.filter((e) => e.name !== def.sharedSecretEnv)
 			.map((e) => ({
 				key: e.name,
 				label: e.label,
-				type: inputType(e.type),
+				type: envTypeToInputType(e.type),
 				required: e.required,
 				helpText: e.description ?? ''
 			}))

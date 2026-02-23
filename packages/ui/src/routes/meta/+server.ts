@@ -1,24 +1,7 @@
 import { json } from '$lib/server/json';
 import { BUILTIN_CHANNELS } from '@openpalm/lib/assets/channels/index';
 import { CoreSecretRequirements } from '$lib/server/init';
-import type { EnvVarFieldType } from '@openpalm/lib/shared/snippet-types';
 import type { RequestHandler } from './$types';
-
-/** Map EnvVarDef field type to an HTML input type attribute. */
-function envTypeToInputType(envType: EnvVarFieldType): string {
-	switch (envType) {
-		case 'secret':
-			return 'password';
-		case 'number':
-			return 'number';
-		case 'email':
-			return 'email';
-		case 'url':
-			return 'url';
-		default:
-			return 'text';
-	}
-}
 
 export const GET: RequestHandler = async () => {
 	const channelServiceNames: Record<string, { label: string; description: string }> = {};
@@ -48,20 +31,6 @@ export const GET: RequestHandler = async () => {
 			...channelServiceNames,
 			caddy: { label: 'Web Server', description: 'Handles secure connections' }
 		},
-		channelFields: Object.fromEntries(
-			Object.entries(BUILTIN_CHANNELS).map(([key, def]) => [
-				`channel-${key}`,
-				(def.env ?? [])
-					.filter((e) => e.name !== def.sharedSecretEnv)
-					.map((e) => ({
-						key: e.name,
-						label: e.label,
-						type: envTypeToInputType(e.type),
-						required: e.required,
-						helpText: e.description ?? ''
-					}))
-			])
-		),
 		builtInChannels: BUILTIN_CHANNELS,
 		requiredCoreSecrets: CoreSecretRequirements
 	});

@@ -10,7 +10,6 @@ export type BuiltInChannelDef = {
   containerPort: number;
   rewritePath: string;
   sharedSecretEnv: string;
-  configKeys: string[];
   env: EnvVarDef[];
 };
 
@@ -32,7 +31,6 @@ function parseBuiltInChannel(raw: string, source: string): BuiltInChannelDef {
     containerPort: obj.containerPort,
     rewritePath: obj.rewritePath,
     sharedSecretEnv: obj.sharedSecretEnv,
-    configKeys: env.map((e) => e.name),
     env,
   };
 }
