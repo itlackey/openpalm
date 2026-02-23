@@ -46,7 +46,7 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 .dev/
 ├── config/          ← OPENPALM_CONFIG_HOME
 │   ├── caddy/caddy.json
-│   ├── assistant/opencode.jsonc
+│   ├── core/assistant/opencode.jsonc
 │   ├── channels/{chat,discord,voice,telegram}.env
 │   ├── cron/        ← Automation definitions and cron payloads
 │   ├── ssh/authorized_keys
@@ -60,7 +60,7 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 │   └── admin/
 └── state/           ← OPENPALM_STATE_HOME
     ├── caddy/
-    ├── assistant/
+    ├── core/assistant/
     ├── workspace/
     └── gateway/
 ```

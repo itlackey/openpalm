@@ -3,8 +3,8 @@
   "version": "0.2.10",
   "private": true,
   "workspaces": [
-    "gateway",
-    "admin",
+    "core/gateway",
+    "core/admin",
     "channels/chat",
     "channels/discord",
     "channels/voice",

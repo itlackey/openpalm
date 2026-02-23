@@ -27,6 +27,6 @@ RUN cd /app/packages/ui \
   && bun run build
 RUN chown -R openpalm:openpalm /app
 EXPOSE 8100
-COPY admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
+COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
 RUN chmod +x /usr/local/bin/admin-entrypoint.sh
 CMD ["/usr/local/bin/admin-entrypoint.sh"]

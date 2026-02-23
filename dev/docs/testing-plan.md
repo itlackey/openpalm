@@ -418,7 +418,7 @@ jobs:
       - name: Validate Docker builds
         run: |
           # Validates all Dockerfiles build successfully
-          for df in gateway/Dockerfile admin/Dockerfile channels/*/Dockerfile; do
+          for df in core/gateway/Dockerfile core/admin/Dockerfile channels/*/Dockerfile; do
             docker build -f "$df" . --no-cache -t "test-$(basename $(dirname $df)):ci"
           done
 

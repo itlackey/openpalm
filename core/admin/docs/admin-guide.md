@@ -61,7 +61,7 @@ Create scheduled prompts with a name, prompt text, and cron expression. Use **En
 
 ## Channel security
 
-Channels send HMAC-signed payloads through the Gateway. The Gateway verifies signatures, rate-limits requests, and validates input via the `channel-intake` agent before any message reaches the assistant. See the [Gateway README](../../gateway/README.md) and [Security Guide](../../docs/security.md) for details.
+Channels send HMAC-signed payloads through the Gateway. The Gateway verifies signatures, rate-limits requests, and validates input via the `channel-intake` agent before any message reaches the assistant. See the [Gateway README](../../../core/gateway/README.md) and [Security Guide](../../../docs/security.md) for details.
 
 ## Uninstall
 

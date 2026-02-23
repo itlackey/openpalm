@@ -33,14 +33,14 @@ The 6-step inbound pipeline at `/channel/inbound`:
 
 ## Channel intake agent
 
-The `channel-intake` agent is defined in `gateway/opencode/agents/channel-intake.md`. It runs with `"*": false` (all tools denied) — it can only validate and summarize input. Only the validated summary is forwarded to the full agent.
+The `channel-intake` agent is defined in `core/gateway/opencode/agents/channel-intake.md`. It runs with `"*": false` (all tools denied) — it can only validate and summarize input. Only the validated summary is forwarded to the full agent.
 
 This uses OpenCode's built-in agent permission model for isolation without requiring a separate container.
 
 Extension sources are baked into the gateway image at build time:
 
 ```
-gateway/opencode/
+core/gateway/opencode/
 ├── opencode.jsonc          # Intake agent config (all tools denied via "*": "deny")
 ├── AGENTS.md               # Action gating rules
 ├── agents/

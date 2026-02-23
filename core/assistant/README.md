@@ -11,10 +11,10 @@ The `assistant` container runs the OpenCode agent runtime with OpenPalm's built-
 
 ## Extension architecture
 
-Extensions are **baked into the container image** at build time from `assistant/extensions/`. Host config provides optional user overrides volume-mounted at runtime.
+Extensions are **baked into the container image** at build time from `core/assistant/extensions/`. Host config provides optional user overrides volume-mounted at runtime.
 
 ```
-assistant/extensions/            (repository source)
+core/assistant/extensions/            (repository source)
         ↓ COPY in Dockerfile
 /opt/opencode/                   (immutable core extensions in image)
         ↓ OpenCode loads via OPENCODE_CONFIG_DIR=/opt/opencode
@@ -28,7 +28,7 @@ OpenCode uses `OPENCODE_CONFIG_DIR=/opt/opencode` to load core extensions and `H
 ## Source layout
 
 ```
-assistant/extensions/
+core/assistant/extensions/
 ├── opencode.jsonc                          # Core agent configuration
 ├── AGENTS.md                               # Immutable safety rules
 ├── plugins/
@@ -138,7 +138,7 @@ Changes take effect after restarting `assistant`.
 
 ### Baked-in (requires image rebuild)
 
-Add files under `assistant/extensions/` and rebuild the container image.
+Add files under `core/assistant/extensions/` and rebuild the container image.
 
 ## SSH access (optional)
 

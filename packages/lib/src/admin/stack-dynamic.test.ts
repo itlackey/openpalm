@@ -1,7 +1,7 @@
 import { signPayload } from "../shared/crypto.ts";
 import { describe, expect, it } from "bun:test";
 import { parseStackSpec } from "./stack-spec.ts";
-import { createGatewayFetch } from "../../../../gateway/src/server.ts";
+import { createGatewayFetch } from "../../../../core/gateway/src/server.ts";
 
 describe("dynamic stack and gateway behavior", () => {
   it("accepts arbitrary channel names in stack spec", () => {

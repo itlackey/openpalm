@@ -43,4 +43,4 @@ Manage credentials via `POST /admin/channels/config` with `service: "channel-cha
 ## Related
 
 - [API Reference](../../dev/docs/api-reference.md#chat-channel-chat-8181) — Full endpoint and payload details
-- [Gateway README](../../gateway/README.md) — How signed payloads are processed
+- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed

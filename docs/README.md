@@ -13,12 +13,12 @@ Documentation is organized by audience and proximity to code.
 
 Guides for setting up, securing, maintaining, and troubleshooting a running instance:
 
-→ **[admin/docs/](../admin/docs/README.md)**
+→ **[core/admin/docs/](../core/admin/docs/README.md)**
 
 | Guide | What's inside |
 |---|---|
-| [Admin Guide](../admin/docs/admin-guide.md) | Installation, admin console, authentication |
-| [Admin Concepts](../admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
+| [Admin Guide](../core/admin/docs/admin-guide.md) | Installation, admin console, authentication |
+| [Admin Concepts](../core/admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
 | [Security](security.md) | Defense-in-depth security model |
 | [Host System Reference](host-system-reference.md) | Host paths, environment variables, XDG layout |
 | [Maintenance](maintenance.md) | Backup, restore, upgrade, rollback |
@@ -44,9 +44,9 @@ Each service and channel has a README with implementation details co-located wit
 
 | Service | README |
 |---|---|
-| Admin service | [admin/README.md](../admin/README.md) |
-| Gateway service | [gateway/README.md](../gateway/README.md) |
-| Assistant service | [assistant/README.md](../assistant/README.md) |
+| Admin service | [core/admin/README.md](../core/admin/README.md) |
+| Gateway service | [core/gateway/README.md](../core/gateway/README.md) |
+| Assistant service | [core/assistant/README.md](../core/assistant/README.md) |
 | Chat channel | [channels/chat/README.md](../channels/chat/README.md) |
 | Discord channel | [channels/discord/README.md](../channels/discord/README.md) |
 | Voice channel | [channels/voice/README.md](../channels/voice/README.md) |

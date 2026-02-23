@@ -44,4 +44,4 @@ Manage credentials via `POST /admin/channels/config` with `service: "channel-tel
 ## Related
 
 - [API Reference](../../dev/docs/api-reference.md#telegram-channel-telegram-8182) — Full endpoint and payload details
-- [Gateway README](../../gateway/README.md) — How signed payloads are processed
+- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed

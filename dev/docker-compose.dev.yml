@@ -2,7 +2,7 @@
 # Runtime orchestration is generated into packages/lib/src/embedded/state/docker-compose.yml (and state-root runtime artifact paths at install/runtime).
 services:
   assistant:
-    build: ./assistant
+    build: ./core/assistant
     # Extensions are baked into the image from opencode/extensions/.
     # For local dev, layer this over packages/lib/src/embedded/state/docker-compose.yml.
     environment:
@@ -18,12 +18,12 @@ services:
   gateway:
     build:
       context: .
-      dockerfile: gateway/Dockerfile
+      dockerfile: core/gateway/Dockerfile
 
   admin:
     build:
       context: .
-      dockerfile: admin/Dockerfile
+      dockerfile: core/admin/Dockerfile
     ports:
       - "8100:8100"
     volumes:

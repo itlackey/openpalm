@@ -174,7 +174,7 @@ services:
   admin:
     build:
       context: .
-      dockerfile: admin/Dockerfile
+      dockerfile: core/admin/Dockerfile
     ports:
       - "${ADMIN_PORT}:8100"
     volumes:
@@ -191,7 +191,7 @@ services:
   gateway:
     build:
       context: .
-      dockerfile: gateway/Dockerfile
+      dockerfile: core/gateway/Dockerfile
     ports:
       - "${GATEWAY_PORT}:8080"
 `;

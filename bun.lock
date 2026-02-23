@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "openpalm",
@@ -9,40 +8,40 @@
         "typescript": "^5.9.3",
       },
     },
-    "admin": {
-      "name": "@openpalm/admin",
-      "version": "0.2.9",
-      "devDependencies": {
-        "@playwright/test": "^1.40.0",
-      },
-    },
     "channels/chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.2.9",
+      "version": "0.2.10",
     },
     "channels/discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.2.9",
+      "version": "0.2.10",
     },
     "channels/telegram": {
       "name": "@openpalm/channel-telegram",
-      "version": "0.2.9",
+      "version": "0.2.10",
     },
     "channels/voice": {
       "name": "@openpalm/channel-voice",
-      "version": "0.2.9",
+      "version": "0.2.10",
     },
     "channels/webhook": {
       "name": "@openpalm/channel-webhook",
       "version": "0.2.0",
     },
-    "gateway": {
+    "core/admin": {
+      "name": "@openpalm/admin",
+      "version": "0.2.10",
+      "devDependencies": {
+        "@playwright/test": "^1.40.0",
+      },
+    },
+    "core/gateway": {
       "name": "@openpalm/gateway",
-      "version": "0.2.9",
+      "version": "0.2.10",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.2.9",
+      "version": "0.2.10",
       "bin": {
         "openpalm": "./src/main.ts",
       },
@@ -53,6 +52,9 @@
     "packages/lib": {
       "name": "@openpalm/lib",
       "version": "0.2.0",
+      "dependencies": {
+        "yaml": "^2.8.2",
+      },
       "devDependencies": {
         "ajv": "^8.17.1",
         "ajv-formats": "^3.0.1",
@@ -182,7 +184,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@openpalm/admin": ["@openpalm/admin@workspace:admin"],
+    "@openpalm/admin": ["@openpalm/admin@workspace:core/admin"],
 
     "@openpalm/channel-chat": ["@openpalm/channel-chat@workspace:channels/chat"],
 
@@ -194,7 +196,7 @@
 
     "@openpalm/channel-webhook": ["@openpalm/channel-webhook@workspace:channels/webhook"],
 
-    "@openpalm/gateway": ["@openpalm/gateway@workspace:gateway"],
+    "@openpalm/gateway": ["@openpalm/gateway@workspace:core/gateway"],
 
     "@openpalm/lib": ["@openpalm/lib@workspace:packages/lib"],
 

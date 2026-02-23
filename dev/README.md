@@ -14,6 +14,6 @@ Technical references and developer guides for contributing to or extending OpenP
 
 ## Related
 
-- [Admin Docs](../admin/docs/README.md) — System administration and configuration guides
-- [Assistant README](../assistant/README.md) — Extension architecture and built-in extensions
-- [Gateway README](../gateway/README.md) — Gateway pipeline and security
+- [Admin Docs](../core/admin/docs/README.md) — System administration and configuration guides
+- [Assistant README](../core/assistant/README.md) — Extension architecture and built-in extensions
+- [Gateway README](../core/gateway/README.md) — Gateway pipeline and security

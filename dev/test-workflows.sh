@@ -129,9 +129,9 @@ test_publish-images() {
   echo ""
   echo "Building Docker images locally (mirrors publish job contexts)..."
   local -A IMAGES=(
-    [assistant]="./assistant|./assistant/Dockerfile"
-    [gateway]=".|./gateway/Dockerfile"
-    [admin]=".|./admin/Dockerfile"
+    [assistant]="./core/assistant|./core/assistant/Dockerfile"
+    [gateway]=".|./core/gateway/Dockerfile"
+    [admin]=".|./core/admin/Dockerfile"
     [channel-chat]=".|./channels/chat/Dockerfile"
     [channel-discord]=".|./channels/discord/Dockerfile"
     [channel-voice]=".|./channels/voice/Dockerfile"

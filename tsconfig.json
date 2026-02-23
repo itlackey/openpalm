@@ -28,7 +28,7 @@
     }
   },
   "include": [
-    "gateway/src/**/*.ts",
+    "core/gateway/src/**/*.ts",
     "channels/**/*.ts",
     "packages/cli/src/**/*.ts",
     "packages/lib/src/**/*.ts",

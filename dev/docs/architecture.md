@@ -99,9 +99,9 @@ Every box in the architecture is a distinct container, except **Shared FS** whic
 | `qdrant` | `qdrant/qdrant:latest` | assistant_net | Vector storage for embeddings |
 | `openmemory` | `mem0/openmemory-mcp:latest` | assistant_net | Long-term memory (HTTP API + optional MCP server) |
 | `openmemory-ui` | `mem0/openmemory-ui:latest` | assistant_net | OpenMemory dashboard (Next.js, port 3000) |
-| `assistant` | `./assistant` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `assistant/extensions/`; host config provides optional overrides |
-| `gateway` | `./gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
-| `admin` | `./admin` (build) | assistant_net | Admin API, stack apply executor (allowlisted compose ops), and automation cron host |
+| `assistant` | `./core/assistant` (build) | assistant_net | Agent runtime — extensions (skills, commands, agents, tools, plugins) are baked into the image from `core/assistant/extensions/`; host config provides optional overrides |
+| `gateway` | `./core/gateway` (build) | assistant_net | Channel auth, rate limiting, runtime routing, audit |
+| `admin` | `./core/admin` (build) | assistant_net | Admin API, stack apply executor (allowlisted compose ops), and automation cron host |
 | `channel-chat` | `./channels/chat` (build) | assistant_net | HTTP chat adapter (profile: channels) |
 | `channel-discord` | `./channels/discord` (build) | assistant_net | Discord adapter (profile: channels) |
 | `channel-voice` | `./channels/voice` (build) | assistant_net | Voice/STT adapter (profile: channels) |
@@ -135,7 +135,7 @@ The gateway is stateless. It verifies HMAC signatures, applies rate limiting (12
 
 This approach uses OpenCode's built-in agent permission model for isolation — the `channel-intake` agent has all tools denied, while the default agent uses approval gates — without requiring a separate container or runtime process.
 
-The `channel-intake` agent is defined in a standalone Markdown file at `gateway/opencode/agents/channel-intake.md` with frontmatter that disables all tools (`"*": false`). The gateway invokes this agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `gateway/src/server.ts:57`). OpenCode loads the agent definition from the `agents/` directory in its config path, applying the frontmatter settings (tool restrictions, description) and the prompt body (which references the `channel-intake` skill and `AGENTS.md`).
+The `channel-intake` agent is defined in a standalone Markdown file at `core/gateway/opencode/agents/channel-intake.md` with frontmatter that disables all tools (`"*": false`). The gateway invokes this agent by passing `agent: "channel-intake"` as a parameter to the OpenCode client (see `core/gateway/src/server.ts:57`). OpenCode loads the agent definition from the `agents/` directory in its config path, applying the frontmatter settings (tool restrictions, description) and the prompt body (which references the `channel-intake` skill and `AGENTS.md`).
 
 ### Admin operations
 ```
@@ -182,7 +182,7 @@ Host directories follow the [XDG Base Directory Specification](https://specifica
 
 ### Extension directory layout
 
-Extensions (skills, commands, agents, tools, plugins) are **baked into container images** at build time. `lib/` is a shared library directory used internally and is not an extension sub-type. The canonical sources are `assistant/extensions/` (core) and `gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
+Extensions (skills, commands, agents, tools, plugins) are **baked into container images** at build time. `lib/` is a shared library directory used internally and is not an extension sub-type. The canonical sources are `core/assistant/extensions/` (core) and `core/gateway/opencode/` (gateway). Host config provides optional user overrides that are volume-mounted at runtime and take precedence over the built-in extensions.
 
 **Extension sub-types and directory layout:**
 
@@ -198,8 +198,8 @@ Directory names are **plural** by convention.
 
 | Source Directory | Container | Contents |
 |---|---|---|
-| `assistant/extensions/` | assistant (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/, commands/, skills/memory/ |
-| `gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, agent/channel-intake.md, skills/channel-intake/ |
+| `core/assistant/extensions/` | assistant (baked in) | Full agent config: opencode.jsonc, AGENTS.md, plugins/, lib/, tools/, commands/, skills/memory/ |
+| `core/gateway/opencode/` | gateway (baked in) | Intake agent config: opencode.jsonc, AGENTS.md, agent/channel-intake.md, skills/channel-intake/ |
 
 | Store | Used by | Purpose |
 |---|---|---|
@@ -239,6 +239,6 @@ See [Security Guide](../../docs/security.md) for the full defense-in-depth secur
 | Secret values and key inventory | `config/secrets.env` via `StackManager` secret APIs | UI should always use live secret inventory from API. |
 | Rendered compose/caddy/env artifacts | `packages/lib/stack-generator.ts` output | Generated under `state/*`; never hand-edit. |
 | Compose service allowlist | `packages/lib/compose-runner.ts` | Direct service ops and stack apply share this allowlist. |
-| Admin transport routes | `admin/src/server.ts` | Prefer delegating business rules to `packages/lib/*`. |
-| Security/routing ingress | `gateway/src/server.ts` and `gateway/src/channel-*` | Gateway remains the only inbound message path. |
+| Admin transport routes | `core/admin/src/server.ts` | Prefer delegating business rules to `packages/lib/*`. |
+| Security/routing ingress | `core/gateway/src/server.ts` and `core/gateway/src/channel-*` | Gateway remains the only inbound message path. |
 | API contract documentation | `dev/docs/api-reference.md` | Update this doc when route behavior or payloads change. |

@@ -70,7 +70,7 @@ The `docker-stack.test.ts` tests build Docker containers and check health endpoi
 
 **Impact: Broke every Docker image publish from v0.2.1 through v0.2.5.**
 
-The gateway Dockerfile uses `COPY gateway/opencode/ ...` which requires the repo root as build context. But the publish workflow originally set `context: "./gateway"`, causing the path to resolve as `./gateway/gateway/opencode/` (doesn't exist).
+The gateway Dockerfile uses `COPY core/gateway/opencode/ ...` which requires the repo root as build context. But the publish workflow originally set `context: "./core/gateway"`, causing the path to resolve as `./core/gateway/core/gateway/opencode/` (doesn't exist).
 
 Similarly, the assistant Dockerfile was modified to use `addgroup`/`adduser` for non-root users, which conflicted with the existing `bun` user at UID 1000 in the base image.
 
@@ -81,8 +81,8 @@ Similarly, the assistant Dockerfile was modified to use `addgroup`/`adduser` for
 - The feedback loop is: push tag → wait for CI → see failure → fix → push new tag
 
 **Files involved:**
-- `gateway/Dockerfile`
-- `assistant/Dockerfile`
+- `core/gateway/Dockerfile`
+- `core/assistant/Dockerfile`
 - `.github/workflows/publish-images.yml`
 
 ---
@@ -106,7 +106,7 @@ Three distinct problems here:
 
 **Files involved:**
 - `packages/lib/src/admin/automations.test.ts` (mutates `Bun.env.CRON_DIR` without restore)
-- `assistant/extensions/plugins/openmemory-http.test.ts` (shallow env copy doesn't delete added keys)
+- `core/assistant/extensions/plugins/openmemory-http.test.ts` (shallow env copy doesn't delete added keys)
 - `test/integration/*.test.ts` (all use `skipIf`)
 
 ---
@@ -136,14 +136,14 @@ Tests throughout the codebase use fixed timeouts, hardcoded ports, and timing-se
 
 | Pattern | Location | Risk |
 |---------|----------|------|
-| 100ms rate-limit window with 50ms buffer | `gateway/src/rate-limit.test.ts:12-20` | Fails under CPU load |
-| Random port range 18100-19099 | `admin/src/admin-e2e.test.ts:85` | Collides with dev stack |
-| 40 retries × 250ms = 10s max for server startup | `admin/src/admin-e2e.test.ts:117` | Too short for slow CI |
+| 100ms rate-limit window with 50ms buffer | `core/gateway/src/rate-limit.test.ts:12-20` | Fails under CPU load |
+| Random port range 18100-19099 | `core/admin/src/admin-e2e.test.ts:85` | Collides with dev stack |
+| 40 retries × 250ms = 10s max for server startup | `core/admin/src/admin-e2e.test.ts:117` | Too short for slow CI |
 | 30s deadline for Docker stack health | `admin/ui/tests/global-setup.ts:28` | Too short for cold start |
 | Inconsistent timeouts in same test (10s, 30s, 130s) | `admin/ui/tests/setup-wizard.ui.playwright.ts` | Confusing, fragile |
-| `proc.kill()` not awaited before `rmSync` | `admin/src/admin-e2e.test.ts:128` | EBUSY on cleanup |
+| `proc.kill()` not awaited before `rmSync` | `core/admin/src/admin-e2e.test.ts:128` | EBUSY on cleanup |
 | `server.stop()` not awaited | Multiple gateway/channel tests | Port not released |
-| `globalThis.fetch` replaced without try/finally guarantee | `gateway/src/assistant-client.test.ts:84` | Leaks mock |
+| `globalThis.fetch` replaced without try/finally guarantee | `core/gateway/src/assistant-client.test.ts:84` | Leaks mock |
 
 ---
 
@@ -458,8 +458,8 @@ Create a JSON file that all workflows reference:
 // .github/components.json
 {
   "images": [
-    {"name": "assistant", "context": "./assistant", "dockerfile": "assistant/Dockerfile"},
-    {"name": "gateway", "context": ".", "dockerfile": "gateway/Dockerfile"},
+    {"name": "assistant", "context": "./core/assistant", "dockerfile": "core/assistant/Dockerfile"},
+    {"name": "gateway", "context": ".", "dockerfile": "core/gateway/Dockerfile"},
     ...
   ]
 }

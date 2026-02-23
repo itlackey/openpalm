@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node ../packages/ui/build/index.js"
+    "start": "node ../../packages/ui/build/index.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"

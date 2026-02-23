@@ -15,13 +15,13 @@ Admin (control plane, not in request path) ────────────�
 ```
 
 - **Channels never talk to anything except the Gateway** — enforced at the network level.
-- The Gateway embeds a `channel-intake` OpenCode agent (`gateway/opencode/`) with all tools denied (`"*": false`). It validates/summarizes untrusted input before forwarding to the full agent. Extensions are baked into the image — no host volume.
+- The Gateway embeds a `channel-intake` OpenCode agent (`core/gateway/opencode/`) with all tools denied (`"*": false`). It validates/summarizes untrusted input before forwarding to the full agent. Extensions are baked into the image — no host volume.
 - **Admin** manages Docker Compose lifecycle and config generation. It is not in the message path.
 - `packages/lib` has three zones: `src/` (CLI/host), `src/shared/` (gateway+channels), `admin/` (admin service only). Never barrel-import `@openpalm/lib` in services — use zone-specific paths.
 
 ## Monorepo layout
 
-Bun workspaces: `gateway`, `admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui` (SvelteKit, replacing `admin/ui/`).
+Bun workspaces: `core/gateway`, `core/admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui` (SvelteKit, replacing `admin/ui/`).
 
 ```
 packages/lib/src/embedded/state/docker-compose.yml   — production compose base
@@ -79,8 +79,8 @@ Always use `.ts` extension in relative imports.
 ## Adding things
 
 - **New channel**: add a channel entry to `packages/lib/assets/templates/openpalm.yaml`, run generator — no code changes needed.
-- **New OpenCode extension**: edit `DATA/assistant/.config/opencode/opencode.json` (plugins) or drop files in `assistant/extensions/`.
-- **Gateway intake changes**: edit `gateway/opencode/agents/channel-intake.md` or `gateway/opencode/skills/channel-intake/SKILL.md`.
+- **New OpenCode extension**: edit `DATA/assistant/.config/opencode/opencode.json` (plugins) or drop files in `core/assistant/extensions/`.
+- **Gateway intake changes**: edit `core/gateway/opencode/agents/channel-intake.md` or `core/gateway/opencode/skills/channel-intake/SKILL.md`.
 
 ## Key reference files
 
@@ -90,6 +90,6 @@ Always use `.ts` extension in relative imports.
 | All API endpoints | `dev/docs/api-reference.md` |
 | Stack spec format | `packages/lib/docs/specification.md` |
 | Security model | `docs/security.md` |
-| Admin control plane | `admin/README.md` |
-| Gateway pipeline | `gateway/README.md` |
+| Admin control plane | `core/admin/README.md` |
+| Gateway pipeline | `core/gateway/README.md` |
 | `@openpalm/lib` zones | `packages/lib/README.md` |

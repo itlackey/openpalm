@@ -911,7 +911,7 @@ $OPENPALM_STATE_HOME/
 │   └── .env                           # postgresEnv artifact
 ├── qdrant/
 │   └── .env                           # qdrantEnv artifact
-├── assistant/
+├── core/assistant/
 │   └── .env                           # assistantEnv artifact
 ├── channel-chat/
 │   └── .env                           # channelEnvs["channel-chat"]

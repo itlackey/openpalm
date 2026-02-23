@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 #   - Bun installed (https://bun.sh)
-#   - Dependencies installed: cd admin && bun install; cd gateway && bun install
+#   - Dependencies installed: cd core/admin && bun install; cd core/gateway && bun install
 #   - Supporting services running (opencode-core, openmemory) via
 #     docker compose, or point the env vars at your own instances.
 #

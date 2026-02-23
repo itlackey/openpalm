@@ -13,11 +13,11 @@ WORKDIR /app
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 # See packages/lib/README.md "Docker Build" for details.
 COPY packages/lib /app/node_modules/@openpalm/lib
-COPY gateway/package.json ./
-COPY gateway/src ./src
+COPY core/gateway/package.json ./
+COPY core/gateway/src ./src
 
 # Opencode agent config (AGENTS.md, opencode.jsonc, skills) baked into the image.
-COPY gateway/opencode/ /home/openpalm/.config/opencode/
+COPY core/gateway/opencode/ /home/openpalm/.config/opencode/
 
 RUN bun install --production
 

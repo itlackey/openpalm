@@ -42,4 +42,4 @@ Manage credentials via `POST /admin/channels/config` with `service: "channel-web
 ## Related
 
 - [API Reference](../../dev/docs/api-reference.md) — Gateway and admin API details
-- [Gateway README](../../gateway/README.md) — How signed payloads are processed
+- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed
