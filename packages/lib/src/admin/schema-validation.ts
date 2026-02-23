@@ -1,4 +1,5 @@
 import { parseStackSpec } from "./stack-spec.ts";
+import { parseYamlDocument } from "../shared/yaml.ts";
 
 export type ValidationResult = {
   valid: boolean;
@@ -111,7 +112,7 @@ export function validateComposeFile(yamlString: string): ValidationResult {
 
   let doc: unknown;
   try {
-    doc = Bun.YAML.parse(yamlString);
+    doc = parseYamlDocument(yamlString);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     return { valid: false, errors: [{ path: "/", message: `YAML parse error: ${message}` }] };
@@ -149,26 +150,6 @@ export function validateComposeFile(yamlString: string): ValidationResult {
         errors.push({ path: `/services/${svcName}/${key}`, message: `unknown service key: ${key}` });
       }
     }
-  }
-
-  return { valid: errors.length === 0, errors };
-}
-
-/** Basic compose validation without YAML parser — checks structure via line parsing */
-function validateComposeFileBasic(content: string): ValidationResult {
-  const errors: Array<{ path: string; message: string }> = [];
-  const lines = content.split(/\r?\n/);
-  let hasServices = false;
-
-  for (const line of lines) {
-    if (line.trim() === "services:") {
-      hasServices = true;
-      break;
-    }
-  }
-
-  if (!hasServices) {
-    errors.push({ path: "/services", message: "missing services block" });
   }
 
   return { valid: errors.length === 0, errors };

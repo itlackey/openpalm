@@ -34,6 +34,8 @@ const channelSchema = {
         pattern: "^/[a-zA-Z0-9/_-]*$",
       },
     },
+    rewritePath: { type: "string", pattern: "^/" },
+    sharedSecretEnv: { type: "string", minLength: 1 },
     volumes: {
       type: "array",
       items: { type: "string" },
@@ -101,15 +103,14 @@ export const stackSpecSchema = {
     channels: {
       type: "object",
       patternProperties: {
-        "^[a-z][a-z0-9-]{0,62}$": channelSchema,
+        "^.+$": channelSchema,
       },
       additionalProperties: false,
-      required: ["chat", "discord", "voice", "telegram"],
     },
     services: {
       type: "object",
       patternProperties: {
-        "^[a-z][a-z0-9-]{0,62}$": serviceSchema,
+        "^.+$": serviceSchema,
       },
       additionalProperties: false,
     },
