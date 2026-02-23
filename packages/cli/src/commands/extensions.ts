@@ -1,6 +1,11 @@
 import { join } from "node:path";
 import { readEnvFile } from "@openpalm/lib/env.ts";
 import { resolveXDGPaths } from "@openpalm/lib/paths.ts";
+import {
+  resolveAdminBaseUrl,
+  resolveAdminToken,
+  validateAdminBaseUrl,
+} from "@openpalm/lib/shared/admin-client.ts";
 import { error, info } from "@openpalm/lib/ui.ts";
 
 /**
@@ -18,28 +23,26 @@ export async function extensions(
     return index >= 0 && index + 1 < args.length ? args[index + 1] : undefined;
   }
 
-  // Get admin token from environment or state .env file
-  let adminToken = Bun.env.ADMIN_TOKEN;
-  if (!adminToken) {
-    try {
-      const stateEnvPath = join(resolveXDGPaths().state, ".env");
-      const envVars = await readEnvFile(stateEnvPath);
-      adminToken = envVars.ADMIN_TOKEN;
-    } catch {
-      // Ignore errors reading env file
-    }
+  const stateEnvPath = join(resolveXDGPaths().state, ".env");
+  let stateEnv: Record<string, string> = {};
+  try {
+    stateEnv = await readEnvFile(stateEnvPath);
+  } catch {
+    stateEnv = {};
   }
+  const env = {
+    ...stateEnv,
+    ...Bun.env,
+  };
+  const adminToken = resolveAdminToken(env);
 
   if (!adminToken) {
-    error("ADMIN_TOKEN not found in environment or state .env file");
+    error("OPENPALM_ADMIN_TOKEN or ADMIN_TOKEN not found in environment or state .env file");
     process.exit(1);
   }
 
-  // Determine base URL
-  const base =
-    Bun.env.ADMIN_APP_URL ??
-    Bun.env.GATEWAY_URL ??
-    "http://localhost";
+  const base = resolveAdminBaseUrl(env);
+  validateAdminBaseUrl(base, Bun.env.OPENPALM_ALLOW_INSECURE_ADMIN_HTTP === "1");
 
   // Build headers
   const headers = {

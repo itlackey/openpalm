@@ -122,28 +122,22 @@ describe("uninstall command source validation", () => {
 });
 
 describe("extensions command source validation", () => {
-  it("reads admin token from Bun.env first", () => {
-    // Validates that Bun.env.ADMIN_TOKEN is checked first
-    expect(extensionsSource).toContain("Bun.env.ADMIN_TOKEN");
-    expect(extensionsSource).toContain("let adminToken = Bun.env.ADMIN_TOKEN");
+  it("reads token via shared admin token resolver", () => {
+    expect(extensionsSource).toContain("resolveAdminToken");
+    expect(extensionsSource).toContain("OPENPALM_ADMIN_TOKEN");
+    expect(extensionsSource).toContain("ADMIN_TOKEN");
   });
 
   it("falls back to state .env for admin token", () => {
-    // Validates fallback to reading from state .env
-    expect(extensionsSource).toContain("if (!adminToken)");
+    expect(extensionsSource).toContain("stateEnvPath");
     expect(extensionsSource).toContain("resolveXDGPaths().state");
     expect(extensionsSource).toContain("await readEnvFile(stateEnvPath)");
-    expect(extensionsSource).toContain("adminToken = envVars.ADMIN_TOKEN");
+    expect(extensionsSource).toContain("const env = {");
   });
 
   it("uses correct base URL fallback chain", () => {
-    // Validates the URL fallback: ADMIN_APP_URL -> GATEWAY_URL -> localhost
-    // Base URL is "http://localhost" because fetch paths already include endpoint paths
-    expect(extensionsSource).toContain("Bun.env.ADMIN_APP_URL");
-    expect(extensionsSource).toContain("Bun.env.GATEWAY_URL");
-    expect(extensionsSource).toContain('"http://localhost"');
-    // Should use nullish coalescing operator (??) for fallback chain
-    expect(extensionsSource).toContain("??");
+    expect(extensionsSource).toContain("resolveAdminBaseUrl");
+    expect(extensionsSource).toContain("validateAdminBaseUrl");
   });
 
   it("install subcommand POSTs to /plugins/install", () => {

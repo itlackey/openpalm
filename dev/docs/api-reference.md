@@ -30,6 +30,14 @@ This document summarizes the primary HTTP contracts developers depend on.
 - **Secrets**: CRUD for `secrets.env` keys used by channel/service refs.
 - **Automations**: CRUD + run-now for cron-based prompts.
 
+### `POST /command` high-use command types
+
+- Stack/config: `stack.render`, `stack.spec.set`, `stack.apply`
+- Channels/services setup: `setup.*`, `channel.configure`
+- Secrets/automations: `secret.*`, `automation.*`, `snippet.import`
+- Service lifecycle: `service.up`, `service.stop`, `service.restart`, `service.update`
+- Service introspection: `service.logs` (`payload.service`, optional `payload.tail`), `service.status`
+
 ## Gateway API (`core/gateway`)
 
 ### Purpose

@@ -11,6 +11,9 @@ import { status } from "./commands/status.ts";
 import { extensions } from "./commands/extensions.ts";
 import { preflight } from "./commands/preflight.ts";
 import { createChannel } from "./commands/create-channel.ts";
+import { service } from "./commands/service.ts";
+import { channel } from "./commands/channel.ts";
+import { automation } from "./commands/automation.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 import pkg from "../package.json";
 
@@ -31,6 +34,9 @@ function printHelp(): void {
   log("  restart        Restart services");
   log("  logs           View container logs");
   log("  status         Show container status");
+  log("  service        Service lifecycle operations (up, stop, restart, logs, update, status)");
+  log("  channel        Channel operations (add, configure)");
+  log("  automation     Automation operations (run, trigger)");
   log("  extensions     Manage extensions (install, uninstall, list)");
   log("  dev            Development helpers (preflight, create-channel)");
   log("  version        Print version");
@@ -59,6 +65,11 @@ function printHelp(): void {
   log("  openpalm extensions install --plugin <id>");
   log("  openpalm extensions uninstall --plugin <id>");
   log("  openpalm extensions list");
+  log("");
+  log(bold("Domain commands:"));
+  log("  openpalm service restart assistant");
+  log("  openpalm channel add --file /path/to/channel.yaml");
+  log("  openpalm automation run daily-status");
 }
 
 function parseArg(args: string[], name: string): string | undefined {
@@ -187,6 +198,36 @@ async function main(): Promise<void> {
           process.exit(1);
         }
         await extensions(subcommand, extArgs);
+        break;
+      }
+
+      case "service": {
+        const [subcommand, ...serviceArgs] = args;
+        if (!subcommand) {
+          error("Missing subcommand. Usage: openpalm service <up|stop|restart|logs|update|status>");
+          process.exit(1);
+        }
+        await service(subcommand, serviceArgs);
+        break;
+      }
+
+      case "channel": {
+        const [subcommand, ...channelArgs] = args;
+        if (!subcommand) {
+          error("Missing subcommand. Usage: openpalm channel <add|configure>");
+          process.exit(1);
+        }
+        await channel(subcommand, channelArgs);
+        break;
+      }
+
+      case "automation": {
+        const [subcommand, ...automationArgs] = args;
+        if (!subcommand) {
+          error("Missing subcommand. Usage: openpalm automation <run|trigger>");
+          process.exit(1);
+        }
+        await automation(subcommand, automationArgs);
         break;
       }
 

@@ -13,6 +13,8 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("/caddy.json:/etc/caddy/caddy.json:ro");
     expect(out.composeFile).toContain("assistant:");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}/assistant:/home/opencode");
+    expect(out.composeFile).toContain("OPENPALM_ADMIN_API_URL=http://admin:8100");
+    expect(out.composeFile).toContain("OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}");
     expect(out.composeFile).toContain("${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work");
     expect(out.composeFile).toContain("user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"");
     expect(out.composeFile).toContain("gateway:");

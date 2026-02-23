@@ -79,18 +79,21 @@ describe("CLI entry point", () => {
 
     // Verify all command names are present
     const commands = [
+      "automation",
+      "channel",
+      "dev",
+      "extensions",
+      "help",
       "install",
+      "logs",
+      "restart",
+      "service",
+      "start",
+      "status",
+      "stop",
       "uninstall",
       "update",
-      "start",
-      "stop",
-      "restart",
-      "logs",
-      "status",
-      "extensions",
-      "dev",
-      "version",
-      "help"
+      "version"
     ];
 
     for (const command of commands) {
@@ -128,6 +131,33 @@ describe("CLI entry point", () => {
 
   it("supports dev command with subcommand validation", async () => {
     const { stderr, exitCode } = await runCli("dev");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
+
+  it("does not expose admin command", async () => {
+    const { stderr, exitCode } = await runCli("admin");
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Unknown command");
+  });
+
+  it("supports service command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("service");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
+
+  it("supports channel command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("channel");
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Missing subcommand");
+  });
+
+  it("supports automation command with subcommand validation", async () => {
+    const { stderr, exitCode } = await runCli("automation");
 
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("Missing subcommand");

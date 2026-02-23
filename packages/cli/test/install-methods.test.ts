@@ -191,7 +191,7 @@ describe("install methods verification", () => {
   describe("CLI docs covers all commands", () => {
     const requiredCommands = [
       "install", "uninstall", "update", "start", "stop",
-      "restart", "logs", "status", "extensions", "version", "help"
+      "restart", "logs", "status", "service", "channel", "automation", "extensions", "version", "help"
     ];
 
     for (const cmd of requiredCommands) {
