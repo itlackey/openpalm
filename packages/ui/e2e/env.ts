@@ -78,6 +78,7 @@ export function webServerEnv(): Record<string, string> {
 		ORIGIN: `http://localhost:${PORT}`,
 		ADMIN_TOKEN,
 		DATA_DIR: join(tmpDir, 'data', 'admin'),
+		OPENPALM_DATA_ROOT: join(tmpDir, 'data'),
 		OPENPALM_STATE_ROOT: stateRoot,
 		OPENPALM_CONFIG_ROOT: configDir,
 		OPENCODE_CONFIG_PATH: join(tmpDir, 'data', 'assistant', '.config', 'opencode', 'opencode.json'),
