@@ -102,3 +102,5 @@ bun.lockb
 admin/test-results/
 docs/draft/
 admin/playwright-report/
+.claude/
+CLAUDE.md
