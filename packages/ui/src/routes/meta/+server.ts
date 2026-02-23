@@ -31,50 +31,20 @@ export const GET: RequestHandler = async () => {
 			...channelServiceNames,
 			caddy: { label: 'Web Server', description: 'Handles secure connections' }
 		},
-		channelFields: {
-			'channel-chat': [
-				{
-					key: 'CHAT_INBOUND_TOKEN',
-					label: 'Inbound Token',
-					type: 'password',
-					required: false,
-					helpText: 'Token for authenticating incoming chat messages'
-				}
-			],
-			'channel-discord': [
-				{
-					key: 'DISCORD_BOT_TOKEN',
-					label: 'Bot Token',
-					type: 'password',
-					required: true,
-					helpText: 'Create a bot at discord.com/developers and copy the token'
-				},
-				{
-					key: 'DISCORD_PUBLIC_KEY',
-					label: 'Public Key',
-					type: 'text',
-					required: true,
-					helpText: 'Found on the same page as your bot token'
-				}
-			],
-			'channel-voice': [],
-			'channel-telegram': [
-				{
-					key: 'TELEGRAM_BOT_TOKEN',
-					label: 'Bot Token',
-					type: 'password',
-					required: true,
-					helpText: 'Get a bot token from @BotFather on Telegram'
-				},
-				{
-					key: 'TELEGRAM_WEBHOOK_SECRET',
-					label: 'Webhook Secret',
-					type: 'password',
-					required: false,
-					helpText: 'A secret string to verify incoming webhook requests'
-				}
-			]
-		},
+		channelFields: Object.fromEntries(
+			Object.entries(BUILTIN_CHANNELS).map(([key, def]) => [
+				`channel-${key}`,
+				(def.env ?? [])
+					.filter((e) => e.name !== def.sharedSecretEnv)
+					.map((e) => ({
+						key: e.name,
+						label: e.label,
+						type: e.type === 'secret' ? 'password' : e.type,
+						required: e.required,
+						helpText: e.description ?? ''
+					}))
+			])
+		),
 		builtInChannels: BUILTIN_CHANNELS,
 		requiredCoreSecrets: CoreSecretRequirements
 	});
