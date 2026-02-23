@@ -36,7 +36,7 @@
     "test:integration": "bun test --filter integration",
     "test:contracts": "bun test --filter contract",
     "test:security": "bun test --filter security",
-    "test:ui": "cd packages/ui && npx playwright test",
+    "test:ui": "cd packages/ui && bunx playwright test",
     "test:compose": "bun test --filter compose",
     "test:compose:ui": "bun test --filter e2e-ui.compose",
     "test:ci": "bun run typecheck && bun test --filter '!compose'",
