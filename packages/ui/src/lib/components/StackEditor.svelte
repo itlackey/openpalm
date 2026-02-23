@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { parse as yamlParse, stringify as yamlStringify } from 'yaml';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores/toast.svelte';
 	import { getAdminToken } from '$lib/stores/auth.svelte';
@@ -14,9 +13,9 @@
 			specText = '(Enter admin password above to load)';
 			return;
 		}
-		const r = await api('/state');
-		if (r.ok && r.data?.data?.spec) {
-			specText = yamlStringify(r.data.data.spec, { indent: 2 });
+		const r = await api('/stack/spec');
+		if (r.ok && r.data?.yaml) {
+			specText = r.data.yaml;
 		} else {
 			specText = '# Could not load stack spec: ' + (r.data?.error || 'unknown error');
 		}
@@ -27,18 +26,12 @@
 			showToast('Enter admin password first.', 'error');
 			return;
 		}
-		let spec: unknown;
-		try {
-			spec = yamlParse(specText);
-		} catch (e) {
-			showToast('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), 'error');
-			return;
-		}
-		const r = await api('/command', {
+		const r = await api('/stack/spec', {
 			method: 'POST',
-			body: JSON.stringify({ type: 'stack.spec.set', payload: { spec } })
+			body: JSON.stringify({ yaml: specText })
 		});
 		if (r.ok) {
+			specText = r.data.yaml;
 			showToast('Stack spec saved.', 'success');
 			statusMsg = 'Saved. Click "Apply Changes" to regenerate configs and restart services.';
 		} else {
@@ -53,13 +46,10 @@
 			return;
 		}
 		statusMsg = 'Applying...';
-		const r = await api('/command', {
-			method: 'POST',
-			body: JSON.stringify({ type: 'stack.apply', payload: {} })
-		});
+		const r = await api('/stack/apply', { method: 'POST' });
 		if (r.ok) {
 			showToast('Stack applied successfully.', 'success');
-			const impact = r.data?.data?.impact || {};
+			const impact = r.data?.impact || {};
 			const parts: string[] = [];
 			if (impact.restart?.length) parts.push('Restarted: ' + impact.restart.join(', '));
 			if (impact.reload?.length) parts.push('Reloaded: ' + impact.reload.join(', '));
@@ -75,7 +65,6 @@
 	}
 
 	$effect(() => {
-		// Auto-load when token changes
 		if (hasToken) {
 			loadSpec();
 		}

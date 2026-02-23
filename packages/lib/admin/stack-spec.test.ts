@@ -469,18 +469,13 @@ describe("stack spec", () => {
     expect(loaded.caddy?.email).toBe("admin@example.com");
   });
 
-  it("reads version 1 specs and upgrades to current version", () => {
+  it("reads version 1 YAML specs and upgrades to current version", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
-    const jsonPath = join(dir, "stack-spec.json");
     const yamlPath = join(dir, "openpalm.yaml");
     const v1 = createDefaultStackSpec();
-    const v1Json = JSON.stringify({ ...v1, version: 1 }, null, 2);
-    require("node:fs").writeFileSync(jsonPath, v1Json, "utf8");
-    // Migration: ensureStackSpec on YAML path finds legacy JSON, upgrades, and creates YAML
+    const v1Yaml = Bun.YAML.stringify({ ...v1, version: 1 }, null, 2);
+    require("node:fs").writeFileSync(yamlPath, v1Yaml, "utf8");
     const spec = ensureStackSpec(yamlPath);
     expect(spec.version).toBe(StackSpecVersion);
-    // Verify YAML file was created and JSON was backed up
-    expect(require("node:fs").existsSync(yamlPath)).toBe(true);
-    expect(require("node:fs").existsSync(`${jsonPath}.bak`)).toBe(true);
   });
 });

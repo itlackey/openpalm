@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { BUILTIN_CHANNELS } from "../assets/channels/index.ts";
 import type { BuiltInChannelDef } from "../assets/channels/index.ts";
@@ -376,24 +376,9 @@ export function stringifyStackSpec(spec: StackSpec): string {
 }
 
 export function ensureStackSpec(path: string): StackSpec {
-  // Check for YAML at the given path
   if (existsSync(path)) {
     const content = readFileSync(path, "utf8");
-    const parsed = path.endsWith(".json") ? JSON.parse(content) as unknown : Bun.YAML.parse(content) as unknown;
-    return parseStackSpec(parsed);
-  }
-
-  // Migration: check for legacy stack-spec.json in the same directory
-  const legacyJsonPath = path.replace(/openpalm\.yaml$/, "stack-spec.json");
-  if (legacyJsonPath !== path && existsSync(legacyJsonPath)) {
-    const content = readFileSync(legacyJsonPath, "utf8");
-    const parsed = JSON.parse(content) as unknown;
-    const spec = parseStackSpec(parsed);
-    // Write as YAML and back up legacy file
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, stringifyStackSpec(spec), "utf8");
-    renameSync(legacyJsonPath, `${legacyJsonPath}.bak`);
-    return spec;
+    return parseStackSpec(Bun.YAML.parse(content) as unknown);
   }
 
   // Create default
