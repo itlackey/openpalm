@@ -92,7 +92,7 @@ Callers of the generator:
 
 ### 2.1 StackSpec Schema
 
-The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yaml` (v3). Legacy JSON files at `stack-spec.json` are automatically migrated on first read. It captures the user's intent for the stack: which channels to run, how to expose them, what secrets they need, what services to add, and what automations to schedule. It is **not** a runtime state file — it contains no ephemeral values.
+The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yaml` (v3). It captures the user's intent for the stack: which channels to run, how to expose them, what secrets they need, what services to add, and what automations to schedule. It is **not** a runtime state file — it contains no ephemeral values.
 
 #### 2.1.1 Top-level Fields
 

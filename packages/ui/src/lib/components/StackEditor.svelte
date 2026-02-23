@@ -13,11 +13,11 @@
 			specText = '(Enter admin password above to load)';
 			return;
 		}
-		const r = await api('/state');
-		if (r.ok && r.data?.data?.spec) {
-			specText = JSON.stringify(r.data.data.spec, null, 2);
+		const r = await api('/stack/spec');
+		if (r.ok && r.data?.yaml) {
+			specText = r.data.yaml;
 		} else {
-			specText = '// Could not load stack spec: ' + (r.data?.error || 'unknown error');
+			specText = '# Could not load stack spec: ' + (r.data?.error || 'unknown error');
 		}
 	}
 
@@ -26,18 +26,12 @@
 			showToast('Enter admin password first.', 'error');
 			return;
 		}
-		let spec: unknown;
-		try {
-			spec = JSON.parse(specText);
-		} catch (e) {
-			showToast('Invalid JSON: ' + (e instanceof Error ? e.message : String(e)), 'error');
-			return;
-		}
-		const r = await api('/command', {
+		const r = await api('/stack/spec', {
 			method: 'POST',
-			body: JSON.stringify({ type: 'stack.spec.set', payload: { spec } })
+			body: JSON.stringify({ yaml: specText })
 		});
 		if (r.ok) {
+			specText = r.data.yaml;
 			showToast('Stack spec saved.', 'success');
 			statusMsg = 'Saved. Click "Apply Changes" to regenerate configs and restart services.';
 		} else {
@@ -52,13 +46,10 @@
 			return;
 		}
 		statusMsg = 'Applying...';
-		const r = await api('/command', {
-			method: 'POST',
-			body: JSON.stringify({ type: 'stack.apply', payload: {} })
-		});
+		const r = await api('/stack/apply', { method: 'POST' });
 		if (r.ok) {
 			showToast('Stack applied successfully.', 'success');
-			const impact = r.data?.data?.impact || {};
+			const impact = r.data?.impact || {};
 			const parts: string[] = [];
 			if (impact.restart?.length) parts.push('Restarted: ' + impact.restart.join(', '));
 			if (impact.reload?.length) parts.push('Reloaded: ' + impact.reload.join(', '));
@@ -74,7 +65,6 @@
 	}
 
 	$effect(() => {
-		// Auto-load when token changes
 		if (hasToken) {
 			loadSpec();
 		}
@@ -84,8 +74,8 @@
 <div class="card">
 	<h3>Stack Spec</h3>
 	<p class="muted" style="font-size:13px">
-		Edit the stack specification to configure channels, automations, and access scope. Save,
-		then Apply to regenerate configuration files and restart services.
+		Edit the stack specification (YAML) to configure channels, automations, and access scope.
+		Save, then Apply to regenerate configuration files and restart services.
 	</p>
 	<textarea bind:value={specText} rows="16" style="width:100%;margin:0.5rem 0" placeholder="Loading..."></textarea>
 	<div style="display:flex;gap:0.5rem">

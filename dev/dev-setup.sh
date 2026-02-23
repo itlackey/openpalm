@@ -39,8 +39,8 @@ done
 mkdir -p "$HOME/openpalm"
 
 cp -n "$REPO_ROOT/assets/config/secrets.env" "$DEV_DIR/config/secrets.env" || echo "Note: secrets.env already exists, skipping"
-# stack-spec.json is the v2 seed; ensureStackSpec() migrates it to openpalm.yaml (v3) at runtime
-cp -n "$REPO_ROOT/assets/config/stack-spec.json" "$DEV_DIR/config/stack-spec.json" || echo "Note: stack-spec.json already exists, skipping"
+# Seed the v3 YAML stack spec
+cp -n "$REPO_ROOT/packages/lib/assets/templates/openpalm.yaml" "$DEV_DIR/config/openpalm.yaml" || echo "Note: openpalm.yaml already exists, skipping"
 cp -n "$REPO_ROOT/assets/state/caddy/caddy.json" "$DEV_DIR/state/rendered/caddy/caddy.json" || echo "Note: caddy.json already exists, skipping"
 
 echo "Dev environment ready under .dev/ and ~/openpalm"
