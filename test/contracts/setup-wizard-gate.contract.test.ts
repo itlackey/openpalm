@@ -34,14 +34,14 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
     });
 
     it("returns 200 without requiring auth", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         signal: AbortSignal.timeout(5000),
       });
       expect(resp.status).toBe(200);
     });
 
     it("returns completed: false", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         signal: AbortSignal.timeout(5000),
       });
       const body = (await resp.json()) as { completed: boolean };
@@ -49,7 +49,7 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
     });
 
     it("returns firstBoot: true", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         signal: AbortSignal.timeout(5000),
       });
       const body = (await resp.json()) as { firstBoot: boolean };
@@ -57,7 +57,7 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
     });
 
     it("includes step status showing no steps completed", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         signal: AbortSignal.timeout(5000),
       });
       const body = (await resp.json()) as { steps: Record<string, boolean> };
@@ -90,14 +90,14 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
     });
 
     it("returns 401 without auth token (wizard cannot appear)", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         signal: AbortSignal.timeout(5000),
       });
       expect(resp.status).toBe(401);
     });
 
     it("returns 200 with valid auth token", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         headers: { "x-admin-token": ADMIN_TOKEN },
         signal: AbortSignal.timeout(5000),
       });
@@ -105,7 +105,7 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
     });
 
     it("returns completed: true with valid auth", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         headers: { "x-admin-token": ADMIN_TOKEN },
         signal: AbortSignal.timeout(5000),
       });
@@ -114,7 +114,7 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
     });
 
     it("returns firstBoot: false with valid auth", async () => {
-      const resp = await fetch(`${ADMIN_BASE}/admin/setup/status`, {
+      const resp = await fetch(`${ADMIN_BASE}/setup/status`, {
         headers: { "x-admin-token": ADMIN_TOKEN },
         signal: AbortSignal.timeout(5000),
       });

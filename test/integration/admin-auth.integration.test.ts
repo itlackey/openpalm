@@ -32,8 +32,8 @@ describe.skipIf(!stackAvailable)("integration: admin auth rejection", () => {
     });
   }
 
-  it("GET /admin/state WITH valid token → 200", async () => {
-    const resp = await fetch(`${ADMIN_BASE}/admin/state`, {
+  it("GET /state WITH valid token → 200", async () => {
+    const resp = await fetch(`${ADMIN_BASE}/state`, {
       headers: { "x-admin-token": ADMIN_TOKEN },
       signal: AbortSignal.timeout(TIMEOUT),
     });

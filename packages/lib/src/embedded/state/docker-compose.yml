@@ -39,7 +39,7 @@ services:
       - ${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage
     networks: [assistant_net]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -61,7 +61,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8765/ || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
       interval: 15s
       timeout: 10s
       retries: 5

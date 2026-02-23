@@ -39,7 +39,7 @@ describe.skipIf(!stackAvailable)("integration: container health", () => {
   });
 
   it("admin health-check endpoint reports all services", async () => {
-    const resp = await fetch("http://localhost:8100/admin/setup/health-check", {
+    const resp = await fetch("http://localhost:8100/setup/health-check", {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     expect(resp.status).toBe(200);
