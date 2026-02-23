@@ -88,7 +88,7 @@ export const stackSpecSchema = {
   type: "object",
   required: ["version", "accessScope", "channels"],
   properties: {
-    version: { type: "integer", enum: [1, 2, 3] },
+    version: { type: "integer", enum: [3] },
     accessScope: { type: "string", enum: ["host", "lan", "public"] },
     caddy: {
       type: "object",

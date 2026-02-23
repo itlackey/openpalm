@@ -251,7 +251,7 @@ describe("schema validation edge cases", () => {
   });
 
   it("validateStackSpec rejects spec with missing channels", () => {
-    const result = validateStackSpec({ version: 2, accessScope: "lan" });
+    const result = validateStackSpec({ version: 3, accessScope: "lan" });
     expect(result.valid).toBe(false);
   });
 });

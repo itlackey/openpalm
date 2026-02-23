@@ -6,8 +6,8 @@ name: Validate Registry Entries
 on:
   pull_request:
     paths:
-      - "assets/state/registry/*.json"
-      - "!assets/state/registry/index.json"
+      - "packages/lib/src/embedded/state/registry/*.json"
+      - "!packages/lib/src/embedded/state/registry/index.json"
 
 jobs:
   validate:
@@ -27,7 +27,7 @@ jobs:
           WARNINGS=0
           REPORT=""
 
-          ENTRY_FILES=$(find assets/state/registry -maxdepth 1 -name "*.json" \
+          ENTRY_FILES=$(find packages/lib/src/embedded/state/registry -maxdepth 1 -name "*.json" \
             ! -name "index.json" ! -name "schema.json" | sort)
 
           for f in $ENTRY_FILES; do
@@ -72,9 +72,9 @@ jobs:
 
             # 4. Check for duplicate ID in existing index
             ENTRY_ID=$(jq -r '.id // ""' "$f")
-            if [ -f "assets/state/registry/index.json" ] && [ -n "$ENTRY_ID" ]; then
-              EXISTING=$(jq -r --arg id "$ENTRY_ID" '.[] | select(.id == $id) | .id' assets/state/registry/index.json 2>/dev/null)
-              if [ -n "$EXISTING" ] && [[ "assets/state/registry/$ENTRY_ID.json" != "$f" ]]; then
+            if [ -f "packages/lib/src/embedded/state/registry/index.json" ] && [ -n "$ENTRY_ID" ]; then
+              EXISTING=$(jq -r --arg id "$ENTRY_ID" '.[] | select(.id == $id) | .id' packages/lib/src/embedded/state/registry/index.json 2>/dev/null)
+              if [ -n "$EXISTING" ] && [[ "packages/lib/src/embedded/state/registry/$ENTRY_ID.json" != "$f" ]]; then
                 ENTRY_ERRORS="${ENTRY_ERRORS}\n- ⚠️  Warning: ID \`$ENTRY_ID\` already exists in index.json — this will update the existing entry"
                 WARNINGS=$((WARNINGS + 1))
               fi

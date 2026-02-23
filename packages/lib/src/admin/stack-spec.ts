@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { BUILTIN_CHANNELS } from "../../assets/channels/index.ts";
 import type { BuiltInChannelDef } from "../../assets/channels/index.ts";
@@ -348,7 +348,7 @@ export function parseStackSpec(raw: unknown): StackSpec {
     if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
   }
   const version = doc.version;
-  if (version !== 1 && version !== 2 && version !== 3) throw new Error("invalid_stack_spec_version");
+  if (version !== 3) throw new Error("invalid_stack_spec_version");
   if (doc.accessScope !== "host" && doc.accessScope !== "lan" && doc.accessScope !== "public") throw new Error("invalid_access_scope");
 
   const caddy = parseCaddyConfig(doc.caddy);
@@ -381,21 +381,7 @@ export function stringifyStackSpec(spec: StackSpec): string {
 export function ensureStackSpec(path: string): StackSpec {
   if (existsSync(path)) {
     const content = readFileSync(path, "utf8");
-    const parsed = path.endsWith(".json") ? JSON.parse(content) as unknown : parseYamlDocument(content);
-    return parseStackSpec(parsed);
-  }
-
-  // Migration: check for legacy stack-spec.json in the same directory
-  const legacyJsonPath = path.replace(/openpalm\.yaml$/, "stack-spec.json");
-  if (legacyJsonPath !== path && existsSync(legacyJsonPath)) {
-    const content = readFileSync(legacyJsonPath, "utf8");
-    const parsed = JSON.parse(content) as unknown;
-    const spec = parseStackSpec(parsed);
-    // Write as YAML and back up legacy file
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, stringifyStackSpec(spec), "utf8");
-    renameSync(legacyJsonPath, `${legacyJsonPath}.bak`);
-    return spec;
+    return parseStackSpec(parseYamlDocument(content));
   }
 
   // Create default

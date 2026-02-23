@@ -118,15 +118,13 @@ describe("stack spec", () => {
     expect(saved.channels.discord.exposure).toBe("host");
   });
 
-  it("migrates legacy stack-spec.json to openpalm.yaml", () => {
+  it("reads YAML stack spec from disk", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
-    const jsonPath = join(dir, "stack-spec.json");
     const yamlPath = join(dir, "openpalm.yaml");
-    const v1 = createDefaultStackSpec();
-    writeFileSync(jsonPath, JSON.stringify({ ...v1, version: 1 }, null, 2), "utf8");
-
-    const spec = ensureStackSpec(yamlPath);
-    expect(spec.version).toBe(StackSpecVersion);
+    const spec = createDefaultStackSpec();
+    writeStackSpec(yamlPath, spec);
+    const loaded = ensureStackSpec(yamlPath);
+    expect(loaded.version).toBe(StackSpecVersion);
     expect(readFileSync(yamlPath, "utf8")).toContain("version:");
   });
 });

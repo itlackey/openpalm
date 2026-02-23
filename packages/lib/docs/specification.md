@@ -98,7 +98,7 @@ The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yam
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `version` | `1 | 2 | 3` | Yes | Schema version. Versions 1 and 2 are read and silently upgraded to version 3 at parse time. |
+| `version` | `3` | Yes | Schema version. Must be `3` (YAML format). |
 | `accessScope` | `"host" | "lan" | "public"` | Yes | Default network exposure for the whole stack. Controls LAN IP matchers in Caddy. |
 | `caddy` | `CaddyConfig` | No | Optional Caddy-specific configuration. |
 | `channels` | `Record<string, StackChannelConfig>` | Yes | Map of channel name → channel configuration. Built-in channels are default examples, but any non-empty community channel names are supported. |
@@ -239,7 +239,7 @@ Before `generateStackArtifacts` is called, the spec must have already passed thr
 
 1. Asserts the root value is a non-null object.
 2. Rejects any key not in the allowed set `{version, accessScope, caddy, channels, services, automations}`.
-3. Validates `version` is `1`, `2`, or `3`.
+3. Validates `version` is `3`.
 4. Validates `accessScope` is one of `"host"`, `"lan"`, `"public"`.
 5. Parses the optional `caddy` sub-object.
 6. Asserts `channels` is a non-null object.
@@ -746,7 +746,7 @@ All validation happens in `parseStackSpec` and `parseChannel`. Error messages us
 |---|---|
 | Root value is not a non-null object | `invalid_stack_spec` |
 | Unknown top-level key present | `unknown_stack_spec_field_<key>` |
-| `version` is not `1`, `2`, or `3` | `invalid_stack_spec_version` |
+| `version` is not `3` | `invalid_stack_spec_version` |
 | `accessScope` not one of host/lan/public | `invalid_access_scope` |
 | `channels` is missing or not an object | `missing_channels` |
 
