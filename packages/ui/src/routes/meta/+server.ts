@@ -1,7 +1,24 @@
 import { json } from '$lib/server/json';
 import { BUILTIN_CHANNELS } from '@openpalm/lib/assets/channels/index';
 import { CoreSecretRequirements } from '$lib/server/init';
+import type { EnvVarFieldType } from '@openpalm/lib/shared/snippet-types';
 import type { RequestHandler } from './$types';
+
+/** Map EnvVarDef field type to an HTML input type attribute. */
+function envTypeToInputType(envType: EnvVarFieldType): string {
+	switch (envType) {
+		case 'secret':
+			return 'password';
+		case 'number':
+			return 'number';
+		case 'email':
+			return 'email';
+		case 'url':
+			return 'url';
+		default:
+			return 'text';
+	}
+}
 
 export const GET: RequestHandler = async () => {
 	const channelServiceNames: Record<string, { label: string; description: string }> = {};
@@ -39,7 +56,7 @@ export const GET: RequestHandler = async () => {
 					.map((e) => ({
 						key: e.name,
 						label: e.label,
-						type: e.type === 'secret' ? 'password' : e.type,
+						type: envTypeToInputType(e.type),
 						required: e.required,
 						helpText: e.description ?? ''
 					}))

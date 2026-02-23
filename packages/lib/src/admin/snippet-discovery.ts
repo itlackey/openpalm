@@ -18,6 +18,7 @@ import type {
   SnippetTrust,
 } from "../shared/snippet-types.ts";
 import { SNIPPET_TOPICS, DEFAULT_SNIPPET_SOURCES } from "../shared/snippet-types.ts";
+import { parseYamlDocument } from "../shared/yaml.ts";
 
 // ── Cache ────────────────────────────────────────────────────────────
 
@@ -60,8 +61,8 @@ async function fetchIndexUrl(source: SnippetSource): Promise<ResolvedSnippet[]> 
     if (!response.ok) return [];
 
     const text = await response.text();
-    // The index is a JSON array of snippet objects (built from YAML sources by CI)
-    const entries = JSON.parse(text) as SnippetDef[];
+    // The index may be YAML or JSON — parseYamlDocument handles both.
+    const entries = parseYamlDocument(text);
     if (!Array.isArray(entries)) return [];
 
     const resolved = entries.map((entry) => resolveSnippet(entry, source));
@@ -133,13 +134,10 @@ async function fetchRepoSnippet(
       if (!response.ok) continue;
 
       const text = await response.text();
-      // We need a YAML parser here. In the actual runtime, use the shared parseYamlDocument.
-      // For now, we attempt JSON parse as a fallback (the CI builds JSON indexes).
       let parsed: unknown;
       try {
-        parsed = JSON.parse(text);
+        parsed = parseYamlDocument(text);
       } catch {
-        // Would need YAML parser at runtime — skip for now if not JSON
         continue;
       }
 
@@ -168,15 +166,18 @@ function resolveSnippet(
   };
 }
 
+const VALID_KINDS = new Set(["channel", "service", "automation"]);
+
 function isSnippetDef(value: unknown): value is SnippetDef {
   if (typeof value !== "object" || value === null) return false;
   const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.apiVersion === "string" &&
-    typeof obj.kind === "string" &&
-    typeof obj.metadata === "object" &&
-    Array.isArray(obj.env)
-  );
+  if (typeof obj.apiVersion !== "string") return false;
+  if (typeof obj.kind !== "string" || !VALID_KINDS.has(obj.kind)) return false;
+  if (typeof obj.metadata !== "object" || obj.metadata === null) return false;
+  const meta = obj.metadata as Record<string, unknown>;
+  if (typeof meta.id !== "string" || typeof meta.name !== "string") return false;
+  if (!Array.isArray(obj.env)) return false;
+  return true;
 }
 
 // ── Public API ───────────────────────────────────────────────────────
