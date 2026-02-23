@@ -481,6 +481,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					error: 'service_not_allowed',
 					code: 'service_not_allowed'
 				});
+			// composeAction maps "down" to a stop action for the provided services.
 			await composeAction('down', service);
 			return json(200, { ok: true, data: { service } });
 		}
@@ -510,6 +511,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 		if (type === 'service.logs') {
 			const service = sanitizeEnvScalar(payload.service);
+			if (payload.tail !== undefined && typeof payload.tail !== 'number')
+				return json(400, { ok: false, error: 'invalid_tail', code: 'invalid_tail' });
 			const tail = typeof payload.tail === 'number' ? payload.tail : 200;
 			if (!(await knownServices()).has(service))
 				return json(400, {

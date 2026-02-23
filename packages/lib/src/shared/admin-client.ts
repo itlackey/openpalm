@@ -10,6 +10,7 @@ export type AdminClientOptions = {
   token: string;
   timeoutMs?: number;
 };
+const DEFAULT_ADMIN_TIMEOUT_MS = 15000;
 
 type EnvMap = Record<string, string | undefined>;
 
@@ -18,6 +19,7 @@ function trimTrailingSlash(value: string): string {
 }
 
 function isPrivateOrLocalHostname(hostname: string): boolean {
+  // Internal compose DNS names used by OpenPalm core services.
   if (hostname === "localhost" || hostname === "admin" || hostname === "gateway") return true;
   if (hostname.startsWith("127.")) return true;
   if (hostname.startsWith("10.")) return true;
@@ -26,6 +28,7 @@ function isPrivateOrLocalHostname(hostname: string): boolean {
   const match = /^172\.(\d{1,3})\./.exec(hostname);
   if (!match) return false;
   const secondOctet = Number(match[1]);
+  if (!Number.isInteger(secondOctet) || secondOctet < 0 || secondOctet > 255) return false;
   return secondOctet >= 16 && secondOctet <= 31;
 }
 
@@ -68,7 +71,7 @@ export class AdminApiClient {
   constructor(options: AdminClientOptions) {
     this.baseUrl = trimTrailingSlash(options.baseUrl);
     this.token = options.token;
-    this.timeoutMs = options.timeoutMs ?? 15000;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_ADMIN_TIMEOUT_MS;
   }
 
   async command<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<AdminCommandResponse<T>> {
@@ -82,9 +85,17 @@ export class AdminApiClient {
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     const bodyText = await response.text();
-    const body = bodyText.trim()
-      ? JSON.parse(bodyText) as AdminCommandResponse<T>
-      : ({ ok: response.ok } as AdminCommandResponse<T>);
+    let body: AdminCommandResponse<T>;
+    if (bodyText.length === 0) {
+      if (!response.ok) throw new Error(`http_${response.status}: ${response.statusText}`);
+      body = { ok: response.ok } as AdminCommandResponse<T>;
+    } else {
+      try {
+        body = JSON.parse(bodyText) as AdminCommandResponse<T>;
+      } catch {
+        throw new Error("invalid_admin_api_response");
+      }
+    }
     if (!response.ok || body.ok === false) {
       const code = body.code ?? `http_${response.status}`;
       const message = body.error ?? response.statusText ?? "admin_request_failed";

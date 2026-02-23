@@ -27,8 +27,20 @@ describe("admin-client helpers", () => {
     expect(() => validateAdminBaseUrl("http://example.com:8100")).toThrow("insecure_admin_api_url");
   });
 
+  it("treats whitespace-only OPENPALM_ADMIN_TOKEN as empty", () => {
+    const token = resolveAdminToken({
+      OPENPALM_ADMIN_TOKEN: "   ",
+      ADMIN_TOKEN: "fallback-token",
+    });
+    expect(token).toBe("fallback-token");
+  });
+
   it("allows private network HTTP URLs", () => {
     expect(() => validateAdminBaseUrl("http://admin:8100")).not.toThrow();
     expect(() => validateAdminBaseUrl("http://127.0.0.1:8100")).not.toThrow();
+  });
+
+  it("allows public HTTP URLs when explicitly enabled", () => {
+    expect(() => validateAdminBaseUrl("http://example.com:8100", true)).not.toThrow();
   });
 });

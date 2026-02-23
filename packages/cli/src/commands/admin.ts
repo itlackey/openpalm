@@ -9,6 +9,8 @@ import {
 } from "@openpalm/lib/shared/admin-client.ts";
 import { error, info } from "@openpalm/lib/ui.ts";
 
+const DEFAULT_ADMIN_TIMEOUT_MS = 15000;
+
 function getArg(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
   return index >= 0 && index + 1 < args.length ? args[index + 1] : undefined;
@@ -17,7 +19,12 @@ function getArg(args: string[], name: string): string | undefined {
 function parsePayload(args: string[]): Record<string, unknown> {
   const rawPayload = getArg(args, "payload");
   if (!rawPayload) return {};
-  const parsed = JSON.parse(rawPayload) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawPayload) as unknown;
+  } catch {
+    throw new Error("invalid_payload_json");
+  }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("payload_must_be_json_object");
   }
@@ -54,13 +61,17 @@ export async function admin(subcommand: string, args: string[]): Promise<void> {
   }
   const baseUrl = resolveAdminBaseUrl(env);
   validateAdminBaseUrl(baseUrl, Bun.env.OPENPALM_ALLOW_INSECURE_ADMIN_HTTP === "1");
-  const timeoutMs = Number(Bun.env.OPENPALM_ADMIN_TIMEOUT_MS ?? "15000");
+  const rawTimeout = Bun.env.OPENPALM_ADMIN_TIMEOUT_MS;
+  const timeoutCandidate = rawTimeout !== undefined ? Number(rawTimeout) : DEFAULT_ADMIN_TIMEOUT_MS;
+  const timeoutMs = Number.isFinite(timeoutCandidate) && Number.isInteger(timeoutCandidate) && timeoutCandidate > 0
+    ? timeoutCandidate
+    : DEFAULT_ADMIN_TIMEOUT_MS;
   const payload = parsePayload(args);
 
   const client = new AdminApiClient({
     baseUrl,
     token,
-    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000,
+    timeoutMs,
   });
   const result = await client.command(commandType, payload);
   info(JSON.stringify(result, null, 2));
