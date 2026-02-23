@@ -136,11 +136,10 @@ describe("CLI entry point", () => {
     expect(stderr).toContain("Missing subcommand");
   });
 
-  it("supports admin command with subcommand validation", async () => {
+  it("does not expose admin command", async () => {
     const { stderr, exitCode } = await runCli("admin");
-
     expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Missing subcommand");
+    expect(stderr).toContain("Unknown command");
   });
 
   it("supports service command with subcommand validation", async () => {

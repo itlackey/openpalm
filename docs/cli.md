@@ -177,13 +177,13 @@ openpalm ps                 # Alias
 Domain-based service lifecycle command. Uses local compose execution by default, and switches to admin API mode when admin URL/token env vars are configured.
 
 ```bash
-openpalm service <up|stop|restart|logs|update|status> [--service <name>|<name>...]
+openpalm service <up|stop|restart|logs|update|status> [service...]
 ```
 
 **Examples:**
 ```bash
 openpalm service restart assistant
-openpalm service logs --service gateway --tail 200
+openpalm service logs gateway --tail 200
 openpalm service status
 ```
 
@@ -197,9 +197,9 @@ openpalm channel <add|configure> [options]
 
 **Examples:**
 ```bash
-openpalm channel add --file /path/to/channel.yaml
-openpalm channel add --yaml "discord:\n  image: ghcr.io/example/channel:latest"
-openpalm channel configure --channel discord --exposure lan
+openpalm channel add /path/to/channel.yaml
+openpalm channel add "discord:\n  image: ghcr.io/example/channel:latest"
+openpalm channel configure discord --exposure lan
 ```
 
 ### `automation`
@@ -207,7 +207,7 @@ openpalm channel configure --channel discord --exposure lan
 Domain-based automation execution command.
 
 ```bash
-openpalm automation <run|trigger> --id <automation-id>
+openpalm automation <run|trigger> <automation-id>
 ```
 
 ### `extensions`
@@ -243,34 +243,6 @@ List all installed extensions.
 
 ```bash
 openpalm extensions list
-```
-
-### `admin`
-
-Backward-compatible generic admin API command executor. Domain-based commands (`service`, `channel`, `automation`) are preferred.
-
-```bash
-openpalm admin command --type <command-type> [--payload '<json-object>']
-```
-
-**Environment variables (optional):**
-
-- `OPENPALM_ADMIN_API_URL` (preferred), `ADMIN_APP_URL`, `GATEWAY_URL`
-- `OPENPALM_ADMIN_TOKEN` (preferred), `ADMIN_TOKEN`
-- `OPENPALM_ADMIN_TIMEOUT_MS` (default: `15000`)
-- `OPENPALM_ALLOW_INSECURE_ADMIN_HTTP=1` (only if you explicitly need public HTTP)
-
-**Examples:**
-
-```bash
-openpalm admin command --type service.up --payload '{"service":"assistant"}'
-openpalm admin command --type service.stop --payload '{"service":"channel-discord"}'
-openpalm admin command --type service.restart --payload '{"service":"gateway"}'
-openpalm admin command --type service.update --payload '{"service":"gateway"}'
-openpalm admin command --type service.logs --payload '{"service":"gateway","tail":200}'
-openpalm admin command --type service.status
-openpalm admin command --type channel.configure --payload '{"channel":"discord","exposure":"lan"}'
-openpalm admin command --type automation.trigger --payload '{"id":"health-check"}'
 ```
 
 ### `dev preflight`
@@ -338,6 +310,8 @@ These directories can be customized by setting the corresponding environment var
 - `OPENPALM_ADMIN_TOKEN` (preferred), `ADMIN_TOKEN`
 - `OPENPALM_ADMIN_TIMEOUT_MS` (default: `15000`)
 - `OPENPALM_ALLOW_INSECURE_ADMIN_HTTP=1` (only when explicitly needed)
+
+CLI also reads `${OPENPALM_STATE_HOME}/assistant/.env` as a fallback for admin URL/token values.
 
 ## Container Runtimes
 

@@ -28,14 +28,17 @@ describe("domain-based command source validation", () => {
   });
 
   it("channel add supports yaml file or inline yaml", () => {
+    expect(channelSource).toContain("function positionalArgs(args: string[]): string[]");
+    expect(channelSource).toContain("const positional = positionalArgs(args)[0]");
     expect(channelSource).toContain('getArg(args, "yaml")');
     expect(channelSource).toContain('getArg(args, "file")');
     expect(channelSource).toContain('"snippet.import"');
     expect(channelSource).toContain('section: "channel"');
   });
 
-  it("automation run maps to automation trigger command", () => {
+  it("automation run maps to automation trigger command with positional id", () => {
     expect(automationSource).toContain('subcommand !== "run" && subcommand !== "trigger"');
+    expect(automationSource).toContain("const id = args.find((arg) => !arg.startsWith(\"--\"))");
     expect(automationSource).toContain('"automation.trigger"');
   });
 });

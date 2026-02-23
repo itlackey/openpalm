@@ -5,15 +5,18 @@ import { join } from "node:path";
 const source = readFileSync(join(import.meta.dir, "../src/commands/admin.ts"), "utf-8");
 
 describe("admin command source validation", () => {
-  it("supports generic command execution through /command", () => {
-    expect(source).toContain('if (subcommand !== "command")');
+  it("supports shared admin API command execution through /command", () => {
+    expect(source).toContain("executeAdminCommand(");
     expect(source).toContain("client.command(commandType, payload)");
   });
 
-  it("loads state env then merges with Bun.env", () => {
+  it("loads state env, assistant state env, then merges with Bun.env", () => {
     expect(source).toContain("join(resolveXDGPaths().state, \".env\")");
+    expect(source).toContain("assistant/.env");
     expect(source).toContain("await readEnvFile(stateEnvPath)");
+    expect(source).toContain("await readEnvFile(assistantStateEnvPath)");
     expect(source).toContain("...stateEnv");
+    expect(source).toContain("...assistantStateEnv");
     expect(source).toContain("...Bun.env");
   });
 

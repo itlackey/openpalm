@@ -71,6 +71,7 @@ Domain commands automatically choose execution mode:
 
 - **Local mode (default):** if admin API env vars are not explicitly set, service commands run locally via compose.
 - **Remote admin API mode:** if admin API env vars are set, domain commands call admin over HTTP (`x-admin-token`), so callers do not need Docker socket access.
+- **Assistant env fallback:** CLI also reads `${OPENPALM_STATE_HOME}/assistant/.env` for admin URL/token values.
 
 Environment variables (all optional):
 
@@ -88,13 +89,10 @@ openpalm service restart assistant
 # Remote admin API execution (same command shape)
 export OPENPALM_ADMIN_API_URL=http://admin:8100
 export OPENPALM_ADMIN_TOKEN=...
-openpalm service restart --service assistant
+openpalm service restart assistant
 
 # Domain commands for channels/automations
-openpalm channel add --file /path/to/channel.yaml
-openpalm channel configure --channel discord --exposure lan
-openpalm automation run --id example-job
-
-# Backward-compatible generic command path
-openpalm admin command --type service.update --payload '{"service":"assistant"}'
+openpalm channel add /path/to/channel.yaml
+openpalm channel configure discord --exposure lan
+openpalm automation run example-job
 ```

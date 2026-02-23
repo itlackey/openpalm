@@ -126,7 +126,7 @@ This adds the plugin to `plugin[]` in the host's `opencode.json` and restarts th
 When the CLI is available in the assistant container workspace, use:
 
 ```bash
-openpalm service restart --service assistant
+openpalm service restart assistant
 ```
 
 The command uses `OPENPALM_ADMIN_API_URL` + `OPENPALM_ADMIN_TOKEN` to call admin over HTTP. This keeps compose/socket access isolated to the admin container.

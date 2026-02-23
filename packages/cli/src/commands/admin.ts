@@ -7,41 +7,30 @@ import {
   resolveAdminToken,
   validateAdminBaseUrl,
 } from "@openpalm/lib/shared/admin-client.ts";
-import { error, info } from "@openpalm/lib/ui.ts";
 
 const DEFAULT_ADMIN_TIMEOUT_MS = 15000;
 const DEFAULT_LOCAL_ADMIN_API_URL = "http://localhost:8100";
-
-function getArg(args: string[], name: string): string | undefined {
-  const index = args.indexOf(`--${name}`);
-  return index >= 0 && index + 1 < args.length ? args[index + 1] : undefined;
-}
-
-function parsePayload(args: string[]): Record<string, unknown> {
-  const rawPayload = getArg(args, "payload");
-  if (!rawPayload) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawPayload) as unknown;
-  } catch {
-    throw new Error("invalid_payload_json");
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("payload_must_be_json_object");
-  }
-  return parsed as Record<string, unknown>;
-}
+const ASSISTANT_STATE_ENV_RELATIVE_PATH = "assistant/.env";
 
 async function mergedEnv(): Promise<Record<string, string | undefined>> {
-  const stateEnvPath = join(resolveXDGPaths().state, ".env");
+  const stateRoot = resolveXDGPaths().state;
+  const stateEnvPath = join(stateRoot, ".env");
+  const assistantStateEnvPath = join(stateRoot, ASSISTANT_STATE_ENV_RELATIVE_PATH);
   let stateEnv: Record<string, string> = {};
+  let assistantStateEnv: Record<string, string> = {};
   try {
     stateEnv = await readEnvFile(stateEnvPath);
   } catch {
     stateEnv = {};
   }
+  try {
+    assistantStateEnv = await readEnvFile(assistantStateEnvPath);
+  } catch {
+    assistantStateEnv = {};
+  }
   const env = {
     ...stateEnv,
+    ...assistantStateEnv,
     ...Bun.env,
   };
   return env;
@@ -95,20 +84,4 @@ export async function executeAdminCommand(
     timeoutMs,
   });
   return await client.command(commandType, payload);
-}
-
-export async function admin(subcommand: string, args: string[]): Promise<void> {
-  if (subcommand !== "command") {
-    error(`Unknown admin subcommand: ${subcommand}`);
-    info("Usage: openpalm admin command --type <command-type> [--payload '{\"k\":\"v\"}']");
-    process.exit(1);
-  }
-  const commandType = getArg(args, "type");
-  if (!commandType) {
-    error("--type <command-type> is required");
-    process.exit(1);
-  }
-  const payload = parsePayload(args);
-  const result = await executeAdminCommand(commandType, payload, { localFallback: true });
-  info(JSON.stringify(result, null, 2));
 }

@@ -7,7 +7,35 @@ function getArg(args: string[], name: string): string | undefined {
   return index >= 0 && index + 1 < args.length ? args[index + 1] : undefined;
 }
 
+function positionalArgs(args: string[]): string[] {
+  const positional: string[] = [];
+  let index = 0;
+  while (index < args.length) {
+    const value = args[index];
+    if (value.startsWith("--")) {
+      const flag = value.slice(2);
+      if (flag === "yaml" || flag === "file" || flag === "exposure" || flag === "config") {
+        index += 2;
+        continue;
+      }
+      index += 1;
+      continue;
+    }
+    positional.push(value);
+    index += 1;
+  }
+  return positional;
+}
+
 async function readYaml(args: string[]): Promise<string> {
+  const positional = positionalArgs(args)[0];
+  if (positional) {
+    try {
+      return await readFile(positional, "utf8");
+    } catch {
+      return positional;
+    }
+  }
   const yaml = getArg(args, "yaml");
   if (yaml) return yaml;
   const file = getArg(args, "file");
@@ -27,11 +55,12 @@ export async function channel(subcommand: string, args: string[]): Promise<void>
     return;
   }
   if (subcommand === "configure") {
-    const channelName = getArg(args, "channel");
+    const channelName = positionalArgs(args)[0];
     const exposure = getArg(args, "exposure");
     const configRaw = getArg(args, "config");
     if (!channelName) {
-      error("--channel <name> is required");
+      error("channel name is required");
+      info("Usage: openpalm channel configure <channel> [--exposure <host|lan|public>] [--config '{\"k\":\"v\"}']");
       process.exit(1);
     }
     let config: Record<string, unknown> | undefined = undefined;
@@ -62,6 +91,7 @@ export async function channel(subcommand: string, args: string[]): Promise<void>
     return;
   }
   error(`Unknown channel subcommand: ${subcommand}`);
-  info("Usage: openpalm channel <add|configure> [--file <yaml-file>|--yaml '<yaml>']");
+  info("Usage: openpalm channel add <yaml-or-file-path>");
+  info("   or: openpalm channel configure <channel> [--exposure <host|lan|public>] [--config '{\"k\":\"v\"}']");
   process.exit(1);
 }

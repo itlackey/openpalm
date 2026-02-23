@@ -14,15 +14,13 @@ function getArg(args: string[], name: string): string | undefined {
 }
 
 function getServices(args: string[]): string[] {
-  const fromFlag = getArg(args, "service");
-  if (fromFlag) return [fromFlag];
   const services: string[] = [];
   let index = 0;
   while (index < args.length) {
     const item = args[index];
     if (item.startsWith("--")) {
       const flag = item.slice(2);
-      if (flag === "tail" || flag === "service") {
+      if (flag === "tail") {
         index += 2;
         continue;
       }
@@ -59,7 +57,7 @@ export async function service(subcommand: string, args: string[]): Promise<void>
       return;
     }
     error(`Unknown service subcommand: ${subcommand}`);
-    info("Usage: openpalm service <up|stop|restart|logs|update|status> [--service <name>|<name>...]");
+    info("Usage: openpalm service <up|stop|restart|logs|update|status> [service...]");
     process.exit(1);
   }
 
@@ -70,7 +68,7 @@ export async function service(subcommand: string, args: string[]): Promise<void>
   }
   if (!serviceName) {
     error("A service name is required in admin API mode");
-    info("Usage: openpalm service <up|stop|restart|logs|update> --service <name>");
+    info("Usage: openpalm service <up|stop|restart|logs|update> <service>");
     process.exit(1);
   }
   if (subcommand === "up") {
@@ -107,6 +105,6 @@ export async function service(subcommand: string, args: string[]): Promise<void>
     return;
   }
   error(`Unknown service subcommand: ${subcommand}`);
-  info("Usage: openpalm service <up|stop|restart|logs|update|status> [--service <name>|<name>...]");
+  info("Usage: openpalm service <up|stop|restart|logs|update|status> [service...]");
   process.exit(1);
 }

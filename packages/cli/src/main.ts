@@ -11,7 +11,6 @@ import { status } from "./commands/status.ts";
 import { extensions } from "./commands/extensions.ts";
 import { preflight } from "./commands/preflight.ts";
 import { createChannel } from "./commands/create-channel.ts";
-import { admin } from "./commands/admin.ts";
 import { service } from "./commands/service.ts";
 import { channel } from "./commands/channel.ts";
 import { automation } from "./commands/automation.ts";
@@ -68,9 +67,9 @@ function printHelp(): void {
   log("  openpalm extensions list");
   log("");
   log(bold("Domain commands:"));
-  log("  openpalm service restart --service assistant");
+  log("  openpalm service restart assistant");
   log("  openpalm channel add --file /path/to/channel.yaml");
-  log("  openpalm automation run --id daily-status");
+  log("  openpalm automation run daily-status");
 }
 
 function parseArg(args: string[], name: string): string | undefined {
@@ -229,16 +228,6 @@ async function main(): Promise<void> {
           process.exit(1);
         }
         await automation(subcommand, automationArgs);
-        break;
-      }
-
-      case "admin": {
-        const [subcommand, ...adminArgs] = args;
-        if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm admin command --type <command-type> [--payload '{\"k\":\"v\"}']");
-          process.exit(1);
-        }
-        await admin(subcommand, adminArgs);
         break;
       }
 
