@@ -6,6 +6,7 @@ import {
 	knownServices,
 	log
 } from '$lib/server/init';
+import { isLocalRequest } from '$lib/server/auth';
 import {
 	readRuntimeEnv,
 	updateRuntimeEnv,
@@ -80,12 +81,20 @@ async function getConfiguredSmallModel() {
 }
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	if (!locals.authenticated) return unauthorizedJson();
-	const setupManager = await getSetupManager();
-	const stackManager = await getStackManager();
 	const body = (await request.json()) as { type?: string; payload?: Record<string, unknown> };
 	const payload = body.payload ?? {};
 	const type = body.type ?? '';
+	const setupManager = await getSetupManager();
+	const setupState = setupManager.getState();
+	const setupCommand = type.startsWith('setup.');
+	const localSetupRequest = setupCommand && !setupState.completed && isLocalRequest(request);
+
+	if (!locals.authenticated && !localSetupRequest) return unauthorizedJson();
+	if (!locals.authenticated && setupCommand && !isLocalRequest(request)) {
+		return json(403, { ok: false, error: 'setup endpoints are restricted to local network access' });
+	}
+
+	const stackManager = await getStackManager();
 	try {
 		if (type === 'stack.render')
 			return json(200, { ok: true, data: stackManager.renderPreview() });
