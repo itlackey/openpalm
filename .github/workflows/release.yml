@@ -41,7 +41,8 @@ on:
           - major
 
 # Minimal top-level permissions; the job uses RELEASE_TOKEN for push.
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: release
