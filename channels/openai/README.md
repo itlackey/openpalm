@@ -16,7 +16,7 @@ The `channel-openai` adapter exposes a thin OpenAI API-compatible HTTP facade an
 
 - Accepts OpenAI-like and Anthropic-like request bodies.
 - Extracts user prompt text and forwards it to the gateway as a normal channel message.
-- Returns OpenAI-shaped JSON responses with assistant output populated from gateway `answer`.
+- Returns provider-shaped JSON responses (OpenAI-shaped for OpenAI endpoints, Anthropic-shaped for Anthropic endpoints) with assistant output populated from gateway `answer`.
 - `stream: true` is currently rejected (`400`), since this facade is non-streaming.
 
 ## Environment variables
