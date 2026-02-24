@@ -92,9 +92,16 @@
 			const openaiApiKey =
 				(document.getElementById('wiz-openmemory-openai-key') as HTMLInputElement)
 					?.value || '';
-			const anthropicApiKey =
-				(document.getElementById('wiz-anthropic-key') as HTMLInputElement)?.value || '';
-			const smallModelEndpoint =
+		const anthropicApiKey =
+			(document.getElementById('wiz-anthropic-key') as HTMLInputElement)?.value || '';
+
+		// Require Anthropic key — it's the primary provider and must be set during initial setup
+		if (!anthropicApiKey.trim()) {
+			stepError = 'An Anthropic API key is required. Get one free at console.anthropic.com.';
+			return;
+		}
+
+		const smallModelEndpoint =
 				(document.getElementById('wiz-small-model-endpoint') as HTMLInputElement)?.value ||
 				'';
 			const smallModelApiKey =
