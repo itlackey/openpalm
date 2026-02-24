@@ -42,6 +42,17 @@ import { SECRETS_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib
 import { writeFileSync } from 'node:fs';
 import type { RequestHandler } from './$types';
 
+const SetupCoreServices = [
+	'admin',
+	'caddy',
+	'assistant',
+	'gateway',
+	'openmemory',
+	'openmemory-ui',
+	'postgres',
+	'qdrant'
+] as const;
+
 async function normalizeSelectedChannels(value: unknown): Promise<string[]> {
 	if (!Array.isArray(value)) return [];
 	const validServices = new Set(await allChannelServiceNames());
@@ -268,8 +279,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			}
 			return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
 		}
-		if (type === 'setup.complete')
-			return json(200, { ok: true, data: setupManager.completeSetup() });
+		if (type === 'setup.complete') {
+			const applyResult = await applyStack(stackManager);
+			const startupResult = await composeAction('up', [...SetupCoreServices]);
+			if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
+			syncAutomations(stackManager.listAutomations());
+			return json(200, { ok: true, data: setupManager.completeSetup(), apply: applyResult });
+		}
 		if (type === 'channel.configure') {
 			const channel = sanitizeEnvScalar(payload.channel);
 			const exposure = typeof payload.exposure === 'string' ? payload.exposure : '';

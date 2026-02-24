@@ -80,7 +80,104 @@ Before starting, the installer automatically checks:
    - Pull and start core services (Caddy, Admin)
    - Wait for admin health check
    - Open browser to setup wizard (unless `--no-open`)
-   - The setup wizard handles remaining service provisioning
+   - The setup wizard completion step applies the full stack and starts core runtime services (Assistant, Gateway, OpenMemory, Postgres, Qdrant, etc.)
+
+### Install + Setup End-to-End Sequence (Detailed)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant CLI as openpalm install (packages/cli/src/commands/install.ts)
+    participant FS as XDG Filesystem
+    participant Runtime as Docker/Podman/OrbStack
+    participant Caddy
+    participant Admin as Admin API/UI
+    participant Wizard as Setup Wizard UI
+    participant Cmd as /command API (packages/ui/src/routes/command/+server.ts)
+    participant Stack as applyStack (packages/lib/src/admin/stack-apply-engine.ts)
+
+    User->>CLI: openpalm install [--runtime] [--no-open]
+    CLI->>CLI: Detect OS/arch/runtime + preflight + compose validation
+    CLI->>FS: Create XDG dirs, write state .env, seed config files
+    CLI->>FS: Write setup-only caddy.json + minimal docker-compose.yml
+    CLI->>Runtime: Pull caddy/admin images
+    CLI->>Runtime: compose up -d caddy admin
+    CLI->>Admin: Poll /setup/status until healthy
+    CLI->>User: Print URL + admin password and open browser
+
+    User->>Wizard: Complete wizard steps
+    Wizard->>Cmd: setup.profile / setup.service_instances / setup.channels / setup.access_scope
+    Cmd->>FS: Update runtime env, secrets env, setup state
+    Wizard->>Cmd: setup.complete
+    Cmd->>Stack: applyStack(stackManager)
+    Stack->>FS: Render caddy/compose/env artifacts for full stack
+    Stack->>Runtime: up/restart/reload services based on impact
+    Cmd->>Runtime: compose up for core runtime services
+    Cmd->>FS: sync automations + mark setup completed
+    Admin-->>User: System is fully configured and running
+```
+
+### Install + Setup Step Report (line-by-line flow)
+
+The steps below map directly to the execution order implemented in `packages/cli/src/commands/install.ts` and the setup API handlers used by the wizard.
+
+#### A) CLI install flow (`packages/cli/src/commands/install.ts`)
+
+| Step | Code area | Files touched | Actions taken |
+|---|---|---|---|
+| 1 | OS detection | none | Detect host OS; abort on unknown OS |
+| 2 | Arch detection | none | Detect CPU architecture (used for image tag suffix) |
+| 3 | Runtime detection | none | Resolve runtime from `--runtime` or auto-detect |
+| 4 | Compose command resolution | none | Resolve compose bin + subcommand |
+| 5 | Preflight checks | none | Check daemon reachability, disk space, port 80; print warnings |
+| 6 | Runtime validation | none | Verify compose command actually works; abort with guidance if not |
+| 7 | Environment summary | none | Print detected OS/arch/runtime details |
+| 8 | XDG path resolution | none | Resolve and print DATA/CONFIG/STATE paths |
+| 9 | Idempotency guard | `STATE/docker-compose.yml` (read) | If existing compose appears to be full stack, prompt before overwrite |
+| 10 | Directory tree creation | XDG tree under data/config/state | Create required XDG directory structure |
+| 11 | Canonical env initialization | `STATE/.env` (and optionally CWD `.env` read/copy source) | Generate secure tokens or reuse existing env, then write canonical env |
+| 12 | Admin token hardening | `STATE/.env` | Regenerate admin token if missing or insecure default |
+| 13 | Runtime/env upsert | `STATE/.env` | Persist XDG paths, runtime socket/config, image namespace/tag, UID/GID, enabled channels |
+| 14 | Convenience env copy | CWD `.env` | Copy canonical state env to working directory |
+| 15 | Seed config templates | `CONFIG/**` | Seed embedded configuration templates |
+| 16 | Reset setup state | `DATA/admin/setup-state.json` | Remove prior wizard completion state |
+| 17 | Uninstall helper script | `STATE/uninstall.sh` | Write uninstall wrapper script and chmod where supported |
+| 18 | system env bootstrap | `STATE/system.env` | Ensure admin `env_file` target exists before first full stack apply |
+| 19 | Setup-only Caddy config | `STATE/caddy.json`, `STATE/caddy-fallback.json` | Write reverse-proxy config routing setup traffic to Admin |
+| 20 | Minimal compose bootstrap | `STATE/docker-compose.yml`, `STATE/docker-compose-fallback.yml` | Write bootstrap compose containing `caddy` + `admin` only |
+| 21 | Pull bootstrap images | none (runtime side effects) | Pull caddy/admin images with error guidance on failure |
+| 22 | Start bootstrap services | none (runtime side effects) | `compose up -d caddy admin` |
+| 23 | Health wait loop | none | Poll `http://localhost/setup/status` with timeout/backoff |
+| 24 | Browser open | none | Open setup URL unless `--no-open` |
+| 25 | Final UX output | none | Print next steps, troubleshooting, and operational commands |
+
+#### B) Wizard/API setup flow (`packages/ui/src/routes/command/+server.ts`)
+
+All setup commands enforce: unauthenticated setup access is allowed only while setup is incomplete **and** request is local/private.
+
+| Step | Command/API path | Files touched | Actions taken |
+|---|---|---|---|
+| 1 | `setup.profile` | Data env + setup state | Persist profile name/email and update setup state |
+| 2 | `setup.service_instances` | Runtime env + secrets env + setup state + OpenCode config | Persist OpenMemory URLs and provider keys; optionally apply small-model config |
+| 3 | `setup.start_core` | Runtime side effects | Pull/start initial runtime services (`postgres`, `qdrant`, `openmemory`, `openmemory-ui`, `assistant`, `gateway`) and restart caddy |
+| 4 | `setup.channels` | Runtime env + stack spec + setup state | Persist enabled channels (`OPENPALM_ENABLED_CHANNELS`) and channel-specific config |
+| 5 | `setup.access_scope` | Runtime env + stack state + runtime side effects | Set host/lan/public binding scope and bring up caddy (and key services when already completed) |
+| 6 | `setup.step` | setup state | Mark wizard step completion checkpoints (`welcome`, `profile`, `serviceInstances`, etc.) |
+| 7 | `setup.complete` | Stack artifacts + runtime services + setup state | Apply stack artifacts, start core runtime services, sync automations, and mark setup complete |
+
+#### C) Setup completion internals (`packages/lib/src/admin/stack-apply-engine.ts`)
+
+`setup.complete` delegates to `applyStack(...)`, which performs:
+
+1. Render desired artifacts from current stack spec.
+2. Validate referenced secrets.
+3. Validate compose configuration.
+4. Compute impact (services to `up`, `restart`, `reload`) by diffing existing vs generated artifacts.
+5. Write artifacts and execute compose operations in order.
+6. On failure, attempt rollback; if rollback fails, fallback to `admin` + `caddy` recovery compose.
+
+This is the reliability boundary that turns wizard inputs into a running full stack.
 
 ### `uninstall`
 

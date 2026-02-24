@@ -54,6 +54,15 @@ test.describe('command endpoint coverage', () => {
 		expect(body.data).toBeDefined();
 	});
 
+	test('setup.complete command applies stack and returns completed state', async ({ request }) => {
+		const res = await cmd(request, 'setup.complete');
+		expect(res.status()).toBe(200);
+		const body = await res.json();
+		expect(body.ok).toBe(true);
+		expect(body.data.completed).toBe(true);
+		expect(body.apply).toBeDefined();
+	});
+
 	test('unknown command type returns 400', async ({ request }) => {
 		const res = await cmd(request, 'totally.unknown.command');
 		expect(res.status()).toBe(400);
