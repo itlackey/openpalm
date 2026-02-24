@@ -1,7 +1,7 @@
 [
   {
     "name": "Validate newly generated Compose file before apply",
-    "status": "not-started",
+    "status": "completed",
     "description": "Move compose validation to run against the candidate generated file rather than the currently-installed file. Write generated artifacts to temp paths, run `docker compose -f <temp> config` to validate, then atomically promote files and begin service actions. This catches broken configs before any live artifacts are touched.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -16,7 +16,7 @@
           "packages/lib/src/admin/stack-manager.ts:120-160",
           "packages/lib/src/admin/stack-manager.ts:337-342"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Move composeConfigValidate() to run against the temp compose path",
@@ -26,7 +26,7 @@
           "packages/lib/src/admin/compose-runner.ts:118-124",
           "docs/compose-improvements.md:24-38"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add a renderArtifactsToTemp() method on StackManager",
@@ -36,7 +36,7 @@
           "packages/lib/src/admin/stack-manager.ts:331-342",
           "packages/lib/src/admin/stack-apply-engine.ts:61-64"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Atomically promote temp artifacts to live paths after successful validation",
@@ -46,7 +46,7 @@
           "packages/lib/src/admin/stack-manager.ts:337-342",
           "packages/lib/src/admin/stack-apply-engine.ts:61-64"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Clean up temp artifacts on validation failure",
@@ -55,13 +55,13 @@
           "packages/lib/src/admin/stack-apply-engine.ts:194-197",
           "packages/lib/src/admin/stack-manager.ts:331-335"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Consolidate Compose command execution into one shared, hardened abstraction",
-    "status": "not-started",
+    "status": "completed",
     "description": "Replace the two divergent Compose execution layers (`packages/lib/src/compose.ts` and `packages/lib/src/admin/compose-runner.ts`) with a single shared runner. Standardize env-file handling, per-command timeouts via AbortController, bounded retry for transient failures, structured error codes (daemon_unreachable, image_pull_failed, invalid_compose, permission_denied), and streamed vs buffered output modes.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -77,7 +77,7 @@
           "packages/lib/src/admin/compose-runner.ts:1-2",
           "packages/lib/src/compose.ts:20-24"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Define the unified ComposeRunner interface and result type",
@@ -88,7 +88,7 @@
           "packages/lib/src/compose.ts:13-17",
           "docs/compose-improvements.md:47-49"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Implement core runCompose with AbortController timeout and env-file support",
@@ -100,7 +100,7 @@
           "packages/lib/src/admin/compose-runner.ts:54-61",
           "docs/compose-improvements.md:49-49"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add bounded retry logic for transient failures",
@@ -110,7 +110,7 @@
           "packages/lib/src/compose.ts:13-48",
           "docs/compose-improvements.md:47-50"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Migrate compose.ts high-level commands to use the shared runner",
@@ -120,7 +120,7 @@
           "packages/cli/src/commands/install.ts:9-9",
           "packages/cli/src/commands/service.ts:2-2"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Migrate compose-runner.ts admin functions to use the shared runner",
@@ -130,7 +130,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:3-3",
           "packages/ui/src/routes/command/+server.ts:31-37"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Standardize env-file handling: make it explicit in admin runner",
@@ -141,7 +141,7 @@
           "packages/lib/src/admin/compose-runner.ts:45-51",
           "packages/lib/src/admin/stack-apply-engine.ts:110-117"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Update tests for the unified runner and migrated callers",
@@ -152,13 +152,13 @@
           "packages/lib/src/admin/stack-apply-engine.test.ts:1-1",
           "docs/compose-improvements.md:40-51"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Make artifact writes transactional with two-phase staged apply and lock protection",
-    "status": "not-started",
+    "status": "completed",
     "description": "Introduce a two-phase deploy: write all generated artifacts (compose, env, caddy) to a `*.next` staging directory, validate them, then atomically promote via rename/swap. Add a stack apply lock file with timeout to prevent concurrent apply races. Record a deployment transaction ID at commit time for forensic traceability.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -172,7 +172,7 @@
           "packages/lib/src/admin/stack-manager.ts:120-160",
           "packages/lib/src/admin/stack-manager.ts:331-335"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Validate staged artifacts before promotion",
@@ -181,7 +181,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-202",
           "packages/lib/src/admin/stack-apply-engine.ts:61-64"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Atomically promote staged artifacts via rename/swap",
@@ -190,7 +190,7 @@
           "packages/lib/src/admin/stack-manager.ts:337-342",
           "packages/lib/src/admin/stack-manager.ts:120-160"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Implement apply lock file with timeout",
@@ -199,7 +199,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-243",
           "packages/lib/src/admin/stack-manager.ts:120-160"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Expose lock file path in StackManagerPaths",
@@ -207,7 +207,7 @@
         "references": [
           "packages/lib/src/admin/stack-manager.ts:12-28"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Record deployment transaction ID at commit time",
@@ -216,7 +216,7 @@
           "packages/lib/src/admin/stack-manager.ts:140-158",
           "packages/lib/src/admin/stack-apply-engine.ts:185-243"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Update rollback path to restore from pre-apply snapshots, not in-memory copies",
@@ -225,7 +225,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:34-85",
           "packages/lib/src/admin/stack-apply-engine.ts:222-238"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Clean up staging and backup files after successful apply",
@@ -234,13 +234,13 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-243",
           "packages/lib/src/admin/stack-manager.ts:120-160"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Introduce health-gated apply with automatic rollback trigger",
-    "status": "not-started",
+    "status": "completed",
     "description": "After each `up`/`restart` action, poll `docker compose ps --format json` and require `running` + `healthy` (when a healthcheck exists) with per-service timeouts. Trigger rollback/fallback on health gate failure, not only on command exit failure. Add `safe` (strict health gate) and `fast` (current behavior) rollout modes.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -254,7 +254,7 @@
           "packages/lib/src/admin/compose-runner.ts:126-128",
           "packages/lib/src/admin/compose-runner.ts:43-83"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Define ServiceHealthState type and health-gate polling logic",
@@ -264,7 +264,7 @@
           "packages/lib/src/admin/compose-runner.ts:126-128",
           "docs/compose-improvements.md:66-78"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Determine per-service health-gate timeout from compose config",
@@ -275,7 +275,7 @@
           "packages/lib/src/embedded/state/docker-compose.yml:131-136",
           "packages/lib/src/embedded/state/docker-compose.yml:160-165"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Introduce rollout mode type and applyStack option",
@@ -285,7 +285,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:7-12",
           "docs/compose-improvements.md:73-75"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Wire health-gate failures into rollback trigger",
@@ -295,7 +295,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:222-238",
           "docs/compose-improvements.md:73-74"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add health-gate unit tests for compose-runner polling logic",
@@ -304,7 +304,7 @@
           "packages/lib/src/admin/stack-apply-engine.test.ts:1-159",
           "packages/lib/src/admin/compose-runner.ts:43-83"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add applyStack integration tests for safe vs fast rollout modes",
@@ -314,13 +314,13 @@
           "packages/lib/src/admin/stack-apply-engine.ts:204-243",
           "docs/compose-improvements.md:66-78"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Strengthen fallback mode with a tested golden recovery bundle",
-    "status": "not-started",
+    "status": "completed",
     "description": "Package a minimal, versioned recovery compose + caddy bundle with deterministic checksums embedded in the image or lib. Validate bundle integrity before use at fallback time. Add a periodic self-test (dry-run validation) executed on startup and after upgrades to ensure fallback artifacts remain usable.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -335,7 +335,7 @@
           "packages/lib/src/embedded/state/docker-compose-fallback.yml:1-46",
           "packages/lib/src/embedded/state/caddy/fallback-caddy.json:1-22"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Generate and embed deterministic SHA-256 checksums for bundle files",
@@ -345,7 +345,7 @@
           "packages/lib/src/embedded/state/caddy/fallback-caddy.json:1-22",
           "packages/lib/src/shared/crypto.ts:1-15"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add validateFallbackBundle helper that checks file existence and checksums",
@@ -355,7 +355,7 @@
           "packages/lib/src/admin/stack-manager.ts:146-154",
           "packages/lib/src/shared/crypto.ts:1-15"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Validate bundle integrity in fallbackToAdminAndCaddy before using artifacts",
@@ -364,7 +364,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:87-118",
           "packages/lib/src/admin/stack-apply-engine.ts:222-238"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Replace runtime-generated fallback files with copies from the golden bundle",
@@ -373,7 +373,7 @@
           "packages/lib/src/admin/stack-manager.ts:120-160",
           "packages/lib/src/admin/stack-manager.ts:366-426"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add selfTestFallbackBundle dry-run function",
@@ -383,7 +383,7 @@
           "packages/lib/src/admin/compose-runner.ts:118-124",
           "docs/compose-improvements.md:84-88"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Run fallback bundle self-test on admin startup",
@@ -393,7 +393,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:87-118",
           "docs/compose-improvements.md:87-88"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Run fallback bundle self-test after each successful stack apply",
@@ -402,7 +402,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-243",
           "packages/lib/src/admin/stack-apply-engine.ts:7-12"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Write unit tests for bundle integrity validation and self-test",
@@ -412,13 +412,13 @@
           "packages/lib/src/admin/stack-manager.test.ts:49-50",
           "docs/compose-improvements.md:79-88"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Dependency-aware impact planning and explicit service removal handling",
-    "status": "not-started",
+    "status": "completed",
     "description": "Compute apply impact from structured per-service diffs (config hash, env hash, mount hash, network hash) and restart only directly affected services plus strict dependents. Diff old vs new service sets and execute explicit stop/remove plans for deleted services. For full-stack applies prefer `docker compose up -d --remove-orphans` to let Compose own the reconciliation lifecycle.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -433,7 +433,7 @@
           "packages/lib/src/admin/impact-plan.ts:1-32",
           "docs/compose-improvements.md:91-103"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add dependent-service propagation to impact computation",
@@ -443,7 +443,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:164-168",
           "packages/lib/src/admin/stack-generator.ts:380-407"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Detect and explicitly stop/remove deleted services",
@@ -454,7 +454,7 @@
           "packages/lib/src/admin/impact-plan.ts:1-10",
           "docs/compose-improvements.md:95-100"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Use `docker compose up -d --remove-orphans` for full-stack applies",
@@ -464,7 +464,7 @@
           "packages/lib/src/admin/compose-runner.ts:154-161",
           "docs/compose-improvements.md:100-101"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Expose `--remove-orphans` flag in `composeAction` / `runCompose`",
@@ -473,7 +473,7 @@
           "packages/lib/src/admin/compose-runner.ts:154-161",
           "packages/lib/src/admin/stack-apply-engine.ts:205-207"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Move service-set diffing logic into impact-plan.ts as a pure function",
@@ -483,13 +483,13 @@
           "packages/lib/src/admin/stack-apply-engine.ts:169-183",
           "packages/lib/src/admin/impact-plan.ts:1-32"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Replace regex YAML service parsing with docker compose config --services",
-    "status": "not-started",
+    "status": "completed",
     "description": "Remove `parseServiceNamesFromComposeFile` and `parseComposeServiceNames` line-based regex parsers. Replace with `docker compose -f <file> config --services` as the authoritative source of service names. Cache results per apply request to avoid repeated shell calls. Use a YAML parser library (not regex) only for diagnostics, never for authorization decisions.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -503,7 +503,7 @@
           "packages/lib/src/admin/compose-runner.ts:45-83",
           "packages/lib/src/admin/compose-runner.ts:85-102"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Replace `parseServiceNamesFromComposeFile` in compose-runner.ts with `composeConfigServices` call",
@@ -513,7 +513,7 @@
           "packages/lib/src/admin/compose-runner.ts:104-108",
           "packages/lib/src/admin/compose-runner.ts:110-116"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Update `ensureAllowedServices`, `composeServiceNames`, and all callers to await async `allowedServiceSet`",
@@ -524,7 +524,7 @@
           "packages/ui/src/lib/server/init.ts:112-117",
           "packages/ui/src/routes/command/+server.ts:36"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Replace `parseComposeServiceNames` in stack-apply-engine.ts with `composeConfigServices` calls",
@@ -533,7 +533,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:124-138",
           "packages/lib/src/admin/stack-apply-engine.ts:169-177"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Implement per-apply-request cache for `composeConfigServices` results",
@@ -543,7 +543,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:140-183",
           "docs/compose-improvements.md:110-113"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add tests for `composeConfigServices` and the updated `allowedServiceSet`",
@@ -552,13 +552,13 @@
           "packages/lib/src/admin/compose-runner.ts:45-83",
           "packages/lib/src/admin/compose-runner.ts:104-108"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Add preflight checks for host and runtime compatibility before apply",
-    "status": "not-started",
+    "status": "completed",
     "description": "Add a preflight stage that runs before any artifact writes: check Docker socket connectivity and permissions, verify port availability for to-be-published ports, confirm disk space and writable mounts for DATA/STATE/CONFIG directories, and optionally dry-run image pulls for changed services. Fail fast with actionable diagnostics rather than discovering issues mid-apply.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -574,7 +574,7 @@
           "packages/lib/src/admin/stack-generator.ts:534-557",
           "packages/lib/src/admin/stack-spec.ts:14-28"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Implement Docker socket connectivity and permission check",
@@ -584,7 +584,7 @@
           "packages/lib/src/admin/compose-runner.ts:45-83",
           "packages/lib/src/preflight.ts:87-114"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Implement port availability checks for to-be-published ports",
@@ -594,7 +594,7 @@
           "packages/lib/src/admin/stack-generator.ts:24-32",
           "packages/lib/src/admin/stack-spec.ts:14-28"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Implement writable-mount checks for DATA, STATE, and CONFIG directories",
@@ -604,7 +604,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:61-64",
           "packages/lib/src/preflight.ts:13-41"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add optional dry-run image pull check for changed services",
@@ -614,7 +614,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-199",
           "packages/lib/src/admin/impact-plan.ts"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Wire preflight stage into applyStack before artifact writes",
@@ -624,7 +624,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:199-202",
           "packages/lib/src/admin/stack-apply-engine.ts:7-12"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Export preflight types and surface diagnostics through admin API",
@@ -634,13 +634,13 @@
           "packages/lib/src/preflight.ts:4-7",
           "packages/lib/src/preflight.ts:119-129"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Improve dependency contracts and startup readiness for generated services",
-    "status": "not-started",
+    "status": "completed",
     "description": "Standardize healthchecks across all first-class and generated services. Enforce dependency contracts during generation so channels always declare gateway health as a prerequisite (`depends_on: condition: service_healthy`). Optionally add an orchestration step in the apply engine that starts foundational services first and waits for health before starting dependents.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -653,7 +653,7 @@
         "references": [
           "packages/lib/src/admin/core-services.ts:1-16"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add healthcheck to openmemory-ui core service",
@@ -661,7 +661,7 @@
         "references": [
           "packages/lib/src/admin/core-services.ts:83-98"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add depends_on for admin core service",
@@ -669,7 +669,7 @@
         "references": [
           "packages/lib/src/admin/stack-generator.ts:473-504"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Upgrade generated service depends_on to use service_healthy condition",
@@ -678,7 +678,7 @@
           "packages/lib/src/admin/stack-generator.ts:506-532",
           "packages/lib/src/admin/stack-spec.ts:30-39"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add healthcheck to generated service entries",
@@ -687,7 +687,7 @@
           "packages/lib/src/admin/stack-generator.ts:506-532",
           "packages/lib/src/admin/stack-spec.ts:30-39"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Fix fallback compose caddy dependency to use service_healthy",
@@ -695,7 +695,7 @@
         "references": [
           "packages/lib/src/admin/stack-manager.ts:406-425"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add phased startup orchestration to apply engine",
@@ -704,7 +704,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-243",
           "packages/lib/src/admin/stack-apply-engine.ts:14-14"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add tests asserting healthchecks and depends_on contracts for all service types",
@@ -712,13 +712,13 @@
         "references": [
           "packages/lib/src/admin/stack-generator.test.ts:376-382"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Clarify lifecycle action semantics: separate stop from down",
-    "status": "not-started",
+    "status": "completed",
     "description": "Rename `composeAction(\"down\", ...)` to `stop` where the intent is a container stop without network cleanup. Reserve `down` for actual `docker compose down` semantics (network removal, `--remove-orphans`). Restrict destructive `down` to stack-wide operations and require explicit confirmation in API/UI callers.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -732,7 +732,7 @@
           "packages/lib/src/admin/compose-runner.ts:154-161",
           "packages/lib/src/admin/compose-runner.ts:163-168"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add a dedicated composeStackDown function for true docker compose down semantics",
@@ -742,7 +742,7 @@
           "packages/lib/src/compose.ts:103-123",
           "docs/compose-improvements.md:144-154"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Update command/+server.ts service.stop handler to call composeAction('stop', ...)",
@@ -750,7 +750,7 @@
         "references": [
           "packages/ui/src/routes/command/+server.ts:492-503"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add a containers/stop HTTP endpoint separate from any future stack-down endpoint",
@@ -760,7 +760,7 @@
           "packages/ui/src/routes/containers/restart/+server.ts:1-13",
           "packages/ui/src/routes/command/+server.ts:492-503"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Restrict composeStackDown to stack-wide operations and require explicit confirmation in callers",
@@ -769,7 +769,7 @@
           "packages/lib/src/admin/compose-runner.ts:154-168",
           "docs/compose-improvements.md:150-153"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Update unit and integration tests to use 'stop' action literal",
@@ -779,13 +779,13 @@
           "packages/cli/test/domain-commands.test.ts:23",
           "packages/lib/src/admin/compose-runner.ts:154-168"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Replace string-concatenated Compose generation with typed model and YAML serialization",
-    "status": "not-started",
+    "status": "completed",
     "description": "Replace hand-built string blocks in the stack generator with a typed in-memory `ComposeSpec` object. Serialize to YAML via a library rather than string concatenation. Add an internal validation pass over the object before serialization to enforce required guardrails (restart policy, healthchecks, network constraints). Ensure deterministic key ordering for stable diffs.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -801,7 +801,7 @@
           "packages/lib/src/admin/stack-manager.ts:382-426",
           "docs/compose-improvements.md:156-169"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Rewrite core service renderers to return ComposeService objects",
@@ -810,7 +810,7 @@
           "packages/lib/src/admin/core-services.ts:1-98",
           "packages/lib/src/admin/stack-generator.ts:534-556"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Rewrite channel and service renderers to return ComposeService objects",
@@ -819,7 +819,7 @@
           "packages/lib/src/admin/stack-generator.ts:380-407",
           "packages/lib/src/admin/stack-generator.ts:506-532"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Rewrite core service renderers for assistant, gateway, and admin",
@@ -829,7 +829,7 @@
           "packages/lib/src/admin/stack-generator.ts:444-471",
           "packages/lib/src/admin/stack-generator.ts:473-504"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Introduce YAML serialization via the existing 'yaml' library",
@@ -838,7 +838,7 @@
           "packages/lib/src/admin/stack-generator.ts:534-557",
           "packages/lib/package.json:18-20"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add pre-serialization validation pass over ComposeSpec",
@@ -849,7 +849,7 @@
           "packages/lib/src/admin/core-services.ts:1-98",
           "docs/compose-improvements.md:156-169"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Enforce deterministic key ordering in YAML output",
@@ -859,7 +859,7 @@
           "packages/lib/package.json:18-20",
           "docs/compose-improvements.md:166-168"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Rewrite buildFallbackCompose to use typed model and YAML serialization",
@@ -867,7 +867,7 @@
         "references": [
           "packages/lib/src/admin/stack-manager.ts:382-426"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Update and add tests for typed compose generation",
@@ -877,13 +877,13 @@
           "packages/lib/src/admin/core-services.ts:1-98",
           "docs/compose-improvements.md:156-169"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Introduce compose drift detection and reconciliation reporting",
-    "status": "not-started",
+    "status": "completed",
     "description": "Add a periodic drift report that compares intended state (spec + generated artifacts) against actual runtime state (`docker compose ps`, image digests, env file presence). Expose drift status in the Admin UI with one-click reconcile actions. Warn operators before apply when unreconciled drift is detected to prevent surprise failures during upgrades.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -897,7 +897,7 @@
           "packages/lib/src/admin/compose-runner.ts:126-128",
           "packages/lib/src/admin/compose-runner.ts:104-108"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add env-file presence check to drift detection",
@@ -906,7 +906,7 @@
           "packages/lib/src/admin/stack-manager.ts:120-159",
           "packages/lib/src/admin/stack-apply-engine.ts:34-59"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add generated-artifact integrity check to drift detection",
@@ -915,7 +915,7 @@
           "packages/lib/src/admin/stack-manager.ts:116-118",
           "packages/lib/src/admin/stack-apply-engine.ts:140-183"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Expose GET /stack/drift API endpoint",
@@ -925,7 +925,7 @@
           "packages/ui/src/routes/stack/spec/+server.ts:1-25",
           "packages/lib/src/admin/compose-runner.ts:126-128"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add service.drift command type to command API",
@@ -934,7 +934,7 @@
           "packages/ui/src/routes/command/+server.ts:545-554",
           "packages/ui/src/routes/command/+server.ts:481-527"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Persist latest drift report to disk on each run",
@@ -943,7 +943,7 @@
           "packages/lib/src/admin/stack-manager.ts:140-157",
           "packages/lib/src/admin/compose-runner.ts:126-128"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Warn before stack apply when unreconciled drift exists",
@@ -952,7 +952,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:185-243",
           "packages/lib/src/admin/stack-apply-engine.ts:192-197"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add a DriftBanner component to the Admin UI dashboard",
@@ -962,7 +962,7 @@
           "packages/ui/src/lib/components/HealthStatus.svelte:1-54",
           "packages/ui/src/lib/components/StackEditor.svelte:43-65"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Schedule periodic drift detection as a core automation",
@@ -972,7 +972,7 @@
           "core/admin/README.md:69-78",
           "packages/lib/src/admin/automations.ts:39-97"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Add unit tests for computeDriftReport",
@@ -982,13 +982,13 @@
           "packages/lib/src/admin/stack-manager.test.ts:1-1",
           "packages/lib/src/admin/compose-runner.ts:43-83"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   },
   {
     "name": "Expand lifecycle test coverage with failure-injection scenarios",
-    "status": "not-started",
+    "status": "completed",
     "description": "Add targeted tests covering the hardest operational paths: invalid compose output, unknown service action attempts, partial apply failure with successful rollback, rollback failure triggering fallback, and runtime socket mismatch or daemon unavailable mid-operation. Introduce deterministic mocks around compose runner output and exit codes to make these tests reliable and fast.",
     "reference": {
       "file": "docs/compose-improvements.md",
@@ -1003,7 +1003,7 @@
           "packages/lib/src/admin/compose-runner.ts:43-83",
           "packages/lib/src/admin/stack-apply-engine.test.ts:1-10"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test compose validation failure aborts apply before artifact writes",
@@ -1012,7 +1012,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:194-197",
           "packages/lib/src/admin/stack-apply-engine.test.ts:28-42"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test unknown service action blocked by allowedServiceSet",
@@ -1023,7 +1023,7 @@
           "packages/lib/src/admin/compose-runner.ts:154-161",
           "packages/lib/src/admin/compose-runner.ts:170-173"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test partial apply failure triggers rollback with artifact restoration",
@@ -1033,7 +1033,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:66-85",
           "packages/lib/src/admin/stack-apply-engine.ts:14"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test rollback failure escalates to fallbackToAdminAndCaddy",
@@ -1042,7 +1042,7 @@
           "packages/lib/src/admin/stack-apply-engine.ts:233-237",
           "packages/lib/src/admin/stack-apply-engine.ts:87-118"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test fallback compose validation failure throws fallback_compose_validation_failed",
@@ -1050,7 +1050,7 @@
         "references": [
           "packages/lib/src/admin/stack-apply-engine.ts:110-117"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test daemon unavailable mid-operation via spawn error in runCompose",
@@ -1060,7 +1060,7 @@
           "packages/lib/src/admin/compose-runner.ts:62-66",
           "packages/lib/src/admin/stack-apply-engine.ts:204-239"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test composeServiceNames returns union of CoreServices and compose-parsed names",
@@ -1069,7 +1069,7 @@
           "packages/lib/src/admin/compose-runner.ts:85-108",
           "packages/lib/src/admin/compose-runner.ts:150-152"
         ],
-        "status": "not-started"
+        "status": "completed"
       },
       {
         "name": "Test previewComposeOperations reload semantics classification",
@@ -1077,7 +1077,7 @@
         "references": [
           "packages/lib/src/admin/stack-apply-engine.ts:245-271"
         ],
-        "status": "not-started"
+        "status": "completed"
       }
     ]
   }

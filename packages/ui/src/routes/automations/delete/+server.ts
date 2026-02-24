@@ -1,6 +1,6 @@
 import { json, unauthorizedJson } from '$lib/server/json';
 import { getStackManager } from '$lib/server/init';
-import { syncAutomations } from '@openpalm/lib/admin/automations.ts';
+import { syncAutomations } from '@openpalm/lib/admin/automations';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {

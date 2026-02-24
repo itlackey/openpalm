@@ -15,6 +15,35 @@ export type ComposeConfig = {
   composeFile: string;
 };
 
+export type ComposeErrorCode =
+  | "daemon_unreachable"
+  | "image_pull_failed"
+  | "invalid_compose"
+  | "permission_denied"
+  | "service_not_allowed"
+  | "timeout"
+  | "unknown";
+
+export type ComposeRunOptions = {
+  bin: string;
+  subcommand?: string;
+  composeFile: string;
+  envFile?: string;
+  cwd?: string;
+  timeoutMs?: number;
+  stream?: boolean;
+  retries?: number;
+  env?: Record<string, string | undefined>;
+};
+
+export type ComposeRunResult = {
+  ok: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  code: ComposeErrorCode;
+};
+
 /** XDG base directory paths for OpenPalm. */
 export type XDGPaths = {
   data: string;

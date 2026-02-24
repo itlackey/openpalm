@@ -31,7 +31,7 @@ const ADMIN_TOKEN = "test-docker-token";
 const dockerAvailable = await Bun.spawn(["docker", "info"], {
   stdout: "pipe", stderr: "pipe",
 }).exited.then((code) => code === 0).catch(() => false);
-const runDockerStackTests = dockerAvailable && Bun.env.OPENPALM_RUN_DOCKER_STACK_TESTS === "1";
+const runDockerStackTests = dockerAvailable && Bun.env.OPENPALM_RUN_DOCKER_STACK_TESTS !== "0";
 
 // ── Temp directory layout ─────────────────────────────────
 let tmpDir: string;

@@ -8,6 +8,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const body = (await request.json()) as { service: string };
 	if (!body.service || !(await knownServices()).has(body.service))
 		return json(400, { error: 'unknown service name' });
-	await composeAction('up', body.service);
-	return json(200, { ok: true, action: 'up', service: body.service });
+	await composeAction('stop', body.service);
+	return json(200, { ok: true, action: 'stop', service: body.service });
 };

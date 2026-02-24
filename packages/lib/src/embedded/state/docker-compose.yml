@@ -13,7 +13,7 @@ services:
     networks: [assistant_net, channel_net]
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18.2-alpine
     restart: unless-stopped
     env_file:
       - ${OPENPALM_STATE_HOME}/postgres/.env

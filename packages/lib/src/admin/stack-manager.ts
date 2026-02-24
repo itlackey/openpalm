@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
+import { validateFallbackBundle } from "./fallback-bundle.ts";
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { validateCron } from "./cron.ts";
@@ -25,6 +26,7 @@ export type StackManagerPaths = {
   renderReportPath?: string;
   fallbackComposeFilePath?: string;
   fallbackCaddyJsonPath?: string;
+  applyLockPath?: string;
 };
 
 export const CoreSecretRequirements = [
@@ -117,6 +119,34 @@ export class StackManager {
     return generateStackArtifacts(this.getSpec(), this.readSecretsEnv());
   }
 
+  computeDriftReport() {
+    const generated = this.renderPreview();
+    const expectedServices = [
+      ...Object.keys(generated.channelEnvs),
+      ...Object.keys(generated.serviceEnvs),
+      "admin",
+      "gateway",
+      "assistant",
+      "openmemory",
+      "openmemory-ui",
+      "postgres",
+      "qdrant",
+      "caddy",
+    ];
+    const envFiles = [
+      this.paths.gatewayEnvPath,
+      this.paths.openmemoryEnvPath,
+      this.paths.postgresEnvPath,
+      this.paths.qdrantEnvPath,
+      this.paths.assistantEnvPath,
+      ...Object.keys(generated.channelEnvs).map((name) => join(this.paths.stateRootPath, name, ".env")),
+      ...Object.keys(generated.serviceEnvs).map((name) => join(this.paths.stateRootPath, name, ".env")),
+    ];
+    const artifactHashes = { compose: generated.composeFile, caddy: generated.caddyJson };
+    const driftReportPath = join(this.paths.stateRootPath, "drift-report.json");
+    return { expectedServices, envFiles, artifactHashes, driftReportPath };
+  }
+
   renderArtifacts(precomputed?: ReturnType<StackManager["renderPreview"]>) {
     const generated = precomputed ?? this.renderPreview();
     const changedArtifacts: string[] = [];
@@ -145,18 +175,108 @@ export class StackManager {
     };
     const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
     if (!existsSync(fallbackComposeFilePath)) {
-      writeFileSync(fallbackComposeFilePath, this.buildFallbackCompose(), "utf8");
+      const bundled = readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/docker-compose-fallback.yml"), "utf8");
+      writeFileSync(fallbackComposeFilePath, bundled, "utf8");
+      validateFallbackBundle({
+        composePath: fallbackComposeFilePath,
+        caddyPath: this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json"),
+      });
     }
 
     const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
     if (!existsSync(fallbackCaddyJsonPath)) {
-      writeFileSync(fallbackCaddyJsonPath, this.buildFallbackCaddyJson(), "utf8");
+      const bundled = readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/caddy/fallback-caddy.json"), "utf8");
+      writeFileSync(fallbackCaddyJsonPath, bundled, "utf8");
+      validateFallbackBundle({
+        composePath: fallbackComposeFilePath,
+        caddyPath: fallbackCaddyJsonPath,
+      });
     }
 
     mkdirSync(dirname(renderReportPath), { recursive: true });
     writeFileSync(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`, "utf8");
 
     return { ...generated, renderReport };
+  }
+
+  renderArtifactsToTemp(
+    precomputed?: ReturnType<StackManager["renderPreview"]>,
+    options?: { suffix?: string; transactionId?: string },
+  ) {
+    const generated = precomputed ?? this.renderPreview();
+    const suffix = options?.suffix ?? ".next";
+    const changedArtifacts: string[] = [];
+    const staged: Array<{ tempPath: string; livePath: string }> = [];
+    const backups: Array<{ prevPath: string; livePath: string }> = [];
+    const stage = (livePath: string, content: string) => {
+      if (!existsSync(livePath) || readFileSync(livePath, "utf8") !== content) changedArtifacts.push(livePath);
+      const tempPath = `${livePath}${suffix}`;
+      mkdirSync(dirname(tempPath), { recursive: true });
+      writeFileSync(tempPath, content, "utf8");
+      staged.push({ tempPath, livePath });
+      return tempPath;
+    };
+
+    stage(this.paths.caddyJsonPath, generated.caddyJson);
+    const tempComposeFilePath = stage(this.paths.composeFilePath, generated.composeFile);
+    stage(this.paths.systemEnvPath, generated.systemEnv);
+    stage(this.paths.gatewayEnvPath, generated.gatewayEnv);
+    stage(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
+    stage(this.paths.postgresEnvPath, generated.postgresEnv);
+    stage(this.paths.qdrantEnvPath, generated.qdrantEnv);
+    stage(this.paths.assistantEnvPath, generated.assistantEnv);
+    for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
+      stage(join(this.paths.stateRootPath, serviceName, ".env"), content);
+    }
+    for (const [serviceName, content] of Object.entries(generated.serviceEnvs)) {
+      stage(join(this.paths.stateRootPath, serviceName, ".env"), content);
+    }
+
+    const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
+    const renderReport = {
+      ...generated.renderReport,
+      changedArtifacts,
+      applySafe: generated.renderReport.missingSecretReferences.length === 0,
+      transactionId: options?.transactionId,
+    };
+
+    const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
+    if (!existsSync(fallbackComposeFilePath)) {
+      stage(fallbackComposeFilePath, this.buildFallbackCompose());
+    }
+
+    const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
+    if (!existsSync(fallbackCaddyJsonPath)) {
+      stage(fallbackCaddyJsonPath, this.buildFallbackCaddyJson());
+    }
+
+    stage(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`);
+
+    return {
+      ...generated,
+      renderReport,
+      composeFilePath: tempComposeFilePath,
+      promote: () => {
+        for (const entry of staged) {
+          if (existsSync(entry.livePath)) {
+            const prevPath = `${entry.livePath}.prev`;
+            renameSync(entry.livePath, prevPath);
+            backups.push({ prevPath, livePath: entry.livePath });
+          }
+          renameSync(entry.tempPath, entry.livePath);
+        }
+      },
+      cleanup: () => {
+        for (const entry of staged) {
+          if (existsSync(entry.tempPath)) rmSync(entry.tempPath, { force: true });
+        }
+      },
+      cleanupBackups: () => {
+        for (const entry of backups) {
+          if (existsSync(entry.prevPath)) rmSync(entry.prevPath, { force: true });
+        }
+      },
+    };
   }
 
   validateReferencedSecrets(specOverride?: StackSpec) {
@@ -364,64 +484,9 @@ export class StackManager {
 
 
   private buildFallbackCaddyJson(): string {
-    return `${JSON.stringify({
-      admin: { disabled: true },
-      apps: {
-        http: {
-          servers: {
-            main: {
-              listen: [":80"],
-              routes: [{ handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }] }],
-            },
-          },
-        },
-      },
-    }, null, 2)}
-`;
+    return readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/caddy/fallback-caddy.json"), "utf8");
   }
   private buildFallbackCompose(): string {
-    return [
-      "services:",
-      "  admin:",
-      "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
-      "    restart: unless-stopped",
-      "    env_file:",
-      "      - ${OPENPALM_STATE_HOME}/system.env",
-      "    environment:",
-      "      - PORT=8100",
-      "      - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
-      "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
-      "      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
-      "      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
-      "      - COMPOSE_PROJECT_PATH=/state",
-      "      - OPENPALM_COMPOSE_FILE=docker-compose.yml",
-      "    volumes:",
-      "      - ${OPENPALM_DATA_HOME}:/data",
-      "      - ${OPENPALM_CONFIG_HOME}:/config",
-      "      - ${OPENPALM_STATE_HOME}:/state",
-      "      - ${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
-      "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
-      "    networks: [assistant_net]",
-      "",
-      "  caddy:",
-      "    image: caddy:2-alpine",
-      "    restart: unless-stopped",
-      "    ports:",
-      "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80\"",
-      "      - \"${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443\"",
-      "    volumes:",
-      "      - ${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro",
-      "      - ${OPENPALM_STATE_HOME}/caddy/data:/data/caddy",
-      "      - ${OPENPALM_STATE_HOME}/caddy/config:/config/caddy",
-      "    command: caddy run --config /etc/caddy/caddy.json",
-      "    depends_on:",
-      "      admin:",
-      "        condition: service_started",
-      "    networks: [assistant_net]",
-      "",
-      "networks:",
-      "  assistant_net:",
-      "",
-    ].join("\n");
+    return readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/docker-compose-fallback.yml"), "utf8");
   }
 }

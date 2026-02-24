@@ -24,18 +24,19 @@ import {
 	type StackChannelConfig,
 	type StackServiceConfig,
 	type StackAutomation
-} from '@openpalm/lib/admin/stack-spec.ts';
-import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env.ts';
-import { applyStack } from '@openpalm/lib/admin/stack-apply-engine.ts';
+} from '@openpalm/lib/admin/stack-spec';
+import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env';
+import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
 import {
 	composeAction,
 	composeList,
 	composeLogs,
 	composeLogsValidateTail,
 	composePull,
-	allowedServiceSet
-} from '@openpalm/lib/admin/compose-runner.ts';
-import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations.ts';
+	allowedServiceSet,
+	computeDriftReport
+} from '@openpalm/lib/admin/compose-runner';
+import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations';
 import { parse as yamlParse } from 'yaml';
 import { randomUUID } from 'node:crypto';
 import { SECRETS_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib/server/config';
@@ -497,8 +498,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					error: 'service_not_allowed',
 					code: 'service_not_allowed'
 				});
-			// composeAction maps "down" to a stop action for the provided services.
-			await composeAction('down', service);
+			await composeAction('stop', service);
 			return json(200, { ok: true, data: { service } });
 		}
 		if (type === 'service.up') {
@@ -552,6 +552,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				services = result.stdout;
 			}
 			return json(200, { ok: true, data: { services } });
+		}
+		if (type === 'service.drift') {
+			const manager = await getStackManager();
+			const drift = await computeDriftReport(manager.computeDriftReport());
+			return json(200, { ok: true, data: { drift } });
 		}
 		return json(400, { ok: false, error: 'unknown_command', code: 'unknown_command' });
 	} catch (error) {

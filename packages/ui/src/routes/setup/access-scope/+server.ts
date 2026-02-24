@@ -2,7 +2,7 @@ import { json, unauthorizedJson } from '$lib/server/json';
 import { getSetupManager, getStackManager } from '$lib/server/init';
 import { setRuntimeBindScope } from '$lib/server/env-helpers';
 import { isLocalRequest } from '$lib/server/auth';
-import { composeAction } from '@openpalm/lib/admin/compose-runner.ts';
+import { composeAction } from '@openpalm/lib/admin/compose-runner';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {

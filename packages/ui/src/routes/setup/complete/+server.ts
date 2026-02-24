@@ -1,9 +1,9 @@
 import { json, unauthorizedJson, errorJson } from '$lib/server/json';
 import { getSetupManager, getStackManager } from '$lib/server/init';
 import { isLocalRequest } from '$lib/server/auth';
-import { applyStack } from '@openpalm/lib/admin/stack-apply-engine.ts';
-import { composeAction } from '@openpalm/lib/admin/compose-runner.ts';
-import { syncAutomations } from '@openpalm/lib/admin/automations.ts';
+import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
+import { composeAction } from '@openpalm/lib/admin/compose-runner';
+import { syncAutomations } from '@openpalm/lib/admin/automations';
 import type { RequestHandler } from './$types';
 
 const CoreStartupServices = ['admin', 'caddy', 'assistant', 'gateway', 'openmemory', 'openmemory-ui', 'postgres', 'qdrant'] as const;

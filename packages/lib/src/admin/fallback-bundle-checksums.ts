@@ -1,0 +1,6 @@
+export const BUNDLE_VERSION = "1";
+
+export const FALLBACK_BUNDLE_CHECKSUMS = {
+  compose: "b139e2180a9493f7ab7eb7d254646199a9f433a249f9c093669579020c734a7a",
+  caddy: "df9f0b78195c90d646f55c591e058a72cf56e5689da1b2f821d6becdc6232309",
+} as const;
