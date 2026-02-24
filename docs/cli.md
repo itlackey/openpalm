@@ -80,7 +80,7 @@ Before starting, the installer automatically checks:
    - Pull and start core services (Caddy, Admin)
    - Wait for admin health check
    - Open browser to setup wizard (unless `--no-open`)
-   - The setup wizard handles remaining service provisioning
+   - The setup wizard completion step applies the full stack and starts core runtime services (Assistant, Gateway, OpenMemory, Postgres, Qdrant, etc.)
 
 ### `uninstall`
 
