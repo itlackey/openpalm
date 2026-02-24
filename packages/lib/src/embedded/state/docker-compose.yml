@@ -240,25 +240,6 @@ services:
       timeout: 5s
       retries: 3
 
-  channel-api:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-api:${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    profiles: ["channels"]
-    env_file:
-      - ${OPENPALM_STATE_HOME}/channel-api/.env
-    environment:
-      - PORT=8186
-      - GATEWAY_URL=http://gateway:8080
-    networks: [channel_net]
-    depends_on:
-      gateway:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8186/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
 networks:
   channel_net:
   assistant_net:
