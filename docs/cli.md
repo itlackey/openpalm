@@ -18,7 +18,7 @@ OpenPalm can be installed using one of four methods:
 ### 1. Bash (Linux/macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 ```
 
 This downloads the `openpalm` CLI binary to `~/.local/bin/` and runs `openpalm install`.
@@ -26,7 +26,7 @@ This downloads the `openpalm` CLI binary to `~/.local/bin/` and runs `openpalm i
 ### 2. PowerShell (Windows)
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 This downloads the `openpalm` CLI binary to `%LOCALAPPDATA%\OpenPalm\` (automatically added to PATH) and runs `openpalm install`.
