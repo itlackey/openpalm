@@ -67,7 +67,7 @@ No config files to edit. See the [CLI documentation](docs/cli.md) for all availa
 
 ### Talk from anywhere
 
-Connect Discord, Telegram, a web chat widget, or a voice interface. Each channel runs as a lightweight adapter — your assistant's core logic stays the same regardless of where the message comes from.
+Connect Discord, Telegram, a web chat widget, or a voice interface. Each channel runs as a lightweight adapter — your assistant's core logic stays the same regardless of where the message comes from. MCP and A2A channels let AI clients and other agents interact with your assistant programmatically.
 
 ### It remembers
 
@@ -140,6 +140,9 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | Voice channel | [channels/voice/README.md](channels/voice/README.md) |
 | Telegram channel | [channels/telegram/README.md](channels/telegram/README.md) |
 | Webhook channel | [channels/webhook/README.md](channels/webhook/README.md) |
+| API channel | [channels/api/README.md](channels/api/README.md) |
+| MCP channel | [channels/mcp/README.md](channels/mcp/README.md) |
+| A2A channel | [channels/a2a/README.md](channels/a2a/README.md) |
 
 ## Contributing
 

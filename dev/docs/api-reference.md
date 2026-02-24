@@ -72,6 +72,30 @@ The adapter is a thin facade over the standard gateway flow:
 2. Normalize prompt/message text into a signed `ChannelMessage` for `/channel/inbound`.
 3. Return provider-compatible response JSON populated from gateway `answer`.
 
+### MCP channel (`channel-mcp`, `8187`)
+
+- `POST /mcp` — MCP JSON-RPC endpoint (Streamable HTTP)
+- `GET /health`
+
+Supported JSON-RPC methods:
+- `initialize` — returns server capabilities and protocol version
+- `tools/list` — lists available tools (`openpalm_chat`)
+- `tools/call` — invokes a tool, forwarding the message through the gateway
+- `notifications/initialized` — acknowledged (no-op)
+
+The adapter exposes the assistant as an MCP tool server. Clients (IDE integrations, AI agents) connect using the MCP protocol to invoke the `openpalm_chat` tool. Optional bearer token authentication via the `Authorization` header.
+
+### A2A channel (`channel-a2a`, `8188`)
+
+- `GET /.well-known/agent.json` — A2A Agent Card
+- `POST /a2a` — A2A JSON-RPC endpoint
+- `GET /health`
+
+Supported JSON-RPC methods:
+- `tasks/send` — sends a task message, returns completed task with artifacts
+
+The adapter exposes the assistant as an A2A agent. Other agents discover capabilities via the Agent Card and send tasks using the JSON-RPC endpoint. Only public skills are listed — no tool enumeration or internal traces. Optional bearer token authentication via the `Authorization` header.
+
 ## Change management
 When changing admin or gateway contracts:
 1. Update this document.

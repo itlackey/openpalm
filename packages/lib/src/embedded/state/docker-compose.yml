@@ -240,6 +240,44 @@ services:
       timeout: 5s
       retries: 3
 
+  channel-mcp:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-mcp:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    profiles: ["channels"]
+    env_file:
+      - ${OPENPALM_STATE_HOME}/channel-mcp/.env
+    environment:
+      - PORT=8187
+      - GATEWAY_URL=http://gateway:8080
+    networks: [channel_net]
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8187/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  channel-a2a:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-a2a:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    profiles: ["channels"]
+    env_file:
+      - ${OPENPALM_STATE_HOME}/channel-a2a/.env
+    environment:
+      - PORT=8188
+      - GATEWAY_URL=http://gateway:8080
+    networks: [channel_net]
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8188/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 networks:
   channel_net:
   assistant_net:

@@ -4,6 +4,8 @@ import chatYaml from "./chat.yaml" with { type: "text" };
 import discordYaml from "./discord.yaml" with { type: "text" };
 import voiceYaml from "./voice.yaml" with { type: "text" };
 import telegramYaml from "./telegram.yaml" with { type: "text" };
+import mcpYaml from "./mcp.yaml" with { type: "text" };
+import a2aYaml from "./a2a.yaml" with { type: "text" };
 
 export type BuiltInChannelDef = {
   name: string;
@@ -42,6 +44,8 @@ export const BUILTIN_CHANNELS: Record<string, BuiltInChannelDef> = Object.fromEn
     [discordYaml, "discord.yaml"],
     [voiceYaml, "voice.yaml"],
     [telegramYaml, "telegram.yaml"],
+    [mcpYaml, "mcp.yaml"],
+    [a2aYaml, "a2a.yaml"],
   ] as const).map(([raw, source]) => {
     const def = parseBuiltInChannel(raw, source);
     return [def.name.toLowerCase(), def];
