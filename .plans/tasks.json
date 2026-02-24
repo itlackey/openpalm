@@ -240,7 +240,7 @@
       "id": "03",
       "title": "Remove Three-Tier Failure Recovery Cascade",
       "description": "Remove the rollback, .prev backups, fallback bundle validation, and CoreRecoveryServices recovery cascade from applyStack(). Replace with simple error propagation -- if compose up fails, return the error to the UI.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/03-remove-three-tier-recovery.md",
       "dependsOn": [],
       "netLinesChanged": "-280",
@@ -250,7 +250,7 @@
           "id": "03.1",
           "title": "Delete standalone fallback files with no dependents",
           "description": "Delete fallback-bundle-checksums.ts, fallback-bundle.test.ts, docker-compose-fallback.yml, fallback-caddy.json, self-test-fallback.ts (scripts), self-test-fallback.ts (server).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/fallback-bundle-checksums.ts", "action": "delete", "lines": "6" },
             { "path": "packages/lib/src/admin/fallback-bundle.test.ts", "action": "delete", "lines": "~29" },
@@ -264,7 +264,7 @@
           "id": "03.2",
           "title": "Delete fallback-bundle.ts module",
           "description": "Delete the fallback bundle validation module after its test and dependents are removed.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/fallback-bundle.ts", "action": "delete", "lines": "29" }
           ]
@@ -273,7 +273,7 @@
           "id": "03.3",
           "title": "Clean up stack-apply-engine.ts recovery code",
           "description": "Remove imports (renameSync, composeActionForFileWithOverride, validateFallbackBundle), remove CoreRecoveryServices, writeArtifact, restoreArtifacts, fallbackToAdminAndCaddy, selfTestFallbackBundle, restorePrevArtifacts. Simplify catch block to just re-throw. Remove post-apply self-test block.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.ts", "action": "edit", "lines": "1-6, 17, 30, 77-147, 321-347, 378-394" }
           ]
@@ -282,7 +282,7 @@
           "id": "03.4",
           "title": "Clean up stack-manager.ts fallback and backup logic",
           "description": "Remove validateFallbackBundle import, fallback path fields from StackManagerPaths, fallback seeding from renderArtifacts() and renderArtifactsToTemp(), simplify promote() to remove .prev backups, remove cleanupBackups(), backups array, buildFallbackCompose(), buildFallbackCaddyJson().",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-manager.ts", "action": "edit", "lines": "6, 28-29, 192-212, 261-298, 504-509" }
           ]
@@ -291,7 +291,7 @@
           "id": "03.5",
           "title": "Remove composeActionForFile from compose-runner.ts",
           "description": "Remove composeActionForFile(), its override field, and composeActionForFileWithOverride().",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "284-289, 340-348" }
           ]
@@ -300,7 +300,7 @@
           "id": "03.6",
           "title": "Update consumers: init.ts and install.ts",
           "description": "Remove fallback path fields from StackManager constructor in init.ts. Remove fallback file writing from install.ts.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/server/init.ts", "action": "edit", "lines": "57-60" },
             { "path": "packages/cli/src/commands/install.ts", "action": "edit", "lines": "267-271, 330-334" }
@@ -310,7 +310,7 @@
           "id": "03.7",
           "title": "Update stack-apply-engine.test.ts for recovery removal",
           "description": "Remove selfTestFallbackBundle import, fallback paths from createManager(), delete fallback self-test/rollback/fallback tests, update remaining tests.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.test.ts", "action": "edit", "lines": "11, 62-63, 259-266, 355-448" }
           ]
@@ -319,7 +319,7 @@
           "id": "03.8",
           "title": "Update documentation and verify",
           "description": "Update docs/cli.md line 178 about rollback/fallback. Run bun run typecheck and bun test.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "docs/cli.md", "action": "edit", "lines": "178" }
           ]
@@ -330,7 +330,7 @@
       "id": "04",
       "title": "Remove Impact Planning System",
       "description": "Remove the impact-plan.ts module, deriveImpact() function, per-service compose iteration, ExistingArtifacts diffing, and StackImpact type. Replace per-service compose operations with single docker compose up -d --remove-orphans plus Caddy reload detection.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/04-remove-impact-planning.md",
       "dependsOn": [],
       "netLinesChanged": "-235",
@@ -340,7 +340,7 @@
           "id": "04.1",
           "title": "Update StackApplyResult type and simplify applyStack()",
           "description": "Remove impact-plan imports, remove composeConfigServicesWithOverride, change StackApplyResult to replace impact with caddyReloaded, remove ExistingArtifacts/readIfExists/readExistingArtifacts/restoreArtifacts/enabledChannelServices/deriveImpact, replace per-service loop with single compose up + caddy reload.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.ts", "action": "edit", "lines": "7, 15, 22-28, 32-75, 82-101, 149-317" }
           ]
@@ -349,7 +349,7 @@
           "id": "04.2",
           "title": "Delete impact-plan.ts and its test",
           "description": "Delete the entire impact planning module and its test file.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/impact-plan.ts", "action": "delete", "lines": "64" },
             { "path": "packages/lib/src/admin/impact-plan.test.ts", "action": "delete", "lines": "21" }
@@ -359,7 +359,7 @@
           "id": "04.3",
           "title": "Rewrite impact detection tests in stack-apply-engine.test.ts",
           "description": "Remove setComposeConfigServicesOverride from imports, rewrite 7 impact detection tests to verify simplified behavior (ok, caddyReloaded), update rollout/failure tests for single compose up.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.test.ts", "action": "edit", "lines": "10, 67-256" }
           ]
@@ -368,7 +368,7 @@
           "id": "04.4",
           "title": "Update StackEditor.svelte impact display",
           "description": "Replace the impact display (restart/reload/up lists) with simplified status message showing caddyReloaded and warnings.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/StackEditor.svelte", "action": "edit", "lines": "50-57" }
           ]
@@ -377,7 +377,7 @@
           "id": "04.5",
           "title": "Update documentation references",
           "description": "Rewrite specification.md Section 7 (Impact Engine) and remove impact-plan.ts from README.md file listing.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/docs/specification.md", "action": "edit", "lines": "59-62, 839-884, 955" },
             { "path": "packages/lib/README.md", "action": "edit", "lines": "45" }
@@ -389,7 +389,7 @@
       "id": "05",
       "title": "Simplify Drift Detection to Container Status",
       "description": "Remove SHA-256 artifact hashing, env-file existence checks, and write-only drift report persistence. Replace with simple composePs() container status checks. Improve DriftBanner to show which specific containers are down.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/05-simplify-drift-detection.md",
       "dependsOn": [],
       "netLinesChanged": "-110",
@@ -399,7 +399,7 @@
           "id": "05.1",
           "title": "Remove drift check from stack-apply-engine.ts",
           "description": "Remove computeDriftReport import and the drift check block (lines 234-239) from the apply path.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.ts", "action": "edit", "lines": "12, 234-239" }
           ]
@@ -408,7 +408,7 @@
           "id": "05.2",
           "title": "Simplify the /stack/drift API endpoint",
           "description": "Replace computeDriftReport call with composePsWithOverride(). Return {ok, services: ServiceHealthState[]} instead of drift report.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/routes/stack/drift/+server.ts", "action": "edit", "lines": "~all" }
           ]
@@ -417,7 +417,7 @@
           "id": "05.3",
           "title": "Simplify service.drift in command router",
           "description": "Remove computeDriftReport import, replace handler at line 597-601 to call composePsWithOverride() and return service list.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/routes/command/+server.ts", "action": "edit", "lines": "37, 597-601" }
           ]
@@ -426,7 +426,7 @@
           "id": "05.4",
           "title": "Update DriftBanner.svelte",
           "description": "Change DriftReport type to ServiceHealth array, update fetch to parse services from new response shape, update hasDrift() to check for non-running/unhealthy services, improve banner to list affected containers.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/DriftBanner.svelte", "action": "edit", "lines": "4-24" }
           ]
@@ -435,7 +435,7 @@
           "id": "05.5",
           "title": "Remove drift functions from compose-runner.ts",
           "description": "Delete DriftReport type, computeDriftReport(), persistDriftReport(), ComposeRunnerArtifactOverrides type, composeArtifactOverrides variable, setComposeRunnerArtifactOverrides(). Remove createHash import if no longer used.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "2, 150-203, 318-328" }
           ]
@@ -444,7 +444,7 @@
           "id": "05.6",
           "title": "Remove computeDriftReport() from stack-manager.ts",
           "description": "Delete the StackManager.computeDriftReport() method.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-manager.ts", "action": "edit", "lines": "138-164" }
           ]
@@ -453,7 +453,7 @@
           "id": "05.7",
           "title": "Clean up tests in stack-apply-engine.test.ts",
           "description": "Remove setComposeRunnerArtifactOverrides from import and all 5 setup/cleanup call pairs.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.test.ts", "action": "edit", "lines": "10, 232-236, 284-288, 325-329, 364-368, 410-414" }
           ]
@@ -462,7 +462,7 @@
           "id": "05.8",
           "title": "Run full test suite verification",
           "description": "Run bun run typecheck and bun test to confirm all changes are correct.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]
@@ -471,7 +471,7 @@
       "id": "06",
       "title": "Consolidate Preflight Checks",
       "description": "Remove the admin per-apply preflight system (preflight-checks.ts, 113 lines) that runs redundant Docker socket, port, writable mount, and image pull checks before every applyStack() call. Keep the CLI install-time preflight (preflight.ts) untouched.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/06-consolidate-preflight-checks.md",
       "dependsOn": [],
       "netLinesChanged": "-177",
@@ -481,7 +481,7 @@
           "id": "06.1",
           "title": "Delete admin preflight-checks module",
           "description": "Delete packages/lib/src/admin/preflight-checks.ts entirely (113 lines). Removes exports: PreflightFailure, PreflightResult, extractPublishedPorts, checkDockerSocket, checkPortsAvailable, checkWritableMounts, checkImageAvailability, runApplyPreflight.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/preflight-checks.ts", "action": "delete", "lines": "113" }
           ]
@@ -490,7 +490,7 @@
           "id": "06.2",
           "title": "Update stack-apply-engine.ts to remove preflight integration",
           "description": "Remove runApplyPreflight import, remove preflightWarnings from StackApplyResult type, remove preflight call block and return value.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.ts", "action": "edit", "lines": "18, 27, 226, 240-251, 349" }
           ]
@@ -499,7 +499,7 @@
           "id": "06.3",
           "title": "Remove preflight test helpers from stack-apply-engine.test.ts",
           "description": "Remove withSkippedDockerSocketCheck() and withDisabledPortCheck() helpers and all their call sites in tests.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.test.ts", "action": "edit", "lines": "13-35, 218-219, 253-254, 270-271, 319-320, 357-358, 405-406" }
           ]
@@ -508,7 +508,7 @@
           "id": "06.4",
           "title": "Update E2E and integration test environment config",
           "description": "Remove OPENPALM_PREFLIGHT_SKIP_DOCKER_CHECKS and OPENPALM_PREFLIGHT_SKIP_PORT_CHECKS from e2e/env.ts and docker-stack.docker.ts.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/e2e/env.ts", "action": "edit", "lines": "100-101" },
             { "path": "test/docker/docker-stack.docker.ts", "action": "edit", "lines": "160-161" }
@@ -518,7 +518,7 @@
           "id": "06.5",
           "title": "Update testing documentation",
           "description": "Remove documentation of skip env vars from dev/docs/testing-plan.md.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "dev/docs/testing-plan.md", "action": "edit", "lines": "65-66" }
           ]
@@ -527,7 +527,7 @@
           "id": "06.6",
           "title": "Verify no leftover references and run tests",
           "description": "Search for all preflight-related references, then run bun run typecheck and bun test.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]

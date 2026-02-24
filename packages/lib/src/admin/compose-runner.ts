@@ -1,5 +1,3 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { runCompose as runComposeShared } from "../compose-runner.ts";
 
 export const CoreServices = [
@@ -128,61 +126,6 @@ export async function composeListWithOverride(): Promise<ComposeResult> {
   return composeList();
 }
 
-export type DriftReport = {
-  missingServices: string[];
-  exitedServices: string[];
-  missingEnvFiles: string[];
-  staleArtifacts: boolean;
-};
-
-export async function computeDriftReport(args: { expectedServices: string[]; envFiles: string[]; artifactHashes: { compose: string; caddy: string }; driftReportPath?: string }): Promise<DriftReport> {
-  const missingServices: string[] = [];
-  const exitedServices: string[] = [];
-  const missingEnvFiles: string[] = [];
-  const result = await composeListWithOverride();
-  if (result.ok) {
-    const running = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
-    const runningNames = new Set(running.map((item) => String(item.Service ?? item.Name ?? "")));
-    for (const svc of args.expectedServices) {
-      if (!runningNames.has(svc)) missingServices.push(svc);
-    }
-    for (const svc of running) {
-      const state = String(svc.State ?? "");
-      if (state && state !== "running") exitedServices.push(String(svc.Service ?? ""));
-    }
-  }
-  for (const env of args.envFiles) {
-    if (!existsSync(env)) missingEnvFiles.push(env);
-  }
-  let staleArtifacts = false;
-  try {
-    const composePath = composeArtifactOverrides.composeFilePath ?? composeFilePath();
-    const caddyPath = composeArtifactOverrides.caddyJsonPath ?? envValue("OPENPALM_CADDY_JSON_PATH") ?? "/state/caddy.json";
-    const compose = readFileSync(composePath, "utf8");
-    const caddy = readFileSync(caddyPath, "utf8");
-    const composeHash = createHash("sha256").update(compose).digest("hex");
-    const caddyHash = createHash("sha256").update(caddy).digest("hex");
-    const intendedComposeHash = createHash("sha256").update(args.artifactHashes.compose).digest("hex");
-    const intendedCaddyHash = createHash("sha256").update(args.artifactHashes.caddy).digest("hex");
-    staleArtifacts = composeHash != intendedComposeHash || caddyHash != intendedCaddyHash;
-  } catch {
-    staleArtifacts = true;
-  }
-  if (args.driftReportPath) {
-    persistDriftReport({ missingServices, exitedServices, missingEnvFiles, staleArtifacts }, args.driftReportPath);
-  } else {
-    persistDriftReport({ missingServices, exitedServices, missingEnvFiles, staleArtifacts });
-  }
-  return { missingServices, exitedServices, missingEnvFiles, staleArtifacts };
-}
-
-export function persistDriftReport(report: DriftReport, reportPath?: string): void {
-  const resolvedPath = reportPath
-    ?? composeArtifactOverrides.driftReportPath
-    ?? `${composeProjectPath()}/drift-report.json`;
-  writeFileSync(resolvedPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-}
-
 export type ServiceHealthState = {
   name: string;
   status: string;
@@ -262,13 +205,6 @@ export async function composeAction(action: "up" | "stop" | "restart", service: 
   return runCompose(["restart", ...services], undefined, composeEnvFilePath(), true);
 }
 
-export async function composeActionForFile(action: "up" | "stop" | "restart", service: string | string[], composeFile: string, envFileOverride?: string): Promise<ComposeResult> {
-  const services = Array.isArray(service) ? service : [service];
-  if (action === "up") return runCompose(["up", "-d", ...services], composeFile, envFileOverride ?? composeEnvFilePath(), true);
-  if (action === "stop") return runCompose(["stop", ...services], composeFile, envFileOverride ?? composeEnvFilePath(), true);
-  return runCompose(["restart", ...services], composeFile, envFileOverride ?? composeEnvFilePath(), true);
-}
-
 export async function composeStackDown(): Promise<ComposeResult> {
   return runCompose(["down", "--remove-orphans"], undefined, composeEnvFilePath(), true);
 }
@@ -285,7 +221,6 @@ export async function composeExec(service: string, args: string[]): Promise<Comp
 export type ComposeRunnerOverrides = {
   composeAction?: typeof composeAction;
   composeExec?: typeof composeExec;
-  composeActionForFile?: typeof composeActionForFile;
   composeConfigValidateForFile?: typeof composeConfigValidateForFile;
   composeConfigValidate?: typeof composeConfigValidate;
 };
@@ -296,18 +231,6 @@ export function setComposeRunnerOverrides(next: ComposeRunnerOverrides): void {
   composeOverrides = next;
 }
 
-export type ComposeRunnerArtifactOverrides = {
-  composeFilePath?: string;
-  caddyJsonPath?: string;
-  driftReportPath?: string;
-};
-
-let composeArtifactOverrides: ComposeRunnerArtifactOverrides = {};
-
-export function setComposeRunnerArtifactOverrides(next: ComposeRunnerArtifactOverrides): void {
-  composeArtifactOverrides = next;
-}
-
 export async function composeActionWithOverride(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> {
   if (composeOverrides.composeAction) return composeOverrides.composeAction(action, service);
   return composeAction(action, service);
@@ -316,16 +239,6 @@ export async function composeActionWithOverride(action: "up" | "stop" | "restart
 export async function composeExecWithOverride(service: string, args: string[]): Promise<ComposeResult> {
   if (composeOverrides.composeExec) return composeOverrides.composeExec(service, args);
   return composeExec(service, args);
-}
-
-export async function composeActionForFileWithOverride(
-  action: "up" | "stop" | "restart",
-  service: string | string[],
-  composeFile: string,
-  envFileOverride?: string,
-): Promise<ComposeResult> {
-  if (composeOverrides.composeActionForFile) return composeOverrides.composeActionForFile(action, service, composeFile, envFileOverride);
-  return composeActionForFile(action, service, composeFile, envFileOverride);
 }
 
 export async function composeConfigValidateForFileWithOverride(composeFile: string, envFileOverride?: string): Promise<ComposeResult> {

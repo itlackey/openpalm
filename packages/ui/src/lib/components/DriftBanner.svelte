@@ -1,38 +1,34 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  type DriftReport = {
-    missingServices: string[];
-    exitedServices: string[];
-    missingEnvFiles: string[];
-    staleArtifacts: boolean;
+  type ServiceHealth = {
+    name: string;
+    status: string;
+    health?: string | null;
   };
 
-  let drift: DriftReport | null = null;
-  let dismissed = false;
+  let unhealthy: ServiceHealth[] = $state([]);
+  let dismissed = $state(false);
 
   onMount(async () => {
     const response = await fetch("/stack/drift");
     if (!response.ok) return;
     const payload = await response.json();
-    drift = payload.drift ?? null;
+    const services: ServiceHealth[] = payload.services ?? [];
+    unhealthy = services.filter((s) => s.status !== "running" || (s.health && s.health !== "healthy"));
   });
-
-  function hasDrift(report: DriftReport | null): boolean {
-    if (!report) return false;
-    return report.missingServices.length > 0 || report.exitedServices.length > 0 || report.missingEnvFiles.length > 0 || report.staleArtifacts;
-  }
 
   async function reconcile() {
     await fetch("/stack/apply", { method: "POST" });
   }
 </script>
 
-{#if !dismissed && hasDrift(drift)}
+{#if !dismissed && unhealthy.length > 0}
   <div class="drift-banner">
-    <strong>Compose drift detected.</strong>
-    <button on:click={reconcile}>Reconcile</button>
-    <button on:click={() => (dismissed = true)}>Dismiss</button>
+    <strong>Unhealthy containers:</strong>
+    {unhealthy.map((s) => s.name).join(", ")}
+    <button onclick={reconcile}>Reconcile</button>
+    <button onclick={() => (dismissed = true)}>Dismiss</button>
   </div>
 {/if}
 

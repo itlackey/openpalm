@@ -56,10 +56,10 @@ This document is the authoritative technical reference for the OpenPalm stack ge
    - 6.6 [Caddy Config Validation](#66-caddy-config-validation)
    - 6.7 [Automation Validation](#67-automation-validation)
    - 6.8 [Secret Resolution Errors](#68-secret-resolution-errors)
-7. [Impact Engine](#7-impact-engine)
-   - 7.1 [Change Detection](#71-change-detection)
-   - 7.2 [Impact Categories](#72-impact-categories)
-   - 7.3 [Compose Service Operations](#73-compose-service-operations)
+7. [Stack Apply Engine](#7-stack-apply-engine)
+   - 7.1 [Apply Flow](#71-apply-flow)
+   - 7.2 [Result Type](#72-result-type)
+   - 7.3 [Error Handling](#73-error-handling)
 8. [File System Layout](#8-file-system-layout)
 9. [Atomic Write Behaviour](#9-atomic-write-behaviour)
 10. [Key Source Files](#10-key-source-files)
@@ -836,52 +836,43 @@ These errors are thrown during artifact generation (step 7), not during spec par
 
 ---
 
-## 7. Impact Engine
+## 7. Stack Apply Engine
 
-The impact engine (`stack-apply-engine.ts`, `impact-plan.ts`) determines which Docker services need to be restarted, reloaded, brought up, or taken down when a new spec is applied. It compares the freshly generated artifacts against the currently deployed artifacts on disk.
+The apply engine (`stack-apply-engine.ts`) writes generated artifacts and delegates to Docker Compose for service management. It does not perform per-service change detection — Docker Compose handles service change detection, startup ordering, and health checking internally.
 
-### 7.1 Change Detection
+### 7.1 Apply Flow
 
-The engine reads the current on-disk artifacts through `readExistingArtifacts()` and then calls `generateStackArtifacts()` to produce the next set. It then computes a diff:
+`applyStack()` follows a simple linear flow:
 
-| Change type | How detected |
+1. **Validate secrets** — `StackManager.validateReferencedSecrets()` checks that all `${REF}` placeholders in channel configs resolve to a non-empty value in `secrets.env`.
+2. **Detect Caddy change** — Reads the current `caddy.json` from disk and compares it to the newly generated version. This determines whether a hot-reload is needed after apply.
+3. **Stage and validate** — Renders artifacts to a temp directory and runs `docker compose config` against the staged compose file to catch syntax errors before overwriting production files.
+4. **Promote** — Moves staged artifacts into place.
+5. **Compose up** — Runs `docker compose up -d --remove-orphans`. Docker Compose detects which services changed and handles restarts, new services, and orphan removal.
+6. **Caddy reload** — If the Caddy config changed, runs `docker compose exec caddy caddy reload --config /etc/caddy/caddy.json` to hot-reload routes without restarting the container.
+
+### 7.2 Result Type
+
+```typescript
+type StackApplyResult = {
+  ok: boolean;
+  generated: ReturnType<StackManager["renderPreview"]>;
+  caddyReloaded: boolean;
+  warnings: string[];
+};
+```
+
+### 7.3 Error Handling
+
+Any failure throws immediately with a descriptive error code:
+
+| Error code | Cause |
 |---|---|
-| Caddy config changed | `caddyJson` string differs |
-| Gateway secrets changed | `gatewayEnv` string differs |
-| System env changed | `systemEnv` string differs |
-| Channel config changed | Any entry in `channelEnvs` differs (keyed by service name) |
-| Assistant changed | `assistantEnv` string differs |
-| OpenMemory changed | `openmemoryEnv` OR `postgresEnv` OR `qdrantEnv` differs |
-| Compose file changed | `composeFile` string differs |
-
-A new service (in generated but not in existing compose file) is detected by parsing service names out of the compose YAML and is marked for `up` instead of `restart`.
-
-### 7.2 Impact Categories
-
-`computeImpactFromChanges` maps detected changes to operations:
-
-| Changed artifact | Operation | Services affected |
-|---|---|---|
-| Caddy config | `reload` | `caddy` |
-| Gateway secrets | `restart` | `gateway` |
-| System env | `restart` | `admin`, `gateway` |
-| Channel config | `restart` | all changed channel service names |
-| Assistant env | `restart` | `assistant` |
-| OpenMemory env (any) | `restart` | `openmemory` |
-| Compose file | `restart` | `gateway`, `assistant`, `openmemory`, `admin` |
-| New service in compose | `up` | new service name(s) |
-
-Services scheduled for `up` are removed from the `restart` list (`up` takes precedence).
-
-### 7.3 Compose Service Operations
-
-`applyStack` executes the impact plan in this order:
-
-1. **`up`** — `docker compose up -d <service>` for each new service.
-2. **`restart`** — `docker compose restart <service>` for each changed service.
-3. **`reload`** — For `caddy`: `docker compose exec caddy caddy reload --config /etc/caddy/caddy.json`. For all other services in the reload list: `docker compose restart <service>`.
-
-Any failure in a compose operation throws immediately with `compose_<op>_failed:<service>:<stderr>`.
+| `secret_validation_failed` | A referenced secret is missing or empty |
+| `compose_validation_failed` | `docker compose config` rejected the generated file |
+| `compose_up_failed` | `docker compose up -d --remove-orphans` returned non-zero |
+| `caddy_reload_failed` | Caddy hot-reload command failed |
+| `apply_lock_held` | Another apply is in progress (lock not expired) |
 
 ---
 
@@ -901,8 +892,6 @@ $OPENPALM_STATE_HOME/
 ├── system.env                         # systemEnv artifact (loaded by admin + gateway)
 ├── caddy.json                         # caddyJson artifact (Caddy JSON API format)
 ├── docker-compose.yml                 # composeFile artifact
-├── docker-compose-fallback.yml        # emergency admin+caddy compose
-├── caddy-fallback.json                # emergency caddy config (admin reverse-proxy)
 ├── gateway/
 │   └── .env                           # gatewayEnv artifact
 ├── openmemory/
@@ -951,8 +940,7 @@ The `extra-user-overrides.caddy` snippet is **never overwritten** if it already 
 | `packages/lib/src/admin/stack-spec.ts` | `StackSpec` type definitions, `parseStackSpec`, `createDefaultStackSpec`, `parseSecretReference` |
 | `packages/lib/src/admin/stack-generator.ts` | `generateStackArtifacts` — the pure generation function |
 | `packages/lib/src/admin/stack-manager.ts` | `StackManager` — file I/O orchestration, secret CRUD, channel/automation management |
-| `packages/lib/src/admin/stack-apply-engine.ts` | `applyStack` — diff, impact computation, and compose operations |
-| `packages/lib/src/admin/impact-plan.ts` | `computeImpactFromChanges` — maps diffs to reload/restart/up/down actions |
+| `packages/lib/src/admin/stack-apply-engine.ts` | `applyStack` — validates secrets, writes artifacts, runs compose up, reloads Caddy |
 | `packages/lib/src/admin/runtime-env.ts` | Env file parsing/updating utilities and `sanitizeEnvScalar` |
 | `packages/lib/src/admin/automations.ts` | Cron file generation and automation runner script |
 | `packages/lib/src/admin/stack-generator.test.ts` | Comprehensive tests for artifact generation |

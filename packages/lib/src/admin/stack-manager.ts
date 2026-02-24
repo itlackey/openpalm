@@ -1,9 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { generateStackArtifacts } from "./stack-generator.ts";
-import { validateFallbackBundle } from "./fallback-bundle.ts";
+
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { validateCron } from "./cron.ts";
@@ -25,8 +24,6 @@ export type StackManagerPaths = {
   assistantEnvPath: string;
   dataEnvPath?: string;
   renderReportPath?: string;
-  fallbackComposeFilePath?: string;
-  fallbackCaddyJsonPath?: string;
   applyLockPath?: string;
 };
 
@@ -47,21 +44,6 @@ function pickEnv(source: Record<string, string>, keys: string[]): Record<string,
     if (value) out[key] = value;
   }
   return out;
-}
-
-function resolveEmbeddedStatePath(relativePath: string): string {
-  const cwd = process.cwd();
-  const candidates = [
-    join(cwd, "packages/lib/src/embedded/state", relativePath),
-    join(cwd, "packages/ui", "packages/lib/src/embedded/state", relativePath),
-    join(cwd, "..", "packages/lib/src/embedded/state", relativePath),
-    join(cwd, "../..", "packages/lib/src/embedded/state", relativePath),
-    fileURLToPath(new URL(`../embedded/state/${relativePath}`, import.meta.url)),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return candidates[candidates.length - 1];
 }
 
 export class StackManager {
@@ -135,34 +117,6 @@ export class StackManager {
     return generateStackArtifacts(this.getSpec(), this.readSecretsEnv());
   }
 
-  computeDriftReport() {
-    const generated = this.renderPreview();
-    const expectedServices = [
-      ...Object.keys(generated.channelEnvs),
-      ...Object.keys(generated.serviceEnvs),
-      "admin",
-      "gateway",
-      "assistant",
-      "openmemory",
-      "openmemory-ui",
-      "postgres",
-      "qdrant",
-      "caddy",
-    ];
-    const envFiles = [
-      this.paths.gatewayEnvPath,
-      this.paths.openmemoryEnvPath,
-      this.paths.postgresEnvPath,
-      this.paths.qdrantEnvPath,
-      this.paths.assistantEnvPath,
-      ...Object.keys(generated.channelEnvs).map((name) => join(this.paths.stateRootPath, name, ".env")),
-      ...Object.keys(generated.serviceEnvs).map((name) => join(this.paths.stateRootPath, name, ".env")),
-    ];
-    const artifactHashes = { compose: generated.composeFile, caddy: generated.caddyJson };
-    const driftReportPath = join(this.paths.stateRootPath, "drift-report.json");
-    return { expectedServices, envFiles, artifactHashes, driftReportPath };
-  }
-
   renderArtifacts(precomputed?: ReturnType<StackManager["renderPreview"]>) {
     const generated = precomputed ?? this.renderPreview();
     const changedArtifacts: string[] = [];
@@ -189,27 +143,6 @@ export class StackManager {
       changedArtifacts,
       applySafe: generated.renderReport.missingSecretReferences.length === 0,
     };
-    const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
-    if (!existsSync(fallbackComposeFilePath)) {
-      const bundledPath = resolveEmbeddedStatePath("docker-compose-fallback.yml");
-      const bundled = readFileSync(bundledPath, "utf8");
-      writeFileSync(fallbackComposeFilePath, bundled, "utf8");
-      validateFallbackBundle({
-        composePath: fallbackComposeFilePath,
-        caddyPath: this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json"),
-      });
-    }
-
-    const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
-    if (!existsSync(fallbackCaddyJsonPath)) {
-      const bundledPath = resolveEmbeddedStatePath("caddy/fallback-caddy.json");
-      const bundled = readFileSync(bundledPath, "utf8");
-      writeFileSync(fallbackCaddyJsonPath, bundled, "utf8");
-      validateFallbackBundle({
-        composePath: fallbackComposeFilePath,
-        caddyPath: fallbackCaddyJsonPath,
-      });
-    }
 
     mkdirSync(dirname(renderReportPath), { recursive: true });
     writeFileSync(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`, "utf8");
@@ -225,7 +158,6 @@ export class StackManager {
     const suffix = options?.suffix ?? ".next";
     const changedArtifacts: string[] = [];
     const staged: Array<{ tempPath: string; livePath: string }> = [];
-    const backups: Array<{ prevPath: string; livePath: string }> = [];
     const stage = (livePath: string, content: string) => {
       if (!existsSync(livePath) || readFileSync(livePath, "utf8") !== content) changedArtifacts.push(livePath);
       const tempPath = `${livePath}${suffix}`;
@@ -258,16 +190,6 @@ export class StackManager {
       transactionId: options?.transactionId,
     };
 
-    const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
-    if (!existsSync(fallbackComposeFilePath)) {
-      stage(fallbackComposeFilePath, this.buildFallbackCompose());
-    }
-
-    const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
-    if (!existsSync(fallbackCaddyJsonPath)) {
-      stage(fallbackCaddyJsonPath, this.buildFallbackCaddyJson());
-    }
-
     stage(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`);
 
     return {
@@ -276,22 +198,12 @@ export class StackManager {
       composeFilePath: tempComposeFilePath,
       promote: () => {
         for (const entry of staged) {
-          if (existsSync(entry.livePath)) {
-            const prevPath = `${entry.livePath}.prev`;
-            renameSync(entry.livePath, prevPath);
-            backups.push({ prevPath, livePath: entry.livePath });
-          }
           renameSync(entry.tempPath, entry.livePath);
         }
       },
       cleanup: () => {
         for (const entry of staged) {
           if (existsSync(entry.tempPath)) rmSync(entry.tempPath, { force: true });
-        }
-      },
-      cleanupBackups: () => {
-        for (const entry of backups) {
-          if (existsSync(entry.prevPath)) rmSync(entry.prevPath, { force: true });
         }
       },
     };
@@ -492,13 +404,5 @@ export class StackManager {
 
   private isValidSecretName(name: string) {
     return /^[A-Z][A-Z0-9_]*$/.test(name);
-  }
-
-
-  private buildFallbackCaddyJson(): string {
-    return readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/caddy/fallback-caddy.json"), "utf8");
-  }
-  private buildFallbackCompose(): string {
-    return readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/docker-compose-fallback.yml"), "utf8");
   }
 }
