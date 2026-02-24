@@ -180,7 +180,8 @@ describe("CLI entry point", () => {
   it.skipIf(!dockerAvailable)("supports ps as alias for status", async () => {
     const { stderr, exitCode } = await runCli("ps");
 
-    expect(exitCode).not.toBe(0);
+    // docker compose ps returns 0 even when no services are running
+    expect(exitCode).toBe(0);
     expect(stderr).not.toContain("Unknown command");
   });
 
