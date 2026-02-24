@@ -15,7 +15,7 @@ export function createChannel(args: string[]): void {
   }
   if (name.length > 32) throw new Error("Error: channel name must be 32 characters or fewer");
 
-  const reserved = new Set(["chat", "discord", "voice", "telegram", "webhook"]);
+  const reserved = new Set(["chat", "discord", "voice", "telegram", "webhook", "api", "mcp", "a2a"]);
   if (reserved.has(name)) {
     throw new Error(`Error: \"${name}\" is an existing built-in channel. Choose a different name.`);
   }

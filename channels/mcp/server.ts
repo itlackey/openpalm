@@ -1,0 +1,96 @@
+import { createMcpChannel } from "./channel.ts";
+import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { json } from "@openpalm/lib/shared/http.ts";
+
+export { signPayload };
+
+const PORT = Number(Bun.env.PORT ?? 8187);
+const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
+const SHARED_SECRET = Bun.env.CHANNEL_MCP_SECRET ?? "";
+
+export function createFetch(
+  adapter: ChannelAdapter,
+  gatewayUrl: string,
+  sharedSecret: string,
+  forwardFetch: typeof fetch = fetch,
+) {
+  const routeMap = new Map(adapter.routes.map((route) => [`${route.method} ${route.path}`, route.handler]));
+
+  return async function handle(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    if (url.pathname === "/health") return json(200, adapter.health());
+
+    const handler = routeMap.get(`${req.method} ${url.pathname}`);
+    if (!handler) return json(404, { error: "not_found" });
+
+    const result = await handler(req);
+
+    if (!result.ok) {
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const gatewayPayload = {
+      ...result.payload,
+      nonce: crypto.randomUUID(),
+      timestamp: Date.now(),
+    };
+
+    const serialized = JSON.stringify(gatewayPayload);
+    const sig = signPayload(sharedSecret, serialized);
+    const rpcId = (result.payload.metadata?.rpcId as string | number | null) ?? null;
+
+    const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-channel-signature": sig,
+      },
+      body: serialized,
+    });
+
+    if (!resp.ok) {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpcId,
+          error: { code: -32000, message: `Gateway error (${resp.status})` },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    const answerBody = await resp.text();
+    let answer = "";
+    try {
+      const parsed = JSON.parse(answerBody) as Record<string, unknown>;
+      if (typeof parsed.answer === "string") answer = parsed.answer;
+    } catch {
+      answer = answerBody;
+    }
+
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId,
+        result: {
+          content: [{ type: "text", text: answer }],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+}
+
+if (import.meta.main) {
+  if (!SHARED_SECRET) {
+    console.error("[channel-mcp] FATAL: CHANNEL_MCP_SECRET environment variable is not set. Exiting.");
+    process.exit(1);
+  }
+  const adapter = createMcpChannel();
+  Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
+  console.log(JSON.stringify({ kind: "startup", service: "channel-mcp", port: PORT }));
+}

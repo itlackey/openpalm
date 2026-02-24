@@ -40,6 +40,8 @@ Channels are the ways you can talk to your assistant outside of the admin panel.
 - A **Telegram** channel for mobile messaging
 - A **Voice** channel for speaking to it
 - A **Web Chat** channel for embedding in a website
+- An **MCP** channel so AI clients and IDE integrations can use the assistant as a tool server
+- An **A2A** channel so other AI agents can communicate with the assistant using the Agent-to-Agent protocol
 
 Each channel has its own setup flow — Discord asks for a bot token, Telegram asks for a bot token, voice asks for a speech-to-text endpoint — and once enabled, shows a status indicator.
 

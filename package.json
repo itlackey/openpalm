@@ -11,6 +11,8 @@
     "channels/telegram",
     "channels/webhook",
     "channels/api",
+    "channels/mcp",
+    "channels/a2a",
     "packages/lib",
     "packages/cli",
     "packages/ui"
