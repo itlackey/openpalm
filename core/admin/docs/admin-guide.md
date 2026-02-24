@@ -23,7 +23,7 @@ npx openpalm install
 bunx openpalm install
 ```
 
-The installer detects your container runtime (Docker, Podman, or OrbStack), generates secure credentials, starts all services, and opens a setup wizard. No config files to edit. See the [CLI documentation](../../docs/cli.md) for all commands.
+The installer detects your container runtime (Docker, Podman, or OrbStack), generates secure credentials, starts all services, and opens a setup wizard. No config files to edit. See the [CLI documentation](../../../docs/cli.md) for all commands.
 
 For implementation details of the installer flow and directory layout, see the [Admin Service README](../README.md).
 
