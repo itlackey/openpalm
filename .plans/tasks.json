@@ -9,14 +9,14 @@
       "severity": "blocker",
       "priority": "must-fix",
       "effort": "XS",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-06-opencode-link-broken.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-6.1",
           "description": "Change assistantUrl from `${base}/opencode/` to `/services/opencode/`",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/QuickLinks.svelte", "lines": "5" }
           ]
@@ -24,7 +24,7 @@
         {
           "id": "ISSUE-6.2",
           "description": "Verify Caddy route exists in stack-generator.ts (caddyAdminSubroute)",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-generator.ts", "lines": "~140" }
           ]
@@ -32,7 +32,7 @@
         {
           "id": "ISSUE-6.3",
           "description": "Manual test: click Open OpenCode → chat interface opens in new tab",
-          "status": "pending",
+          "status": "completed",
           "files": []
         }
       ]

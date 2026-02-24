@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
 
-	const assistantUrl = `${base}/opencode/`;
+	const assistantUrl = `/services/opencode/`;
 	const openmemoryUrl = browser
 		? `${window.location.protocol}//${window.location.hostname}:3000`
 		: 'http://localhost:3000';
