@@ -364,12 +364,6 @@ export class StackManager {
         name,
         configured: Boolean(secretValues[name]),
         usedBy: usedBy.get(name) ?? [],
-        purpose: name.includes("TOKEN") || name.includes("KEY") || name.includes("SECRET") ? "credential_or_shared_secret" : "runtime_config",
-        constraints: name.includes("SECRET") ? { min_length: 32 } : undefined,
-        rotation: {
-          recommendedDays: 90,
-          lastRotated: null,
-        },
       })),
     };
   }

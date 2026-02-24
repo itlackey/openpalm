@@ -780,7 +780,7 @@
       "id": "10",
       "title": "Simplify listSecretManagerState() Return Type",
       "description": "Remove three speculative, never-consumed fields (purpose, constraints, rotation) from the listSecretManagerState() return type. Single 5-line change in one file -- no UI, test, or API consumer reads these fields.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/10-simplify-secret-state.md",
       "dependsOn": [],
       "netLinesChanged": "-5",
@@ -790,7 +790,7 @@
           "id": "10.1",
           "title": "Remove purpose/constraints/rotation from listSecretManagerState()",
           "description": "In stack-manager.ts, replace the .map() callback at lines 363-373 to only return name, configured, and usedBy fields.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-manager.ts", "action": "edit", "lines": "363-373" }
           ]
@@ -799,7 +799,7 @@
           "id": "10.2",
           "title": "Run typecheck and test suite",
           "description": "Run bun run typecheck, bun test packages/lib/src/admin/stack-manager.test.ts, and bun test to verify no regressions.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]
