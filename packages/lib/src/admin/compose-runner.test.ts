@@ -1,5 +1,12 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
-import { allowedServiceSet, composeAction, composeConfigServices, composeExec, composeServiceNames } from "./compose-runner.ts";
+import {
+  allowedServiceSet,
+  composeAction,
+  composeConfigServices,
+  composeExec,
+  composeServiceNames,
+  filterUiManagedServices,
+} from "./compose-runner.ts";
 import { runCompose } from "../compose-runner.ts";
 
 describe("compose-runner", () => {
@@ -78,6 +85,11 @@ describe("compose-runner", () => {
     } else {
       process.env.OPENPALM_EXTRA_SERVICES = previous;
     }
+  });
+
+  it("filterUiManagedServices excludes admin and caddy", () => {
+    const names = filterUiManagedServices(["admin", "caddy", "gateway", "channel-chat"]);
+    expect(names).toEqual(["gateway", "channel-chat"]);
   });
 
   it("classifies spawn failures as daemon_unreachable", async () => {

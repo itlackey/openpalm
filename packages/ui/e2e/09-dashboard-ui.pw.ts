@@ -33,4 +33,10 @@ test.describe('dashboard browser tests', () => {
 		await page.goto('/');
 		await expect(page.locator('button', { hasText: 'Run Setup Wizard' })).toBeVisible();
 	});
+
+	test('container and automation management cards are visible', async ({ page }) => {
+		await page.goto('/');
+		await expect(page.locator('h3', { hasText: 'Container Management' })).toBeVisible();
+		await expect(page.locator('h3', { hasText: 'Automation Management' })).toBeVisible();
+	});
 });

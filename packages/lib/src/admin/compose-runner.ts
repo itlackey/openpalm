@@ -6,6 +6,7 @@ export const CoreServices = [
   "assistant", "gateway", "openmemory", "admin",
   "caddy", "openmemory-ui", "postgres", "qdrant"
 ] as const;
+export const UiManagedServiceExclusions = ["admin", "caddy"] as const;
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -258,6 +259,11 @@ export async function composeLogs(service: string, tail: number = 200): Promise<
 
 export async function composeServiceNames(): Promise<string[]> {
   return Array.from(await allowedServiceSet()).sort();
+}
+
+export function filterUiManagedServices(services: string[]): string[] {
+  const excluded = new Set<string>(UiManagedServiceExclusions);
+  return services.filter((service) => !excluded.has(service));
 }
 
 export async function composeAction(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> {
