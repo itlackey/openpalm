@@ -1,10 +1,15 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { existsSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import { execSync } from "node:child_process";
 
 const ADMIN_BASE = "http://localhost:8100";
 const ADMIN_TOKEN = "dev-admin-token";
-const STATE_FILE_HOST = ".dev/data/admin/setup-state.json";
+
+// Resolve .dev/ relative to the main worktree root (where Docker mounts from),
+// not the current working directory — which may be a git worktree.
+const repoRoot = resolve(execSync("git rev-parse --git-common-dir", { encoding: "utf8" }).trim(), "..");
+const STATE_FILE_HOST = resolve(repoRoot, ".dev/data/admin/setup-state.json");
 
 const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
   .then(r => r.ok)
