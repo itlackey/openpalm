@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { validateFallbackBundle } from "./fallback-bundle.ts";
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
@@ -175,7 +176,8 @@ export class StackManager {
     };
     const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
     if (!existsSync(fallbackComposeFilePath)) {
-      const bundled = readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/docker-compose-fallback.yml"), "utf8");
+      const bundledPath = fileURLToPath(new URL("../embedded/state/docker-compose-fallback.yml", import.meta.url));
+      const bundled = readFileSync(bundledPath, "utf8");
       writeFileSync(fallbackComposeFilePath, bundled, "utf8");
       validateFallbackBundle({
         composePath: fallbackComposeFilePath,
@@ -185,7 +187,8 @@ export class StackManager {
 
     const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
     if (!existsSync(fallbackCaddyJsonPath)) {
-      const bundled = readFileSync(join(process.cwd(), "packages/lib/src/embedded/state/caddy/fallback-caddy.json"), "utf8");
+      const bundledPath = fileURLToPath(new URL("../embedded/state/caddy/fallback-caddy.json", import.meta.url));
+      const bundled = readFileSync(bundledPath, "utf8");
       writeFileSync(fallbackCaddyJsonPath, bundled, "utf8");
       validateFallbackBundle({
         composePath: fallbackComposeFilePath,

@@ -26,7 +26,7 @@ export function renderCaddyComposeService(): ComposeService {
 
 export function renderPostgresComposeService(): ComposeService {
   return {
-    image: "postgres:16-alpine",
+    image: "postgres:18.2-alpine",
     restart: "unless-stopped",
     env_file: ["${OPENPALM_STATE_HOME}/postgres/.env"],
     environment: {
@@ -47,7 +47,7 @@ export function renderPostgresComposeService(): ComposeService {
 
 export function renderQdrantComposeService(): ComposeService {
   return {
-    image: "qdrant/qdrant:v1.13.2",
+    image: "qdrant/qdrant:1.17",
     restart: "unless-stopped",
     env_file: ["${OPENPALM_STATE_HOME}/qdrant/.env"],
     volumes: ["${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage"],
