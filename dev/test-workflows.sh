@@ -136,6 +136,7 @@ test_publish-images() {
     [channel-discord]=".|./channels/discord/Dockerfile"
     [channel-voice]=".|./channels/voice/Dockerfile"
     [channel-telegram]=".|./channels/telegram/Dockerfile"
+    [channel-api]=".|./channels/api/Dockerfile"
   )
   local failed=()
   for name in "${!IMAGES[@]}"; do

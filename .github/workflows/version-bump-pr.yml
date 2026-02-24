@@ -28,6 +28,7 @@ on:
           - channel-discord
           - channel-voice
           - channel-telegram
+          - channel-api
           - cli
       bump:
         description: "Version bump type"

@@ -53,4 +53,4 @@ Each service and channel has a README with implementation details co-located wit
 | Voice channel | [channels/voice/README.md](../channels/voice/README.md) |
 | Telegram channel | [channels/telegram/README.md](../channels/telegram/README.md) |
 | Webhook channel | [channels/webhook/README.md](../channels/webhook/README.md) |
-
+| API-compatible channel | [channels/api/README.md](../channels/api/README.md) |

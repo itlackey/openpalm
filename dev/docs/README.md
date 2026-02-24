@@ -12,7 +12,7 @@ This folder is the concise source of truth for building and operating OpenPalm.
 
 ## Coverage map
 - **Core services:** `core/admin`, `core/gateway`, `core/assistant`
-- **Channels:** `channels/chat`, `channels/discord`, `channels/telegram`, `channels/voice`, `channels/webhook`
+- **Channels:** `channels/chat`, `channels/discord`, `channels/telegram`, `channels/voice`, `channels/webhook`, `channels/api`
 - **Shared packages:** `packages/lib`, `packages/cli`, `packages/ui`
 - **Ops references:** `docs/security.md`, `docs/maintenance.md`, `docs/troubleshooting.md`
 
