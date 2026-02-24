@@ -11,7 +11,7 @@ test.describe('container and automation management api', () => {
 		expect(body.services).not.toContain('caddy');
 	});
 
-	test('GET /automations/logs returns logs for known automation id', async ({ request }) => {
+	test('GET /automations/history returns logs for known automation id', async ({ request }) => {
 		const createRes = await authedPost(request, '/automations', {
 			name: 'Logs Automation',
 			schedule: '*/30 * * * *',
@@ -22,7 +22,7 @@ test.describe('container and automation management api', () => {
 		const id = created.automation?.id as string;
 		expect(id.length).toBeGreaterThan(0);
 
-		const logsRes = await authedGet(request, `/automations/logs?id=${encodeURIComponent(id)}`);
+		const logsRes = await authedGet(request, `/automations/history?id=${encodeURIComponent(id)}`);
 		expect(logsRes.status()).toBe(200);
 		const body = await logsRes.json();
 		expect(body.id).toBe(id);

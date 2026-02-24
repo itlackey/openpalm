@@ -56,7 +56,7 @@
 
 	async function loadServiceLogs(service: string) {
 		selectedService = service;
-		const r = await api('/containers/logs', {
+		const r = await api('/containers/service-logs', {
 			method: 'POST',
 			body: JSON.stringify({ service, tail: 200 })
 		});
@@ -131,7 +131,7 @@
 
 	async function loadAutomationLogs(id: string) {
 		selectedAutomation = id;
-		const r = await api(`/automations/logs?id=${encodeURIComponent(id)}&limit=20`);
+		const r = await api(`/automations/history?id=${encodeURIComponent(id)}&limit=20`);
 		if (!r.ok) {
 			automationLogs = `Failed to load automation logs: ${r.data?.error || 'unknown error'}`;
 			return;
