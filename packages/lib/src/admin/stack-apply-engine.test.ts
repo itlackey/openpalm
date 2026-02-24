@@ -6,7 +6,7 @@ import { StackManager } from "./stack-manager.ts";
 import { stringifyYamlDocument } from "../shared/yaml.ts";
 
 const yamlStringify = (obj: unknown) => stringifyYamlDocument(obj);
-import { applyStack, previewComposeOperations } from "./stack-apply-engine.ts";
+import { applyStack } from "./stack-apply-engine.ts";
 import { setComposeConfigServicesOverride, setComposeListOverride, setComposePsOverride, setComposeRunnerArtifactOverrides, setComposeRunnerOverrides } from "./compose-runner.ts";
 import { selfTestFallbackBundle } from "./stack-apply-engine.ts";
 
@@ -445,27 +445,5 @@ describe("applyStack failure injection", () => {
     setComposeConfigServicesOverride(null);
     restorePorts();
     restoreEnv();
-  });
-});
-
-describe("previewComposeOperations", () => {
-  it("marks caddy reload and others restart", async () => {
-    const restorePorts = withDisabledPortCheck();
-    setComposeListOverride(async () => ({
-      ok: true,
-      stdout: "caddy\nchannel-chat\nservice-foo\nadmin\n",
-      stderr: "",
-    }));
-    setComposeConfigServicesOverride(async () => ["caddy", "channel-chat", "service-foo", "admin"]);
-
-    const result = await previewComposeOperations();
-    expect(result.reloadSemantics.caddy).toBe("reload");
-    expect(result.reloadSemantics["channel-chat"]).toBe("restart");
-    expect(result.reloadSemantics["service-foo"]).toBe("restart");
-    expect(result.reloadSemantics.admin).toBe("restart");
-
-    setComposeListOverride(null);
-    setComposeConfigServicesOverride(null);
-    restorePorts();
   });
 });

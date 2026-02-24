@@ -22,25 +22,6 @@ export function diffServiceSets(existing: string[], next: string[]): { added: st
   return { added, removed };
 }
 
-export function computeServiceConfigHashes(composeContent: string): Record<string, string> {
-  const lines = composeContent.split(/\r?\n/);
-  const hashes: Record<string, string> = {};
-  let current: string | null = null;
-  let buffer: string[] = [];
-  for (const line of lines) {
-    const match = /^\s{2}([a-zA-Z0-9_-]+):\s*$/.exec(line);
-    if (match && !line.startsWith("    ")) {
-      if (current) hashes[current] = buffer.join("\n");
-      current = match[1];
-      buffer = [line];
-      continue;
-    }
-    if (current) buffer.push(line);
-  }
-  if (current) hashes[current] = buffer.join("\n");
-  return hashes;
-}
-
 export function computeImpactFromChanges(changes: {
   caddyChanged?: boolean;
   gatewaySecretsChanged?: boolean;

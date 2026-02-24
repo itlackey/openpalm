@@ -808,7 +808,7 @@
       "id": "11",
       "title": "Simplify SetupManager Sanitization",
       "description": "Replace 7 per-field sanitization functions (65 lines) in setup-manager.ts with a single 12-line isValidSetupState() structural validator. If file is valid, use it; otherwise return DEFAULT_STATE. File shrinks from 232 to ~179 lines.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/11-simplify-setup-manager.md",
       "dependsOn": [],
       "netLinesChanged": "-53",
@@ -818,7 +818,7 @@
           "id": "11.1",
           "title": "Add isValidSetupState() function",
           "description": "Create the new structural validation function (~12 lines) after DEFAULT_STATE in setup-manager.ts.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/setup-manager.ts", "action": "edit", "lines": "~65 (insert after)" }
           ]
@@ -827,7 +827,7 @@
           "id": "11.2",
           "title": "Rewrite getState() method",
           "description": "Replace lines 139-147 with simplified version using structuredClone(DEFAULT_STATE) and isValidSetupState.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/setup-manager.ts", "action": "edit", "lines": "139-147" }
           ]
@@ -836,7 +836,7 @@
           "id": "11.3",
           "title": "Delete 6 sanitization functions and normalizeState",
           "description": "Remove sanitizeStringArray, uniqueStrings, sanitizeServiceInstances, sanitizeSmallModel, sanitizeSteps, sanitizeProfile, and normalizeState (lines 67-129).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/setup-manager.ts", "action": "edit", "lines": "67-129" }
           ]
@@ -845,7 +845,7 @@
           "id": "11.4",
           "title": "Inline uniqueStrings in setEnabledChannels",
           "description": "Replace uniqueStrings(channels) with [...new Set(channels)] at line 215.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/setup-manager.ts", "action": "edit", "lines": "215" }
           ]
@@ -854,7 +854,7 @@
           "id": "11.5",
           "title": "Update tests",
           "description": "Rename normalizeState describe block, add 2 new corrupt-file tests, fix contract test to include profile field.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/setup-manager.test.ts", "action": "edit", "lines": "99" },
             { "path": "test/contracts/setup-wizard-gate.contract.test.ts", "action": "edit", "lines": "75-88" }
@@ -864,7 +864,7 @@
           "id": "11.6",
           "title": "Run tests and verify",
           "description": "Run bun test packages/lib/src/admin/setup-manager.test.ts, bun run typecheck, and bun test.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]

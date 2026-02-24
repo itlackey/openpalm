@@ -7,8 +7,6 @@ import {
   composeConfigServicesWithOverride,
   composeConfigValidateForFileWithOverride,
   composeExecWithOverride,
-  composeServiceNames,
-  composeLogsValidateTail,
   computeDriftReport,
 } from "./compose-runner.ts";
 import { pollUntilHealthy, resolveServiceHealthConfig } from "./health-gate.ts";
@@ -391,32 +389,4 @@ function restorePrevArtifacts(manager: StackManager): void {
     const prevPath = `${target}.prev`;
     if (existsSync(prevPath)) renameSync(prevPath, target);
   }
-}
-
-export async function previewComposeOperations(): Promise<{ services: string[]; logTailLimit: boolean; reloadSemantics: Record<string, "reload" | "restart"> }> {
-  const names = await composeServiceNames();
-  const tailCheck = composeLogsValidateTail(50);
-
-  const semantics: Record<string, "reload" | "restart"> = {
-    caddy: "reload",
-    gateway: "restart",
-    "assistant": "restart",
-    openmemory: "restart",
-    admin: "restart",
-  };
-
-  for (const name of names) {
-    if (name.startsWith("channel-") && !semantics[name]) {
-      semantics[name] = "restart";
-    }
-    if (name.startsWith("service-") && !semantics[name]) {
-      semantics[name] = "restart";
-    }
-  }
-
-  return {
-    services: names,
-    logTailLimit: tailCheck,
-    reloadSemantics: semantics,
-  };
 }

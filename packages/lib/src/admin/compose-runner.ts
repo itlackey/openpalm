@@ -71,25 +71,6 @@ async function runCompose(args: string[], composeFileOverride?: string, envFileO
   };
 }
 
-function parseServiceNamesFromComposeFile(): string[] {
-  const path = `${composeProjectPath()}/${composeFilePath()}`;
-  if (!existsSync(path)) return [];
-  const content = readFileSync(path, "utf8");
-  const lines = content.split(/\r?\n/);
-  const names: string[] = [];
-  let inServices = false;
-  for (const line of lines) {
-    if (!inServices) {
-      if (line.trim() === "services:") inServices = true;
-      continue;
-    }
-    if (/^[^\s#]/.test(line) && line.trim() !== "") break;
-    const match = /^\s{2}([a-zA-Z0-9_-]+):\s*$/.exec(line);
-    if (match) names.push(match[1]);
-  }
-  return names;
-}
-
 export async function composeConfigServices(composeFileOverride?: string): Promise<string[]> {
   const composeFile = composeFileOverride ?? composeFilePath();
   const result = await runCompose(["config", "--services"], composeFile, composeEnvFilePath());
