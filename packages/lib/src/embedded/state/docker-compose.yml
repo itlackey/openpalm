@@ -139,6 +139,8 @@ services:
   admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8100"
     env_file:
       - ${OPENPALM_STATE_HOME}/system.env
     environment:

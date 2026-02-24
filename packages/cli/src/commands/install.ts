@@ -287,6 +287,8 @@ export async function install(options: InstallOptions): Promise<void> {
   admin:
     image: \${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:\${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8100"
     env_file:
       - \${OPENPALM_STATE_HOME}/system.env
     environment:
@@ -352,8 +354,10 @@ networks:
   spin7.stop(green("Core services started"));
 
   // Wait for admin health check with exponential backoff
-  const adminUrl = "http://localhost";
+  let adminUrl = "http://localhost";
+  const adminDirectUrl = "http://localhost:8100";
   const healthUrl = `${adminUrl}/setup/status`;
+  const healthDirectUrl = `${adminDirectUrl}/setup/status`;
   const spin8 = spinner("Waiting for admin interface...");
 
   let healthy = false;
@@ -368,7 +372,17 @@ networks:
         break;
       }
     } catch {
-      // Service not ready yet
+      // Caddy route not ready — try direct admin port as fallback
+      try {
+        const directResponse = await fetch(healthDirectUrl, { signal: AbortSignal.timeout(3000) });
+        if (directResponse.ok) {
+          healthy = true;
+          adminUrl = adminDirectUrl;
+          break;
+        }
+      } catch {
+        // Neither route ready yet
+      }
     }
     await Bun.sleep(delay);
     delay = Math.min(delay * 1.5, maxDelay);
@@ -405,6 +419,7 @@ networks:
     log(bold(green("  OpenPalm setup wizard is ready!")));
     log("");
     info(`  Setup wizard: ${cyan(adminUrl)}`);
+    info(`  Direct admin: ${cyan("http://localhost:8100")} (if port 80 is blocked)`);
     log("");
     log(bold("  What happens next:"));
     info("    1. The setup wizard opens in your browser");
@@ -437,6 +452,9 @@ networks:
     info("     - Make sure port 80 is not used by another service");
     info("     - Restart Docker/Podman and try again");
     info("     - Check that you have internet access (images need to download)");
+    log("");
+    info("  5. If the browser doesn't open, try the direct admin URL:");
+    info(`     ${cyan("http://localhost:8100")}`);
   }
 
   log("");
