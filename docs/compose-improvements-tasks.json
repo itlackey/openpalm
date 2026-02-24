@@ -1,0 +1,119 @@
+[
+  {
+    "name": "Validate newly generated Compose file before apply",
+    "status": "not-started",
+    "description": "Move compose validation to run against the candidate generated file rather than the currently-installed file. Write generated artifacts to temp paths, run `docker compose -f <temp> config` to validate, then atomically promote files and begin service actions. This catches broken configs before any live artifacts are touched.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "24-38"
+    }
+  },
+  {
+    "name": "Consolidate Compose command execution into one shared, hardened abstraction",
+    "status": "not-started",
+    "description": "Replace the two divergent Compose execution layers (`packages/lib/src/compose.ts` and `packages/lib/src/admin/compose-runner.ts`) with a single shared runner. Standardize env-file handling, per-command timeouts via AbortController, bounded retry for transient failures, structured error codes (daemon_unreachable, image_pull_failed, invalid_compose, permission_denied), and streamed vs buffered output modes.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "40-52"
+    }
+  },
+  {
+    "name": "Make artifact writes transactional with two-phase staged apply and lock protection",
+    "status": "not-started",
+    "description": "Introduce a two-phase deploy: write all generated artifacts (compose, env, caddy) to a `*.next` staging directory, validate them, then atomically promote via rename/swap. Add a stack apply lock file with timeout to prevent concurrent apply races. Record a deployment transaction ID at commit time for forensic traceability.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "53-65"
+    }
+  },
+  {
+    "name": "Introduce health-gated apply with automatic rollback trigger",
+    "status": "not-started",
+    "description": "After each `up`/`restart` action, poll `docker compose ps --format json` and require `running` + `healthy` (when a healthcheck exists) with per-service timeouts. Trigger rollback/fallback on health gate failure, not only on command exit failure. Add `safe` (strict health gate) and `fast` (current behavior) rollout modes.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "66-78"
+    }
+  },
+  {
+    "name": "Strengthen fallback mode with a tested golden recovery bundle",
+    "status": "not-started",
+    "description": "Package a minimal, versioned recovery compose + caddy bundle with deterministic checksums embedded in the image or lib. Validate bundle integrity before use at fallback time. Add a periodic self-test (dry-run validation) executed on startup and after upgrades to ensure fallback artifacts remain usable.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "79-90"
+    }
+  },
+  {
+    "name": "Dependency-aware impact planning and explicit service removal handling",
+    "status": "not-started",
+    "description": "Compute apply impact from structured per-service diffs (config hash, env hash, mount hash, network hash) and restart only directly affected services plus strict dependents. Diff old vs new service sets and execute explicit stop/remove plans for deleted services. For full-stack applies prefer `docker compose up -d --remove-orphans` to let Compose own the reconciliation lifecycle.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "91-103"
+    }
+  },
+  {
+    "name": "Replace regex YAML service parsing with docker compose config --services",
+    "status": "not-started",
+    "description": "Remove `parseServiceNamesFromComposeFile` and `parseComposeServiceNames` line-based regex parsers. Replace with `docker compose -f <file> config --services` as the authoritative source of service names. Cache results per apply request to avoid repeated shell calls. Use a YAML parser library (not regex) only for diagnostics, never for authorization decisions.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "104-116"
+    }
+  },
+  {
+    "name": "Add preflight checks for host and runtime compatibility before apply",
+    "status": "not-started",
+    "description": "Add a preflight stage that runs before any artifact writes: check Docker socket connectivity and permissions, verify port availability for to-be-published ports, confirm disk space and writable mounts for DATA/STATE/CONFIG directories, and optionally dry-run image pulls for changed services. Fail fast with actionable diagnostics rather than discovering issues mid-apply.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "117-131"
+    }
+  },
+  {
+    "name": "Improve dependency contracts and startup readiness for generated services",
+    "status": "not-started",
+    "description": "Standardize healthchecks across all first-class and generated services. Enforce dependency contracts during generation so channels always declare gateway health as a prerequisite (`depends_on: condition: service_healthy`). Optionally add an orchestration step in the apply engine that starts foundational services first and waits for health before starting dependents.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "132-143"
+    }
+  },
+  {
+    "name": "Clarify lifecycle action semantics: separate stop from down",
+    "status": "not-started",
+    "description": "Rename `composeAction(\"down\", ...)` to `stop` where the intent is a container stop without network cleanup. Reserve `down` for actual `docker compose down` semantics (network removal, `--remove-orphans`). Restrict destructive `down` to stack-wide operations and require explicit confirmation in API/UI callers.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "144-155"
+    }
+  },
+  {
+    "name": "Replace string-concatenated Compose generation with typed model and YAML serialization",
+    "status": "not-started",
+    "description": "Replace hand-built string blocks in the stack generator with a typed in-memory `ComposeSpec` object. Serialize to YAML via a library rather than string concatenation. Add an internal validation pass over the object before serialization to enforce required guardrails (restart policy, healthchecks, network constraints). Ensure deterministic key ordering for stable diffs.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "156-169"
+    }
+  },
+  {
+    "name": "Introduce compose drift detection and reconciliation reporting",
+    "status": "not-started",
+    "description": "Add a periodic drift report that compares intended state (spec + generated artifacts) against actual runtime state (`docker compose ps`, image digests, env file presence). Expose drift status in the Admin UI with one-click reconcile actions. Warn operators before apply when unreconciled drift is detected to prevent surprise failures during upgrades.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "170-181"
+    }
+  },
+  {
+    "name": "Expand lifecycle test coverage with failure-injection scenarios",
+    "status": "not-started",
+    "description": "Add targeted tests covering the hardest operational paths: invalid compose output, unknown service action attempts, partial apply failure with successful rollback, rollback failure triggering fallback, and runtime socket mismatch or daemon unavailable mid-operation. Introduce deterministic mocks around compose runner output and exit codes to make these tests reliable and fast.",
+    "reference": {
+      "file": "docs/draft/compose-improvements.md",
+      "lines": "182-197"
+    }
+  }
+]
