@@ -6,10 +6,11 @@ OpenPalm is a multi-channel AI assistant platform with a microservices architect
 
 ## Core Concepts
 
-The platform is built around five concepts:
+The platform is built around six concepts:
 - **Extensions** -- capabilities added to the assistant (skills, commands, agents, tools, plugins), managed via the config directory
 - **Connections** -- named credential sets for external services (AI providers, platforms, APIs), stored in secrets.env
-- **Channels** -- adapter services for user-facing platforms (Discord, Telegram, Voice, Web Chat)
+- **Channels** -- adapter services for user-facing platforms (Discord, Telegram, Voice, Web Chat); placed on `channel_net`, exposed externally with configurable access scope
+- **Services** -- internal add-on containers placed on `assistant_net` only; no Caddy routing, no external exposure, accessible only by admin and assistant
 - **Automations** -- scheduled prompts that run on a cron schedule without user interaction
 - **Gateway** -- security and routing layer between channels and the assistant
 
@@ -34,8 +35,9 @@ These rules define how the system is structured. Follow them exactly when writin
 
 ### Networking
 
-- Channels communicate only with the gateway — never directly with OpenCode, OpenMemory, Admin, or any other service.
-- Core containers (Admin, Gateway, OpenCode, OpenMemory) and service containers are host or LAN only (not public).
+- Channels are placed on `channel_net` and communicate only with the Gateway — never directly with OpenCode, OpenMemory, Admin, or any other service.
+- Services are placed on `assistant_net` only — no Caddy routes, no external exposure.
+- Core containers (Admin, Gateway, OpenCode, OpenMemory) are host or LAN only (not public).
 
 ### Secrets and environment
 

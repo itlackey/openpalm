@@ -1,6 +1,6 @@
 # OpenPalm Architecture Concepts
 
-These five concepts — Extensions, Secrets, Channels, Automations, and Gateway — form the complete vocabulary for the admin UI, documentation, API naming, and internal development. For user-facing descriptions of each concept, see [User Concepts](../../../docs/concepts.md).
+These six concepts — Extensions, Secrets, Channels, Services, Automations, and Gateway — form the complete vocabulary for the admin UI, documentation, API naming, and internal development. For user-facing descriptions of each concept, see [User Concepts](../../../docs/concepts.md).
 
 ---
 
@@ -50,6 +50,22 @@ User (platform) -> Channel Adapter -> Gateway -> AI Assistant -> Gateway -> Chan
 | **Setup guide** | Link to platform documentation for creating bot accounts, etc. | Discord Developer Portal docs |
 
 Access control is a per-channel property. Access changes are applied by updating the reverse proxy routing rules for that channel's endpoint. For the full channel flow and security model, see [Architecture](../../../dev/docs/architecture.md).
+
+---
+
+## Services
+
+A service is an internal add-on container that the assistant and admin can reach directly. Unlike channels, services have no Caddy routing and no external exposure — they are placed on `assistant_net` only.
+
+| Property | Description |
+|---|---|
+| **ID** | Stable identifier used as the compose service name (`service-<id>`) |
+| **image** | Docker image |
+| **containerPort** | Port the container listens on; injected as `PORT` |
+| **config** | Key/value env pairs; values may reference `${SECRET_NAME}` from `secrets.env` |
+| **dependsOn** | Optional list of services that must be healthy before this one starts |
+
+Key differences from channels: no `exposure` property, no Caddy route, and no `sharedSecretEnv` — services communicate directly over the internal network rather than through the Gateway.
 
 ---
 

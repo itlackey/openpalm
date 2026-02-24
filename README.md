@@ -91,6 +91,10 @@ OpenPalm supports all OpenCode extension types: plugins, agents, commands, skill
 
 The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools can be managed manually in the OpenCode config directory by advanced users.
 
+### Services
+
+Services are internal add-on containers that run on the private container network and are accessible only to the assistant and admin — never from the internet or your local network. Use them to add backend capabilities your assistant can call as a tool: search APIs, code execution sandboxes, custom databases, and so on. See [Admin Concepts](core/admin/docs/admin-concepts.md#services) for details.
+
 ### Automations
 
 Automations let your assistant act on a schedule -- daily briefings, weekly reports, periodic checks -- without anyone sending a message. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
