@@ -115,7 +115,7 @@
           "id": "01.4",
           "title": "Update preflight-checks.ts to accept ComposeClient",
           "description": "Change runApplyPreflight to accept a ComposeClient parameter for image pulling.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/preflight-checks.ts",
@@ -128,7 +128,7 @@
           "id": "01.5",
           "title": "Update stack-apply-engine.ts to use ComposeClient",
           "description": "Add composeClient option to applyStack, replace all *WithOverride calls with client.method() calls.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-apply-engine.ts",
@@ -146,7 +146,7 @@
           "id": "01.6",
           "title": "Add lazy getComposeClient() singleton in UI init",
           "description": "Update packages/ui/src/lib/server/init.ts to create and cache a singleton ComposeClient instance.",
-          "status": "planned",
+          "status": "cancelled",
           "files": [
             {
               "path": "packages/ui/src/lib/server/init.ts",
@@ -159,7 +159,7 @@
           "id": "01.7",
           "title": "Update all 9 UI route files to use ComposeClient singleton",
           "description": "Migrate packages/ui route files (command, containers/stop, containers/update, containers/up, containers/restart, containers/service-logs, stack/drift, setup/access-scope, setup/complete) to import from the new module and use the singleton client.",
-          "status": "planned",
+          "status": "cancelled",
           "files": [
             {
               "path": "packages/ui/src/routes/command/+server.ts",
@@ -212,7 +212,7 @@
           "id": "01.8",
           "title": "Rewrite admin/compose-runner.ts as thin re-export bridge then delete",
           "description": "Replace admin/compose-runner.ts with thin re-exports from compose-client.ts, verify all tests pass, then delete the file entirely.",
-          "status": "planned",
+          "status": "cancelled",
           "files": [
             {
               "path": "packages/lib/src/admin/compose-runner.ts",
@@ -230,7 +230,7 @@
           "id": "01.9",
           "title": "Final cleanup and delete admin/compose-runner.ts",
           "description": "Once all imports are migrated, delete admin/compose-runner.ts and run full typecheck and test suite.",
-          "status": "planned",
+          "status": "cancelled",
           "files": [
             {
               "path": "packages/lib/src/admin/compose-runner.ts",
@@ -1100,7 +1100,7 @@
       "id": "09",
       "title": "Slim the StackManager God Class",
       "description": "After all other plans execute, StackManager naturally shrinks from 510 to ~310 lines by removing computeDriftReport(), fallback seeding, renderArtifactsToTemp(), fallback methods, and simplifying listSecretManagerState(). Remaining scope: spec CRUD + artifact rendering + secrets.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/09-slim-stack-manager.md",
       "dependsOn": [
         "02",
@@ -1115,46 +1115,49 @@
           "id": "09.1",
           "title": "Remove computeDriftReport() method (after Plan 05)",
           "description": "Delete the entire StackManager.computeDriftReport() method (lines 138-164). Consumers already updated by Plan 05.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-manager.ts",
               "action": "edit",
               "lines": "138-164"
             }
-          ]
+          ],
+          "note": "Already done by earlier phases"
         },
         {
           "id": "09.2",
           "title": "Remove fallback bundle seeding from renderArtifacts() (after Plan 03)",
           "description": "Remove fallback seeding block (lines 192-212), validateFallbackBundle import, buildFallbackCompose(), buildFallbackCaddyJson(), and resolveEmbeddedStatePath() helper.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-manager.ts",
               "action": "edit",
               "lines": "6, 52-65, 192-212, 504-509"
             }
-          ]
+          ],
+          "note": "Already done by earlier phases"
         },
         {
           "id": "09.3",
           "title": "Remove renderArtifactsToTemp() entirely (after Plan 02)",
           "description": "Delete the entire renderArtifactsToTemp() method (lines 220-298). Only called by applyStack() which is simplified by Plan 02.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-manager.ts",
               "action": "edit",
               "lines": "220-298"
             }
-          ]
+          ],
+          "note": "Deleted renderArtifactsToTemp() from stack-manager.ts"
         },
         {
           "id": "09.4",
           "title": "Remove fallback path fields from StackManagerPaths (after Plan 03)",
           "description": "Remove fallbackComposeFilePath, fallbackCaddyJsonPath, and applyLockPath from the StackManagerPaths type. Update init.ts and test helpers.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-manager.ts",
@@ -1171,40 +1174,44 @@
               "action": "edit",
               "lines": "62-63"
             }
-          ]
+          ],
+          "note": "Removed applyLockPath from StackManagerPaths; apply lock removed from stack-apply-engine.ts"
         },
         {
           "id": "09.5",
           "title": "Simplify listSecretManagerState() (after Plan 10)",
           "description": "Remove purpose, constraints, and rotation fields from the secrets map callback. 5-line change.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-manager.ts",
               "action": "edit",
               "lines": "363-373"
             }
-          ]
+          ],
+          "note": "Already done by earlier phases"
         },
         {
           "id": "09.6",
           "title": "Remove fallback file assertions from stack-manager.test.ts",
           "description": "Remove assertions checking for fallback file generation (lines 49-50).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/stack-manager.test.ts",
               "action": "edit",
               "lines": "49-50"
             }
-          ]
+          ],
+          "note": "Already done by earlier phases"
         },
         {
           "id": "09.7",
           "title": "Verification: line count and test suite",
           "description": "Verify stack-manager.ts is ~310 lines, run bun run typecheck and bun test.",
-          "status": "planned",
-          "files": []
+          "status": "completed",
+          "files": [],
+          "note": "stack-manager.ts 348 lines (target ~310), typecheck clean, 547 tests pass"
         }
       ]
     },

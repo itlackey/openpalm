@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { generateStackArtifacts } from "./stack-generator.ts";
@@ -24,7 +24,6 @@ export type StackManagerPaths = {
   assistantEnvPath: string;
   dataEnvPath?: string;
   renderReportPath?: string;
-  applyLockPath?: string;
 };
 
 export const CoreSecretRequirements = [
@@ -148,65 +147,6 @@ export class StackManager {
     writeFileSync(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`, "utf8");
 
     return { ...generated, renderReport };
-  }
-
-  renderArtifactsToTemp(
-    precomputed?: ReturnType<StackManager["renderPreview"]>,
-    options?: { suffix?: string; transactionId?: string },
-  ) {
-    const generated = precomputed ?? this.renderPreview();
-    const suffix = options?.suffix ?? ".next";
-    const changedArtifacts: string[] = [];
-    const staged: Array<{ tempPath: string; livePath: string }> = [];
-    const stage = (livePath: string, content: string) => {
-      if (!existsSync(livePath) || readFileSync(livePath, "utf8") !== content) changedArtifacts.push(livePath);
-      const tempPath = `${livePath}${suffix}`;
-      mkdirSync(dirname(tempPath), { recursive: true });
-      writeFileSync(tempPath, content, "utf8");
-      staged.push({ tempPath, livePath });
-      return tempPath;
-    };
-
-    stage(this.paths.caddyJsonPath, generated.caddyJson);
-    const tempComposeFilePath = stage(this.paths.composeFilePath, generated.composeFile);
-    stage(this.paths.systemEnvPath, generated.systemEnv);
-    stage(this.paths.gatewayEnvPath, generated.gatewayEnv);
-    stage(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
-    stage(this.paths.postgresEnvPath, generated.postgresEnv);
-    stage(this.paths.qdrantEnvPath, generated.qdrantEnv);
-    stage(this.paths.assistantEnvPath, generated.assistantEnv);
-    for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
-      stage(join(this.paths.stateRootPath, serviceName, ".env"), content);
-    }
-    for (const [serviceName, content] of Object.entries(generated.serviceEnvs)) {
-      stage(join(this.paths.stateRootPath, serviceName, ".env"), content);
-    }
-
-    const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
-    const renderReport = {
-      ...generated.renderReport,
-      changedArtifacts,
-      applySafe: generated.renderReport.missingSecretReferences.length === 0,
-      transactionId: options?.transactionId,
-    };
-
-    stage(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`);
-
-    return {
-      ...generated,
-      renderReport,
-      composeFilePath: tempComposeFilePath,
-      promote: () => {
-        for (const entry of staged) {
-          renameSync(entry.tempPath, entry.livePath);
-        }
-      },
-      cleanup: () => {
-        for (const entry of staged) {
-          if (existsSync(entry.tempPath)) rmSync(entry.tempPath, { force: true });
-        }
-      },
-    };
   }
 
   validateReferencedSecrets(specOverride?: StackSpec) {
