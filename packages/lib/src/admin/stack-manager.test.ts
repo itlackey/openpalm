@@ -508,4 +508,55 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "service-jobs-worker-nightly", ".env"), "utf8")).toContain("worker.mode=nightly");
   });
 
+  it("lists stack catalog items for channels and services", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["jobs"] = {
+      enabled: false,
+      image: "ghcr.io/community/jobs:latest",
+      containerPort: 9001,
+      description: "Background worker",
+      config: { JOBS_MODE: "daily" },
+    };
+    manager.setSpec(spec);
+
+    const items = manager.listStackCatalogItems();
+    const chat = items.find((item) => item.type === "channel" && item.name === "chat");
+    const jobs = items.find((item) => item.type === "service" && item.name === "jobs");
+
+    expect(chat).toBeDefined();
+    expect(chat?.fields.some((field) => field.key === "CHAT_INBOUND_TOKEN")).toBe(true);
+    expect(jobs).toBeDefined();
+    expect(jobs?.description).toBe("Background worker");
+    expect(jobs?.fields).toEqual([{ key: "JOBS_MODE", required: false }]);
+  });
+
+  it("mutates stack catalog items for install/uninstall/configure actions", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-mutate-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["jobs"] = {
+      enabled: false,
+      image: "ghcr.io/community/jobs:latest",
+      containerPort: 9001,
+      config: { JOBS_MODE: "daily" },
+    };
+    manager.setSpec(spec);
+
+    manager.mutateStackCatalogItem({ action: "install", type: "service", name: "jobs" });
+    expect(manager.getSpec().services.jobs.enabled).toBe(true);
+
+    manager.mutateStackCatalogItem({
+      action: "configure",
+      type: "service",
+      name: "jobs",
+      config: { JOBS_MODE: "${JOBS_SECRET}" },
+    });
+    expect(manager.getSpec().services.jobs.config.JOBS_MODE).toBe("${JOBS_SECRET}");
+
+    manager.mutateStackCatalogItem({ action: "uninstall", type: "service", name: "jobs" });
+    expect(manager.getSpec().services.jobs.enabled).toBe(false);
+  });
+
 });

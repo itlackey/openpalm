@@ -136,6 +136,33 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const result = await applyStack(stackManager, { apply: true });
 			return json(200, { ok: true, data: result });
 		}
+		if (type === 'stack.catalog.item') {
+			const action =
+				payload.action === 'install' ||
+				payload.action === 'uninstall' ||
+				payload.action === 'configure'
+					? payload.action
+					: '';
+			const itemType = payload.itemType === 'channel' || payload.itemType === 'service'
+				? payload.itemType
+				: '';
+			const name = sanitizeEnvScalar(payload.name);
+			if (!action || !itemType || !name) {
+				return json(400, {
+					ok: false,
+					error: 'invalid_catalog_item_payload',
+					code: 'invalid_catalog_item_payload'
+				});
+			}
+			const item = stackManager.mutateStackCatalogItem({
+				action,
+				type: itemType,
+				name,
+				exposure: payload.exposure,
+				config: payload.config
+			});
+			return json(200, { ok: true, data: { item } });
+		}
 		if (type === 'setup.step') {
 			const step = sanitizeEnvScalar(payload.step);
 			const validSteps = [

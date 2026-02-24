@@ -3,10 +3,90 @@
 	import { showToast } from '$lib/stores/toast.svelte';
 	import { getAdminToken } from '$lib/stores/auth.svelte';
 
+	type CatalogField = {
+		key: string;
+		required: boolean;
+		description?: string;
+	};
+
+	type CatalogItem = {
+		type: 'channel' | 'service';
+		name: string;
+		displayName: string;
+		description: string;
+		tags: string[];
+		enabled: boolean;
+		installed: boolean;
+		exposure?: 'host' | 'lan' | 'public';
+		config: Record<string, string>;
+		fields: CatalogField[];
+	};
+
 	let specText = $state('');
 	let statusMsg = $state('');
+	let catalog = $state<CatalogItem[]>([]);
+	let search = $state('');
+	let typeFilter = $state<'all' | 'channel' | 'service'>('all');
+	let secretNames = $state<string[]>([]);
+	let editingItemKey = $state('');
+	let configDraft = $state<Record<string, string>>({});
+	let exposureDraft = $state<'host' | 'lan' | 'public'>('lan');
+	let busyItemKey = $state('');
 
 	const hasToken = $derived(getAdminToken().length > 0);
+	const filteredCatalog = $derived.by(() => {
+		const q = search.trim().toLowerCase();
+		return catalog.filter((item) => {
+			if (typeFilter !== 'all' && item.type !== typeFilter) return false;
+			if (!q) return true;
+			const haystack = [
+				item.name,
+				item.displayName,
+				item.description,
+				...(item.tags ?? [])
+			]
+				.join(' ')
+				.toLowerCase();
+			return haystack.includes(q);
+		});
+	});
+
+	function itemKey(item: CatalogItem): string {
+		return `${item.type}:${item.name}`;
+	}
+
+	function isSecretField(field: CatalogField): boolean {
+		const upper = field.key.toUpperCase();
+		return (
+			upper.includes('SECRET') ||
+			upper.includes('TOKEN') ||
+			upper.includes('KEY') ||
+			upper.includes('PASSWORD')
+		);
+	}
+
+	function beginConfigure(item: CatalogItem) {
+		editingItemKey = itemKey(item);
+		configDraft = { ...item.config };
+		exposureDraft = item.exposure ?? 'lan';
+	}
+
+	function applySecretRef(fieldKey: string, secretName: string) {
+		if (!secretName) return;
+		configDraft = { ...configDraft, [fieldKey]: `\${${secretName}}` };
+	}
+
+	async function loadState() {
+		if (!hasToken) {
+			specText = '(Enter admin password above to load)';
+			return;
+		}
+		const r = await api('/state');
+		if (!r.ok) return;
+		const data = r.data?.data ?? {};
+		catalog = data.catalog ?? [];
+		secretNames = data.secrets?.available ?? [];
+	}
 
 	async function loadSpec() {
 		if (!hasToken) {
@@ -34,6 +114,7 @@
 			specText = r.data.yaml;
 			showToast('Stack spec saved.', 'success');
 			statusMsg = 'Saved. Click "Apply Changes" to regenerate configs and restart services.';
+			await loadState();
 		} else {
 			showToast('Save failed: ' + (r.data?.error || r.data?.details || 'unknown'), 'error');
 			statusMsg = '';
@@ -64,18 +145,166 @@
 		}
 	}
 
+	async function mutateItem(item: CatalogItem, action: 'install' | 'uninstall') {
+		busyItemKey = itemKey(item);
+		const r = await api('/command', {
+			method: 'POST',
+			body: JSON.stringify({
+				type: 'stack.catalog.item',
+				payload: {
+					action,
+					itemType: item.type,
+					name: item.name
+				}
+			})
+		});
+		busyItemKey = '';
+		if (!r.ok) {
+			showToast(r.data?.error || `Failed to ${action} ${item.displayName}`, 'error');
+			return;
+		}
+		await Promise.all([loadState(), loadSpec()]);
+		showToast(`${item.displayName} ${action === 'install' ? 'installed' : 'uninstalled'}`, 'success');
+	}
+
+	async function saveItemConfig(item: CatalogItem) {
+		busyItemKey = itemKey(item);
+		const r = await api('/command', {
+			method: 'POST',
+			body: JSON.stringify({
+				type: 'stack.catalog.item',
+				payload: {
+					action: 'configure',
+					itemType: item.type,
+					name: item.name,
+					exposure: item.type === 'channel' ? exposureDraft : undefined,
+					config: configDraft
+				}
+			})
+		});
+		busyItemKey = '';
+		if (!r.ok) {
+			showToast(r.data?.error || `Failed to configure ${item.displayName}`, 'error');
+			return;
+		}
+		editingItemKey = '';
+		await Promise.all([loadState(), loadSpec()]);
+		showToast(`${item.displayName} configured`, 'success');
+	}
+
 	$effect(() => {
 		if (hasToken) {
 			loadSpec();
+			loadState();
 		}
 	});
 </script>
 
 <div class="card">
+	<h3>Channels & Services</h3>
+	<p class="muted" style="font-size:13px">
+		Browse stack items, filter by type, search by name/description/tag, and install, uninstall, or
+		configure them in real time.
+	</p>
+	<div class="grid2" style="margin:0.5rem 0">
+		<input bind:value={search} placeholder="Search by name, description, or tag" />
+		<select bind:value={typeFilter}>
+			<option value="all">All types</option>
+			<option value="channel">Channels</option>
+			<option value="service">Services</option>
+		</select>
+	</div>
+	{#if filteredCatalog.length === 0}
+		<div class="muted" style="font-size:13px">No channels or services matched your search.</div>
+	{:else}
+		<div style="display:grid;gap:0.6rem">
+			{#each filteredCatalog as item}
+				{@const key = itemKey(item)}
+				<div class="channel-section {item.enabled ? 'enabled' : ''}">
+					<div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:flex-start">
+						<div>
+							<div><strong>{item.displayName}</strong> <span class="muted">({item.type})</span></div>
+							{#if item.description}
+								<div class="muted" style="font-size:13px">{item.description}</div>
+							{/if}
+							<div class="muted" style="font-size:12px">Tags: {item.tags.join(', ')}</div>
+						</div>
+						<div style="display:flex;gap:0.35rem;flex-wrap:wrap">
+							{#if item.enabled}
+								<button
+									class="btn-secondary btn-sm"
+									disabled={busyItemKey === key}
+									onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
+								>
+							{:else}
+								<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'install')}
+									>Install</button
+								>
+							{/if}
+							<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}>Configure</button>
+						</div>
+					</div>
+					{#if editingItemKey === key}
+						<div style="margin-top:0.5rem">
+							{#if item.type === 'channel'}
+								<label style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
+								<select bind:value={exposureDraft} style="margin-bottom:0.45rem">
+									<option value="host">host</option>
+									<option value="lan">lan</option>
+									<option value="public">public</option>
+								</select>
+							{/if}
+							{#if item.fields.length === 0}
+								<div class="muted" style="font-size:13px">No configuration fields defined.</div>
+							{/if}
+							{#each item.fields as field}
+								<label style="display:block;margin:0.35rem 0 0.2rem;font-size:13px">
+									{field.key}{field.required ? ' *' : ''}
+								</label>
+								<input
+									type={isSecretField(field) ? 'password' : 'text'}
+									value={configDraft[field.key] ?? ''}
+									oninput={(event) =>
+										(configDraft = {
+											...configDraft,
+											[field.key]: (event.currentTarget as HTMLInputElement).value
+										})}
+									placeholder={field.description ?? ''}
+								/>
+								{#if secretNames.length > 0}
+									<select
+										style="margin-top:0.2rem"
+										onchange={(event) =>
+											applySecretRef(
+												field.key,
+												(event.currentTarget as HTMLSelectElement).value
+											)}>
+										<option value="">Use plain value</option>
+										{#each secretNames as secretName}
+											<option value={secretName}>Use secret: {secretName}</option>
+										{/each}
+									</select>
+								{/if}
+							{/each}
+							<div style="display:flex;gap:0.4rem;margin-top:0.55rem">
+								<button disabled={busyItemKey === key} onclick={() => saveItemConfig(item)}
+									>Save configuration</button
+								>
+								<button class="btn-secondary" onclick={() => (editingItemKey = '')}>Cancel</button>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
+</div>
+
+<div class="card">
 	<h3>Stack Spec</h3>
 	<p class="muted" style="font-size:13px">
-		Edit the stack specification (YAML) to configure channels, automations, and access scope.
-		Save, then Apply to regenerate configuration files and restart services.
+		Advanced mode: edit stack YAML directly. Save, then Apply to regenerate configuration files and
+		restart services.
 	</p>
 	<textarea bind:value={specText} rows="16" style="width:100%;margin:0.5rem 0" placeholder="Loading..."></textarea>
 	<div style="display:flex;gap:0.5rem">

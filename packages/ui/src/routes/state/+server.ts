@@ -12,10 +12,15 @@ export const GET: RequestHandler = async ({ locals }) => {
 			setup: setupManager.getState(),
 			spec: stackManager.getSpec(),
 			secrets: stackManager.listSecretManagerState(),
+			catalog: stackManager.listStackCatalogItems(),
 			channels: stackManager.listChannelNames().map((name) => ({
 				name,
 				exposure: stackManager.getChannelAccess(name),
 				config: stackManager.getChannelConfig(name)
+			})),
+			services: stackManager.listServiceNames().map((name) => ({
+				name,
+				config: stackManager.getServiceConfig(name)
 			})),
 			automations: stackManager.listAutomations()
 		}

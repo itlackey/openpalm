@@ -2,14 +2,36 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BUILTIN_CHANNELS } from "../../assets/channels/index.ts";
 import { generateStackArtifacts } from "./stack-generator.ts";
 import { validateFallbackBundle } from "./fallback-bundle.ts";
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { validateCron } from "./cron.ts";
 import type { ChannelExposure, StackAutomation, StackSpec } from "./stack-spec.ts";
+import type { EnvVarDef } from "../shared/snippet-types.ts";
 
 export type ChannelName = string;
+export type StackCatalogItemType = "channel" | "service";
+
+export type StackCatalogField = {
+  key: string;
+  required: boolean;
+  description?: string;
+};
+
+export type StackCatalogItem = {
+  type: StackCatalogItemType;
+  name: string;
+  displayName: string;
+  description: string;
+  tags: string[];
+  enabled: boolean;
+  installed: boolean;
+  exposure?: ChannelExposure;
+  config: Record<string, string>;
+  fields: StackCatalogField[];
+};
 
 export type StackManagerPaths = {
   stateRootPath: string;
@@ -122,6 +144,133 @@ export class StackManager {
     }
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     return this.renderArtifacts();
+  }
+
+  getServiceConfig(service: string): Record<string, string> {
+    const spec = this.getSpec();
+    if (!spec.services[service]) throw new Error(`unknown_service_${service}`);
+    return { ...spec.services[service].config };
+  }
+
+  setServiceConfig(service: string, values: Record<string, string>) {
+    const spec = this.getSpec();
+    if (!spec.services[service]) throw new Error(`unknown_service_${service}`);
+    const next: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (!key.trim()) continue;
+      next[key] = sanitizeEnvScalar(value ?? "");
+    }
+    spec.services[service].enabled = true;
+    spec.services[service].config = next;
+    this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    return this.renderArtifacts();
+  }
+
+  listStackCatalogItems(): StackCatalogItem[] {
+    const spec = this.getSpec();
+    const items: StackCatalogItem[] = [];
+    for (const [name, channel] of Object.entries(spec.channels)) {
+      const builtIn = BUILTIN_CHANNELS[name];
+      const envDefs: EnvVarDef[] = builtIn
+        ? builtIn.env
+        : Object.keys(channel.config).map((key) => ({ name: key, required: false }));
+      items.push({
+        type: "channel",
+        name,
+        displayName: builtIn?.name ?? channel.name ?? name,
+        description: builtIn?.description ?? channel.description ?? "",
+        tags: ["channel", builtIn ? "built-in" : "custom"],
+        enabled: channel.enabled,
+        installed: true,
+        exposure: channel.exposure,
+        config: { ...channel.config },
+        fields: envDefs.map((field) => ({ key: field.name, required: field.required, description: field.description })),
+      });
+    }
+    for (const [name, service] of Object.entries(spec.services)) {
+      items.push({
+        type: "service",
+        name,
+        displayName: service.name ?? name,
+        description: service.description ?? "",
+        tags: ["service", "custom"],
+        enabled: service.enabled,
+        installed: true,
+        config: { ...service.config },
+        fields: Object.keys(service.config).map((key) => ({ key, required: false })),
+      });
+    }
+    return items.sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  mutateStackCatalogItem(input: {
+    action: "install" | "uninstall" | "configure";
+    type: StackCatalogItemType;
+    name: string;
+    exposure?: unknown;
+    config?: unknown;
+  }): StackCatalogItem {
+    const action = input.action;
+    const type = input.type;
+    const name = sanitizeEnvScalar(input.name);
+    if (!name) throw new Error("invalid_catalog_item_name");
+    const spec = this.getSpec();
+    if (type === "channel") {
+      const channel = spec.channels[name];
+      if (!channel) throw new Error(`unknown_channel_${name}`);
+      if (action === "install") {
+        channel.enabled = true;
+      } else if (action === "uninstall") {
+        channel.enabled = false;
+      } else {
+        if (input.exposure === "host" || input.exposure === "lan" || input.exposure === "public") {
+          channel.exposure = input.exposure;
+        }
+        if (input.config && typeof input.config === "object" && !Array.isArray(input.config)) {
+          const next: Record<string, string> = {};
+          const current = channel.config;
+          if (isBuiltInChannel(name)) {
+            for (const key of Object.keys(current)) {
+              const value = (input.config as Record<string, unknown>)[key];
+              next[key] = typeof value === "string" ? sanitizeEnvScalar(value) : "";
+            }
+          } else {
+            for (const [key, value] of Object.entries(input.config as Record<string, unknown>)) {
+              if (!key.trim() || typeof value !== "string") continue;
+              next[key] = sanitizeEnvScalar(value);
+            }
+          }
+          channel.config = next;
+        }
+        channel.enabled = true;
+      }
+    } else {
+      const service = spec.services[name];
+      if (!service) throw new Error(`unknown_service_${name}`);
+      if (action === "install") {
+        service.enabled = true;
+      } else if (action === "uninstall") {
+        service.enabled = false;
+      } else {
+        if (input.config && typeof input.config === "object" && !Array.isArray(input.config)) {
+          const next: Record<string, string> = {};
+          for (const [key, value] of Object.entries(input.config as Record<string, unknown>)) {
+            if (!key.trim() || typeof value !== "string") continue;
+            next[key] = sanitizeEnvScalar(value);
+          }
+          service.config = next;
+        }
+        service.enabled = true;
+      }
+    }
+    this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.renderArtifacts();
+    const updated = this.listStackCatalogItems().find((item) => item.type === type && item.name === name);
+    if (!updated) throw new Error("catalog_item_not_found_after_update");
+    return updated;
   }
 
   setAccessScope(scope: "host" | "lan" | "public") {
