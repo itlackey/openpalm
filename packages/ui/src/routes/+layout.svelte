@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { base } from '$app/paths';
-	import { browser } from '$app/environment';
+	import { browser, version } from '$app/environment';
 	import '../app.css';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
@@ -38,6 +38,7 @@
 	<a href="{base}/" style="text-decoration:none">
 		<button class="nav-btn active">Dashboard</button>
 	</a>
+	<span class="muted" style="font-size:12px">UI {version}</span>
 	<button
 		class="theme-toggle"
 		onclick={() => applyTheme(theme === 'light' ? 'dark' : 'light')}
