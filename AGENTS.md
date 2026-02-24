@@ -281,6 +281,12 @@ if (parsed.valid && !summary) throw new Error("missing_summary_for_valid_intake"
 - Use `describe` blocks for test suites
 - Use `it` for individual test cases
 - Use descriptive test names explaining what is being tested
+- **All tests must pass on fresh CI runners** (no OpenPalm installed, no XDG state).
+  Use `skipIf` guards for environment-dependent tests — see `dev/docs/release-quality-gates.md`.
+- Tests that call `docker compose` with file arguments must guard on `openpalmInstalled`
+  (Docker available AND compose file + env file exist), not just `dockerAvailable`.
+- Separate command routing tests (does the CLI recognize the command?) from execution
+  tests (does the underlying compose call succeed?).
 
 ```typescript
 import { describe, expect, it } from "bun:test";
@@ -292,6 +298,16 @@ describe("channel intake", () => {
   });
 });
 ```
+
+### Release & CI
+
+- All code changes to `main` must go through a PR. Direct pushes bypass CI and risk
+  breaking the release pipeline.
+- The Release workflow (`release.yml`) runs unit tests, integration, contract, security,
+  UI, and Docker build gates before creating a tag. Do not remove or weaken these gates.
+- The `publish-cli` workflow runs CLI tests again as a safety net, but the release
+  workflow gates are the primary defense.
+- See `dev/docs/release-quality-gates.md` for the full pre-release checklist.
 
 ### Environment Variables
 

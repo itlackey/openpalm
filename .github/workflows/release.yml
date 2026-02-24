@@ -54,6 +54,16 @@ jobs:
   # Validation gates — all must pass before the release job runs
   # -----------------------------------------------------------------------
 
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -146,7 +156,7 @@ jobs:
   # Release — only runs after all validation gates pass
   # -----------------------------------------------------------------------
   release:
-    needs: [integration, contracts, security, ui, docker-build]
+    needs: [unit-tests, integration, contracts, security, ui, docker-build]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 15

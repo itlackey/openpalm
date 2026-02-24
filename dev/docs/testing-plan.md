@@ -5,12 +5,17 @@
 - Protect admin config/apply lifecycle behavior.
 - Keep shared generation/validation logic deterministic.
 - Catch channel adapter regressions in payload mapping and retries.
+- **Ensure all tests pass on fresh CI runners** (no OpenPalm installed, no XDG state).
 
 ## Required checks before merge
 ```bash
 bun run typecheck
 bun test
 ```
+
+## Pre-release checks
+See `dev/docs/release-quality-gates.md` for the full pre-release checklist and
+environment guard rules.
 
 ## Test tiers and when to run them
 

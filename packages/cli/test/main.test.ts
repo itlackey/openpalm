@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 
 const REPO_ROOT = join(import.meta.dir, "../../..");
 const CliVersion = JSON.parse(readFileSync(join(REPO_ROOT, "packages/cli/package.json"), "utf8")).version as string;
@@ -9,6 +10,15 @@ const dockerAvailable = await Bun.spawn(["docker", "info"], {
   stdout: "pipe",
   stderr: "pipe",
 }).exited.then((code) => code === 0).catch(() => false);
+
+// Commands like ps/status need both Docker AND the OpenPalm state directory
+// (compose file + env file). Without them, docker compose returns exit code 1.
+const stateHome = Bun.env.OPENPALM_STATE_HOME
+  || (Bun.env.XDG_STATE_HOME ? join(Bun.env.XDG_STATE_HOME, "openpalm") : undefined)
+  || join(homedir(), ".local", "state", "openpalm");
+const openpalmInstalled = dockerAvailable
+  && existsSync(join(stateHome, "docker-compose.yml"))
+  && existsSync(join(stateHome, ".env"));
 
 /**
  * Helper function to run the CLI as a subprocess and capture output
@@ -177,10 +187,12 @@ describe("CLI entry point", () => {
     expect(stdout).toContain("Commands:");
   });
 
-  it.skipIf(!dockerAvailable)("supports ps as alias for status", async () => {
+  it.skipIf(!openpalmInstalled)("supports ps as alias for status", async () => {
     const { stderr, exitCode } = await runCli("ps");
 
-    // docker compose ps returns 0 even when no services are running
+    // docker compose ps returns 0 even when no services are running,
+    // but requires the compose file and env file to exist on disk.
+    // This test is skipped when OpenPalm is not installed (CI, fresh machines).
     expect(exitCode).toBe(0);
     expect(stderr).not.toContain("Unknown command");
   });
