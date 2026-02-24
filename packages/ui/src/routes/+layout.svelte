@@ -33,12 +33,11 @@
 <nav>
 	<span class="logo">
 		<img src="{base}/logo.png" alt="OpenPalm logo" />
-		OpenPalm
+		OpenPalm <span class="muted" style="font-size:12px">v{version}</span>
 	</span>
 	<a href="{base}/" style="text-decoration:none">
 		<button class="nav-btn active">Dashboard</button>
 	</a>
-	<span class="muted" style="font-size:12px">UI {version}</span>
 	<button
 		class="theme-toggle"
 		onclick={() => applyTheme(theme === 'light' ? 'dark' : 'light')}
