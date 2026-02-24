@@ -1,5 +1,9 @@
+<script lang="ts">
+	import { version } from '$app/environment';
+</script>
+
 <p>
-	Welcome to <strong>OpenPalm</strong>, your self-hosted AI assistant.
+	Welcome to <strong>OpenPalm v{version}</strong>, your self-hosted AI assistant.
 </p>
 <p>This quick setup will get you up and running in a few steps:</p>
 <ol>

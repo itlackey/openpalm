@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { base } from '$app/paths';
-	import { browser } from '$app/environment';
+	import { browser, version } from '$app/environment';
 	import '../app.css';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
@@ -33,7 +33,7 @@
 <nav>
 	<span class="logo">
 		<img src="{base}/logo.png" alt="OpenPalm logo" />
-		OpenPalm
+		OpenPalm <span class="muted" style="font-size:12px">v{version}</span>
 	</span>
 	<a href="{base}/" style="text-decoration:none">
 		<button class="nav-btn active">Dashboard</button>

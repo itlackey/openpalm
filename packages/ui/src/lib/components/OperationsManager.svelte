@@ -13,7 +13,14 @@
 		lastRun?: { ts: string; status: string; preview?: string } | null;
 	};
 
-	let services = $state<string[]>([]);
+	type ContainerService = {
+		name: string;
+		status: string;
+		image: string;
+		updateAvailable: boolean;
+	};
+
+	let services = $state<ContainerService[]>([]);
 	let automations = $state<Automation[]>([]);
 	let selectedService = $state('');
 	let serviceLogs = $state('');
@@ -157,13 +164,20 @@
 	{:else}
 		<div style="display:grid;grid-template-columns:1fr auto;gap:0.5rem;align-items:center">
 			{#each services as service}
-				<div style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace">{service}</div>
+				<div>
+					<div style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace">{service.name}</div>
+					<div class="muted" style="font-size:12px">
+						{service.image} • {service.status}
+					</div>
+				</div>
 				<div style="display:flex;gap:0.25rem;flex-wrap:wrap;justify-content:flex-end">
-					<button class="btn-secondary btn-sm" onclick={() => serviceAction('up', service)} disabled={busy}>Start</button>
-					<button class="btn-secondary btn-sm" onclick={() => serviceAction('stop', service)} disabled={busy}>Stop</button>
-					<button class="btn-secondary btn-sm" onclick={() => serviceAction('restart', service)} disabled={busy}>Restart</button>
-					<button class="btn-secondary btn-sm" onclick={() => serviceAction('update', service)} disabled={busy}>Update</button>
-					<button class="btn-secondary btn-sm" onclick={() => loadServiceLogs(service)}>Logs</button>
+					<button class="btn-secondary btn-sm" onclick={() => serviceAction('up', service.name)} disabled={busy}>Start</button>
+					<button class="btn-secondary btn-sm" onclick={() => serviceAction('stop', service.name)} disabled={busy}>Stop</button>
+					<button class="btn-secondary btn-sm" onclick={() => serviceAction('restart', service.name)} disabled={busy}>Restart</button>
+					{#if service.updateAvailable}
+						<button class="btn-secondary btn-sm" onclick={() => serviceAction('update', service.name)} disabled={busy}>Upgrade</button>
+					{/if}
+					<button class="btn-secondary btn-sm" onclick={() => loadServiceLogs(service.name)}>Logs</button>
 				</div>
 			{/each}
 		</div>
@@ -183,7 +197,7 @@
 		<input bind:value={newName} placeholder="Automation name" />
 		<input bind:value={newSchedule} placeholder="Cron schedule (e.g. */15 * * * *)" />
 	</div>
-	<textarea bind:value={newScript} rows="3" placeholder="Automation script" />
+	<textarea bind:value={newScript} rows="3" placeholder="Automation script"></textarea>
 	<div style="margin-top:0.5rem">
 		<button onclick={addAutomation} disabled={busy || !newName.trim() || !newSchedule.trim() || !newScript.trim()}>Add Automation</button>
 	</div>
