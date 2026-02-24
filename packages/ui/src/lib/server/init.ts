@@ -110,9 +110,9 @@ export async function allServiceNames(): Promise<string[]> {
 }
 
 export async function knownServices(): Promise<Set<string>> {
-	const { allowedServiceSet } = await import('@openpalm/lib/admin/compose-runner');
+	const { allowedServiceSet, filterUiManagedServices } = await import('@openpalm/lib/admin/compose-runner');
 	const base = await allowedServiceSet();
 	for (const svc of await allChannelServiceNames()) base.add(svc);
 	for (const svc of await allServiceNames()) base.add(svc);
-	return base;
+	return new Set(filterUiManagedServices(Array.from(base)));
 }

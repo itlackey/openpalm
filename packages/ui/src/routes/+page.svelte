@@ -9,6 +9,7 @@
 	import DriftBanner from '$lib/components/DriftBanner.svelte';
 	import SetupWizard from '$lib/components/SetupWizard.svelte';
 	import ProfileCard from '$lib/components/ProfileCard.svelte';
+	import OperationsManager from '$lib/components/OperationsManager.svelte';
 	import {
 		isWizardOpen,
 		setWizardOpen,
@@ -57,6 +58,7 @@
 </div>
 
 <HealthStatus />
+<OperationsManager />
 
 {#if showWizard}
 	<SetupWizard onclose={() => setWizardOpen(false)} />
