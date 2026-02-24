@@ -506,4 +506,249 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "service-jobs-worker-nightly", ".env"), "utf8")).toContain("worker.mode=nightly");
   });
 
+  it("lists stack catalog items for channels and services", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["jobs"] = {
+      enabled: false,
+      image: "ghcr.io/community/jobs:latest",
+      containerPort: 9001,
+      description: "Background worker",
+      config: { JOBS_MODE: "daily" },
+    };
+    manager.setSpec(spec);
+
+    const items = manager.listStackCatalogItems();
+    const chat = items.find((item) => item.type === "channel" && item.name === "chat");
+    const jobs = items.find((item) => item.type === "service" && item.name === "jobs");
+
+    expect(chat).toBeDefined();
+    expect(chat?.fields.some((field) => field.key === "CHAT_INBOUND_TOKEN")).toBe(true);
+    expect(jobs).toBeDefined();
+    expect(jobs?.description).toBe("Background worker");
+    expect(jobs?.fields).toEqual([{ key: "JOBS_MODE", required: false }]);
+  });
+
+  it("mutates stack catalog items for install/uninstall/configure actions", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-mutate-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["jobs"] = {
+      enabled: false,
+      image: "ghcr.io/community/jobs:latest",
+      containerPort: 9001,
+      config: { JOBS_MODE: "daily" },
+    };
+    manager.setSpec(spec);
+
+    manager.mutateStackCatalogItem({ action: "install", type: "service", name: "jobs" });
+    expect(manager.getSpec().services.jobs.enabled).toBe(true);
+
+    manager.mutateStackCatalogItem({
+      action: "configure",
+      type: "service",
+      name: "jobs",
+      config: { JOBS_MODE: "${JOBS_SECRET}" },
+    });
+    expect(manager.getSpec().services.jobs.config.JOBS_MODE).toBe("${JOBS_SECRET}");
+
+    manager.mutateStackCatalogItem({ action: "uninstall", type: "service", name: "jobs" });
+    expect(manager.getSpec().services.jobs.enabled).toBe(false);
+  });
+
+  it("includes discoverable template items from community snippets", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-templates-"));
+    const manager = createManager(dir);
+    const items = manager.listStackCatalogItems([
+      {
+        kind: "service",
+        name: "Ollama",
+        description: "Local inference service",
+        image: "ollama/ollama:latest",
+        containerPort: 11434,
+        supportsMultipleInstances: true,
+        env: [{ name: "OLLAMA_HOST", required: false, default: "127.0.0.1:11434" }],
+        trust: "curated",
+        sourceId: "openpalm-community",
+        sourceName: "OpenPalm Community",
+      },
+    ]);
+
+    const ollamaTemplate = items.find((item) => item.entryKind === "template" && item.type === "service" && item.name === "Ollama");
+    expect(ollamaTemplate).toBeDefined();
+    expect(ollamaTemplate?.installed).toBe(false);
+    expect(ollamaTemplate?.supportsMultipleInstances).toBe(true);
+    expect(ollamaTemplate?.fields[0].defaultValue).toBe("127.0.0.1:11434");
+  });
+
+  it("adds multiple instances for templates that support multiple instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-multi-instance-"));
+    const manager = createManager(dir);
+
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "service",
+      name: "Ollama",
+      templateName: "Ollama",
+      supportsMultipleInstances: true,
+      displayName: "Ollama",
+      image: "ollama/ollama:latest",
+      containerPort: 11434,
+      fields: [{ key: "OLLAMA_HOST", required: false, defaultValue: "127.0.0.1:11434" }],
+    });
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "service",
+      name: "Ollama",
+      templateName: "Ollama",
+      supportsMultipleInstances: true,
+      displayName: "Ollama",
+      image: "ollama/ollama:latest",
+      containerPort: 11434,
+      fields: [{ key: "OLLAMA_HOST", required: false, defaultValue: "127.0.0.1:11434" }],
+    });
+
+    const spec = manager.getSpec();
+    expect(spec.services.ollama).toBeDefined();
+    expect(spec.services["ollama-2"]).toBeDefined();
+    expect(spec.services["ollama-2"].config.OLLAMA_HOST).toBe("127.0.0.1:11434");
+  });
+
+  it("adds multiple channel instances for templates that support multiple instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-channel-multi-instance-"));
+    const manager = createManager(dir);
+
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "channel",
+      name: "Slack",
+      templateName: "Slack",
+      supportsMultipleInstances: true,
+      displayName: "Slack",
+      image: "openpalm/channel-slack:latest",
+      containerPort: 8185,
+      rewritePath: "/slack/webhook",
+      fields: [
+        { key: "SLACK_BOT_TOKEN", required: true, defaultValue: "" },
+        { key: "SLACK_SIGNING_SECRET", required: true, defaultValue: "" },
+      ],
+    });
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "channel",
+      name: "Slack",
+      templateName: "Slack",
+      supportsMultipleInstances: true,
+      displayName: "Slack",
+      image: "openpalm/channel-slack:latest",
+      containerPort: 8185,
+      rewritePath: "/slack/webhook",
+      fields: [
+        { key: "SLACK_BOT_TOKEN", required: true, defaultValue: "" },
+        { key: "SLACK_SIGNING_SECRET", required: true, defaultValue: "" },
+      ],
+    });
+
+    const spec = manager.getSpec();
+    expect(spec.channels.slack).toBeDefined();
+    expect(spec.channels["slack-2"]).toBeDefined();
+    expect(spec.channels["slack-2"].template).toBe("Slack");
+  });
+
+  it("rejects duplicate instances when template does not support multiple instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-single-instance-"));
+    const manager = createManager(dir);
+
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "service",
+      name: "SingleService",
+      templateName: "SingleService",
+      supportsMultipleInstances: false,
+      displayName: "SingleService",
+      image: "ghcr.io/example/single:latest",
+      containerPort: 9200,
+      fields: [],
+    });
+
+    expect(() =>
+      manager.mutateStackCatalogItem({
+        action: "add_instance",
+        type: "service",
+        name: "SingleService",
+        templateName: "SingleService",
+        supportsMultipleInstances: false,
+        displayName: "SingleService",
+        image: "ghcr.io/example/single:latest",
+        containerPort: 9200,
+        fields: [],
+      })
+    ).toThrow("multiple_instances_not_supported_for_service_template_SingleService");
+  });
+
+  it("hides non-multi templates when a matching enabled instance is running", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-running-filter-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["single-service"] = {
+      enabled: true,
+      template: "SingleService",
+      supportsMultipleInstances: false,
+      image: "ghcr.io/example/single:latest",
+      containerPort: 9200,
+      config: {},
+    };
+    manager.setSpec(spec);
+
+    const items = manager.listStackCatalogItems([
+      {
+        kind: "service",
+        name: "SingleService",
+        description: "single instance template",
+        image: "ghcr.io/example/single:latest",
+        containerPort: 9200,
+        supportsMultipleInstances: false,
+        env: [],
+        trust: "community",
+        sourceId: "github:demo/single",
+        sourceName: "GitHub",
+      },
+    ]);
+
+    expect(items.some((item) => item.id === "template:service:SingleService")).toBe(false);
+  });
+
+  it("keeps non-multi templates visible when matching instance exists but is disabled", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-disabled-filter-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["single-service"] = {
+      enabled: false,
+      template: "SingleService",
+      supportsMultipleInstances: false,
+      image: "ghcr.io/example/single:latest",
+      containerPort: 9200,
+      config: {},
+    };
+    manager.setSpec(spec);
+
+    const items = manager.listStackCatalogItems([
+      {
+        kind: "service",
+        name: "SingleService",
+        description: "single instance template",
+        image: "ghcr.io/example/single:latest",
+        containerPort: 9200,
+        supportsMultipleInstances: false,
+        env: [],
+        trust: "community",
+        sourceId: "github:demo/single",
+        sourceName: "GitHub",
+      },
+    ]);
+
+    expect(items.some((item) => item.id === "template:service:SingleService")).toBe(true);
+  });
+
 });

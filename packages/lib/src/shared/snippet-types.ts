@@ -31,6 +31,7 @@ export type SnippetDef = {
   kind: SnippetKind;
   name: string;
   description?: string;
+  supportsMultipleInstances?: boolean;
   image?: string;
   containerPort?: number;
   rewritePath?: string;
@@ -102,6 +103,14 @@ export const DEFAULT_SNIPPET_SOURCES: SnippetSource[] = [
     name: "GitHub Community Automations",
     type: "github-topic",
     target: "openpalm-automation",
+    trust: "community",
+    enabled: true,
+  },
+  {
+    id: "github-openpalm",
+    name: "GitHub OpenPalm Repos",
+    type: "github-topic",
+    target: "openpalm",
     trust: "community",
     enabled: true,
   },

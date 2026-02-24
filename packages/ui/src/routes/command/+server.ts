@@ -136,6 +136,45 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const result = await applyStack(stackManager, { apply: true });
 			return json(200, { ok: true, data: result });
 		}
+		if (type === 'stack.catalog.item') {
+			const action =
+				payload.action === 'install' ||
+				payload.action === 'uninstall' ||
+				payload.action === 'configure' ||
+				payload.action === 'add_instance'
+					? payload.action
+					: '';
+			const itemType = payload.itemType === 'channel' || payload.itemType === 'service'
+				? payload.itemType
+				: '';
+			const name = sanitizeEnvScalar(payload.name);
+			if (!action || !itemType || !name) {
+				return json(400, {
+					ok: false,
+					error: 'invalid_catalog_item_payload',
+					code: 'invalid_catalog_item_payload'
+				});
+			}
+			const item = stackManager.mutateStackCatalogItem({
+				action,
+				type: itemType,
+				name,
+				templateName: payload.templateName,
+				supportsMultipleInstances: payload.supportsMultipleInstances,
+				displayName: payload.displayName,
+				description: payload.description,
+				fields: payload.fields,
+				image: payload.image,
+				containerPort: payload.containerPort,
+				rewritePath: payload.rewritePath,
+				sharedSecretEnv: payload.sharedSecretEnv,
+				volumes: payload.volumes,
+				dependsOn: payload.dependsOn,
+				exposure: payload.exposure,
+				config: payload.config
+			});
+			return json(200, { ok: true, data: { item } });
+		}
 		if (type === 'setup.step') {
 			const step = sanitizeEnvScalar(payload.step);
 			const validSteps = [

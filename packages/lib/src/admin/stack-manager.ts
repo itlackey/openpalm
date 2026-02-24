@@ -1,14 +1,48 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { BUILTIN_CHANNELS } from "../../assets/channels/index.ts";
 import { generateStackArtifacts } from "./stack-generator.ts";
 
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
 import { validateCron } from "./cron.ts";
 import type { ChannelExposure, StackAutomation, StackSpec } from "./stack-spec.ts";
+import type { EnvVarDef, ResolvedSnippet } from "../shared/snippet-types.ts";
 
 export type ChannelName = string;
+export type StackCatalogItemType = "channel" | "service";
+
+export type StackCatalogField = {
+  key: string;
+  required: boolean;
+  description?: string;
+  defaultValue?: string;
+};
+
+export type StackCatalogItem = {
+  id: string;
+  type: StackCatalogItemType;
+  name: string;
+  displayName: string;
+  description: string;
+  tags: string[];
+  enabled: boolean;
+  installed: boolean;
+  entryKind: "installed" | "template";
+  templateName?: string;
+  supportsMultipleInstances?: boolean;
+  exposure?: ChannelExposure;
+  config: Record<string, string>;
+  fields: StackCatalogField[];
+  image?: string;
+  containerPort?: number;
+  rewritePath?: string;
+  sharedSecretEnv?: string;
+  volumes?: string[];
+  dependsOn?: string[];
+};
 
 export type StackManagerPaths = {
   stateRootPath: string;
@@ -34,6 +68,13 @@ export const CoreSecretRequirements = [
 
 function composeServiceName(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+}
+
+function nextInstanceName(baseName: string, used: Set<string>): string {
+  if (!used.has(baseName)) return baseName;
+  let idx = 2;
+  while (used.has(`${baseName}-${idx}`)) idx += 1;
+  return `${baseName}-${idx}`;
 }
 
 function pickEnv(source: Record<string, string>, keys: string[]): Record<string, string> {
@@ -103,6 +144,302 @@ export class StackManager {
     }
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     return this.renderArtifacts();
+  }
+
+  getServiceConfig(service: string): Record<string, string> {
+    const spec = this.getSpec();
+    if (!spec.services[service]) throw new Error(`unknown_service_${service}`);
+    return { ...spec.services[service].config };
+  }
+
+  setServiceConfig(service: string, values: Record<string, string>) {
+    const spec = this.getSpec();
+    if (!spec.services[service]) throw new Error(`unknown_service_${service}`);
+    const next: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (!key.trim()) continue;
+      next[key] = sanitizeEnvScalar(value ?? "");
+    }
+    spec.services[service].enabled = true;
+    spec.services[service].config = next;
+    this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    return this.renderArtifacts();
+  }
+
+  listStackCatalogItems(snippets: ResolvedSnippet[] = []): StackCatalogItem[] {
+    const spec = this.getSpec();
+    const items: StackCatalogItem[] = [];
+    const installedTemplates = new Set<string>();
+    for (const [name, channel] of Object.entries(spec.channels)) {
+      const templateName = channel.template ?? (isBuiltInChannel(name) ? name : name);
+      if (channel.enabled) installedTemplates.add(`channel:${templateName}`);
+      const builtIn = BUILTIN_CHANNELS[templateName];
+      const envDefs: EnvVarDef[] = builtIn
+        ? builtIn.env
+        : Object.keys(channel.config).map((key) => ({ name: key, required: false }));
+      items.push({
+        id: `installed:channel:${name}`,
+        type: "channel",
+        name,
+        displayName: builtIn?.name ?? channel.name ?? name,
+        description: builtIn?.description ?? channel.description ?? "",
+        tags: ["channel", builtIn ? "built-in" : "custom"],
+        enabled: channel.enabled,
+        installed: true,
+        entryKind: "installed",
+        templateName,
+        supportsMultipleInstances: channel.supportsMultipleInstances === true,
+        exposure: channel.exposure,
+        config: { ...channel.config },
+        fields: envDefs.map((field) => ({ key: field.name, required: field.required, description: field.description, defaultValue: field.default })),
+        image: channel.image,
+        containerPort: channel.containerPort,
+        rewritePath: channel.rewritePath,
+        sharedSecretEnv: channel.sharedSecretEnv,
+        volumes: channel.volumes,
+      });
+    }
+    for (const [name, service] of Object.entries(spec.services)) {
+      const templateName = service.template ?? name;
+      if (service.enabled) installedTemplates.add(`service:${templateName}`);
+      items.push({
+        id: `installed:service:${name}`,
+        type: "service",
+        name,
+        displayName: service.name ?? name,
+        description: service.description ?? "",
+        tags: ["service", "custom"],
+        enabled: service.enabled,
+        installed: true,
+        entryKind: "installed",
+        templateName,
+        supportsMultipleInstances: service.supportsMultipleInstances === true,
+        config: { ...service.config },
+        fields: Object.keys(service.config).map((key) => ({ key, required: false })),
+        image: service.image,
+        containerPort: service.containerPort,
+        volumes: service.volumes,
+        dependsOn: service.dependsOn,
+      });
+    }
+
+    for (const [name, def] of Object.entries(BUILTIN_CHANNELS)) {
+      const templateKey = `channel:${name}`;
+      if (installedTemplates.has(templateKey)) continue;
+      items.push({
+        id: `template:channel:${name}`,
+        type: "channel",
+        name,
+        displayName: def.name,
+        description: def.description ?? "",
+        tags: ["channel", "template", "built-in"],
+        enabled: false,
+        installed: false,
+        entryKind: "template",
+        templateName: name,
+        supportsMultipleInstances: false,
+        exposure: "lan",
+        config: Object.fromEntries(def.env.map((field) => [field.name, field.default ?? ""])),
+        fields: def.env.map((field) => ({ key: field.name, required: field.required, description: field.description, defaultValue: field.default })),
+        containerPort: def.containerPort,
+        rewritePath: def.rewritePath,
+        sharedSecretEnv: def.sharedSecretEnv,
+      });
+    }
+
+    for (const snippet of snippets) {
+      if (snippet.kind !== "channel" && snippet.kind !== "service") continue;
+      const type = snippet.kind;
+      const templateName = sanitizeEnvScalar(snippet.name);
+      if (!templateName) continue;
+      const templateKey = `${type}:${templateName}`;
+      const supportsMultipleInstances = snippet.supportsMultipleInstances === true;
+      if (installedTemplates.has(templateKey) && !supportsMultipleInstances) continue;
+      items.push({
+        id: `template:${type}:${templateName}`,
+        type,
+        name: templateName,
+        displayName: snippet.name,
+        description: snippet.description ?? "",
+        tags: [type, "template", snippet.trust, snippet.sourceName],
+        enabled: false,
+        installed: false,
+        entryKind: "template",
+        templateName,
+        supportsMultipleInstances,
+        exposure: type === "channel" ? "lan" : undefined,
+        config: Object.fromEntries(snippet.env.map((field) => [field.name, field.default ?? ""])),
+        fields: snippet.env.map((field) => ({ key: field.name, required: field.required, description: field.description, defaultValue: field.default })),
+        image: snippet.image,
+        containerPort: snippet.containerPort,
+        rewritePath: snippet.rewritePath,
+        sharedSecretEnv: snippet.sharedSecretEnv,
+        volumes: snippet.volumes,
+        dependsOn: snippet.dependsOn,
+      });
+    }
+    return items.sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      if (a.entryKind !== b.entryKind) return a.entryKind.localeCompare(b.entryKind);
+      return a.displayName.localeCompare(b.displayName);
+    });
+  }
+
+  mutateStackCatalogItem(input: {
+    action: "install" | "uninstall" | "configure" | "add_instance";
+    type: StackCatalogItemType;
+    name: string;
+    exposure?: unknown;
+    config?: unknown;
+    templateName?: unknown;
+    supportsMultipleInstances?: unknown;
+    image?: unknown;
+    containerPort?: unknown;
+    rewritePath?: unknown;
+    sharedSecretEnv?: unknown;
+    volumes?: unknown;
+    dependsOn?: unknown;
+    fields?: unknown;
+    displayName?: unknown;
+    description?: unknown;
+    tags?: unknown;
+  }): StackCatalogItem {
+    const action = input.action;
+    const type = input.type;
+    const name = sanitizeEnvScalar(input.name);
+    if (!name) throw new Error("invalid_catalog_item_name");
+    const spec = this.getSpec();
+    if (action === "add_instance") {
+      const templateName = sanitizeEnvScalar(input.templateName ?? name);
+      if (!templateName) throw new Error("invalid_catalog_template_name");
+      const supportsMultipleInstances = input.supportsMultipleInstances === true;
+      const fields = Array.isArray(input.fields) ? input.fields : [];
+      const defaults = Object.fromEntries(fields
+        .filter((field) => typeof field === "object" && field !== null && typeof (field as { key?: unknown }).key === "string")
+        .map((field) => {
+          const value = field as { key: string; defaultValue?: unknown };
+          const fallback = typeof value.defaultValue === "string" ? sanitizeEnvScalar(value.defaultValue) : "";
+          return [sanitizeEnvScalar(value.key), fallback];
+        })
+        .filter(([key]) => key.length > 0));
+      const displayName = sanitizeEnvScalar(input.displayName) || templateName;
+      const description = sanitizeEnvScalar(input.description);
+      const image = sanitizeEnvScalar(input.image);
+      const containerPort = typeof input.containerPort === "number" && Number.isInteger(input.containerPort) ? input.containerPort : undefined;
+      const volumes = Array.isArray(input.volumes) ? input.volumes.filter((v): v is string => typeof v === "string").map((v) => sanitizeEnvScalar(v)).filter((v) => v.length > 0) : undefined;
+      const dependsOn = Array.isArray(input.dependsOn) ? input.dependsOn.filter((v): v is string => typeof v === "string").map((v) => sanitizeEnvScalar(v)).filter((v) => v.length > 0) : undefined;
+      let instanceName = "";
+      if (type === "channel") {
+        const used = new Set(Object.keys(spec.channels));
+        const baseName = composeServiceName(templateName || name);
+        if (!baseName) throw new Error("invalid_catalog_channel_base_name");
+        if (!supportsMultipleInstances && spec.channels[baseName]) {
+          throw new Error(`multiple_instances_not_supported_for_channel_template_${templateName}`);
+        }
+        instanceName = nextInstanceName(baseName, used);
+        const channel: StackSpec["channels"][string] = {
+          enabled: true,
+          exposure: "lan",
+          template: templateName,
+          supportsMultipleInstances,
+          name: displayName,
+          description: description || undefined,
+          image: image || undefined,
+          containerPort,
+          rewritePath: typeof input.rewritePath === "string" ? sanitizeEnvScalar(input.rewritePath) : undefined,
+          sharedSecretEnv: typeof input.sharedSecretEnv === "string" ? sanitizeEnvScalar(input.sharedSecretEnv) : undefined,
+          volumes,
+          config: defaults,
+        };
+        spec.channels[instanceName] = channel;
+      } else {
+        const used = new Set(Object.keys(spec.services));
+        const baseName = composeServiceName(templateName || name);
+        if (!baseName) throw new Error("invalid_catalog_service_base_name");
+        if (!supportsMultipleInstances && spec.services[baseName]) {
+          throw new Error(`multiple_instances_not_supported_for_service_template_${templateName}`);
+        }
+        instanceName = nextInstanceName(baseName, used);
+        if (!image) throw new Error("missing_service_image_for_catalog_instance");
+        if (!containerPort) throw new Error("missing_service_port_for_catalog_instance");
+        spec.services[instanceName] = {
+          enabled: true,
+          template: templateName,
+          supportsMultipleInstances,
+          name: displayName,
+          description: description || undefined,
+          image,
+          containerPort,
+          volumes,
+          dependsOn,
+          config: defaults,
+        };
+      }
+      const validated = parseStackSpec(spec);
+      this.writeStackSpecAtomically(stringifyStackSpec(validated));
+      this.renderArtifacts();
+      const updated = this.listStackCatalogItems().find((item) =>
+        item.type === type
+        && item.entryKind === "installed"
+        && item.name === instanceName
+      );
+      if (!updated) throw new Error(`catalog_item_not_found_after_add_instance_${type}_${templateName}`);
+      return updated;
+    }
+    if (type === "channel") {
+      const channel = spec.channels[name];
+      if (!channel) throw new Error(`unknown_channel_${name}`);
+      if (action === "install") {
+        channel.enabled = true;
+      } else if (action === "uninstall") {
+        channel.enabled = false;
+      } else {
+        if (input.exposure === "host" || input.exposure === "lan" || input.exposure === "public") {
+          channel.exposure = input.exposure;
+        }
+        if (input.config && typeof input.config === "object" && !Array.isArray(input.config)) {
+          const next: Record<string, string> = {};
+          const current = channel.config;
+          if (isBuiltInChannel(name)) {
+            for (const key of Object.keys(current)) {
+              const value = (input.config as Record<string, unknown>)[key];
+              next[key] = typeof value === "string" ? sanitizeEnvScalar(value) : "";
+            }
+          } else {
+            for (const [key, value] of Object.entries(input.config as Record<string, unknown>)) {
+              if (!key.trim() || typeof value !== "string") continue;
+              next[key] = sanitizeEnvScalar(value);
+            }
+          }
+          channel.config = next;
+        }
+        channel.enabled = true;
+      }
+    } else {
+      const service = spec.services[name];
+      if (!service) throw new Error(`unknown_service_${name}`);
+      if (action === "install") {
+        service.enabled = true;
+      } else if (action === "uninstall") {
+        service.enabled = false;
+      } else {
+        if (input.config && typeof input.config === "object" && !Array.isArray(input.config)) {
+          const next: Record<string, string> = {};
+          for (const [key, value] of Object.entries(input.config as Record<string, unknown>)) {
+            if (!key.trim() || typeof value !== "string") continue;
+            next[key] = sanitizeEnvScalar(value);
+          }
+          service.config = next;
+        }
+        service.enabled = true;
+      }
+    }
+    const validated = parseStackSpec(spec);
+    this.writeStackSpecAtomically(stringifyStackSpec(validated));
+    this.renderArtifacts();
+    const updated = this.listStackCatalogItems().find((item) => item.type === type && item.name === name && item.entryKind === "installed");
+    if (!updated) throw new Error(`catalog_item_not_found_after_mutation_${type}_${name}`);
+    return updated;
   }
 
   setAccessScope(scope: "host" | "lan" | "public") {

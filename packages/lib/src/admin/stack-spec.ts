@@ -14,6 +14,8 @@ export type BuiltInChannelName = string;
 export type StackChannelConfig = {
   enabled: boolean;
   exposure: ChannelExposure;
+  template?: string;
+  supportsMultipleInstances?: boolean;
   name?: string;
   description?: string;
   image?: string;
@@ -30,6 +32,8 @@ export type StackChannelConfig = {
 
 export type StackServiceConfig = {
   enabled: boolean;
+  template?: string;
+  supportsMultipleInstances?: boolean;
   name?: string;
   description?: string;
   image: string;
@@ -113,6 +117,7 @@ function defaultChannelEntry(channelName: string): StackChannelConfig {
   return {
     enabled: true,
     exposure: "lan",
+    template: channelName,
     containerPort: builtIn.containerPort,
     rewritePath: builtIn.rewritePath,
     sharedSecretEnv: builtIn.sharedSecretEnv,
@@ -184,6 +189,13 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
     exposure,
     config: parseChannelConfig(channel.config, channelName),
   };
+
+  const template = parseOptionalString(channel.template, `channel_template_${channelName}`);
+  if (template) result.template = template;
+  if (channel.supportsMultipleInstances !== undefined) {
+    if (typeof channel.supportsMultipleInstances !== "boolean") throw new Error(`invalid_channel_supports_multiple_instances_${channelName}`);
+    result.supportsMultipleInstances = channel.supportsMultipleInstances;
+  }
 
   const name = parseOptionalString(channel.name, `channel_name_${channelName}`);
   if (name) result.name = name;
@@ -279,6 +291,13 @@ function parseService(raw: unknown, serviceName: string): StackServiceConfig {
     containerPort,
     config: parseServiceConfig(service.config, serviceName),
   };
+
+  const template = parseOptionalString(service.template, `service_template_${serviceName}`);
+  if (template) result.template = template;
+  if (service.supportsMultipleInstances !== undefined) {
+    if (typeof service.supportsMultipleInstances !== "boolean") throw new Error(`invalid_service_supports_multiple_instances_${serviceName}`);
+    result.supportsMultipleInstances = service.supportsMultipleInstances;
+  }
 
   const name = parseOptionalString(service.name, `service_name_${serviceName}`);
   if (name) result.name = name;

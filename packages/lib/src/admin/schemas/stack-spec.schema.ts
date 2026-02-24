@@ -14,6 +14,8 @@ const channelSchema = {
   properties: {
     enabled: { type: "boolean" },
     exposure: { type: "string", enum: ["host", "lan", "public"] },
+    template: { type: "string" },
+    supportsMultipleInstances: { type: "boolean" },
     name: { type: "string" },
     description: { type: "string" },
     image: { type: "string", pattern: "^[a-zA-Z0-9]+([._\\/:@-][a-zA-Z0-9]+)*$" },
@@ -50,6 +52,8 @@ const serviceSchema = {
   required: ["enabled", "image", "containerPort", "config"],
   properties: {
     enabled: { type: "boolean" },
+    template: { type: "string" },
+    supportsMultipleInstances: { type: "boolean" },
     name: { type: "string" },
     description: { type: "string" },
     image: { type: "string", pattern: "^[a-zA-Z0-9]+([._\\/:@-][a-zA-Z0-9]+)*$" },

@@ -23,6 +23,7 @@ Every snippet file must include:
 kind: channel          # channel | service | automation
 name: My Channel
 description: One or two sentences describing what this does
+supportsMultipleInstances: true # optional, allows multiple installed copies
 image: myuser/my-channel:latest
 containerPort: 8200
 rewritePath: /my-channel/webhook
@@ -48,6 +49,7 @@ You can also host snippets in your own repo without submitting a PR:
 1. Create a repo with your snippet YAML files
 2. Add an `openpalm-snippet.yaml` at the repo root
 3. Tag your repo with the appropriate GitHub topic:
+   - `openpalm` — broad discovery topic for OpenPalm ecosystem repos
    - `openpalm-channel` — for channel snippets
    - `openpalm-service` — for service snippets
    - `openpalm-automation` — for automation snippets
