@@ -24,6 +24,7 @@
 
 	let specText = $state('');
 	let statusMsg = $state('');
+	let activeView = $state<'catalog' | 'advanced'>('catalog');
 	let catalog = $state<CatalogItem[]>([]);
 	let search = $state('');
 	let typeFilter = $state<'all' | 'channel' | 'service'>('all');
@@ -90,6 +91,15 @@
 		const data = r.data?.data ?? {};
 		catalog = data.catalog ?? [];
 		secretNames = data.secrets?.available ?? [];
+	}
+
+	async function refreshSharedState() {
+		await Promise.all([loadState(), loadSpec()]);
+	}
+
+	function notifyRefreshError(error: unknown, fallbackMessage: string) {
+		const message = error instanceof Error ? error.message : fallbackMessage;
+		showToast(message, 'error');
 	}
 
 	async function loadSpec() {
@@ -167,7 +177,7 @@
 			showToast(r.data?.error || `Failed to ${action} ${item.displayName}`, 'error');
 			return;
 		}
-		await Promise.all([loadState(), loadSpec()]);
+		await refreshSharedState();
 		showToast(`${item.displayName} ${action === 'install' ? 'installed' : 'uninstalled'}`, 'success');
 	}
 
@@ -192,130 +202,174 @@
 			return;
 		}
 		editingItemKey = '';
-		await Promise.all([loadState(), loadSpec()]);
+		await refreshSharedState();
 		showToast(`${item.displayName} configured`, 'success');
+	}
+
+	async function selectView(view: 'catalog' | 'advanced') {
+		activeView = view;
+		if (!hasToken) return;
+		try {
+			if (view === 'catalog') {
+				await loadState();
+				return;
+			}
+			await loadSpec();
+		} catch (error) {
+			notifyRefreshError(error, 'Failed to refresh view state');
+		}
 	}
 
 	$effect(() => {
 		if (hasToken) {
-			loadSpec();
-			loadState();
+			void refreshSharedState().catch((error) =>
+				notifyRefreshError(error, 'Failed to load stack state')
+			);
 		}
 	});
 </script>
 
 <div class="card">
-	<h3>Channels & Services</h3>
-	<p class="muted" style="font-size:13px">
-		Browse stack items, filter by type, search by name/description/tag, and install, uninstall, or
-		configure them in real time.
-	</p>
-	<div class="grid2" style="margin:0.5rem 0">
-		<input bind:value={search} placeholder="Search by name, description, or tag" />
-		<select bind:value={typeFilter}>
-			<option value="all">All types</option>
-			<option value="channel">Channels</option>
-			<option value="service">Services</option>
-		</select>
+	<h3>Stack Configuration</h3>
+	<div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;align-items:center">
+		<div style="display:flex;gap:0.4rem">
+			<button
+				class={activeView === 'catalog' ? '' : 'btn-secondary'}
+				onclick={() => selectView('catalog')}>Search & Configure</button
+			>
+			<button
+				class={activeView === 'advanced' ? '' : 'btn-secondary'}
+				onclick={() => selectView('advanced')}>Advanced YAML</button
+			>
+		</div>
+		<div style="margin-left:auto">
+			<button
+				class="btn-secondary"
+				onclick={async () => {
+					try {
+						await refreshSharedState();
+					} catch (error) {
+						notifyRefreshError(error, 'Failed to reload stack state');
+					}
+				}}>Reload</button
+			>
+		</div>
 	</div>
-	{#if filteredCatalog.length === 0}
-		<div class="muted" style="font-size:13px">No channels or services matched your search.</div>
-	{:else}
-		<div style="display:grid;gap:0.6rem">
-			{#each filteredCatalog as item}
-				{@const key = itemKey(item)}
-				<div class="channel-section {item.enabled ? 'enabled' : ''}">
-					<div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:flex-start">
-						<div>
-							<div><strong>{item.displayName}</strong> <span class="muted">({item.type})</span></div>
-							{#if item.description}
-								<div class="muted" style="font-size:13px">{item.description}</div>
-							{/if}
-							<div class="muted" style="font-size:12px">Tags: {item.tags.join(', ')}</div>
-						</div>
-						<div style="display:flex;gap:0.35rem;flex-wrap:wrap">
-							{#if item.enabled}
-								<button
-									class="btn-secondary btn-sm"
-									disabled={busyItemKey === key}
-									onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
-								>
-							{:else}
-								<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'install')}
-									>Install</button
-								>
-							{/if}
-							<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}>Configure</button>
-						</div>
-					</div>
-					{#if editingItemKey === key}
-						<div style="margin-top:0.5rem">
-							{#if item.type === 'channel'}
-								<label style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
-								<select bind:value={exposureDraft} style="margin-bottom:0.45rem">
-									<option value="host">host</option>
-									<option value="lan">lan</option>
-									<option value="public">public</option>
-								</select>
-							{/if}
-							{#if item.fields.length === 0}
-								<div class="muted" style="font-size:13px">No configuration fields defined.</div>
-							{/if}
-							{#each item.fields as field}
-								<label style="display:block;margin:0.35rem 0 0.2rem;font-size:13px">
-									{field.key}{field.required ? ' *' : ''}
-								</label>
-								<input
-									type={isSecretField(field) ? 'password' : 'text'}
-									value={configDraft[field.key] ?? ''}
-									oninput={(event) =>
-										(configDraft = {
-											...configDraft,
-											[field.key]: (event.currentTarget as HTMLInputElement).value
-										})}
-									placeholder={field.description ?? ''}
-								/>
-								{#if secretNames.length > 0}
-									<select
-										style="margin-top:0.2rem"
-										onchange={(event) =>
-											applySecretRef(
-												field.key,
-												(event.currentTarget as HTMLSelectElement).value
-											)}>
-										<option value="">Use plain value</option>
-										{#each secretNames as secretName}
-											<option value={secretName}>Use secret: {secretName}</option>
-										{/each}
-									</select>
+	{#if activeView === 'catalog'}
+		<p class="muted" style="font-size:13px">
+			Browse stack items, filter by type, search by name/description/tag, and install, uninstall, or
+			configure them in real time.
+		</p>
+		<div class="grid2" style="margin:0.5rem 0">
+			<input bind:value={search} placeholder="Search by name, description, or tag" />
+			<select bind:value={typeFilter}>
+				<option value="all">All types</option>
+				<option value="channel">Channels</option>
+				<option value="service">Services</option>
+			</select>
+		</div>
+		{#if filteredCatalog.length === 0}
+			<div class="muted" style="font-size:13px">No channels or services matched your search.</div>
+		{:else}
+			<div style="display:grid;gap:0.6rem">
+				{#each filteredCatalog as item}
+					{@const key = itemKey(item)}
+					<div class="channel-section {item.enabled ? 'enabled' : ''}">
+						<div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:flex-start">
+							<div>
+								<div><strong>{item.displayName}</strong> <span class="muted">({item.type})</span></div>
+								{#if item.description}
+									<div class="muted" style="font-size:13px">{item.description}</div>
 								{/if}
-							{/each}
-							<div style="display:flex;gap:0.4rem;margin-top:0.55rem">
-								<button disabled={busyItemKey === key} onclick={() => saveItemConfig(item)}
-									>Save configuration</button
+								<div class="muted" style="font-size:12px">Tags: {item.tags.join(', ')}</div>
+							</div>
+							<div style="display:flex;gap:0.35rem;flex-wrap:wrap">
+								{#if item.enabled}
+									<button
+										class="btn-secondary btn-sm"
+										disabled={busyItemKey === key}
+										onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
+									>
+								{:else}
+									<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'install')}
+										>Install</button
+									>
+								{/if}
+								<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}
+									>Configure</button
 								>
-								<button class="btn-secondary" onclick={() => (editingItemKey = '')}>Cancel</button>
 							</div>
 						</div>
-					{/if}
-				</div>
-			{/each}
+						{#if editingItemKey === key}
+							<div style="margin-top:0.5rem">
+								{#if item.type === 'channel'}
+									<label style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
+									<select bind:value={exposureDraft} style="margin-bottom:0.45rem">
+										<option value="host">host</option>
+										<option value="lan">lan</option>
+										<option value="public">public</option>
+									</select>
+								{/if}
+								{#if item.fields.length === 0}
+									<div class="muted" style="font-size:13px">No configuration fields defined.</div>
+								{/if}
+								{#each item.fields as field}
+									<label style="display:block;margin:0.35rem 0 0.2rem;font-size:13px">
+										{field.key}{field.required ? ' *' : ''}
+									</label>
+									<input
+										type={isSecretField(field) ? 'password' : 'text'}
+										value={configDraft[field.key] ?? ''}
+										oninput={(event) =>
+											(configDraft = {
+												...configDraft,
+												[field.key]: (event.currentTarget as HTMLInputElement).value
+											})}
+										placeholder={field.description ?? ''}
+									/>
+									{#if secretNames.length > 0}
+										<select
+											style="margin-top:0.2rem"
+											onchange={(event) =>
+												applySecretRef(
+													field.key,
+													(event.currentTarget as HTMLSelectElement).value
+												)}>
+											<option value="">Use plain value</option>
+											{#each secretNames as secretName}
+												<option value={secretName}>Use secret: {secretName}</option>
+											{/each}
+										</select>
+									{/if}
+								{/each}
+								<div style="display:flex;gap:0.4rem;margin-top:0.55rem">
+									<button disabled={busyItemKey === key} onclick={() => saveItemConfig(item)}
+										>Save configuration</button
+									>
+									<button class="btn-secondary" onclick={() => (editingItemKey = '')}>Cancel</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	{:else}
+		<p class="muted" style="font-size:13px">
+			Advanced mode: edit stack YAML directly. Save, then Apply to regenerate configuration files and
+			restart services.
+		</p>
+		<textarea
+			bind:value={specText}
+			rows="16"
+			style="width:100%;margin:0.5rem 0"
+			placeholder="Loading..."
+		></textarea>
+		<div style="display:flex;gap:0.5rem">
+			<button onclick={saveSpec}>Save Spec</button>
+			<button class="btn-secondary" onclick={applyStack}>Apply Changes</button>
 		</div>
 	{/if}
-</div>
-
-<div class="card">
-	<h3>Stack Spec</h3>
-	<p class="muted" style="font-size:13px">
-		Advanced mode: edit stack YAML directly. Save, then Apply to regenerate configuration files and
-		restart services.
-	</p>
-	<textarea bind:value={specText} rows="16" style="width:100%;margin:0.5rem 0" placeholder="Loading..."></textarea>
-	<div style="display:flex;gap:0.5rem">
-		<button onclick={saveSpec}>Save Spec</button>
-		<button class="btn-secondary" onclick={applyStack}>Apply Changes</button>
-		<button class="btn-secondary" onclick={loadSpec}>Reload</button>
-	</div>
 	{#if statusMsg}
 		<div style="margin-top:0.5rem;font-size:13px" class="muted">{statusMsg}</div>
 	{/if}
