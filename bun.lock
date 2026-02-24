@@ -9,52 +9,52 @@
         "typescript": "^5.9.3",
       },
     },
-    "channels/chat": {
-      "name": "@openpalm/channel-chat",
-      "version": "0.3.0",
-    },
-    "channels/discord": {
-      "name": "@openpalm/channel-discord",
-      "version": "0.3.0",
+    "channels/a2a": {
+      "name": "@openpalm/channel-a2a",
+      "version": "0.3.4",
     },
     "channels/api": {
       "name": "@openpalm/channel-api",
-      "version": "0.3.2",
+      "version": "0.3.4",
     },
-    "channels/telegram": {
-      "name": "@openpalm/channel-telegram",
-      "version": "0.3.0",
+    "channels/chat": {
+      "name": "@openpalm/channel-chat",
+      "version": "0.3.4",
     },
-    "channels/voice": {
-      "name": "@openpalm/channel-voice",
-      "version": "0.3.0",
-    },
-    "channels/webhook": {
-      "name": "@openpalm/channel-webhook",
-      "version": "0.3.0",
+    "channels/discord": {
+      "name": "@openpalm/channel-discord",
+      "version": "0.3.4",
     },
     "channels/mcp": {
       "name": "@openpalm/channel-mcp",
       "version": "0.3.4",
     },
-    "channels/a2a": {
-      "name": "@openpalm/channel-a2a",
+    "channels/telegram": {
+      "name": "@openpalm/channel-telegram",
       "version": "0.3.4",
+    },
+    "channels/voice": {
+      "name": "@openpalm/channel-voice",
+      "version": "0.3.4",
+    },
+    "channels/webhook": {
+      "name": "@openpalm/channel-webhook",
+      "version": "0.3.0",
     },
     "core/admin": {
       "name": "@openpalm/admin",
-      "version": "0.3.0",
+      "version": "0.3.4",
       "devDependencies": {
         "@playwright/test": "^1.40.0",
       },
     },
     "core/gateway": {
       "name": "@openpalm/gateway",
-      "version": "0.3.0",
+      "version": "0.3.4",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.3.0",
+      "version": "0.3.4",
       "bin": {
         "openpalm": "./src/main.ts",
       },
