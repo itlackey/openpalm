@@ -58,3 +58,13 @@ services:
     build:
       context: .
       dockerfile: channels/api/Dockerfile
+
+  channel-mcp:
+    build:
+      context: .
+      dockerfile: channels/mcp/Dockerfile
+
+  channel-a2a:
+    build:
+      context: .
+      dockerfile: channels/a2a/Dockerfile
