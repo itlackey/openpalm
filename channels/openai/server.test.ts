@@ -67,4 +67,40 @@ describe("openai adapter", () => {
     const choices = parsedResponse.choices as Array<Record<string, unknown>>;
     expect(choices[0].text).toBe("done");
   });
+
+  it("normalizes anthropic messages payload and returns anthropic message shape", async () => {
+    let body = "";
+    const mockFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      body = String(init?.body);
+      return new Response(JSON.stringify({ answer: "anthropic-ok" }), { status: 200 });
+    };
+
+    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", mockFetch as typeof fetch, "");
+    const response = await fetchHandler(new Request("http://openai/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-latest",
+        messages: [{ role: "user", content: "hello from anthropic" }],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    const parsedForward = JSON.parse(body) as Record<string, unknown>;
+    expect(parsedForward.channel).toBe("openai");
+    expect(parsedForward.text).toBe("hello from anthropic");
+
+    const parsedResponse = await response.json() as Record<string, unknown>;
+    expect(parsedResponse.type).toBe("message");
+    const content = parsedResponse.content as Array<Record<string, unknown>>;
+    expect(content[0].text).toBe("anthropic-ok");
+  });
+
+  it("rejects anthropic requests with invalid api key when configured", async () => {
+    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", fetch, "anthropic-key");
+    const unauthorized = await fetchHandler(new Request("http://openai/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({ model: "claude", messages: [{ role: "user", content: "hello" }] }),
+    }));
+    expect(unauthorized.status).toBe(401);
+  });
 });

@@ -101,4 +101,36 @@ describe("integration: channel adapters -> gateway", () => {
       gateway.stop();
     }
   });
+
+  it("openai facade forwards anthropic messages through gateway", async () => {
+    let inboundBody = "";
+    const gateway = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        inboundBody = await req.text();
+        return new Response(JSON.stringify({ answer: "ok" }), { status: 200 });
+      }
+    });
+    const adapter = Bun.serve({
+      port: 0,
+      fetch: createOpenAIFetch(`http://localhost:${gateway.port}`, "secret", "")
+    });
+
+    try {
+      const resp = await fetch(`http://localhost:${adapter.port}/v1/messages`, {
+        method: "POST",
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-latest",
+          messages: [{ role: "user", content: "hello anthropic" }],
+        }),
+      });
+      expect(resp.status).toBe(200);
+      const payload = JSON.parse(inboundBody) as Record<string, unknown>;
+      expect(payload.channel).toBe("openai");
+      expect(payload.text).toBe("hello anthropic");
+    } finally {
+      adapter.stop();
+      gateway.stop();
+    }
+  });
 });
