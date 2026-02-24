@@ -269,26 +269,26 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			});
 		}
 
-	if (type === 'setup.service_instances') {
-		const openmemory = sanitizeEnvScalar(payload.openmemory);
-		const psql = sanitizeEnvScalar(payload.psql);
-		const qdrant = sanitizeEnvScalar(payload.qdrant);
-		const openaiBaseUrl = sanitizeEnvScalar(payload.openaiBaseUrl);
-		const openaiApiKey = sanitizeEnvScalar(payload.openaiApiKey);
-		const anthropicApiKey = sanitizeEnvScalar(payload.anthropicApiKey);
-		const smallModelEndpoint = sanitizeEnvScalar(payload.smallModelEndpoint);
-		const smallModelApiKey = sanitizeEnvScalar(payload.smallModelApiKey);
-		const smallModelId = sanitizeEnvScalar(payload.smallModelId);
+		if (type === 'setup.service_instances') {
+			const openmemory = sanitizeEnvScalar(payload.openmemory);
+			const psql = sanitizeEnvScalar(payload.psql);
+			const qdrant = sanitizeEnvScalar(payload.qdrant);
+			const openaiBaseUrl = sanitizeEnvScalar(payload.openaiBaseUrl);
+			const openaiApiKey = sanitizeEnvScalar(payload.openaiApiKey);
+			const anthropicApiKey = sanitizeEnvScalar(payload.anthropicApiKey);
+			const smallModelEndpoint = sanitizeEnvScalar(payload.smallModelEndpoint);
+			const smallModelApiKey = sanitizeEnvScalar(payload.smallModelApiKey);
+			const smallModelId = sanitizeEnvScalar(payload.smallModelId);
 
-		// During initial setup, require Anthropic key unless already configured
-		if (!setupState.completed) {
-			const existingSecrets = readSecretsEnv();
-			if (!anthropicApiKey && !existingSecrets.ANTHROPIC_API_KEY) {
-				return json(400, { ok: false, error: 'anthropic_key_required', code: 'anthropic_key_required' });
+			// During initial setup, require Anthropic key unless already configured
+			if (!setupState.completed) {
+				const existingSecrets = readSecretsEnv();
+				if (!anthropicApiKey && !existingSecrets.ANTHROPIC_API_KEY) {
+					return json(400, { ok: false, error: 'anthropic_key_required', code: 'anthropic_key_required' });
+				}
 			}
-		}
 
-		updateRuntimeEnv({
+			updateRuntimeEnv({
 				OPENMEMORY_URL: openmemory || undefined,
 				OPENMEMORY_POSTGRES_URL: psql || undefined,
 				OPENMEMORY_QDRANT_URL: qdrant || undefined
