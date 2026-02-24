@@ -144,8 +144,8 @@ The steps below map directly to the execution order implemented in `packages/cli
 | 16 | Reset setup state | `DATA/admin/setup-state.json` | Remove prior wizard completion state |
 | 17 | Uninstall helper script | `STATE/uninstall.sh` | Write uninstall wrapper script and chmod where supported |
 | 18 | system env bootstrap | `STATE/system.env` | Ensure admin `env_file` target exists before first full stack apply |
-| 19 | Setup-only Caddy config | `STATE/caddy.json`, `STATE/caddy-fallback.json` | Write reverse-proxy config routing setup traffic to Admin |
-| 20 | Minimal compose bootstrap | `STATE/docker-compose.yml`, `STATE/docker-compose-fallback.yml` | Write bootstrap compose containing `caddy` + `admin` only |
+| 19 | Setup-only Caddy config | `STATE/caddy.json` | Write reverse-proxy config routing setup traffic to Admin |
+| 20 | Minimal compose bootstrap | `STATE/docker-compose.yml` | Write bootstrap compose containing `caddy` + `admin` only |
 | 21 | Pull bootstrap images | none (runtime side effects) | Pull caddy/admin images with error guidance on failure |
 | 22 | Start bootstrap services | none (runtime side effects) | `compose up -d caddy admin` |
 | 23 | Health wait loop | none | Poll `http://localhost/setup/status` with timeout/backoff |
@@ -173,9 +173,8 @@ All setup commands enforce: unauthenticated setup access is allowed only while s
 1. Render desired artifacts from current stack spec.
 2. Validate referenced secrets.
 3. Validate compose configuration.
-4. Compute impact (services to `up`, `restart`, `reload`) by diffing existing vs generated artifacts.
-5. Write artifacts and execute compose operations in order.
-6. On failure, attempt rollback; if rollback fails, fallback to `admin` + `caddy` recovery compose.
+4. Write artifacts and execute `docker compose up -d --remove-orphans`.
+5. On failure, return the error to the admin UI.
 
 This is the reliability boundary that turns wizard inputs into a running full stack.
 

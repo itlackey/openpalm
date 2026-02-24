@@ -64,68 +64,20 @@ const DEFAULT_STATE: SetupState = {
   installedExtensions: []
 };
 
-function sanitizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values));
-}
-
-function sanitizeServiceInstances(value: unknown): SetupState["serviceInstances"] {
-  const source = (value && typeof value === "object") ? value as Partial<SetupState["serviceInstances"]> : {};
-  return {
-    openmemory: typeof source.openmemory === "string" ? source.openmemory : "",
-    psql: typeof source.psql === "string" ? source.psql : "",
-    qdrant: typeof source.qdrant === "string" ? source.qdrant : "",
-  };
-}
-
-function sanitizeSmallModel(value: unknown): SmallModelConfig {
-  const source = (value && typeof value === "object") ? value as Partial<SmallModelConfig> : {};
-  return {
-    endpoint: typeof source.endpoint === "string" ? source.endpoint : "",
-    modelId: typeof source.modelId === "string" ? source.modelId : "",
-  };
-}
-
-function sanitizeSteps(value: unknown): SetupState["steps"] {
-  const source = (value && typeof value === "object") ? value as Partial<SetupState["steps"]> : {};
-  return {
-    welcome: source.welcome === true,
-    profile: source.profile === true,
-    accessScope: source.accessScope === true,
-    serviceInstances: source.serviceInstances === true,
-    healthCheck: source.healthCheck === true,
-    security: source.security === true,
-    channels: source.channels === true,
-    extensions: source.extensions === true,
-  };
-}
-
-function sanitizeProfile(value: unknown): SetupState["profile"] {
-  const source = (value && typeof value === "object") ? value as Partial<SetupState["profile"]> : {};
-  return {
-    name: typeof source.name === "string" ? source.name : "",
-    email: typeof source.email === "string" ? source.email : "",
-  };
-}
-
-function normalizeState(parsed: Partial<SetupState>): SetupState {
-  const validScopes = new Set<SetupState["accessScope"]>(["host", "lan", "public"]);
-  const accessScope = validScopes.has(parsed.accessScope as SetupState["accessScope"]) ? parsed.accessScope as SetupState["accessScope"] : "host";
-  return {
-    completed: parsed.completed === true,
-    completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : undefined,
-    accessScope,
-    serviceInstances: sanitizeServiceInstances(parsed.serviceInstances),
-    smallModel: sanitizeSmallModel(parsed.smallModel),
-    profile: sanitizeProfile(parsed.profile),
-    steps: sanitizeSteps(parsed.steps),
-    enabledChannels: sanitizeStringArray(parsed.enabledChannels),
-    installedExtensions: sanitizeStringArray(parsed.installedExtensions),
-  };
+function isValidSetupState(value: unknown): value is SetupState {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.completed === "boolean" &&
+    typeof v.accessScope === "string" &&
+    ["host", "lan", "public"].includes(v.accessScope as string) &&
+    typeof v.serviceInstances === "object" && v.serviceInstances !== null &&
+    typeof v.smallModel === "object" && v.smallModel !== null &&
+    typeof v.profile === "object" && v.profile !== null &&
+    typeof v.steps === "object" && v.steps !== null &&
+    Array.isArray(v.enabledChannels) &&
+    Array.isArray(v.installedExtensions)
+  );
 }
 
 export class SetupManager {
@@ -137,12 +89,13 @@ export class SetupManager {
   }
 
   getState(): SetupState {
-    if (!existsSync(this.path)) return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps } };
+    if (!existsSync(this.path)) return structuredClone(DEFAULT_STATE);
     try {
-      const parsed = JSON.parse(readFileSync(this.path, "utf8")) as Partial<SetupState>;
-      return normalizeState(parsed);
+      const parsed = JSON.parse(readFileSync(this.path, "utf8"));
+      if (!isValidSetupState(parsed)) return structuredClone(DEFAULT_STATE);
+      return parsed;
     } catch {
-      return { ...DEFAULT_STATE, steps: { ...DEFAULT_STATE.steps }, serviceInstances: { ...DEFAULT_STATE.serviceInstances }, smallModel: { ...DEFAULT_STATE.smallModel } };
+      return structuredClone(DEFAULT_STATE);
     }
   }
 
@@ -212,7 +165,7 @@ export class SetupManager {
 
   setEnabledChannels(channels: string[]) {
     const state = this.getState();
-    state.enabledChannels = uniqueStrings(channels);
+    state.enabledChannels = [...new Set(channels)];
     this.save(state);
     return state;
   }

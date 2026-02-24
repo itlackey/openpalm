@@ -2,7 +2,7 @@ import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, getBuiltIn
 import type { BuiltInChannelName, StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
 import { renderCaddyComposeService, renderOpenMemoryComposeService, renderOpenMemoryUiComposeService, renderPostgresComposeService, renderQdrantComposeService } from "./core-services.ts";
 import type { ComposeService, ComposeSpec } from "./compose-spec.ts";
-import { stringifyComposeSpec, validateComposeSpec } from "./compose-spec-serializer";
+import { stringifyComposeSpec } from "./compose-spec-serializer.ts";
 
 function resolveChannelPort(name: string, config: StackChannelConfig): number {
   if (config.containerPort) return config.containerPort;
@@ -563,20 +563,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     networks: { channel_net: {}, assistant_net: {} },
   };
 
-  const violations = validateComposeSpec(specDoc);
-  if (violations.length > 0) {
-    throw new Error(`invalid_compose_spec:${violations.join(",")}`);
-  }
-
   return stringifyComposeSpec(specDoc);
-}
-
-export function validateGeneratedCompose(spec: StackSpec, secrets: Record<string, string>): string[] {
-  const compose = renderFullComposeFile(spec);
-  const errors: string[] = [];
-  if (!compose.includes("restart: unless-stopped")) errors.push("missing_restart_policy");
-  if (!compose.includes("healthcheck:")) errors.push("missing_healthchecks");
-  return errors;
 }
 
 // ── Main generator ───────────────────────────────────────────────────

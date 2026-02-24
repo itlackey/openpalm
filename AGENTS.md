@@ -20,6 +20,49 @@ The platform is built around six concepts:
 - The openpalm tools (CLI, Admin, etc) exist to manage configuration for known technologies. They should not be complicated. Their primary goal is to take a simple spec and convert it to the necessary configuration and file system resources.
 - Clarity, simplicity, and security should be central to all decisions and implementations.
 
+## Thin Wrapper Principle
+
+OpenPalm is an **integration and management tool**, not a deployment platform. It translates user intent into configuration files for existing tools (Docker Compose, Caddy, etc.) and then calls those tools. The execution layer must stay thin.
+
+### Core domain logic (the product — keep and improve)
+
+These components ARE the product. They translate user intent into configuration:
+
+- **Stack spec parsing** (`packages/lib/src/admin/stack-spec.ts`) — Defines the configuration model. Validates user and snippet input at the boundary.
+- **Stack generator** (`packages/lib/src/admin/stack-generator.ts`) — Translates spec into compose YAML, env files, and Caddy JSON. This is the core transformation.
+- **Caddy JSON builder** (inside `stack-generator.ts`) — Programmatic generation of proxy config. Caddy JSON was chosen over Caddyfile to avoid regex/replace string manipulation for dynamic routes. This is intentional.
+- **Snippet discovery** (`packages/lib/src/admin/snippet-discovery.ts`) — Helps non-technical users find compatible add-ons. Core product feature.
+- **Setup manager** (`packages/lib/src/admin/setup-manager.ts`) — Wizard state tracking for first-boot UX.
+
+### Execution layer (must be thin — delegate to Docker Compose)
+
+Calling `docker compose` should be a passthrough, not an orchestration system. The CLI commands (`packages/lib/src/compose.ts` — `composeUp`, `composeDown`, `composeRestart`, etc.) are the model for how all compose interaction should work: simple wrappers that build args and call the tool.
+
+**Critical rules for the execution layer:**
+
+1. **One compose runner** — There must be a single shared implementation for running compose commands, used by both CLI and admin. Do not create parallel implementations.
+2. **Do not reimplement Docker Compose** — Docker Compose already handles: service change detection, startup ordering (`depends_on`), health checking (`condition: service_healthy`), and removing orphaned services (`--remove-orphans`). Do not build custom equivalents.
+3. **No custom deployment orchestration** — Applying a stack is: render artifacts → write files → `docker compose up -d --remove-orphans`. Handle Caddy reload as a small special case. No phased rollout, no apply locks, no impact planning.
+4. **No multi-tier recovery** — The admin container is already running when apply is called (it's processing the request). If compose-up fails, return the error to the UI. The user retries from the admin panel.
+5. **No artifact hashing or drift detection** — Do not SHA-256 hash files the tool just wrote. Container health status (`docker compose ps` formatted for the UI) is sufficient for showing users what's running.
+6. **Surface Docker's own errors** — Docker produces clear, well-documented error messages. Pass them through to the user instead of wrapping them in custom error chains.
+7. **Validate at boundaries only** — Validate user/snippet input once with `parseStackSpec()`. Validate generated output once with `docker compose config`. Do not add intermediate validation layers for artifacts the tool itself produced.
+8. **Dependency injection over module globals** — Use a passed `runCompose` function or interface for testability. Do not use module-level mutable override registries.
+
+### Anti-patterns to avoid
+
+When working on compose/container management code, do NOT:
+
+- Create separate compose runner implementations for CLI vs admin
+- Build custom orchestration on top of `docker compose up`
+- Add rollback systems, fallback bundles, or recovery cascades
+- Implement change detection / impact planning (Docker Compose does this)
+- Hash or checksum artifacts the tool generated
+- Add per-apply preflight checks (Docker reports its own errors)
+- Validate compose files the generator just produced in multiple ways
+- Add speculative fields (rotation tracking, constraints) for features that don't exist yet
+- Write hand-rolled YAML/compose parsers when `docker compose config` works
+
 ## Architecture Rules
 
 These rules define how the system is structured. Follow them exactly when writing code or configuration.
@@ -46,10 +89,10 @@ These rules define how the system is structured. Follow them exactly when writin
 ### Compose and Caddy generation
 
 - Core containers have predefined Compose config that is always included in the generated Compose file.
-- Channels and services both generate Docker Compose entries. Channels additionally generate Caddyfile entries.
-- The Caddyfile always includes rules to reach: Admin, OpenCode web UI, and OpenMemory UI.
-- The generator produces a valid `caddy.json` file.
-- Adding a channel or service is done by adding a JSON snippet to the spec and running the generator — no other code changes required.
+- Channels and services both generate Docker Compose entries. Channels additionally generate Caddy JSON route entries.
+- The Caddy config always includes routes to reach: Admin, OpenCode web UI, and OpenMemory UI.
+- The generator produces a valid `caddy.json` file. Caddy JSON is used (not Caddyfile) to enable programmatic route generation without regex/replace string manipulation.
+- Adding a channel or service is done by adding a YAML snippet to the spec and running the generator — no other code changes required.
 
 ### Plugins
 
