@@ -536,7 +536,7 @@
       "id": "07",
       "title": "Consolidate Validation",
       "description": "Eliminate redundant validation: remove validateComposeSpec() from compose-spec-serializer.ts, remove validateGeneratedCompose() from stack-generator.ts, delete schema-validation.ts entirely (157 lines). Relocate 11 useful schema tests to schemas/schemas.test.ts.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/07-consolidate-validation.md",
       "dependsOn": [],
       "netLinesChanged": "-150",
