@@ -12,6 +12,19 @@ import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
 import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, confirm } from "@openpalm/lib/ui.ts";
 
+function reportIssueUrl(context: { os: string; arch: string; runtime: string; error: string }): string {
+  const title = encodeURIComponent(`Install failure: ${context.error.slice(0, 80)}`);
+  const body = encodeURIComponent(
+    `## Environment\n` +
+    `- OS: ${context.os}\n` +
+    `- Arch: ${context.arch}\n` +
+    `- Runtime: ${context.runtime}\n\n` +
+    `## Error\n\`\`\`\n${context.error}\n\`\`\`\n\n` +
+    `## Steps to Reproduce\n1. Ran \`openpalm install\`\n`
+  );
+  return `https://github.com/itlackey/openpalm/issues/new?title=${title}&body=${body}`;
+}
+
 export async function install(options: InstallOptions): Promise<void> {
   // ============================================================================
   // Phase 1: Setup infrastructure
@@ -39,8 +52,9 @@ export async function install(options: InstallOptions): Promise<void> {
   // 4. Resolve compose bin/subcommand
   const { bin, subcommand } = resolveComposeBin(platform);
 
-  // 5. Run pre-flight checks (daemon running, disk space, port 80)
-  const preflightWarnings = await runPreflightChecks(bin, platform);
+  // 5. Run pre-flight checks (daemon running, disk space, port)
+  const ingressPort = options.port ?? 80;
+  const preflightWarnings = await runPreflightChecks(bin, platform, ingressPort);
   for (const w of preflightWarnings) {
     warn(w.message);
     if (w.detail) {
@@ -60,6 +74,17 @@ export async function install(options: InstallOptions): Promise<void> {
     w.message.includes("Could not verify")
   );
   if (daemonWarning) {
+    process.exit(1);
+  }
+
+  // Port conflict is fatal unless --port was used to pick an alternative
+  const portWarning = preflightWarnings.find((w) =>
+    w.message.includes("already in use")
+  );
+  if (portWarning) {
+    if (!options.port) {
+      error("Port 80 is required but already in use. Use --port to specify an alternative.");
+    }
     process.exit(1);
   }
 
@@ -193,6 +218,7 @@ export async function install(options: InstallOptions): Promise<void> {
     ["OPENPALM_UID", String(process.getuid?.() ?? 1000)],
     ["OPENPALM_GID", String(process.getgid?.() ?? 1000)],
     ["OPENPALM_ENABLED_CHANNELS", ""],
+    ["OPENPALM_INGRESS_PORT", String(ingressPort)],
   ]);
 
   // 14. Copy canonical .env to CWD for user convenience
@@ -229,7 +255,7 @@ export async function install(options: InstallOptions): Promise<void> {
       http: {
         servers: {
           main: {
-            listen: [":80"],
+            listen: [`:${ingressPort}`],
             routes: [
               {
                 match: [{ path: ["/api*"] }],
@@ -275,7 +301,7 @@ export async function install(options: InstallOptions): Promise<void> {
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80"
+      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:\${OPENPALM_INGRESS_PORT:-80}:80"
       - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
       - \${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro
@@ -316,7 +342,6 @@ export async function install(options: InstallOptions): Promise<void> {
       start_period: 10s
 
 networks:
-  channel_net:
   assistant_net:
 `;
   await writeFile(stateComposeFile, minimalCompose, "utf8");
@@ -354,7 +379,7 @@ networks:
   spin7.stop(green("Core services started"));
 
   // Wait for admin health check with exponential backoff
-  let adminUrl = "http://localhost";
+  let adminUrl = ingressPort === 80 ? "http://localhost" : `http://localhost:${ingressPort}`;
   const adminDirectUrl = "http://localhost:8100";
   const healthUrl = `${adminUrl}/setup/status`;
   const healthDirectUrl = `${adminDirectUrl}/setup/status`;

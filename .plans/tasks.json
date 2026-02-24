@@ -69,14 +69,14 @@
       "severity": "high",
       "priority": "must-fix",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-03-skip-required-steps.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-3.1",
           "description": "Add Anthropic API key non-empty validation guard in wizardNext() for serviceInstances step",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "82-96" }
           ]
@@ -84,7 +84,7 @@
         {
           "id": "ISSUE-3.2",
           "description": "Add server-side Anthropic key validation in setup.service_instances handler",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/routes/command/+server.ts", "lines": "267-303" }
           ]
@@ -97,14 +97,14 @@
       "severity": "high",
       "priority": "should-fix",
       "effort": "M",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-02-admin-password-ux.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-2.1",
           "description": "Add password + confirm fields to ProfileStep.svelte",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/ProfileStep.svelte", "lines": "1-23" }
           ]
@@ -112,7 +112,7 @@
         {
           "id": "ISSUE-2.2",
           "description": "Add error prop to ProfileStep (matching ProvidersStep pattern)",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/ProfileStep.svelte", "lines": "1-5" }
           ]
@@ -120,7 +120,7 @@
         {
           "id": "ISSUE-2.3",
           "description": "Pass error prop from SetupWizard to ProfileStep",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "222" }
           ]
@@ -128,7 +128,7 @@
         {
           "id": "ISSUE-2.4",
           "description": "Add password validation + setAdminToken in wizardNext() profile step",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "64-80" }
           ]
@@ -136,7 +136,7 @@
         {
           "id": "ISSUE-2.5",
           "description": "Handle password in setup.profile server command — persist via upsertEnvVar",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/routes/command/+server.ts", "lines": "244-265" },
             { "path": "packages/lib/src/env.ts", "lines": "43" }
@@ -145,7 +145,7 @@
         {
           "id": "ISSUE-2.6",
           "description": "Gut SecurityStep — remove password paste, keep security info only",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SecurityStep.svelte", "lines": "1-39" }
           ]
@@ -153,7 +153,7 @@
         {
           "id": "ISSUE-2.7",
           "description": "Remove security step setAdminToken handler from wizardNext()",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "135-138" }
           ]
@@ -161,7 +161,7 @@
         {
           "id": "ISSUE-2.8",
           "description": "Update SecurityStep rendering — remove error prop passing",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "226" }
           ]
@@ -169,7 +169,7 @@
         {
           "id": "ISSUE-2.9",
           "description": "Soften terminal password display in install.ts",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/cli/src/commands/install.ts", "lines": "166-175, 412-414" }
           ]
@@ -177,7 +177,7 @@
         {
           "id": "ISSUE-2.10",
           "description": "Add secret.set_admin_password post-setup command handler",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/routes/command/+server.ts", "lines": "~369" }
           ]
@@ -185,7 +185,7 @@
         {
           "id": "ISSUE-2.11",
           "description": "Update install.ts 'What happens next' text",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/cli/src/commands/install.ts", "lines": "416-421" }
           ]
@@ -198,14 +198,14 @@
       "severity": "high",
       "priority": "should-fix",
       "effort": "M",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-09-setup-complete-error-handling.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-9.1",
           "description": "Add error handling to setup.channels call in finishSetup()",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "177-183" }
           ]
@@ -213,7 +213,7 @@
         {
           "id": "ISSUE-9.2",
           "description": "Add error handling to service.up calls (non-fatal, log warning)",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "186-191" }
           ]
@@ -221,7 +221,7 @@
         {
           "id": "ISSUE-9.3",
           "description": "Add error handling to setup.step and setup.complete calls — block advancement on failure",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "193-203" }
           ]
@@ -229,7 +229,7 @@
         {
           "id": "ISSUE-9.4",
           "description": "Add finishInProgress state guard and button loading state",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "42, 244" }
           ]
@@ -237,7 +237,7 @@
         {
           "id": "ISSUE-9.5",
           "description": "Add wizard-level stepError display for finishSetup errors",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "~236" }
           ]
@@ -250,14 +250,14 @@
       "severity": "medium",
       "priority": "should-fix",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-13-cors-hardcoded.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-13.1",
           "description": "Import getSetupManager in hooks.server.ts",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/hooks.server.ts", "lines": "1-3" }
           ]
@@ -265,7 +265,7 @@
         {
           "id": "ISSUE-13.2",
           "description": "Add isPrivateOrigin() and computeAllowedOrigin() helper functions",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/hooks.server.ts", "lines": "5" }
           ]
@@ -273,7 +273,7 @@
         {
           "id": "ISSUE-13.3",
           "description": "Replace hardcoded ALLOWED_ORIGIN with dynamic origin in OPTIONS and response handlers",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/hooks.server.ts", "lines": "7-41" }
           ]
@@ -364,14 +364,14 @@
       "severity": "medium",
       "priority": "nice-to-have",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-08-opencode-auth.md",
       "dependencies": ["ISSUE-6"],
       "subtasks": [
         {
           "id": "ISSUE-8.1",
           "description": "Investigate OpenCode auth config options (check opencode.ai schema)",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "core/assistant/extensions/opencode.jsonc", "lines": "1-33" }
           ]
@@ -379,7 +379,7 @@
         {
           "id": "ISSUE-8.2",
           "description": "Add OPENCODE_AUTH=false to assistant environment in docker-compose.yml",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "88-89" }
           ]
@@ -387,7 +387,7 @@
         {
           "id": "ISSUE-8.3",
           "description": "Add \"auth\": false to opencode.jsonc config",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "core/assistant/extensions/opencode.jsonc", "lines": "2" }
           ]
@@ -395,7 +395,7 @@
         {
           "id": "ISSUE-8.4",
           "description": "(Fallback) Add guidance callout in CompleteStep.svelte about possible auth prompt",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "23" }
           ]
@@ -496,14 +496,14 @@
       "severity": "medium",
       "priority": "nice-to-have",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-14-channel-config-labels.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-14.1",
           "description": "Add humanizeKey() helper function to ChannelsStep.svelte",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/ChannelsStep.svelte", "lines": "46" }
           ]
@@ -511,7 +511,7 @@
         {
           "id": "ISSUE-14.2",
           "description": "Update label to use helpText or humanized key",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/ChannelsStep.svelte", "lines": "79-80" }
           ]
@@ -519,7 +519,7 @@
         {
           "id": "ISSUE-14.3",
           "description": "Change input placeholder to show raw env var name for reference",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/ChannelsStep.svelte", "lines": "87" }
           ]
