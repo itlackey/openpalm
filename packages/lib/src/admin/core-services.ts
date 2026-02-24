@@ -47,7 +47,7 @@ export function renderPostgresComposeService(): ComposeService {
 
 export function renderQdrantComposeService(): ComposeService {
   return {
-    image: "qdrant/qdrant:1.17",
+    image: "qdrant/qdrant:v1.17",
     restart: "unless-stopped",
     env_file: ["${OPENPALM_STATE_HOME}/qdrant/.env"],
     volumes: ["${OPENPALM_DATA_HOME}/qdrant:/qdrant/storage"],

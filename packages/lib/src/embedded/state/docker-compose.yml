@@ -31,7 +31,7 @@ services:
       retries: 5
 
   qdrant:
-    image: qdrant/qdrant:1.17
+    image: qdrant/qdrant:v1.17
     restart: unless-stopped
     env_file:
       - ${OPENPALM_STATE_HOME}/qdrant/.env
