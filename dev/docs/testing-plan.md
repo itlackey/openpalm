@@ -69,3 +69,11 @@ If your change is scoped, run targeted suites too (workspace or file-level).
 - `bun run dev:fresh` for end-to-end install + startup confidence.
 - Container health checks after compose/routing changes.
 - Focused integration tests under `test/integration` and `test/contracts`.
+
+---
+
+## Local install/setup reliability plan
+
+Detailed implementation guidance has moved to `dev/docs/install-setup-reliability-implementation-guide.md` to keep this document focused on test tiers and merge-time checks.
+
+For installer-focused end-to-end planning, scenario design, and rollout steps, use the dedicated guide.
