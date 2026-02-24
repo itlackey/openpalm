@@ -1,6 +1,6 @@
 # OpenPalm Architecture Concepts
 
-These five concepts — Extensions, Secrets, Channels, Automations, and Gateway — form the complete vocabulary for the admin UI, documentation, API naming, and internal development. For user-facing descriptions of each concept, see [User Concepts](../../docs/concepts.md).
+These six concepts — Extensions, Secrets, Channels, Services, Automations, and Gateway — form the complete vocabulary for the admin UI, documentation, API naming, and internal development. For user-facing descriptions of each concept, see [User Concepts](../../../docs/concepts.md).
 
 ---
 
@@ -26,7 +26,7 @@ The admin UI manages only plugins (the `plugin[]` list in `opencode.json`). Skil
 
 A secret is a named key/value entry in `secrets.env`. The stack treats `secrets.env` as the single source of truth, and channel config values can reference secrets directly via `${SECRET_NAME}`. The actual secret value never appears in config files; OpenCode uses `{env:VAR_NAME}` interpolation to reference them at runtime. Secret reference validation occurs during stack render/apply — missing keys fail with validation errors.
 
-For API details, see [API Reference — Secrets](../../dev/docs/api-reference.md#secrets-contract-canonical).
+For API details, see [API Reference — Secrets](../../../dev/docs/api-reference.md#secrets-contract-canonical).
 
 ---
 
@@ -49,7 +49,23 @@ User (platform) -> Channel Adapter -> Gateway -> AI Assistant -> Gateway -> Chan
 | **Credentials** | Platform-specific secrets needed to operate | Discord bot token, Telegram bot token |
 | **Setup guide** | Link to platform documentation for creating bot accounts, etc. | Discord Developer Portal docs |
 
-Access control is a per-channel property. Access changes are applied by updating the reverse proxy routing rules for that channel's endpoint. For the full channel flow and security model, see [Architecture](../../dev/docs/architecture.md).
+Access control is a per-channel property. Access changes are applied by updating the reverse proxy routing rules for that channel's endpoint. For the full channel flow and security model, see [Architecture](../../../dev/docs/architecture.md).
+
+---
+
+## Services
+
+A service is an internal add-on container that the assistant and admin can reach directly. Unlike channels, services have no Caddy routing and no external exposure — they are placed on `assistant_net` only.
+
+| Property | Description |
+|---|---|
+| **ID** | Stable identifier used as the compose service name (`service-<id>`) |
+| **image** | Docker image |
+| **containerPort** | Port the container listens on; injected as `PORT` |
+| **config** | Key/value env pairs; values may reference `${SECRET_NAME}` from `secrets.env` |
+| **dependsOn** | Optional list of services that must be healthy before this one starts |
+
+Key differences from channels: no `exposure` property, no Caddy route, and no `sharedSecretEnv` — services communicate directly over the internal network rather than through the Gateway.
 
 ---
 
@@ -65,7 +81,7 @@ An automation is a scheduled prompt that runs against the AI assistant at a defi
 | **Schedule** | When it runs | Every day at 9:00 AM (stored as `0 9 * * *`) |
 | **Status** | Whether it's active | enabled / disabled |
 
-Channels are reactive (respond when a user sends a message); automations are proactive (the assistant acts on its own schedule). For implementation details, see [Architecture — Automations](../../dev/docs/architecture.md#automations).
+Channels are reactive (respond when a user sends a message); automations are proactive (the assistant acts on its own schedule). For implementation details, see [Architecture — Automations](../../../dev/docs/architecture.md#automations).
 
 ---
 
@@ -81,4 +97,4 @@ The Gateway enforces a critical architectural invariant: **no channel can talk t
 - The Gateway is stateless — it does not store messages, sessions, or user data. Audit logs are the only persistent artifact.
 - The Gateway does not implement channel-specific logic. It receives a normalized payload and doesn't care whether it came from Discord, Telegram, voice, or chat.
 
-For the full 6-step processing pipeline, see [Architecture — Message processing](../../dev/docs/architecture.md#message-processing-channel-inbound) and [Security Guide](../../docs/security.md).
+For the full 6-step processing pipeline, see [Architecture — Message processing](../../../dev/docs/architecture.md#message-processing-channel-inbound) and [Security Guide](../../../docs/security.md).

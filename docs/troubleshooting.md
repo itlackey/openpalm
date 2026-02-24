@@ -78,5 +78,5 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 ## Still stuck?
 
 - Check the [Architecture guide](../dev/docs/architecture.md) to understand how services connect.
-- Review [Admin Guide](../docs/admin-guide.md) for configuration details.
+- Review [Admin Guide](../core/admin/docs/admin-guide.md) for configuration details.
 - Open an issue at [github.com/itlackey/openpalm](https://github.com/itlackey/openpalm/issues).

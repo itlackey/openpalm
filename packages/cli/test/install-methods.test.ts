@@ -8,8 +8,8 @@ describe("install methods verification", () => {
   // Read all relevant files once
   const readme = readFileSync(join(ROOT, "README.md"), "utf-8");
   const cliDocs = readFileSync(join(ROOT, "docs/cli.md"), "utf-8");
-  const installSh = readFileSync(join(ROOT, "packages/cli/scripts/install.sh"), "utf-8");
-  const installPs1 = readFileSync(join(ROOT, "packages/cli/scripts/install.ps1"), "utf-8");
+  const installSh = readFileSync(join(ROOT, "install.sh"), "utf-8");
+  const installPs1 = readFileSync(join(ROOT, "install.ps1"), "utf-8");
   const pkgJson = JSON.parse(readFileSync(join(ROOT, "packages/cli/package.json"), "utf-8"));
 
   describe("README documents all 4 install methods", () => {
