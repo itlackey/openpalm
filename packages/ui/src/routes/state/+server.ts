@@ -1,5 +1,5 @@
 import { json, unauthorizedJson } from '$lib/server/json';
-import { getSetupManager, getStackManager } from '$lib/server/init';
+import { getSetupManager, getStackManager, log } from '$lib/server/init';
 import { discoverAllSnippets } from '@openpalm/lib/admin/snippet-discovery';
 import type { ResolvedSnippet } from '@openpalm/lib/shared/snippet-types';
 import type { RequestHandler } from './$types';
@@ -11,7 +11,8 @@ export const GET: RequestHandler = async ({ locals }) => {
 	let snippets: ResolvedSnippet[] = [];
 	try {
 		snippets = await discoverAllSnippets();
-	} catch {
+	} catch (error) {
+		log.warn('Snippet discovery failed for /state', { error: String(error) });
 		snippets = [];
 	}
 	return json(200, {

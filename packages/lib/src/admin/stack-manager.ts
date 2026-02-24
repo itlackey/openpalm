@@ -351,7 +351,9 @@ export class StackManager {
         const used = new Set(Object.keys(spec.channels));
         const baseName = composeServiceName(templateName || name);
         if (!baseName) throw new Error("invalid_catalog_channel_base_name");
-        if (!supportsMultipleInstances && spec.channels[baseName]) throw new Error("multiple_instances_not_supported_for_channel_template");
+        if (!supportsMultipleInstances && spec.channels[baseName]) {
+          throw new Error(`multiple_instances_not_supported_for_channel_template_${templateName}`);
+        }
         instanceName = nextInstanceName(baseName, used);
         const channel: StackSpec["channels"][string] = {
           enabled: true,
@@ -372,7 +374,9 @@ export class StackManager {
         const used = new Set(Object.keys(spec.services));
         const baseName = composeServiceName(templateName || name);
         if (!baseName) throw new Error("invalid_catalog_service_base_name");
-        if (!supportsMultipleInstances && spec.services[baseName]) throw new Error("multiple_instances_not_supported_for_service_template");
+        if (!supportsMultipleInstances && spec.services[baseName]) {
+          throw new Error(`multiple_instances_not_supported_for_service_template_${templateName}`);
+        }
         instanceName = nextInstanceName(baseName, used);
         if (!image) throw new Error("missing_service_image_for_catalog_instance");
         if (!containerPort) throw new Error("missing_service_port_for_catalog_instance");

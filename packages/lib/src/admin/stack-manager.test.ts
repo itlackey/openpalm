@@ -686,7 +686,7 @@ describe("stack manager", () => {
         containerPort: 9200,
         fields: [],
       })
-    ).toThrow("multiple_instances_not_supported_for_service_template");
+    ).toThrow("multiple_instances_not_supported_for_service_template_SingleService");
   });
 
 });

@@ -3,6 +3,7 @@ import { BUILTIN_CHANNELS } from '@openpalm/lib/assets/channels/index';
 import { CORE_AUTOMATIONS } from '@openpalm/lib/assets/automations/index';
 import { discoverAllSnippets } from '@openpalm/lib/admin/snippet-discovery';
 import type { ResolvedSnippet } from '@openpalm/lib/shared/snippet-types';
+import { log } from '$lib/server/init';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -10,7 +11,8 @@ export const GET: RequestHandler = async ({ locals }) => {
 	let snippets: ResolvedSnippet[] = [];
 	try {
 		snippets = await discoverAllSnippets();
-	} catch {
+	} catch (error) {
+		log.warn('Snippet discovery failed for /snippets', { error: String(error) });
 		snippets = [];
 	}
 	return json(200, {

@@ -200,8 +200,12 @@
 			return;
 		}
 		await refreshSharedState();
-		const actionLabel =
-			action === 'install' ? 'installed' : action === 'uninstall' ? 'uninstalled' : 'instance added';
+		const actionLabelMap = {
+			install: 'installed',
+			uninstall: 'uninstalled',
+			add_instance: 'instance added'
+		} as const;
+		const actionLabel = actionLabelMap[action];
 		showToast(`${item.displayName} ${actionLabel}`, 'success');
 	}
 
