@@ -873,7 +873,7 @@
       "id": "12",
       "title": "Remove String-Grep Validation",
       "description": "Remove validateGeneratedCompose() (string-greps YAML for restart/healthcheck) and validateComposeSpec() (iterates typed object for same). Both validate the tool's own deterministic output -- every renderer hardcodes both properties.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/12-remove-string-grep-validation.md",
       "dependsOn": [],
       "netLinesChanged": "-25",
@@ -884,7 +884,7 @@
           "id": "12.1",
           "title": "Remove validateGeneratedCompose from test file",
           "description": "Remove validateGeneratedCompose from import in stack-generator.test.ts and delete the 'validates compose guardrails' test (lines 389-393).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-generator.test.ts", "action": "edit", "lines": "2, 389-393" }
           ]
@@ -893,7 +893,7 @@
           "id": "12.2",
           "title": "Remove validateGeneratedCompose from source",
           "description": "Delete the entire validateGeneratedCompose() function (lines 574-580) from stack-generator.ts.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-generator.ts", "action": "edit", "lines": "574-580" }
           ]
@@ -902,7 +902,7 @@
           "id": "12.3",
           "title": "Remove validateComposeSpec call from renderFullComposeFile",
           "description": "Remove validateComposeSpec from import and delete the validation call and throw block (lines 566-569) in stack-generator.ts.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-generator.ts", "action": "edit", "lines": "5, 566-569" }
           ]
@@ -911,7 +911,7 @@
           "id": "12.4",
           "title": "Remove validateComposeSpec from compose-spec-serializer.ts",
           "description": "Delete the validateComposeSpec() function (lines 4-11). File retains only stringifyComposeSpec.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-spec-serializer.ts", "action": "edit", "lines": "4-11" }
           ]
@@ -920,7 +920,7 @@
           "id": "12.5",
           "title": "Run tests and verify",
           "description": "Run bun test packages/lib/src/admin/stack-generator.test.ts, bun run typecheck, and bun test.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]
@@ -929,7 +929,7 @@
       "id": "13",
       "title": "Remove YAML Regex Parsers",
       "description": "Delete two dead-code functions that hand-parse Docker Compose YAML using fragile line-based regex: parseServiceNamesFromComposeFile() (private, 0 callers) and computeServiceConfigHashes() (exported, 0 callers). The correct approach (docker compose config --services) is already implemented.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/13-remove-yaml-parser.md",
       "dependsOn": [],
       "netLinesChanged": "-36",
@@ -940,7 +940,7 @@
           "id": "13.1",
           "title": "Delete parseServiceNamesFromComposeFile from compose-runner.ts",
           "description": "Delete lines 74-91 from compose-runner.ts. Private function with zero callers.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "74-91" }
           ]
@@ -949,7 +949,7 @@
           "id": "13.2",
           "title": "Delete computeServiceConfigHashes from impact-plan.ts",
           "description": "Delete lines 25-42 from impact-plan.ts. Exported function with zero callers.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/impact-plan.ts", "action": "edit", "lines": "25-42" }
           ]
@@ -958,7 +958,7 @@
           "id": "13.3",
           "title": "Run typecheck, tests, and build verification",
           "description": "Run bun run typecheck, bun test (expect all 534 pass, 10 skip), and cd packages/ui && bun run build.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]
@@ -967,7 +967,7 @@
       "id": "14",
       "title": "Remove previewComposeOperations()",
       "description": "Delete the completely unused previewComposeOperations() function from stack-apply-engine.ts and its test. No UI route, API endpoint, CLI command, or other module imports or calls it.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/14-remove-preview-compose-operations.md",
       "dependsOn": [],
       "netLinesChanged": "-48",
@@ -977,7 +977,7 @@
           "id": "14.1",
           "title": "Remove previewComposeOperations function from stack-apply-engine.ts",
           "description": "Delete lines 396-422 (the entire function). Remove composeServiceNames and composeLogsValidateTail from import block (lines 10-11).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.ts", "action": "edit", "lines": "10-11, 396-422" }
           ]
@@ -986,7 +986,7 @@
           "id": "14.2",
           "title": "Remove previewComposeOperations test",
           "description": "Remove previewComposeOperations from import (line 9). Delete the entire describe('previewComposeOperations') block (lines 451-471).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.test.ts", "action": "edit", "lines": "9, 451-471" }
           ]
@@ -995,7 +995,7 @@
           "id": "14.3",
           "title": "Run tests and verify",
           "description": "Run bun test packages/lib/src/admin/stack-apply-engine.test.ts, bun run typecheck, and bun test.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]
