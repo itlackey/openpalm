@@ -41,12 +41,12 @@ export async function checkDiskSpace(): Promise<PreflightWarning | null> {
 }
 
 /**
- * Check if port 80 is already in use.
+ * Check if a port is already in use.
  */
-export async function checkPort80(): Promise<PreflightWarning | null> {
+export async function checkPort(port: number = 80): Promise<PreflightWarning | null> {
   try {
     // Try lsof first (macOS, most Linux)
-    const lsof = Bun.spawn(["lsof", "-iTCP:80", "-sTCP:LISTEN", "-P", "-n"], {
+    const lsof = Bun.spawn(["lsof", `-iTCP:${port}`, "-sTCP:LISTEN", "-P", "-n"], {
       stdout: "pipe",
       stderr: "ignore",
     });
@@ -55,8 +55,8 @@ export async function checkPort80(): Promise<PreflightWarning | null> {
       const output = await new Response(lsof.stdout).text();
       const lines = output.trim().split("\n").slice(0, 3).join("\n");
       return {
-        message: "Port 80 is already in use by another process.",
-        detail: `OpenPalm needs port 80 for its web interface.\n${lines}`,
+        message: `Port ${port} is already in use by another process.`,
+        detail: `OpenPalm needs port ${port} for its web interface.\n${lines}`,
       };
     }
   } catch {
@@ -68,10 +68,10 @@ export async function checkPort80(): Promise<PreflightWarning | null> {
       });
       await ss.exited;
       const output = await new Response(ss.stdout).text();
-      if (output.includes(":80 ")) {
+      if (output.includes(`:${port} `)) {
         return {
-          message: "Port 80 is already in use by another process.",
-          detail: "OpenPalm needs port 80 for its web interface.",
+          message: `Port ${port} is already in use by another process.`,
+          detail: `OpenPalm needs port ${port} for its web interface.`,
         };
       }
     } catch {
@@ -79,6 +79,13 @@ export async function checkPort80(): Promise<PreflightWarning | null> {
     }
   }
   return null;
+}
+
+/**
+ * @deprecated Use checkPort() instead.
+ */
+export async function checkPort80(): Promise<PreflightWarning | null> {
+  return checkPort(80);
 }
 
 /**
@@ -118,11 +125,12 @@ export async function checkDaemonRunning(
  */
 export async function runPreflightChecks(
   bin: string,
-  platform: ContainerPlatform
+  platform: ContainerPlatform,
+  port: number = 80
 ): Promise<PreflightWarning[]> {
   const results = await Promise.all([
     checkDiskSpace(),
-    checkPort80(),
+    checkPort(port),
     checkDaemonRunning(bin, platform),
   ]);
   return results.filter((w): w is PreflightWarning => w !== null);

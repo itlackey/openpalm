@@ -6,6 +6,7 @@ export type InstallOptions = {
   noOpen?: boolean;
   ref?: string;
   force?: boolean;
+  port?: number;
 };
 
 /** Options for the uninstall command. */

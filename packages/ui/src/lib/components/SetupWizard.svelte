@@ -40,6 +40,7 @@
 	];
 
 	let stepError = $state('');
+	let finishInProgress = $state(false);
 	const currentStep = $derived(getWizardStep());
 	const currentStepName = $derived(STEPS[currentStep]);
 	const isLastContentStep = $derived(currentStep === STEPS.length - 2);
@@ -66,17 +67,32 @@
 				(document.getElementById('wiz-profile-name') as HTMLInputElement)?.value || '';
 			const email =
 				(document.getElementById('wiz-profile-email') as HTMLInputElement)?.value || '';
+			const password =
+				(document.getElementById('wiz-profile-password') as HTMLInputElement)?.value || '';
+			const password2 =
+				(document.getElementById('wiz-profile-password2') as HTMLInputElement)?.value || '';
+
+			if (password.length < 8) {
+				stepError = 'Password must be at least 8 characters.';
+				return;
+			}
+			if (password !== password2) {
+				stepError = 'Passwords do not match.';
+				return;
+			}
+
 			const profileResult = await api('/command', {
 				method: 'POST',
 				body: JSON.stringify({
 					type: 'setup.profile',
-					payload: { name, email }
+					payload: { name, email, password }
 				})
 			});
 			if (!profileResult.ok) {
 				stepError = 'Could not save your profile. Please try again.';
 				return;
 			}
+			setAdminToken(password);
 		}
 
 		if (currentStepName === 'serviceInstances') {
@@ -94,6 +110,13 @@
 					?.value || '';
 			const anthropicApiKey =
 				(document.getElementById('wiz-anthropic-key') as HTMLInputElement)?.value || '';
+
+			// Require Anthropic key — it's the primary provider and must be set during initial setup
+			if (!anthropicApiKey.trim()) {
+				stepError = 'An Anthropic API key is required. Get one free at console.anthropic.com.';
+				return;
+			}
+
 			const smallModelEndpoint =
 				(document.getElementById('wiz-small-model-endpoint') as HTMLInputElement)?.value ||
 				'';
@@ -132,11 +155,6 @@
 			});
 		}
 
-		if (currentStepName === 'security') {
-			const adminInput = document.getElementById('wiz-admin') as HTMLInputElement;
-			if (adminInput) setAdminToken(adminInput.value);
-		}
-
 		if (currentStepName === 'accessScope') {
 			const selected = document.querySelector<HTMLInputElement>(
 				'input[name="wiz-scope"]:checked'
@@ -166,41 +184,65 @@
 	}
 
 	async function finishSetup() {
+		if (finishInProgress) return;
+		finishInProgress = true;
 		stepError = '';
 
-		// Save channel selections
-		const enabledChannels = Array.from(
-			document.querySelectorAll<HTMLInputElement>('.wiz-ch:checked')
-		).map((c) => c.value);
-		const channelConfigs = collectChannelConfigs();
+		try {
+			// Save channel selections
+			const enabledChannels = Array.from(
+				document.querySelectorAll<HTMLInputElement>('.wiz-ch:checked')
+			).map((c) => c.value);
+			const channelConfigs = collectChannelConfigs();
 
-		await api('/command', {
-			method: 'POST',
-			body: JSON.stringify({
-				type: 'setup.channels',
-				payload: { channels: enabledChannels, channelConfigs }
-			})
-		});
-
-		// Start enabled channels
-		for (const channel of enabledChannels) {
-			await api('/command', {
+			const channelsResult = await api('/command', {
 				method: 'POST',
-				body: JSON.stringify({ type: 'service.up', payload: { service: channel } })
+				body: JSON.stringify({
+					type: 'setup.channels',
+					payload: { channels: enabledChannels, channelConfigs }
+				})
 			});
+			if (!channelsResult.ok) {
+				stepError = 'Could not save channel configuration. Please try again.';
+				return;
+			}
+
+			// Start enabled channels — non-fatal, channels can be started later
+			for (const channel of enabledChannels) {
+				const upResult = await api('/command', {
+					method: 'POST',
+					body: JSON.stringify({ type: 'service.up', payload: { service: channel } })
+				});
+				if (!upResult.ok) {
+					console.warn(`Failed to start ${channel}: ${upResult.data?.error ?? 'unknown'}`);
+				}
+			}
+
+			// Mark step complete
+			const stepResult = await api('/command', {
+				method: 'POST',
+				body: JSON.stringify({ type: 'setup.step', payload: { step: currentStepName } })
+			});
+			if (!stepResult.ok) {
+				stepError = 'Could not save step progress. Please try again.';
+				return;
+			}
+
+			// Finalize — this triggers stack apply and core service restart
+			const completeResult = await api('/command', {
+				method: 'POST',
+				body: JSON.stringify({ type: 'setup.complete', payload: {} })
+			});
+			if (!completeResult.ok) {
+				const errorMsg = completeResult.data?.error ?? 'unknown error';
+				stepError = `Setup failed: ${errorMsg}. Check that Docker is running and you have internet access, then click "Finish Setup" to retry.`;
+				return;
+			}
+
+			setWizardStep(STEPS.length - 1);
+		} finally {
+			finishInProgress = false;
 		}
-
-		// Mark step complete and finalize
-		await api('/command', {
-			method: 'POST',
-			body: JSON.stringify({ type: 'setup.step', payload: { step: currentStepName } })
-		});
-		await api('/command', {
-			method: 'POST',
-			body: JSON.stringify({ type: 'setup.complete', payload: {} })
-		});
-
-		setWizardStep(STEPS.length - 1);
 	}
 
 	function handleContinue() {
@@ -219,11 +261,11 @@
 			{#if currentStepName === 'welcome'}
 				<WelcomeStep />
 			{:else if currentStepName === 'profile'}
-				<ProfileStep />
+				<ProfileStep error={stepError} />
 			{:else if currentStepName === 'serviceInstances'}
 				<ProvidersStep error={stepError} />
 			{:else if currentStepName === 'security'}
-				<SecurityStep error={stepError} />
+				<SecurityStep />
 			{:else if currentStepName === 'channels'}
 				<ChannelsStep error={stepError} />
 			{:else if currentStepName === 'accessScope'}
@@ -235,13 +277,19 @@
 			{/if}
 		</div>
 
+		{#if stepError && !isComplete}
+			<div class="wiz-error visible" style="margin: 0.5rem 0">{stepError}</div>
+		{/if}
+
 		{#if !isComplete}
 			<div class="actions">
 				{#if currentStep > 0}
 					<button class="btn-secondary" onclick={wizardPrev}>Back</button>
 				{/if}
 				{#if isLastContentStep}
-					<button onclick={finishSetup}>Finish Setup</button>
+					<button onclick={finishSetup} disabled={finishInProgress}>
+						{finishInProgress ? 'Finishing...' : 'Finish Setup'}
+					</button>
 				{:else}
 					<button onclick={wizardNext}>Next</button>
 				{/if}

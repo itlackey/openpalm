@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { base } from '$app/paths';
 	import { browser } from '$app/environment';
 
-	const assistantUrl = `${base}/opencode/`;
+	const assistantUrl = `/services/opencode/`;
 	const openmemoryUrl = browser
 		? `${window.location.protocol}//${window.location.hostname}:3000`
 		: 'http://localhost:3000';
@@ -21,6 +20,13 @@
 		<div>
 			<strong>Open Memory Dashboard</strong>
 			<div class="muted" style="font-size:13px">View and manage stored memories</div>
+		</div>
+	</a>
+	<a class="link-card" href="https://github.com/itlackey/openpalm/blob/main/docs/maintenance.md#uninstalling" target="_blank" rel="noopener">
+		<div class="link-icon">&#128218;</div>
+		<div>
+			<strong>Uninstall Guide</strong>
+			<div class="muted" style="font-size:13px">How to remove OpenPalm from your system</div>
 		</div>
 	</a>
 </div>

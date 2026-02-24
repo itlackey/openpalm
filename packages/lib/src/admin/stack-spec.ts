@@ -61,6 +61,7 @@ export type StackAutomation = {
 export type StackSpec = {
   version: typeof StackSpecVersion;
   accessScope: StackAccessScope;
+  ingressPort?: number;
   caddy?: CaddyConfig;
   channels: Record<string, StackChannelConfig>;
   services: Record<string, StackServiceConfig>;
@@ -370,13 +371,21 @@ function parseAutomations(raw: unknown): StackAutomation[] {
 
 export function parseStackSpec(raw: unknown): StackSpec {
   const doc = assertRecord(raw, "invalid_stack_spec");
-  const allowedKeys = new Set(["version", "accessScope", "caddy", "channels", "services", "automations"]);
+  const allowedKeys = new Set(["version", "accessScope", "ingressPort", "caddy", "channels", "services", "automations"]);
   for (const key of Object.keys(doc)) {
     if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
   }
   const version = doc.version;
   if (version !== 3) throw new Error("invalid_stack_spec_version");
   if (doc.accessScope !== "host" && doc.accessScope !== "lan" && doc.accessScope !== "public") throw new Error("invalid_access_scope");
+
+  let ingressPort: number | undefined;
+  if (doc.ingressPort !== undefined) {
+    if (typeof doc.ingressPort !== "number" || !Number.isInteger(doc.ingressPort) || doc.ingressPort < 1 || doc.ingressPort > 65535) {
+      throw new Error("invalid_ingress_port");
+    }
+    ingressPort = doc.ingressPort;
+  }
 
   const caddy = parseCaddyConfig(doc.caddy);
 
@@ -391,14 +400,16 @@ export function parseStackSpec(raw: unknown): StackSpec {
   const services = parseServices(doc.services);
   const automations = parseAutomations(doc.automations);
 
-  return {
+  const result: StackSpec = {
     version: StackSpecVersion,
     accessScope: doc.accessScope,
-    caddy,
     channels,
     services,
     automations,
   };
+  if (ingressPort !== undefined) result.ingressPort = ingressPort;
+  if (caddy) result.caddy = caddy;
+  return result;
 }
 
 export function stringifyStackSpec(spec: StackSpec): string {

@@ -545,6 +545,7 @@ describe("stack manager", () => {
     manager.mutateStackCatalogItem({ action: "install", type: "service", name: "jobs" });
     expect(manager.getSpec().services.jobs.enabled).toBe(true);
 
+    manager.upsertSecret("JOBS_SECRET", "s3cret-value");
     manager.mutateStackCatalogItem({
       action: "configure",
       type: "service",

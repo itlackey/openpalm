@@ -44,6 +44,15 @@
 	function isChecked(channelId: string): boolean {
 		return enabledChannels.includes(channelId);
 	}
+
+	/** Turn env var names like DISCORD_BOT_TOKEN into "Bot Token". */
+	function humanizeKey(key: string): string {
+		return key
+			.replace(/^[A-Z]+_/, '')
+			.split('_')
+			.map((w) => w[0] + w.slice(1).toLowerCase())
+			.join(' ');
+	}
 </script>
 
 <p>
@@ -76,15 +85,15 @@
 		{#if channel.fields.length > 0}
 			<div class="channel-fields" id="ch-fields-{channel.id}" style={checked ? '' : 'display:none'}>
 				{#each channel.fields as field}
-					<label style="display:block;margin:0.4rem 0 0.2rem;font-size:13px">
-						{field.key}{field.required ? ' *' : ''}
-					</label>
+				<label style="display:block;margin:0.4rem 0 0.2rem;font-size:13px">
+					{field.helpText || humanizeKey(field.key)}{field.required ? ' *' : ''}
+				</label>
 					<input
 						class="wiz-ch-field"
 						data-channel={channel.id}
 						data-key={field.key}
 						type={field.type}
-						placeholder={field.helpText}
+						placeholder={field.key}
 						value=""
 					/>
 				{/each}

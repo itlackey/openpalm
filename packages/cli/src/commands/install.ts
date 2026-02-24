@@ -12,6 +12,19 @@ import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
 import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, confirm } from "@openpalm/lib/ui.ts";
 
+function reportIssueUrl(context: { os: string; arch: string; runtime: string; error: string }): string {
+  const title = encodeURIComponent(`Install failure: ${context.error.slice(0, 80)}`);
+  const body = encodeURIComponent(
+    `## Environment\n` +
+    `- OS: ${context.os}\n` +
+    `- Arch: ${context.arch}\n` +
+    `- Runtime: ${context.runtime}\n\n` +
+    `## Error\n\`\`\`\n${context.error}\n\`\`\`\n\n` +
+    `## Steps to Reproduce\n1. Ran \`openpalm install\`\n`
+  );
+  return `https://github.com/itlackey/openpalm/issues/new?title=${title}&body=${body}`;
+}
+
 export async function install(options: InstallOptions): Promise<void> {
   // ============================================================================
   // Phase 1: Setup infrastructure
@@ -33,14 +46,18 @@ export async function install(options: InstallOptions): Promise<void> {
   const platform = options.runtime ?? await detectRuntime(os);
   if (!platform) {
     error(noRuntimeGuidance(os));
+    info("");
+    info("  If this keeps happening, report the issue:");
+    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: "none", error: "No container runtime found" }))}`);
     process.exit(1);
   }
 
   // 4. Resolve compose bin/subcommand
   const { bin, subcommand } = resolveComposeBin(platform);
 
-  // 5. Run pre-flight checks (daemon running, disk space, port 80)
-  const preflightWarnings = await runPreflightChecks(bin, platform);
+  // 5. Run pre-flight checks (daemon running, disk space, port)
+  const ingressPort = options.port ?? 80;
+  const preflightWarnings = await runPreflightChecks(bin, platform, ingressPort);
   for (const w of preflightWarnings) {
     warn(w.message);
     if (w.detail) {
@@ -60,6 +77,17 @@ export async function install(options: InstallOptions): Promise<void> {
     w.message.includes("Could not verify")
   );
   if (daemonWarning) {
+    process.exit(1);
+  }
+
+  // Port conflict is fatal unless --port was used to pick an alternative
+  const portWarning = preflightWarnings.find((w) =>
+    w.message.includes("already in use")
+  );
+  if (portWarning) {
+    if (!options.port) {
+      error("Port 80 is required but already in use. Use --port to specify an alternative.");
+    }
     process.exit(1);
   }
 
@@ -162,15 +190,12 @@ export async function install(options: InstallOptions): Promise<void> {
     }
   }
 
-  // Display admin token prominently if we generated one
+  // Display admin token info if we generated one
   if (generatedAdminToken) {
     log("");
-    log(bold(green("  YOUR ADMIN PASSWORD (save this!)")));
-    log("");
-    log(`  ${yellow(generatedAdminToken)}`);
-    log("");
-    info("  You will need this password to log in to the admin dashboard.");
-    info(`  It is also saved in: ${dim(stateEnvFile)}`);
+    info("  A temporary admin token has been generated.");
+    info("  You will choose your own password in the setup wizard.");
+    info(`  Temporary token saved in: ${dim(stateEnvFile)}`);
     log("");
   }
 
@@ -196,6 +221,7 @@ export async function install(options: InstallOptions): Promise<void> {
     ["OPENPALM_UID", String(process.getuid?.() ?? 1000)],
     ["OPENPALM_GID", String(process.getgid?.() ?? 1000)],
     ["OPENPALM_ENABLED_CHANNELS", ""],
+    ["OPENPALM_INGRESS_PORT", String(ingressPort)],
   ]);
 
   // 14. Copy canonical .env to CWD for user convenience
@@ -232,7 +258,7 @@ export async function install(options: InstallOptions): Promise<void> {
       http: {
         servers: {
           main: {
-            listen: [":80"],
+            listen: [`:${ingressPort}`],
             routes: [
               {
                 match: [{ path: ["/api*"] }],
@@ -278,7 +304,7 @@ export async function install(options: InstallOptions): Promise<void> {
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80"
+      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:\${OPENPALM_INGRESS_PORT:-80}:80"
       - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
       - \${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro
@@ -290,6 +316,8 @@ export async function install(options: InstallOptions): Promise<void> {
   admin:
     image: \${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:\${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8100"
     env_file:
       - \${OPENPALM_STATE_HOME}/system.env
     environment:
@@ -317,7 +345,6 @@ export async function install(options: InstallOptions): Promise<void> {
       start_period: 10s
 
 networks:
-  channel_net:
   assistant_net:
 `;
   await writeFile(stateComposeFile, minimalCompose, "utf8");
@@ -346,6 +373,9 @@ networks:
     info("  Or manually pull and then start:");
     info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} pull`)}`);
     info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} up -d`)}`);
+    info("");
+    info("  If this keeps happening, report the issue:");
+    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: String(pullErr) }))}`);
     log("");
     process.exit(1);
   }
@@ -355,8 +385,10 @@ networks:
   spin7.stop(green("Core services started"));
 
   // Wait for admin health check with exponential backoff
-  const adminUrl = "http://localhost";
+  let adminUrl = ingressPort === 80 ? "http://localhost" : `http://localhost:${ingressPort}`;
+  const adminDirectUrl = "http://localhost:8100";
   const healthUrl = `${adminUrl}/setup/status`;
+  const healthDirectUrl = `${adminDirectUrl}/setup/status`;
   const spin8 = spinner("Waiting for admin interface...");
 
   let healthy = false;
@@ -371,7 +403,17 @@ networks:
         break;
       }
     } catch {
-      // Service not ready yet
+      // Caddy route not ready — try direct admin port as fallback
+      try {
+        const directResponse = await fetch(healthDirectUrl, { signal: AbortSignal.timeout(3000) });
+        if (directResponse.ok) {
+          healthy = true;
+          adminUrl = adminDirectUrl;
+          break;
+        }
+      } catch {
+        // Neither route ready yet
+      }
     }
     await Bun.sleep(delay);
     delay = Math.min(delay * 1.5, maxDelay);
@@ -408,17 +450,15 @@ networks:
     log(bold(green("  OpenPalm setup wizard is ready!")));
     log("");
     info(`  Setup wizard: ${cyan(adminUrl)}`);
+    info(`  Direct admin: ${cyan("http://localhost:8100")} (if port 80 is blocked)`);
     log("");
-    if (generatedAdminToken) {
-      info(`  Admin password: ${yellow(generatedAdminToken)}`);
-      log("");
-    }
     log(bold("  What happens next:"));
     info("    1. The setup wizard opens in your browser");
-    info("    2. Enter your AI provider API key (e.g. from console.anthropic.com)");
-    info("    3. The wizard will download and start remaining services automatically");
-    info("    4. Pick which channels to enable (chat, Discord, etc.)");
-    info("    5. Done! Start chatting with your assistant");
+    info("    2. Create your admin password and profile");
+    info("    3. Enter your AI provider API key (e.g. from console.anthropic.com)");
+    info("    4. The wizard will download and start remaining services automatically");
+    info("    5. Pick which channels to enable (chat, Discord, etc.)");
+    info("    6. Done! Start chatting with your assistant");
     log("");
     if (!options.noOpen) {
       info("  Opening setup wizard in your browser...");
@@ -443,6 +483,12 @@ networks:
     info("     - Make sure port 80 is not used by another service");
     info("     - Restart Docker/Podman and try again");
     info("     - Check that you have internet access (images need to download)");
+    log("");
+    info("  5. If the browser doesn't open, try the direct admin URL:");
+    info(`     ${cyan("http://localhost:8100")}`);
+    log("");
+    info("  6. Still stuck? Report the issue:");
+    info(`     ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: "Health check timeout after 3 minutes" }))}`);
   }
 
   log("");

@@ -46,13 +46,13 @@ describe("install command source validation", () => {
   });
 
   it("runs preflight checks before proceeding", () => {
-    expect(installSource).toContain("runPreflightChecks(bin, platform)");
+    expect(installSource).toContain("runPreflightChecks(bin, platform, ingressPort)");
     expect(installSource).toContain("noRuntimeGuidance");
     expect(installSource).toContain("noComposeGuidance");
   });
 
-  it("displays admin token prominently when generated", () => {
-    expect(installSource).toContain("YOUR ADMIN PASSWORD");
+  it("displays admin token info when generated", () => {
+    expect(installSource).toContain("temporary admin token");
     expect(installSource).toContain("generatedAdminToken");
   });
 

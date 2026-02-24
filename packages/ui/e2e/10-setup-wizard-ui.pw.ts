@@ -8,6 +8,21 @@ async function openWizard(page: Page) {
 	await expect(overlay).toBeVisible();
 }
 
+/** Fill the required Profile step fields so the wizard can advance.
+ *  Uses the known e2e admin token as the password so subsequent API calls
+ *  (which send x-admin-token from the client store) stay in sync with the
+ *  server's expected token.
+ */
+async function fillProfileStep(page: Page) {
+	await page.locator('#wiz-profile-password').fill(ADMIN_TOKEN);
+	await page.locator('#wiz-profile-password2').fill(ADMIN_TOKEN);
+}
+
+/** Fill the required AI Providers step field so the wizard can advance. */
+async function fillProvidersStep(page: Page) {
+	await page.locator('#wiz-anthropic-key').fill('sk-ant-test-key-for-e2e');
+}
+
 test.beforeEach(async ({ page }) => {
 	await page.goto('/');
 	await page.evaluate((token) => localStorage.setItem('op_admin', token), ADMIN_TOKEN);
@@ -33,13 +48,14 @@ test.describe('setup wizard browser flow', () => {
 		await expect(page.locator('.wizard h2')).toContainText('Profile');
 		await expect(page.locator('#wiz-profile-name')).toBeVisible();
 		await expect(page.locator('#wiz-profile-email')).toBeVisible();
+		await fillProfileStep(page);
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
 		await expect(page.locator('.wizard h2')).toContainText('AI Providers');
+		await fillProvidersStep(page);
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
 		await expect(page.locator('.wizard h2')).toContainText('Security');
-		await expect(page.locator('#wiz-admin')).toBeVisible();
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
 		await expect(page.locator('.wizard h2')).toContainText('Channels');
@@ -61,8 +77,10 @@ test.describe('setup wizard browser flow', () => {
 
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 		await expect(page.locator('.wizard h2')).toContainText('Profile');
+		await fillProfileStep(page);
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 		await expect(page.locator('.wizard h2')).toContainText('AI Providers');
+		await fillProvidersStep(page);
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 		await expect(page.locator('.wizard h2')).toContainText('Security');
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();

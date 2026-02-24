@@ -39,7 +39,8 @@ import {
 import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations';
 import { parse as yamlParse } from 'yaml';
 import { randomUUID } from 'node:crypto';
-import { SECRETS_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib/server/config';
+import { SECRETS_ENV_PATH, RUNTIME_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib/server/config';
+import { upsertEnvVar } from '@openpalm/lib/env';
 import { writeFileSync } from 'node:fs';
 import type { RequestHandler } from './$types';
 
@@ -244,10 +245,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		if (type === 'setup.profile') {
 			const name = sanitizeEnvScalar(payload.name);
 			const email = sanitizeEnvScalar(payload.email);
+			const password = typeof payload.password === 'string' ? payload.password.trim() : '';
 			updateDataEnv({
 				OPENPALM_PROFILE_NAME: name || undefined,
 				OPENPALM_PROFILE_EMAIL: email || undefined
 			});
+			if (password.length >= 8) {
+				await upsertEnvVar(RUNTIME_ENV_PATH, 'ADMIN_TOKEN', password);
+			}
 			const state = setupManager.setProfile({ name, email });
 			stackManager.renderArtifacts();
 			if (setupManager.getState().completed) await composeAction('up', 'assistant').catch(() => {});
@@ -274,6 +279,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const smallModelEndpoint = sanitizeEnvScalar(payload.smallModelEndpoint);
 			const smallModelApiKey = sanitizeEnvScalar(payload.smallModelApiKey);
 			const smallModelId = sanitizeEnvScalar(payload.smallModelId);
+
+			// During initial setup, require Anthropic key unless already configured
+			if (!setupState.completed) {
+				const existingSecrets = readSecretsEnv();
+				if (!anthropicApiKey && !existingSecrets.ANTHROPIC_API_KEY) {
+					return json(400, { ok: false, error: 'anthropic_key_required', code: 'anthropic_key_required' });
+				}
+			}
+
 			updateRuntimeEnv({
 				OPENMEMORY_URL: openmemory || undefined,
 				OPENMEMORY_POSTGRES_URL: psql || undefined,
@@ -389,6 +403,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				ok: true,
 				data: { name: stackManager.deleteSecret(name) }
 			});
+		}
+		if (type === 'secret.set_admin_password') {
+			const password = typeof payload.password === 'string' ? payload.password.trim() : '';
+			if (password.length < 8) {
+				return json(400, { ok: false, error: 'Password must be at least 8 characters.', code: 'invalid_password' });
+			}
+			await upsertEnvVar(RUNTIME_ENV_PATH, 'ADMIN_TOKEN', password);
+			await composeAction('restart', 'admin');
+			return json(200, { ok: true });
 		}
 		if (type === 'secret.raw.set') {
 			const content = typeof payload.content === 'string' ? payload.content : '';

@@ -47,6 +47,7 @@ function printHelp(): void {
   log("  --no-open                           Don't auto-open browser");
   log("  --ref <branch|tag>                  Git ref for asset download");
   log("  --force                             Overwrite existing installation");
+  log("  --port <number>                     Use alternative port (default: 80)");
   log("");
   log(bold("Uninstall options:"));
   log("  --runtime <docker|podman|orbstack>  Force container runtime");
@@ -91,7 +92,7 @@ function getPositionalArgs(args: string[]): string[] {
     if (args[i].startsWith("--")) {
       // Skip flag and its value if it has one
       const flagName = args[i].slice(2);
-      if (["runtime", "ref", "plugin"].includes(flagName)) {
+      if (["runtime", "ref", "plugin", "port"].includes(flagName)) {
         i += 2; // skip flag + value
       } else {
         i += 1; // skip boolean flag
@@ -127,11 +128,18 @@ async function main(): Promise<void> {
           error(`Invalid runtime "${runtimeArg}". Must be one of: ${VALID_RUNTIMES.join(", ")}`);
           process.exit(1);
         }
+        const portArg = parseArg(args, "port");
+        const port = portArg ? Number(portArg) : undefined;
+        if (portArg && (!port || port < 1 || port > 65535)) {
+          error(`Invalid port "${portArg}". Must be a number between 1 and 65535.`);
+          process.exit(1);
+        }
         const options: InstallOptions = {
           runtime: runtimeArg as ContainerPlatform | undefined,
           noOpen: hasFlag(args, "no-open"),
           ref: parseArg(args, "ref"),
           force: hasFlag(args, "force"),
+          port,
         };
         await install(options);
         break;

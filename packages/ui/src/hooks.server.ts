@@ -1,19 +1,59 @@
 import type { Handle } from '@sveltejs/kit';
 import { verifyAdminToken } from '$lib/server/auth';
 import { ensureInitialized } from '$lib/server/init';
+import { getSetupManager } from '$lib/server/init';
 
-const ALLOWED_ORIGIN = 'http://localhost';
+function isPrivateOrigin(origin: string): boolean {
+	try {
+		const { hostname } = new URL(origin);
+		return (
+			hostname === 'localhost' ||
+			hostname === '127.0.0.1' ||
+			hostname.startsWith('10.') ||
+			hostname.startsWith('192.168.') ||
+			/^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+			hostname === '::1' ||
+			hostname === '[::1]'
+		);
+	} catch {
+		return false;
+	}
+}
 
-export const handle: Handle = async ({ event, resolve }) => {
+function computeAllowedOrigin(scope: string, requestOrigin: string): string {
+	// No origin header = same-origin request, reflect nothing
+	if (!requestOrigin) return '';
+
+	if (scope === 'public') return requestOrigin;
+
+	if (scope === 'lan') {
+		// Reflect the origin if it's a private/local IP
+		if (isPrivateOrigin(requestOrigin)) return requestOrigin;
+		return 'http://localhost';
+	}
+
+	// 'host' scope — only localhost
+	if (requestOrigin.includes('localhost') || requestOrigin.includes('127.0.0.1')) {
+		return requestOrigin;
+	}
+	return 'http://localhost';
+}
+
+export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	// Run one-time startup logic (no-op after first call, skipped during build)
 	await ensureInitialized();
+
+	const setupManager = await getSetupManager();
+	const { accessScope } = setupManager.getState();
+	const requestOrigin = event.request.headers.get('origin') ?? '';
+	const allowedOrigin = computeAllowedOrigin(accessScope ?? 'host', requestOrigin);
 
 	// OPTIONS preflight
 	if (event.request.method === 'OPTIONS') {
 		return new Response(null, {
 			status: 204,
 			headers: {
-				'access-control-allow-origin': ALLOWED_ORIGIN,
+				...(allowedOrigin ? { 'access-control-allow-origin': allowedOrigin } : {}),
 				'access-control-allow-headers': 'content-type, x-admin-token, x-request-id',
 				'access-control-allow-methods': 'GET, POST, OPTIONS',
 				vary: 'Origin'
@@ -26,10 +66,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.authenticated = verifyAdminToken(token);
 
 	// Resolve request
-	const response = await resolve(event);
+	const response = await resolveEvent(event);
 
-	// CORS headers on all responses — restrict to same-origin/localhost only
-	response.headers.set('access-control-allow-origin', ALLOWED_ORIGIN);
+	// CORS headers on all responses
+	if (allowedOrigin) {
+		response.headers.set('access-control-allow-origin', allowedOrigin);
+	}
 	response.headers.set(
 		'access-control-allow-headers',
 		'content-type, x-admin-token, x-request-id'

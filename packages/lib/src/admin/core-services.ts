@@ -63,7 +63,7 @@ export function renderQdrantComposeService(): ComposeService {
 
 export function renderOpenMemoryComposeService(): ComposeService {
   return {
-    image: "mem0/openmemory-mcp:latest",
+    image: "mem0/openmemory-mcp:latest@sha256:b665d382a94fdc18c7bb84a647d4bebdc98d9e7fc1146fc5e559ca7f5f7f9211",
     restart: "unless-stopped",
     env_file: ["${OPENPALM_STATE_HOME}/openmemory/.env"],
     ports: ["${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"],
@@ -84,7 +84,7 @@ export function renderOpenMemoryComposeService(): ComposeService {
 
 export function renderOpenMemoryUiComposeService(): ComposeService {
   return {
-    image: "mem0/openmemory-ui:latest",
+    image: "mem0/openmemory-ui:latest@sha256:c4b9578335a5cad2866f69d836476dde8ab30cdc6c181702c91a4c094cd29a2b",
     restart: "unless-stopped",
     environment: [
       "NEXT_PUBLIC_API_URL=${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}",
