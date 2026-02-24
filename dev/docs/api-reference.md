@@ -59,7 +59,7 @@ Gateway rejects invalid payloads before assistant dispatch.
 - Normalize provider-specific updates into gateway contract payloads.
 - Return retry-safe status codes for webhook/platform delivery semantics.
 
-### OpenAI-compatible channel (`channel-openai`, `8186`)
+### API-compatible channel (`channel-api`, `8186`)
 
 - `POST /v1/chat/completions`
 - `POST /v1/completions`

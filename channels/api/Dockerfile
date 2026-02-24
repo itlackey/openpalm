@@ -4,7 +4,7 @@ WORKDIR /app
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 # See packages/lib/README.md "Docker Build" for details.
 COPY packages/lib /app/node_modules/@openpalm/lib
-COPY channels/openai/package.json ./
-COPY channels/openai/server.ts ./server.ts
+COPY channels/api/package.json ./
+COPY channels/api/server.ts ./server.ts
 RUN bun install --production
 CMD ["bun", "run", "server.ts"]

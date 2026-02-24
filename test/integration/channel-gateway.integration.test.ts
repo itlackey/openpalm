@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createChatFetch } from "../../channels/chat/server.ts";
 import { createDiscordFetch } from "../../channels/discord/server.ts";
-import { createOpenAIFetch } from "../../channels/openai/server.ts";
+import { createApiFetch } from "../../channels/api/server.ts";
 import { createTelegramFetch } from "../../channels/telegram/server.ts";
 import { createVoiceFetch } from "../../channels/voice/server.ts";
 
@@ -70,7 +70,7 @@ describe("integration: channel adapters -> gateway", () => {
     }
   });
 
-  it("openai facade forwards chat completions through gateway", async () => {
+  it("api facade forwards chat completions through gateway", async () => {
     let inboundBody = "";
     const gateway = Bun.serve({
       port: 0,
@@ -81,7 +81,7 @@ describe("integration: channel adapters -> gateway", () => {
     });
     const adapter = Bun.serve({
       port: 0,
-      fetch: createOpenAIFetch(`http://localhost:${gateway.port}`, "secret", "")
+      fetch: createApiFetch(`http://localhost:${gateway.port}`, "secret", "")
     });
 
     try {
@@ -94,7 +94,7 @@ describe("integration: channel adapters -> gateway", () => {
       });
       expect(resp.status).toBe(200);
       const payload = JSON.parse(inboundBody) as Record<string, unknown>;
-      expect(payload.channel).toBe("openai");
+      expect(payload.channel).toBe("api");
       expect(payload.text).toBe("hello");
     } finally {
       adapter.stop();
@@ -102,7 +102,7 @@ describe("integration: channel adapters -> gateway", () => {
     }
   });
 
-  it("openai facade forwards anthropic messages through gateway", async () => {
+  it("api facade forwards anthropic messages through gateway", async () => {
     let inboundBody = "";
     const gateway = Bun.serve({
       port: 0,
@@ -113,7 +113,7 @@ describe("integration: channel adapters -> gateway", () => {
     });
     const adapter = Bun.serve({
       port: 0,
-      fetch: createOpenAIFetch(`http://localhost:${gateway.port}`, "secret", "")
+      fetch: createApiFetch(`http://localhost:${gateway.port}`, "secret", "")
     });
 
     try {
@@ -126,7 +126,7 @@ describe("integration: channel adapters -> gateway", () => {
       });
       expect(resp.status).toBe(200);
       const payload = JSON.parse(inboundBody) as Record<string, unknown>;
-      expect(payload.channel).toBe("openai");
+      expect(payload.channel).toBe("api");
       expect(payload.text).toBe("hello anthropic");
     } finally {
       adapter.stop();

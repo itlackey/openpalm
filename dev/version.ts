@@ -66,6 +66,11 @@ export const COMPONENTS: Record<string, ComponentMeta> = {
     packageJson: "channels/telegram/package.json",
     image: true,
   },
+  "channel-api": {
+    context: "channels/api",
+    packageJson: "channels/api/package.json",
+    image: true,
+  },
   cli: {
     context: "packages/cli",
     packageJson: "packages/cli/package.json",

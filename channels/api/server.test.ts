@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { createOpenAIFetch, signPayload } from "./server.ts";
+import { createApiFetch, signPayload } from "./server.ts";
 
-describe("openai adapter", () => {
+describe("api adapter", () => {
   it("returns health and rejects unauthorized requests when api key is configured", async () => {
-    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "key-123", fetch);
+    const fetchHandler = createApiFetch("http://gateway", "secret", "key-123", fetch);
     const health = await fetchHandler(new Request("http://openai/health"));
     expect(health.status).toBe(200);
 
@@ -25,7 +25,7 @@ describe("openai adapter", () => {
       return new Response(JSON.stringify({ answer: "hello back" }), { status: 200 });
     };
 
-    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", mockFetch as typeof fetch);
+    const fetchHandler = createApiFetch("http://gateway", "secret", "", mockFetch as typeof fetch);
     const response = await fetchHandler(new Request("http://openai/v1/chat/completions", {
       method: "POST",
       body: JSON.stringify({
@@ -38,7 +38,7 @@ describe("openai adapter", () => {
     expect(response.status).toBe(200);
     expect(url).toBe("http://gateway/channel/inbound");
     const parsedForward = JSON.parse(body) as Record<string, unknown>;
-    expect(parsedForward.channel).toBe("openai");
+    expect(parsedForward.channel).toBe("api");
     expect(parsedForward.userId).toBe("u1");
     expect(parsedForward.text).toBe("hello");
     expect(signature).toBe(signPayload("secret", body));
@@ -51,8 +51,8 @@ describe("openai adapter", () => {
   });
 
   it("normalizes completion payload and returns OpenAI completion shape", async () => {
-    const mockFetch = async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 });
-    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", mockFetch as typeof fetch);
+    const mockFetch = async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ answer: "done" }), { status: 200 });
+    const fetchHandler = createApiFetch("http://gateway", "secret", "", mockFetch as unknown as typeof fetch);
     const response = await fetchHandler(new Request("http://openai/v1/completions", {
       method: "POST",
       body: JSON.stringify({
@@ -75,7 +75,7 @@ describe("openai adapter", () => {
       return new Response(JSON.stringify({ answer: "anthropic-ok" }), { status: 200 });
     };
 
-    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", mockFetch as typeof fetch, "");
+    const fetchHandler = createApiFetch("http://gateway", "secret", "", mockFetch as typeof fetch, "");
     const response = await fetchHandler(new Request("http://openai/v1/messages", {
       method: "POST",
       body: JSON.stringify({
@@ -86,7 +86,7 @@ describe("openai adapter", () => {
 
     expect(response.status).toBe(200);
     const parsedForward = JSON.parse(body) as Record<string, unknown>;
-    expect(parsedForward.channel).toBe("openai");
+    expect(parsedForward.channel).toBe("api");
     expect(parsedForward.text).toBe("hello from anthropic");
 
     const parsedResponse = await response.json() as Record<string, unknown>;
@@ -96,7 +96,7 @@ describe("openai adapter", () => {
   });
 
   it("rejects anthropic requests with invalid api key when configured", async () => {
-    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", fetch, "anthropic-key");
+    const fetchHandler = createApiFetch("http://gateway", "secret", "", fetch, "anthropic-key");
     const unauthorized = await fetchHandler(new Request("http://openai/v1/messages", {
       method: "POST",
       body: JSON.stringify({ model: "claude", messages: [{ role: "user", content: "hello" }] }),

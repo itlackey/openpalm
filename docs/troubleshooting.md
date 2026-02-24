@@ -10,7 +10,7 @@ For any issue, start by checking the logs of the relevant service:
 docker compose -f ~/.local/state/openpalm/docker-compose.yml logs <service-name> --tail=100
 ```
 
-Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`.
+Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `channel-api`.
 
 ## Service won't start
 

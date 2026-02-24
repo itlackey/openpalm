@@ -1,6 +1,6 @@
-# OpenAI-Compatible Channel
+# API-Compatible Channel
 
-The `channel-openai` adapter exposes a thin OpenAI API-compatible HTTP facade and forwards requests to the OpenPalm gateway using the standard signed channel flow.
+The `channel-api` adapter exposes a thin OpenAI/Anthropic API-compatible HTTP facade and forwards requests to the OpenPalm gateway using the standard signed channel flow.
 
 ## Endpoints
 
@@ -25,7 +25,7 @@ The `channel-openai` adapter exposes a thin OpenAI API-compatible HTTP facade an
 |---|---|---|
 | `PORT` | `8186` | Port the server listens on |
 | `GATEWAY_URL` | `http://gateway:8080` | Gateway URL |
-| `CHANNEL_OPENAI_SECRET` | (required) | HMAC signing key for gateway communication |
+| `CHANNEL_API_SECRET` | (required) | HMAC signing key for gateway communication |
 | `OPENAI_COMPAT_API_KEY` | (empty) | Optional API key checked against `Authorization: Bearer <key>` |
 | `ANTHROPIC_COMPAT_API_KEY` | (empty) | Optional API key checked against `x-api-key` for Anthropic-compatible endpoints |
 
@@ -45,4 +45,4 @@ curl http://localhost:8186/v1/chat/completions \
 ## Related
 
 - [Gateway README](../../core/gateway/README.md) — channel verification, intake, and forwarding
-- [API Reference](../../dev/docs/api-reference.md#openai-compatible-channel-channel-openai-8186)
+- [API Reference](../../dev/docs/api-reference.md#api-compatible-channel-channel-api-8186)

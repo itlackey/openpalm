@@ -17,8 +17,8 @@
       "name": "@openpalm/channel-discord",
       "version": "0.3.0",
     },
-    "channels/openai": {
-      "name": "@openpalm/channel-openai",
+    "channels/api": {
+      "name": "@openpalm/channel-api",
       "version": "0.3.2",
     },
     "channels/telegram": {

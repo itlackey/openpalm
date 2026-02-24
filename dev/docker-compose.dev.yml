@@ -54,7 +54,7 @@ services:
       context: .
       dockerfile: channels/telegram/Dockerfile
 
-  channel-openai:
+  channel-api:
     build:
       context: .
-      dockerfile: channels/openai/Dockerfile
+      dockerfile: channels/api/Dockerfile

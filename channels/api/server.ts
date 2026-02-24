@@ -6,7 +6,7 @@ export { signPayload };
 
 const PORT = Number(Bun.env.PORT ?? 8186);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
-const SHARED_SECRET = Bun.env.CHANNEL_OPENAI_SECRET ?? "";
+const SHARED_SECRET = Bun.env.CHANNEL_API_SECRET ?? "";
 const API_KEY = Bun.env.OPENAI_COMPAT_API_KEY ?? "";
 const ANTHROPIC_API_KEY = Bun.env.ANTHROPIC_COMPAT_API_KEY ?? "";
 
@@ -43,7 +43,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function extractPromptText(prompt: unknown): string | null {
   if (typeof prompt === "string" && prompt.trim()) return prompt;
   if (Array.isArray(prompt)) {
-    const parts = prompt.filter((entry): entry is string => typeof entry === "string" && entry.trim());
+    const parts = prompt.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
     if (parts.length > 0) return parts.join("\n");
   }
   return null;
@@ -85,7 +85,7 @@ function asGatewayAnswer(raw: string): string {
   return "";
 }
 
-export function createOpenAIFetch(
+export function createApiFetch(
   gatewayUrl: string,
   sharedSecret: string,
   apiKey: string,
@@ -94,7 +94,7 @@ export function createOpenAIFetch(
 ) {
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/health") return json(200, { ok: true, service: "channel-openai" });
+    if (url.pathname === "/health") return json(200, { ok: true, service: "channel-api" });
 
     const chatCompletions = url.pathname === "/v1/chat/completions" && req.method === "POST";
     const completions = url.pathname === "/v1/completions" && req.method === "POST";
@@ -140,11 +140,11 @@ export function createOpenAIFetch(
     }
 
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
-    const userId = typeof body.user === "string" && body.user.trim() ? body.user : "openai-user";
+    const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
 
     const payload = buildChannelMessage({
       userId,
-      channel: "openai",
+      channel: "api",
       text,
       metadata: {
         endpoint: chatCompletions
@@ -244,9 +244,9 @@ export function createOpenAIFetch(
 
 if (import.meta.main) {
   if (!SHARED_SECRET) {
-    console.error("[channel-openai] FATAL: CHANNEL_OPENAI_SECRET environment variable is not set. Exiting.");
+    console.error("[channel-api] FATAL: CHANNEL_API_SECRET environment variable is not set. Exiting.");
     process.exit(1);
   }
-  Bun.serve({ port: PORT, fetch: createOpenAIFetch(GATEWAY_URL, SHARED_SECRET, API_KEY) });
-  console.log(JSON.stringify({ kind: "startup", service: "channel-openai", port: PORT }));
+  Bun.serve({ port: PORT, fetch: createApiFetch(GATEWAY_URL, SHARED_SECRET, API_KEY) });
+  console.log(JSON.stringify({ kind: "startup", service: "channel-api", port: PORT }));
 }

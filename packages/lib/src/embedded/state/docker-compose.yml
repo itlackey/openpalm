@@ -240,12 +240,12 @@ services:
       timeout: 5s
       retries: 3
 
-  channel-openai:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-openai:${OPENPALM_IMAGE_TAG:-latest}
+  channel-api:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-api:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     profiles: ["channels"]
     env_file:
-      - ${OPENPALM_STATE_HOME}/channel-openai/.env
+      - ${OPENPALM_STATE_HOME}/channel-api/.env
     environment:
       - PORT=8186
       - GATEWAY_URL=http://gateway:8080

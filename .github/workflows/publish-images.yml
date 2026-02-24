@@ -9,6 +9,7 @@ name: Publish Docker images
 #   channel-discord/v*    → single component release
 #   channel-voice/v*      → single component release
 #   channel-telegram/v*   → single component release
+#   channel-api/v*        → single component release
 #
 # Manual dispatch accepts a version string and optional component filter.
 # Registry changes (registry/*.json) NEVER trigger this workflow.
@@ -24,6 +25,7 @@ on:
       - "channel-discord/v*"
       - "channel-voice/v*"
       - "channel-telegram/v*"
+      - "channel-api/v*"
 
   workflow_dispatch:
     inputs:
@@ -45,6 +47,7 @@ on:
           - channel-discord
           - channel-voice
           - channel-telegram
+          - channel-api
 
 concurrency:
   group: publish-images-${{ github.ref }}
@@ -105,7 +108,8 @@ jobs:
             {"image":"channel-chat","context":".","file":"./channels/chat/Dockerfile"},
             {"image":"channel-discord","context":".","file":"./channels/discord/Dockerfile"},
             {"image":"channel-voice","context":".","file":"./channels/voice/Dockerfile"},
-            {"image":"channel-telegram","context":".","file":"./channels/telegram/Dockerfile"}
+            {"image":"channel-telegram","context":".","file":"./channels/telegram/Dockerfile"},
+            {"image":"channel-api","context":".","file":"./channels/api/Dockerfile"}
           ]'
 
           if [ "${COMPONENT}" = "all" ]; then
