@@ -24,7 +24,6 @@ jobs:
 
       - name: Validate entries against schema
         run: |
-          npm install -g ajv-cli ajv-formats || echo "::warning::ajv-cli install failed (non-fatal)"
           # Collect all entry files (exclude index.json and schema.json)
           ENTRY_FILES=$(find packages/lib/src/embedded/state/registry -maxdepth 1 -name "*.json" \
             ! -name "index.json" ! -name "schema.json" | sort)

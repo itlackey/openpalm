@@ -22,16 +22,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install js-yaml
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Validate and rebuild index.json
-        run: node dev/scripts/rebuild-snippet-index.js
+        run: bun dev/scripts/rebuild-snippet-index.js
 
       - name: Validate rebuilt index
         run: |

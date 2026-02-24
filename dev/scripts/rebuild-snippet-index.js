@@ -10,13 +10,19 @@
 const fs = require('fs');
 const path = require('path');
 
-// Try to require js-yaml, fallback to built-in YAML parsing
+// Try to require js-yaml, fallback to Bun.YAML when available
 let yaml;
 try {
   yaml = require('js-yaml');
 } catch {
-  console.error('js-yaml not found. Please install it: npm install js-yaml');
-  process.exit(1);
+  if (typeof Bun !== 'undefined' && Bun.YAML && typeof Bun.YAML.parse === 'function') {
+    yaml = {
+      load: (content) => Bun.YAML.parse(content)
+    };
+  } else {
+    console.error('js-yaml not found. Install it or run this script with Bun.');
+    process.exit(1);
+  }
 }
 
 const COMMUNITY_DIR = path.join(process.cwd(), 'community');
