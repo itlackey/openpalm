@@ -1,6 +1,7 @@
 # OpenPalm v1 MVP Readiness Report
 
 **Date:** 2026-02-24
+**Last updated:** 2026-02-24
 **Version reviewed:** 0.3.4
 **Reviewer:** Automated end-to-end review with local manual verification
 
@@ -18,7 +19,7 @@
 
 ## Executive Summary
 
-The solution has strong architectural foundations: a well-designed CLI installer, a multi-step setup wizard, a robust stack management engine with atomic apply/rollback, and comprehensive test coverage (576 passing tests, 0 failures). Docker images are published to Docker Hub for amd64/arm64, CLI binaries are available on GitHub Releases for all major platforms, and the npm package is published.
+The solution has strong architectural foundations: a well-designed CLI installer, a multi-step setup wizard, a simplified stack management engine with compose-level validation, and comprehensive test coverage (573 passing out of 577 tests; 3 failures are integration tests requiring a running stack, 1 is a unit test fixture issue). Docker images are published to Docker Hub for amd64/arm64, CLI binaries are available on GitHub Releases for all major platforms, and the npm package is published.
 
 However, there are several blocking and high-priority issues that prevent the v1 MVP from meeting its three hard requirements. The most critical is that **the primary path to chatting with the assistant via the browser does not work** due to an authentication/routing mismatch in the OpenCode web interface proxy. The second most impactful is that **the admin password UX is fragile and hostile to non-technical users** — the auto-generated token must be copied from the terminal into the browser wizard, and there is no recovery path if the user misses it. Additional issues around error recovery, UX gaps in the wizard, and CORS configuration need resolution before release.
 
@@ -49,7 +50,7 @@ This is the most impactful UX problem in the entire install flow. The current de
 1. **`install.ts:140`** — `generateToken()` creates a random 64-character token and assigns it to `generatedAdminToken`.
 2. **`install.ts:145-151`** — Token is written to `$OPENPALM_STATE_HOME/.env` as `ADMIN_TOKEN=<token>`.
 3. **`install.ts:166-175`** — Token is printed to the terminal with a banner: `YOUR ADMIN PASSWORD (save this!)`.
-4. **`install.ts:423-426`** — If startup is healthy, token is printed *again* at the bottom of terminal output.
+4. **`install.ts:412-413`** — If startup is healthy, token is printed *again* at the bottom of terminal output.
 5. **`config.ts:17`** — Admin service reads `ADMIN_TOKEN` from its environment at process startup. It is a module-level constant — `export const ADMIN_TOKEN = env.ADMIN_TOKEN ?? 'change-me-admin-token'` — frozen for the lifetime of the process.
 6. **`auth.ts:16-20`** — `verifyAdminToken()` does a constant-time HMAC comparison of the submitted token against this frozen value. If `ADMIN_TOKEN` equals the default insecure token it always returns `false`.
 7. **`hooks.server.ts:25-26`** — Auth is checked from the `x-admin-token` header *only* — no cookie, no session. `event.locals.authenticated = verifyAdminToken(token)`.
@@ -316,10 +317,8 @@ Even after fixing the URL, OpenCode's web UI at `assistant:4096` has its own aut
 
 ### What Works
 
-- **Two-phase install**: `install.ts:275-395` starts only Caddy + Admin first (Phase 2: "Early UI access"), then the setup wizard brings up remaining services. Even if the full stack fails, the admin UI remains accessible.
-- **Fallback compose and Caddy configs**: `install.ts:267-271` and `install.ts:330-334` write `caddy-fallback.json` and `docker-compose-fallback.yml` as minimal configs. The stack-apply-engine can roll back to these.
-- **Atomic stack apply**: `packages/lib/src/admin/stack-apply-engine.ts` stages artifacts to `.next` temp files, validates, then atomically promotes via rename. Failures mid-apply leave the previous config intact.
-- **Self-test on startup**: The admin entrypoint runs `self-test-fallback.js` to validate fallback bundle integrity.
+- **Two-phase install**: `install.ts:276-354` starts only Caddy + Admin first (Phase 2: "Early UI access"), then the setup wizard brings up remaining services. Even if the full stack fails, the admin UI remains accessible.
+- **Compose-validated stack apply**: `packages/lib/src/admin/stack-apply-engine.ts` writes a temporary `docker-compose.yml.next` file, validates it with `docker compose config`, then writes all artifacts to live paths and runs `docker compose up -d --remove-orphans`. Compose validation catches configuration errors before any live files are modified. Note: there is no rollback mechanism — if `compose up` fails after artifacts are written, the new artifacts remain on disk. This is an intentional simplification aligned with the thin-wrapper principle (Docker Compose itself handles service change detection and restart).
 - **Comprehensive health checks**: The admin UI polls real-time health status for Gateway, Assistant, Memory, and Admin via `setup/health-check`.
 
 ### Issues Found
@@ -521,7 +520,7 @@ function humanizeKey(key: string): string {
 
 `packages/lib/src/embedded/state/docker-compose.yml:49` and `:70` use `mem0/openmemory-mcp:latest` and `mem0/openmemory-ui:latest` with a `# TODO: pin version` comment. Using `latest` makes installs non-reproducible and vulnerable to upstream breaking changes.
 
-**Recommendation:** Pin to specific tested versions before v1. Update `docker-compose.yml` and the fallback at `packages/lib/src/embedded/state/docker-compose-fallback.yml`. Add a comment with the date pinned to make future upgrades deliberate.
+**Recommendation:** Pin to specific tested versions before v1. Update `docker-compose.yml`. Add a comment with the date pinned to make future upgrades deliberate.
 
 ---
 
@@ -545,14 +544,15 @@ The admin dashboard has no uninstall option. Users must know to run `openpalm un
 
 | Category | Status |
 |---|---|
-| Unit tests | 576 pass, 0 fail, 27 skip |
+| Unit tests | 573 pass, 4 fail, 0 skip (577 total across 55 files) |
+| Failing tests | 3 integration tests (require running stack), 1 unit test in `stack-manager.test.ts` (`unresolved_secret_reference` error in catalog item mutation — likely a test fixture issue) |
 | TypeScript typecheck | Clean (0 errors) |
 | UI build (SvelteKit) | Successful |
 | CLI binary build | Working (`openpalm v0.3.4`) |
 | Docker images (Docker Hub) | Published: admin, assistant, gateway, channel-chat, channel-discord, etc. (amd64 + arm64) |
 | GitHub Release binaries | Published for linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64 |
 | npm package | Published at v0.3.4 |
-| E2E Playwright tests | Written (10 test files) but require running stack |
+| E2E Playwright tests | Playwright config exists but no `.spec.ts` test files found |
 | Contract tests | Written but require running stack |
 
 ---
@@ -604,7 +604,7 @@ The admin dashboard has no uninstall option. Users must know to run `openpalm un
 3. **Fix ISSUE-13**: Replace hardcoded `ALLOWED_ORIGIN` in `hooks.server.ts` with dynamic origin based on `accessScope`
 4. **Fix ISSUE-2**: Move password creation into the Profile step — add fields to `ProfileStep.svelte`, handle in `setup.profile` command, remove password-paste section from `SecurityStep.svelte`, call `setAdminToken()` client-side after save
 5. **Fix ISSUE-9**: Add error handling and retry to `finishSetup()` in `SetupWizard.svelte`
-6. **Pin OpenMemory image versions** (ISSUE-15) in `docker-compose.yml` and `docker-compose-fallback.yml`
+6. **Pin OpenMemory image versions** (ISSUE-15) in `docker-compose.yml`
 7. **Manual smoke test**: Full install → setup → chat flow on macOS, Linux, and Windows
 
 ---
@@ -613,9 +613,9 @@ The admin dashboard has no uninstall option. Users must know to run `openpalm un
 
 The following architectural decisions are well-executed and should be preserved:
 
-1. **Two-phase install** (`install.ts:275-395`) — Caddy + Admin first, then full stack via wizard — ensures admin UI access even during partial failures
-2. **Atomic stack apply** with staged `.next` artifacts and automatic rollback on failure
-3. **Fallback bundle** (`caddy-fallback.json` + `docker-compose-fallback.yml`) as last-resort recovery
+1. **Two-phase install** (`install.ts:276-354`) — Caddy + Admin first, then full stack via wizard — ensures admin UI access even during partial failures
+2. **Thin execution layer** — Stack apply (`stack-apply-engine.ts`) validates a temporary compose file with `docker compose config` before writing live artifacts, then delegates entirely to `docker compose up -d --remove-orphans`. No custom orchestration, rollback systems, or apply locks — aligned with the thin-wrapper principle
+3. **Atomic spec writes** — `writeStackSpecAtomically()` in `stack-manager.ts` uses temp-file-then-rename to protect the stack spec YAML from partial writes
 4. **LAN-restricted access** with Caddy IP guards (`stack-generator.ts:84-102`) and configurable scope
 5. **Cryptographic HMAC verification** (`packages/lib/src/shared/crypto.ts`) for all channel messages, using timing-safe comparison
 6. **Secret detection** in `core/assistant/extensions/plugins/policy-and-telemetry.ts` prevents credentials from being stored in memory

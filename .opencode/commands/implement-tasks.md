@@ -16,7 +16,7 @@ After the setup script completes successfully, begin the following workflow:
 
 1. **Navigate to the worktree** — read `.opencode/worktree.local.md` (in the repo root) to get the `path` and `branch` fields. `cd` to the worktree path before doing any other work. Every file edit, test run, and git commit must happen inside the worktree.
 
-2. **Read the task list** from `.plans/tasks.json` (inside the worktree). Find the next task (or subtask) whose status is not `completed`. If all tasks are completed, proceed to the **Finish** step below.
+2. **Read the task list** from `.plans/tasks.json` (inside the worktree). Find the next task (or subtask) whose status is not `completed`. If all tasks are completed, proceed to the **Finish** step below. **CRITICAL** Each iteration should only focus on a single task.
 
 3. **Implement the task** — make the code, config, docs, or script changes described in the task. Use the file and line references in the task entry to locate the relevant areas.
 
@@ -32,7 +32,7 @@ After the setup script completes successfully, begin the following workflow:
 
 7. **Update task status** — once approved, update the task's `status` field to `"completed"` in `.plans/tasks.json`, then `git add -A && git commit -m "task: <task title>"` from within the worktree.
 
-8. **Loop** — the ralph-wiggum plugin will re-inject this prompt automatically. Return to step 1 and pick the next incomplete task.
+8. **Loop** — Complete the session once the status is complete and the changes are committed. Each iteration should only focus on a single task. The ralph-wiggum plugin will re-inject this prompt automatically. Return to step 1 and pick the next incomplete task.
 
 **Finish (all tasks complete):**
 - Push the branch: `git push -u origin <branch>` (branch name is in `.opencode/worktree.local.md`)

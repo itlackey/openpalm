@@ -1,0 +1,694 @@
+{
+  "version": "1.0",
+  "source": "docs/v1-readiness-report.md",
+  "generated": "2026-02-24",
+  "tasks": [
+    {
+      "id": "ISSUE-6",
+      "title": "Open OpenCode link is broken — authentication mismatch",
+      "severity": "blocker",
+      "priority": "must-fix",
+      "effort": "XS",
+      "status": "pending",
+      "plan": ".plans/ISSUE-06-opencode-link-broken.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-6.1",
+          "description": "Change assistantUrl from `${base}/opencode/` to `/services/opencode/`",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/QuickLinks.svelte", "lines": "5" }
+          ]
+        },
+        {
+          "id": "ISSUE-6.2",
+          "description": "Verify Caddy route exists in stack-generator.ts (caddyAdminSubroute)",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/admin/stack-generator.ts", "lines": "~140" }
+          ]
+        },
+        {
+          "id": "ISSUE-6.3",
+          "description": "Manual test: click Open OpenCode → chat interface opens in new tab",
+          "status": "pending",
+          "files": []
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-7",
+      "title": "SvelteKit proxy cannot handle WebSocket or SSE",
+      "severity": "blocker",
+      "priority": "must-fix",
+      "effort": "XS",
+      "status": "pending",
+      "plan": ".plans/ISSUE-07-sveltekit-proxy-websocket.md",
+      "dependencies": ["ISSUE-6"],
+      "subtasks": [
+        {
+          "id": "ISSUE-7.1",
+          "description": "Resolved automatically by ISSUE-6 fix (Caddy handles WS/SSE natively)",
+          "status": "pending",
+          "files": []
+        },
+        {
+          "id": "ISSUE-7.2",
+          "description": "(Optional) Raise proxy timeout from 5s to 300s for programmatic access",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/routes/opencode/[...path]/+server.ts", "lines": "27" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-3",
+      "title": "Setup wizard allows skipping Anthropic API key",
+      "severity": "high",
+      "priority": "must-fix",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-03-skip-required-steps.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-3.1",
+          "description": "Add Anthropic API key non-empty validation guard in wizardNext() for serviceInstances step",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "82-96" }
+          ]
+        },
+        {
+          "id": "ISSUE-3.2",
+          "description": "Add server-side Anthropic key validation in setup.service_instances handler",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/routes/command/+server.ts", "lines": "267-303" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-2",
+      "title": "Admin password UX is fundamentally broken for non-technical users",
+      "severity": "high",
+      "priority": "should-fix",
+      "effort": "M",
+      "status": "pending",
+      "plan": ".plans/ISSUE-02-admin-password-ux.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-2.1",
+          "description": "Add password + confirm fields to ProfileStep.svelte",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/ProfileStep.svelte", "lines": "1-23" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.2",
+          "description": "Add error prop to ProfileStep (matching ProvidersStep pattern)",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/ProfileStep.svelte", "lines": "1-5" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.3",
+          "description": "Pass error prop from SetupWizard to ProfileStep",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "222" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.4",
+          "description": "Add password validation + setAdminToken in wizardNext() profile step",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "64-80" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.5",
+          "description": "Handle password in setup.profile server command — persist via upsertEnvVar",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/routes/command/+server.ts", "lines": "244-265" },
+            { "path": "packages/lib/src/env.ts", "lines": "43" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.6",
+          "description": "Gut SecurityStep — remove password paste, keep security info only",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SecurityStep.svelte", "lines": "1-39" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.7",
+          "description": "Remove security step setAdminToken handler from wizardNext()",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "135-138" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.8",
+          "description": "Update SecurityStep rendering — remove error prop passing",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "226" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.9",
+          "description": "Soften terminal password display in install.ts",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "166-175, 412-414" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.10",
+          "description": "Add secret.set_admin_password post-setup command handler",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/routes/command/+server.ts", "lines": "~369" }
+          ]
+        },
+        {
+          "id": "ISSUE-2.11",
+          "description": "Update install.ts 'What happens next' text",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "416-421" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-9",
+      "title": "Setup wizard complete step has no error handling or retry",
+      "severity": "high",
+      "priority": "should-fix",
+      "effort": "M",
+      "status": "pending",
+      "plan": ".plans/ISSUE-09-setup-complete-error-handling.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-9.1",
+          "description": "Add error handling to setup.channels call in finishSetup()",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "177-183" }
+          ]
+        },
+        {
+          "id": "ISSUE-9.2",
+          "description": "Add error handling to service.up calls (non-fatal, log warning)",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "186-191" }
+          ]
+        },
+        {
+          "id": "ISSUE-9.3",
+          "description": "Add error handling to setup.step and setup.complete calls — block advancement on failure",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "193-203" }
+          ]
+        },
+        {
+          "id": "ISSUE-9.4",
+          "description": "Add finishInProgress state guard and button loading state",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "42, 244" }
+          ]
+        },
+        {
+          "id": "ISSUE-9.5",
+          "description": "Add wizard-level stepError display for finishSetup errors",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/SetupWizard.svelte", "lines": "~236" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-13",
+      "title": "CORS hardcoded to localhost breaks LAN access",
+      "severity": "medium",
+      "priority": "should-fix",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-13-cors-hardcoded.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-13.1",
+          "description": "Import getSetupManager in hooks.server.ts",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/hooks.server.ts", "lines": "1-3" }
+          ]
+        },
+        {
+          "id": "ISSUE-13.2",
+          "description": "Add isPrivateOrigin() and computeAllowedOrigin() helper functions",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/hooks.server.ts", "lines": "5" }
+          ]
+        },
+        {
+          "id": "ISSUE-13.3",
+          "description": "Replace hardcoded ALLOWED_ORIGIN with dynamic origin in OPTIONS and response handlers",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/hooks.server.ts", "lines": "7-41" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-4",
+      "title": "Port 80 conflict has no resolution path",
+      "severity": "medium",
+      "priority": "nice-to-have",
+      "effort": "M",
+      "status": "pending",
+      "plan": ".plans/ISSUE-04-port-80-conflict.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-4.1",
+          "description": "Elevate port 80 warning to fatal error (when no --port flag)",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "42-64" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.2",
+          "description": "Add --port flag to CLI install command and InstallOptions type",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "15" },
+            { "path": "packages/cli/src/types.ts", "lines": "" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.3",
+          "description": "Thread port to OPENPALM_INGRESS_PORT env var",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "183-199" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.4",
+          "description": "Update minimal Caddy JSON listen directive to use configurable port",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "228-266" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.5",
+          "description": "Update minimal compose port binding to use OPENPALM_INGRESS_PORT",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "281" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.6",
+          "description": "Parameterize stack generator Caddy listen directive from spec.ingressPort",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/admin/stack-generator.ts", "lines": "~290" },
+            { "path": "packages/lib/src/admin/stack-spec.ts", "lines": "" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.7",
+          "description": "Update health check URL in install.ts to use configured port",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "358-359" }
+          ]
+        },
+        {
+          "id": "ISSUE-4.8",
+          "description": "Parameterize preflight port check function",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/preflight.ts", "lines": "46-82" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-8",
+      "title": "OpenCode web interface may prompt for separate authentication",
+      "severity": "medium",
+      "priority": "nice-to-have",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-08-opencode-auth.md",
+      "dependencies": ["ISSUE-6"],
+      "subtasks": [
+        {
+          "id": "ISSUE-8.1",
+          "description": "Investigate OpenCode auth config options (check opencode.ai schema)",
+          "status": "pending",
+          "files": [
+            { "path": "core/assistant/extensions/opencode.jsonc", "lines": "1-33" }
+          ]
+        },
+        {
+          "id": "ISSUE-8.2",
+          "description": "Add OPENCODE_AUTH=false to assistant environment in docker-compose.yml",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "88-89" }
+          ]
+        },
+        {
+          "id": "ISSUE-8.3",
+          "description": "Add \"auth\": false to opencode.jsonc config",
+          "status": "pending",
+          "files": [
+            { "path": "core/assistant/extensions/opencode.jsonc", "lines": "2" }
+          ]
+        },
+        {
+          "id": "ISSUE-8.4",
+          "description": "(Fallback) Add guidance callout in CompleteStep.svelte about possible auth prompt",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "23" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-10",
+      "title": "CompleteStep timeout has no per-service details",
+      "severity": "medium",
+      "priority": "nice-to-have",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-10-complete-step-timeout.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-10.1",
+          "description": "Add serviceStatus reactive state to CompleteStep.svelte",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "13" }
+          ]
+        },
+        {
+          "id": "ISSUE-10.2",
+          "description": "Track per-service health status during polling loop",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "18-26" }
+          ]
+        },
+        {
+          "id": "ISSUE-10.3",
+          "description": "Display per-service status on timeout (red/green indicators)",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "45-47" }
+          ]
+        },
+        {
+          "id": "ISSUE-10.4",
+          "description": "(Optional) Show live service status during polling",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "42" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-11",
+      "title": "No admin UI access if Caddy fails to start",
+      "severity": "medium",
+      "priority": "nice-to-have",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-11-admin-ui-caddy-fails.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-11.1",
+          "description": "Add 127.0.0.1:8100:8100 port mapping to admin in minimal compose",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "290-311" }
+          ]
+        },
+        {
+          "id": "ISSUE-11.2",
+          "description": "Add direct admin port fallback in health check polling loop",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "358-378" }
+          ]
+        },
+        {
+          "id": "ISSUE-11.3",
+          "description": "Update failure message to include direct admin URL",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "428-446" }
+          ]
+        },
+        {
+          "id": "ISSUE-11.4",
+          "description": "Add admin port mapping to full stack compose template",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "138-165" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-14",
+      "title": "Channel config fields show raw env var names",
+      "severity": "medium",
+      "priority": "nice-to-have",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-14-channel-config-labels.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-14.1",
+          "description": "Add humanizeKey() helper function to ChannelsStep.svelte",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/ChannelsStep.svelte", "lines": "46" }
+          ]
+        },
+        {
+          "id": "ISSUE-14.2",
+          "description": "Update label to use helpText or humanized key",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/ChannelsStep.svelte", "lines": "79-80" }
+          ]
+        },
+        {
+          "id": "ISSUE-14.3",
+          "description": "Change input placeholder to show raw env var name for reference",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/ChannelsStep.svelte", "lines": "87" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-15",
+      "title": "OpenMemory images not version-pinned",
+      "severity": "medium",
+      "priority": "nice-to-have",
+      "effort": "S",
+      "status": "pending",
+      "plan": ".plans/ISSUE-15-openmemory-version-pin.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-15.1",
+          "description": "Determine current tested versions from Docker Hub tags",
+          "status": "pending",
+          "files": []
+        },
+        {
+          "id": "ISSUE-15.2",
+          "description": "Pin openmemory-mcp image to specific version tag",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "48-49" }
+          ]
+        },
+        {
+          "id": "ISSUE-15.3",
+          "description": "Pin openmemory-ui image to specific version tag",
+          "status": "pending",
+          "files": [
+            { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "69-71" }
+          ]
+        },
+        {
+          "id": "ISSUE-15.4",
+          "description": "Search codebase for other references to unpinned openmemory tags",
+          "status": "pending",
+          "files": []
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-5",
+      "title": "Remove npx/bunx install path from docs",
+      "severity": "low",
+      "priority": "post-v1",
+      "effort": "XS",
+      "status": "pending",
+      "plan": ".plans/ISSUE-05-npx-bunx-install.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-5.1",
+          "description": "Remove npx/bunx details block from README.md",
+          "status": "pending",
+          "files": [
+            { "path": "README.md", "lines": "46-55" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-12",
+      "title": "Minimal compose declares unused channel_net network",
+      "severity": "low",
+      "priority": "post-v1",
+      "effort": "XS",
+      "status": "pending",
+      "plan": ".plans/ISSUE-12-unused-channel-net.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-12.1",
+          "description": "Remove channel_net from minimal compose networks block",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "319-321" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-16",
+      "title": "No telemetry or error reporting for install failures",
+      "severity": "low",
+      "priority": "post-v1",
+      "effort": "M",
+      "status": "pending",
+      "plan": ".plans/ISSUE-16-install-telemetry.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-16.1",
+          "description": "Add reportIssueUrl() helper function to install.ts",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "~14" }
+          ]
+        },
+        {
+          "id": "ISSUE-16.2",
+          "description": "Add report link to image pull failure output",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "339-351" }
+          ]
+        },
+        {
+          "id": "ISSUE-16.3",
+          "description": "Add report link to health check timeout failure output",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "428-446" }
+          ]
+        },
+        {
+          "id": "ISSUE-16.4",
+          "description": "Add report link to runtime detection failure output",
+          "status": "pending",
+          "files": [
+            { "path": "packages/cli/src/commands/install.ts", "lines": "34-37" }
+          ]
+        },
+        {
+          "id": "ISSUE-16.5",
+          "description": "(Post-v1) Design and implement opt-in anonymous telemetry",
+          "status": "pending",
+          "files": []
+        }
+      ]
+    },
+    {
+      "id": "ISSUE-17",
+      "title": "No uninstall path from admin UI",
+      "severity": "low",
+      "priority": "post-v1",
+      "effort": "M",
+      "status": "pending",
+      "plan": ".plans/ISSUE-17-uninstall-from-ui.md",
+      "dependencies": [],
+      "subtasks": [
+        {
+          "id": "ISSUE-17.1",
+          "description": "Add uninstall documentation link to QuickLinks.svelte",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/lib/components/QuickLinks.svelte", "lines": "25" }
+          ]
+        },
+        {
+          "id": "ISSUE-17.2",
+          "description": "(Post-v1) Add system.uninstall authenticated API endpoint",
+          "status": "pending",
+          "files": [
+            { "path": "packages/ui/src/routes/command/+server.ts", "lines": "" }
+          ]
+        },
+        {
+          "id": "ISSUE-17.3",
+          "description": "(Post-v1) Add Danger Zone section in admin settings UI",
+          "status": "pending",
+          "files": []
+        }
+      ]
+    }
+  ]
+}
