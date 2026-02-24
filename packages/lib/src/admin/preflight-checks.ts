@@ -30,6 +30,7 @@ export function extractPublishedPorts(composeContent: string): number[] {
 }
 
 export async function checkDockerSocket(socketUri: string, bin: string): Promise<PreflightFailure | null> {
+  if (process.env.OPENPALM_PREFLIGHT_SKIP_DOCKER_CHECKS === "1") return null;
   if (!socketUri.startsWith("unix://")) return null;
   const socketPath = socketUri.replace("unix://", "");
   if (!existsSync(socketPath)) {

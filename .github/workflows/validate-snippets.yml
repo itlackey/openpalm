@@ -6,8 +6,8 @@ name: Validate Community Snippets
 on:
   pull_request:
     paths:
-      - "community/snippets/**/*.yaml"
-      - "community/snippets/**/*.yml"
+      - "community/**/*.yaml"
+      - "community/**/*.yml"
 
 jobs:
   validate:
@@ -33,7 +33,7 @@ jobs:
           WARNINGS=0
           REPORT=""
 
-          SNIPPET_FILES=$(find community/snippets -name "*.yaml" -o -name "*.yml" \
+          SNIPPET_FILES=$(find community -name "*.yaml" -o -name "*.yml" \
             | grep -v "snippet-schema.json" \
             | grep -v "CONTRIBUTING.md" \
             | grep -v "index.yaml" \
@@ -111,7 +111,7 @@ jobs:
             # 6. Check for duplicate name across all snippets
             ENTRY_NAME=$(yq eval ".name" "$f" 2>/dev/null)
             if [ -n "$ENTRY_NAME" ] && [ "$ENTRY_NAME" != "null" ]; then
-              DUPES=$(find community/snippets -name "*.yaml" -o -name "*.yml" \
+              DUPES=$(find community -name "*.yaml" -o -name "*.yml" \
                 | grep -v "$f" \
                 | xargs -I{} yq eval ".name" {} 2>/dev/null \
                 | grep -c "^${ENTRY_NAME}$" || true)

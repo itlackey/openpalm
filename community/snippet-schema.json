@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/itlackey/openpalm/community/snippets/snippet-schema.json",
+  "$id": "https://github.com/itlackey/openpalm/community/snippet-schema.json",
   "title": "OpenPalm Community Snippet",
   "description": "Schema for a community-contributed OpenPalm channel, service, or automation snippet. Aligns with the stack-spec schema used by the compose generator.",
   "type": "object",

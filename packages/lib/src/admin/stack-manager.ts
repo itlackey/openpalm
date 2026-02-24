@@ -49,6 +49,21 @@ function pickEnv(source: Record<string, string>, keys: string[]): Record<string,
   return out;
 }
 
+function resolveEmbeddedStatePath(relativePath: string): string {
+  const cwd = process.cwd();
+  const candidates = [
+    join(cwd, "packages/lib/src/embedded/state", relativePath),
+    join(cwd, "packages/ui", "packages/lib/src/embedded/state", relativePath),
+    join(cwd, "..", "packages/lib/src/embedded/state", relativePath),
+    join(cwd, "../..", "packages/lib/src/embedded/state", relativePath),
+    fileURLToPath(new URL(`../embedded/state/${relativePath}`, import.meta.url)),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return candidates[candidates.length - 1];
+}
+
 export class StackManager {
   constructor(private readonly paths: StackManagerPaths) {}
 
@@ -176,7 +191,7 @@ export class StackManager {
     };
     const fallbackComposeFilePath = this.paths.fallbackComposeFilePath ?? join(this.paths.stateRootPath, "docker-compose-fallback.yml");
     if (!existsSync(fallbackComposeFilePath)) {
-      const bundledPath = fileURLToPath(new URL("../embedded/state/docker-compose-fallback.yml", import.meta.url));
+      const bundledPath = resolveEmbeddedStatePath("docker-compose-fallback.yml");
       const bundled = readFileSync(bundledPath, "utf8");
       writeFileSync(fallbackComposeFilePath, bundled, "utf8");
       validateFallbackBundle({
@@ -187,7 +202,7 @@ export class StackManager {
 
     const fallbackCaddyJsonPath = this.paths.fallbackCaddyJsonPath ?? join(this.paths.stateRootPath, "caddy-fallback.json");
     if (!existsSync(fallbackCaddyJsonPath)) {
-      const bundledPath = fileURLToPath(new URL("../embedded/state/caddy/fallback-caddy.json", import.meta.url));
+      const bundledPath = resolveEmbeddedStatePath("caddy/fallback-caddy.json");
       const bundled = readFileSync(bundledPath, "utf8");
       writeFileSync(fallbackCaddyJsonPath, bundled, "utf8");
       validateFallbackBundle({

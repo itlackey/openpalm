@@ -8,9 +8,9 @@ same schema as the stack-spec — no conversion needed.
 
 1. Fork this repo
 2. Create a YAML file in the appropriate directory:
-   - `community/snippets/channels/` — for channel adapters
-   - `community/snippets/services/` — for services
-   - `community/snippets/automations/` — for scheduled automations
+   - `community/channels/` — for channel adapters
+   - `community/services/` — for services
+   - `community/automations/` — for scheduled automations
 3. Follow the schema (see `snippet-schema.json` or use the YAML language server directive)
 4. Open a pull request
 
@@ -63,7 +63,7 @@ PR. You can also validate locally with any JSON Schema validator:
 
 ```bash
 # Using ajv-cli
-npx ajv-cli validate -s community/snippets/snippet-schema.json -d your-snippet.yaml
+npx ajv-cli validate -s community/snippet-schema.json -d your-snippet.yaml
 ```
 
 Or add the YAML language server directive to get real-time validation in VS Code:

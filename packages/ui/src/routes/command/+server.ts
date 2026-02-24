@@ -125,7 +125,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					code: 'missing_secret_references',
 					details: missing
 				});
-			return json(200, { ok: true, data: stackManager.setSpec(spec) });
+			try {
+				return json(200, { ok: true, data: stackManager.setSpec(spec) });
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return json(400, { ok: false, error: message, code: message });
+			}
 		}
 		if (type === 'stack.apply') {
 			const result = await applyStack(stackManager, { apply: true });
@@ -281,9 +286,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
 		}
 		if (type === 'setup.complete') {
-			const applyResult = await applyStack(stackManager);
-			const startupResult = await composeAction('up', [...SetupCoreServices]);
-			if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
+			const testMode = process.env.OPENPALM_TEST_MODE === '1';
+			let applyResult: unknown = { skipped: true };
+			if (!testMode) {
+				applyResult = await applyStack(stackManager);
+				const startupResult = await composeAction('up', [...SetupCoreServices]);
+				if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
+			}
 			syncAutomations(stackManager.listAutomations());
 			return json(200, { ok: true, data: setupManager.completeSetup(), apply: applyResult });
 		}
@@ -452,19 +461,51 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				}
 			} else {
 				const items = Array.isArray(parsed) ? parsed : [parsed];
+				const nextAutomations: StackAutomation[] = [];
 				for (const item of items) {
-					if (typeof item !== 'object' || item === null || !item.schedule || !item.prompt && !item.script) {
+					if (typeof item !== 'object' || item === null) {
+						return json(400, {
+							ok: false,
+							error: "invalid_snippet: automation must be an object",
+							code: 'invalid_snippet'
+						});
+					}
+					const candidate = item as Record<string, unknown>;
+					const id = typeof candidate.id === 'string' && candidate.id.trim()
+						? candidate.id.trim()
+						: randomUUID();
+					const name = typeof candidate.name === 'string' && candidate.name.trim()
+						? candidate.name.trim()
+						: 'Imported automation';
+					const schedule = typeof candidate.schedule === 'string' ? candidate.schedule.trim() : '';
+					const script = typeof candidate.script === 'string'
+						? candidate.script.trim()
+						: typeof candidate.prompt === 'string'
+							? candidate.prompt.trim()
+							: '';
+					const enabled = typeof candidate.enabled === 'boolean' ? candidate.enabled : true;
+					if (!schedule || !script) {
 						return json(400, {
 							ok: false,
 							error: "invalid_snippet: automation must have 'schedule' and 'script' (or 'prompt') fields",
 							code: 'invalid_snippet'
 						});
 					}
+					const automation: StackAutomation = { id, name, schedule, script, enabled };
+					if (typeof candidate.description === 'string' && candidate.description.trim()) {
+						automation.description = candidate.description.trim();
+					}
+					nextAutomations.push(automation);
 				}
-				spec.automations.push(...(items as StackAutomation[]));
+				spec.automations.push(...nextAutomations);
 			}
-			const validated = stackManager.setSpec(spec);
-			return json(200, { ok: true, data: { spec: validated } });
+			try {
+				const validated = stackManager.setSpec(spec);
+				return json(200, { ok: true, data: { spec: validated } });
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return json(400, { ok: false, error: message, code: message });
+			}
 		}
 		if (type === 'automation.trigger') {
 			const id = sanitizeEnvScalar(payload.id);

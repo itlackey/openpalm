@@ -155,18 +155,18 @@ The UI and validator read the `env` block to:
 
 **How it works:**
 
-The main OpenPalm repo contains a `community/snippets/` directory. Each snippet is a single YAML file. A GitHub Actions workflow validates on PR and rebuilds `index.yaml` on merge — exactly like the existing registry CI but for YAML snippets instead of JSON extension entries.
+The main OpenPalm repo contains a `community/` directory. Each snippet is a single YAML file. A GitHub Actions workflow validates on PR and rebuilds `index.yaml` on merge — exactly like the existing registry CI but for YAML snippets instead of JSON extension entries.
 
 The admin dashboard fetches `index.yaml` from the repo's raw URL at runtime:
 ```
-https://raw.githubusercontent.com/itlackey/openpalm/main/community/snippets/index.yaml
+https://raw.githubusercontent.com/itlackey/openpalm/main/community/index.yaml
 ```
 
 No code changes needed to add new snippets. A merged PR to the snippets directory is all it takes.
 
 **Publishing workflow:**
 1. Contributor creates a YAML snippet file following the schema
-2. Opens a PR to `community/snippets/`
+2. Opens a PR to `community/`
 3. CI validates against JSON Schema, checks for duplicate IDs, posts a validation report on the PR
 4. Maintainer reviews and merges
 5. CI rebuilds `index.yaml` and pushes
@@ -185,7 +185,7 @@ interface SnippetSource {
 const DEFAULT_SOURCES: SnippetSource[] = [
   {
     name: "OpenPalm Community",
-    url: "https://raw.githubusercontent.com/itlackey/openpalm/main/community/snippets/index.yaml",
+    url: "https://raw.githubusercontent.com/itlackey/openpalm/main/community/index.yaml",
     trusted: true,
   },
 ];
@@ -401,7 +401,7 @@ This gives the best of both worlds:
 
 1. **Option 3 first:** Enrich the existing channel YAML files with `env` metadata. This is the smallest change — update 4 YAML files, update the `BuiltInChannelDef` type, and drive `ChannelsStep.svelte` from snippet data instead of hardcoded arrays. Built-in channels ship with the release and work offline.
 
-2. **Option 1 next:** Add a `community/snippets/` directory with the same schema. The admin dashboard fetches `index.yaml` from the raw GitHub URL for community-contributed snippets. New community contributions appear without releases.
+2. **Option 1 next:** Add a `community/` directory with the same schema. The admin dashboard fetches `index.yaml` from the raw GitHub URL for community-contributed snippets. New community contributions appear without releases.
 
 3. **Design the data-fetching layer to support multiple sources from day one** (the `SnippetSource[]` abstraction), even if only one source is configured initially. This makes Option 2, 4, or 5 a future configuration change, not an architecture change.
 
@@ -429,7 +429,7 @@ This approach:
 
 ### Phase 2: Community snippets directory (Option 1) — NEXT
 
-1. Create `community/snippets/` directory with `snippet-schema.json`
+1. Create `community/` directory with `snippet-schema.json`
 2. Add CI workflow: validate YAML snippets on PR, rebuild `index.json` on merge
 3. Add runtime fetch of community `index.json` with caching
 4. UI: "Community" tab in channel/service/automation browsers

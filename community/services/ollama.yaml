@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../snippet-schema.json
+kind: service
+name: Ollama
+description: Local LLM inference service. Runs open-source language models locally on your machine for OpenPalm integrations.
+image: ollama/ollama:latest
+containerPort: 11434
+rewritePath: /ollama
+
+volumes:
+  - home:/root/.ollama
+
+env:
+  - name: OLLAMA_HOST
+    description: Host and port for Ollama API. Set to 0.0.0.0:11434 for network access.
+    required: false
+    default: "127.0.0.1:11434"
+
+  - name: OLLAMA_DEBUG
+    description: Enable debug logging for troubleshooting
+    required: false
+    default: "false"
+
+  - name: OLLAMA_NUM_GPU
+    description: Number of GPUs to use. Set to 0 to disable GPU acceleration. Leave empty for auto-detection.
+    required: false
+    default: ""
