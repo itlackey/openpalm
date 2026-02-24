@@ -35,10 +35,11 @@
 
 	let specText = $state('');
 	let statusMsg = $state('');
-	let activeView = $state<'catalog' | 'advanced'>('catalog');
+	let activeView = $state<'configure' | 'add' | 'advanced'>('configure');
 	let catalog = $state<CatalogItem[]>([]);
-	let search = $state('');
-	let typeFilter = $state<'all' | 'channel' | 'service'>('all');
+	let addSearch = $state('');
+	let addTypeFilter = $state<'all' | 'channel' | 'service'>('all');
+	let configureTypeFilter = $state<'all' | 'channel' | 'service'>('all');
 	let secretNames = $state<string[]>([]);
 	let editingItemKey = $state('');
 	let configDraft = $state<Record<string, string>>({});
@@ -46,24 +47,13 @@
 	let busyItemKey = $state('');
 
 	const hasToken = $derived(getAdminToken().length > 0);
-	const filteredCatalog = $derived.by(() => {
-		const q = search.trim().toLowerCase();
-		return catalog.filter((item) => {
-			if (typeFilter !== 'all' && item.type !== typeFilter) return false;
-			if (!q) return true;
-			const haystack = [
-				item.name,
-				item.displayName,
-				item.description,
-				...(item.tags ?? [])
-			]
-				.join(' ')
-				.toLowerCase();
-			return haystack.includes(q);
-		});
-	});
 	const enabledInstalledItems = $derived.by(() =>
-		filteredCatalog.filter((item) => item.entryKind === 'installed' && item.enabled)
+		catalog.filter(
+			(item) =>
+				item.entryKind === 'installed' &&
+				item.enabled &&
+				(configureTypeFilter === 'all' || item.type === configureTypeFilter)
+		)
 	);
 	const activeSingleInstanceTemplateKeys = $derived.by(() => {
 		const keys = new Set<string>();
@@ -75,15 +65,28 @@
 		}
 		return keys;
 	});
-	const searchInstallItems = $derived.by(() =>
-		filteredCatalog.filter((item) => {
+	const searchInstallItems = $derived.by(() => {
+		const q = addSearch.trim().toLowerCase();
+		return catalog.filter((item) => {
 			if (item.entryKind !== 'template') return false;
+			if (addTypeFilter !== 'all' && item.type !== addTypeFilter) return false;
+			if (q) {
+				const haystack = [
+					item.name,
+					item.displayName,
+					item.description,
+					...(item.tags ?? [])
+				]
+					.join(' ')
+					.toLowerCase();
+				if (!haystack.includes(q)) return false;
+			}
 			const templateName = item.templateName ?? item.name;
 			if (!templateName) return false;
 			if (item.supportsMultipleInstances === true) return true;
 			return !activeSingleInstanceTemplateKeys.has(`${item.type}:${templateName}`);
-		})
-	);
+		});
+	});
 
 	function itemKey(item: CatalogItem): string {
 		return item.id;
@@ -227,7 +230,10 @@
 			const installedInstance = catalog.find(
 				(entry) => entry.id === addedInstanceId && entry.entryKind === 'installed'
 			);
-			if (installedInstance) beginConfigure(installedInstance);
+			if (installedInstance) {
+				activeView = 'configure';
+				beginConfigure(installedInstance);
+			}
 		}
 		const actionLabelMap = {
 			install: 'installed',
@@ -263,11 +269,11 @@
 		showToast(`${item.displayName} configured`, 'success');
 	}
 
-	async function selectView(view: 'catalog' | 'advanced') {
+	async function selectView(view: 'configure' | 'add' | 'advanced') {
 		activeView = view;
 		if (!hasToken) return;
 		try {
-			if (view === 'catalog') {
+			if (view === 'configure' || view === 'add') {
 				await loadState();
 				return;
 			}
@@ -291,8 +297,11 @@
 	<div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;align-items:center">
 		<div style="display:flex;gap:0.4rem">
 			<button
-				class={activeView === 'catalog' ? '' : 'btn-secondary'}
-				onclick={() => selectView('catalog')}>Search & Configure</button
+				class={activeView === 'configure' ? '' : 'btn-secondary'}
+				onclick={() => selectView('configure')}>Configure</button
+			>
+			<button class={activeView === 'add' ? '' : 'btn-secondary'} onclick={() => selectView('add')}
+				>Add</button
 			>
 			<button
 				class={activeView === 'advanced' ? '' : 'btn-secondary'}
@@ -312,22 +321,20 @@
 			>
 		</div>
 	</div>
-	{#if activeView === 'catalog'}
+	{#if activeView === 'configure'}
 		<p class="muted" style="font-size:13px">
-			Manage enabled containers separately from search results for a simpler setup experience.
+			Configure enabled channels and services currently running in your stack.
 		</p>
-		<div class="grid2" style="margin:0.5rem 0">
-			<input bind:value={search} placeholder="Search by name, description, or tag" />
-			<select bind:value={typeFilter}>
+		<div style="display:flex;gap:0.5rem;max-width:18rem;margin:0.5rem 0">
+			<select bind:value={configureTypeFilter}>
 				<option value="all">All types</option>
 				<option value="channel">Channels</option>
 				<option value="service">Services</option>
 			</select>
 		</div>
-		<h4 style="margin:0.25rem 0">Enabled Containers</h4>
 		{#if enabledInstalledItems.length === 0}
 			<div class="muted" style="font-size:13px">
-				No enabled containers match your filter. Add one from search results below.
+				No enabled containers match your filter. Use the Add tab to add new containers.
 			</div>
 		{:else}
 			<div style="display:grid;gap:0.6rem">
@@ -414,7 +421,18 @@
 				{/each}
 			</div>
 		{/if}
-		<h4 style="margin:1rem 0 0.25rem">Search & Add Containers</h4>
+	{:else if activeView === 'add'}
+		<p class="muted" style="font-size:13px">
+			Search available templates and add new channels/services to your stack.
+		</p>
+		<div class="grid2" style="margin:0.5rem 0">
+			<input bind:value={addSearch} placeholder="Search by name, description, or tag" />
+			<select bind:value={addTypeFilter}>
+				<option value="all">All types</option>
+				<option value="channel">Channels</option>
+				<option value="service">Services</option>
+			</select>
+		</div>
 		{#if searchInstallItems.length === 0}
 			<div class="muted" style="font-size:13px">
 				No installable containers matched your search.
