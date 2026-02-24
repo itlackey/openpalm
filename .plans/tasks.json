@@ -43,20 +43,20 @@
       "severity": "blocker",
       "priority": "must-fix",
       "effort": "XS",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-07-sveltekit-proxy-websocket.md",
       "dependencies": ["ISSUE-6"],
       "subtasks": [
         {
           "id": "ISSUE-7.1",
           "description": "Resolved automatically by ISSUE-6 fix (Caddy handles WS/SSE natively)",
-          "status": "pending",
+          "status": "completed",
           "files": []
         },
         {
           "id": "ISSUE-7.2",
           "description": "(Optional) Raise proxy timeout from 5s to 300s for programmatic access",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/routes/opencode/[...path]/+server.ts", "lines": "27" }
           ]
