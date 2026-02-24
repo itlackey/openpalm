@@ -162,15 +162,12 @@ export async function install(options: InstallOptions): Promise<void> {
     }
   }
 
-  // Display admin token prominently if we generated one
+  // Display admin token info if we generated one
   if (generatedAdminToken) {
     log("");
-    log(bold(green("  YOUR ADMIN PASSWORD (save this!)")));
-    log("");
-    log(`  ${yellow(generatedAdminToken)}`);
-    log("");
-    info("  You will need this password to log in to the admin dashboard.");
-    info(`  It is also saved in: ${dim(stateEnvFile)}`);
+    info("  A temporary admin token has been generated.");
+    info("  You will choose your own password in the setup wizard.");
+    info(`  Temporary token saved in: ${dim(stateEnvFile)}`);
     log("");
   }
 
@@ -409,16 +406,13 @@ networks:
     log("");
     info(`  Setup wizard: ${cyan(adminUrl)}`);
     log("");
-    if (generatedAdminToken) {
-      info(`  Admin password: ${yellow(generatedAdminToken)}`);
-      log("");
-    }
     log(bold("  What happens next:"));
     info("    1. The setup wizard opens in your browser");
-    info("    2. Enter your AI provider API key (e.g. from console.anthropic.com)");
-    info("    3. The wizard will download and start remaining services automatically");
-    info("    4. Pick which channels to enable (chat, Discord, etc.)");
-    info("    5. Done! Start chatting with your assistant");
+    info("    2. Create your admin password and profile");
+    info("    3. Enter your AI provider API key (e.g. from console.anthropic.com)");
+    info("    4. The wizard will download and start remaining services automatically");
+    info("    5. Pick which channels to enable (chat, Discord, etc.)");
+    info("    6. Done! Start chatting with your assistant");
     log("");
     if (!options.noOpen) {
       info("  Opening setup wizard in your browser...");
