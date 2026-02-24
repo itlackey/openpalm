@@ -1,11 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import {
-  composeActionWithOverride,
-  composeConfigValidateForFileWithOverride,
-  composeExecWithOverride,
-} from "./compose-runner.ts";
+import { type ComposeRunner, createComposeRunner } from "./compose-runner.ts";
 import { StackManager } from "./stack-manager.ts";
 
 export type StackApplyResult = {
@@ -15,7 +11,8 @@ export type StackApplyResult = {
   warnings: string[];
 };
 
-export async function applyStack(manager: StackManager, options?: { apply?: boolean }): Promise<StackApplyResult> {
+export async function applyStack(manager: StackManager, options?: { apply?: boolean; runner?: ComposeRunner }): Promise<StackApplyResult> {
+  const runner = options?.runner ?? createComposeRunner();
   const generated = manager.renderPreview();
   const secretErrors = manager.validateReferencedSecrets();
   if (secretErrors.length > 0) {
@@ -36,7 +33,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
       const caddyChanged = existingCaddyJson !== generated.caddyJson;
 
       const staged = manager.renderArtifactsToTemp(generated, { transactionId: randomUUID() });
-      const composeValidate = await composeConfigValidateForFileWithOverride(staged.composeFilePath);
+      const composeValidate = await runner.configValidateForFile(staged.composeFilePath);
       if (!composeValidate.ok) {
         staged.cleanup();
         throw new Error(`compose_validation_failed:${composeValidate.stderr}`);
@@ -44,12 +41,12 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
       staged.promote();
 
       // Single compose up -d --remove-orphans (Docker Compose handles change detection)
-      const upResult = await composeActionWithOverride("up", []);
+      const upResult = await runner.action("up", []);
       if (!upResult.ok) throw new Error(`compose_up_failed:${upResult.stderr}`);
 
       // Caddy uses hot-reload rather than container restart
       if (caddyChanged) {
-        const reloadResult = await composeExecWithOverride("caddy", ["caddy", "reload", "--config", "/etc/caddy/caddy.json"]);
+        const reloadResult = await runner.exec("caddy", ["caddy", "reload", "--config", "/etc/caddy/caddy.json"]);
         if (!reloadResult.ok) throw new Error(`caddy_reload_failed:${reloadResult.stderr}`);
         caddyReloaded = true;
       }

@@ -34,7 +34,7 @@ import {
 	composeLogsValidateTail,
 	composePull,
 	allowedServiceSet,
-	composePsWithOverride
+	composePs
 } from '@openpalm/lib/admin/compose-runner';
 import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations';
 import { parse as yamlParse } from 'yaml';
@@ -595,7 +595,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			return json(200, { ok: true, data: { services } });
 		}
 		if (type === 'service.drift') {
-			const result = await composePsWithOverride();
+			const result = await composePs();
 			if (!result.ok) return json(500, { ok: false, error: result.stderr });
 			return json(200, { ok: true, data: { services: result.services } });
 		}

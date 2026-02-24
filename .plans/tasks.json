@@ -547,7 +547,7 @@
           "id": "07.1",
           "title": "Create relocated schema test file",
           "description": "Create packages/lib/src/admin/schemas/schemas.test.ts with 11 tests relocated from schema-validation.test.ts (ajv schema validation, seed caddy.json validation, compose helpers).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/schemas/schemas.test.ts", "action": "create", "lines": "~180" }
           ]
@@ -556,7 +556,7 @@
           "id": "07.2",
           "title": "Remove validateComposeSpec() from compose-spec-serializer.ts",
           "description": "Delete lines 4-11 (the function), update stack-generator.ts import to only use stringifyComposeSpec, remove validation call and throw block from renderFullComposeFile().",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-spec-serializer.ts", "action": "edit", "lines": "4-11" },
             { "path": "packages/lib/src/admin/stack-generator.ts", "action": "edit", "lines": "5, 566-569" }
@@ -566,7 +566,7 @@
           "id": "07.3",
           "title": "Remove validateGeneratedCompose() from stack-generator.ts",
           "description": "Delete the function (lines 574-580), remove from test import, delete the 'validates compose guardrails' test.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-generator.ts", "action": "edit", "lines": "574-580" },
             { "path": "packages/lib/src/admin/stack-generator.test.ts", "action": "edit", "lines": "2, 389-393" }
@@ -576,7 +576,7 @@
           "id": "07.4",
           "title": "Delete schema-validation.ts and its test",
           "description": "Delete the entire schema-validation.ts module (157 lines) and schema-validation.test.ts (333 lines).",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/schema-validation.ts", "action": "delete", "lines": "157" },
             { "path": "packages/lib/src/admin/schema-validation.test.ts", "action": "delete", "lines": "333" }
@@ -586,7 +586,7 @@
           "id": "07.5",
           "title": "Add test-only doc comments to schema files",
           "description": "Add 'Test-only schema' comments to schemas/stack-spec.schema.ts and schemas/caddy-config.schema.ts.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/schemas/stack-spec.schema.ts", "action": "edit", "lines": "1" },
             { "path": "packages/lib/src/admin/schemas/caddy-config.schema.ts", "action": "edit", "lines": "1" }
@@ -596,7 +596,7 @@
           "id": "07.6",
           "title": "Run full test suite verification",
           "description": "Run bun run typecheck and bun test. Expect test count drops by ~17 (16 removed, 11 relocated).",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]
@@ -605,7 +605,7 @@
       "id": "08",
       "title": "Replace Override Pattern with Dependency Injection",
       "description": "Replace 5 mutable module-level override registries, 5 setter functions, and 5 *WithOverride wrapper functions in compose-runner.ts with a ComposeRunner interface and dependency injection. Provide createMockRunner() test helper. This is a strict subset of Plan 01.",
-      "status": "planned",
+      "status": "completed",
       "planFile": ".plans/08-fix-override-pattern.md",
       "dependsOn": [],
       "netLinesChanged": "-70",
@@ -615,7 +615,7 @@
           "id": "08.1",
           "title": "Define ComposeRunner interface and factories in compose-runner.ts",
           "description": "Add ComposeRunner interface, createComposeRunner() factory, and createMockRunner() test helper. Export all three.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "~99 (insert ~50 lines)" }
           ]
@@ -624,7 +624,7 @@
           "id": "08.2",
           "title": "Add runner parameter to allowedServiceSet and composeServiceNames",
           "description": "Make runner parameter optional with default createComposeRunner(). Replace internal composeConfigServicesWithOverride() with runner.configServices().",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "112-116" }
           ]
@@ -633,7 +633,7 @@
           "id": "08.3",
           "title": "Add runner parameter to computeDriftReport and persistDriftReport",
           "description": "Add explicit composeFilePath and caddyJsonPath parameters. Replace composeListWithOverride() with runner.list(). Remove references to composeArtifactOverrides.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "157-203" }
           ]
@@ -642,7 +642,7 @@
           "id": "08.4",
           "title": "Update health-gate.ts with runner parameter",
           "description": "Add runner: ComposeRunner to pollUntilHealthy(). Replace composePsWithOverride() with runner.ps().",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/health-gate.ts", "action": "edit", "lines": "3, 52-56" }
           ]
@@ -651,7 +651,7 @@
           "id": "08.5",
           "title": "Update health-gate.test.ts with mock runner",
           "description": "Replace setComposePsOverride usage with createMockRunner(). Remove beforeEach/afterEach cleanup.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/health-gate.test.ts", "action": "edit", "lines": "~all" }
           ]
@@ -660,7 +660,7 @@
           "id": "08.6",
           "title": "Update preflight-checks.ts with runner parameter",
           "description": "Add runner: ComposeRunner to function signatures. Replace composePull() with runner.pull().",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/preflight-checks.ts", "action": "edit", "lines": "~all" }
           ]
@@ -669,7 +669,7 @@
           "id": "08.7",
           "title": "Update stack-apply-engine.ts with runner option",
           "description": "Add runner?: ComposeRunner to applyStack options. Resolve runner at top of function, pass through to all internal functions. Replace all 17 *WithOverride calls with runner.* calls.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.ts", "action": "edit", "lines": "1-14, 215-350" }
           ]
@@ -678,7 +678,7 @@
           "id": "08.8",
           "title": "Update stack-apply-engine.test.ts with mock runner DI",
           "description": "Replace all set*Override calls with createMockRunner() passed via options. Remove all manual cleanup lines. Eliminates ~57 set/cleanup call sites.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/stack-apply-engine.test.ts", "action": "edit", "lines": "10, 138-470" }
           ]
@@ -687,7 +687,7 @@
           "id": "08.9",
           "title": "Delete override infrastructure from compose-runner.ts",
           "description": "Delete the 5 mutable variables, 5 setter functions, 5 *WithOverride functions, ComposeRunnerOverrides and ComposeRunnerArtifactOverrides types.",
-          "status": "planned",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/admin/compose-runner.ts", "action": "edit", "lines": "100-110, 138-148, 228-238, 304-358" }
           ]
@@ -696,7 +696,7 @@
           "id": "08.10",
           "title": "Final verification: typecheck and test suite",
           "description": "Run bun run typecheck and bun test to confirm all changes are correct.",
-          "status": "planned",
+          "status": "completed",
           "files": []
         }
       ]

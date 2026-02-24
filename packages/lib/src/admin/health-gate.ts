@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import YAML from "yaml";
-import { composePsWithOverride, type ServiceHealthState } from "./compose-runner.ts";
+import { type ComposeRunner, createComposeRunner, type ServiceHealthState } from "./compose-runner.ts";
 
 export type ServiceHealthConfig = {
   service: string;
@@ -49,11 +49,12 @@ function parseDurationMs(value: unknown, fallback: number): number {
   return amount * 1000;
 }
 
-export async function pollUntilHealthy(config: ServiceHealthConfig): Promise<HealthGateResult> {
+export async function pollUntilHealthy(config: ServiceHealthConfig, runner?: ComposeRunner): Promise<HealthGateResult> {
+  const r = runner ?? createComposeRunner();
   const deadline = Date.now() + config.timeoutMs;
   let last: ServiceHealthState | undefined;
   while (Date.now() < deadline) {
-    const result = await composePsWithOverride();
+    const result = await r.ps();
     if (!result.ok) {
       return { ok: false, service: config.service, error: result.stderr };
     }

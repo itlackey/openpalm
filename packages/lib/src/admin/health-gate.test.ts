@@ -1,38 +1,31 @@
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { pollUntilHealthy } from "./health-gate.ts";
-import { setComposePsOverride } from "./compose-runner.ts";
+import { createMockRunner } from "./compose-runner.ts";
 
 describe("health-gate", () => {
-  beforeEach(() => {
-    setComposePsOverride(null);
-  });
-
-  afterEach(() => {
-    setComposePsOverride(null);
-    mock.restore();
-  });
-
   it("resolves when service is healthy", async () => {
-    const mockComposePs = mock(async () => ({
-      ok: true,
-      services: [{ name: "admin", status: "running", health: "healthy" }],
-      stderr: "",
-    }));
-    setComposePsOverride(mockComposePs as unknown as Parameters<typeof setComposePsOverride>[0]);
+    const runner = createMockRunner({
+      ps: async () => ({
+        ok: true,
+        services: [{ name: "admin", status: "running", health: "healthy" }],
+        stderr: "",
+      }),
+    });
 
-    const result = await pollUntilHealthy({ service: "admin", timeoutMs: 1000, requiresHealthcheck: true });
+    const result = await pollUntilHealthy({ service: "admin", timeoutMs: 1000, requiresHealthcheck: true }, runner);
     expect(result.ok).toBeTrue();
   });
 
   it("accepts running when no healthcheck", async () => {
-    const mockComposePs = mock(async () => ({
-      ok: true,
-      services: [{ name: "gateway", status: "running", health: null }],
-      stderr: "",
-    }));
-    setComposePsOverride(mockComposePs as unknown as Parameters<typeof setComposePsOverride>[0]);
+    const runner = createMockRunner({
+      ps: async () => ({
+        ok: true,
+        services: [{ name: "gateway", status: "running", health: null }],
+        stderr: "",
+      }),
+    });
 
-    const result = await pollUntilHealthy({ service: "gateway", timeoutMs: 1000, requiresHealthcheck: false });
+    const result = await pollUntilHealthy({ service: "gateway", timeoutMs: 1000, requiresHealthcheck: false }, runner);
     expect(result.ok).toBeTrue();
   });
 });

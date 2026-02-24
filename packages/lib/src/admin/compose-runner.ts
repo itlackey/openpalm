@@ -46,6 +46,51 @@ function extraServicesFromEnv(): string[] {
 
 export type ComposeResult = { ok: boolean; stdout: string; stderr: string; exitCode?: number; code?: string };
 
+export interface ComposeRunner {
+  action(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult>;
+  exec(service: string, args: string[]): Promise<ComposeResult>;
+  list(): Promise<ComposeResult>;
+  ps(): Promise<{ ok: boolean; services: ServiceHealthState[]; stderr: string }>;
+  configServices(composeFileOverride?: string): Promise<string[]>;
+  configValidate(): Promise<ComposeResult>;
+  configValidateForFile(composeFile: string, envFile?: string): Promise<ComposeResult>;
+  pull(service?: string): Promise<ComposeResult>;
+  logs(service: string, tail?: number): Promise<ComposeResult>;
+  stackDown(): Promise<ComposeResult>;
+}
+
+export function createComposeRunner(): ComposeRunner {
+  return {
+    action: composeAction,
+    exec: composeExec,
+    list: composeList,
+    ps: composePs,
+    configServices: composeConfigServices,
+    configValidate: composeConfigValidate,
+    configValidateForFile: composeConfigValidateForFile,
+    pull: composePull,
+    logs: composeLogs,
+    stackDown: composeStackDown,
+  };
+}
+
+export function createMockRunner(overrides?: Partial<ComposeRunner>): ComposeRunner {
+  const ok: ComposeResult = { ok: true, stdout: "", stderr: "" };
+  return {
+    action: async () => ok,
+    exec: async () => ok,
+    list: async () => ({ ...ok, stdout: "[]" }),
+    ps: async () => ({ ok: true, services: [], stderr: "" }),
+    configServices: async () => [],
+    configValidate: async () => ok,
+    configValidateForFile: async () => ok,
+    pull: async () => ok,
+    logs: async () => ok,
+    stackDown: async () => ok,
+    ...overrides,
+  };
+}
+
 async function runCompose(args: string[], composeFileOverride?: string, envFileOverride?: string, stream?: boolean): Promise<ComposeResult> {
   const composeFile = composeFileOverride ?? composeFilePath();
   const result = await runComposeShared(args, {
@@ -76,20 +121,9 @@ export async function composeConfigServices(composeFileOverride?: string): Promi
   return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
 }
 
-export type ComposeConfigServicesFn = typeof composeConfigServices;
-let composeConfigServicesOverride: ComposeConfigServicesFn | null = null;
-
-export function setComposeConfigServicesOverride(next: ComposeConfigServicesFn | null): void {
-  composeConfigServicesOverride = next;
-}
-
-export async function composeConfigServicesWithOverride(composeFileOverride?: string): Promise<string[]> {
-  if (composeConfigServicesOverride) return composeConfigServicesOverride(composeFileOverride);
-  return composeConfigServices(composeFileOverride);
-}
-
-export async function allowedServiceSet(): Promise<Set<string>> {
-  const fromCompose = await composeConfigServicesWithOverride();
+export async function allowedServiceSet(runner?: ComposeRunner): Promise<Set<string>> {
+  const r = runner ?? createComposeRunner();
+  const fromCompose = await r.configServices();
   const declared = [...CoreServices, ...extraServicesFromEnv(), ...fromCompose];
   return new Set<string>(declared);
 }
@@ -114,18 +148,6 @@ export async function composeList(): Promise<ComposeResult> {
   return runCompose(["ps", "--format", "json"], undefined, composeEnvFilePath());
 }
 
-export type ComposeListFn = typeof composeList;
-let composeListOverride: ComposeListFn | null = null;
-
-export function setComposeListOverride(next: ComposeListFn | null): void {
-  composeListOverride = next;
-}
-
-export async function composeListWithOverride(): Promise<ComposeResult> {
-  if (composeListOverride) return composeListOverride();
-  return composeList();
-}
-
 export type ServiceHealthState = {
   name: string;
   status: string;
@@ -147,18 +169,6 @@ export async function composePs(): Promise<{ ok: boolean; services: ServiceHealt
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, services: [], stderr: `compose_ps_parse_failed:${message}` };
   }
-}
-
-export type ComposePsFn = typeof composePs;
-let composePsOverride: ComposePsFn | null = null;
-
-export function setComposePsOverride(next: ComposePsFn | null): void {
-  composePsOverride = next;
-}
-
-export async function composePsWithOverride(): Promise<{ ok: boolean; services: ServiceHealthState[]; stderr: string }> {
-  if (composePsOverride) return composePsOverride();
-  return composePs();
 }
 
 export async function composePull(service?: string): Promise<ComposeResult> {
@@ -218,35 +228,4 @@ export async function composeExec(service: string, args: string[]): Promise<Comp
   return runCompose(["exec", "-T", service, ...args], undefined, composeEnvFilePath(), true);
 }
 
-export type ComposeRunnerOverrides = {
-  composeAction?: typeof composeAction;
-  composeExec?: typeof composeExec;
-  composeConfigValidateForFile?: typeof composeConfigValidateForFile;
-  composeConfigValidate?: typeof composeConfigValidate;
-};
 
-let composeOverrides: ComposeRunnerOverrides = {};
-
-export function setComposeRunnerOverrides(next: ComposeRunnerOverrides): void {
-  composeOverrides = next;
-}
-
-export async function composeActionWithOverride(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> {
-  if (composeOverrides.composeAction) return composeOverrides.composeAction(action, service);
-  return composeAction(action, service);
-}
-
-export async function composeExecWithOverride(service: string, args: string[]): Promise<ComposeResult> {
-  if (composeOverrides.composeExec) return composeOverrides.composeExec(service, args);
-  return composeExec(service, args);
-}
-
-export async function composeConfigValidateForFileWithOverride(composeFile: string, envFileOverride?: string): Promise<ComposeResult> {
-  if (composeOverrides.composeConfigValidateForFile) return composeOverrides.composeConfigValidateForFile(composeFile, envFileOverride);
-  return composeConfigValidateForFile(composeFile, envFileOverride);
-}
-
-export async function composeConfigValidateWithOverride(): Promise<ComposeResult> {
-  if (composeOverrides.composeConfigValidate) return composeOverrides.composeConfigValidate();
-  return composeConfigValidate();
-}

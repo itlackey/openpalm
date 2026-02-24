@@ -7,7 +7,7 @@ import { stringifyYamlDocument } from "../shared/yaml.ts";
 
 const yamlStringify = (obj: unknown) => stringifyYamlDocument(obj);
 import { applyStack } from "./stack-apply-engine.ts";
-import { setComposeRunnerOverrides } from "./compose-runner.ts";
+import { createMockRunner } from "./compose-runner.ts";
 
 function createManager(dir: string) {
   return new StackManager({
@@ -95,26 +95,21 @@ describe("applyStack failure injection", () => {
     const originalCompose = readFileSync(join(dir, "docker-compose.yml"), "utf8");
     const originalCaddy = readFileSync(join(dir, "caddy.json"), "utf8");
 
-    setComposeRunnerOverrides({
-      composeConfigValidate: async () => ({ ok: true, stdout: "", stderr: "" }),
-      composeConfigValidateForFile: async (file) => {
+    const runner = createMockRunner({
+      configValidateForFile: async (file) => {
         if (file.endsWith(".next")) {
           return { ok: false, stdout: "", stderr: "invalid yaml" };
         }
         return { ok: true, stdout: "", stderr: "" };
       },
-      composeAction: async () => ({ ok: true, stdout: "", stderr: "" }),
-      composeExec: async () => ({ ok: true, stdout: "", stderr: "" }),
     });
 
-    await expect(applyStack(manager, { apply: true })).rejects.toThrow("compose_validation_failed");
+    await expect(applyStack(manager, { apply: true, runner })).rejects.toThrow("compose_validation_failed");
 
     expect(readFileSync(join(dir, "docker-compose.yml"), "utf8")).toBe(originalCompose);
     const originalCaddyConfig = JSON.parse(originalCaddy) as { admin?: { disabled?: boolean } };
     const nextCaddyConfig = JSON.parse(readFileSync(join(dir, "caddy.json"), "utf8")) as { admin?: { disabled?: boolean } };
     expect(nextCaddyConfig.admin?.disabled).toBe(originalCaddyConfig.admin?.disabled ?? true);
-
-    setComposeRunnerOverrides({});
   });
 
   it("throws when compose up fails", async () => {
@@ -122,15 +117,11 @@ describe("applyStack failure injection", () => {
     const manager = createManager(dir);
     manager.renderArtifacts();
 
-    setComposeRunnerOverrides({
-      composeConfigValidate: async () => ({ ok: true, stdout: "", stderr: "" }),
-      composeConfigValidateForFile: async () => ({ ok: true, stdout: "", stderr: "" }),
-      composeAction: async () => ({ ok: false, stdout: "", stderr: "boom" }),
-      composeExec: async () => ({ ok: true, stdout: "", stderr: "" }),
+    const runner = createMockRunner({
+      configValidateForFile: async () => ({ ok: true, stdout: "", stderr: "" }),
+      action: async () => ({ ok: false, stdout: "", stderr: "boom" }),
     });
 
-    await expect(applyStack(manager, { apply: true })).rejects.toThrow("compose_up_failed");
-
-    setComposeRunnerOverrides({});
+    await expect(applyStack(manager, { apply: true, runner })).rejects.toThrow("compose_up_failed");
   });
 });
