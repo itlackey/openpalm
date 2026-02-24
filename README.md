@@ -35,12 +35,12 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 
 **Mac or Linux** — open Terminal and paste:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 ```
 
 **Windows** — open PowerShell and paste:
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 <details>
@@ -90,6 +90,10 @@ Everything is password-protected. The admin panel is only accessible from your l
 OpenPalm supports all OpenCode extension types: plugins, agents, commands, skills, tools, and providers. Extensions add new abilities to your assistant — behavioral skills, slash commands, specialized agents, custom tools, and lifecycle plugins.
 
 The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools can be managed manually in the OpenCode config directory by advanced users.
+
+### Services
+
+Services are internal add-on containers that run on the private container network and are accessible only to the assistant and admin — never from the internet or your local network. Use them to add backend capabilities your assistant can call as a tool: search APIs, code execution sandboxes, custom databases, and so on. See [Admin Concepts](core/admin/docs/admin-concepts.md#services) for details.
 
 ### Automations
 

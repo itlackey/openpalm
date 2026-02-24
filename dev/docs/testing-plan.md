@@ -62,8 +62,6 @@ If your change is scoped, run targeted suites too (workspace or file-level).
 
 ## Environment flags used by tests
 - `OPENPALM_TEST_MODE=1` — disables compose/apply side effects in UI routes.
-- `OPENPALM_PREFLIGHT_SKIP_DOCKER_CHECKS=1` — bypasses docker socket preflight in hermetic tests.
-- `OPENPALM_PREFLIGHT_SKIP_PORT_CHECKS=1` — bypasses port checks in hermetic tests.
 
 ## Optional but recommended for risky changes
 - `bun run dev:fresh` for end-to-end install + startup confidence.

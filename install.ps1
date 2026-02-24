@@ -5,7 +5,7 @@
 # All installer logic lives in the CLI itself.
 #
 # Usage:
-#   pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+#   pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 
 param(
   [ValidateSet("docker", "podman", "orbstack")]
@@ -19,7 +19,7 @@ $ErrorActionPreference = "Stop"
 if (-not $IsWindows) {
   Write-Host "This installer is for Windows PowerShell."
   Write-Host "On Linux/macOS, run the shell installer instead:"
-  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash"
+  Write-Host "  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash"
   exit 1
 }
 

@@ -78,8 +78,9 @@ describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
           accessScope: "host",
           serviceInstances: { openmemory: "", psql: "", qdrant: "" },
           smallModel: { endpoint: "", modelId: "" },
+          profile: { name: "", email: "" },
           steps: {
-            welcome: true, accessScope: true, serviceInstances: true,
+            welcome: true, profile: true, accessScope: true, serviceInstances: true,
             healthCheck: true, security: true, channels: true, extensions: false,
           },
           enabledChannels: [],

@@ -96,7 +96,7 @@ describe("SetupManager.setAccessScope", () => {
   });
 });
 
-describe("normalizeState via getState (regression: scope handling)", () => {
+describe("getState validation (regression: scope handling)", () => {
   it('preserves "public" scope when read back from disk', () => {
     withTempDir((dir) => {
       const manager = new SetupManager(dir);
@@ -107,7 +107,7 @@ describe("normalizeState via getState (regression: scope handling)", () => {
     });
   });
 
-  it('defaults an invalid scope value to "host"', () => {
+  it('defaults to "host" when state has an invalid scope value', () => {
     withTempDir((dir) => {
       const manager = new SetupManager(dir);
       // Write a state file with a scope value that is not in the allowed set
@@ -121,7 +121,7 @@ describe("normalizeState via getState (regression: scope handling)", () => {
     });
   });
 
-  it('defaults a missing scope to "host"', () => {
+  it('defaults to "host" when state is missing required fields', () => {
     withTempDir((dir) => {
       const manager = new SetupManager(dir);
       writeFileSync(
@@ -130,6 +130,33 @@ describe("normalizeState via getState (regression: scope handling)", () => {
         "utf8"
       );
       const state = manager.getState();
+      expect(state.accessScope).toBe("host");
+    });
+  });
+});
+
+describe("getState validation (corrupt file handling)", () => {
+  it("returns default state when file contains invalid JSON", () => {
+    withTempDir((dir) => {
+      writeFileSync(join(dir, "setup-state.json"), "not valid json{{{", "utf8");
+      const manager = new SetupManager(dir);
+      const state = manager.getState();
+      expect(state.completed).toBe(false);
+      expect(state.accessScope).toBe("host");
+      expect(state.enabledChannels).toEqual([]);
+    });
+  });
+
+  it("returns default state when file has wrong structure", () => {
+    withTempDir((dir) => {
+      writeFileSync(
+        join(dir, "setup-state.json"),
+        JSON.stringify({ completed: "yes", accessScope: 42 }),
+        "utf8"
+      );
+      const manager = new SetupManager(dir);
+      const state = manager.getState();
+      expect(state.completed).toBe(false);
       expect(state.accessScope).toBe("host");
     });
   });

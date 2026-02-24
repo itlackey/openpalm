@@ -8,12 +8,12 @@ Pick whichever method suits your system:
 
 **Bash** (Linux / macOS):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 ```
 
 **PowerShell** (Windows):
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
 **npx** / **bunx**:
@@ -23,7 +23,7 @@ npx openpalm install
 bunx openpalm install
 ```
 
-The installer detects your container runtime (Docker, Podman, or OrbStack), generates secure credentials, starts all services, and opens a setup wizard. No config files to edit. See the [CLI documentation](../../docs/cli.md) for all commands.
+The installer detects your container runtime (Docker, Podman, or OrbStack), generates secure credentials, starts all services, and opens a setup wizard. No config files to edit. See the [CLI documentation](../../../docs/cli.md) for all commands.
 
 For implementation details of the installer flow and directory layout, see the [Admin Service README](../README.md).
 
@@ -66,11 +66,11 @@ Channels send HMAC-signed payloads through the Gateway. The Gateway verifies sig
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/uninstall.sh | bash
 ```
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
 ```
 
 Use `--remove-all` to delete all config/state/data directories and `--remove-images` to remove container images.

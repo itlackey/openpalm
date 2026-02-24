@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { generateStackArtifacts, validateGeneratedCompose } from "./stack-generator.ts";
+import { generateStackArtifacts } from "./stack-generator.ts";
 import { createDefaultStackSpec } from "./stack-spec.ts";
 
 describe("stack generator", () => {
@@ -384,12 +384,6 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("curl -sf http://localhost:8765/ || exit 1");
     expect(out.composeFile).toContain("curl -sf http://localhost:6333/readyz || exit 1");
     expect(out.composeFile).toContain("pg_isready -U ${POSTGRES_USER:-openpalm}");
-  });
-
-  it("validates compose guardrails", () => {
-    const spec = createDefaultStackSpec();
-    const errors = validateGeneratedCompose(spec, {});
-    expect(errors.length).toBe(0);
   });
 
   // --- Multi-channel artifact generation with unique requirements ---

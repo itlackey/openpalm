@@ -264,11 +264,6 @@ export async function install(options: InstallOptions): Promise<void> {
   }, null, 2) + "\n";
   const caddyJsonPath = join(xdg.state, "caddy.json");
   await writeFile(caddyJsonPath, minimalCaddyJson, "utf8");
-  const fallbackCaddyJsonPath = join(xdg.state, "caddy-fallback.json");
-  const fallbackCaddyJsonExists = await Bun.file(fallbackCaddyJsonPath).exists();
-  if (!fallbackCaddyJsonExists) {
-    await writeFile(fallbackCaddyJsonPath, minimalCaddyJson, "utf8");
-  }
 
   // ============================================================================
   // Phase 2: Early UI access
@@ -326,12 +321,6 @@ networks:
   assistant_net:
 `;
   await writeFile(stateComposeFile, minimalCompose, "utf8");
-
-  const fallbackComposePath = join(xdg.state, "docker-compose-fallback.yml");
-  const fallbackComposeExists = await Bun.file(fallbackComposePath).exists();
-  if (!fallbackComposeExists) {
-    await writeFile(fallbackComposePath, minimalCompose, "utf8");
-  }
 
   const composeConfig: ComposeConfig = {
     bin,

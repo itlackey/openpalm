@@ -42,8 +42,8 @@ scheduling, automation history, runtime environment management, JSONC parsing,
 extension management, and JSON schema validation.
 
 **Files**: `automations.ts`, `automation-history.ts`, `compose-runner.ts`,
-`cron.ts`, `extensions.ts`, `impact-plan.ts`, `jsonc.ts`, `runtime-env.ts`,
-`schema-validation.ts`, `setup-manager.ts`, `stack-apply-engine.ts`,
+`cron.ts`, `extensions.ts`, `jsonc.ts`, `runtime-env.ts`,
+`setup-manager.ts`, `stack-apply-engine.ts`,
 `stack-generator.ts`, `stack-manager.ts`, `stack-spec.ts`
 
 ## Import Paths

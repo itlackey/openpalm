@@ -180,12 +180,8 @@
 		const r = await api('/stack/apply', { method: 'POST' });
 		if (r.ok) {
 			showToast('Stack applied successfully.', 'success');
-			const impact = r.data?.impact || {};
-			const parts: string[] = [];
-			if (impact.restart?.length) parts.push('Restarted: ' + impact.restart.join(', '));
-			if (impact.reload?.length) parts.push('Reloaded: ' + impact.reload.join(', '));
-			if (impact.up?.length) parts.push('Started: ' + impact.up.join(', '));
-			statusMsg = parts.length ? parts.join('. ') : 'Applied (no changes detected).';
+			const caddyReloaded = r.data?.caddyReloaded ?? false;
+			statusMsg = caddyReloaded ? 'Applied. Caddy config reloaded.' : 'Applied successfully.';
 		} else {
 			showToast(
 				'Apply failed: ' + (r.data?.error || r.data?.details || 'unknown'),

@@ -46,8 +46,6 @@ describe("stack manager", () => {
     expect(readFileSync(join(dir, "gateway", ".env"), "utf8")).not.toContain("CHANNEL_CHAT_SECRET=abc12345678901234567890123456789");
     expect(readFileSync(join(dir, "channel-chat", ".env"), "utf8")).toContain("CHAT_INBOUND_TOKEN=abc");
     expect(readFileSync(join(dir, "channel-discord", ".env"), "utf8")).toContain("# Generated channel env (discord)");
-    expect(existsSync(join(dir, "docker-compose-fallback.yml"))).toBeTrue();
-    expect(existsSync(join(dir, "caddy-fallback.json"))).toBeTrue();
   });
 
   it("creates all required directories from scratch when they do not pre-exist", () => {

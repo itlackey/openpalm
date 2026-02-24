@@ -2,7 +2,7 @@
 
 Backup, restore, upgrade, and rollback procedures for OpenPalm.
 
-> The `admin` container also runs automatic maintenance jobs (image pulls, health checks, database maintenance, log rotation). See [Admin Service README](../README.md#system-maintenance-cron-jobs) for details.
+> The `admin` container also runs automatic maintenance jobs (image pulls, health checks, database maintenance, log rotation). See [Admin Service README](../core/admin/README.md#system-maintenance-cron-jobs) for details.
 
 ---
 
@@ -149,17 +149,17 @@ If something goes wrong after an upgrade:
 
 ### Automatic updates
 
-The `admin` container includes a system cron job that periodically pulls image updates and restarts services. Check `~/.local/state/openpalm/observability/maintenance/` for update logs. See [Admin Service README](../README.md#system-maintenance-cron-jobs) for the full cron schedule.
+The `admin` container includes a system cron job that periodically pulls image updates and restarts services. Check `~/.local/state/openpalm/observability/maintenance/` for update logs. See [Admin Service README](../core/admin/README.md#system-maintenance-cron-jobs) for the full cron schedule.
 
 
 ## Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/uninstall.sh | bash
 ```
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/packages/cli/scripts/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
+pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/uninstall.ps1 -OutFile $env:TEMP/openpalm-uninstall.ps1; & $env:TEMP/openpalm-uninstall.ps1"
 ```
 
 Use `--remove-all` to delete all config/state/data directories and `--remove-images` to remove container images.

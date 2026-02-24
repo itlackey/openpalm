@@ -54,10 +54,6 @@ export async function getStackManager(): Promise<StackManager> {
 			assistantEnvPath: env.ASSISTANT_ENV_PATH ?? `${STATE_ROOT}/assistant/.env`,
 			dataEnvPath: env.DATA_ENV_PATH ?? `${DATA_ROOT}/.env`,
 			composeFilePath: COMPOSE_FILE_PATH,
-			fallbackComposeFilePath:
-				env.FALLBACK_COMPOSE_FILE_PATH ?? `${STATE_ROOT}/docker-compose-fallback.yml`,
-			fallbackCaddyJsonPath:
-				env.FALLBACK_CADDY_JSON_PATH ?? `${STATE_ROOT}/caddy-fallback.json`
 		});
 	}
 	return _stackManager;

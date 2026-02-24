@@ -39,8 +39,5 @@ fi
 # ── Start cron daemon (runs as root, reads user crontabs) ─────────────────────
 cron
 
-# ── Fallback bundle self-test (non-blocking) ─────────────────────────────────
-node /app/packages/ui/build/scripts/self-test-fallback.js || echo "Fallback bundle self-test failed"
-
 # ── Drop to non-root and start the admin server ──────────────────────────────
 exec gosu openpalm node /app/packages/ui/build/index.js

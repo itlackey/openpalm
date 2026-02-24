@@ -1,6 +1,6 @@
 # OpenPalm User Guide — Core Concepts
 
-OpenPalm is built around five ideas: Extensions, Secrets, Channels, Automations, and the Gateway. This guide explains what each one does and how you interact with it.
+OpenPalm is built around six ideas: Extensions, Secrets, Channels, Services, Automations, and the Gateway. This guide explains what each one does and how you interact with it.
 
 ---
 
@@ -61,6 +61,16 @@ Every message sent through a channel passes through the **Gateway** (see below) 
 - Messages are authenticated and rate-limited automatically
 - Malformed, unsafe, or abusive messages are filtered before the assistant sees them
 - You can safely enable public access on a channel without exposing the assistant to raw, unfiltered input
+
+---
+
+## Services
+
+Services are add-on containers that extend what your assistant can do internally. Unlike channels, services are not exposed to the internet or your local network — they run inside the private container network and are only reachable by the assistant and admin.
+
+A service might add a search backend, a code execution sandbox, a custom database, or any other internal capability your assistant can call as a tool.
+
+Services have no access control setting. They are always private by design.
 
 ---
 
@@ -126,6 +136,8 @@ The Gateway is what makes it safe to expose channels to the internet, install co
        |
        +---> Secrets ----------> Provide credentials for services
        |
+       +---> Services ---------> Internal-only backend containers
+       |
        +---> Automations -----> Schedule recurring tasks
        |
        |  Talk to the assistant via:
@@ -136,11 +148,12 @@ The Gateway is what makes it safe to expose channels to the internet, install co
               Gateway  (security + filtering)
                   |
                   v
-            AI Assistant
+            AI Assistant <---> Services (internal network only)
 ```
 
 - **Extensions** add capabilities to the assistant.
 - **Secrets** provide the credentials that extensions and the assistant need to reach external services.
+- **Services** are internal containers the assistant can reach directly — never exposed externally.
 - **Channels** let you and others talk to the assistant from different platforms. Every channel message passes through the **Gateway** for security.
 - **Automations** let the assistant act on a schedule without anyone sending a message.
 - The **Gateway** protects the assistant behind every channel, ensuring all messages are authenticated, rate-limited, and screened.
