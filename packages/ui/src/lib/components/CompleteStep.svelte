@@ -35,7 +35,7 @@
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
 		timedOut = true;
-		statusText = 'Some services are still starting. You can continue anyway.';
+		statusText = 'Some services are still starting.';
 	}
 
 	onMount(() => {
