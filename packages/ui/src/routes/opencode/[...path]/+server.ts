@@ -24,7 +24,7 @@ const handler: RequestHandler = async ({ params, url, request, locals }) => {
 			method: request.method,
 			headers: buildSafeHeaders(request.headers),
 			body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
-			signal: AbortSignal.timeout(5000),
+			signal: AbortSignal.timeout(300_000), // 5 minutes for AI responses
 			// @ts-expect-error duplex needed for streaming body
 			duplex: 'half'
 		});
