@@ -17,6 +17,10 @@
       "name": "@openpalm/channel-discord",
       "version": "0.3.0",
     },
+    "channels/api": {
+      "name": "@openpalm/channel-api",
+      "version": "0.3.2",
+    },
     "channels/telegram": {
       "name": "@openpalm/channel-telegram",
       "version": "0.3.0",

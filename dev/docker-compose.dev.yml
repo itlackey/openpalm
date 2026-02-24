@@ -53,3 +53,8 @@ services:
     build:
       context: .
       dockerfile: channels/telegram/Dockerfile
+
+  channel-api:
+    build:
+      context: .
+      dockerfile: channels/api/Dockerfile
