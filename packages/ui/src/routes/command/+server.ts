@@ -281,9 +281,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 		if (type === 'setup.complete') {
 			const applyResult = await applyStack(stackManager);
-			syncAutomations(stackManager.listAutomations());
 			const startupResult = await composeAction('up', [...SetupCoreServices]);
 			if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
+			syncAutomations(stackManager.listAutomations());
 			return json(200, { ok: true, data: setupManager.completeSetup(), apply: applyResult });
 		}
 		if (type === 'channel.configure') {
