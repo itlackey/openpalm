@@ -60,7 +60,7 @@
 		return (
 			upper.includes('SECRET') ||
 			upper.includes('TOKEN') ||
-			upper.includes('KEY') ||
+			upper.endsWith('_KEY') ||
 			upper.includes('PASSWORD')
 		);
 	}
@@ -73,7 +73,11 @@
 
 	function applySecretRef(fieldKey: string, secretName: string) {
 		if (!secretName) return;
-		configDraft = { ...configDraft, [fieldKey]: `\${${secretName}}` };
+		configDraft = { ...configDraft, [fieldKey]: buildSecretReference(secretName) };
+	}
+
+	function buildSecretReference(secretName: string): string {
+		return `\${${secretName}}`;
 	}
 
 	async function loadState() {

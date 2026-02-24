@@ -269,7 +269,7 @@ export class StackManager {
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
     this.renderArtifacts();
     const updated = this.listStackCatalogItems().find((item) => item.type === type && item.name === name);
-    if (!updated) throw new Error("catalog_item_not_found_after_update");
+    if (!updated) throw new Error(`catalog_item_not_found_after_mutation_${type}_${name}`);
     return updated;
   }
 
