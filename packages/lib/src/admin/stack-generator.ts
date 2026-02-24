@@ -303,7 +303,7 @@ function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
 
   const servers: Record<string, CaddyServer> = {
     main: {
-      listen: [":80"],
+      listen: [`:${spec.ingressPort ?? 80}`],
       routes: mainRoutes,
     },
   };

@@ -286,74 +286,74 @@
       "severity": "medium",
       "priority": "nice-to-have",
       "effort": "M",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-04-port-80-conflict.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-4.1",
           "description": "Elevate port 80 warning to fatal error (when no --port flag)",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "42-64" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "84-92" }
           ]
         },
         {
           "id": "ISSUE-4.2",
           "description": "Add --port flag to CLI install command and InstallOptions type",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "15" },
-            { "path": "packages/cli/src/types.ts", "lines": "" }
+            { "path": "packages/cli/src/main.ts", "lines": "50, 95, 131-136" },
+            { "path": "packages/cli/src/types.ts", "lines": "9" }
           ]
         },
         {
           "id": "ISSUE-4.3",
           "description": "Thread port to OPENPALM_INGRESS_PORT env var",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "183-199" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "59, 224" }
           ]
         },
         {
           "id": "ISSUE-4.4",
           "description": "Update minimal Caddy JSON listen directive to use configurable port",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "228-266" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "261" }
           ]
         },
         {
           "id": "ISSUE-4.5",
           "description": "Update minimal compose port binding to use OPENPALM_INGRESS_PORT",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "281" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "307" }
           ]
         },
         {
           "id": "ISSUE-4.6",
           "description": "Parameterize stack generator Caddy listen directive from spec.ingressPort",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/lib/src/admin/stack-generator.ts", "lines": "~290" },
-            { "path": "packages/lib/src/admin/stack-spec.ts", "lines": "" }
+            { "path": "packages/lib/src/admin/stack-generator.ts", "lines": "306" },
+            { "path": "packages/lib/src/admin/stack-spec.ts", "lines": "64, 374, 382-390" }
           ]
         },
         {
           "id": "ISSUE-4.7",
           "description": "Update health check URL in install.ts to use configured port",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "358-359" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "388-390" }
           ]
         },
         {
           "id": "ISSUE-4.8",
           "description": "Parameterize preflight port check function",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/lib/src/preflight.ts", "lines": "46-82" }
+            { "path": "packages/lib/src/preflight.ts", "lines": "46, 87-89, 126-130" }
           ]
         }
       ]
@@ -408,14 +408,14 @@
       "severity": "medium",
       "priority": "nice-to-have",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-10-complete-step-timeout.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-10.1",
           "description": "Add serviceStatus reactive state to CompleteStep.svelte",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "13" }
           ]
@@ -423,7 +423,7 @@
         {
           "id": "ISSUE-10.2",
           "description": "Track per-service health status during polling loop",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "18-26" }
           ]
@@ -431,7 +431,7 @@
         {
           "id": "ISSUE-10.3",
           "description": "Display per-service status on timeout (red/green indicators)",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "45-47" }
           ]
@@ -439,7 +439,7 @@
         {
           "id": "ISSUE-10.4",
           "description": "(Optional) Show live service status during polling",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/ui/src/lib/components/CompleteStep.svelte", "lines": "42" }
           ]
@@ -452,38 +452,38 @@
       "severity": "medium",
       "priority": "nice-to-have",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-11-admin-ui-caddy-fails.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-11.1",
           "description": "Add 127.0.0.1:8100:8100 port mapping to admin in minimal compose",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "290-311" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "319-320" }
           ]
         },
         {
           "id": "ISSUE-11.2",
           "description": "Add direct admin port fallback in health check polling loop",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "358-378" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "406-416" }
           ]
         },
         {
           "id": "ISSUE-11.3",
           "description": "Update failure message to include direct admin URL",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "428-446" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "453, 487-488" }
           ]
         },
         {
           "id": "ISSUE-11.4",
           "description": "Add admin port mapping to full stack compose template",
-          "status": "pending",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "138-165" }
           ]
@@ -532,28 +532,28 @@
       "severity": "medium",
       "priority": "nice-to-have",
       "effort": "S",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-15-openmemory-version-pin.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-15.1",
           "description": "Determine current tested versions from Docker Hub tags",
-          "status": "pending",
+          "status": "completed",
           "files": []
         },
         {
           "id": "ISSUE-15.2",
-          "description": "Pin openmemory-mcp image to specific version tag",
-          "status": "pending",
+          "description": "Pin openmemory-mcp image to specific version tag (by digest)",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "48-49" }
           ]
         },
         {
           "id": "ISSUE-15.3",
-          "description": "Pin openmemory-ui image to specific version tag",
-          "status": "pending",
+          "description": "Pin openmemory-ui image to specific version tag (by digest)",
+          "status": "completed",
           "files": [
             { "path": "packages/lib/src/embedded/state/docker-compose.yml", "lines": "69-71" }
           ]
@@ -561,8 +561,10 @@
         {
           "id": "ISSUE-15.4",
           "description": "Search codebase for other references to unpinned openmemory tags",
-          "status": "pending",
-          "files": []
+          "status": "completed",
+          "files": [
+            { "path": "packages/lib/src/admin/core-services.ts", "lines": "66, 87" }
+          ]
         }
       ]
     },
@@ -572,16 +574,16 @@
       "severity": "low",
       "priority": "post-v1",
       "effort": "XS",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-05-npx-bunx-install.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-5.1",
           "description": "Remove npx/bunx details block from README.md",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "README.md", "lines": "46-55" }
+            { "path": "README.md", "lines": "46" }
           ]
         }
       ]
@@ -592,16 +594,16 @@
       "severity": "low",
       "priority": "post-v1",
       "effort": "XS",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-12-unused-channel-net.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-12.1",
           "description": "Remove channel_net from minimal compose networks block",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "319-321" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "347-348" }
           ]
         }
       ]
@@ -612,40 +614,40 @@
       "severity": "low",
       "priority": "post-v1",
       "effort": "M",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-16-install-telemetry.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-16.1",
           "description": "Add reportIssueUrl() helper function to install.ts",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "~14" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "15-26" }
           ]
         },
         {
           "id": "ISSUE-16.2",
           "description": "Add report link to image pull failure output",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "339-351" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "377-378" }
           ]
         },
         {
           "id": "ISSUE-16.3",
           "description": "Add report link to health check timeout failure output",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "428-446" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "490-491" }
           ]
         },
         {
           "id": "ISSUE-16.4",
           "description": "Add report link to runtime detection failure output",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/cli/src/commands/install.ts", "lines": "34-37" }
+            { "path": "packages/cli/src/commands/install.ts", "lines": "49-51" }
           ]
         },
         {
@@ -662,16 +664,16 @@
       "severity": "low",
       "priority": "post-v1",
       "effort": "M",
-      "status": "pending",
+      "status": "completed",
       "plan": ".plans/ISSUE-17-uninstall-from-ui.md",
       "dependencies": [],
       "subtasks": [
         {
           "id": "ISSUE-17.1",
           "description": "Add uninstall documentation link to QuickLinks.svelte",
-          "status": "pending",
+          "status": "completed",
           "files": [
-            { "path": "packages/ui/src/lib/components/QuickLinks.svelte", "lines": "25" }
+            { "path": "packages/ui/src/lib/components/QuickLinks.svelte", "lines": "25-31" }
           ]
         },
         {

@@ -46,6 +46,9 @@ export async function install(options: InstallOptions): Promise<void> {
   const platform = options.runtime ?? await detectRuntime(os);
   if (!platform) {
     error(noRuntimeGuidance(os));
+    info("");
+    info("  If this keeps happening, report the issue:");
+    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: "none", error: "No container runtime found" }))}`);
     process.exit(1);
   }
 
@@ -370,6 +373,9 @@ networks:
     info("  Or manually pull and then start:");
     info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} pull`)}`);
     info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} up -d`)}`);
+    info("");
+    info("  If this keeps happening, report the issue:");
+    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: String(pullErr) }))}`);
     log("");
     process.exit(1);
   }
@@ -480,6 +486,9 @@ networks:
     log("");
     info("  5. If the browser doesn't open, try the direct admin URL:");
     info(`     ${cyan("http://localhost:8100")}`);
+    log("");
+    info("  6. Still stuck? Report the issue:");
+    info(`     ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: "Health check timeout after 3 minutes" }))}`);
   }
 
   log("");

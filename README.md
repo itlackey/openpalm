@@ -43,17 +43,6 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh |
 pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
 ```
 
-<details>
-<summary>Alternative: install via npx or bunx</summary>
-
-If you already have Node.js or Bun installed:
-```bash
-npx openpalm install
-# or
-bunx openpalm install
-```
-</details>
-
 ### What happens when you run the installer
 
 1. It checks your system and downloads the OpenPalm services

@@ -31,18 +31,6 @@ pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itl
 
 This downloads the `openpalm` CLI binary to `%LOCALAPPDATA%\OpenPalm\` (automatically added to PATH) and runs `openpalm install`.
 
-### 3. npx (Node.js)
-
-```bash
-npx openpalm install
-```
-
-### 4. bunx (Bun)
-
-```bash
-bunx openpalm install
-```
-
 ## Commands
 
 ### `install`

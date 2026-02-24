@@ -12,7 +12,7 @@ describe("install methods verification", () => {
   const installPs1 = readFileSync(join(ROOT, "install.ps1"), "utf-8");
   const pkgJson = JSON.parse(readFileSync(join(ROOT, "packages/cli/package.json"), "utf-8"));
 
-  describe("README documents all 4 install methods", () => {
+  describe("README documents install methods", () => {
     // Verify each method is shown
     it("documents bash install method", () => {
       expect(readme).toContain("curl -fsSL");
@@ -25,16 +25,14 @@ describe("install methods verification", () => {
       expect(readme).toContain("install.ps1");
     });
 
-    it("documents npx install method", () => {
-      expect(readme).toContain("npx openpalm install");
-    });
-
-    it("documents bunx install method", () => {
-      expect(readme).toContain("bunx openpalm install");
+    // npx/bunx removed from README per ISSUE-5 — untested path for v1
+    it("does not document npx/bunx as install method", () => {
+      expect(readme).not.toContain("npx openpalm install");
+      expect(readme).not.toContain("bunx openpalm install");
     });
   });
 
-  describe("CLI docs documents all 4 install methods", () => {
+  describe("CLI docs documents install methods", () => {
     it("documents bash install method", () => {
       expect(cliDocs).toContain("curl -fsSL");
       expect(cliDocs).toContain("install.sh");
@@ -45,12 +43,10 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("install.ps1");
     });
 
-    it("documents npx install method", () => {
-      expect(cliDocs).toContain("npx openpalm install");
-    });
-
-    it("documents bunx install method", () => {
-      expect(cliDocs).toContain("bunx openpalm install");
+    // npx/bunx removed from docs per ISSUE-5 — untested path for v1
+    it("does not document npx/bunx as install method", () => {
+      expect(cliDocs).not.toContain("npx openpalm install");
+      expect(cliDocs).not.toContain("bunx openpalm install");
     });
   });
 
