@@ -40,7 +40,7 @@
     "test:compose": "bun test --filter compose",
     "test:compose:ui": "bun test --filter e2e-ui.compose",
     "test:ci": "bun run typecheck && bun test",
-    "test:docker": "bun test test/docker/docker-stack.test.ts",
+    "test:docker": "OPENPALM_RUN_DOCKER_STACK_TESTS=1 bun test ./test/docker/docker-stack.docker.ts",
     "cli:dev": "bun run packages/cli/src/main.ts",
     "cli:build": "bun build packages/cli/src/main.ts --compile --outfile dist/openpalm",
     "cli:build:linux-x64": "bun build packages/cli/src/main.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-linux-x64",

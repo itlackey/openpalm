@@ -213,13 +213,12 @@ And in CI, report skipped test suites as a visible warning:
 #### 1b. Separate test jobs by environment requirements
 
 ```yaml
-unit:        # No external deps, fast
-integration: # Needs running stack
-docker:      # Needs Docker daemon
-ui:          # Needs Playwright + running stack
+unit:        # No external deps, fast (bun run test:ci)
+ui:          # Bun-based Playwright tests (bun run test:ui)
+docker:      # Docker daemon + image builds (bun run test:docker)
 ```
 
-Each job should only contain tests that can actually run in its environment. Don't rely on `skipIf` -- explicitly assign tests to jobs.
+Each job should only contain tests that can actually run in its environment. UI tests should be hermetic and not depend on Docker. Docker tests should live in `test/docker/*.docker.ts` so `bun test` stays hermetic by default.
 
 #### 1c. Fix test isolation
 

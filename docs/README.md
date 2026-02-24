@@ -37,6 +37,7 @@ Guides for building features, writing extensions, and integrating with APIs:
 | [Architecture](../dev/docs/architecture.md) | Container inventory, data flow, URL routing |
 | [API Reference](../dev/docs/api-reference.md) | All service endpoints: gateway, admin, channels |
 | [Testing Plan](../dev/docs/testing-plan.md) | Test strategy and coverage goals |
+| [CI Brittleness Report](../dev/docs/ci-brittleness-report.md) | CI risks, mitigation, and test tiering |
 | [Contributor Checklist](../dev/docs/contributor-checklist.md) | Architecture-safe change checklist |
 
 ## Project READMEs
@@ -53,4 +54,3 @@ Each service and channel has a README with implementation details co-located wit
 | Voice channel | [channels/voice/README.md](../channels/voice/README.md) |
 | Telegram channel | [channels/telegram/README.md](../channels/telegram/README.md) |
 | Webhook channel | [channels/webhook/README.md](../channels/webhook/README.md) |
-

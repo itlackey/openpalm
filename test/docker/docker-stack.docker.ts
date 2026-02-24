@@ -6,7 +6,7 @@
  * health endpoints, auth, YAML-dependent features, and API contracts.
  *
  * Run:
- *   bun test test/docker/docker-stack.test.ts
+ *   bun run test:docker
  *
  * Requirements:
  *   - Docker daemon running

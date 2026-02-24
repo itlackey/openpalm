@@ -17,10 +17,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - name: Typecheck
-        run: bun run typecheck
       - name: Unit tests
-        run: bun test 2>&1 | tee test-output.log
+        run: bun run test:ci 2>&1 | tee test-output.log
       - name: Report skipped tests
         if: always()
         run: |
