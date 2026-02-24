@@ -190,7 +190,7 @@ export class StackManager {
     const installedTemplates = new Set<string>();
     for (const [name, channel] of Object.entries(spec.channels)) {
       const templateName = channel.template ?? (isBuiltInChannel(name) ? name : name);
-      installedTemplates.add(`channel:${templateName}`);
+      if (channel.enabled) installedTemplates.add(`channel:${templateName}`);
       const builtIn = BUILTIN_CHANNELS[templateName];
       const envDefs: EnvVarDef[] = builtIn
         ? builtIn.env
@@ -219,7 +219,7 @@ export class StackManager {
     }
     for (const [name, service] of Object.entries(spec.services)) {
       const templateName = service.template ?? name;
-      installedTemplates.add(`service:${templateName}`);
+      if (service.enabled) installedTemplates.add(`service:${templateName}`);
       items.push({
         id: `installed:service:${name}`,
         type: "service",

@@ -62,6 +62,28 @@
 			return haystack.includes(q);
 		});
 	});
+	const enabledInstalledItems = $derived.by(() =>
+		filteredCatalog.filter((item) => item.entryKind === 'installed' && item.enabled)
+	);
+	const activeSingleInstanceTemplateKeys = $derived.by(() => {
+		const keys = new Set<string>();
+		for (const item of enabledInstalledItems) {
+			const templateName = item.templateName ?? item.name;
+			if (!templateName) continue;
+			if (item.supportsMultipleInstances === true) continue;
+			keys.add(`${item.type}:${templateName}`);
+		}
+		return keys;
+	});
+	const searchInstallItems = $derived.by(() =>
+		filteredCatalog.filter((item) => {
+			if (item.entryKind !== 'template') return false;
+			const templateName = item.templateName ?? item.name;
+			if (!templateName) return false;
+			if (item.supportsMultipleInstances === true) return true;
+			return !activeSingleInstanceTemplateKeys.has(`${item.type}:${templateName}`);
+		})
+	);
 
 	function itemKey(item: CatalogItem): string {
 		return item.id;
@@ -199,7 +221,14 @@
 			showToast(r.data?.error || `Failed to ${action} ${item.displayName}`, 'error');
 			return;
 		}
+		const addedInstanceId = typeof r.data?.data?.item?.id === 'string' ? r.data.data.item.id : null;
 		await refreshSharedState();
+		if (action === 'add_instance' && addedInstanceId) {
+			const installedInstance = catalog.find(
+				(entry) => entry.id === addedInstanceId && entry.entryKind === 'installed'
+			);
+			if (installedInstance) beginConfigure(installedInstance);
+		}
 		const actionLabelMap = {
 			install: 'installed',
 			uninstall: 'uninstalled',
@@ -285,8 +314,7 @@
 	</div>
 	{#if activeView === 'catalog'}
 		<p class="muted" style="font-size:13px">
-			Browse stack items, filter by type, search by name/description/tag, and install, uninstall, or
-			configure them in real time.
+			Manage enabled containers separately from search results for a simpler setup experience.
 		</p>
 		<div class="grid2" style="margin:0.5rem 0">
 			<input bind:value={search} placeholder="Search by name, description, or tag" />
@@ -296,11 +324,14 @@
 				<option value="service">Services</option>
 			</select>
 		</div>
-		{#if filteredCatalog.length === 0}
-			<div class="muted" style="font-size:13px">No channels or services matched your search.</div>
+		<h4 style="margin:0.25rem 0">Enabled Containers</h4>
+		{#if enabledInstalledItems.length === 0}
+			<div class="muted" style="font-size:13px">
+				No enabled containers match your filter. Add one from search results below.
+			</div>
 		{:else}
 			<div style="display:grid;gap:0.6rem">
-				{#each filteredCatalog as item}
+				{#each enabledInstalledItems as item}
 					{@const key = itemKey(item)}
 					<div class="channel-section {item.enabled ? 'enabled' : ''}">
 						<div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:flex-start">
@@ -312,36 +343,24 @@
 								<div class="muted" style="font-size:12px">Tags: {item.tags.join(', ')}</div>
 							</div>
 							<div style="display:flex;gap:0.35rem;flex-wrap:wrap">
-								{#if item.entryKind === 'template'}
-									<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'add_instance')}
-										>{item.supportsMultipleInstances ? 'Add instance' : 'Install'}</button
-									>
-								{:else}
-									{#if item.enabled}
-										<button
-											class="btn-secondary btn-sm"
-											disabled={busyItemKey === key}
-											onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
-										>
-									{:else}
-										<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'install')}
-											>Install</button
-										>
-									{/if}
-									{#if item.supportsMultipleInstances}
-										<button
-											class="btn-secondary btn-sm"
-											disabled={busyItemKey === key}
-											onclick={() => mutateItem(item, 'add_instance')}>Add instance</button
-										>
-									{/if}
-									<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}
-										>Configure</button
+								<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}
+									>Configure</button
+								>
+								<button
+									class="btn-secondary btn-sm"
+									disabled={busyItemKey === key}
+									onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
+								>
+								{#if item.supportsMultipleInstances}
+									<button
+										class="btn-secondary btn-sm"
+										disabled={busyItemKey === key}
+										onclick={() => mutateItem(item, 'add_instance')}>Add instance</button
 									>
 								{/if}
 							</div>
 						</div>
-						{#if item.entryKind === 'installed' && editingItemKey === key}
+						{#if editingItemKey === key}
 							<div style="margin-top:0.5rem">
 								{#if item.type === 'channel'}
 									<label style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
@@ -391,6 +410,34 @@
 								</div>
 							</div>
 						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+		<h4 style="margin:1rem 0 0.25rem">Search & Add Containers</h4>
+		{#if searchInstallItems.length === 0}
+			<div class="muted" style="font-size:13px">
+				No installable containers matched your search.
+			</div>
+		{:else}
+			<div style="display:grid;gap:0.6rem">
+				{#each searchInstallItems as item}
+					{@const key = itemKey(item)}
+					<div class="channel-section">
+						<div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:flex-start">
+							<div>
+								<div><strong>{item.displayName}</strong> <span class="muted">({item.type})</span></div>
+								{#if item.description}
+									<div class="muted" style="font-size:13px">{item.description}</div>
+								{/if}
+								<div class="muted" style="font-size:12px">Tags: {item.tags.join(', ')}</div>
+							</div>
+							<div style="display:flex;gap:0.35rem;flex-wrap:wrap">
+								<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'add_instance')}
+									>{item.supportsMultipleInstances ? 'Add instance' : 'Add'}</button
+								>
+							</div>
+						</div>
 					</div>
 				{/each}
 			</div>

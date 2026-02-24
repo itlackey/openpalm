@@ -689,4 +689,68 @@ describe("stack manager", () => {
     ).toThrow("multiple_instances_not_supported_for_service_template_SingleService");
   });
 
+  it("hides non-multi templates when a matching enabled instance is running", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-running-filter-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["single-service"] = {
+      enabled: true,
+      template: "SingleService",
+      supportsMultipleInstances: false,
+      image: "ghcr.io/example/single:latest",
+      containerPort: 9200,
+      config: {},
+    };
+    manager.setSpec(spec);
+
+    const items = manager.listStackCatalogItems([
+      {
+        kind: "service",
+        name: "SingleService",
+        description: "single instance template",
+        image: "ghcr.io/example/single:latest",
+        containerPort: 9200,
+        supportsMultipleInstances: false,
+        env: [],
+        trust: "community",
+        sourceId: "github:demo/single",
+        sourceName: "GitHub",
+      },
+    ]);
+
+    expect(items.some((item) => item.id === "template:service:SingleService")).toBe(false);
+  });
+
+  it("keeps non-multi templates visible when matching instance exists but is disabled", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-disabled-filter-"));
+    const manager = createManager(dir);
+    const spec = manager.getSpec();
+    spec.services["single-service"] = {
+      enabled: false,
+      template: "SingleService",
+      supportsMultipleInstances: false,
+      image: "ghcr.io/example/single:latest",
+      containerPort: 9200,
+      config: {},
+    };
+    manager.setSpec(spec);
+
+    const items = manager.listStackCatalogItems([
+      {
+        kind: "service",
+        name: "SingleService",
+        description: "single instance template",
+        image: "ghcr.io/example/single:latest",
+        containerPort: 9200,
+        supportsMultipleInstances: false,
+        env: [],
+        trust: "community",
+        sourceId: "github:demo/single",
+        sourceName: "GitHub",
+      },
+    ]);
+
+    expect(items.some((item) => item.id === "template:service:SingleService")).toBe(true);
+  });
+
 });
