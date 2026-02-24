@@ -63,6 +63,7 @@ The loop state is tracked in `.opencode/ralph-loop.local.md` (gitignored by conv
 ```yaml
 ---
 active: true
+session_id: null
 iteration: 1
 max_iterations: 20
 completion_promise: "COMPLETE"
@@ -71,6 +72,13 @@ started_at: "2026-01-01T00:00:00Z"
 
 Your task prompt goes here...
 ```
+
+## Session Scoping
+
+The plugin only acts on `session.idle` events from the session that started the loop.
+On the first iteration, `session_id` is `null` — the plugin claims the loop for whichever
+session triggers it first, writing the session ID into the state file. Subsequent idle events
+from other sessions are ignored. This prevents the loop from hijacking unrelated sessions.
 
 ## Completion Promises
 

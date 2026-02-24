@@ -6,6 +6,7 @@ const STATE_FILENAME = ".opencode/ralph-loop.local.md"
 
 type RalphState = {
   active: boolean
+  sessionId: string | null
   iteration: number
   maxIterations: number
   completionPromise: string | null
@@ -36,8 +37,15 @@ function parseStateFile(content: string): RalphState | null {
 
     if (isNaN(iteration) || isNaN(maxIterations)) return null
 
+    const rawSessionId = getField("session_id")
+    const sessionId =
+      rawSessionId === "null" || rawSessionId === null
+        ? null
+        : rawSessionId.replace(/^"(.*)"$/, "$1")
+
     return {
       active: getField("active") === "true",
+      sessionId,
       iteration,
       maxIterations,
       completionPromise,
@@ -52,6 +60,18 @@ function updateIteration(filePath: string, newIteration: number): void {
   const content = readFileSync(filePath, "utf-8")
   const updated = content.replace(/^iteration: .+$/m, `iteration: ${newIteration}`)
   writeFileSync(filePath, updated)
+}
+
+function claimSession(filePath: string, sessionId: string): void {
+  const content = readFileSync(filePath, "utf-8")
+  // Replace session_id: null with the actual session ID, or insert it after active: line
+  if (content.match(/^session_id: /m)) {
+    const updated = content.replace(/^session_id: .+$/m, `session_id: "${sessionId}"`)
+    writeFileSync(filePath, updated)
+  } else {
+    const updated = content.replace(/^(active: .+)$/m, `$1\nsession_id: "${sessionId}"`)
+    writeFileSync(filePath, updated)
+  }
 }
 
 function checkCompletionPromise(text: string, promise: string | null): boolean {
@@ -92,6 +112,15 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
         },
       })
       return
+    }
+
+    // Only act on the session that started the loop — ignore idle events from other sessions.
+    // If no session_id is recorded yet (first iteration), claim this loop for the current session.
+    if (state.sessionId && state.sessionId !== sessionId) {
+      return
+    }
+    if (!state.sessionId) {
+      claimSession(stateFilePath, sessionId)
     }
 
     // Check max iterations
