@@ -7,7 +7,7 @@ Run the following bash commands to set up the worktree and initialize the Ralph 
 ```
 WORKTREE=$(.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh "$ARGUMENTS")
 cd "$WORKTREE"
-.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh "implement-tasks in worktree $WORKTREE: $ARGUMENTS" --completion-promise "ALL TASKS COMPLETE"
+.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh "implement-tasks in worktree $WORKTREE: $ARGUMENTS VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE"
 ```
 
 **All implementation work must be performed inside `$WORKTREE`.** After the setup commands complete, `cd` into the worktree path printed by the setup script and do not leave it during the loop. The worktree path and branch name are also recorded in `.opencode/worktree.local.md` so you can re-read them on every iteration.
