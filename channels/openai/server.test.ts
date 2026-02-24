@@ -1,0 +1,70 @@
+import { describe, expect, it } from "bun:test";
+import { createOpenAIFetch, signPayload } from "./server.ts";
+
+describe("openai adapter", () => {
+  it("returns health and rejects unauthorized requests when api key is configured", async () => {
+    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "key-123", fetch);
+    const health = await fetchHandler(new Request("http://openai/health"));
+    expect(health.status).toBe(200);
+
+    const unauthorized = await fetchHandler(new Request("http://openai/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hello" }] }),
+    }));
+    expect(unauthorized.status).toBe(401);
+  });
+
+  it("normalizes chat payload and returns OpenAI chat-completion shape", async () => {
+    let url = "";
+    let signature = "";
+    let body = "";
+    const mockFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      url = String(input);
+      signature = String((init?.headers as Record<string, string>)["x-channel-signature"]);
+      body = String(init?.body);
+      return new Response(JSON.stringify({ answer: "hello back" }), { status: 200 });
+    };
+
+    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", mockFetch as typeof fetch);
+    const response = await fetchHandler(new Request("http://openai/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        user: "u1",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(url).toBe("http://gateway/channel/inbound");
+    const parsedForward = JSON.parse(body) as Record<string, unknown>;
+    expect(parsedForward.channel).toBe("openai");
+    expect(parsedForward.userId).toBe("u1");
+    expect(parsedForward.text).toBe("hello");
+    expect(signature).toBe(signPayload("secret", body));
+
+    const parsedResponse = await response.json() as Record<string, unknown>;
+    expect(parsedResponse.object).toBe("chat.completion");
+    const choices = parsedResponse.choices as Array<Record<string, unknown>>;
+    const choiceMessage = choices[0].message as Record<string, unknown>;
+    expect(choiceMessage.content).toBe("hello back");
+  });
+
+  it("normalizes completion payload and returns OpenAI completion shape", async () => {
+    const mockFetch = async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 });
+    const fetchHandler = createOpenAIFetch("http://gateway", "secret", "", mockFetch as typeof fetch);
+    const response = await fetchHandler(new Request("http://openai/v1/completions", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo-instruct",
+        prompt: "finish this",
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    const parsedResponse = await response.json() as Record<string, unknown>;
+    expect(parsedResponse.object).toBe("text_completion");
+    const choices = parsedResponse.choices as Array<Record<string, unknown>>;
+    expect(choices[0].text).toBe("done");
+  });
+});

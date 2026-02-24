@@ -10,6 +10,7 @@
     "channels/voice",
     "channels/telegram",
     "channels/webhook",
+    "channels/openai",
     "packages/lib",
     "packages/cli",
     "packages/ui"

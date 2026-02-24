@@ -59,6 +59,17 @@ Gateway rejects invalid payloads before assistant dispatch.
 - Normalize provider-specific updates into gateway contract payloads.
 - Return retry-safe status codes for webhook/platform delivery semantics.
 
+### OpenAI-compatible channel (`channel-openai`, `8186`)
+
+- `POST /v1/chat/completions`
+- `POST /v1/completions`
+- `GET /health`
+
+The adapter is a thin facade over the standard gateway flow:
+1. Accept OpenAI-style request shapes.
+2. Normalize prompt/message text into a signed `ChannelMessage` for `/channel/inbound`.
+3. Return OpenAI-style response JSON populated from gateway `answer`.
+
 ## Change management
 When changing admin or gateway contracts:
 1. Update this document.
