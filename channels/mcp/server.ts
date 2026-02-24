@@ -41,6 +41,7 @@ export function createFetch(
 
     const serialized = JSON.stringify(gatewayPayload);
     const sig = signPayload(sharedSecret, serialized);
+    const rpcId = (result.payload.metadata?.rpcId as string | number | null) ?? null;
 
     const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
       method: "POST",
@@ -52,7 +53,6 @@ export function createFetch(
     });
 
     if (!resp.ok) {
-      const rpcId = (result.payload.metadata?.rpcId as string | number | null) ?? null;
       return new Response(
         JSON.stringify({
           jsonrpc: "2.0",
@@ -72,7 +72,6 @@ export function createFetch(
       answer = answerBody;
     }
 
-    const rpcId = (result.payload.metadata?.rpcId as string | number | null) ?? null;
     return new Response(
       JSON.stringify({
         jsonrpc: "2.0",
