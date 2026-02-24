@@ -88,6 +88,7 @@ services:
     environment:
       - OPENCODE_CONFIG_DIR=/opt/opencode
       - OPENCODE_PORT=4096
+      - OPENCODE_AUTH=false
       - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}
       - OPENPALM_ADMIN_API_URL=http://admin:8100
       - OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}
