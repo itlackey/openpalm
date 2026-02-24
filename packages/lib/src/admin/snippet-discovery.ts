@@ -210,9 +210,10 @@ export async function discoverAllSnippets(
   const seen = new Map<string, ResolvedSnippet>();
 
   for (const snippet of snippets) {
-    const existing = seen.get(snippet.name);
+    const key = `${snippet.kind}:${snippet.name}`;
+    const existing = seen.get(key);
     if (!existing || trustOrder[snippet.trust] < trustOrder[existing.trust]) {
-      seen.set(snippet.name, snippet);
+      seen.set(key, snippet);
     }
   }
 

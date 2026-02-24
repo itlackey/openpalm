@@ -140,7 +140,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const action =
 				payload.action === 'install' ||
 				payload.action === 'uninstall' ||
-				payload.action === 'configure'
+				payload.action === 'configure' ||
+				payload.action === 'add_instance'
 					? payload.action
 					: '';
 			const itemType = payload.itemType === 'channel' || payload.itemType === 'service'
@@ -158,6 +159,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				action,
 				type: itemType,
 				name,
+				templateName: payload.templateName,
+				supportsMultipleInstances: payload.supportsMultipleInstances,
+				displayName: payload.displayName,
+				description: payload.description,
+				fields: payload.fields,
+				image: payload.image,
+				containerPort: payload.containerPort,
+				rewritePath: payload.rewritePath,
+				sharedSecretEnv: payload.sharedSecretEnv,
+				volumes: payload.volumes,
+				dependsOn: payload.dependsOn,
 				exposure: payload.exposure,
 				config: payload.config
 			});

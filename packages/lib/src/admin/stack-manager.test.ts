@@ -559,4 +559,134 @@ describe("stack manager", () => {
     expect(manager.getSpec().services.jobs.enabled).toBe(false);
   });
 
+  it("includes discoverable template items from community snippets", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-templates-"));
+    const manager = createManager(dir);
+    const items = manager.listStackCatalogItems([
+      {
+        kind: "service",
+        name: "Ollama",
+        description: "Local inference service",
+        image: "ollama/ollama:latest",
+        containerPort: 11434,
+        supportsMultipleInstances: true,
+        env: [{ name: "OLLAMA_HOST", required: false, default: "127.0.0.1:11434" }],
+        trust: "curated",
+        sourceId: "openpalm-community",
+        sourceName: "OpenPalm Community",
+      },
+    ]);
+
+    const ollamaTemplate = items.find((item) => item.entryKind === "template" && item.type === "service" && item.name === "Ollama");
+    expect(ollamaTemplate).toBeDefined();
+    expect(ollamaTemplate?.installed).toBe(false);
+    expect(ollamaTemplate?.supportsMultipleInstances).toBe(true);
+    expect(ollamaTemplate?.fields[0].defaultValue).toBe("127.0.0.1:11434");
+  });
+
+  it("adds multiple instances for templates that support multiple instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-multi-instance-"));
+    const manager = createManager(dir);
+
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "service",
+      name: "Ollama",
+      templateName: "Ollama",
+      supportsMultipleInstances: true,
+      displayName: "Ollama",
+      image: "ollama/ollama:latest",
+      containerPort: 11434,
+      fields: [{ key: "OLLAMA_HOST", required: false, defaultValue: "127.0.0.1:11434" }],
+    });
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "service",
+      name: "Ollama",
+      templateName: "Ollama",
+      supportsMultipleInstances: true,
+      displayName: "Ollama",
+      image: "ollama/ollama:latest",
+      containerPort: 11434,
+      fields: [{ key: "OLLAMA_HOST", required: false, defaultValue: "127.0.0.1:11434" }],
+    });
+
+    const spec = manager.getSpec();
+    expect(spec.services.ollama).toBeDefined();
+    expect(spec.services["ollama-2"]).toBeDefined();
+    expect(spec.services["ollama-2"].config.OLLAMA_HOST).toBe("127.0.0.1:11434");
+  });
+
+  it("adds multiple channel instances for templates that support multiple instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-channel-multi-instance-"));
+    const manager = createManager(dir);
+
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "channel",
+      name: "Slack",
+      templateName: "Slack",
+      supportsMultipleInstances: true,
+      displayName: "Slack",
+      image: "openpalm/channel-slack:latest",
+      containerPort: 8185,
+      rewritePath: "/slack/webhook",
+      fields: [
+        { key: "SLACK_BOT_TOKEN", required: true, defaultValue: "" },
+        { key: "SLACK_SIGNING_SECRET", required: true, defaultValue: "" },
+      ],
+    });
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "channel",
+      name: "Slack",
+      templateName: "Slack",
+      supportsMultipleInstances: true,
+      displayName: "Slack",
+      image: "openpalm/channel-slack:latest",
+      containerPort: 8185,
+      rewritePath: "/slack/webhook",
+      fields: [
+        { key: "SLACK_BOT_TOKEN", required: true, defaultValue: "" },
+        { key: "SLACK_SIGNING_SECRET", required: true, defaultValue: "" },
+      ],
+    });
+
+    const spec = manager.getSpec();
+    expect(spec.channels.slack).toBeDefined();
+    expect(spec.channels["slack-2"]).toBeDefined();
+    expect(spec.channels["slack-2"].template).toBe("Slack");
+  });
+
+  it("rejects duplicate instances when template does not support multiple instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-catalog-single-instance-"));
+    const manager = createManager(dir);
+
+    manager.mutateStackCatalogItem({
+      action: "add_instance",
+      type: "service",
+      name: "SingleService",
+      templateName: "SingleService",
+      supportsMultipleInstances: false,
+      displayName: "SingleService",
+      image: "ghcr.io/example/single:latest",
+      containerPort: 9200,
+      fields: [],
+    });
+
+    expect(() =>
+      manager.mutateStackCatalogItem({
+        action: "add_instance",
+        type: "service",
+        name: "SingleService",
+        templateName: "SingleService",
+        supportsMultipleInstances: false,
+        displayName: "SingleService",
+        image: "ghcr.io/example/single:latest",
+        containerPort: 9200,
+        fields: [],
+      })
+    ).toThrow("multiple_instances_not_supported_for_service_template");
+  });
+
 });

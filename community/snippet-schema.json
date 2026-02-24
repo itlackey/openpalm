@@ -23,6 +23,10 @@
       "maxLength": 500,
       "description": "One or two sentences describing what this snippet does"
     },
+    "supportsMultipleInstances": {
+      "type": "boolean",
+      "description": "Whether users can install multiple instances of this snippet in the same stack"
+    },
     "image": {
       "type": "string",
       "description": "Docker image reference"

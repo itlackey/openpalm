@@ -7,9 +7,11 @@
 		key: string;
 		required: boolean;
 		description?: string;
+		defaultValue?: string;
 	};
 
 	type CatalogItem = {
+		id: string;
 		type: 'channel' | 'service';
 		name: string;
 		displayName: string;
@@ -17,9 +19,18 @@
 		tags: string[];
 		enabled: boolean;
 		installed: boolean;
+		entryKind: 'installed' | 'template';
+		templateName?: string;
+		supportsMultipleInstances?: boolean;
 		exposure?: 'host' | 'lan' | 'public';
 		config: Record<string, string>;
 		fields: CatalogField[];
+		image?: string;
+		containerPort?: number;
+		rewritePath?: string;
+		sharedSecretEnv?: string;
+		volumes?: string[];
+		dependsOn?: string[];
 	};
 
 	let specText = $state('');
@@ -53,7 +64,7 @@
 	});
 
 	function itemKey(item: CatalogItem): string {
-		return `${item.type}:${item.name}`;
+		return item.id;
 	}
 
 	function isSecretField(field: CatalogField): boolean {
@@ -159,7 +170,7 @@
 		}
 	}
 
-	async function mutateItem(item: CatalogItem, action: 'install' | 'uninstall') {
+	async function mutateItem(item: CatalogItem, action: 'install' | 'uninstall' | 'add_instance') {
 		busyItemKey = itemKey(item);
 		const r = await api('/command', {
 			method: 'POST',
@@ -168,7 +179,18 @@
 				payload: {
 					action,
 					itemType: item.type,
-					name: item.name
+					name: item.name,
+					templateName: item.templateName ?? item.name,
+					supportsMultipleInstances: item.supportsMultipleInstances === true,
+					displayName: item.displayName,
+					description: item.description,
+					fields: item.fields,
+					image: item.image,
+					containerPort: item.containerPort,
+					rewritePath: item.rewritePath,
+					sharedSecretEnv: item.sharedSecretEnv,
+					volumes: item.volumes,
+					dependsOn: item.dependsOn
 				}
 			})
 		});
@@ -178,7 +200,9 @@
 			return;
 		}
 		await refreshSharedState();
-		showToast(`${item.displayName} ${action === 'install' ? 'installed' : 'uninstalled'}`, 'success');
+		const actionLabel =
+			action === 'install' ? 'installed' : action === 'uninstall' ? 'uninstalled' : 'instance added';
+		showToast(`${item.displayName} ${actionLabel}`, 'success');
 	}
 
 	async function saveItemConfig(item: CatalogItem) {
@@ -284,23 +308,36 @@
 								<div class="muted" style="font-size:12px">Tags: {item.tags.join(', ')}</div>
 							</div>
 							<div style="display:flex;gap:0.35rem;flex-wrap:wrap">
-								{#if item.enabled}
-									<button
-										class="btn-secondary btn-sm"
-										disabled={busyItemKey === key}
-										onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
+								{#if item.entryKind === 'template'}
+									<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'add_instance')}
+										>{item.supportsMultipleInstances ? 'Add instance' : 'Install'}</button
 									>
 								{:else}
-									<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'install')}
-										>Install</button
+									{#if item.enabled}
+										<button
+											class="btn-secondary btn-sm"
+											disabled={busyItemKey === key}
+											onclick={() => mutateItem(item, 'uninstall')}>Uninstall</button
+										>
+									{:else}
+										<button disabled={busyItemKey === key} onclick={() => mutateItem(item, 'install')}
+											>Install</button
+										>
+									{/if}
+									{#if item.supportsMultipleInstances}
+										<button
+											class="btn-secondary btn-sm"
+											disabled={busyItemKey === key}
+											onclick={() => mutateItem(item, 'add_instance')}>Add instance</button
+										>
+									{/if}
+									<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}
+										>Configure</button
 									>
 								{/if}
-								<button class="btn-secondary btn-sm" onclick={() => beginConfigure(item)}
-									>Configure</button
-								>
 							</div>
 						</div>
-						{#if editingItemKey === key}
+						{#if item.entryKind === 'installed' && editingItemKey === key}
 							<div style="margin-top:0.5rem">
 								{#if item.type === 'channel'}
 									<label style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
