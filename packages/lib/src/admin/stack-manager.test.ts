@@ -259,7 +259,7 @@ describe("stack manager", () => {
 
     // Compose reflects loopback binding
     const compose = readFileSync(join(dir, "docker-compose.yml"), "utf8");
-    expect(compose).toContain("\"127.0.0.1:3000:3000\"");
+    expect(compose).toContain("127.0.0.1:3000:3000");
 
     // Change to public (no guard)
     manager.setChannelAccess("my-api", "public");
@@ -451,7 +451,7 @@ describe("stack manager", () => {
     expect(compose).toContain("channel-slack:");
     expect(compose).toContain("channel-jira-webhook:");
     expect(compose).toContain("image: jira-hook:v3");
-    expect(compose).toContain("\"9101:9100\"");
+    expect(compose).toContain("9101:9100");
 
     // Verify Caddy JSON: slack gets path-based route, jira gets domain-based route
     const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");

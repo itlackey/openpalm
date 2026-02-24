@@ -77,7 +77,7 @@ export const DEFAULT_SNIPPET_SOURCES: SnippetSource[] = [
     id: "openpalm-community",
     name: "OpenPalm Community",
     type: "index-url",
-    target: "https://raw.githubusercontent.com/itlackey/openpalm/main/community/snippets/index.json",
+    target: "https://raw.githubusercontent.com/itlackey/openpalm/main/community/index.json",
     trust: "curated",
     enabled: true,
   },

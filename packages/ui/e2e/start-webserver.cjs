@@ -5,7 +5,7 @@ if (buildResult.status !== 0) {
 	process.exit(buildResult.status);
 }
 
-const server = spawn("node", ["build/index.js"], { stdio: "inherit" });
+const server = spawn("bun", ["build/index.js"], { stdio: "inherit" });
 const stopServer = () => {
 	if (!server.killed) server.kill("SIGTERM");
 };

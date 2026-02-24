@@ -22,6 +22,7 @@ export type StackChannelConfig = {
   domains?: string[];
   pathPrefixes?: string[];
   rewritePath?: string;
+  healthcheckPath?: string;
   sharedSecretEnv?: string;
   volumes?: string[];
   config: Record<string, string>;
@@ -33,6 +34,7 @@ export type StackServiceConfig = {
   description?: string;
   image: string;
   containerPort: number;
+  healthcheckPath?: string;
   volumes?: string[];
   dependsOn?: string[];
   config: Record<string, string>;
@@ -231,6 +233,9 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
     result.rewritePath = rewritePath;
   }
 
+  const healthcheckPath = parseOptionalString(channel.healthcheckPath, `invalid_channel_healthcheck_path_${channelName}`);
+  if (healthcheckPath) result.healthcheckPath = healthcheckPath;
+
   if (channel.sharedSecretEnv !== undefined) {
     if (typeof channel.sharedSecretEnv !== "string" || !channel.sharedSecretEnv.trim()) throw new Error(`invalid_channel_shared_secret_env_${channelName}`);
     result.sharedSecretEnv = channel.sharedSecretEnv.trim();
@@ -283,6 +288,9 @@ function parseService(raw: unknown, serviceName: string): StackServiceConfig {
 
   const volumes = parseOptionalVolumes(service.volumes, `invalid_service_volumes_${serviceName}`);
   if (volumes) result.volumes = volumes;
+
+  const healthcheckPath = parseOptionalString(service.healthcheckPath, `invalid_service_healthcheck_path_${serviceName}`);
+  if (healthcheckPath) result.healthcheckPath = healthcheckPath;
 
   if (service.dependsOn !== undefined) {
     if (!Array.isArray(service.dependsOn)) throw new Error(`invalid_service_depends_on_${serviceName}`);

@@ -1,6 +1,8 @@
 import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, getBuiltInChannelDef } from "./stack-spec.ts";
 import type { BuiltInChannelName, StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
 import { renderCaddyComposeService, renderOpenMemoryComposeService, renderOpenMemoryUiComposeService, renderPostgresComposeService, renderQdrantComposeService } from "./core-services.ts";
+import type { ComposeService, ComposeSpec } from "./compose-spec.ts";
+import { stringifyComposeSpec, validateComposeSpec } from "./compose-spec-serializer";
 
 function resolveChannelPort(name: string, config: StackChannelConfig): number {
   if (config.containerPort) return config.containerPort;
@@ -377,183 +379,204 @@ function resolveChannelConfig(name: string, cfg: StackChannelConfig, secrets: Re
 
 // ── Compose service renderers ────────────────────────────────────────
 
-function renderChannelComposeService(name: string, config: StackChannelConfig): string {
+function renderChannelComposeService(name: string, config: StackChannelConfig): ComposeService {
   const svcName = `channel-${composeServiceName(name)}`;
   const image = resolveChannelImage(name, config);
   const containerPort = resolveChannelPort(name, config);
   const portBinding = publishedChannelPort(name, config);
+  const healthcheckPath = config.healthcheckPath ?? "/health";
 
-  return [
-    `  ${svcName}:`,
-    `    image: ${image}`,
-    "    restart: unless-stopped",
-    "    env_file:",
-    `      - \${OPENPALM_STATE_HOME}/${svcName}/.env`,
-    "    environment:",
-    `      - PORT=${containerPort}`,
-    "      - GATEWAY_URL=http://gateway:8080",
-    "    ports:",
-    `      - "${portBinding}"`,
-    "    networks: [channel_net]",
-    "    depends_on:",
-    "      gateway:",
-    "        condition: service_healthy",
-    "    healthcheck:",
-    `      test: ["CMD-SHELL", "curl -sf http://localhost:${containerPort}/health || exit 1"]`,
-    "      interval: 10s",
-    "      timeout: 5s",
-    "      retries: 3",
-  ].join("\n");
+  return {
+    image,
+    restart: "unless-stopped",
+    env_file: [`${"${OPENPALM_STATE_HOME}"}/${svcName}/.env`],
+    environment: [
+      `PORT=${containerPort}`,
+      "GATEWAY_URL=http://gateway:8080",
+    ],
+    ports: [portBinding],
+    networks: ["channel_net"],
+    depends_on: { gateway: { condition: "service_healthy" } },
+    healthcheck: {
+      test: ["CMD-SHELL", `curl -sf http://localhost:${containerPort}${healthcheckPath} || exit 1`],
+      interval: "10s",
+      timeout: "5s",
+      retries: 3,
+    },
+  };
 }
 
-function renderAssistantComposeService(): string {
-  return [
-    "  assistant:",
-    "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}",
-    "    restart: unless-stopped",
-    "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/assistant/.env",
-    "    environment:",
-    "      - OPENCODE_CONFIG_DIR=/opt/opencode",
-    "      - OPENCODE_PORT=4096",
-    "      - OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}",
-    "      - OPENPALM_ADMIN_API_URL=http://admin:8100",
-    "      - OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
-    "      - HOME=/home/opencode",
-    "    ports:",
-    "      - \"${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096\"",
-    "      - \"${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22\"",
-    "    volumes:",
-    "      - ${OPENPALM_DATA_HOME}/assistant:/home/opencode",
-    "      - ${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
-    "    working_dir: /work",
-    "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
-    "    networks: [assistant_net]",
-    "    depends_on:",
-    "      openmemory:",
-    "        condition: service_healthy",
-    "    healthcheck:",
-    "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:4096/\"]",
-    "      interval: 30s",
-    "      timeout: 10s",
-    "      retries: 5",
-    "      start_period: 30s",
-  ].join("\n");
+function renderAssistantComposeService(): ComposeService {
+  return {
+    image: "${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}",
+    restart: "unless-stopped",
+    env_file: ["${OPENPALM_STATE_HOME}/assistant/.env"],
+    environment: [
+      "OPENCODE_CONFIG_DIR=/opt/opencode",
+      "OPENCODE_PORT=4096",
+      "OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}",
+      "OPENPALM_ADMIN_API_URL=http://admin:8100",
+      "OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
+      "HOME=/home/opencode",
+    ],
+    ports: [
+      "${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096",
+      "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22",
+    ],
+    volumes: [
+      "${OPENPALM_DATA_HOME}/assistant:/home/opencode",
+      "${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
+    ],
+    working_dir: "/work",
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}",
+    networks: ["assistant_net"],
+    depends_on: { openmemory: { condition: "service_healthy" } },
+    healthcheck: {
+      test: ["CMD", "curl", "-fs", "http://localhost:4096/"],
+      interval: "30s",
+      timeout: "10s",
+      retries: 5,
+      start_period: "30s",
+    },
+  };
 }
 
-function renderGatewayComposeService(): string {
-  return [
-    "  gateway:",
-    "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}",
-    "    restart: unless-stopped",
-    "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/system.env",
-    "      - ${OPENPALM_STATE_HOME}/gateway/.env",
-    "    environment:",
-    "      - PORT=8080",
-    "      - OPENCODE_CORE_BASE_URL=http://assistant:4096",
-    "      - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
-    "    volumes:",
-    "      - ${OPENPALM_STATE_HOME}/gateway:/app/data",
-    "      - ${OPENPALM_STATE_HOME}:/state:ro",
-    "    user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"",
-    "    networks: [channel_net, assistant_net]",
-    "    depends_on:",
-    "      assistant:",
-    "        condition: service_healthy",
-    "    healthcheck:",
-    "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]",
-    "      interval: 30s",
-    "      timeout: 5s",
-    "      retries: 3",
-    "      start_period: 10s",
-  ].join("\n");
+function renderGatewayComposeService(): ComposeService {
+  return {
+    image: "${OPENPALM_IMAGE_NAMESPACE:-openpalm}/gateway:${OPENPALM_IMAGE_TAG:-latest}",
+    restart: "unless-stopped",
+    env_file: [
+      "${OPENPALM_STATE_HOME}/system.env",
+      "${OPENPALM_STATE_HOME}/gateway/.env",
+    ],
+    environment: [
+      "PORT=8080",
+      "OPENCODE_CORE_BASE_URL=http://assistant:4096",
+      "OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
+    ],
+    volumes: [
+      "${OPENPALM_STATE_HOME}/gateway:/app/data",
+      "${OPENPALM_STATE_HOME}:/state:ro",
+    ],
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}",
+    networks: ["channel_net", "assistant_net"],
+    depends_on: { assistant: { condition: "service_healthy" } },
+    healthcheck: {
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"],
+      interval: "30s",
+      timeout: "5s",
+      retries: 3,
+      start_period: "10s",
+    },
+  };
 }
 
-function renderAdminComposeService(): string {
-  return [
-    "  admin:",
-    "    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
-    "    restart: unless-stopped",
-    "    env_file:",
-    "      - ${OPENPALM_STATE_HOME}/system.env",
-    "    environment:",
-    "      - PORT=8100",
-    "      - ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
-    "      - GATEWAY_URL=http://gateway:8080",
-    "      - OPENCODE_CORE_URL=http://assistant:4096",
-    "      - OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
-    "      - OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
-    "      - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
-    "      - COMPOSE_PROJECT_PATH=/state",
-    "      - OPENPALM_COMPOSE_FILE=docker-compose.yml",
-    "    volumes:",
-    "      - ${OPENPALM_DATA_HOME}:/data",
-    "      - ${OPENPALM_CONFIG_HOME}:/config",
-    "      - ${OPENPALM_STATE_HOME}:/state",
-    "      - ${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
-    "      - ${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
-    "    networks: [assistant_net]",
-    "    healthcheck:",
-    "      test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]",
-    "      interval: 30s",
-    "      timeout: 5s",
-    "      retries: 3",
-    "      start_period: 10s",
-  ].join("\n");
+function renderAdminComposeService(): ComposeService {
+  return {
+    image: "${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}",
+    restart: "unless-stopped",
+    env_file: ["${OPENPALM_STATE_HOME}/system.env"],
+    environment: [
+      "PORT=8100",
+      "ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
+      "GATEWAY_URL=http://gateway:8080",
+      "OPENCODE_CORE_URL=http://assistant:4096",
+      "OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
+      "OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
+      "OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
+      "COMPOSE_PROJECT_PATH=/state",
+      "OPENPALM_COMPOSE_FILE=docker-compose.yml",
+    ],
+    volumes: [
+      "${OPENPALM_DATA_HOME}:/data",
+      "${OPENPALM_CONFIG_HOME}:/config",
+      "${OPENPALM_STATE_HOME}:/state",
+      "${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
+      "${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
+    ],
+    networks: ["assistant_net"],
+    depends_on: { gateway: { condition: "service_healthy" } },
+    healthcheck: {
+      test: ["CMD", "curl", "-fs", "http://localhost:8100/health"],
+      interval: "30s",
+      timeout: "5s",
+      retries: 3,
+      start_period: "10s",
+    },
+  };
 }
 
-function renderServiceComposeService(name: string, config: StackServiceConfig): string {
+function renderServiceComposeService(name: string, config: StackServiceConfig): ComposeService {
   const svcName = `service-${composeServiceName(name)}`;
-  const lines = [
-    `  ${svcName}:`,
-    `    image: ${config.image}`,
-    "    restart: unless-stopped",
-    "    env_file:",
-    `      - \${OPENPALM_STATE_HOME}/${svcName}/.env`,
-    "    environment:",
-    `      - PORT=${config.containerPort}`,
-  ];
+  const healthcheckPath = config.healthcheckPath ?? "/health";
+  const service: ComposeService = {
+    image: config.image,
+    restart: "unless-stopped",
+    env_file: [`${"${OPENPALM_STATE_HOME}"}/${svcName}/.env`],
+    environment: [`PORT=${config.containerPort}`],
+    healthcheck: {
+      test: ["CMD-SHELL", `curl -sf http://localhost:${config.containerPort}${healthcheckPath} || exit 1`],
+      interval: "10s",
+      timeout: "5s",
+      retries: 3,
+    },
+    networks: ["assistant_net"],
+  };
 
   if (config.volumes && config.volumes.length > 0) {
-    lines.push("    volumes:");
-    for (const v of config.volumes) {
-      lines.push(`      - ${v}`);
-    }
+    service.volumes = [...config.volumes];
   }
-
-  lines.push("    networks: [assistant_net]");
 
   if (config.dependsOn && config.dependsOn.length > 0) {
-    lines.push(`    depends_on: [${config.dependsOn.join(", ")}]`);
+    service.depends_on = Object.fromEntries(config.dependsOn.map((dep) => [dep, { condition: "service_healthy" }]));
   }
 
-  return lines.join("\n");
+  return service;
 }
 
 function renderFullComposeFile(spec: StackSpec): string {
-  const coreBlocks = [
-    renderCaddyComposeService(),
-    renderPostgresComposeService(),
-    renderQdrantComposeService(),
-    renderOpenMemoryComposeService(),
-    renderOpenMemoryUiComposeService(),
-    renderAssistantComposeService(),
-    renderGatewayComposeService(),
-    renderAdminComposeService(),
-  ];
+  const services: Record<string, ComposeService> = {
+    caddy: renderCaddyComposeService(),
+    postgres: renderPostgresComposeService(),
+    qdrant: renderQdrantComposeService(),
+    openmemory: renderOpenMemoryComposeService(),
+    "openmemory-ui": renderOpenMemoryUiComposeService(),
+    assistant: renderAssistantComposeService(),
+    gateway: renderGatewayComposeService(),
+    admin: renderAdminComposeService(),
+  };
 
-  const channelBlocks = Object.keys(spec.channels)
-    .filter((name) => spec.channels[name].enabled)
-    .map((name) => renderChannelComposeService(name, spec.channels[name]));
+  for (const name of Object.keys(spec.channels)) {
+    if (!spec.channels[name].enabled) continue;
+    const svcName = `channel-${composeServiceName(name)}`;
+    services[svcName] = renderChannelComposeService(name, spec.channels[name]);
+  }
 
-  const serviceBlocks = Object.keys(spec.services)
-    .filter((name) => spec.services[name].enabled)
-    .map((name) => renderServiceComposeService(name, spec.services[name]));
+  for (const name of Object.keys(spec.services)) {
+    if (!spec.services[name].enabled) continue;
+    const svcName = `service-${composeServiceName(name)}`;
+    services[svcName] = renderServiceComposeService(name, spec.services[name]);
+  }
 
-  const allBlocks = [...coreBlocks, ...channelBlocks, ...serviceBlocks];
+  const specDoc: ComposeSpec = {
+    services,
+    networks: { channel_net: {}, assistant_net: {} },
+  };
 
-  return `services:\n${allBlocks.join("\n\n")}\n\nnetworks:\n  channel_net:\n  assistant_net:\n`;
+  const violations = validateComposeSpec(specDoc);
+  if (violations.length > 0) {
+    throw new Error(`invalid_compose_spec:${violations.join(",")}`);
+  }
+
+  return stringifyComposeSpec(specDoc);
+}
+
+export function validateGeneratedCompose(spec: StackSpec, secrets: Record<string, string>): string[] {
+  const compose = renderFullComposeFile(spec);
+  const errors: string[] = [];
+  if (!compose.includes("restart: unless-stopped")) errors.push("missing_restart_policy");
+  if (!compose.includes("healthcheck:")) errors.push("missing_healthchecks");
+  return errors;
 }
 
 // ── Main generator ───────────────────────────────────────────────────

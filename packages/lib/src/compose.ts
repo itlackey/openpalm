@@ -1,4 +1,5 @@
 import type { ComposeConfig } from "./types.ts";
+import { runCompose } from "./compose-runner.ts";
 
 export function buildComposeArgs(config: ComposeConfig): string[] {
   return [
@@ -14,37 +15,17 @@ export async function composeExec(
   config: ComposeConfig,
   args: string[],
   options?: { stream?: boolean; timeout?: number }
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const fullArgs = [...buildComposeArgs(config), ...args];
-
-  const proc = Bun.spawn([config.bin, ...fullArgs], {
-    stdout: options?.stream ? "inherit" : "pipe",
-    stderr: options?.stream ? "inherit" : "pipe",
-    stdin: "inherit",
+): Promise<{ exitCode: number; stdout: string; stderr: string; code: string }> {
+  const result = await runCompose(args, {
+    bin: config.bin,
+    subcommand: config.subcommand,
+    envFile: config.envFile,
+    composeFile: config.composeFile,
+    stream: options?.stream,
+    timeoutMs: options?.timeout,
   });
 
-  // Default: 30s timeout for piped output, no timeout for streaming
-  const timeoutMs = options?.timeout ?? (options?.stream ? 0 : 30_000);
-
-  if (timeoutMs > 0) {
-    const result = await Promise.race([
-      proc.exited.then(() => "done" as const),
-      new Promise<"timeout">((r) => setTimeout(() => r("timeout"), timeoutMs)),
-    ]);
-
-    if (result === "timeout") {
-      proc.kill();
-      return { exitCode: 1, stdout: "", stderr: `compose command timed out after ${timeoutMs}ms` };
-    }
-  } else {
-    await proc.exited;
-  }
-
-  const exitCode = proc.exitCode ?? 1;
-  const stdout = options?.stream ? "" : await new Response(proc.stdout).text();
-  const stderr = options?.stream ? "" : await new Response(proc.stderr).text();
-
-  return { exitCode, stdout, stderr };
+  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, code: result.code };
 }
 
 export async function composePull(
@@ -55,7 +36,7 @@ export async function composePull(
   const result = await composeExec(config, args, { stream: true });
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose pull failed with exit code ${result.exitCode}`);
+    throw new Error(`compose pull failed:${result.code}`);
   }
 }
 
@@ -96,7 +77,7 @@ export async function composeUp(
   const result = await composeExec(config, args, { stream: true });
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose up failed with exit code ${result.exitCode}`);
+    throw new Error(`compose up failed:${result.code}`);
   }
 }
 
@@ -118,7 +99,7 @@ export async function composeDown(
   const result = await composeExec(config, args, { stream: true });
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose down failed with exit code ${result.exitCode}`);
+    throw new Error(`compose down failed:${result.code}`);
   }
 }
 
@@ -130,7 +111,7 @@ export async function composeRestart(
   const result = await composeExec(config, args, { stream: true });
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose restart failed with exit code ${result.exitCode}`);
+    throw new Error(`compose restart failed:${result.code}`);
   }
 }
 
@@ -142,7 +123,7 @@ export async function composeStop(
   const result = await composeExec(config, args, { stream: true });
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose stop failed with exit code ${result.exitCode}`);
+    throw new Error(`compose stop failed:${result.code}`);
   }
 }
 
@@ -168,7 +149,7 @@ export async function composeLogs(
   const result = await composeExec(config, args, { stream: true });
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose logs failed with exit code ${result.exitCode}`);
+    throw new Error(`compose logs failed:${result.code}`);
   }
 }
 
@@ -176,7 +157,7 @@ export async function composePs(config: ComposeConfig): Promise<string> {
   const result = await composeExec(config, ["ps", "-a"]);
 
   if (result.exitCode !== 0) {
-    throw new Error(`compose ps failed with exit code ${result.exitCode}`);
+    throw new Error(`compose ps failed:${result.code}`);
   }
 
   return result.stdout;

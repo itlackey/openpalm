@@ -17,16 +17,14 @@ jobs:
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: packages/ui
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
         working-directory: .
       - run: bunx playwright install --with-deps chromium
-      - run: bunx playwright test
+        working-directory: packages/ui
+      - run: bun run test:ui
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

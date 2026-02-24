@@ -12,6 +12,23 @@ bun run typecheck
 bun test
 ```
 
+## Test tiers and when to run them
+
+### Tier 1: Local + CI default (hermetic)
+- **Scope:** unit tests, contract tests, and fast integration that do not require Docker or Playwright.
+- **Command:** `bun run test:ci`
+- **Guarantee:** No container, Docker daemon, or browser dependency.
+
+### Tier 2: UI e2e (Bun runtime)
+- **Scope:** SvelteKit UI flows + admin API contracts under a hermetic runtime.
+- **Command:** `bun run test:ui`
+- **Notes:** Runs the UI server under Bun with Playwright. Compose/apply orchestration is disabled in test mode.
+
+### Tier 3: Docker stack integration (opt-in)
+- **Scope:** Image build + compose stack health checks.
+- **Command:** `bun run test:docker`
+- **Notes:** Requires Docker daemon and builds images locally. Run only in dedicated Docker-capable environments. Docker tests live under `test/docker/*.docker.ts` and are excluded from `bun test` discovery.
+
 If your change is scoped, run targeted suites too (workspace or file-level).
 
 ## Priority test areas
@@ -42,6 +59,11 @@ If your change is scoped, run targeted suites too (workspace or file-level).
 - Auth/session handling for admin-backed actions
 - Config editor save/apply roundtrips
 - CLI command behavior and non-zero exit handling on failure
+
+## Environment flags used by tests
+- `OPENPALM_TEST_MODE=1` — disables compose/apply side effects in UI routes.
+- `OPENPALM_PREFLIGHT_SKIP_DOCKER_CHECKS=1` — bypasses docker socket preflight in hermetic tests.
+- `OPENPALM_PREFLIGHT_SKIP_PORT_CHECKS=1` — bypasses port checks in hermetic tests.
 
 ## Optional but recommended for risky changes
 - `bun run dev:fresh` for end-to-end install + startup confidence.

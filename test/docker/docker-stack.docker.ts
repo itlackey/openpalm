@@ -6,7 +6,7 @@
  * health endpoints, auth, YAML-dependent features, and API contracts.
  *
  * Run:
- *   bun test test/docker/docker-stack.test.ts
+ *   bun run test:docker
  *
  * Requirements:
  *   - Docker daemon running
@@ -31,7 +31,7 @@ const ADMIN_TOKEN = "test-docker-token";
 const dockerAvailable = await Bun.spawn(["docker", "info"], {
   stdout: "pipe", stderr: "pipe",
 }).exited.then((code) => code === 0).catch(() => false);
-const runDockerStackTests = dockerAvailable && Bun.env.OPENPALM_RUN_DOCKER_STACK_TESTS === "1";
+const runDockerStackTests = dockerAvailable && Bun.env.OPENPALM_RUN_DOCKER_STACK_TESTS !== "0";
 
 // ── Temp directory layout ─────────────────────────────────
 let tmpDir: string;
@@ -157,6 +157,8 @@ beforeAll(async () => {
     `OPENPALM_CONTAINER_SOCKET_PATH=/var/run/docker.sock`,
     `OPENPALM_CONTAINER_SOCKET_IN_CONTAINER=/var/run/docker.sock`,
     `OPENPALM_CONTAINER_SOCKET_URI=unix:///var/run/docker.sock`,
+    `OPENPALM_PREFLIGHT_SKIP_DOCKER_CHECKS=1`,
+    `OPENPALM_PREFLIGHT_SKIP_PORT_CHECKS=1`,
     `OPENPALM_IMAGE_NAMESPACE=openpalm`,
     `OPENPALM_IMAGE_TAG=latest`,
     `ADMIN_TOKEN=${ADMIN_TOKEN}`,
@@ -301,13 +303,16 @@ describe.skipIf(!runDockerStackTests)("docker stack: YAML handling (Bun.YAML)", 
       "  script: echo docker-test",
       "  enabled: true",
     ].join("\n");
-    const r = await cmd(ADMIN_PORT, "snippet.import", { yaml: yamlSnippet, section: "automation" });
+    const r = await cmd(ADMIN_PORT, "snippet.import", {
+      yaml: yamlSnippet,
+      section: "automation",
+    });
     expect(r.ok).toBe(true);
 
     // Verify the automation was persisted
-    const state = await authedJson(ADMIN_PORT, "/state");
-    const spec = (state.data.data as Record<string, unknown>).spec as Record<string, unknown>;
-    const automations = spec.automations as Array<{ id: string }>;
+    const updatedState = await authedJson(ADMIN_PORT, "/state");
+    const updatedSpec = (updatedState.data.data as Record<string, unknown>).spec as Record<string, unknown>;
+    const automations = updatedSpec.automations as Array<{ id: string }>;
     expect(automations.some((a) => a.id === "docker-test-auto")).toBe(true);
   });
 

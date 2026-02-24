@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { generateStackArtifacts } from "./stack-generator.ts";
+import { generateStackArtifacts, validateGeneratedCompose } from "./stack-generator.ts";
 import { createDefaultStackSpec } from "./stack-spec.ts";
 
 describe("stack generator", () => {
@@ -16,11 +16,11 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("OPENPALM_ADMIN_API_URL=http://admin:8100");
     expect(out.composeFile).toContain("OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}");
     expect(out.composeFile).toContain("${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work");
-    expect(out.composeFile).toContain("user: \"${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}\"");
+    expect(out.composeFile).toContain("user: ${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}");
     expect(out.composeFile).toContain("gateway:");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}:/data");
     expect(out.composeFile).toContain("channel-discord:");
-    expect(out.composeFile).toContain("\"8181:8181\"");
+    expect(out.composeFile).toContain("8181:8181");
   });
 
   it("generates valid Caddy JSON with expected structure", () => {
@@ -126,8 +126,8 @@ describe("stack generator", () => {
     spec.channels.chat.exposure = "host";
     spec.channels.discord.exposure = "lan";
     const out = generateStackArtifacts(spec, {});
-    expect(out.composeFile).toContain("\"127.0.0.1:8181:8181\"");
-    expect(out.composeFile).toContain("\"8184:8184\"");
+    expect(out.composeFile).toContain("127.0.0.1:8181:8181");
+    expect(out.composeFile).toContain("8184:8184");
   });
 
   it("fails when a channel secret reference cannot be resolved", () => {
@@ -152,7 +152,7 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("channel-public-api:");
     expect(out.composeFile).toContain("image: ghcr.io/acme/api:latest");
     expect(out.composeFile).toContain("PORT=9000");
-    expect(out.composeFile).toContain("\"9001:9000\"");
+    expect(out.composeFile).toContain("9001:9000");
   });
 
   it("renders custom channels with host exposure on loopback", () => {
@@ -165,7 +165,7 @@ describe("stack generator", () => {
       config: {},
     };
     const out = generateStackArtifacts(spec, {});
-    expect(out.composeFile).toContain("\"127.0.0.1:7000:7000\"");
+    expect(out.composeFile).toContain("127.0.0.1:7000:7000");
   });
 
   it("generates domain-based Caddy JSON routes for channels with domains", () => {
@@ -305,7 +305,7 @@ describe("stack generator", () => {
     const out = generateStackArtifacts(spec, {});
     expect(out.composeFile).toContain("image: custom-chat:v2");
     expect(out.composeFile).toContain("PORT=9999");
-    expect(out.composeFile).toContain("\"19999:9999\"");
+    expect(out.composeFile).toContain("19999:9999");
   });
 
   it("resolves custom channel config secrets", () => {
@@ -376,9 +376,20 @@ describe("stack generator", () => {
   it("includes healthchecks for core services", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
-    expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:4096/\"]");
-    expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8080/health\"]");
-    expect(out.composeFile).toContain("test: [\"CMD\", \"curl\", \"-fs\", \"http://localhost:8100/health\"]");
+    expect(out.composeFile).toContain("curl -sf http://localhost:80/ || exit 1");
+    expect(out.composeFile).toContain("curl -sf http://localhost:3000/ || exit 1");
+    expect(out.composeFile).toContain("http://localhost:4096/");
+    expect(out.composeFile).toContain("http://localhost:8080/health");
+    expect(out.composeFile).toContain("http://localhost:8100/health");
+    expect(out.composeFile).toContain("curl -sf http://localhost:8765/ || exit 1");
+    expect(out.composeFile).toContain("curl -sf http://localhost:6333/readyz || exit 1");
+    expect(out.composeFile).toContain("pg_isready -U ${POSTGRES_USER:-openpalm}");
+  });
+
+  it("validates compose guardrails", () => {
+    const spec = createDefaultStackSpec();
+    const errors = validateGeneratedCompose(spec, {});
+    expect(errors.length).toBe(0);
   });
 
   // --- Multi-channel artifact generation with unique requirements ---
@@ -410,6 +421,7 @@ describe("stack generator", () => {
       exposure: "host",
       image: "my-api:latest",
       containerPort: 3000,
+      healthcheckPath: "/readyz",
       config: {},
     };
 
@@ -421,11 +433,14 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("image: ghcr.io/acme/wa-bridge:v2");
     expect(out.composeFile).toContain("channel-internal-api:");
     expect(out.composeFile).toContain("image: my-api:latest");
-    expect(out.composeFile).toContain("\"127.0.0.1:3000:3000\"");
-    expect(out.composeFile).toContain("\"9201:9200\"");
-    expect(out.composeFile).toContain("\"8500:8500\"");
+    expect(out.composeFile).toContain("127.0.0.1:3000:3000");
+    expect(out.composeFile).toContain("9201:9200");
+    expect(out.composeFile).toContain("8500:8500");
     expect(out.composeFile).toContain("channel-chat:");
     expect(out.composeFile).not.toContain("channel-discord:");
+    expect(out.composeFile).toContain("depends_on:\n      gateway:\n        condition: service_healthy");
+    expect(out.composeFile).toContain("curl -sf http://localhost:8500/health || exit 1");
+    expect(out.composeFile).toContain("curl -sf http://localhost:3000/readyz || exit 1");
   });
 
   it("generates correct Caddy JSON routing for channels with different routing strategies", () => {

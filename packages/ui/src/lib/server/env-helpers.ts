@@ -3,7 +3,7 @@ import {
 	parseRuntimeEnvContent,
 	updateRuntimeEnvContent,
 	setRuntimeBindScopeContent
-} from '@openpalm/lib/admin/runtime-env.ts';
+} from '@openpalm/lib/admin/runtime-env';
 import { dirname } from 'node:path';
 import { DATA_ENV_PATH, RUNTIME_ENV_PATH, SECRETS_ENV_PATH } from './config.ts';
 

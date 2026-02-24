@@ -21,6 +21,9 @@ COPY packages/ui ./packages/ui
 # @openpalm/lib is resolved by SvelteKit alias (svelte.config.js) pointing to
 # ../../packages/lib — no workspace:* dependency needed in package.json.
 # The built output is a bundled Node.js server; no runtime resolution required.
+RUN cd /app/packages/lib \
+  && rm -f bun.lock \
+  && bun install
 RUN cd /app/packages/ui \
   && rm -f bun.lock \
   && bun install \

@@ -6,6 +6,7 @@
 	import StackEditor from '$lib/components/StackEditor.svelte';
 	import SecretsEditor from '$lib/components/SecretsEditor.svelte';
 	import HealthStatus from '$lib/components/HealthStatus.svelte';
+	import DriftBanner from '$lib/components/DriftBanner.svelte';
 	import SetupWizard from '$lib/components/SetupWizard.svelte';
 	import ProfileCard from '$lib/components/ProfileCard.svelte';
 	import {
@@ -41,6 +42,7 @@
 <AdminAuth />
 <StackEditor />
 <SecretsEditor />
+<DriftBanner />
 
 {#if getSetupState()?.completed}
 	<ProfileCard />
