@@ -97,6 +97,5 @@ export function webServerEnv(): Record<string, string> {
 		OPENPALM_COMPOSE_FILE: 'docker-compose.yml',
 		CRON_DIR: join(tmpDir, 'cron'),
 		OPENPALM_COMPOSE_BIN: '/usr/bin/true',
-		OPENPALM_TEST_MODE: '1'
 	};
 }

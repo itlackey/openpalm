@@ -339,13 +339,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
 		}
 		if (type === 'setup.complete') {
-			const testMode = process.env.OPENPALM_TEST_MODE === '1';
-			let applyResult: unknown = { skipped: true };
-			if (!testMode) {
-				applyResult = await applyStack(stackManager);
-				const startupResult = await composeAction('up', [...SetupCoreServices]);
-				if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
-			}
+			const applyResult = await applyStack(stackManager);
+			const startupResult = await composeAction('up', [...SetupCoreServices]);
+			if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
 			syncAutomations(stackManager.listAutomations());
 			return json(200, { ok: true, data: setupManager.completeSetup(), apply: applyResult });
 		}

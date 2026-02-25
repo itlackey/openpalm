@@ -19,7 +19,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
-const COMPOSE_BASE = join(REPO_ROOT, "packages/lib/src/embedded/state/docker-compose.yml");
 const PROJECT_NAME = "openpalm-install-e2e";
 const TIMEOUT = 15_000;
 const ADMIN_TOKEN = "test-e2e-wizard-token"; // ≥8 chars, satisfies password validation
@@ -40,7 +39,7 @@ let envFilePath: string;
 function compose(...args: string[]) {
   return Bun.spawn(
     ["docker", "compose", "-p", PROJECT_NAME, "--env-file", envFilePath,
-      "-f", COMPOSE_BASE, "-f", composeTestFile, "--project-directory", REPO_ROOT, ...args],
+      "-f", composeTestFile, "--project-directory", REPO_ROOT, ...args],
     { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
   );
 }

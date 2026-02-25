@@ -10,6 +10,8 @@ const yamlStringify = (obj: unknown) => stringifyYamlDocument(obj);
 function createManager(dir: string) {
   return new StackManager({
     stateRootPath: dir,
+    dataRootPath: join(dir, "data"),
+    configRootPath: join(dir, "config"),
     caddyJsonPath: join(dir, "caddy.json"),
     composeFilePath: join(dir, "docker-compose.yml"),
     runtimeEnvPath: join(dir, ".env"),
@@ -53,6 +55,8 @@ describe("stack manager", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-mkdir-test-"));
     const manager = new StackManager({
       stateRootPath: dir,
+      dataRootPath: join(dir, "data"),
+      configRootPath: join(dir, "config"),
       caddyJsonPath: join(dir, "caddy.json"),
       composeFilePath: join(dir, "docker-compose.yml"),
       runtimeEnvPath: join(dir, ".env"),

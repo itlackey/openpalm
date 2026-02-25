@@ -12,6 +12,8 @@ import { createMockRunner } from "./compose-runner.ts";
 function createManager(dir: string) {
   return new StackManager({
     stateRootPath: dir,
+    dataRootPath: join(dir, "data"),
+    configRootPath: join(dir, "config"),
     caddyJsonPath: join(dir, "caddy.json"),
     composeFilePath: join(dir, "docker-compose.yml"),
     runtimeEnvPath: join(dir, ".env"),

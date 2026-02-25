@@ -2,6 +2,8 @@ import { building } from '$app/environment';
 import { createLogger } from './logger';
 import {
 	DATA_DIR,
+	DATA_ROOT,
+	CONFIG_ROOT,
 	STATE_ROOT,
 	SECRETS_ENV_PATH,
 	STACK_SPEC_PATH,
@@ -43,6 +45,8 @@ export async function getStackManager(): Promise<StackManager> {
 		const { StackManager } = await import('@openpalm/lib/admin/stack-manager');
 		_stackManager = new StackManager({
 			stateRootPath: STATE_ROOT,
+			dataRootPath: DATA_ROOT,
+			configRootPath: CONFIG_ROOT,
 			caddyJsonPath: `${STATE_ROOT}/caddy.json`,
 			secretsEnvPath: SECRETS_ENV_PATH,
 			stackSpecPath: STACK_SPEC_PATH,
