@@ -14,11 +14,31 @@ describe('command/+server.ts — setup flow safeguards', () => {
 	it('setup.complete delegates to shared completion orchestrator', async () => {
 		const content = await Bun.file(commandFile).text();
 		const setupCompleteHandler = getHandlerBlock(content, 'setup.complete');
+		const completionDelegations = content.match(/completeSetupCommandResponse\(/g) ?? [];
 		expect(content).toContain("import { completeSetupCommandResponse } from '$lib/server/setup-completion-response';");
 		expect(content).toContain('SECRETS_ENV_PATH');
 		expect(content).toContain('await completeSetupCommandResponse(setupManager, stackManager, SECRETS_ENV_PATH)');
+		expect(completionDelegations.length).toBe(1);
 		expect(setupCompleteHandler).not.toContain("composeAction('up'");
 		expect(content).not.toContain('completeSetupOrchestration(setupManager, stackManager');
+	});
+
+	it('keeps compose startup boundary isolated to setup.complete', async () => {
+		const content = await Bun.file(commandFile).text();
+		const configOnlySetupCommands = [
+			'setup.step',
+			'setup.access_scope',
+			'setup.profile',
+			'setup.service_instances',
+			'setup.channels'
+		];
+
+		for (const commandType of configOnlySetupCommands) {
+			const handler = getHandlerBlock(content, commandType);
+			expect(handler.length).toBeGreaterThan(0);
+			expect(handler).not.toContain('completeSetupCommandResponse(');
+			expect(handler).not.toContain("composeAction('up'");
+		}
 	});
 
 	it('does not expose setup.start_core detached startup command path', async () => {

@@ -168,11 +168,23 @@ describe("setup wizard API", () => {
 
   // ── Phase 2: Complete setup and generate artifacts ──
   it("completes setup and generates all artifacts", async () => {
+    const legacyStartCore = await cmd("setup.start_core", {});
+    expect(legacyStartCore.status).toBe(400);
+    const legacyBody = await legacyStartCore.json();
+    expect(legacyBody.ok).toBe(false);
+    expect(legacyBody.code).toBe("unknown_command");
+
     const res = await authedPost("/setup/complete", {});
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.state.completed).toBe(true);
+
+    const legacyStartCoreAfterComplete = await cmd("setup.start_core", {});
+    expect(legacyStartCoreAfterComplete.status).toBe(400);
+    const legacyAfterCompleteBody = await legacyStartCoreAfterComplete.json();
+    expect(legacyAfterCompleteBody.ok).toBe(false);
+    expect(legacyAfterCompleteBody.code).toBe("unknown_command");
   });
 
   // ── Phase 3: Verify generated files and post-completion behavior ──

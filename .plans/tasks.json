@@ -3,7 +3,7 @@
     "id": "rec-01",
     "title": "Remove overlapping startup code paths",
     "description": "Consolidate setup startup so non-terminal setup actions do not start runtime services and completion is the single startup trigger.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 49, "lineEnd": 362 },
       { "file": "packages/ui/src/routes/setup/complete/+server.ts", "lineStart": 15, "lineEnd": 42 },
@@ -60,7 +60,7 @@
       {
         "id": "rec-01-06",
         "description": "Update setup docs and tests to enforce one startup path and no setup.start_core usage.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "docs/cli.md", "lineStart": 147, "lineEnd": 156 },
           { "file": "packages/ui/src/routes/command/command-setup-flow.test.ts", "line": 1 },
