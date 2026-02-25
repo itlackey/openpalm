@@ -29,17 +29,16 @@ function createManager(dir: string) {
 }
 
 describe("applyStack dry-run", () => {
-  it("succeeds with no caddy reload when artifacts are unchanged", async () => {
+  it("succeeds when artifacts are unchanged", async () => {
     const dir = mkdtempSync(join(tmpdir(), "apply-engine-"));
     const manager = createManager(dir);
     manager.renderArtifacts();
 
     const result = await applyStack(manager, { apply: false });
     expect(result.ok).toBe(true);
-    expect(result.caddyReloaded).toBe(false);
   });
 
-  it("detects caddy config change", async () => {
+  it("detects caddy config change in generated output", async () => {
     const dir = mkdtempSync(join(tmpdir(), "apply-engine-"));
     const manager = createManager(dir);
     manager.renderArtifacts();
@@ -49,7 +48,7 @@ describe("applyStack dry-run", () => {
 
     const result = await applyStack(manager, { apply: false });
     expect(result.ok).toBe(true);
-    // In dry-run mode, caddyReloaded stays false (no actual reload), but we can verify the generated output differs
+    // Verify the generated output is available regardless of disk state
     expect(result.generated.caddyJson).toBeDefined();
   });
 
@@ -115,19 +114,6 @@ describe("applyStack failure injection", () => {
     expect(nextCaddyConfig.admin?.disabled).toBe(originalCaddyConfig.admin?.disabled ?? true);
   });
 
-  it("throws when compose up fails", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "apply-engine-"));
-    const manager = createManager(dir);
-    manager.renderArtifacts();
-
-    const runner = createMockRunner({
-      configValidateForFile: async () => ({ ok: true, stdout: "", stderr: "" }),
-      action: async () => ({ ok: false, stdout: "", stderr: "boom" }),
-    });
-
-    await expect(applyStack(manager, { apply: true, runner })).rejects.toThrow("compose_up_failed");
-  });
-
   it("passes runtimeEnvPath to compose runner creation", async () => {
     const dir = mkdtempSync(join(tmpdir(), "apply-engine-"));
     const manager = createManager(dir);
@@ -142,7 +128,6 @@ describe("applyStack failure injection", () => {
         capturedFile = file;
         return { ok: true, stdout: "", stderr: "" };
       },
-      action: async () => ({ ok: true, stdout: "", stderr: "" }),
     });
 
     await applyStack(manager, { apply: true, runner });

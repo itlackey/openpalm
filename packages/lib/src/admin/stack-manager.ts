@@ -697,6 +697,17 @@ export class StackManager {
     return { ...secrets, ...profileEnv };
   }
 
+  /** Returns the compose interpolation entries that must be present in runtimeEnvPath. */
+  getRuntimeEnvEntries(): Record<string, string | undefined> {
+    const secrets = this.readSecretsEnv();
+    return {
+      OPENPALM_STATE_HOME: this.paths.stateRootPath,
+      OPENPALM_DATA_HOME: this.paths.dataRootPath,
+      OPENPALM_CONFIG_HOME: this.paths.configRootPath,
+      POSTGRES_PASSWORD: secrets["POSTGRES_PASSWORD"],
+    };
+  }
+
   private updateSecretsEnv(entries: Record<string, string | undefined>) {
     const current = existsSync(this.paths.secretsEnvPath) ? readFileSync(this.paths.secretsEnvPath, "utf8") : "";
     const next = updateRuntimeEnvContent(current, entries);
