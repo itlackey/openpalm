@@ -33,7 +33,11 @@ async function mockHealthCheckAllOk(page: Page) {
 
 async function openWizard(page: Page) {
 	const overlay = page.locator('.wizard-overlay');
-	if (await overlay.isVisible()) return;
+	// Wait briefly for the wizard to auto-open (it opens automatically when
+	// completed=false via an async onMount fetch). Only click the button if it
+	// does not appear on its own.
+	const autoOpened = await overlay.isVisible({ timeout: 2000 }).catch(() => false);
+	if (autoOpened) return;
 	await page.locator('button', { hasText: 'Run Setup Wizard' }).click();
 	await expect(overlay).toBeVisible();
 }

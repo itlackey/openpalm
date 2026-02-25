@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { api } from '$lib/api';
 	import { setAdminToken } from '$lib/stores/auth.svelte';
-	import { getWizardStep, setWizardStep } from '$lib/stores/setup.svelte';
+	import { getWizardStep, setWizardStep, getSetupState } from '$lib/stores/setup.svelte';
 	import WizardSteps from './WizardSteps.svelte';
 	import WelcomeStep from './WelcomeStep.svelte';
 	import ProfileStep from './ProfileStep.svelte';
@@ -72,13 +72,17 @@
 			const password2 =
 				(document.getElementById('wiz-profile-password2') as HTMLInputElement)?.value || '';
 
-			if (password.length < 8) {
-				stepError = 'Password must be at least 8 characters.';
-				return;
-			}
-			if (password !== password2) {
-				stepError = 'Passwords do not match.';
-				return;
+			// Only validate password if one is being set (skip on re-runs where setup is already complete)
+			const setupAlreadyComplete = getSetupState()?.completed ?? false;
+			if (!setupAlreadyComplete || password.length > 0) {
+				if (password.length < 8) {
+					stepError = 'Password must be at least 8 characters.';
+					return;
+				}
+				if (password !== password2) {
+					stepError = 'Passwords do not match.';
+					return;
+				}
 			}
 
 			const profileResult = await api('/command', {
@@ -92,7 +96,7 @@
 				stepError = 'Could not save your profile. Please try again.';
 				return;
 			}
-			setAdminToken(password);
+			if (password.length >= 8) setAdminToken(password);
 		}
 
 		if (currentStepName === 'serviceInstances') {
@@ -111,11 +115,12 @@
 			const anthropicApiKey =
 				(document.getElementById('wiz-anthropic-key') as HTMLInputElement)?.value || '';
 
-			// Require Anthropic key — it's the primary provider and must be set during initial setup
-			if (!anthropicApiKey.trim()) {
-				stepError = 'An Anthropic API key is required. Get one free at console.anthropic.com.';
-				return;
-			}
+		// Require Anthropic key only when one is not already configured
+		const anthropicAlreadySet = getSetupState()?.anthropicKeyConfigured ?? false;
+		if (!anthropicAlreadySet && !anthropicApiKey.trim()) {
+			stepError = 'An Anthropic API key is required. Get one free at console.anthropic.com.';
+			return;
+		}
 
 			const smallModelEndpoint =
 				(document.getElementById('wiz-small-model-endpoint') as HTMLInputElement)?.value ||
