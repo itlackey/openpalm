@@ -6,10 +6,9 @@ This folder is the concise source of truth for building and operating OpenPalm.
 1. [architecture.md](./architecture.md) — service boundaries, message flow, storage contracts.
 2. [api-reference.md](./api-reference.md) — admin + gateway HTTP contracts used by UI/CLI/channels.
 3. [development-workflow.md](./development-workflow.md) — local setup, day-to-day commands, debug habits.
-4. [testing-plan.md](./testing-plan.md) — what to test and minimum checks before merge.
+4. [testing-todos.md](./testing-todos.md) — all testing action items, test tiers, release gate policy, and CI fixes.
 5. [versioning.md](./versioning.md) — release model and version bump workflow.
 6. [contributor-checklist.md](./contributor-checklist.md) — final pre-merge guardrails.
-7. [install-setup-reliability-implementation-guide.md](./install-setup-reliability-implementation-guide.md) — detailed local installer/setup end-to-end reliability implementation steps.
 
 ## Coverage map
 - **Core services:** `core/admin`, `core/gateway`, `core/assistant`

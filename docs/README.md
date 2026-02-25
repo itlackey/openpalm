@@ -36,8 +36,7 @@ Guides for building features, writing extensions, and integrating with APIs:
 |---|---|
 | [Architecture](../dev/docs/architecture.md) | Container inventory, data flow, URL routing |
 | [API Reference](../dev/docs/api-reference.md) | All service endpoints: gateway, admin, channels |
-| [Testing Plan](../dev/docs/testing-plan.md) | Test strategy and coverage goals |
-| [CI Brittleness Report](../dev/docs/ci-brittleness-report.md) | CI risks, mitigation, and test tiering |
+| [Testing Todos](../dev/docs/testing-todos.md) | Test tiers, action items, release gate policy, and CI fixes |
 | [Contributor Checklist](../dev/docs/contributor-checklist.md) | Architecture-safe change checklist |
 
 ## Project READMEs

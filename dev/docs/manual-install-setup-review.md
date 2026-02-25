@@ -77,7 +77,7 @@ In this environment, full setup wizard validation was blocked by missing contain
 
 **Recommendation:**
 - Run and gate a deterministic install/setup smoke scenario on Docker-capable CI and one clean local machine per release candidate.
-- Reuse the implementation plan already documented in `dev/docs/install-setup-reliability-implementation-guide.md`.
+- Reuse the implementation plan documented in `dev/docs/testing-todos.md` (Phase 4-B: install harness skeleton).
 
 ### 5) Error style consistency across install branches (Medium)
 

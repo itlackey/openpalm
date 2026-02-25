@@ -96,7 +96,8 @@ describe("applyStack failure injection", () => {
     const originalCaddy = readFileSync(join(dir, "caddy.json"), "utf8");
 
     const runner = createMockRunner({
-      configValidateForFile: async (file) => {
+      configValidateForFile: async (file, envFile) => {
+        expect(envFile).toBe(join(dir, "system.env"));
         if (file.endsWith(".next")) {
           return { ok: false, stdout: "", stderr: "invalid yaml" };
         }
@@ -123,5 +124,23 @@ describe("applyStack failure injection", () => {
     });
 
     await expect(applyStack(manager, { apply: true, runner })).rejects.toThrow("compose_up_failed");
+  });
+
+  it("passes systemEnvPath as envFile to compose validation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "apply-engine-"));
+    const manager = createManager(dir);
+    manager.renderArtifacts();
+
+    let capturedEnvFile: string | undefined;
+    const runner = createMockRunner({
+      configValidateForFile: async (_file, envFile) => {
+        capturedEnvFile = envFile;
+        return { ok: true, stdout: "", stderr: "" };
+      },
+      action: async () => ({ ok: true, stdout: "", stderr: "" }),
+    });
+
+    await applyStack(manager, { apply: true, runner });
+    expect(capturedEnvFile).toBe(join(dir, "system.env"));
   });
 });

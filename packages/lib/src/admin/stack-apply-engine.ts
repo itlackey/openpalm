@@ -37,7 +37,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
     // Write a temp compose file for validation before committing artifacts
     const tempComposePath = join(manager.getPaths().stateRootPath, "docker-compose.yml.next");
     writeFileSync(tempComposePath, generated.composeFile, "utf8");
-    const composeValidate = await runner.configValidateForFile(tempComposePath);
+    const composeValidate = await runner.configValidateForFile(tempComposePath, manager.getPaths().systemEnvPath);
     if (!composeValidate.ok) {
       throw new Error(`compose_validation_failed:${composeValidate.stderr}`);
     }
