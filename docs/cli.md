@@ -148,11 +148,12 @@ All setup commands enforce: unauthenticated setup access is allowed only while s
 |---|---|---|---|
 | 1 | `setup.profile` | Data env + setup state | Persist profile name/email and update setup state |
 | 2 | `setup.service_instances` | Runtime env + secrets env + setup state + OpenCode config | Persist OpenMemory URLs and provider keys; optionally apply small-model config |
-| 3 | `setup.start_core` | Runtime side effects | Pull/start initial runtime services (`postgres`, `qdrant`, `openmemory`, `openmemory-ui`, `assistant`, `gateway`) and restart caddy |
-| 4 | `setup.channels` | Runtime env + stack spec + setup state | Persist enabled channels (`OPENPALM_ENABLED_CHANNELS`) and channel-specific config |
-| 5 | `setup.access_scope` | Runtime env + stack state + runtime side effects | Set host/lan/public binding scope and bring up caddy (and key services when already completed) |
-| 6 | `setup.step` | setup state | Mark wizard step completion checkpoints (`welcome`, `profile`, `serviceInstances`, etc.) |
-| 7 | `setup.complete` | Stack artifacts + runtime services + setup state | Apply stack artifacts, start core runtime services, sync automations, and mark setup complete |
+| 3 | `setup.channels` | Runtime env + stack spec + setup state | Persist enabled channels (`OPENPALM_ENABLED_CHANNELS`) and channel-specific config |
+| 4 | `setup.access_scope` | Runtime env + stack state | Set host/lan/public binding scope and persist setup state |
+| 5 | `setup.step` | setup state | Mark wizard step completion checkpoints (`welcome`, `profile`, `serviceInstances`, etc.) |
+| 6 | `setup.complete` | Stack artifacts + runtime services + setup state | Apply stack artifacts, start core runtime services, sync automations, and mark setup complete (single startup boundary) |
+
+Legacy detached startup commands are intentionally unsupported: `setup.start_core` is rejected with `unknown_command`.
 
 #### C) Setup completion internals (`packages/lib/src/admin/stack-apply-engine.ts`)
 

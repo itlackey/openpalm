@@ -3,7 +3,7 @@
     "id": "rec-01",
     "title": "Remove overlapping startup code paths",
     "description": "Consolidate setup startup so non-terminal setup actions do not start runtime services and completion is the single startup trigger.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 49, "lineEnd": 362 },
       { "file": "packages/ui/src/routes/setup/complete/+server.ts", "lineStart": 15, "lineEnd": 42 },
@@ -14,7 +14,7 @@
       {
         "id": "rec-01-01",
         "description": "Create a shared setup completion orchestrator used by both completion endpoints.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
           { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 28 }
@@ -23,7 +23,7 @@
       {
         "id": "rec-01-02",
         "description": "Remove the setup.start_core command branch and detached startup logic.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 205, "lineEnd": 234 }
         ]
@@ -31,7 +31,7 @@
       {
         "id": "rec-01-03",
         "description": "Remove wizard invocation of setup.start_core and keep startup messaging on finalization.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 },
           { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 218 }
@@ -40,7 +40,7 @@
       {
         "id": "rec-01-04",
         "description": "Make setup.access_scope and setup.profile configuration-only without compose up side effects.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 236 },
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 267 },
@@ -50,7 +50,7 @@
       {
         "id": "rec-01-05",
         "description": "Replace route-local setup service arrays with canonical lib-derived service definitions.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 49 },
@@ -60,7 +60,7 @@
       {
         "id": "rec-01-06",
         "description": "Update setup docs and tests to enforce one startup path and no setup.start_core usage.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "docs/cli.md", "lineStart": 147, "lineEnd": 156 },
           { "file": "packages/ui/src/routes/command/command-setup-flow.test.ts", "line": 1 },

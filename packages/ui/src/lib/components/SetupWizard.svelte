@@ -146,11 +146,6 @@
 				stepError = 'Could not save service settings. Please try again.';
 				return;
 			}
-			// Fire and forget — start pulling core services in background
-			api('/command', {
-				method: 'POST',
-				body: JSON.stringify({ type: 'setup.start_core', payload: {} })
-			});
 		}
 
 		if (currentStepName === 'accessScope') {
