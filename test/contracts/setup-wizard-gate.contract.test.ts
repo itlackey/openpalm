@@ -11,9 +11,7 @@ const ADMIN_TOKEN = "dev-admin-token";
 const repoRoot = resolve(execSync("git rev-parse --git-common-dir", { encoding: "utf8" }).trim(), "..");
 const STATE_FILE_HOST = resolve(repoRoot, ".dev/data/admin/setup-state.json");
 
-const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
-  .then(r => r.ok)
-  .catch(() => false);
+const stackAvailable = Bun.env.OPENPALM_INTEGRATION === "1";
 
 let savedState: string | null = null;
 
