@@ -7,14 +7,14 @@ Run the following bash commands to set up the worktree and initialize the Ralph 
 ```
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE=$("$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh" "$ARGUMENTS")
-"$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh" "implement-tasks in worktree $WORKTREE: $ARGUMENTS  VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE"
+"$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh" --worktree "$WORKTREE" "implement-tasks in worktree $WORKTREE: $ARGUMENTS  VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE"
 ```
 
-**All implementation work must be performed inside the worktree.** After the setup commands complete, `cd` into the worktree path printed by the setup script and do not leave it during the loop. The worktree path and branch name are recorded in `.opencode/worktree.local.md` so you can re-read them on every iteration.
+**All implementation work must be performed inside the worktree.** After the setup commands complete, `cd` into the worktree path printed by the setup script and do not leave it during the loop. The worktree path is embedded in the Ralph prompt text above, so you can reference it on every iteration.
 
 After the setup script completes successfully, begin the following workflow:
 
-1. **Navigate to the worktree** — read `.opencode/worktree.local.md` (in the repo root) to get the `path` and `branch` fields. `cd` to the worktree path before doing any other work. Every file edit, test run, and git commit must happen inside the worktree.
+1. **Navigate to the worktree** — the worktree path was printed by the setup script and is embedded in the Ralph prompt. `cd` to the worktree path before doing any other work. Every file edit, test run, and git commit must happen inside the worktree.
 
 2. **Read the task list** from `.plans/tasks.json` (inside the worktree). Find the next task (or subtask) whose status is not `completed`. If all tasks are completed, proceed to the **Finish** step below. **CRITICAL** Each iteration should only focus on a single task.
 
@@ -28,14 +28,15 @@ After the setup script completes successfully, begin the following workflow:
    - Test coverage and accuracy
    - The reviewer must produce a written verdict: **APPROVED** or **CHANGES REQUESTED** with specific, actionable feedback.
 
-6. **Iterate** — if the reviewer returns **CHANGES REQUESTED**, address every piece of feedback and repeat steps 4–5 until the reviewer returns **APPROVED**.
+6. **Iterate** — if the reviewer returns **CHANGES REQUESTED**, address every piece of feedback and repeat steps 4-5 until the reviewer returns **APPROVED**.
 
 7. **Update task status** — once approved, update the task's `status` field to `"completed"` in `.plans/tasks.json`, then `git add -A && git commit -m "task: <task title>"` from within the worktree.
 
 8. **Loop** — Complete the session once the status is complete and the changes are committed. Each iteration should only focus on a single task. The ralph-wiggum plugin will re-inject this prompt automatically. Return to step 1 and pick the next incomplete task.
 
 **Finish (all tasks complete):**
-- Push the branch: `git push -u origin <branch>` (branch name is in `.opencode/worktree.local.md`)
+- Determine the branch name: `git -C <worktree-path> branch --show-current`
+- Push the branch: `git -C <worktree-path> push -u origin <branch>`
 - Open a pull request from the branch to `main` with a summary of all completed tasks and references to `.plans/tasks.json`
 - Output the completion promise: `<promise>ALL TASKS COMPLETE</promise>`
 

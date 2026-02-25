@@ -4,11 +4,13 @@ description: |
   Implements the Ralph Wiggum iterative development loop technique for OpenCode.
   Uses the session.idle event to automatically restart sessions with the same prompt
   until a completion promise is detected or max iterations are reached.
+  Supports multiple concurrent loops in parallel git worktrees.
   Ideal for TDD loops, iterative refinement, and long-running autonomous tasks.
   
   Commands available after installation:
   - /ralph-loop <prompt> [--max-iterations N] [--completion-promise TEXT]
-  - /cancel-ralph
+  - /implement-tasks <task description>
+  - /cancel-ralph [session-id]
   - /ralph-help
 ---
 
@@ -23,7 +25,7 @@ previous work across iterations.
 Copy the files from this skill into your project's `.opencode/` directory:
 
 ```bash
-# Plugin (required — implements the loop)
+# Plugin (required -- implements the loop)
 cp .opencode/skills/ralph-wiggum/plugins/ralph-wiggum.ts .opencode/plugins/
 
 # Commands (optional but recommended)
@@ -42,24 +44,36 @@ Start a Ralph loop:
 /ralph-loop Build a REST API for todos --completion-promise "COMPLETE" --max-iterations 20
 ```
 
-Cancel an active loop:
+Start parallel loops in worktrees (via implement-tasks):
 
 ```
-/cancel-ralph
+/implement-tasks Add user auth
+/implement-tasks Build dashboard   <-- runs in parallel in a separate worktree
+```
+
+Cancel active loops:
+
+```
+/cancel-ralph           <-- cancels all active loops
+/cancel-ralph ses_xxx   <-- cancels a specific session's loop
 ```
 
 ## How It Works
 
-1. `/ralph-loop` runs `scripts/setup-ralph-loop.sh` to create `.opencode/ralph-loop.local.md` (iteration starts at 0)
+1. `/ralph-loop` runs `scripts/setup-ralph-loop.sh` to create a state file (iteration starts at 0)
 2. The `ralph-wiggum.ts` plugin listens for `session.idle` events
-3. On idle, it reads the state file; if active and owned by this session, it proceeds
-4. Checks max iterations and completion promise against the last assistant message
-5. If not complete, increments the iteration counter and re-injects the prompt via `client.session.promptAsync()` (fire-and-forget, returns immediately)
-6. The loop ends when the completion promise `<promise>TEXT</promise>` is detected, or max iterations is reached
+3. On idle, it scans for state files: repo root `.opencode/` and `.worktrees/*/.opencode/`
+4. Each session claims the first unclaimed state file it finds (per-session guards prevent races)
+5. Checks max iterations and completion promise against the last assistant message
+6. If not complete, increments the iteration counter and re-injects the prompt via `client.session.promptAsync()` (fire-and-forget, returns immediately)
+7. The loop ends when the completion promise `<promise>TEXT</promise>` is detected, or max iterations is reached
 
-## State File
+## State Files
 
-The loop state is tracked in `.opencode/ralph-loop.local.md` (gitignored by convention):
+Loop state is tracked in `ralph-loop.local.md` files (gitignored by convention):
+
+- **Repo root**: `.opencode/ralph-loop.local.md` -- for direct `/ralph-loop` commands
+- **Worktrees**: `.worktrees/<name>/.opencode/ralph-loop.local.md` -- for `/implement-tasks` commands
 
 ```yaml
 ---
@@ -74,12 +88,31 @@ started_at: "2026-01-01T00:00:00Z"
 Your task prompt goes here...
 ```
 
+## Registry
+
+The plugin maintains `.opencode/worktrees.local.json` mapping active sessions to their worktrees:
+
+```json
+{
+  "ses_xxxxx": {
+    "branch": "task-impl/foo-20260225",
+    "path": "/abs/.worktrees/task-impl-foo-20260225",
+    "iteration": 3,
+    "started_at": "2026-02-25T16:08:30Z"
+  }
+}
+```
+
+Updated on every iteration and on claim/completion.
+
 ## Session Scoping
 
 The plugin only acts on `session.idle` events from the session that started the loop.
-On the first iteration, `session_id` is `null` — the plugin claims the loop for whichever
+On the first iteration, `session_id` is `null` -- the plugin claims the loop for whichever
 session triggers it first, writing the session ID into the state file. Subsequent idle events
 from other sessions are ignored. This prevents the loop from hijacking unrelated sessions.
+
+Multiple sessions can run in parallel, each claiming a different state file.
 
 ## Completion Promises
 

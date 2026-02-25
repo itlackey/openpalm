@@ -108,3 +108,5 @@ CLAUDE.md
 # Ralph Wiggum plugin state files (per-session, ephemeral)
 .opencode/*.local.md
 .opencode/*.local copy.md
+.opencode/worktrees.local.json
+.worktrees/*/.opencode/*.local.md

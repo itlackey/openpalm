@@ -9,6 +9,7 @@ set -euo pipefail
 PROMPT_PARTS=()
 MAX_ITERATIONS=0
 COMPLETION_PROMISE="null"
+WORKTREE=""
 
 # Parse options and positional arguments
 while [[ $# -gt 0 ]]; do
@@ -26,6 +27,7 @@ ARGUMENTS:
 OPTIONS:
   --max-iterations <n>           Maximum iterations before auto-stop (default: unlimited)
   --completion-promise '<text>'  Promise phrase (USE QUOTES for multi-word)
+  --worktree <path>              Create state file inside worktree instead of repo root
   -h, --help                     Show this help message
 
 DESCRIPTION:
@@ -44,6 +46,7 @@ EXAMPLES:
   /ralph-loop --max-iterations 10 Fix the auth bug
   /ralph-loop Refactor cache layer  (runs forever)
   /ralph-loop --completion-promise 'TASK COMPLETE' Create a REST API
+  /ralph-loop --worktree /abs/.worktrees/my-task Build feature X
 
 STOPPING:
   Only by reaching --max-iterations or detecting --completion-promise
@@ -60,7 +63,7 @@ HELP_EOF
 		;;
 	--max-iterations)
 		if [[ -z "${2:-}" ]]; then
-			echo "❌ Error: --max-iterations requires a number argument" >&2
+			echo "Error: --max-iterations requires a number argument" >&2
 			echo "" >&2
 			echo "   Valid examples:" >&2
 			echo "     --max-iterations 10" >&2
@@ -71,7 +74,7 @@ HELP_EOF
 			exit 1
 		fi
 		if ! [[ "$2" =~ ^[0-9]+$ ]]; then
-			echo "❌ Error: --max-iterations must be a positive integer or 0, got: $2" >&2
+			echo "Error: --max-iterations must be a positive integer or 0, got: $2" >&2
 			echo "" >&2
 			echo "   Valid examples:" >&2
 			echo "     --max-iterations 10" >&2
@@ -86,7 +89,7 @@ HELP_EOF
 		;;
 	--completion-promise)
 		if [[ -z "${2:-}" ]]; then
-			echo "❌ Error: --completion-promise requires a text argument" >&2
+			echo "Error: --completion-promise requires a text argument" >&2
 			echo "" >&2
 			echo "   Valid examples:" >&2
 			echo "     --completion-promise 'DONE'" >&2
@@ -99,6 +102,18 @@ HELP_EOF
 			exit 1
 		fi
 		COMPLETION_PROMISE="$2"
+		shift 2
+		;;
+	--worktree)
+		if [[ -z "${2:-}" ]]; then
+			echo "Error: --worktree requires a path argument" >&2
+			echo "" >&2
+			echo "   Valid examples:" >&2
+			echo "     --worktree /abs/.worktrees/my-task" >&2
+			echo "     --worktree .worktrees/my-task" >&2
+			exit 1
+		fi
+		WORKTREE="$2"
 		shift 2
 		;;
 	*)
@@ -114,7 +129,7 @@ PROMPT="${PROMPT_PARTS[*]}"
 
 # Validate prompt is non-empty
 if [[ -z "$PROMPT" ]]; then
-	echo "❌ Error: No prompt provided" >&2
+	echo "Error: No prompt provided" >&2
 	echo "" >&2
 	echo "   Ralph needs a task description to work on." >&2
 	echo "" >&2
@@ -127,8 +142,17 @@ if [[ -z "$PROMPT" ]]; then
 	exit 1
 fi
 
+# Determine state file location
+if [[ -n "$WORKTREE" ]]; then
+	# Worktree mode: state file lives inside the worktree
+	STATE_DIR="${WORKTREE}/.opencode"
+else
+	# Default: state file at repo root
+	STATE_DIR=".opencode"
+fi
+
 # Create state file for the ralph-wiggum OpenCode plugin (markdown with YAML frontmatter)
-mkdir -p .opencode
+mkdir -p "$STATE_DIR"
 
 # Quote completion promise for YAML if it contains special chars or is not null
 if [[ -n "$COMPLETION_PROMISE" ]] && [[ "$COMPLETION_PROMISE" != "null" ]]; then
@@ -137,7 +161,9 @@ else
 	COMPLETION_PROMISE_YAML="null"
 fi
 
-cat >.opencode/ralph-loop.local.md <<EOF
+STATE_FILE="${STATE_DIR}/ralph-loop.local.md"
+
+cat >"$STATE_FILE" <<EOF
 ---
 active: true
 session_id: null
@@ -150,11 +176,11 @@ started_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 $PROMPT
 EOF
 
-
 # Output setup message
 cat <<EOF
-🔄 Ralph loop activated in this session!
+Ralph loop activated!
 
+State file: $STATE_FILE
 Iteration: 1
 Max iterations: $(if [[ $MAX_ITERATIONS -gt 0 ]]; then echo $MAX_ITERATIONS; else echo "unlimited"; fi)
 Completion promise: $(if [[ "$COMPLETION_PROMISE" != "null" ]]; then echo "${COMPLETION_PROMISE//\"/} (ONLY output when TRUE - do not lie!)"; else echo "none (runs forever)"; fi)
@@ -163,12 +189,10 @@ The ralph-wiggum plugin is now active. When the session goes idle, the SAME PROM
 will be sent back automatically. You'll see your previous work in files, creating
 a self-referential loop where you iteratively improve on the same task.
 
-To monitor: head -10 .opencode/ralph-loop.local.md
+To monitor: head -10 $STATE_FILE
 
-⚠️  WARNING: This loop cannot be stopped manually! It will run infinitely
+WARNING: This loop cannot be stopped manually! It will run infinitely
     unless you set --max-iterations or --completion-promise.
-
-🔄
 EOF
 
 # Output the initial prompt if provided
@@ -180,18 +204,18 @@ fi
 # Display completion promise requirements if set
 if [[ "$COMPLETION_PROMISE" != "null" ]]; then
 	echo ""
-	echo "═══════════════════════════════════════════════════════════"
+	echo "==============================================================="
 	echo "CRITICAL - Ralph Loop Completion Promise"
-	echo "═══════════════════════════════════════════════════════════"
+	echo "==============================================================="
 	echo ""
 	echo "To complete this loop, output this EXACT text:"
 	echo "  <promise>$COMPLETION_PROMISE</promise>"
 	echo ""
 	echo "STRICT REQUIREMENTS (DO NOT VIOLATE):"
-	echo "  ✓ Use <promise> XML tags EXACTLY as shown above"
-	echo "  ✓ The statement MUST be completely and unequivocally TRUE"
-	echo "  ✓ Do NOT output false statements to exit the loop"
-	echo "  ✓ Do NOT lie even if you think you should exit"
+	echo "  - Use <promise> XML tags EXACTLY as shown above"
+	echo "  - The statement MUST be completely and unequivocally TRUE"
+	echo "  - Do NOT output false statements to exit the loop"
+	echo "  - Do NOT lie even if you think you should exit"
 	echo ""
 	echo "IMPORTANT - Do not circumvent the loop:"
 	echo "  Even if you believe you're stuck, the task is impossible,"
@@ -201,5 +225,5 @@ if [[ "$COMPLETION_PROMISE" != "null" ]]; then
 	echo ""
 	echo "  If the loop should stop, the promise statement will become"
 	echo "  true naturally. Do not force it by lying."
-	echo "═══════════════════════════════════════════════════════════"
+	echo "==============================================================="
 fi

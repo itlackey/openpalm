@@ -44,9 +44,10 @@ Start a Ralph loop in your current session.
 **Options:**
 - `--max-iterations <n>` - Max iterations before auto-stop
 - `--completion-promise <text>` - Promise phrase to signal completion
+- `--worktree <path>` - Create state file inside a worktree instead of repo root
 
 **How it works:**
-1. Creates `.opencode/ralph-loop.local.md` state file
+1. Creates a `ralph-loop.local.md` state file (at repo root or in worktree)
 2. You work on the task
 3. When the session goes idle, the `ralph-wiggum` plugin intercepts via `session.idle`
 4. Same prompt fed back via `client.session.promptAsync()`
@@ -55,19 +56,61 @@ Start a Ralph loop in your current session.
 
 ---
 
-### /cancel-ralph
+### /implement-tasks <DESCRIPTION>
 
-Cancel an active Ralph loop (removes the loop state file).
+Start a Ralph loop in a dedicated git worktree. Multiple instances can run in parallel, each in its own worktree with its own state file.
 
 **Usage:**
 ```
-/cancel-ralph
+/implement-tasks Add user authentication
+/implement-tasks Build dashboard   <-- runs in parallel in a separate session
 ```
 
 **How it works:**
-- Checks for active loop state file
-- Removes `.opencode/ralph-loop.local.md`
-- Reports cancellation with iteration count
+1. Creates a new git worktree under `.worktrees/`
+2. Creates `ralph-loop.local.md` inside the worktree's `.opencode/` directory
+3. The plugin discovers and claims the state file on the first `session.idle`
+4. Each session works independently in its own worktree
+
+---
+
+### /cancel-ralph [SESSION_ID]
+
+Cancel active Ralph loop(s).
+
+**Usage:**
+```
+/cancel-ralph              <-- cancels all active loops
+/cancel-ralph ses_xxxxx    <-- cancels a specific session's loop
+```
+
+**How it works:**
+- Checks for active loops at repo root and in all worktrees
+- Reads `.opencode/worktrees.local.json` for the session registry
+- Removes targeted state files and cleans up the registry
+- Reports cancellation with iteration counts
+
+---
+
+## Multi-Worktree Parallel Loops
+
+The plugin supports running multiple Ralph loops simultaneously, each in its own git worktree:
+
+```
+repo-root/
+  .opencode/
+    worktrees.local.json      <-- session-to-worktree registry
+    ralph-loop.local.md        <-- direct (non-worktree) loop state
+  .worktrees/
+    task-impl-foo/
+      .opencode/
+        ralph-loop.local.md    <-- worktree-scoped state
+    task-impl-bar/
+      .opencode/
+        ralph-loop.local.md    <-- worktree-scoped state
+```
+
+Each `session.idle` event is scoped to the session that triggered it. The plugin maintains per-session guards and a global claim lock to prevent races.
 
 ---
 
@@ -75,19 +118,19 @@ Cancel an active Ralph loop (removes the loop state file).
 
 ### Completion Promises
 
-To signal completion, Claude must output a `<promise>` tag:
+To signal completion, the agent must output a `<promise>` tag:
 
 ```
 <promise>TASK COMPLETE</promise>
 ```
 
-The stop hook looks for this specific tag. Without it (or `--max-iterations`), Ralph runs infinitely.
+The plugin looks for this specific tag. Without it (or `--max-iterations`), Ralph runs infinitely.
 
 ### Self-Reference Mechanism
 
-The "loop" doesn't mean Claude talks to itself. It means:
+The "loop" doesn't mean the agent talks to itself. It means:
 - Same prompt repeated
-- Claude's work persists in files
+- The agent's work persists in files
 - Each iteration sees previous attempts
 - Builds incrementally toward goal
 
@@ -99,12 +142,17 @@ The "loop" doesn't mean Claude talks to itself. It means:
 /ralph-loop "Fix the token refresh logic in auth.ts. Output <promise>FIXED</promise> when all tests pass." --completion-promise "FIXED" --max-iterations 10
 ```
 
-You'll see Ralph:
-- Attempt fixes
-- Run tests
-- See failures
-- Iterate on solution
-- In your current session
+### Parallel Task Implementation
+
+```
+# Session 1:
+/implement-tasks Add user auth
+
+# Session 2 (separate terminal):
+/implement-tasks Build dashboard
+```
+
+Both loops run independently in their own worktrees.
 
 ## When to Use Ralph
 
@@ -113,6 +161,7 @@ You'll see Ralph:
 - Tasks requiring iteration and refinement
 - Iterative development with self-correction
 - Greenfield projects
+- Parallel workstreams with independent tasks
 
 **Not good for:**
 - Tasks requiring human judgment or design decisions

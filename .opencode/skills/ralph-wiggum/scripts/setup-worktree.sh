@@ -2,8 +2,9 @@
 
 # Worktree Setup Script
 # Creates a git worktree for isolated task implementation.
-# Writes the worktree path to .opencode/worktree.local.md so every
-# Ralph loop iteration can navigate back to the same working tree.
+# The worktree path and branch are output to stdout for capture by callers.
+# The ralph-wiggum plugin manages session-to-worktree mapping via
+# .opencode/worktrees.local.json (written by the plugin, not this script).
 
 set -euo pipefail
 
@@ -21,24 +22,14 @@ WORKTREE_DIR="${REPO_ROOT}/.worktrees/${BRANCH//\//-}"
 # Create the worktree on a new branch
 git -C "$REPO_ROOT" worktree add -b "$BRANCH" "$WORKTREE_DIR"
 
-# Persist state so Ralph loop iterations can reference the worktree
-mkdir -p "${REPO_ROOT}/.opencode"
-cat > "${REPO_ROOT}/.opencode/worktree.local.md" <<EOF
----
-branch: "$BRANCH"
-path: "$WORKTREE_DIR"
-created_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
----
-EOF
-
 cat <<EOF
 
-✅ Git worktree created
+Git worktree created
    Branch:   $BRANCH
    Path:     $WORKTREE_DIR
 
 All implementation work should happen inside the worktree path above.
-When the task list is complete, open a pull request from $BRANCH → main.
+When the task list is complete, open a pull request from $BRANCH -> main.
 
 To remove the worktree later:
   git worktree remove "$WORKTREE_DIR"
