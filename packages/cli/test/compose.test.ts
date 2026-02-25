@@ -1,6 +1,6 @@
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { buildComposeArgs, composeExec } from "@openpalm/lib/compose.ts";
-import type { ComposeConfig } from "@openpalm/lib/types.ts";
+import type { ComposeConfig, SpawnFn } from "@openpalm/lib/types.ts";
 
 describe("compose", () => {
   describe("buildComposeArgs", () => {
@@ -44,42 +44,32 @@ describe("compose", () => {
       composeFile: "/path/to/docker-compose.yml",
     };
 
-    let originalSpawn: typeof Bun.spawn;
-
-    beforeEach(() => {
-      originalSpawn = Bun.spawn;
-    });
-
-    afterEach(() => {
-      Bun.spawn = originalSpawn;
-      mock.restore();
-    });
-
     it("passes env-file and compose file args", async () => {
-      const spawnMock = mock(() => ({
-        exited: Promise.resolve(0),
-        exitCode: 0,
-        stdout: new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
-        }),
-        stderr: new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
-        }),
-      }));
-      Bun.spawn = spawnMock as unknown as typeof Bun.spawn;
+      let capturedArgs: string[] = [];
+      const spawnMock = mock((args: string[]) => {
+        capturedArgs = args;
+        return {
+          exited: Promise.resolve(0),
+          exitCode: 0,
+          stdout: new ReadableStream({
+            start(controller) {
+              controller.close();
+            },
+          }),
+          stderr: new ReadableStream({
+            start(controller) {
+              controller.close();
+            },
+          }),
+        };
+      }) as unknown as SpawnFn;
 
-      await composeExec(config, ["ps"]);
+      await composeExec(config, ["ps"], { spawn: spawnMock });
 
-      const call = (spawnMock.mock.calls as unknown as Array<unknown[]>)[0];
-      const args = (call ? call[0] : []) as string[];
-      expect(args).toContain("--env-file");
-      expect(args).toContain("/path/to/.env");
-      expect(args).toContain("-f");
-      expect(args).toContain("/path/to/docker-compose.yml");
+      expect(capturedArgs).toContain("--env-file");
+      expect(capturedArgs).toContain("/path/to/.env");
+      expect(capturedArgs).toContain("-f");
+      expect(capturedArgs).toContain("/path/to/docker-compose.yml");
     });
 
     it("returns timeout error code when aborted", async () => {
@@ -106,10 +96,9 @@ describe("compose", () => {
             },
           }),
         };
-      });
-      Bun.spawn = spawnMock as unknown as typeof Bun.spawn;
+      }) as unknown as SpawnFn;
 
-      const result = await composeExec(config, ["ps"], { timeout: 1 });
+      const result = await composeExec(config, ["ps"], { timeout: 1, spawn: spawnMock });
       expect(result.code).toBe("timeout");
       expect(result.exitCode).toBe(1);
     });

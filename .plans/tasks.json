@@ -854,14 +854,14 @@
     "title": "Inject dependencies instead of monkey-patching globals",
     "description": "Add SpawnFn type and optional spawn parameter to runCompose, createComposeRunner, and composeExec, then rewrite two test files to use DI instead of monkey-patching Bun.spawn.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R13-inject-dependencies-not-globals.md",
     "subtasks": [
       {
         "id": "R13.1",
         "description": "Add SpawnFn type and spawn? field to ComposeRunOptions in packages/lib/src/types.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/types.ts",
@@ -873,7 +873,7 @@
       {
         "id": "R13.2",
         "description": "Update runComposeOnce in compose-runner.ts to use options.spawn ?? Bun.spawn instead of hard-coded Bun.spawn",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/compose-runner.ts",
@@ -885,7 +885,7 @@
       {
         "id": "R13.3",
         "description": "Thread spawn parameter through createComposeRunner and execCompose in admin/compose-runner.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/compose-runner.ts",
@@ -897,7 +897,7 @@
       {
         "id": "R13.4",
         "description": "Add spawn? to composeExec options in packages/lib/src/compose.ts and forward it",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/compose.ts",
@@ -909,7 +909,7 @@
       {
         "id": "R13.5",
         "description": "Rewrite compose-runner.test.ts: remove all Bun.spawn monkey-patching, use createComposeRunner(envFile, mockSpawn) and createMockRunner()",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/compose-runner.test.ts",
@@ -921,7 +921,7 @@
       {
         "id": "R13.6",
         "description": "Rewrite packages/cli/test/compose.test.ts: remove Bun.spawn monkey-patching, pass spawn via composeExec options",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/cli/test/compose.test.ts",
@@ -933,7 +933,7 @@
       {
         "id": "R13.7",
         "description": "Run full test suite and grep for remaining Bun.spawn= assignments in test files",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/compose-runner.test.ts",
