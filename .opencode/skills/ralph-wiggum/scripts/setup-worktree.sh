@@ -3,8 +3,8 @@
 # Worktree Setup Script
 # Creates a git worktree for isolated task implementation.
 # The worktree path and branch are output to stdout for capture by callers.
-# The ralph-wiggum plugin manages session-to-worktree mapping via
-# .opencode/worktrees.local.json (written by the plugin, not this script).
+# The setup + plugin flow manages session-to-worktree mapping via
+# .opencode/worktrees.local.json (seeded by setup-ralph-loop, finalized by plugin claim).
 
 set -euo pipefail
 

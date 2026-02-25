@@ -78,7 +78,7 @@ Loop state is tracked in `ralph-loop.local.md` files (gitignored by convention):
 ```yaml
 ---
 active: true
-session_id: null
+session_id: "__PENDING_CLAIM__"
 iteration: 1
 max_iterations: 20
 completion_promise: "COMPLETE"
@@ -108,8 +108,8 @@ Updated on every iteration and on claim/completion.
 ## Session Scoping
 
 The plugin only acts on `session.idle` events from the session that started the loop.
-On the first iteration, `session_id` is `null` -- the plugin claims the loop for whichever
-session triggers it first, writing the session ID into the state file. Subsequent idle events
+On initialization, `session_id` is `"__PENDING_CLAIM__"` until the first idle event -- the
+plugin then claims the loop, writing the concrete session ID into the state file. Subsequent idle events
 from other sessions are ignored. This prevents the loop from hijacking unrelated sessions.
 
 Multiple sessions can run in parallel, each claiming a different state file.

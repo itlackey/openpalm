@@ -10,6 +10,9 @@ PROMPT_PARTS=()
 MAX_ITERATIONS=0
 COMPLETION_PROMISE="null"
 WORKTREE=""
+SESSION_PENDING="__PENDING_CLAIM__"
+REGISTRY_PENDING_PREFIX="pending:"
+SESSION_ID_ARG=""
 
 resolve_worktree_path() {
 	local raw="$1"
@@ -46,6 +49,106 @@ resolve_worktree_path() {
 	return 0
 }
 
+upsert_pending_registry_entry() {
+	local repo_root="$1"
+	local worktree_path="$2"
+	local iteration="$3"
+	local started_at="$4"
+	local session_key="$5"
+
+	[[ -z "$worktree_path" ]] && return 0
+
+	local branch
+	branch="$(git -C "$worktree_path" branch --show-current 2>/dev/null || true)"
+	if [[ -z "$branch" ]]; then
+		branch="task-impl/unknown"
+	fi
+
+	local registry_dir="${repo_root}/.opencode"
+	local registry_path="${registry_dir}/worktrees.local.json"
+	mkdir -p "$registry_dir"
+
+	local temp_file
+	temp_file="$(mktemp)"
+
+	python3 - "$registry_path" "$temp_file" "$REGISTRY_PENDING_PREFIX" "$worktree_path" "$branch" "$iteration" "$started_at" "$session_key" <<'PY'
+import json
+import os
+import sys
+
+registry_path = sys.argv[1]
+temp_path = sys.argv[2]
+prefix = sys.argv[3]
+worktree_path = sys.argv[4]
+branch = sys.argv[5]
+iteration = int(sys.argv[6])
+started_at = sys.argv[7]
+session_key = sys.argv[8]
+
+registry = {}
+if os.path.exists(registry_path):
+    try:
+        with open(registry_path, "r", encoding="utf-8") as f:
+            value = json.load(f)
+            if isinstance(value, dict):
+                registry = value
+    except Exception:
+        registry = {}
+
+if not session_key:
+    session_key = f"{prefix}{worktree_path}"
+
+registry[session_key] = {
+    "branch": branch,
+    "path": worktree_path,
+    "iteration": iteration,
+    "started_at": started_at,
+}
+
+with open(temp_path, "w", encoding="utf-8") as f:
+    json.dump(registry, f, indent=2)
+    f.write("\n")
+PY
+
+	mv "$temp_file" "$registry_path"
+}
+
+resolve_session_id() {
+	if [[ -n "$SESSION_ID_ARG" ]]; then
+		echo "$SESSION_ID_ARG"
+		return 0
+	fi
+
+	for candidate in "${OPENCODE_SESSION_ID:-}" "${SESSION_ID:-}" "${sessionID:-}"; do
+		if [[ -n "$candidate" ]]; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+
+	echo ""
+	return 0
+}
+
+resolve_registry_root() {
+	local worktree_path="$1"
+	local common_dir=""
+	local root=""
+
+	if common_dir="$(git -C "$worktree_path" rev-parse --git-common-dir 2>/dev/null)"; then
+		if [[ "$common_dir" != /* ]]; then
+			common_dir="$(cd "$worktree_path" && cd "$common_dir" && pwd -P)"
+		fi
+		root="$(cd "${common_dir}/.." && pwd -P)"
+		echo "$root"
+		return 0
+	fi
+
+	# Fallback for non-git contexts.
+	echo "$(pwd -P)"
+	return 0
+}
+
 # Parse options and positional arguments
 while [[ $# -gt 0 ]]; do
 	case $1 in
@@ -63,6 +166,7 @@ OPTIONS:
   --max-iterations <n>           Maximum iterations before auto-stop (default: unlimited)
   --completion-promise '<text>'  Promise phrase (USE QUOTES for multi-word)
   --worktree <path>              Create state file inside worktree instead of repo root
+  --session-id <id>              Pre-claim loop for a known session ID
   -h, --help                     Show this help message
 
 DESCRIPTION:
@@ -151,6 +255,14 @@ HELP_EOF
 		WORKTREE="$2"
 		shift 2
 		;;
+	--session-id)
+		if [[ -z "${2:-}" ]]; then
+			echo "Error: --session-id requires a value" >&2
+			exit 1
+		fi
+		SESSION_ID_ARG="$2"
+		shift 2
+		;;
 	*)
 		# Non-option argument - collect all as prompt parts
 		PROMPT_PARTS+=("$1")
@@ -213,19 +325,35 @@ else
 fi
 
 STATE_FILE="${STATE_DIR}/ralph-loop.local.md"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+CLAIMED_SESSION_ID="$(resolve_session_id)"
+SESSION_FIELD_VALUE="$SESSION_PENDING"
+REGISTRY_SESSION_KEY=""
+
+if [[ -n "$CLAIMED_SESSION_ID" ]]; then
+	SESSION_FIELD_VALUE="$CLAIMED_SESSION_ID"
+	REGISTRY_SESSION_KEY="$CLAIMED_SESSION_ID"
+fi
 
 cat >"$STATE_FILE" <<EOF
 ---
 active: true
-session_id: null
+session_id: "$SESSION_FIELD_VALUE"
 iteration: 0
 max_iterations: $MAX_ITERATIONS
 completion_promise: $COMPLETION_PROMISE_YAML
-started_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+started_at: "$STARTED_AT"
 ---
 
 $PROMPT
 EOF
+
+# Seed worktree registry immediately so operators can inspect active loops before
+# the first session.idle claim event occurs.
+if [[ -n "$WORKTREE" ]]; then
+	REPO_ROOT="$(resolve_registry_root "$WORKTREE")"
+	upsert_pending_registry_entry "$REPO_ROOT" "$WORKTREE" "0" "$STARTED_AT" "$REGISTRY_SESSION_KEY"
+fi
 
 # Output setup message
 cat <<EOF

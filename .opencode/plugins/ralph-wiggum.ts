@@ -8,11 +8,14 @@ import {
   mkdirSync,
 } from "fs"
 import { join, resolve } from "path"
+import { execSync } from "child_process"
 
 const STATE_FILENAME = "ralph-loop.local.md"
 const OPENCODE_DIR = ".opencode"
 const WORKTREES_DIR = ".worktrees"
 const REGISTRY_FILENAME = "worktrees.local.json"
+const SESSION_PENDING = "__PENDING_CLAIM__"
+const REGISTRY_PENDING_PREFIX = "pending:"
 
 type RalphState = {
   active: boolean
@@ -71,7 +74,7 @@ function parseStateFile(content: string): RalphState | null {
 
     const rawSessionId = getField("session_id")
     const sessionId =
-      rawSessionId === "null" || rawSessionId === null
+      rawSessionId === "null" || rawSessionId === null || rawSessionId === SESSION_PENDING
         ? null
         : rawSessionId.replace(/^"(.*)"$/, "$1")
 
@@ -181,6 +184,100 @@ function scanAndClaim(repoRoot: string, sessionId: string): string | null {
   return null
 }
 
+function tryClaimStateFile(filePath: string, sessionId: string): boolean {
+  const state = readState(filePath)
+  if (!state || !state.active) return false
+  if (state.sessionId && state.sessionId !== sessionId) return false
+  claimSession(filePath, sessionId)
+  return true
+}
+
+function parseWorktreePathFromText(text: string): string | null {
+  const patterns = [
+    /--worktree\s+"([^"]+)"/,
+    /--worktree\s+'([^']+)'/,
+    /--worktree\s+(\S+)/,
+    /implement-tasks in worktree\s+([^:\n]+):/,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (match?.[1]) return resolve(match[1].trim())
+  }
+
+  return null
+}
+
+function findWorktreePathHint(event: any): string | null {
+  const directCandidates = [
+    event?.properties?.worktree,
+    event?.worktree,
+    event?.properties?.directory,
+    event?.directory,
+  ]
+
+  for (const candidate of directCandidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return resolve(candidate.trim())
+    }
+  }
+
+  const textCandidates = [
+    event?.properties?.input?.command,
+    event?.input?.command,
+    event?.properties?.command,
+    event?.command,
+    (() => {
+      try {
+        return JSON.stringify(event)
+      } catch {
+        return ""
+      }
+    })(),
+  ]
+
+  for (const text of textCandidates) {
+    if (typeof text !== "string" || text.length === 0) continue
+    const parsed = parseWorktreePathFromText(text)
+    if (parsed) return parsed
+  }
+
+  return null
+}
+
+function claimByWorktreeHint(repoRoot: string, sessionId: string, worktreePath: string): string | null {
+  const stateFilePath = resolve(join(worktreePath, OPENCODE_DIR, STATE_FILENAME))
+  if (!existsSync(stateFilePath)) return null
+  if (!tryClaimStateFile(stateFilePath, sessionId)) return null
+
+  sessionStateMap.set(sessionId, stateFilePath)
+  const startedAt = getStartedAt(stateFilePath)
+  const state = readState(stateFilePath)
+  updateRegistryEntry(repoRoot, sessionId, stateFilePath, state?.iteration ?? 0, startedAt)
+  return stateFilePath
+}
+
+function claimSessionState(repoRoot: string, sessionId: string, event: any): string | null {
+  const cached = sessionStateMap.get(sessionId)
+  if (cached) return cached
+
+  const hintedWorktree = findWorktreePathHint(event)
+  if (hintedWorktree) {
+    const hinted = claimByWorktreeHint(repoRoot, sessionId, hintedWorktree)
+    if (hinted) return hinted
+  }
+
+  // Fallback: scan and claim first available active/unclaimed state file.
+  const claimed = scanAndClaim(repoRoot, sessionId)
+  if (!claimed) return null
+
+  sessionStateMap.set(sessionId, claimed)
+  const startedAt = getStartedAt(claimed)
+  const state = readState(claimed)
+  updateRegistryEntry(repoRoot, sessionId, claimed, state?.iteration ?? 0, startedAt)
+  return claimed
+}
+
 /**
  * Read the registry file, or return empty object if missing/corrupt.
  */
@@ -192,6 +289,26 @@ function readRegistry(repoRoot: string): Registry {
   } catch {
     return {}
   }
+}
+
+function getSessionIdFromEvent(event: any): string | null {
+  const candidates = [
+    event?.properties?.sessionID,
+    event?.properties?.sessionId,
+    event?.properties?.session_id,
+    event?.sessionID,
+    event?.sessionId,
+    event?.session_id,
+    event?.path?.id,
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim()
+    }
+  }
+
+  return null
 }
 
 /**
@@ -232,9 +349,9 @@ function updateRegistryEntry(
 
     // Try to read branch from git
     try {
-      const { execSync } = require("child_process")
       branch = execSync(`git -C "${worktreePath}" branch --show-current`, {
         encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
       }).trim()
     } catch {
       // Derive from directory name as fallback
@@ -249,6 +366,15 @@ function updateRegistryEntry(
     started_at: startedAt,
   }
 
+  // Remove pending placeholders that point to the same worktree now that the
+  // loop is claimed by a concrete session ID.
+  for (const key of Object.keys(registry)) {
+    if (!key.startsWith(REGISTRY_PENDING_PREFIX)) continue
+    if (registry[key]?.path === worktreePath) {
+      delete registry[key]
+    }
+  }
+
   writeRegistry(repoRoot, registry)
 }
 
@@ -259,6 +385,25 @@ function removeRegistryEntry(repoRoot: string, sessionId: string): void {
   const registry = readRegistry(repoRoot)
   delete registry[sessionId]
   writeRegistry(repoRoot, registry)
+}
+
+function resolveRepoRoot(baseDir: string): string {
+  try {
+    let commonDir = execSync(`git -C "${baseDir}" rev-parse --git-common-dir`, {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim()
+
+    if (!commonDir) return resolve(baseDir)
+    if (!commonDir.startsWith("/")) {
+      commonDir = resolve(baseDir, commonDir)
+    }
+
+    // Common dir is usually <repo>/.git; registry should live at <repo>/.opencode.
+    return resolve(commonDir, "..")
+  } catch {
+    return resolve(baseDir)
+  }
 }
 
 function getStartedAt(stateFilePath: string): string {
@@ -273,11 +418,10 @@ function getStartedAt(stateFilePath: string): string {
 
 export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
   event: async ({ event }) => {
-    if (event.type !== "session.idle") return
-
     // Extract session ID from the event
-    const sessionId = (event as any).properties?.sessionID
+    const sessionId = getSessionIdFromEvent(event)
     if (!sessionId) {
+      if (event.type !== "session.idle") return
       await client.app.log({
         body: {
           service: "ralph-wiggum",
@@ -293,29 +437,25 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
     processing.add(sessionId)
 
     try {
-      const repoRoot = directory
+      const repoRoot = resolveRepoRoot(directory)
 
-      // Step 1: Check in-memory cache for this session's state file
+      // Ensure this session is mapped to a concrete state file as early as
+      // possible, not only at session.idle. This gives a deterministic
+      // session->worktree registry entry immediately after setup.
       let stateFilePath = sessionStateMap.get(sessionId) ?? null
 
-      // Step 2: If not cached, scan for unclaimed state files
       if (!stateFilePath) {
-        // Acquire global claim lock to prevent two sessions racing
-        if (claimLock) {
-          // Another session is currently scanning — skip this idle event.
-          // The next idle will retry.
-          return
-        }
+        if (claimLock) return
         claimLock = true
         try {
-          stateFilePath = scanAndClaim(repoRoot, sessionId)
-          if (stateFilePath) {
-            sessionStateMap.set(sessionId, stateFilePath)
-          }
+          stateFilePath = claimSessionState(repoRoot, sessionId, event as any)
         } finally {
           claimLock = false
         }
       }
+
+      // For non-idle events, claim/update mapping only; don't run the loop body.
+      if (event.type !== "session.idle") return
 
       // No state file found or claimed — nothing to do
       if (!stateFilePath) return
@@ -339,9 +479,7 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
         return
       }
 
-      // Ensure registry entry exists as soon as state is claimed, even before
-      // an iteration is advanced. This gives /cancel-ralph and operators a
-      // stable session->worktree map immediately after first idle.
+      // Refresh mapping metadata on idle so operators always see latest values.
       updateRegistryEntry(repoRoot, sessionId, stateFilePath, state.iteration, getStartedAt(stateFilePath))
 
       // Check max iterations

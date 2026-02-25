@@ -5,7 +5,11 @@ description: "Start Ralph Wiggum loop in current session"
 Run the following bash command to initialize the Ralph loop:
 
 ```
-.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh $ARGUMENTS
+SESSION_ID_ARG=()
+if [ -n "${SESSION_ID:-}" ]; then
+  SESSION_ID_ARG=(--session-id "$SESSION_ID")
+fi
+.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh $ARGUMENTS "${SESSION_ID_ARG[@]}"
 ```
 
 After the setup script completes successfully, begin working on the task described in the arguments above. The `ralph-wiggum` plugin monitors `session.idle` and will automatically re-inject this same prompt after each iteration, allowing you to build on your previous work incrementally.
