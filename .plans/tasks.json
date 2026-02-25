@@ -160,7 +160,7 @@
       "id": "rec2",
       "title": "Add Playwright validation-error and API-failure tests",
       "description": "Extend the existing Playwright e2e suite with four tests covering error paths: short password, mismatched passwords, missing Anthropic key, and setup.complete returning 500. No CI changes are needed.",
-      "status": "pending",
+      "status": "completed",
       "planFile": ".plans/rec2-playwright-error-tests.md",
       "files": [
         {
@@ -234,7 +234,7 @@
           "id": "rec2.1",
           "title": "Add test: profile step rejects short password",
           "description": "Append a test inside the existing describe block that fills #wiz-profile-password with 'short', clicks Next, and asserts the wizard stays on Profile with the error message visible.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -252,7 +252,7 @@
           "id": "rec2.2",
           "title": "Add test: profile step rejects mismatched passwords",
           "description": "Append a test that fills both password fields with different valid-length values, clicks Next, and asserts the 'Passwords do not match.' error is visible.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -270,7 +270,7 @@
           "id": "rec2.3",
           "title": "Add test: providers step rejects missing Anthropic key",
           "description": "Append a test that navigates through Welcome and Profile steps (using fillProfileStep helper) then clicks Next on AI Providers with an empty key field, asserting the error message.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -293,7 +293,7 @@
           "id": "rec2.4",
           "title": "Add test: setup.complete 500 shows error and re-enables button",
           "description": "Append a test that intercepts only setup.complete POSTs to return 500, drives the wizard to Health Check, clicks Finish Setup, and asserts the error banner and re-enabled button.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
