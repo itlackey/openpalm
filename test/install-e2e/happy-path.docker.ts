@@ -209,7 +209,6 @@ services:
       OPENPALM_CONTAINER_SOCKET_IN_CONTAINER: /var/run/docker.sock
       OPENPALM_IMAGE_NAMESPACE: openpalm
       OPENPALM_IMAGE_TAG: latest
-      CRON_DIR: "${stateDir}/automations"
 
   assistant:
     image: busybox

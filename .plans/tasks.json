@@ -952,16 +952,16 @@
   {
     "id": "R14",
     "title": "Fix module-load side effects in automations.ts",
-    "description": "Refactor automations.ts to accept cronDir as an explicit parameter instead of reading Bun.env.CRON_DIR, eliminating the cache-busting import hack in tests.",
+    "description": "Refactor automations.ts and automation-history.ts to use configureCronDir() setter instead of reading Bun.env.CRON_DIR, eliminating cache-busting import hacks, env var propagation, and the CRON_DIR config export.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R14-fix-module-load-side-effects.md",
     "subtasks": [
       {
         "id": "R14.1",
-        "description": "Refactor automations.ts: remove cronDir() env reader function, add cronDir parameter to all exported functions (ensureCronDirs, syncAutomations, triggerAutomation) and internal helpers",
-        "status": "pending",
+        "description": "Refactor automations.ts: replace cronDir() env reader with DEFAULT_CRON_DIR constant, configureCronDir() setter, and optional trailing cronDir param on all exports",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/automations.ts",
@@ -972,112 +972,91 @@
       },
       {
         "id": "R14.2",
-        "description": "Update ensureCronDirs signature and internal calls to pass cronDir parameter",
-        "status": "pending",
+        "description": "Refactor automation-history.ts: replace Bun.env.CRON_DIR read with same configureCronDir/default-param pattern",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/lib/src/admin/automations.ts",
-            "lines": "35-40",
+            "path": "packages/lib/src/admin/automation-history.ts",
+            "lines": "1-35",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.3",
-        "description": "Update syncAutomations and triggerAutomation signatures to accept cronDir as first parameter",
-        "status": "pending",
+        "description": "Update init.ts: remove process.env.CRON_DIR propagation, call configureCronDir() for both modules at startup",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/lib/src/admin/automations.ts",
-            "lines": "42-120",
+            "path": "packages/ui/src/lib/server/init.ts",
+            "lines": "67-90",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.4",
-        "description": "Update init.ts: remove process.env.CRON_DIR propagation, pass CRON_DIR to ensureCronDirs() and syncAutomations()",
-        "status": "pending",
+        "description": "Remove CRON_DIR export from config.ts (no longer needed — derived from STATE_ROOT in init.ts)",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/ui/src/lib/server/init.ts",
-            "lines": "72-93",
+            "path": "packages/ui/src/lib/server/config.ts",
+            "lines": "43-45",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.5",
-        "description": "Update packages/ui/src/routes/command/+server.ts: pass CRON_DIR to syncAutomations and triggerAutomation calls",
-        "status": "pending",
+        "description": "Remove vestigial CRON_DIR env var settings from test helpers (helpers.ts, env.ts, happy-path.docker.ts)",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/ui/src/routes/command/+server.ts",
-            "lines": "355-588",
+            "path": "packages/ui/test/api/helpers.ts",
+            "lines": "119",
+            "action": "modify"
+          },
+          {
+            "path": "packages/ui/e2e/env.ts",
+            "lines": "98",
+            "action": "modify"
+          },
+          {
+            "path": "test/install-e2e/happy-path.docker.ts",
+            "lines": "212",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.6",
-        "description": "Update remaining UI route callers (stack/apply, setup/complete, automations/*, automations/update, automations/delete, automations/trigger) to pass CRON_DIR",
-        "status": "pending",
+        "description": "Rewrite automations.test.ts: static import, remove cache-busting hack, pass cronDir directly",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/ui/src/routes/stack/apply/+server.ts",
-            "lines": "5-28",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/setup/complete/+server.ts",
-            "lines": "7-41",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/+server.ts",
-            "lines": "5-40",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/update/+server.ts",
-            "lines": "4-24",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/delete/+server.ts",
-            "lines": "3-14",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/trigger/+server.ts",
-            "lines": "3-13",
+            "path": "packages/lib/src/admin/automations.test.ts",
+            "lines": "1-33",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.7",
-        "description": "Rewrite automations.test.ts: use static import, remove cache-busting hack and env var manipulation, pass cronDir directly",
-        "status": "pending",
+        "description": "Rewrite automation-history.test.ts: static import, remove env var manipulation, pass cronDir directly",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/lib/src/admin/automations.test.ts",
-            "lines": "11-23",
+            "path": "packages/lib/src/admin/automation-history.test.ts",
+            "lines": "1-24",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.8",
-        "description": "Run full test suite and grep for remaining Bun.env.CRON_DIR and cache-busting import patterns",
-        "status": "pending",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/automations.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
+        "description": "Run full test suite (729 pass) and verify zero remaining Bun.env.CRON_DIR or cache-busting import patterns",
+        "status": "completed",
+        "files": []
       }
     ]
   },

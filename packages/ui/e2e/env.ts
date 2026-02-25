@@ -95,7 +95,6 @@ export function webServerEnv(): Record<string, string> {
 		ASSISTANT_ENV_PATH: join(stateRoot, 'assistant', '.env'),
 		COMPOSE_PROJECT_PATH: stateRoot,
 		OPENPALM_COMPOSE_FILE: 'docker-compose.yml',
-		CRON_DIR: join(tmpDir, 'cron'),
 		OPENPALM_COMPOSE_BIN: '/usr/bin/true',
 	};
 }

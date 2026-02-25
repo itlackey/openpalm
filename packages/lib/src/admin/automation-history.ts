@@ -1,8 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Lazy: env var is read at call time so callers can set CRON_DIR before first use.
-function logDir(): string { return join(Bun.env.CRON_DIR ?? "/state/automations", "log"); }
+const DEFAULT_CRON_DIR = "/state/automations";
+let _cronDir = DEFAULT_CRON_DIR;
+
+/** Set the cron directory for history lookups. Call once at startup. */
+export function configureCronDir(dir: string): void { _cronDir = dir; }
 
 export type AutomationRun = {
   ts: string;
@@ -14,8 +17,8 @@ export type AutomationRun = {
   error?: string;
 };
 
-export function readHistory(id: string, limit = 20): AutomationRun[] {
-  const path = join(logDir(), `${id}.jsonl`);
+export function readHistory(id: string, limit = 20, cronDir = _cronDir): AutomationRun[] {
+  const path = join(cronDir, "log", `${id}.jsonl`);
   if (!existsSync(path)) return [];
   const lines = readFileSync(path, "utf8").split("\n").filter((line) => line.trim().length > 0);
   const runs: AutomationRun[] = [];
@@ -29,7 +32,7 @@ export function readHistory(id: string, limit = 20): AutomationRun[] {
   return runs;
 }
 
-export function getLatestRun(id: string): AutomationRun | null {
-  const runs = readHistory(id, 1);
+export function getLatestRun(id: string, cronDir = _cronDir): AutomationRun | null {
+  const runs = readHistory(id, 1, cronDir);
   return runs[0] ?? null;
 }

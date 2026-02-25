@@ -12,8 +12,7 @@ import {
 	RUNTIME_ENV_PATH,
 	DATA_ENV_PATH,
 	ADMIN_TOKEN,
-	DEFAULT_INSECURE_TOKEN,
-	CRON_DIR
+	DEFAULT_INSECURE_TOKEN
 } from './config';
 
 export const log = createLogger('admin');
@@ -69,12 +68,15 @@ export async function ensureInitialized(): Promise<void> {
 	if (_initialized || building) return;
 	_initialized = true;
 
-	// Propagate CRON_DIR so @openpalm/lib/admin/automations reads it at module scope
-	process.env.CRON_DIR = CRON_DIR;
-
 	const sm = await getStackManager();
 	const { CORE_AUTOMATIONS } = await import('@openpalm/lib/assets/automations/index');
-	const { ensureCronDirs, syncAutomations } = await import('@openpalm/lib/admin/automations');
+	const { ensureCronDirs, syncAutomations, configureCronDir } = await import('@openpalm/lib/admin/automations');
+	const { configureCronDir: configureHistoryCronDir } = await import('@openpalm/lib/admin/automation-history');
+
+	// Configure automations modules to use the correct state-derived cron directory
+	const cronDir = `${STATE_ROOT}/automations`;
+	configureCronDir(cronDir);
+	configureHistoryCronDir(cronDir);
 
 	// Merge core automations into spec
 	const spec = sm.getSpec();
