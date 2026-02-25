@@ -1279,14 +1279,14 @@
     "title": "Dynamic port allocation for Docker tests",
     "description": "Replace hardcoded host ports (18200, 18280, 18300) in Docker test files with dynamic port allocation using Docker Compose '0:<container_port>' syntax and docker compose port discovery.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1-2 hours",
     "planFile": ".plans/R17-dynamic-port-allocation.md",
     "subtasks": [
       {
         "id": "R17.1",
         "description": "Create shared helper test/helpers/docker-compose-port.ts with resolveHostPort() function",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/helpers/docker-compose-port.ts",
@@ -1298,7 +1298,7 @@
       {
         "id": "R17.2",
         "description": "Modify docker-stack.docker.ts: remove hardcoded ADMIN_PORT/GATEWAY_PORT constants, use '0:8100' and '0:8080' in compose overlay, add resolveHostPort() calls after container startup",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/docker/docker-stack.docker.ts",
@@ -1310,7 +1310,7 @@
       {
         "id": "R17.3",
         "description": "Modify happy-path.docker.ts: remove hardcoded ADMIN_PORT constant, use '0:8100' in compose overlay, add resolveHostPort() call after container startup",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/install-e2e/happy-path.docker.ts",
@@ -1322,7 +1322,7 @@
       {
         "id": "R17.4",
         "description": "Verify both Docker test suites pass with dynamic ports and can run in parallel without conflicts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/docker/docker-stack.docker.ts",

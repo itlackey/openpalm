@@ -17,12 +17,15 @@ import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveHostPort } from "../helpers/docker-compose-port.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
 const PROJECT_NAME = "openpalm-install-e2e";
 const TIMEOUT = 15_000;
 const ADMIN_TOKEN = "test-e2e-wizard-token"; // ≥8 chars, satisfies password validation
-const ADMIN_PORT = 18300; // Non-conflicting with docker-stack tests (18200)
+// Port is dynamically assigned by Docker (via "0:8100" mapping)
+// and discovered after container startup using `docker compose port`.
+let ADMIN_PORT: number;
 
 // ── Docker availability check ─────────────────────────────
 const dockerAvailable = await Bun.spawn(["docker", "info"], {
@@ -186,7 +189,7 @@ services:
       context: .
       dockerfile: core/admin/Dockerfile
     ports:
-      - "${ADMIN_PORT}:8100"
+      - "0:8100"
     volumes:
       - .:/compose:ro
       - ${dataDir}:${dataDir}
@@ -255,6 +258,14 @@ services:
     console.error("[install-e2e] Start failed:", upResult.stderr);
     throw new Error("Docker start failed");
   }
+
+  // Discover the dynamically assigned host port
+  const composeBaseArgs = [
+    "-p", PROJECT_NAME, "--env-file", envFilePath,
+    "-f", composeTestFile, "--project-directory", REPO_ROOT,
+  ];
+  ADMIN_PORT = await resolveHostPort(composeBaseArgs, "admin", 8100, REPO_ROOT);
+  console.log(`[install-e2e] Admin on port ${ADMIN_PORT}`);
 
   // Wait for admin to become healthy
   console.log("[install-e2e] Waiting for admin health...");
