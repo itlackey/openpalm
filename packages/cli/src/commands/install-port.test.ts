@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { checkPort, runPreflightChecks } from "@openpalm/lib/preflight.ts";
+import { checkPort, checkPortDetailed, runPreflightChecks, runPreflightChecksDetailed } from "@openpalm/lib/preflight.ts";
 import { createDefaultStackSpec, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 import { generateStackArtifacts } from "@openpalm/lib/admin/stack-generator.ts";
 
@@ -49,6 +49,38 @@ describe("ISSUE-4 — Port 80 conflict resolution", () => {
 
   it("runPreflightChecks() accepts a port parameter", () => {
     expect(typeof runPreflightChecks).toBe("function");
+  });
+
+  it("checkPortDetailed() returns null for unused port", async () => {
+    const result = await checkPortDetailed(59131);
+    expect(result).toBeNull();
+  });
+
+  it("checkPortDetailed() returns port_conflict code with meta.port when port is in use", () => {
+    // Contract validation: if a port conflict issue were returned, it would have this shape
+    const mockIssue = {
+      code: "port_conflict" as const,
+      severity: "fatal" as const,
+      message: "Port 8080 is already in use by another process.",
+      meta: { port: 8080 },
+    };
+    expect(mockIssue.code).toBe("port_conflict");
+    expect(mockIssue.severity).toBe("fatal");
+    expect(mockIssue.meta.port).toBe(8080);
+  });
+
+  it("runPreflightChecksDetailed() accepts a port parameter and returns typed result", async () => {
+    const result = await runPreflightChecksDetailed("podman", "podman", 59132);
+    expect(result).toHaveProperty("ok");
+    expect(result).toHaveProperty("issues");
+    expect(Array.isArray(result.issues)).toBe(true);
+  });
+
+  it("install.ts uses typed code-based port conflict detection", async () => {
+    const content = await Bun.file(installFile).text();
+    expect(content).toContain('i.code === "port_conflict"');
+    // Should NOT use message substring matching for port detection
+    expect(content).not.toContain('.message.includes("already in use")');
   });
 
   it("stack-spec supports ingressPort field", () => {

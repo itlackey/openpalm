@@ -45,10 +45,11 @@ pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itl
 
 ### What happens when you run the installer
 
-1. It checks your system and downloads the OpenPalm services
-2. It generates a secure admin password and prints it to your screen
-3. It starts all services and opens a setup wizard in your browser
-4. The wizard walks you through connecting your AI provider, setting a password, and choosing channels
+1. It checks your system and downloads the OpenPalm bootstrap services (admin and reverse proxy)
+2. It generates a temporary admin token and prints it to your screen
+3. It starts the bootstrap services and opens a setup wizard in your browser
+4. The wizard walks you through connecting your AI provider, configuring access, and choosing channels
+5. When you complete the wizard, the full runtime (assistant, gateway, memory, and all enabled channels) starts automatically
 
 No config files to edit. See the [CLI documentation](docs/cli.md) for all available commands.
 
@@ -72,7 +73,7 @@ A web-based control panel lets you:
 - Create and manage automations
 - Monitor system health
 
-Everything is password-protected. The admin panel is only accessible from your local network.
+All admin operations require an admin token (`x-admin-token` header). The admin panel is only accessible from your local network.
 
 ### Extensions
 
@@ -100,7 +101,7 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | **Message security** | Cryptographically signed and verified | DM pairing codes |
 | **Tool access** | Approval gates + locked-down intake validation | Elevated bash toggled per session |
 | **Extensions** | Admin-authenticated install | Auto-discovery from registry |
-| **Admin** | Web dashboard with password auth (LAN only) | Chat commands in messaging channels |
+| **Admin** | Web dashboard with token auth (LAN only) | Chat commands in messaging channels |
 | **Memory** | Explicit-save-only with secret detection | Session-based with compression |
 | **Deployment** | Single compose command (docker/podman/orbstack) | Daemon install with multiple modes |
 

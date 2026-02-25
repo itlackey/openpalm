@@ -45,10 +45,23 @@ describe("install command source validation", () => {
     expect(installSource).toContain("channelSecrets");
   });
 
-  it("runs preflight checks before proceeding", () => {
-    expect(installSource).toContain("runPreflightChecks(bin, platform, ingressPort)");
+  it("runs typed preflight checks before proceeding", () => {
+    expect(installSource).toContain("runPreflightChecksDetailed(bin, platform, ingressPort)");
     expect(installSource).toContain("noRuntimeGuidance");
     expect(installSource).toContain("noComposeGuidance");
+  });
+
+  it("uses typed preflight codes for fatal branching (no message.includes parsing)", () => {
+    // Daemon check uses code-based branching
+    expect(installSource).toContain('i.code === "daemon_unavailable"');
+    expect(installSource).toContain('i.code === "daemon_check_failed"');
+    // Port check uses code-based branching
+    expect(installSource).toContain('i.code === "port_conflict"');
+    // No message-substring parsing for preflight decisions
+    expect(installSource).not.toContain('.message.includes("daemon is not running")');
+    expect(installSource).not.toContain('.message.includes("daemon")');
+    expect(installSource).not.toContain('.message.includes("Could not verify")');
+    expect(installSource).not.toContain('.message.includes("already in use")');
   });
 
   it("displays admin token info when generated", () => {

@@ -43,14 +43,30 @@ openpalm install [options]
 
 **Options:**
 - `--runtime <docker|podman|orbstack>` - Specify container runtime (auto-detected if not provided)
+- `--port <number>` - Use an alternative ingress port (default: 80). Useful when port 80 is already in use
 - `--no-open` - Skip opening browser after installation
+- `--ref <branch|tag>` - Git ref for asset download
+- `--force` - Overwrite existing installation
+
+**Wrapper scripts** (`install.sh` and `install.ps1`) also accept `--port` / `-Port` and forward it to the CLI:
+```bash
+# Bash
+curl -fsSL .../install.sh | bash -s -- --port 8080
+
+# PowerShell
+& .\install.ps1 -Port 8080
+```
 
 **Pre-flight Checks:**
 
-Before starting, the installer automatically checks:
-- Disk space (warns if less than 3 GB available)
-- Port 80 availability (required for the web interface)
-- Container daemon status (detects Docker/Podman installed but not running)
+Before starting, the installer automatically checks for issues using typed preflight codes. Each check returns a stable code and severity (`fatal` or `warning`) so the installer can make deterministic decisions without parsing message text:
+
+| Check | Code | Severity | Behavior |
+|---|---|---|---|
+| Disk space < 3 GB | `disk_low` | `warning` | Prints warning, continues |
+| Port already in use | `port_conflict` | `fatal` | Aborts (suggests `--port`) |
+| Daemon not running | `daemon_unavailable` | `fatal` | Aborts with start guidance |
+| Daemon check failed | `daemon_check_failed` | `fatal` | Aborts with report link |
 
 **Installation Phases:**
 
@@ -58,14 +74,14 @@ Before starting, the installer automatically checks:
    - Run pre-flight checks
    - Detect container runtime (with actionable guidance if missing)
    - Generate `.env` file with secure tokens
-   - Display admin password prominently
+   - Display temporary admin token prominently
    - Create XDG directory tree
    - Seed configuration files (embedded templates — no network download)
    - Reset setup wizard state
    - Write minimal Caddy JSON config for setup-only mode
 
 2. **Phase 2: Early UI Access**
-   - Pull and start core services (Caddy, Admin)
+   - Pull and start bootstrap services (Caddy, Admin)
    - Wait for admin health check
    - Open browser to setup wizard (unless `--no-open`)
    - The setup wizard completion step applies the full stack and starts core runtime services (Assistant, Gateway, OpenMemory, Postgres, Qdrant, etc.)
@@ -92,7 +108,7 @@ sequenceDiagram
     CLI->>Runtime: Pull caddy/admin images
     CLI->>Runtime: compose up -d caddy admin
     CLI->>Admin: Poll /setup/status until healthy
-    CLI->>User: Print URL + admin password and open browser
+    CLI->>User: Print URL + temporary admin token and open browser
 
     User->>Wizard: Complete wizard steps
     Wizard->>Cmd: setup.profile / setup.service_instances / setup.channels / setup.access_scope
@@ -152,8 +168,6 @@ All setup commands enforce: unauthenticated setup access is allowed only while s
 | 4 | `setup.access_scope` | Runtime env + stack state | Set host/lan/public binding scope and persist setup state |
 | 5 | `setup.step` | setup state | Mark wizard step completion checkpoints (`welcome`, `profile`, `serviceInstances`, etc.) |
 | 6 | `setup.complete` | Stack artifacts + runtime services + setup state | Apply stack artifacts, start core runtime services, sync automations, and mark setup complete (single startup boundary) |
-
-Legacy detached startup commands are intentionally unsupported: `setup.start_core` is rejected with `unknown_command`.
 
 #### C) Setup completion internals (`packages/lib/src/admin/stack-apply-engine.ts`)
 

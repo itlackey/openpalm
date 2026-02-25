@@ -24,6 +24,37 @@ export type ComposeErrorCode =
   | "timeout"
   | "unknown";
 
+/** Stable typed codes for preflight check outcomes. */
+export type PreflightCode =
+  | "daemon_unavailable"
+  | "daemon_check_failed"
+  | "port_conflict"
+  | "disk_low"
+  | "unknown";
+
+/** Whether a preflight issue should block installation or just warn. */
+export type PreflightSeverity = "fatal" | "warning";
+
+/** A single typed preflight check outcome. */
+export type PreflightIssue = {
+  code: PreflightCode;
+  severity: PreflightSeverity;
+  message: string;
+  detail?: string;
+  meta?: {
+    port?: number;
+    availableGb?: number;
+    runtime?: string;
+    command?: string;
+  };
+};
+
+/** Aggregate result from all preflight checks. */
+export type PreflightResult = {
+  ok: boolean;
+  issues: PreflightIssue[];
+};
+
 export type ComposeRunOptions = {
   bin: string;
   subcommand?: string;
@@ -91,6 +122,25 @@ export type CoreReadinessDiagnostics = {
   failedServiceLogs?: Record<string, string>;
 };
 
+/** Install lifecycle event recorded in metadata history. */
+export type InstallEvent = {
+  action: "install" | "update" | "setup_complete";
+  timestamp: string;
+  version?: string;
+};
+
+/** Persisted install metadata for idempotency and lifecycle tracking. */
+export type InstallMetadata = {
+  schemaVersion: 1;
+  mode: "fresh" | "reinstall" | "update";
+  installedAt: string;
+  lastUpdatedAt?: string;
+  runtime: ContainerPlatform;
+  port: number;
+  version?: string;
+  history: InstallEvent[];
+};
+
 export type EnsureCoreServicesReadyResult =
   | {
     ok: true;
@@ -104,3 +154,19 @@ export type EnsureCoreServicesReadyResult =
     checks: CoreServiceReadinessCheck[];
     diagnostics: CoreReadinessDiagnostics;
   };
+
+/** Phase of the core readiness UX flow. */
+export type CoreReadinessPhase =
+  | "applying"
+  | "starting"
+  | "checking"
+  | "ready"
+  | "failed";
+
+/** Snapshot of core readiness state for API and UI consumption. */
+export type CoreReadinessSnapshot = {
+  phase: CoreReadinessPhase;
+  updatedAt: string;
+  checks: CoreServiceReadinessCheck[];
+  diagnostics: CoreReadinessDiagnostics;
+};

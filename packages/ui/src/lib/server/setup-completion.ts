@@ -12,6 +12,7 @@ import { parseRuntimeEnvContent, updateRuntimeEnvContent } from '@openpalm/lib/a
 import { generateToken } from '@openpalm/lib/tokens';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { setCoreReadinessPhase, applyReadinessResult } from './core-readiness-state';
 
 type SetupCompletionDependencies = {
 	secretsEnvPath: string;
@@ -66,24 +67,46 @@ export async function completeSetupOrchestration(
 ) {
 	const dependencies = { ...defaultDependencies, ...overrides };
 	ensurePostgresPassword(dependencies);
-	const apply = await dependencies.applyStack(stackManager);
-	const startup = await dependencies.composeAction('up', [...SetupStartupServices]);
-	if (!startup.ok) throw new Error(`core_startup_failed:${startup.stderr}`);
 
-	// Check runtime readiness convergence (non-blocking — setup completes regardless,
-	// but the readiness result is surfaced so callers/UI can display status and retry)
+	// Phase: applying — render compose + config artifacts
+	setCoreReadinessPhase('applying');
+	const apply = await dependencies.applyStack(stackManager);
+
+	// Phase: starting — bring up core containers
+	setCoreReadinessPhase('starting');
+	const startup = await dependencies.composeAction('up', [...SetupStartupServices]);
+	if (!startup.ok) {
+		setCoreReadinessPhase('failed');
+		throw new Error(`core_startup_failed:${startup.stderr}`);
+	}
+
+	// Phase: checking — poll readiness convergence (non-blocking — setup completes
+	// regardless, but the readiness result is surfaced so callers/UI can display
+	// status and retry). Allow env-based tuning for test environments.
+	setCoreReadinessPhase('checking');
 	let readiness: EnsureCoreServicesReadyResult | undefined;
 	try {
+		const maxAttempts = envInt('CORE_READINESS_MAX_ATTEMPTS', 6);
+		const pollIntervalMs = envInt('CORE_READINESS_POLL_MS', 2_000);
 		readiness = await dependencies.ensureCoreServicesReady({
 			targetServices: SetupStartupServices,
-			maxAttempts: 6,
-			pollIntervalMs: 2_000
+			maxAttempts,
+			pollIntervalMs
 		});
+		applyReadinessResult(readiness);
 	} catch {
 		// Best-effort: readiness check failure should not block setup completion
+		setCoreReadinessPhase('failed');
 	}
 
 	dependencies.syncAutomations(stackManager.listAutomations());
 	const state = setupManager.completeSetup();
 	return { state, apply, readiness };
+}
+
+function envInt(name: string, fallback: number): number {
+	const raw = process.env[name];
+	if (raw == null) return fallback;
+	const parsed = parseInt(raw, 10);
+	return Number.isFinite(parsed) ? parsed : fallback;
 }

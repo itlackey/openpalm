@@ -9,7 +9,8 @@ import { generateToken } from "@openpalm/lib/tokens.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { seedConfigFiles } from "@openpalm/lib/assets.ts";
 import { BUILTIN_CHANNELS } from "@openpalm/lib/assets/channels/index.ts";
-import { runPreflightChecks, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
+import { runPreflightChecksDetailed, noRuntimeGuidance, noComposeGuidance } from "@openpalm/lib/preflight.ts";
+import { readInstallMetadata, writeInstallMetadata, createInstallMetadata } from "@openpalm/lib/install-metadata.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, confirm } from "@openpalm/lib/ui.ts";
 
 function reportIssueUrl(context: { os: string; arch: string; runtime: string; error: string }): string {
@@ -57,11 +58,11 @@ export async function install(options: InstallOptions): Promise<void> {
 
   // 5. Run pre-flight checks (daemon running, disk space, port)
   const ingressPort = options.port ?? 80;
-  const preflightWarnings = await runPreflightChecks(bin, platform, ingressPort);
-  for (const w of preflightWarnings) {
-    warn(w.message);
-    if (w.detail) {
-      for (const line of w.detail.split("\n")) {
+  const preflightResult = await runPreflightChecksDetailed(bin, platform, ingressPort);
+  for (const issue of preflightResult.issues) {
+    warn(issue.message);
+    if (issue.detail) {
+      for (const line of issue.detail.split("\n")) {
         info(`  ${line}`);
       }
     }
@@ -69,26 +70,23 @@ export async function install(options: InstallOptions): Promise<void> {
   }
 
   // Daemon not running is fatal — we can't proceed.
-  // Check for daemon-related warnings by looking for known preflight patterns
-  // rather than relying on a single exact string match.
-  const daemonWarning = preflightWarnings.find((w) =>
-    w.message.includes("daemon is not running") ||
-    w.message.includes("daemon") ||
-    w.message.includes("Could not verify")
+  // Use typed preflight codes instead of message substring matching.
+  const daemonIssue = preflightResult.issues.find((i) =>
+    i.code === "daemon_unavailable" || i.code === "daemon_check_failed"
   );
-  if (daemonWarning) {
+  if (daemonIssue) {
     error("Container runtime daemon is unavailable. Please start it and rerun install.");
     info("");
     info("  If this keeps happening, report the issue:");
-    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: daemonWarning.message }))}`);
+    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: daemonIssue.message }))}`);
     process.exit(1);
   }
 
   // Port conflict is fatal unless --port was used to pick an alternative
-  const portWarning = preflightWarnings.find((w) =>
-    w.message.includes("already in use")
+  const portIssue = preflightResult.issues.find((i) =>
+    i.code === "port_conflict"
   );
-  if (portWarning) {
+  if (portIssue) {
     if (!options.port) {
       error("Port 80 is required but already in use. Use --port to specify an alternative.");
     }
@@ -125,28 +123,42 @@ export async function install(options: InstallOptions): Promise<void> {
   // 9. Idempotency guard — check if OpenPalm is already installed
   const stateComposeFile = join(xdg.state, "docker-compose.yml");
   const stateEnvFile = join(xdg.state, ".env");
+  const existingMetadata = readInstallMetadata(xdg.state);
   if (!options.force) {
-    try {
-      const existingCompose = await Bun.file(stateComposeFile).text();
-      // If compose file exists and contains services beyond caddy+admin, it's a full install
-      if (existingCompose.includes("gateway:") && existingCompose.includes("assistant:")) {
-        warn("OpenPalm appears to already be installed.");
-        info("  The existing compose file contains a full stack configuration.");
-        info("");
-        info("  To update to the latest version, run:");
-        info(`    ${cyan("openpalm update")}`);
-        info("");
-        info("  To reinstall from scratch, run:");
-        info(`    ${cyan("openpalm install --force")}`);
-        log("");
-        const shouldContinue = await confirm("Continue anyway and overwrite the existing installation?");
-        if (!shouldContinue) {
-          log("Aborted.");
-          return;
+    let alreadyInstalled = false;
+    if (existingMetadata) {
+      alreadyInstalled = true;
+    } else {
+      // Heuristic fallback: check compose file content
+      try {
+        const existingCompose = await Bun.file(stateComposeFile).text();
+        if (existingCompose.includes("gateway:") && existingCompose.includes("assistant:")) {
+          alreadyInstalled = true;
         }
+      } catch {
+        // Compose file doesn't exist — fresh install
       }
-    } catch {
-      // Compose file doesn't exist — fresh install, proceed
+    }
+    if (alreadyInstalled) {
+      warn("OpenPalm appears to already be installed.");
+      if (existingMetadata) {
+        info(`  Installed: ${dim(existingMetadata.installedAt)}`);
+        info(`  Runtime: ${dim(existingMetadata.runtime)}, port: ${dim(String(existingMetadata.port))}`);
+      } else {
+        info("  The existing compose file contains a full stack configuration.");
+      }
+      info("");
+      info("  To update to the latest version, run:");
+      info(`    ${cyan("openpalm update")}`);
+      info("");
+      info("  To reinstall from scratch, run:");
+      info(`    ${cyan("openpalm install --force")}`);
+      log("");
+      const shouldContinue = await confirm("Continue anyway and overwrite the existing installation?");
+      if (!shouldContinue) {
+        log("Aborted.");
+        return;
+      }
     }
   }
 
@@ -425,6 +437,15 @@ networks:
   } else {
     spin8.stop(green("Admin interface ready"));
   }
+
+  // Write install metadata for idempotency tracking
+  const installMode = existingMetadata ? "reinstall" : "fresh";
+  const metadata = createInstallMetadata({
+    mode: installMode,
+    runtime: platform,
+    port: ingressPort,
+  });
+  writeInstallMetadata(xdg.state, metadata);
 
   // Open browser
   if (!options.noOpen && healthy) {

@@ -14,6 +14,7 @@ set -euo pipefail
 #   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash -s -- --runtime docker
 #   curl -fsSL ... | bash -s -- --runtime podman --no-open
 #   curl -fsSL ... | bash -s -- --ref v1.0.0
+#   curl -fsSL ... | bash -s -- --port 8080
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,18 @@ while [ "$#" -gt 0 ]; do
       CLI_ARGS+=(--runtime "$2")
       shift 2
       ;;
+    --port)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for --port. Expected a port number (1-65535)."
+        exit 1
+      fi
+      if ! printf '%s' "$2" | grep -qE '^[0-9]+$' || [ "$2" -lt 1 ] || [ "$2" -gt 65535 ]; then
+        echo "Invalid port \"$2\". Must be a number between 1 and 65535."
+        exit 1
+      fi
+      CLI_ARGS+=(--port "$2")
+      shift 2
+      ;;
     --no-open)
       CLI_ARGS+=(--no-open)
       shift
@@ -50,18 +63,26 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: install.sh [--runtime docker|podman|orbstack] [--no-open] [--ref <branch|tag>]
+Usage: install.sh [--runtime docker|podman|orbstack] [--port <number>] [--no-open] [--ref <branch|tag>]
 
 Download the OpenPalm CLI and run `openpalm install`.
 
 When piping via curl, pass arguments with -s --:
   curl -fsSL <url>/install.sh | bash -s -- --runtime docker
+  curl -fsSL <url>/install.sh | bash -s -- --port 8080
+  curl -fsSL <url>/install.sh | bash -s -- --runtime docker --port 3000 --no-open
 
 Options:
   --runtime   Force a container runtime platform selection.
+  --port      Use an alternative ingress port (default: 80). Useful when port 80
+              is already in use by another service (e.g. Apache, nginx).
   --no-open   Do not auto-open the admin setup URL after services are healthy.
   --ref       Git ref (branch or tag) for release download (default: latest).
   -h, --help  Show this help.
+
+Port conflict remediation:
+  If port 80 is occupied, re-run with --port <number>:
+    curl -fsSL <url>/install.sh | bash -s -- --port 8080
 HELP
       exit 0
       ;;
@@ -216,4 +237,17 @@ fi
 # ── Delegate to CLI ──────────────────────────────────────────────────────────
 
 echo ""
-exec "$TARGET_PATH" install "${CLI_ARGS[@]+"${CLI_ARGS[@]}"}"
+"$TARGET_PATH" install "${CLI_ARGS[@]+"${CLI_ARGS[@]}"}"
+CLI_EXIT=$?
+
+if [ "$CLI_EXIT" -ne 0 ]; then
+  echo ""
+  echo "Troubleshooting hints:"
+  echo "  - If the error mentions port 80 is already in use, re-run with --port:"
+  echo "      curl -fsSL https://raw.githubusercontent.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/main/install.sh | bash -s -- --port 8080"
+  echo "  - Check which process is using the port:"
+  echo "      sudo lsof -i :80   # macOS/Linux"
+  echo "      sudo ss -tlnp | grep :80   # Linux"
+  echo ""
+  exit "$CLI_EXIT"
+fi

@@ -20,8 +20,8 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 
 ## Authentication
 
-- Admin password is generated during install and stored in `.env`
-- Password is sent as `x-admin-token` header to all admin API calls
+- A temporary admin token is generated during install and stored in `.env` as `ADMIN_TOKEN`
+- The token is sent as `x-admin-token` header to all admin API calls
 - All write operations (install/uninstall extensions, edit config, manage channels, start/stop containers) require the token
 - The admin panel is LAN-only by default
 
@@ -87,12 +87,13 @@ Logs are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPEN
 4. Resolve XDG Base Directory paths (data, config, state)
 5. Write resolved absolute paths into `.env`
 6. Persist runtime command/socket config in `.env`
-7. Generate admin password and write to `.env`
+7. Generate temporary admin token and write to `.env`
 8. Seed default configs into `$OPENPALM_CONFIG_HOME`
-9. Run `compose up` via selected runtime
-10. Show spinner while waiting for health check endpoints
+9. Start bootstrap services (`caddy` + `admin`) via `compose up`
+10. Show spinner while waiting for admin health check
 11. Auto-open setup UI in browser (unless `--no-open`)
-12. Setup wizard runs on first visit — user enters admin password from `.env`
+12. Setup wizard runs on first visit — user signs in with the temporary admin token from `.env`
+13. Wizard completion applies full stack and starts core runtime services (assistant, gateway, memory, channels)
 
 ## Container lifecycle model
 

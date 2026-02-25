@@ -24,7 +24,7 @@ Specific goals:
 | Remove fire-and-forget `setup.start_core` | P1 | **OPEN** |
 | Collapse startup entry points to one path | P1 | **OPEN** |
 | Core Readiness UX stage | P2 | **OPEN** |
-| Structured preflight failure types | P2 | **PARTIAL** — `ComposeErrorCode` exists, preflight still uses message matching |
+| Structured preflight failure types | P2 | **COMPLETE** — `PreflightCode`/`PreflightIssue`/`PreflightResult` types added, install uses code-based branching |
 | Align installer `--port` option in wrappers | P2 | **OPEN** — CLI supports `--port`, wrappers do not |
 | Tighten docs for expectation correctness | P2 | **PARTIAL** — `docs/cli.md` is accurate, `README.md` still says "starts all services" |
 | Self-healing retry affordances | P3 | **OPEN** |

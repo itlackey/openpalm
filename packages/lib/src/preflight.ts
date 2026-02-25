@@ -1,6 +1,9 @@
 import { homedir } from "node:os";
-import type { HostOS, ContainerPlatform } from "./types.ts";
+import type { HostOS, ContainerPlatform, PreflightIssue, PreflightResult } from "./types.ts";
 
+/**
+ * @deprecated Use `PreflightIssue` from `@openpalm/lib/types.ts` instead.
+ */
 export type PreflightWarning = {
   message: string;
   detail?: string;
@@ -8,9 +11,9 @@ export type PreflightWarning = {
 
 /**
  * Check available disk space on the home directory.
- * Returns a warning if less than 3 GB is available.
+ * Returns a typed issue if less than 3 GB is available.
  */
-export async function checkDiskSpace(): Promise<PreflightWarning | null> {
+export async function checkDiskSpaceDetailed(): Promise<PreflightIssue | null> {
   try {
     // Use -P (POSIX) mode to guarantee single-line output per filesystem
     const proc = Bun.spawn(["df", "-Pk", homedir()], {
@@ -28,10 +31,13 @@ export async function checkDiskSpace(): Promise<PreflightWarning | null> {
     if (isNaN(availKB)) return null;
 
     if (availKB < 3_000_000) {
-      const availGB = (availKB / 1_048_576).toFixed(1);
+      const availGB = Number((availKB / 1_048_576).toFixed(1));
       return {
+        code: "disk_low",
+        severity: "warning",
         message: `Low disk space — only ~${availGB} GB available.`,
         detail: "OpenPalm needs roughly 3 GB for container images and data.",
+        meta: { availableGb: availGB },
       };
     }
   } catch {
@@ -41,9 +47,19 @@ export async function checkDiskSpace(): Promise<PreflightWarning | null> {
 }
 
 /**
- * Check if a port is already in use.
+ * Check available disk space on the home directory.
+ * @deprecated Use `checkDiskSpaceDetailed()` for typed results.
  */
-export async function checkPort(port: number = 80): Promise<PreflightWarning | null> {
+export async function checkDiskSpace(): Promise<PreflightWarning | null> {
+  const issue = await checkDiskSpaceDetailed();
+  return issue ? { message: issue.message, detail: issue.detail } : null;
+}
+
+/**
+ * Check if a port is already in use.
+ * Returns a typed issue if the port is occupied.
+ */
+export async function checkPortDetailed(port: number = 80): Promise<PreflightIssue | null> {
   try {
     // Try lsof first (macOS, most Linux)
     const lsof = Bun.spawn(["lsof", `-iTCP:${port}`, "-sTCP:LISTEN", "-P", "-n"], {
@@ -55,8 +71,11 @@ export async function checkPort(port: number = 80): Promise<PreflightWarning | n
       const output = await new Response(lsof.stdout).text();
       const lines = output.trim().split("\n").slice(0, 3).join("\n");
       return {
+        code: "port_conflict",
+        severity: "fatal",
         message: `Port ${port} is already in use by another process.`,
         detail: `OpenPalm needs port ${port} for its web interface.\n${lines}`,
+        meta: { port },
       };
     }
   } catch {
@@ -70,8 +89,11 @@ export async function checkPort(port: number = 80): Promise<PreflightWarning | n
       const output = await new Response(ss.stdout).text();
       if (output.includes(`:${port} `)) {
         return {
+          code: "port_conflict",
+          severity: "fatal",
           message: `Port ${port} is already in use by another process.`,
           detail: `OpenPalm needs port ${port} for its web interface.`,
+          meta: { port },
         };
       }
     } catch {
@@ -79,6 +101,15 @@ export async function checkPort(port: number = 80): Promise<PreflightWarning | n
     }
   }
   return null;
+}
+
+/**
+ * Check if a port is already in use.
+ * @deprecated Use `checkPortDetailed()` for typed results.
+ */
+export async function checkPort(port: number = 80): Promise<PreflightWarning | null> {
+  const issue = await checkPortDetailed(port);
+  return issue ? { message: issue.message, detail: issue.detail } : null;
 }
 
 /**
@@ -90,12 +121,15 @@ export async function checkPort80(): Promise<PreflightWarning | null> {
 
 /**
  * Check if the Docker/Podman daemon is actually running.
+ * Returns a typed issue if the daemon is unreachable.
  */
-export async function checkDaemonRunning(
+export async function checkDaemonRunningDetailed(
   bin: string,
   platform: ContainerPlatform
-): Promise<PreflightWarning | null> {
+): Promise<PreflightIssue | null> {
   if (platform === "podman") return null; // Podman is daemonless
+
+  const runtime = platform === "orbstack" ? "OrbStack" : "Docker";
 
   try {
     const proc = Bun.spawn([bin, "info"], {
@@ -105,35 +139,72 @@ export async function checkDaemonRunning(
     await proc.exited;
     if (proc.exitCode !== 0) {
       return {
-        message: `${platform === "orbstack" ? "OrbStack" : "Docker"} is installed but the daemon is not running.`,
+        code: "daemon_unavailable",
+        severity: "fatal",
+        message: `${runtime} is installed but the daemon is not running.`,
         detail:
           process.platform === "darwin"
             ? "Open Docker Desktop (or OrbStack) and wait for it to start, then rerun."
             : "Start the Docker service:\n  sudo systemctl start docker",
+        meta: { runtime: platform, command: `${bin} info` },
       };
     }
   } catch {
     return {
+      code: "daemon_check_failed",
+      severity: "fatal",
       message: `Could not verify that the ${bin} daemon is running.`,
+      meta: { runtime: platform, command: `${bin} info` },
     };
   }
   return null;
 }
 
 /**
+ * Check if the Docker/Podman daemon is actually running.
+ * @deprecated Use `checkDaemonRunningDetailed()` for typed results.
+ */
+export async function checkDaemonRunning(
+  bin: string,
+  platform: ContainerPlatform
+): Promise<PreflightWarning | null> {
+  const issue = await checkDaemonRunningDetailed(bin, platform);
+  return issue ? { message: issue.message, detail: issue.detail } : null;
+}
+
+/**
+ * Run all preflight checks and return a structured result with typed issues.
+ * This is the canonical API — use this for code-based decision logic.
+ */
+export async function runPreflightChecksDetailed(
+  bin: string,
+  platform: ContainerPlatform,
+  port: number = 80
+): Promise<PreflightResult> {
+  const results = await Promise.all([
+    checkDiskSpaceDetailed(),
+    checkPortDetailed(port),
+    checkDaemonRunningDetailed(bin, platform),
+  ]);
+  const issues = results.filter((i): i is PreflightIssue => i !== null);
+  const hasFatal = issues.some((i) => i.severity === "fatal");
+  return { ok: !hasFatal, issues };
+}
+
+/**
  * Run all preflight checks and return any warnings.
+ * @deprecated Use `runPreflightChecksDetailed()` for typed results with codes and severities.
  */
 export async function runPreflightChecks(
   bin: string,
   platform: ContainerPlatform,
   port: number = 80
 ): Promise<PreflightWarning[]> {
-  const results = await Promise.all([
-    checkDiskSpace(),
-    checkPort(port),
-    checkDaemonRunning(bin, platform),
-  ]);
-  return results.filter((w): w is PreflightWarning => w !== null);
+  const result = await runPreflightChecksDetailed(bin, platform, port);
+  return result.issues.map((i) => ({
+    message: i.message,
+    detail: i.detail,
+  }));
 }
 
 /**

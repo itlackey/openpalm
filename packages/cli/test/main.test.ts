@@ -105,6 +105,7 @@ describe("CLI entry point", () => {
     expect(stdout).toContain("--runtime");
     expect(stdout).toContain("--no-open");
     expect(stdout).toContain("--ref");
+    expect(stdout).toContain("--port");
   });
 
   it("help output lists uninstall options", async () => {

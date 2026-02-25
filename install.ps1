@@ -1,15 +1,43 @@
-# OpenPalm installer (thin wrapper) for Windows
-#
-# Downloads the pre-compiled `openpalm` CLI binary from GitHub Releases,
-# installs it to %LOCALAPPDATA%\OpenPalm, and delegates to `openpalm install`.
-# All installer logic lives in the CLI itself.
-#
-# Usage:
-#   pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itlackey/openpalm/main/install.ps1 -OutFile $env:TEMP/openpalm-install.ps1; & $env:TEMP/openpalm-install.ps1"
+<#
+.SYNOPSIS
+    OpenPalm installer (thin wrapper) for Windows.
+
+.DESCRIPTION
+    Downloads the pre-compiled `openpalm` CLI binary from GitHub Releases,
+    installs it to %LOCALAPPDATA%\OpenPalm, and delegates to `openpalm install`.
+    All installer logic lives in the CLI itself.
+
+.PARAMETER Runtime
+    Force a container runtime platform selection. Valid values: docker, podman, orbstack.
+
+.PARAMETER Port
+    Use an alternative ingress port (default: 80). Useful when port 80
+    is already in use by another service (e.g. IIS, Apache).
+
+.PARAMETER Ref
+    Git ref (branch or tag) for release download (default: latest).
+
+.PARAMETER NoOpen
+    Do not auto-open the admin setup URL after services are healthy.
+
+.EXAMPLE
+    & .\install.ps1
+    Install with default settings.
+
+.EXAMPLE
+    & .\install.ps1 -Runtime docker -Port 8080
+    Install using Docker on port 8080.
+
+.EXAMPLE
+    & .\install.ps1 -Port 3000 -NoOpen
+    Install on port 3000 without opening the browser.
+#>
 
 param(
   [ValidateSet("docker", "podman", "orbstack")]
   [string]$Runtime,
+  [ValidateRange(1, 65535)]
+  [int]$Port,
   [string]$Ref,
   [switch]$NoOpen
 )
@@ -112,6 +140,11 @@ if ($Runtime) {
   $CliArgs += $Runtime
 }
 
+if ($Port) {
+  $CliArgs += "--port"
+  $CliArgs += $Port.ToString()
+}
+
 if ($Ref) {
   $CliArgs += "--ref"
   $CliArgs += $Ref
@@ -123,4 +156,17 @@ if ($NoOpen) {
 
 Write-Host ""
 & $TargetPath @CliArgs
-exit $LASTEXITCODE
+$CliExit = $LASTEXITCODE
+
+if ($CliExit -ne 0) {
+  Write-Host ""
+  Write-Host "Troubleshooting hints:" -ForegroundColor Yellow
+  Write-Host "  - If the error mentions port 80 is already in use, re-run with -Port:"
+  Write-Host "      & .\install.ps1 -Port 8080" -ForegroundColor Cyan
+  Write-Host "  - Check which process is using the port:"
+  Write-Host "      netstat -ano | findstr :80" -ForegroundColor Cyan
+  Write-Host "      Get-Process -Id (Get-NetTCPConnection -LocalPort 80).OwningProcess" -ForegroundColor Cyan
+  Write-Host ""
+}
+
+exit $CliExit

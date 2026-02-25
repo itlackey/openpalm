@@ -41,6 +41,7 @@
 
 	let stepError = $state('');
 	let finishInProgress = $state(false);
+	let initialReadiness = $state<any>(null);
 	const currentStep = $derived(getWizardStep());
 	const currentStepName = $derived(STEPS[currentStep]);
 	const isLastContentStep = $derived(currentStep === STEPS.length - 2);
@@ -221,6 +222,13 @@
 				return;
 			}
 
+			// Capture readiness data from the completion response for the CompleteStep
+			if (completeResult.data?.coreReadiness) {
+				initialReadiness = completeResult.data.coreReadiness;
+			} else if (completeResult.data?.readiness) {
+				initialReadiness = completeResult.data.readiness;
+			}
+
 			// Start enabled channels after setup.complete applies full compose
 			for (const channel of enabledChannels) {
 				const upResult = await api('/command', {
@@ -266,7 +274,7 @@
 			{:else if currentStepName === 'healthCheck'}
 				<HealthStep />
 			{:else if currentStepName === 'complete'}
-				<CompleteStep oncontinue={handleContinue} />
+				<CompleteStep oncontinue={handleContinue} {initialReadiness} />
 			{/if}
 		</div>
 

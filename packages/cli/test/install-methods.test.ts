@@ -92,8 +92,8 @@ describe("install methods verification", () => {
 
     it("delegates to openpalm install", () => {
       expect(installSh).toContain("openpalm install");
-      // Uses exec to replace shell process
-      expect(installSh).toContain("exec");
+      // Runs CLI and captures exit code for remediation hints
+      expect(installSh).toContain("CLI_EXIT");
     });
 
     it("installs binary to ~/.local/bin", () => {
@@ -106,6 +106,29 @@ describe("install methods verification", () => {
 
     it("supports --no-open flag", () => {
       expect(installSh).toContain("--no-open");
+    });
+
+    it("supports --port flag", () => {
+      expect(installSh).toContain("--port");
+    });
+
+    it("validates --port as a number between 1 and 65535", () => {
+      expect(installSh).toContain("65535");
+    });
+
+    it("forwards --port to CLI args", () => {
+      // The parser adds --port to CLI_ARGS
+      expect(installSh).toContain('CLI_ARGS+=(--port');
+    });
+
+    it("includes --port in help text", () => {
+      expect(installSh).toContain("--port");
+      expect(installSh).toContain("ingress port");
+    });
+
+    it("includes port-conflict remediation hint", () => {
+      expect(installSh).toContain("port 80 is already in use");
+      expect(installSh).toContain("--port 8080");
     });
 
     it("supports --ref flag", () => {
@@ -171,6 +194,24 @@ describe("install methods verification", () => {
       expect(installPs1).toContain("[switch]$NoOpen");
     });
 
+    it("supports -Port parameter with validation", () => {
+      expect(installPs1).toContain("[int]$Port");
+      expect(installPs1).toContain("[ValidateRange(1, 65535)]");
+    });
+
+    it("forwards -Port to CLI --port arg", () => {
+      expect(installPs1).toContain('"--port"');
+    });
+
+    it("has comment-based help for Port parameter", () => {
+      expect(installPs1).toContain(".PARAMETER Port");
+    });
+
+    it("includes port-conflict remediation hint", () => {
+      expect(installPs1).toContain("port 80 is already in use");
+      expect(installPs1).toContain("-Port 8080");
+    });
+
     it("suggests alternative install methods on download failure", () => {
       expect(installPs1).toContain("npx openpalm install");
       expect(installPs1).toContain("bunx openpalm install");
@@ -203,10 +244,27 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("docker|podman|orbstack");
     });
 
+    it("documents --port flag", () => {
+      expect(cliDocs).toContain("--port");
+      expect(cliDocs).toContain("alternative ingress port");
+    });
+
     it("documents --no-open flag", () => {
       expect(cliDocs).toContain("--no-open");
     });
 
+    it("documents --force flag", () => {
+      expect(cliDocs).toContain("--force");
+    });
+
+    it("documents --ref flag", () => {
+      expect(cliDocs).toContain("--ref");
+    });
+
+    it("documents wrapper --port pass-through examples", () => {
+      expect(cliDocs).toContain("bash -s -- --port 8080");
+      expect(cliDocs).toContain("-Port 8080");
+    });
   });
 
   describe("CLI docs covers 2-phase install", () => {

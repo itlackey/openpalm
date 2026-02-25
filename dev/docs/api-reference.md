@@ -13,6 +13,7 @@ This document summarizes the primary HTTP contracts developers depend on.
 - Write operations require admin auth token/header.
 - Errors should use a consistent JSON shape (`error`, optional `details`/`code`).
 - Config writes are validated against YAML-first stack model before apply.
+- Preflight/install diagnostics use stable typed codes (`PreflightCode`: `daemon_unavailable`, `daemon_check_failed`, `port_conflict`, `disk_low`, `unknown`) with `fatal`/`warning` severity, matching the `ComposeErrorCode` pattern.
 
 ### High-use endpoint groups
 

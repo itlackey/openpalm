@@ -301,6 +301,31 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				await completeSetupCommandResponse(setupManager, stackManager, SECRETS_ENV_PATH)
 			);
 		}
+		if (type === 'setup.retry_core') {
+			const { setCoreReadinessPhase, applyReadinessResult } = await import(
+				'$lib/server/core-readiness-state'
+			);
+			const { ensureCoreServicesReady } = await import(
+				'@openpalm/lib/admin/core-readiness'
+			);
+			const { SetupStartupServices } = await import(
+				'@openpalm/lib/admin/compose-runner'
+			);
+			setCoreReadinessPhase('checking');
+			try {
+				const result = await ensureCoreServicesReady({
+					targetServices: SetupStartupServices,
+					maxAttempts: 6,
+					pollIntervalMs: 2_000
+				});
+				const snapshot = applyReadinessResult(result);
+				return json(200, { ok: true, data: snapshot });
+			} catch (err: unknown) {
+				const message = err instanceof Error ? err.message : String(err);
+				setCoreReadinessPhase('failed');
+				return json(500, { ok: false, error: message, code: 'readiness_check_failed' });
+			}
+		}
 		if (type === 'channel.configure') {
 			const channel = sanitizeEnvScalar(payload.channel);
 			const exposure = typeof payload.exposure === 'string' ? payload.exposure : '';

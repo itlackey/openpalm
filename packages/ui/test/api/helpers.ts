@@ -117,6 +117,8 @@ function buildWebServerEnv(dir: string): Record<string, string> {
     COMPOSE_PROJECT_PATH: stateRoot,
     OPENPALM_COMPOSE_FILE: "docker-compose.yml",
     OPENPALM_COMPOSE_BIN: "/usr/bin/true",
+    CORE_READINESS_MAX_ATTEMPTS: "1",
+    CORE_READINESS_POLL_MS: "0",
   };
 }
 

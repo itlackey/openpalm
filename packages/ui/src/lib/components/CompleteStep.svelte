@@ -2,95 +2,225 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 
-	interface Props {
-		oncontinue: () => void;
+	const SERVICE_NAMES: Record<string, string> = {
+		gateway: 'Message Router',
+		assistant: 'AI Assistant',
+		openmemory: 'Memory',
+		admin: 'Admin Panel',
+		caddy: 'Reverse Proxy',
+		'openmemory-ui': 'Memory UI',
+		postgres: 'Database',
+		qdrant: 'Vector DB'
+	};
+
+	const PHASE_LABELS: Record<string, string> = {
+		idle: 'Waiting...',
+		applying: 'Applying configuration...',
+		starting: 'Starting services...',
+		checking: 'Checking service readiness...',
+		ready: 'Everything is ready!',
+		failed: 'Some services need attention.'
+	};
+
+	interface ServiceCheck {
+		service: string;
+		state: 'ready' | 'not_ready';
+		status: string;
+		health?: string | null;
+		reason?: string;
+		probeUrl?: string;
+		probeError?: string;
 	}
 
-	let { oncontinue }: Props = $props();
+	interface ReadinessSnapshot {
+		phase: string;
+		updatedAt: string;
+		checks: ServiceCheck[];
+		diagnostics: {
+			composePsStderr?: string;
+			failedServices: ServiceCheck[];
+			failedServiceLogs?: Record<string, string>;
+		};
+	}
 
-	let statusText = $state('Starting services...');
-	let ready = $state(false);
-	let timedOut = $state(false);
-	let serviceStatus = $state<Record<string, { ok: boolean; time?: string }>>({});
+	interface Props {
+		oncontinue: () => void;
+		initialReadiness?: ReadinessSnapshot | null;
+	}
 
-	async function pollUntilReady() {
-		// Poll for up to 60 seconds (60 iterations × 1s). If any non-admin service
-		// is still unreachable after the first few attempts we continue polling, but
-		// we give up at 60s so the user is never stuck indefinitely.
-		const MAX_POLLS = 60;
-		// Early-exit: if after 5 polls no non-admin service has come up at all,
-		// we assume Docker is not running yet and skip straight to the timeout state.
-		const FAST_FAIL_AFTER = 5;
+	let { oncontinue, initialReadiness = null }: Props = $props();
+
+	let phase = $state('checking');
+	let checks = $state<ServiceCheck[]>([]);
+	let diagnostics = $state<ReadinessSnapshot['diagnostics']>({ failedServices: [] });
+	let retrying = $state(false);
+	let showDiagnostics = $state(false);
+	let pollCount = $state(0);
+
+	const phaseLabel = $derived(PHASE_LABELS[phase] ?? phase);
+	const isReady = $derived(phase === 'ready');
+	const isFailed = $derived(phase === 'failed');
+	const isInProgress = $derived(phase === 'applying' || phase === 'starting' || phase === 'checking');
+
+	function friendlyName(service: string): string {
+		return SERVICE_NAMES[service] ?? service;
+	}
+
+	function reasonLabel(check: ServiceCheck): string {
+		if (check.state === 'ready') return 'ready';
+		if (check.reason === 'missing') return 'not found';
+		if (check.reason === 'not_running') return `stopped (${check.status})`;
+		if (check.reason === 'unhealthy') return `unhealthy (${check.health ?? 'unknown'})`;
+		if (check.reason === 'http_probe_failed') {
+			return check.probeError ? `probe failed: ${check.probeError}` : 'probe failed';
+		}
+		return check.status || 'unknown';
+	}
+
+	function applySnapshot(snapshot: ReadinessSnapshot) {
+		phase = snapshot.phase;
+		checks = snapshot.checks ?? [];
+		diagnostics = snapshot.diagnostics ?? { failedServices: [] };
+	}
+
+	async function pollReadiness() {
+		const MAX_POLLS = 30;
+		const POLL_INTERVAL_MS = 2000;
 
 		for (let i = 0; i < MAX_POLLS; i++) {
-			const r = await api('/setup/health-check');
-			if (r.ok) {
-				const services = r.data?.services || {};
-				serviceStatus = Object.fromEntries(
-					Object.entries(services).map(([name, s]) => [
-						name,
-						{ ok: !!(s as any)?.ok, time: (s as any)?.time }
-					])
-				);
-				const allOk = Object.values(services).every((s) => (s as any)?.ok);
-				if (allOk) {
-					ready = true;
-					statusText = 'Everything is ready!';
+			pollCount = i + 1;
+			const r = await api('/setup/core-readiness');
+			if (r.ok && r.data) {
+				if (r.data.phase === 'ready' || r.data.phase === 'failed') {
+					applySnapshot(r.data as ReadinessSnapshot);
 					return;
 				}
-				// Fast-fail: if after FAST_FAIL_AFTER polls no non-admin service
-				// has responded at all, Docker isn't running — stop waiting.
-				if (i >= FAST_FAIL_AFTER - 1) {
-					const nonAdminServices = Object.entries(services).filter(([name]) => name !== 'admin');
-					const anyNonAdminUp = nonAdminServices.some(([, s]) => (s as any)?.ok);
-					if (!anyNonAdminUp && nonAdminServices.length > 0) {
-						timedOut = true;
-						statusText = 'Some services are still starting.';
-						return;
-					}
+				// Update in-progress state
+				if (r.data.phase) {
+					phase = r.data.phase;
+				}
+				if (r.data.checks) {
+					checks = r.data.checks;
 				}
 			}
-			statusText = `Starting services... (${i + 1})`;
-			await new Promise((resolve) => setTimeout(resolve, 1000));
+			await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 		}
-		timedOut = true;
-		statusText = 'Some services are still starting.';
+		// If we exhausted polls and never got ready/failed, mark as failed
+		if (!isReady) {
+			phase = 'failed';
+		}
+	}
+
+	async function retryReadiness() {
+		if (retrying) return;
+		retrying = true;
+		showDiagnostics = false;
+		phase = 'checking';
+		checks = [];
+		diagnostics = { failedServices: [] };
+
+		try {
+			const r = await api('/setup/core-readiness/retry', { method: 'POST' });
+			if (r.ok && r.data) {
+				applySnapshot(r.data as ReadinessSnapshot);
+			} else {
+				phase = 'failed';
+			}
+		} catch {
+			phase = 'failed';
+		} finally {
+			retrying = false;
+		}
 	}
 
 	onMount(() => {
-		pollUntilReady();
+		if (initialReadiness && initialReadiness.phase) {
+			applySnapshot(initialReadiness);
+			// If the initial snapshot shows in-progress, poll for updates
+			if (initialReadiness.phase !== 'ready' && initialReadiness.phase !== 'failed') {
+				pollReadiness();
+			}
+		} else {
+			// No initial data — poll the backend for current readiness state
+			pollReadiness();
+		}
 	});
 </script>
 
 <p>Finalizing setup and starting your assistant...</p>
 
 <div>
-	<p class="muted">{statusText}</p>
-	{#if !ready && !timedOut && Object.keys(serviceStatus).length > 0}
-		<ul style="margin:0.4rem 0; padding-left:1.2rem; font-size:13px">
-			{#each Object.entries(serviceStatus) as [name, s]}
-				<li style="color: {s.ok ? 'var(--green, green)' : 'var(--muted, #888)'}">
-					{name} — {s.ok ? 'ready' : 'starting...'}
+	<p class="muted">{phaseLabel}{#if isInProgress && pollCount > 1} ({pollCount}){/if}</p>
+
+	{#if checks.length > 0}
+		<ul class="readiness-checks" style="margin:0.4rem 0; padding-left:1.2rem; font-size:13px; list-style:none">
+			{#each checks as check}
+				<li style="margin:0.2rem 0; color: {check.state === 'ready' ? 'var(--green, green)' : isInProgress ? 'var(--muted, #888)' : 'var(--red, red)'}">
+					<span aria-hidden="true">{check.state === 'ready' ? '\u2713' : isInProgress ? '\u25CB' : '\u2717'}</span>
+					<span class="sr-only">{check.state === 'ready' ? 'Ready' : 'Not ready'}</span>
+					<strong>{friendlyName(check.service)}</strong>
+					&mdash; {check.state === 'ready' ? 'ready' : isInProgress ? 'starting...' : reasonLabel(check)}
 				</li>
 			{/each}
 		</ul>
 	{/if}
-	{#if ready}
+
+	{#if isReady}
+		<p style="margin:0.5rem 0; color: var(--green, green); font-weight:600">
+			All services are running and healthy.
+		</p>
 		<button onclick={oncontinue}>Continue to Admin</button>
-	{:else if timedOut}
+	{:else if isFailed}
 		<div style="margin:0.5rem 0">
-			<p>Some services took too long to start:</p>
-			<ul style="margin:0.4rem 0; padding-left:1.2rem">
-				{#each Object.entries(serviceStatus) as [name, s]}
-					<li style="color: {s.ok ? 'var(--green, green)' : 'var(--red, red)'}">
-						{name} — {s.ok ? 'ready' : 'not ready'}
+			<p>Some services need attention:</p>
+			<ul style="margin:0.4rem 0; padding-left:1.2rem; font-size:13px">
+				{#each diagnostics.failedServices as check}
+					<li style="color: var(--red, red)">
+						<strong>{friendlyName(check.service)}</strong> &mdash; {reasonLabel(check)}
+						{#if check.probeUrl}
+							<span class="muted" style="font-size:12px"> ({check.probeUrl})</span>
+						{/if}
 					</li>
 				{/each}
 			</ul>
-			<p class="muted" style="font-size:13px">
-				Check your API key is correct, then run <code>openpalm logs</code> for details.
+
+			{#if diagnostics.failedServiceLogs && Object.keys(diagnostics.failedServiceLogs).length > 0}
+				<button
+					class="btn-link"
+					style="font-size:12px; margin:0.3rem 0; cursor:pointer; background:none; border:none; color:var(--link, #0366d6); text-decoration:underline; padding:0"
+					onclick={() => (showDiagnostics = !showDiagnostics)}
+				>
+					{showDiagnostics ? 'Hide' : 'Show'} diagnostics
+				</button>
+
+				{#if showDiagnostics}
+					<div class="diagnostics-panel" style="margin:0.5rem 0; padding:0.5rem; background:var(--bg-muted, #f6f8fa); border-radius:4px; font-size:12px; max-height:200px; overflow:auto">
+						{#if diagnostics.composePsStderr}
+							<div style="margin-bottom:0.4rem">
+								<strong>Compose stderr:</strong>
+								<pre style="white-space:pre-wrap; margin:0.2rem 0; font-size:11px">{diagnostics.composePsStderr}</pre>
+							</div>
+						{/if}
+						{#each Object.entries(diagnostics.failedServiceLogs) as [service, logs]}
+							<div style="margin-bottom:0.4rem">
+								<strong>{friendlyName(service)} logs:</strong>
+								<pre style="white-space:pre-wrap; margin:0.2rem 0; font-size:11px; max-height:100px; overflow:auto">{logs}</pre>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			{/if}
+
+			<p class="muted" style="font-size:13px; margin:0.4rem 0">
+				Check your API keys and Docker status, then retry or run <code>openpalm logs</code> for details.
 			</p>
+
+			<div style="display:flex; gap:0.5rem; margin-top:0.5rem">
+				<button onclick={retryReadiness} disabled={retrying}>
+					{retrying ? 'Retrying...' : 'Retry Readiness Check'}
+				</button>
+				<button class="btn-secondary" onclick={oncontinue}>Continue to Admin</button>
+			</div>
 		</div>
-		<button class="btn-secondary" onclick={oncontinue}>Continue to Admin</button>
 	{/if}
 </div>

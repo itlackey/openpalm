@@ -23,13 +23,13 @@ npx openpalm install
 bunx openpalm install
 ```
 
-The installer detects your container runtime (Docker, Podman, or OrbStack), generates secure credentials, starts all services, and opens a setup wizard. No config files to edit. See the [CLI documentation](../../../docs/cli.md) for all commands.
+The installer detects your container runtime (Docker, Podman, or OrbStack), generates a temporary admin token, and starts the bootstrap services (admin and reverse proxy). It then opens a setup wizard in your browser. When you complete the wizard, the full runtime (assistant, gateway, memory, and enabled channels) starts automatically. No config files to edit. See the [CLI documentation](../../../docs/cli.md) for all commands.
 
 For implementation details of the installer flow and directory layout, see the [Admin Service README](../README.md).
 
 ## Admin console
 
-Access the admin dashboard at `http://localhost`. Log in with the admin password from your `.env` file.
+Access the admin dashboard at `http://localhost`. Sign in using the temporary admin token from your `.env` file or the installer output.
 
 | Page | What it does |
 |---|---|
@@ -54,8 +54,8 @@ Create scheduled prompts with a name, prompt text, and cron expression. Use **En
 
 ## Authentication
 
-- Admin password is generated at install time and stored in `.env`
-- All admin write operations require the `x-admin-token` header
+- A temporary admin token is generated at install time and stored in `.env` as `ADMIN_TOKEN`
+- All admin write operations require the `x-admin-token` header containing this token
 - The admin panel is LAN-only by default
 - The setup wizard offers a `host` scope option for localhost-only access
 
