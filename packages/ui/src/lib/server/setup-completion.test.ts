@@ -1,7 +1,13 @@
 import { describe, expect, it, mock } from 'bun:test';
+import { CoreServices, SetupStartupServices } from '@openpalm/lib/admin/compose-runner';
 import { completeSetupOrchestration } from './setup-completion';
 
 describe('setup-completion orchestrator', () => {
+	it('uses canonical startup services derived from compose core services', () => {
+		expect(SetupStartupServices).toEqual(CoreServices.filter((service) => service !== 'admin'));
+		expect(SetupStartupServices).not.toContain('admin');
+	});
+
 	it('writes POSTGRES_PASSWORD when missing before stack apply', async () => {
 		const applyResult = { ok: true, generated: {}, warnings: [] } as never;
 		const existsSyncMock = mock(() => false);
@@ -41,6 +47,7 @@ describe('setup-completion orchestrator', () => {
 		expect(writeFileSyncMock).toHaveBeenCalledTimes(1);
 		expect(applyStackMock).toHaveBeenCalledTimes(1);
 		expect(composeActionMock).toHaveBeenCalledTimes(1);
+		expect(composeActionMock).toHaveBeenCalledWith('up', [...SetupStartupServices]);
 		expect(syncAutomationsMock).toHaveBeenCalledTimes(1);
 		expect(completeSetupMock).toHaveBeenCalledTimes(1);
 		expect(result.apply).toBe(applyResult);

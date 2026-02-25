@@ -13,9 +13,11 @@ function getHandlerBlock(content: string, type: string): string {
 describe('command/+server.ts — setup flow safeguards', () => {
 	it('setup.complete delegates to shared completion orchestrator', async () => {
 		const content = await Bun.file(commandFile).text();
+		const setupCompleteHandler = getHandlerBlock(content, 'setup.complete');
 		expect(content).toContain("import { completeSetupCommandResponse } from '$lib/server/setup-completion-response';");
 		expect(content).toContain('SECRETS_ENV_PATH');
 		expect(content).toContain('await completeSetupCommandResponse(setupManager, stackManager, SECRETS_ENV_PATH)');
+		expect(setupCompleteHandler).not.toContain("composeAction('up'");
 		expect(content).not.toContain('completeSetupOrchestration(setupManager, stackManager');
 	});
 

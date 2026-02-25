@@ -1,5 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
+  CoreServices,
+  SetupStartupServices,
   createComposeRunner,
   filterUiManagedServices,
 } from "./compose-runner.ts";
@@ -104,6 +106,12 @@ describe("compose-runner", () => {
       "channel-chat",
     ]);
     expect(names).toEqual(["gateway", "channel-chat"]);
+  });
+
+  it("derives setup startup services from core services", () => {
+    const expected = CoreServices.filter((service) => service !== "admin");
+    expect(SetupStartupServices).toEqual(expected);
+    expect(SetupStartupServices).not.toContain("admin");
   });
 
   it("classifies spawn failures as daemon_unreachable", async () => {

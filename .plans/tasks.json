@@ -50,7 +50,7 @@
       {
         "id": "rec-01-05",
         "description": "Replace route-local setup service arrays with canonical lib-derived service definitions.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 49 },

@@ -1,22 +1,12 @@
 import type { SetupManager } from '@openpalm/lib/admin/setup-manager';
 import type { StackManager } from '@openpalm/lib/admin/stack-manager';
 import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
-import { composeAction } from '@openpalm/lib/admin/compose-runner';
+import { composeAction, SetupStartupServices } from '@openpalm/lib/admin/compose-runner';
 import { syncAutomations } from '@openpalm/lib/admin/automations';
 import { parseRuntimeEnvContent, updateRuntimeEnvContent } from '@openpalm/lib/admin/runtime-env';
 import { generateToken } from '@openpalm/lib/tokens';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-
-const SetupCoreServices = [
-	'caddy',
-	'assistant',
-	'gateway',
-	'openmemory',
-	'openmemory-ui',
-	'postgres',
-	'qdrant'
-] as const;
 
 type SetupCompletionDependencies = {
 	secretsEnvPath: string;
@@ -70,7 +60,7 @@ export async function completeSetupOrchestration(
 	const dependencies = { ...defaultDependencies, ...overrides };
 	ensurePostgresPassword(dependencies);
 	const apply = await dependencies.applyStack(stackManager);
-	const startup = await dependencies.composeAction('up', [...SetupCoreServices]);
+	const startup = await dependencies.composeAction('up', [...SetupStartupServices]);
 	if (!startup.ok) throw new Error(`core_startup_failed:${startup.stderr}`);
 	dependencies.syncAutomations(stackManager.listAutomations());
 	const state = setupManager.completeSetup();
