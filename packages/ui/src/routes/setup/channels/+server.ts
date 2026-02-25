@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const channels = await normalizeSelectedChannels(body.channels);
-	updateRuntimeEnv({
+	await updateRuntimeEnv({
 		OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(',') : undefined
 	});
 
