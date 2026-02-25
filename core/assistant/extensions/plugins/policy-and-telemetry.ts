@@ -7,6 +7,9 @@
  * The Gateway is the final authority — this plugin is a secondary guardrail.
  */
 
+import { createLogger } from "../lib/logger.ts";
+
+const log = createLogger("plugin-policy");
 const SECRET_PATTERNS = [/api[_-]?key/i, /token/i, /password/i, /private[_-]?key/i];
 
 function containsSecret(value: unknown): boolean {
@@ -28,13 +31,7 @@ export const PolicyAndTelemetry: Plugin = async () => {
         );
       }
 
-      console.log(
-        JSON.stringify({
-          kind: "tool_call",
-          tool: input.tool,
-          ts: new Date().toISOString(),
-        }),
-      );
+      log.info("tool_call", { tool: input.tool });
     },
   };
 };

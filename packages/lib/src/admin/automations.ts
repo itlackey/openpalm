@@ -3,6 +3,9 @@ import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import type { StackAutomation } from "./stack-spec.ts";
 import { validateCron } from "./cron.ts";
+import { createLogger } from "../shared/logger.ts";
+
+const log = createLogger("admin");
 
 // Lazy getters: env var is read at call time so callers can set CRON_DIR before first use.
 function cronDir(): string { return Bun.env.CRON_DIR ?? "/state/automations"; }
@@ -89,10 +92,10 @@ export function syncAutomations(automations: StackAutomation[]): void {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("crontab: not found")) {
-      console.warn("crontab reload skipped: binary not available in this environment");
+      log.warn("crontab reload skipped: binary not available in this environment");
       return;
     }
-    console.error("crontab reload failed", error);
+    log.error("crontab reload failed", { error: message });
   }
 }
 

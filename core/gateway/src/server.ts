@@ -10,7 +10,9 @@ import { nonceCache } from "./nonce-cache.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
 import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { safeRequestId, validatePayload } from "./server-utils.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
+const log = createLogger("gateway");
 const MAX_SUMMARY_LENGTH = 2_000;
 const CHANNEL_SECRET_PATTERN = /^CHANNEL_[A-Z0-9_]+_SECRET$/;
 
@@ -268,5 +270,5 @@ if (import.meta.main) {
     fetch: createGatewayFetch({ channelSecrets: CHANNEL_SHARED_SECRETS, openCode, audit }),
   });
 
-  console.log(JSON.stringify({ kind: "startup", port: server.port }));
+  log.info("started", { port: server.port });
 }

@@ -1,8 +1,11 @@
 import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 export { signPayload };
+
+const log = createLogger("channel-api");
 
 const PORT = Number(Bun.env.PORT ?? 8186);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -244,9 +247,9 @@ export function createApiFetch(
 
 if (import.meta.main) {
   if (!SHARED_SECRET) {
-    console.error("[channel-api] FATAL: CHANNEL_API_SECRET environment variable is not set. Exiting.");
+    log.error("CHANNEL_API_SECRET is not set, exiting");
     process.exit(1);
   }
   Bun.serve({ port: PORT, fetch: createApiFetch(GATEWAY_URL, SHARED_SECRET, API_KEY) });
-  console.log(JSON.stringify({ kind: "startup", service: "channel-api", port: PORT }));
+  log.info("started", { port: PORT });
 }

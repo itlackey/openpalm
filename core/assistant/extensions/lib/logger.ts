@@ -1,19 +1,14 @@
 /**
- * Lightweight structured JSON logger.
+ * Structured JSON logger for assistant plugins.
  *
- * Usage:
- *   import { createLogger } from "@openpalm/lib/shared/logger.ts";
- *   const log = createLogger("admin");
- *   log.info("server started", { port: 8100 });
- *   // => {"ts":"2026-02-21T...","level":"info","service":"admin","msg":"server started","extra":{"port":8100}}
+ * Mirrors the API and output format of @openpalm/lib/shared/logger.ts so that
+ * all services produce identical log lines for aggregation tooling.
  *
- * Log level filtering:
- *   Set LOG_LEVEL=debug|info|warn|error (default: "info").
- *   DEBUG=1 is a shorthand for LOG_LEVEL=debug.
- *   Messages below the configured level are silently dropped.
+ * The assistant runtime does not have @openpalm/lib available, so this module
+ * provides a local copy of the same contract.
  */
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface Logger {
   debug(msg: string, extra?: Record<string, unknown>): void;
@@ -30,8 +25,8 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 function getMinLevel(): LogLevel {
-  if (Bun.env.DEBUG === "1") return "debug";
-  const raw = Bun.env.LOG_LEVEL;
+  if (process.env.DEBUG === "1") return "debug";
+  const raw = process.env.LOG_LEVEL;
   if (raw && raw in LEVEL_PRIORITY) return raw as LogLevel;
   return "info";
 }

@@ -2,8 +2,11 @@ import { createMcpChannel } from "./channel.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 export { signPayload };
+
+const log = createLogger("channel-mcp");
 
 const PORT = Number(Bun.env.PORT ?? 8187);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -87,10 +90,10 @@ export function createFetch(
 
 if (import.meta.main) {
   if (!SHARED_SECRET) {
-    console.error("[channel-mcp] FATAL: CHANNEL_MCP_SECRET environment variable is not set. Exiting.");
+    log.error("CHANNEL_MCP_SECRET is not set, exiting");
     process.exit(1);
   }
   const adapter = createMcpChannel();
   Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
-  console.log(JSON.stringify({ kind: "startup", service: "channel-mcp", port: PORT }));
+  log.info("started", { port: PORT });
 }
