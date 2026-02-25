@@ -59,41 +59,23 @@ describe("SetupManager.completeStep", () => {
       manager.completeStep("accessScope");
       const state = manager.getState();
       expect(state.steps.accessScope).toBe(true);
-      expect(state.steps.welcome).toBe(false);
-      expect(state.steps.profile).toBe(false);
-      expect(state.steps.serviceInstances).toBe(false);
-      expect(state.steps.healthCheck).toBe(false);
-      expect(state.steps.security).toBe(false);
-      expect(state.steps.channels).toBe(false);
-      expect(state.steps.extensions).toBe(false);
+      for (const step of Object.keys(state.steps).filter((k) => k !== "accessScope")) {
+        expect(state.steps[step as keyof typeof state.steps]).toBe(false);
+      }
     });
   });
 });
 
 describe("SetupManager.setAccessScope", () => {
-  it('persists the "host" scope', () => {
-    withTempDir((dir) => {
-      const manager = new SetupManager(dir);
-      manager.setAccessScope("host");
-      expect(manager.getState().accessScope).toBe("host");
+  for (const scope of ["host", "lan", "public"] as const) {
+    it(`persists the "${scope}" scope`, () => {
+      withTempDir((dir) => {
+        const manager = new SetupManager(dir);
+        manager.setAccessScope(scope);
+        expect(manager.getState().accessScope).toBe(scope);
+      });
     });
-  });
-
-  it('persists the "lan" scope', () => {
-    withTempDir((dir) => {
-      const manager = new SetupManager(dir);
-      manager.setAccessScope("lan");
-      expect(manager.getState().accessScope).toBe("lan");
-    });
-  });
-
-  it('persists the "public" scope', () => {
-    withTempDir((dir) => {
-      const manager = new SetupManager(dir);
-      manager.setAccessScope("public");
-      expect(manager.getState().accessScope).toBe("public");
-    });
-  });
+  }
 });
 
 describe("getState validation (regression: scope handling)", () => {

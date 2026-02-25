@@ -1,6 +1,6 @@
-import type { ComposeErrorCode, ComposeRunOptions, ComposeRunResult } from "./types.ts";
+import type { ComposeErrorCode, ComposeRunOptions, ComposeRunResult, SpawnFn } from "./types.ts";
 
-export type { ComposeErrorCode, ComposeRunOptions, ComposeRunResult };
+export type { ComposeErrorCode, ComposeRunOptions, ComposeRunResult, SpawnFn };
 
 const transientErrorMatchers: Array<{ pattern: RegExp; code: ComposeErrorCode; retryable: boolean }> = [
   { pattern: /Cannot connect to the Docker daemon|error during connect|dial unix/i, code: "daemon_unreachable", retryable: true },
@@ -29,7 +29,8 @@ async function runComposeOnce(args: string[], options: ComposeRunOptions): Promi
   const stream = options.stream ?? false;
   const timeoutMs = options.timeoutMs ?? (stream ? 0 : 30_000);
   const controller = timeoutMs > 0 ? new AbortController() : undefined;
-  const spawnOptions: Parameters<typeof Bun.spawn>[1] = {
+  const spawn = options.spawn ?? Bun.spawn;
+  const spawnOptions: Parameters<SpawnFn>[1] = {
     stdout: stream ? "inherit" : "pipe",
     stderr: stream ? "inherit" : "pipe",
     stdin: "inherit",
@@ -43,9 +44,9 @@ async function runComposeOnce(args: string[], options: ComposeRunOptions): Promi
     timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
   }
 
-  let proc: ReturnType<typeof Bun.spawn> | undefined;
+  let proc: ReturnType<SpawnFn> | undefined;
   try {
-    proc = Bun.spawn([options.bin, ...composeArgs], spawnOptions);
+    proc = spawn([options.bin, ...composeArgs], spawnOptions);
     await proc.exited;
   } catch (error) {
     if (timeoutId) clearTimeout(timeoutId);

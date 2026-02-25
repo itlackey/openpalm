@@ -1,4 +1,4 @@
-import type { ComposeConfig } from "./types.ts";
+import type { ComposeConfig, SpawnFn } from "./types.ts";
 import { runCompose } from "./compose-runner.ts";
 
 export function buildComposeArgs(config: ComposeConfig): string[] {
@@ -14,7 +14,7 @@ export function buildComposeArgs(config: ComposeConfig): string[] {
 export async function composeExec(
   config: ComposeConfig,
   args: string[],
-  options?: { stream?: boolean; timeout?: number }
+  options?: { stream?: boolean; timeout?: number; spawn?: SpawnFn }
 ): Promise<{ exitCode: number; stdout: string; stderr: string; code: string }> {
   const result = await runCompose(args, {
     bin: config.bin,
@@ -23,6 +23,7 @@ export async function composeExec(
     composeFile: config.composeFile,
     stream: options?.stream,
     timeoutMs: options?.timeout,
+    spawn: options?.spawn,
   });
 
   return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, code: result.code };

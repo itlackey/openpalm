@@ -21,27 +21,24 @@ describe("validateCron", () => {
     expect(validateCron("30 8 * * 1,3,5")).toBeNull();
   });
 
-  it("rejects out-of-range minute values", () => {
-    expect(validateCron("60 * * * *")).toContain("out of range");
+  const outOfRangeCases: [string, string[]][] = [
+    ["minute", ["60 * * * *"]],
+    ["hour", ["* 24 * * *"]],
+    ["day-of-month", ["* * 0 * *", "* * 32 * *"]],
+    ["month", ["* * * 0 *", "* * * 13 *"]],
+    ["day-of-week", ["* * * * 8"]],
+  ];
+
+  for (const [field, expressions] of outOfRangeCases) {
+    it(`rejects out-of-range ${field} values`, () => {
+      for (const expr of expressions) {
+        expect(validateCron(expr)).toContain("out of range");
+      }
+    });
+  }
+
+  it("rejects negative minute values", () => {
     expect(validateCron("-1 * * * *")).not.toBeNull();
-  });
-
-  it("rejects out-of-range hour values", () => {
-    expect(validateCron("* 24 * * *")).toContain("out of range");
-  });
-
-  it("rejects out-of-range day-of-month values", () => {
-    expect(validateCron("* * 0 * *")).toContain("out of range");
-    expect(validateCron("* * 32 * *")).toContain("out of range");
-  });
-
-  it("rejects out-of-range month values", () => {
-    expect(validateCron("* * * 0 *")).toContain("out of range");
-    expect(validateCron("* * * 13 *")).toContain("out of range");
-  });
-
-  it("rejects out-of-range day-of-week values", () => {
-    expect(validateCron("* * * * 8")).toContain("out of range");
   });
 
   it("accepts valid day-of-week range 0-7", () => {

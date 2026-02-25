@@ -1,4 +1,5 @@
 import { runCompose as runComposeShared } from "../compose-runner.ts";
+import type { SpawnFn } from "../types.ts";
 
 export const CoreServices = [
   "assistant", "gateway", "openmemory", "admin",
@@ -70,10 +71,10 @@ type RunFn = (args: string[], composeFileOverride?: string, stream?: boolean) =>
  * When omitted, defaults to `$COMPOSE_PROJECT_PATH/.env` (i.e. `/state/.env`
  * in Docker) — the known location written by the installer.
  */
-export function createComposeRunner(envFile?: string): ComposeRunner {
+export function createComposeRunner(envFile?: string, spawn?: SpawnFn): ComposeRunner {
   const resolvedEnvFile = envFile ?? `${composeProjectPath()}/.env`;
   const run: RunFn = (args, composeFileOverride, stream) =>
-    execCompose(args, composeFileOverride, resolvedEnvFile, stream);
+    execCompose(args, composeFileOverride, resolvedEnvFile, stream, spawn);
 
   return {
     action: (action, service) => runAction(run, action, service),
@@ -83,7 +84,7 @@ export function createComposeRunner(envFile?: string): ComposeRunner {
     configServices: (composeFileOverride) => runConfigServices(run, composeFileOverride),
     configValidate: () => run(["config"]),
     configValidateForFile: (composeFile, envFileOverride) =>
-      execCompose(["config"], composeFile, envFileOverride ?? resolvedEnvFile),
+      execCompose(["config"], composeFile, envFileOverride ?? resolvedEnvFile, undefined, spawn),
     pull: (service) => runPull(run, service),
     logs: (service, tail) => runLogs(run, service, tail),
     stackDown: () => run(["down", "--remove-orphans"], undefined, true),
@@ -107,7 +108,7 @@ export function createMockRunner(overrides?: Partial<ComposeRunner>): ComposeRun
   };
 }
 
-async function execCompose(args: string[], composeFileOverride?: string, envFile?: string, stream?: boolean): Promise<ComposeResult> {
+async function execCompose(args: string[], composeFileOverride?: string, envFile?: string, stream?: boolean, spawn?: SpawnFn): Promise<ComposeResult> {
   const composeFile = composeFileOverride ?? composeFilePath();
   const result = await runComposeShared(args, {
     bin: composeBin(),
@@ -120,6 +121,7 @@ async function execCompose(args: string[], composeFileOverride?: string, envFile
       CONTAINER_HOST: containerSocketUri(),
     },
     stream,
+    spawn,
   });
   return {
     ok: result.ok,

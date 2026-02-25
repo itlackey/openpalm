@@ -20,25 +20,20 @@ describe("safeRequestId", () => {
     expect(safeRequestId("req-id_01")).toBe("req-id_01");
   });
 
-  it(">64 chars → returns UUID", () => {
-    const long = "a".repeat(65);
-    const result = safeRequestId(long);
-    expect(result).not.toBe(long);
-    expect(result).toMatch(/^[0-9a-f]{8}-/);
-  });
+  const invalidCases: [string, string | null][] = [
+    [">64 chars", "a".repeat(65)],
+    ["special characters", "req id!@#"],
+    ["null", null],
+    ["empty string", ""],
+  ];
 
-  it("special characters → returns UUID", () => {
-    const result = safeRequestId("req id!@#");
-    expect(result).toMatch(/^[0-9a-f]{8}-/);
-  });
-
-  it("null → returns UUID", () => {
-    expect(safeRequestId(null)).toMatch(/^[0-9a-f]{8}-/);
-  });
-
-  it("empty string → returns UUID", () => {
-    expect(safeRequestId("")).toMatch(/^[0-9a-f]{8}-/);
-  });
+  for (const [label, input] of invalidCases) {
+    it(`${label} → returns UUID`, () => {
+      const result = safeRequestId(input);
+      if (input) expect(result).not.toBe(input);
+      expect(result).toMatch(/^[0-9a-f]{8}-/);
+    });
+  }
 });
 
 // ── validatePayload ────────────────────────────────────────────────
@@ -56,41 +51,26 @@ describe("validatePayload", () => {
     expect(validatePayload(valid)).toBe(true);
   });
 
-  it("missing userId → false", () => {
-    expect(validatePayload({ ...valid, userId: undefined })).toBe(false);
-  });
-
-  it("empty userId → false", () => {
-    expect(validatePayload({ ...valid, userId: "  " })).toBe(false);
-  });
-
   it("non-empty arbitrary channel → true", () => {
     expect(validatePayload({ ...valid, channel: "smoke-signal" })).toBe(true);
   });
 
-  it("missing text → false", () => {
-    expect(validatePayload({ ...valid, text: undefined })).toBe(false);
-  });
+  const invalidCases: [string, Record<string, unknown>][] = [
+    ["missing userId", { userId: undefined }],
+    ["empty userId", { userId: "  " }],
+    ["missing text", { text: undefined }],
+    ["empty text", { text: "   " }],
+    ["text >10000 chars", { text: "x".repeat(10_001) }],
+    ["missing nonce", { nonce: undefined }],
+    ["missing timestamp", { timestamp: undefined }],
+    ["non-number timestamp", { timestamp: "not-a-number" }],
+  ];
 
-  it("empty text → false", () => {
-    expect(validatePayload({ ...valid, text: "   " })).toBe(false);
-  });
-
-  it("text >10000 chars → false", () => {
-    expect(validatePayload({ ...valid, text: "x".repeat(10_001) })).toBe(false);
-  });
-
-  it("missing nonce → false", () => {
-    expect(validatePayload({ ...valid, nonce: undefined })).toBe(false);
-  });
-
-  it("missing timestamp → false", () => {
-    expect(validatePayload({ ...valid, timestamp: undefined })).toBe(false);
-  });
-
-  it("non-number timestamp → false", () => {
-    expect(validatePayload({ ...valid, timestamp: "not-a-number" as unknown as number })).toBe(false);
-  });
+  for (const [label, overrides] of invalidCases) {
+    it(`${label} → false`, () => {
+      expect(validatePayload({ ...valid, ...overrides })).toBe(false);
+    });
+  }
 });
 
 

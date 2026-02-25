@@ -20,6 +20,7 @@ import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveHostPort } from "../helpers/docker-compose-port.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
 const COMPOSE_BASE = join(REPO_ROOT, "packages/lib/src/embedded/state/docker-compose.yml");
@@ -93,9 +94,10 @@ function cmd(port: number, type: string, payload: Record<string, unknown> = {}) 
   });
 }
 
-// Use non-conflicting ports so we don't clash with a running dev stack
-const ADMIN_PORT = 18200;
-const GATEWAY_PORT = 18280;
+// Ports are dynamically assigned by Docker (via "0:<container_port>" mapping)
+// and discovered after container startup using `docker compose port`.
+let ADMIN_PORT: number;
+let GATEWAY_PORT: number;
 
 beforeAll(async () => {
   if (!runDockerStackTests) return;
@@ -176,7 +178,7 @@ services:
       context: .
       dockerfile: core/admin/Dockerfile
     ports:
-      - "${ADMIN_PORT}:8100"
+      - "0:8100"
     volumes:
       - .:/compose:ro
       - ${dataDir}:/data
@@ -193,7 +195,7 @@ services:
       context: .
       dockerfile: core/gateway/Dockerfile
     ports:
-      - "${GATEWAY_PORT}:8080"
+      - "0:8080"
 `;
   writeFileSync(composeTestFile, composeOverlay, "utf8");
 
@@ -214,6 +216,15 @@ services:
     console.error("[docker-test] Start failed:", upResult.stderr);
     throw new Error("Docker start failed");
   }
+
+  // Discover the dynamically assigned host ports
+  const composeBaseArgs = [
+    "-p", PROJECT_NAME, "--env-file", envFilePath,
+    "-f", COMPOSE_BASE, "-f", composeTestFile, "--project-directory", REPO_ROOT,
+  ];
+  ADMIN_PORT = await resolveHostPort(composeBaseArgs, "admin", 8100, REPO_ROOT);
+  GATEWAY_PORT = await resolveHostPort(composeBaseArgs, "gateway", 8080, REPO_ROOT);
+  console.log(`[docker-test] Admin on port ${ADMIN_PORT}, Gateway on port ${GATEWAY_PORT}`);
 
   // Wait for admin to become healthy
   console.log("[docker-test] Waiting for admin health...");

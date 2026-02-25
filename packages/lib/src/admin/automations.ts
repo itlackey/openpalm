@@ -7,15 +7,19 @@ import { createLogger } from "../shared/logger.ts";
 
 const log = createLogger("admin");
 
-// Lazy getters: env var is read at call time so callers can set CRON_DIR before first use.
-function cronDir(): string { return Bun.env.CRON_DIR ?? "/state/automations"; }
-function scriptsDir(): string { return join(cronDir(), "scripts"); }
-function logDir(): string { return join(cronDir(), "log"); }
-function lockDir(): string { return join(cronDir(), "lock"); }
-function cronEnabledDir(): string { return join(cronDir(), "cron.d.enabled"); }
-function cronDisabledDir(): string { return join(cronDir(), "cron.d.disabled"); }
-function combinedSchedulePath(): string { return join(cronDir(), "cron.schedule"); }
-function runnerPath(): string { return join(cronDir(), "run-automation"); }
+const DEFAULT_CRON_DIR = "/state/automations";
+let _cronDir = DEFAULT_CRON_DIR;
+
+/** Set the cron directory for all automations operations. Call once at startup. */
+export function configureCronDir(dir: string): void { _cronDir = dir; }
+
+function scriptsDir(base: string): string { return join(base, "scripts"); }
+function logDir(base: string): string { return join(base, "log"); }
+function lockDir(base: string): string { return join(base, "lock"); }
+function cronEnabledDir(base: string): string { return join(base, "cron.d.enabled"); }
+function cronDisabledDir(base: string): string { return join(base, "cron.d.disabled"); }
+function combinedSchedulePath(base: string): string { return join(base, "cron.schedule"); }
+function runnerPath(base: string): string { return join(base, "run-automation"); }
 
 function fileSafeId(id: string): string {
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("invalid_automation_id");
@@ -32,15 +36,15 @@ function clearCronEntries(dir: string): void {
   }
 }
 
-export function ensureCronDirs(): void {
-  for (const dir of [cronDir(), scriptsDir(), logDir(), lockDir(), cronEnabledDir(), cronDisabledDir()]) {
+export function ensureCronDirs(cronDir = _cronDir): void {
+  for (const dir of [cronDir, scriptsDir(cronDir), logDir(cronDir), lockDir(cronDir), cronEnabledDir(cronDir), cronDisabledDir(cronDir)]) {
     mkdirSync(dir, { recursive: true });
   }
-  writeRunner();
+  writeRunner(cronDir);
 }
 
-export function syncAutomations(automations: StackAutomation[]): void {
-  ensureCronDirs();
+export function syncAutomations(automations: StackAutomation[], cronDir = _cronDir): void {
+  ensureCronDirs(cronDir);
   const activeIds = new Set<string>();
 
   for (const automation of automations) {
@@ -48,19 +52,19 @@ export function syncAutomations(automations: StackAutomation[]): void {
     if (cronError) throw new Error("invalid_cron_schedule");
     const id = fileSafeId(automation.id);
     activeIds.add(id);
-    const scriptPath = join(scriptsDir(), `${id}.sh`);
+    const scriptPath = join(scriptsDir(cronDir), `${id}.sh`);
     writeFileSync(scriptPath, automation.script, "utf8");
     chmodSync(scriptPath, 0o755);
   }
 
-  for (const file of readdirSync(scriptsDir())) {
+  for (const file of readdirSync(scriptsDir(cronDir))) {
     if (!file.endsWith(".sh")) continue;
     const id = file.slice(0, -3);
-    if (!activeIds.has(id)) rmSync(join(scriptsDir(), file), { force: true });
+    if (!activeIds.has(id)) rmSync(join(scriptsDir(cronDir), file), { force: true });
   }
 
-  clearCronEntries(cronEnabledDir());
-  clearCronEntries(cronDisabledDir());
+  clearCronEntries(cronEnabledDir(cronDir));
+  clearCronEntries(cronDisabledDir(cronDir));
 
   const combinedLines = ["# OpenPalm automations — managed by admin, do not edit", ""];
   const sortedAutomations = [...automations].sort((a, b) => a.id.localeCompare(b.id));
@@ -71,24 +75,24 @@ export function syncAutomations(automations: StackAutomation[]): void {
     const entry = [
       "# OpenPalm automation (managed)",
       `# ${automation.name} (${id})`,
-      `${automation.schedule} ${runnerPath()} ${id}`,
+      `${automation.schedule} ${runnerPath(cronDir)} ${id}`,
       "",
     ].join("\n");
 
     if (automation.enabled) {
-      writeFileSync(join(cronEnabledDir(), fileName), entry, "utf8");
+      writeFileSync(join(cronEnabledDir(cronDir), fileName), entry, "utf8");
       combinedLines.push(`# ${automation.name} (${id})`);
-      combinedLines.push(`${automation.schedule} ${runnerPath()} ${id}`);
+      combinedLines.push(`${automation.schedule} ${runnerPath(cronDir)} ${id}`);
       combinedLines.push("");
     } else {
-      writeFileSync(join(cronDisabledDir(), fileName), entry, "utf8");
+      writeFileSync(join(cronDisabledDir(cronDir), fileName), entry, "utf8");
     }
   }
 
-  writeFileSync(combinedSchedulePath(), `${combinedLines.join("\n")}`.trimEnd() + "\n", "utf8");
+  writeFileSync(combinedSchedulePath(cronDir), `${combinedLines.join("\n")}`.trimEnd() + "\n", "utf8");
 
   try {
-    execSync(`crontab ${combinedSchedulePath()}`, { stdio: "pipe" });
+    execSync(`crontab ${combinedSchedulePath(cronDir)}`, { stdio: "pipe" });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("crontab: not found")) {
@@ -99,10 +103,10 @@ export function syncAutomations(automations: StackAutomation[]): void {
   }
 }
 
-export function triggerAutomation(idRaw: string): Promise<{ ok: boolean; error?: string }> {
+export function triggerAutomation(idRaw: string, cronDir = _cronDir): Promise<{ ok: boolean; error?: string }> {
   const id = fileSafeId(idRaw);
   return new Promise((resolve) => {
-    const proc = spawn(runnerPath(), [id], { stdio: "pipe" });
+    const proc = spawn(runnerPath(cronDir), [id], { stdio: "pipe" });
     let stderr = "";
     proc.stderr.on("data", (chunk) => {
       stderr += String(chunk);
@@ -117,14 +121,14 @@ export function triggerAutomation(idRaw: string): Promise<{ ok: boolean; error?:
   });
 }
 
-function writeRunner(): void {
+function writeRunner(cronDir: string): void {
   const script = `#!/usr/bin/env bash
 set -uo pipefail
 
 ID="\${1:?automation ID required}"
-SCRIPT="${scriptsDir()}/\${ID}.sh"
-LOG_FILE="${logDir()}/\${ID}.jsonl"
-LOCK_FILE="${lockDir()}/\${ID}.lock"
+SCRIPT="${scriptsDir(cronDir)}/\${ID}.sh"
+LOG_FILE="${logDir(cronDir)}/\${ID}.jsonl"
+LOCK_FILE="${lockDir(cronDir)}/\${ID}.lock"
 
 if [[ ! -f "$SCRIPT" ]]; then
   printf '{"ts":"%s","id":"%s","status":"error","error":"script_not_found"}\\n' \\
@@ -154,6 +158,6 @@ printf '{"ts":"%s","id":"%s","status":"%s","exit":%d,"dur":%d,"preview":"%s"}\\n
   >> "$LOG_FILE"
 `;
 
-  writeFileSync(runnerPath(), script, "utf8");
-  chmodSync(runnerPath(), 0o755);
+  writeFileSync(runnerPath(cronDir), script, "utf8");
+  chmodSync(runnerPath(cronDir), 0o755);
 }

@@ -128,41 +128,26 @@ describe("security: hmac", () => {
   // Edge-case body content
   // -------------------------------------------------------------------------
   describe("special body content", () => {
-    it("handles an empty body string without throwing", () => {
-      // signPayload should succeed; verifying the result should also succeed.
-      const sig = sign("secret", "");
-      expect(verifySignature("secret", "", sig)).toBe(true);
-    });
+    const roundTripCases: [string, string, string][] = [
+      ["empty body string", "secret", ""],
+      ["Unicode / emoji characters", "secret", JSON.stringify({ text: "Hello, \u4e16\u754c! \uD83D\uDE80" })],
+      ["embedded newlines and tabs", "secret", "line1\nline2\r\n\ttabbed"],
+      ["null bytes", "secret", "before\x00after"],
+      ["very long body (1 MB)", "long-secret", JSON.stringify({ data: "z".repeat(1_000_000) })],
+    ];
 
-    it("handles a body with Unicode / emoji characters", () => {
-      const body = JSON.stringify({ text: "Hello, \u4e16\u754c! \uD83D\uDE80" });
-      const sig = sign("secret", body);
-      expect(verifySignature("secret", body, sig)).toBe(true);
-    });
-
-    it("handles a body with embedded newlines and tabs", () => {
-      const body = "line1\nline2\r\n\ttabbed";
-      const sig = sign("secret", body);
-      expect(verifySignature("secret", body, sig)).toBe(true);
-    });
-
-    it("handles a body with null bytes", () => {
-      const body = "before\x00after";
-      const sig = sign("secret", body);
-      expect(verifySignature("secret", body, sig)).toBe(true);
-    });
+    for (const [label, secret, body] of roundTripCases) {
+      it(`handles ${label} without throwing`, () => {
+        const sig = sign(secret, body);
+        expect(verifySignature(secret, body, sig)).toBe(true);
+      });
+    }
 
     it("handles a very long body (100 KB) without errors", () => {
       const body = "x".repeat(100_000);
       const sig = sign("secret", body);
       expect(sig).toHaveLength(64);
       expect(verifySignature("secret", body, sig)).toBe(true);
-    });
-
-    it("handles a very long body (1 MB) without errors", () => {
-      const body = JSON.stringify({ data: "z".repeat(1_000_000) });
-      const sig = sign("long-secret", body);
-      expect(verifySignature("long-secret", body, sig)).toBe(true);
     });
 
     it("a single-character difference in body produces a different signature", () => {

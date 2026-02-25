@@ -13,7 +13,8 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
-		"test": "bun run test:unit -- --run && bun run test:e2e",
+		"test:api": "bun test test/api/",
+		"test": "bun run test:unit -- --run && bun run test:api && bun run test:e2e",
 		"test:e2e": "playwright test"
 	},
 	"dependencies": {

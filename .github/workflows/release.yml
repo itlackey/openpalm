@@ -65,6 +65,15 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
+      - run: bun run lint:docs
+      - name: Check for silent test guards
+        run: |
+          matches=$(grep -rn '^\s*if\s*(.*)\s*return\s*;' --include="*.test.ts" test/ packages/ core/ channels/ 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Found silent test guards (if/return pattern in test files):"
+            echo "$matches"
+            exit 1
+          fi
       - run: bun test
 
   contracts:

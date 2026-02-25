@@ -29,6 +29,21 @@ jobs:
         run: bunx vitest --project client --run
         working-directory: packages/ui
 
+  bun-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - name: Build SvelteKit app
+        run: bun run build
+        working-directory: packages/ui
+      - name: Run API integration tests
+        run: bun test test/api/
+        working-directory: packages/ui
+
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -39,7 +54,13 @@ jobs:
         working-directory: .
       - run: bunx playwright install --with-deps chromium
         working-directory: packages/ui
-      - run: bun run test:ui
+      - name: Build UI
+        run: bun run build
+        working-directory: packages/ui
+      - name: Run Playwright tests
+        run: bun run test:ui
+        env:
+          SKIP_BUILD: "1"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

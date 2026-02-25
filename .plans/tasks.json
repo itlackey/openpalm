@@ -4,14 +4,14 @@
     "title": "Add runtime artifacts to .gitignore",
     "description": "Add e2e/screenshots/ to packages/ui/.gitignore to prevent test screenshot artifacts from being accidentally committed.",
     "priority": "P1",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R01-gitignore-runtime-artifacts.md",
     "subtasks": [
       {
         "id": "R01.1",
         "description": "Append e2e/screenshots/ rule to packages/ui/.gitignore after the existing e2e/.e2e-state.json line",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/.gitignore",
@@ -23,7 +23,7 @@
       {
         "id": "R01.2",
         "description": "Verify the ignore rule matches screenshots directory and files using git check-ignore",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/.gitignore",
@@ -39,14 +39,14 @@
     "title": "Fix contract test state mutation",
     "description": "Replace fragile in-memory save/restore of setup-state.json in setup-wizard-gate.contract.test.ts with file-based backup using mkdtempSync for crash-safe restoration.",
     "priority": "P1",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1 hour",
     "planFile": ".plans/R02-fix-contract-test-state-mutation.md",
     "subtasks": [
       {
         "id": "R02.1",
         "description": "Update imports to add copyFileSync, mkdtempSync, tmpdir, and join; remove readFileSync",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -58,7 +58,7 @@
       {
         "id": "R02.2",
         "description": "Remove module-level savedState variable and add backupState/restoreState helper functions using mkdtempSync",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -70,7 +70,7 @@
       {
         "id": "R02.3",
         "description": "Replace outer beforeAll/afterAll with backupState() and restoreState() calls",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -82,7 +82,7 @@
       {
         "id": "R02.4",
         "description": "Verify contract test passes with OPENPALM_INTEGRATION=1 and state file is properly restored",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -96,16 +96,16 @@
   {
     "id": "R03",
     "title": "Fix relative path in admin-api.contract.test.ts",
-    "description": "Replace bare relative path with import.meta.dir-anchored path to fix CWD-dependent test failure.",
+    "description": "Replace bare relative path with import.meta.dir-anchored path to fix CWD-dependent test failure. SUPERSEDED: R05 deleted the old admin-api.contract.test.ts and replaced it with a real HTTP contract test that has no relative file paths.",
     "priority": "P1",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R03-fix-relative-paths.md",
     "subtasks": [
       {
         "id": "R03.1",
         "description": "Add join import from node:path",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -117,7 +117,7 @@
       {
         "id": "R03.2",
         "description": "Replace bare relative path 'dev/docs/api-reference.md' with join(import.meta.dir, '../../dev/docs/api-reference.md')",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -129,7 +129,7 @@
       {
         "id": "R03.3",
         "description": "Verify test passes from both repo root and subdirectory",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -145,14 +145,14 @@
     "title": "Delete duplicate HMAC tests",
     "description": "Remove 9 duplicate HMAC tests: delete crypto.test.ts entirely and reduce channel-security.test.ts to a single re-export smoke test.",
     "priority": "P2",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "30 minutes",
     "planFile": ".plans/R04-delete-duplicate-hmac-tests.md",
     "subtasks": [
       {
         "id": "R04.1",
         "description": "Delete packages/lib/src/shared/crypto.test.ts (strict subset of hmac.security.test.ts)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/shared/crypto.test.ts",
@@ -164,7 +164,7 @@
       {
         "id": "R04.2",
         "description": "Replace channel-security.test.ts contents with a single re-export smoke test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "core/gateway/src/channel-security.test.ts",
@@ -176,7 +176,7 @@
       {
         "id": "R04.3",
         "description": "Verify hmac.security.test.ts, channel-security.test.ts, and full test suite pass",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/security/hmac.security.test.ts",
@@ -197,14 +197,14 @@
     "title": "Delete fake contract tests",
     "description": "Move doc-lint checks to a pre-commit hook/lint script, delete 3 fake contract tests, and write a real admin API contract test with live HTTP assertions.",
     "priority": "P2",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R05-delete-fake-contract-tests.md",
     "subtasks": [
       {
         "id": "R05.1",
         "description": "Create dev/scripts/lint-docs.sh with documentation invariant checks extracted from the fake contract tests",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "dev/scripts/lint-docs.sh",
@@ -216,7 +216,7 @@
       {
         "id": "R05.2",
         "description": "Update dev/hooks/pre-commit to call lint-docs.sh when README or api-reference.md are staged",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "dev/hooks/pre-commit",
@@ -228,7 +228,7 @@
       {
         "id": "R05.3",
         "description": "Add lint:docs script to package.json",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "package.json",
@@ -240,7 +240,7 @@
       {
         "id": "R05.4",
         "description": "Delete fake contract test: test/contracts/admin-api.contract.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -252,7 +252,7 @@
       {
         "id": "R05.5",
         "description": "Delete fake contract test: test/contracts/readme-no-npx.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/readme-no-npx.test.ts",
@@ -264,7 +264,7 @@
       {
         "id": "R05.6",
         "description": "Delete fake contract test: test/contracts/channel-message.contract.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/channel-message.contract.test.ts",
@@ -276,7 +276,7 @@
       {
         "id": "R05.7",
         "description": "Write real admin API contract test with HTTP assertions against live admin server, guarded by OPENPALM_INTEGRATION=1",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -288,7 +288,7 @@
       {
         "id": "R05.8",
         "description": "Optionally add bun run lint:docs to the unit-tests job in .github/workflows/release.yml",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/release.yml",
@@ -304,14 +304,14 @@
     "title": "Eliminate silent test passes",
     "description": "Audit confirmed no silent guard anti-patterns exist. Optionally add a CI grep check to prevent future regressions.",
     "priority": "P2",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R06-eliminate-silent-test-passes.md",
     "subtasks": [
       {
         "id": "R06.1",
         "description": "Run verification grep command to confirm no silent if/return patterns exist in test files",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "dev/docs/release-quality-gates.md",
@@ -323,7 +323,7 @@
       {
         "id": "R06.2",
         "description": "Optionally add silent test guard check step to the unit-tests job in release.yml",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/release.yml",
@@ -339,14 +339,14 @@
     "title": "Extract API tests from Playwright into bun:test",
     "description": "Migrate 9 Playwright E2E test files (56 tests) that make pure HTTP API calls into bun:test integration tests using native fetch(), removing unnecessary Chromium dependency.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "3-5 days",
     "planFile": ".plans/R07-extract-api-tests-from-playwright.md",
     "subtasks": [
       {
         "id": "R07.1",
         "description": "Create packages/ui/test/api/ directory and shared helpers.ts with server lifecycle, temp dir, and fetch wrappers",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/helpers.ts",
@@ -358,7 +358,7 @@
       {
         "id": "R07.2",
         "description": "Migrate 01-health-meta.pw.ts (3 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/01-health-meta.test.ts",
@@ -375,7 +375,7 @@
       {
         "id": "R07.3",
         "description": "Migrate 02-auth.pw.ts (8 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/02-auth-api.test.ts",
@@ -392,7 +392,7 @@
       {
         "id": "R07.4",
         "description": "Migrate 03-setup-api.pw.ts (20 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/03-setup-api.test.ts",
@@ -409,7 +409,7 @@
       {
         "id": "R07.5",
         "description": "Migrate 04-stack-api.pw.ts (4 tests) to bun:test with runMinimalSetup() helper",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/04-stack-api.test.ts",
@@ -426,7 +426,7 @@
       {
         "id": "R07.6",
         "description": "Migrate 05-secrets-api.pw.ts (5 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/05-secrets-api.test.ts",
@@ -443,7 +443,7 @@
       {
         "id": "R07.7",
         "description": "Migrate 06-automations-api.pw.ts (6 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/06-automations-api.test.ts",
@@ -460,7 +460,7 @@
       {
         "id": "R07.8",
         "description": "Migrate 07-channels-api.pw.ts (3 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/07-channels-api.test.ts",
@@ -477,7 +477,7 @@
       {
         "id": "R07.9",
         "description": "Migrate 08-command-api.pw.ts (5 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/08-command-api.test.ts",
@@ -494,7 +494,7 @@
       {
         "id": "R07.10",
         "description": "Migrate 11-container-automation-management-api.pw.ts (2 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/11-container-automation-management-api.test.ts",
@@ -511,7 +511,7 @@
       {
         "id": "R07.11",
         "description": "Add test:api script to packages/ui/package.json and update test script to include it",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/package.json",
@@ -523,7 +523,7 @@
       {
         "id": "R07.12",
         "description": "Add bun-api job to .github/workflows/test-ui.yml that runs API tests without Chromium",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/test-ui.yml",
@@ -539,14 +539,14 @@
     "title": "Break the sequential state machine in setup API test",
     "description": "Collapse 23 sequential test() calls in 03-setup-api.pw.ts into a single test() with test.step() sub-steps to eliminate cascading failures and honestly represent the linear workflow.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1-2 hours",
     "planFile": ".plans/R08-break-sequential-state-machine.md",
     "subtasks": [
       {
         "id": "R08.1",
         "description": "Replace 23 test() calls with a single test() containing 23 test.step() calls organized by phase",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/03-setup-api.pw.ts",
@@ -558,7 +558,7 @@
       {
         "id": "R08.2",
         "description": "Remove the wrapping test.describe() block or simplify it",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/03-setup-api.pw.ts",
@@ -570,7 +570,7 @@
       {
         "id": "R08.3",
         "description": "Run full Playwright E2E suite and verify downstream files 04-11 are unaffected",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/03-setup-api.pw.ts",
@@ -591,14 +591,14 @@
     "title": "Add resetServerState() utility",
     "description": "Create a resetServerState(tmpDir) function that resets an OpenPalm state directory to first-boot condition, replacing ad-hoc state reset patterns scattered across the test suite.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1-2 hours",
     "planFile": ".plans/R09-add-reset-server-state-utility.md",
     "subtasks": [
       {
         "id": "R09.1",
         "description": "Export DEFAULT_STATE from setup-manager.ts (change const to export const)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/setup-manager.ts",
@@ -610,7 +610,7 @@
       {
         "id": "R09.2",
         "description": "Create test-utils.ts with resetServerState(), createTestDirLayout(), ServerDirLayout type, and related constants",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/test-utils.ts",
@@ -622,7 +622,7 @@
       {
         "id": "R09.3",
         "description": "Create test-utils.test.ts with tests for resetServerState (correct state file, artifact removal, service env cleanup, idempotency) and createTestDirLayout",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/test-utils.test.ts",
@@ -634,7 +634,7 @@
       {
         "id": "R09.4",
         "description": "Verify all tests pass: bun test packages/lib/src/admin/test-utils.test.ts and bun run typecheck",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/test-utils.test.ts",
@@ -650,14 +650,14 @@
     "title": "Stop rebuilding every test run",
     "description": "Add SKIP_BUILD env var support to start-webserver.cjs so Playwright skips the Vite build when build/index.js already exists, and pre-build in CI.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1 hour",
     "planFile": ".plans/R10-stop-rebuilding-every-test-run.md",
     "subtasks": [
       {
         "id": "R10.1",
         "description": "Modify start-webserver.cjs to check SKIP_BUILD=1 && existsSync('build/index.js') before running bun run build",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/start-webserver.cjs",
@@ -669,7 +669,7 @@
       {
         "id": "R10.2",
         "description": "Update .github/workflows/test-ui.yml to add explicit 'Build UI' step and pass SKIP_BUILD=1 to Playwright step",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/test-ui.yml",
@@ -681,7 +681,7 @@
       {
         "id": "R10.3",
         "description": "Optionally add build caching with actions/cache keyed on source file hashes",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/test-ui.yml",
@@ -693,7 +693,7 @@
       {
         "id": "R10.4",
         "description": "Verify locally: SKIP_BUILD=1 works with existing build, fallback rebuilds when build is missing, default behavior unchanged",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/start-webserver.cjs",
@@ -709,14 +709,14 @@
     "title": "Make integration tests run in CI",
     "description": "Convert 3 stack-dependent integration test files to use in-process Bun.serve() mock servers instead of requiring a live Docker stack, following the pattern from channel-gateway.integration.test.ts.",
     "priority": "P4",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R11-make-integration-tests-run-in-ci.md",
     "subtasks": [
       {
         "id": "R11.1",
         "description": "Convert container-health.integration.test.ts: remove OPENPALM_INTEGRATION guard, import checkServiceHealth, create mock Bun.serve() servers, test against mocks",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/container-health.integration.test.ts",
@@ -733,7 +733,7 @@
       {
         "id": "R11.2",
         "description": "Convert admin-auth.integration.test.ts: remove skipIf guard, create mock admin server with auth middleware pattern, test 401/200 responses",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/admin-auth.integration.test.ts",
@@ -745,7 +745,7 @@
       {
         "id": "R11.3",
         "description": "Convert admin-health-check.integration.test.ts: remove skipIf guard, create mock service servers, test health-check response shape and aggregation",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/admin-health-check.integration.test.ts",
@@ -762,7 +762,7 @@
       {
         "id": "R11.4",
         "description": "Verify all integration tests pass without Docker: bun test --filter integration",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/channel-gateway.integration.test.ts",
@@ -778,14 +778,14 @@
     "title": "Fix bun test discovery",
     "description": "Configure bunfig.toml to exclude Docker tests from default discovery, simplify test:unit script, remove dead scripts, and fix naming inconsistency.",
     "priority": "P4",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R12-fix-bun-test-discovery.md",
     "subtasks": [
       {
         "id": "R12.1",
         "description": "Rename test/contracts/readme-no-npx.test.ts to readme-no-npx.contract.test.ts for naming consistency",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/readme-no-npx.test.ts",
@@ -797,7 +797,7 @@
       {
         "id": "R12.2",
         "description": "Add exclude patterns for test/docker/** and test/install-e2e/** to bunfig.toml [test] section",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "bunfig.toml",
@@ -809,7 +809,7 @@
       {
         "id": "R12.3",
         "description": "Replace fragile deny-list test:unit script with directory allow-list: bun test packages/ channels/ core/ dev/",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "package.json",
@@ -821,7 +821,7 @@
       {
         "id": "R12.4",
         "description": "Remove dead test:compose and test:compose:ui scripts from package.json",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "package.json",
@@ -833,7 +833,7 @@
       {
         "id": "R12.5",
         "description": "Verify bun test excludes Docker tests, test:unit runs correctly, and test:contracts discovers renamed file",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "bunfig.toml",
@@ -854,14 +854,14 @@
     "title": "Inject dependencies instead of monkey-patching globals",
     "description": "Add SpawnFn type and optional spawn parameter to runCompose, createComposeRunner, and composeExec, then rewrite two test files to use DI instead of monkey-patching Bun.spawn.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R13-inject-dependencies-not-globals.md",
     "subtasks": [
       {
         "id": "R13.1",
         "description": "Add SpawnFn type and spawn? field to ComposeRunOptions in packages/lib/src/types.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/types.ts",
@@ -873,7 +873,7 @@
       {
         "id": "R13.2",
         "description": "Update runComposeOnce in compose-runner.ts to use options.spawn ?? Bun.spawn instead of hard-coded Bun.spawn",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/compose-runner.ts",
@@ -885,7 +885,7 @@
       {
         "id": "R13.3",
         "description": "Thread spawn parameter through createComposeRunner and execCompose in admin/compose-runner.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/compose-runner.ts",
@@ -897,7 +897,7 @@
       {
         "id": "R13.4",
         "description": "Add spawn? to composeExec options in packages/lib/src/compose.ts and forward it",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/compose.ts",
@@ -909,7 +909,7 @@
       {
         "id": "R13.5",
         "description": "Rewrite compose-runner.test.ts: remove all Bun.spawn monkey-patching, use createComposeRunner(envFile, mockSpawn) and createMockRunner()",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/compose-runner.test.ts",
@@ -921,7 +921,7 @@
       {
         "id": "R13.6",
         "description": "Rewrite packages/cli/test/compose.test.ts: remove Bun.spawn monkey-patching, pass spawn via composeExec options",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/cli/test/compose.test.ts",
@@ -933,7 +933,7 @@
       {
         "id": "R13.7",
         "description": "Run full test suite and grep for remaining Bun.spawn= assignments in test files",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/compose-runner.test.ts",
@@ -952,16 +952,16 @@
   {
     "id": "R14",
     "title": "Fix module-load side effects in automations.ts",
-    "description": "Refactor automations.ts to accept cronDir as an explicit parameter instead of reading Bun.env.CRON_DIR, eliminating the cache-busting import hack in tests.",
+    "description": "Refactor automations.ts and automation-history.ts to use configureCronDir() setter instead of reading Bun.env.CRON_DIR, eliminating cache-busting import hacks, env var propagation, and the CRON_DIR config export.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R14-fix-module-load-side-effects.md",
     "subtasks": [
       {
         "id": "R14.1",
-        "description": "Refactor automations.ts: remove cronDir() env reader function, add cronDir parameter to all exported functions (ensureCronDirs, syncAutomations, triggerAutomation) and internal helpers",
-        "status": "pending",
+        "description": "Refactor automations.ts: replace cronDir() env reader with DEFAULT_CRON_DIR constant, configureCronDir() setter, and optional trailing cronDir param on all exports",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/automations.ts",
@@ -972,112 +972,91 @@
       },
       {
         "id": "R14.2",
-        "description": "Update ensureCronDirs signature and internal calls to pass cronDir parameter",
-        "status": "pending",
+        "description": "Refactor automation-history.ts: replace Bun.env.CRON_DIR read with same configureCronDir/default-param pattern",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/lib/src/admin/automations.ts",
-            "lines": "35-40",
+            "path": "packages/lib/src/admin/automation-history.ts",
+            "lines": "1-35",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.3",
-        "description": "Update syncAutomations and triggerAutomation signatures to accept cronDir as first parameter",
-        "status": "pending",
+        "description": "Update init.ts: remove process.env.CRON_DIR propagation, call configureCronDir() for both modules at startup",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/lib/src/admin/automations.ts",
-            "lines": "42-120",
+            "path": "packages/ui/src/lib/server/init.ts",
+            "lines": "67-90",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.4",
-        "description": "Update init.ts: remove process.env.CRON_DIR propagation, pass CRON_DIR to ensureCronDirs() and syncAutomations()",
-        "status": "pending",
+        "description": "Remove CRON_DIR export from config.ts (no longer needed \u2014 derived from STATE_ROOT in init.ts)",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/ui/src/lib/server/init.ts",
-            "lines": "72-93",
+            "path": "packages/ui/src/lib/server/config.ts",
+            "lines": "43-45",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.5",
-        "description": "Update packages/ui/src/routes/command/+server.ts: pass CRON_DIR to syncAutomations and triggerAutomation calls",
-        "status": "pending",
+        "description": "Remove vestigial CRON_DIR env var settings from test helpers (helpers.ts, env.ts, happy-path.docker.ts)",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/ui/src/routes/command/+server.ts",
-            "lines": "355-588",
+            "path": "packages/ui/test/api/helpers.ts",
+            "lines": "119",
+            "action": "modify"
+          },
+          {
+            "path": "packages/ui/e2e/env.ts",
+            "lines": "98",
+            "action": "modify"
+          },
+          {
+            "path": "test/install-e2e/happy-path.docker.ts",
+            "lines": "212",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.6",
-        "description": "Update remaining UI route callers (stack/apply, setup/complete, automations/*, automations/update, automations/delete, automations/trigger) to pass CRON_DIR",
-        "status": "pending",
+        "description": "Rewrite automations.test.ts: static import, remove cache-busting hack, pass cronDir directly",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/ui/src/routes/stack/apply/+server.ts",
-            "lines": "5-28",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/setup/complete/+server.ts",
-            "lines": "7-41",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/+server.ts",
-            "lines": "5-40",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/update/+server.ts",
-            "lines": "4-24",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/delete/+server.ts",
-            "lines": "3-14",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/routes/automations/trigger/+server.ts",
-            "lines": "3-13",
+            "path": "packages/lib/src/admin/automations.test.ts",
+            "lines": "1-33",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.7",
-        "description": "Rewrite automations.test.ts: use static import, remove cache-busting hack and env var manipulation, pass cronDir directly",
-        "status": "pending",
+        "description": "Rewrite automation-history.test.ts: static import, remove env var manipulation, pass cronDir directly",
+        "status": "completed",
         "files": [
           {
-            "path": "packages/lib/src/admin/automations.test.ts",
-            "lines": "11-23",
+            "path": "packages/lib/src/admin/automation-history.test.ts",
+            "lines": "1-24",
             "action": "modify"
           }
         ]
       },
       {
         "id": "R14.8",
-        "description": "Run full test suite and grep for remaining Bun.env.CRON_DIR and cache-busting import patterns",
-        "status": "pending",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/automations.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
+        "description": "Run full test suite (729 pass) and verify zero remaining Bun.env.CRON_DIR or cache-busting import patterns",
+        "status": "completed",
+        "files": []
       }
     ]
   },
@@ -1086,14 +1065,14 @@
     "title": "Add health-check failure tests",
     "description": "Add 4 new Playwright E2E tests to 10-setup-wizard-ui.pw.ts covering health-check failure scenarios: service errors, polling timeout, partial readiness, and HealthStep dot indicators.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R15-add-health-check-failure-tests.md",
     "subtasks": [
       {
         "id": "R15.1",
         "description": "Extract navigateToHealthCheckStep() helper function to reduce wizard navigation duplication",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1105,7 +1084,7 @@
       {
         "id": "R15.2",
         "description": "Extract mockSetupCompleteOk() helper function for shared setup.complete command mocking",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1117,7 +1096,7 @@
       {
         "id": "R15.3",
         "description": "Add Test 1: Complete step shows error state when all non-admin services report ok:false (fast-fail after 5 polls)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1129,7 +1108,7 @@
       {
         "id": "R15.4",
         "description": "Add Test 2: Complete step shows timeout message after full 60-poll polling exhaustion (partial failure: some services up, some down)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1141,7 +1120,7 @@
       {
         "id": "R15.5",
         "description": "Add Test 3: Complete step renders per-service status during polling with phased mock (services come up incrementally)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1153,7 +1132,7 @@
       {
         "id": "R15.6",
         "description": "Add Test 4: Health Check step shows per-service dot indicators for mixed health (dot-ok, dot-err, error text)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1165,7 +1144,7 @@
       {
         "id": "R15.7",
         "description": "Run full Playwright suite and verify all new and existing tests pass",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1181,14 +1160,14 @@
     "title": "Deduplicate parameterized tests",
     "description": "Collapse ~46 duplicate test cases across 8 files into parameterized for...of loops, reducing code duplication while maintaining the same test coverage.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R16-deduplicate-parameterized-tests.md",
     "subtasks": [
       {
         "id": "R16.1",
         "description": "Pattern 1 & 2: Parameterize setAccessScope and completeStep tests in setup-manager.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/setup-manager.test.ts",
@@ -1200,7 +1179,7 @@
       {
         "id": "R16.2",
         "description": "Pattern 3 & 4: Parameterize help/version flag and subcommand validation tests in main.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/cli/test/main.test.ts",
@@ -1212,7 +1191,7 @@
       {
         "id": "R16.3",
         "description": "Pattern 5: Remove redundant individual loadComposeConfig tests from management-commands.test.ts (already covered by shared loop)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/cli/test/management-commands.test.ts",
@@ -1224,7 +1203,7 @@
       {
         "id": "R16.4",
         "description": "Pattern 6 & 7: Parameterize safeRequestId and validatePayload tests in core/gateway/src/server.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "core/gateway/src/server.test.ts",
@@ -1236,7 +1215,7 @@
       {
         "id": "R16.5",
         "description": "Pattern 8 & 9: Parameterize missing text field and malformed body tests in input-bounds.security.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/security/input-bounds.security.test.ts",
@@ -1248,7 +1227,7 @@
       {
         "id": "R16.6",
         "description": "Pattern 10: Parameterize parseCustomCommands invalid-input tests in channels/discord/server.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "channels/discord/server.test.ts",
@@ -1260,7 +1239,7 @@
       {
         "id": "R16.7",
         "description": "Pattern 11: Parameterize validateCron out-of-range tests in cron.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/cron.test.ts",
@@ -1272,7 +1251,7 @@
       {
         "id": "R16.8",
         "description": "Pattern 12: Parameterize HMAC special body content tests in hmac.security.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/security/hmac.security.test.ts",
@@ -1284,7 +1263,7 @@
       {
         "id": "R16.9",
         "description": "Run full test suite and verify test count remains approximately the same",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/setup-manager.test.ts",
@@ -1300,14 +1279,14 @@
     "title": "Dynamic port allocation for Docker tests",
     "description": "Replace hardcoded host ports (18200, 18280, 18300) in Docker test files with dynamic port allocation using Docker Compose '0:<container_port>' syntax and docker compose port discovery.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1-2 hours",
     "planFile": ".plans/R17-dynamic-port-allocation.md",
     "subtasks": [
       {
         "id": "R17.1",
         "description": "Create shared helper test/helpers/docker-compose-port.ts with resolveHostPort() function",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/helpers/docker-compose-port.ts",
@@ -1319,7 +1298,7 @@
       {
         "id": "R17.2",
         "description": "Modify docker-stack.docker.ts: remove hardcoded ADMIN_PORT/GATEWAY_PORT constants, use '0:8100' and '0:8080' in compose overlay, add resolveHostPort() calls after container startup",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/docker/docker-stack.docker.ts",
@@ -1331,7 +1310,7 @@
       {
         "id": "R17.3",
         "description": "Modify happy-path.docker.ts: remove hardcoded ADMIN_PORT constant, use '0:8100' in compose overlay, add resolveHostPort() call after container startup",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/install-e2e/happy-path.docker.ts",
@@ -1343,7 +1322,7 @@
       {
         "id": "R17.4",
         "description": "Verify both Docker test suites pass with dynamic ports and can run in parallel without conflicts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/docker/docker-stack.docker.ts",

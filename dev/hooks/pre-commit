@@ -20,3 +20,9 @@ if [ -n "$STAGED_PKG" ]; then
     fi
   fi
 fi
+
+# --- Documentation lint ---
+STAGED_DOCS=$(git diff --cached --name-only -- 'README.md' 'dev/docs/api-reference.md')
+if [ -n "$STAGED_DOCS" ]; then
+  sh "$(dirname "$0")/../scripts/lint-docs.sh"
+fi

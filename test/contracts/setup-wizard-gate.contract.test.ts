@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { existsSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 
 const ADMIN_BASE = "http://localhost:8100";
@@ -13,22 +14,41 @@ const STATE_FILE_HOST = resolve(repoRoot, ".dev/data/admin/setup-state.json");
 
 const stackAvailable = Bun.env.OPENPALM_INTEGRATION === "1";
 
-let savedState: string | null = null;
+// Backup/restore helpers for the real state file. The backup is stored in a
+// mkdtempSync directory so it persists on disk (safer than an in-memory variable
+// if the process is killed). The outer describe block calls backupState() in
+// beforeAll and restoreState() in afterAll.
+let _backupDir: string | null = null;
+let _hadFile = false;
+
+function backupState(): void {
+  _backupDir = mkdtempSync(join(tmpdir(), "openpalm-contract-setup-"));
+  _hadFile = existsSync(STATE_FILE_HOST);
+  if (_hadFile) {
+    copyFileSync(STATE_FILE_HOST, join(_backupDir, "setup-state.json.bak"));
+  }
+}
+
+function restoreState(): void {
+  if (!_backupDir) return;
+  const backupFile = join(_backupDir, "setup-state.json.bak");
+  if (_hadFile && existsSync(backupFile)) {
+    mkdirSync(dirname(STATE_FILE_HOST), { recursive: true });
+    copyFileSync(backupFile, STATE_FILE_HOST);
+  } else if (existsSync(STATE_FILE_HOST)) {
+    rmSync(STATE_FILE_HOST);
+  }
+  rmSync(_backupDir, { recursive: true, force: true });
+  _backupDir = null;
+}
 
 describe.skipIf(!stackAvailable)("contract: setup wizard gate", () => {
   beforeAll(() => {
-    if (existsSync(STATE_FILE_HOST)) {
-      savedState = readFileSync(STATE_FILE_HOST, "utf8");
-    }
+    backupState();
   });
 
   afterAll(() => {
-    if (savedState !== null) {
-      mkdirSync(dirname(STATE_FILE_HOST), { recursive: true });
-      writeFileSync(STATE_FILE_HOST, savedState, "utf8");
-    } else if (existsSync(STATE_FILE_HOST)) {
-      rmSync(STATE_FILE_HOST);
-    }
+    restoreState();
   });
 
   describe("first boot (no state file)", () => {

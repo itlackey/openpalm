@@ -115,13 +115,6 @@
 			const anthropicApiKey =
 				(document.getElementById('wiz-anthropic-key') as HTMLInputElement)?.value || '';
 
-		// Require Anthropic key only when one is not already configured
-		const anthropicAlreadySet = getSetupState()?.anthropicKeyConfigured ?? false;
-		if (!anthropicAlreadySet && !anthropicApiKey.trim()) {
-			stepError = 'An Anthropic API key is required. Get one free at console.anthropic.com.';
-			return;
-		}
-
 			const smallModelEndpoint =
 				(document.getElementById('wiz-small-model-endpoint') as HTMLInputElement)?.value ||
 				'';

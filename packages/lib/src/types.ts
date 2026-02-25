@@ -34,7 +34,11 @@ export type ComposeRunOptions = {
   stream?: boolean;
   retries?: number;
   env?: Record<string, string | undefined>;
+  spawn?: SpawnFn;
 };
+
+/** Spawn function type for dependency injection in compose runners. */
+export type SpawnFn = typeof Bun.spawn;
 
 export type ComposeRunResult = {
   ok: boolean;

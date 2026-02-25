@@ -427,21 +427,18 @@ describe("permissions", () => {
 
 describe("commands", () => {
   describe("parseCustomCommands", () => {
-    it("returns empty array for undefined", () => {
-      expect(parseCustomCommands(undefined)).toEqual([]);
-    });
+    const emptyCases: [string, string | undefined][] = [
+      ["undefined", undefined],
+      ["empty string", ""],
+      ["invalid JSON", "{invalid"],
+      ["non-array JSON", '{"name":"test"}'],
+    ];
 
-    it("returns empty array for empty string", () => {
-      expect(parseCustomCommands("")).toEqual([]);
-    });
-
-    it("returns empty array for invalid JSON", () => {
-      expect(parseCustomCommands("{invalid")).toEqual([]);
-    });
-
-    it("returns empty array for non-array JSON", () => {
-      expect(parseCustomCommands('{"name":"test"}')).toEqual([]);
-    });
+    for (const [label, input] of emptyCases) {
+      it(`returns empty array for ${label}`, () => {
+        expect(parseCustomCommands(input)).toEqual([]);
+      });
+    }
 
     it("parses valid custom commands", () => {
       const json = JSON.stringify([
