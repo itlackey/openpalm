@@ -4,14 +4,14 @@
     "title": "Add runtime artifacts to .gitignore",
     "description": "Add e2e/screenshots/ to packages/ui/.gitignore to prevent test screenshot artifacts from being accidentally committed.",
     "priority": "P1",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R01-gitignore-runtime-artifacts.md",
     "subtasks": [
       {
         "id": "R01.1",
         "description": "Append e2e/screenshots/ rule to packages/ui/.gitignore after the existing e2e/.e2e-state.json line",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/.gitignore",
@@ -23,7 +23,7 @@
       {
         "id": "R01.2",
         "description": "Verify the ignore rule matches screenshots directory and files using git check-ignore",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/.gitignore",
