@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { api } from "$lib/api";
 
   type ServiceHealth = {
     name: string;
@@ -11,15 +12,14 @@
   let dismissed = $state(false);
 
   onMount(async () => {
-    const response = await fetch("/stack/drift");
-    if (!response.ok) return;
-    const payload = await response.json();
-    const services: ServiceHealth[] = payload.services ?? [];
+    const r = await api("/stack/drift");
+    if (!r.ok) return;
+    const services: ServiceHealth[] = r.data.services ?? [];
     unhealthy = services.filter((s) => s.status !== "running" || (s.health && s.health !== "healthy"));
   });
 
   async function reconcile() {
-    await fetch("/stack/apply", { method: "POST" });
+    await api("/stack/apply", { method: "POST" });
   }
 </script>
 

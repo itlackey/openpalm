@@ -32,12 +32,9 @@ services:
       context: .
       dockerfile: core/admin/Dockerfile
     volumes:
-      - ./packages/lib/src/embedded/state/docker-compose.yml:/compose/packages/lib/src/embedded/state/docker-compose.yml:ro
-      - ./dev/docker-compose.dev.yml:/compose/dev/docker-compose.dev.yml:ro
+      - ./packages/lib/src/embedded/state/docker-compose.yml:/state/docker-compose.yml:ro
     environment:
       OPENPALM_ASSISTANT_URL: "http://assistant:4096"
-      COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
 
   channel-chat:
     build:
