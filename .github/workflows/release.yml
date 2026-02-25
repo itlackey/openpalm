@@ -67,15 +67,6 @@ jobs:
       - run: bun run typecheck
       - run: bun test
 
-  integration:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter integration
-
   contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -158,11 +149,32 @@ jobs:
             exit 1
           fi
 
+  setup-wizard-e2e:
+    if: inputs.component == 'platform' || inputs.component == 'admin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Run install E2E wizard test
+        env:
+          OPENPALM_RUN_DOCKER_STACK_TESTS: "1"
+        run: bun test ./test/install-e2e/happy-path.docker.ts
+      - name: Upload admin logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-e2e-admin-logs
+          path: /tmp/openpalm-install-e2e-*/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # -----------------------------------------------------------------------
   # Release — only runs after all validation gates pass
   # -----------------------------------------------------------------------
   release:
-    needs: [unit-tests, integration, contracts, security, ui, docker-build]
+    needs: [unit-tests, contracts, security, ui, docker-build, setup-wizard-e2e]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 15

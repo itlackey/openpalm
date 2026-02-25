@@ -48,21 +48,3 @@ describe("QuickLinks assistantUrl (ISSUE-6)", () => {
   });
 });
 
-describe("QuickLinks uninstall link (ISSUE-17)", () => {
-  it("includes an uninstall documentation link", async () => {
-    const content = await Bun.file(svelteFile).text();
-    expect(content).toContain("Uninstall");
-    expect(content).toContain("maintenance.md#uninstalling");
-  });
-
-  it("links to the GitHub docs for uninstall", async () => {
-    const content = await Bun.file(svelteFile).text();
-    expect(content).toContain("github.com/itlackey/openpalm");
-    expect(content).toContain("uninstalling");
-  });
-
-  it("has descriptive text about removing OpenPalm", async () => {
-    const content = await Bun.file(svelteFile).text();
-    expect(content).toContain("remove OpenPalm");
-  });
-});

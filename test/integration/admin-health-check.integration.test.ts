@@ -7,9 +7,7 @@ import { describe, expect, it } from "bun:test";
 const TIMEOUT = 5_000;
 const ADMIN_BASE = "http://localhost:8100";
 
-const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
-  .then(r => r.ok)
-  .catch(() => false);
+const stackAvailable = Bun.env.OPENPALM_INTEGRATION === "1";
 
 describe.skipIf(!stackAvailable)("integration: admin health-check", () => {
   it("GET /setup/health-check → 200", async () => {

@@ -1,0 +1,802 @@
+{
+  "tasks": [
+    {
+      "id": "rec1",
+      "title": "Replace source-scan tests with rendered component tests",
+      "description": "Delete the brittle source-text-scanning test for SetupWizard and replace it with real rendered component tests using vitest-browser-svelte. Wire the new browser tests into CI via a new vitest job in test-ui.yml.",
+      "status": "completed",
+      "planFile": ".plans/rec1-component-tests.md",
+      "files": [
+        {
+          "path": "packages/ui/src/lib/components/setup-wizard.test.ts",
+          "lines": "1-101",
+          "note": "Delete this file \u2014 source-scan tests that pass even when UI is broken"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "75-82",
+          "note": "Password validation error logic tested by the new component tests"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "256",
+          "note": "Step title heading rendered as <h2>{STEP_TITLES[currentStep]}</h2>"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "280-282",
+          "note": "wiz-error visible banner element"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "284-297",
+          "note": "Navigation buttons (Back/Next/Finish Setup)"
+        },
+        {
+          "path": "packages/ui/src/lib/components/WelcomeStep.svelte",
+          "lines": "5-7",
+          "note": "Welcome to OpenPalm text asserted in test 1"
+        },
+        {
+          "path": "packages/ui/src/lib/components/ProfileStep.svelte",
+          "lines": "35-49",
+          "note": "Password input fields and labels used as selectors"
+        },
+        {
+          "path": "packages/ui/src/lib/stores/setup.svelte.ts",
+          "lines": "53-58",
+          "note": "getWizardStep / setWizardStep mocked in the new test file"
+        },
+        {
+          "path": "packages/ui/vite.config.ts",
+          "lines": "108-121",
+          "note": "Vitest client project config \u2014 Chromium, include glob for .svelte.test.ts"
+        },
+        {
+          "path": "packages/ui/package.json",
+          "lines": "30",
+          "note": "@vitest/browser-playwright already present \u2014 no install needed"
+        },
+        {
+          "path": "packages/ui/package.json",
+          "lines": "45",
+          "note": "vitest-browser-svelte already present \u2014 no install needed"
+        },
+        {
+          "path": ".github/workflows/test-ui.yml",
+          "lines": "1-33",
+          "note": "Add new vitest job here alongside existing playwright job"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "lines": "97-98",
+          "note": "ui job calls test-ui.yml \u2014 no changes needed to release.yml"
+        }
+      ],
+      "subtasks": [
+        {
+          "id": "rec1.1",
+          "title": "Delete the source-scan test file",
+          "description": "Remove packages/ui/src/lib/components/setup-wizard.test.ts entirely; no other file imports it.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/src/lib/components/setup-wizard.test.ts",
+              "lines": "1-101",
+              "note": "File to delete"
+            }
+          ]
+        },
+        {
+          "id": "rec1.2",
+          "title": "Verify no new packages are needed",
+          "description": "Confirm vitest-browser-svelte and @vitest/browser-playwright are already in devDependencies before creating the new test file.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/package.json",
+              "lines": "30",
+              "note": "@vitest/browser-playwright: ^4.0.18"
+            },
+            {
+              "path": "packages/ui/package.json",
+              "lines": "45",
+              "note": "vitest-browser-svelte: ^2.0.2"
+            }
+          ]
+        },
+        {
+          "id": "rec1.3",
+          "title": "Create SetupWizard.svelte.test.ts with four tests",
+          "description": "Create packages/ui/src/lib/components/SetupWizard.svelte.test.ts using vitest-browser-svelte, covering: Welcome step renders, Next advances to Profile, short-password error, and password-mismatch error.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "179",
+              "note": "setWizardStep(currentStep + 1) \u2014 asserted by test 2"
+            },
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "75-82",
+              "note": "Password validation errors \u2014 asserted by tests 3 and 4"
+            },
+            {
+              "path": "packages/ui/vite.config.ts",
+              "lines": "118",
+              "note": "include glob matches .svelte.test.ts files for the client project"
+            }
+          ]
+        },
+        {
+          "id": "rec1.4",
+          "title": "Run new tests locally to verify",
+          "description": "Run bunx vitest --project client --run from packages/ui to confirm all four new tests pass before wiring CI.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/vite.config.ts",
+              "lines": "108-121",
+              "note": "Client vitest project definition \u2014 Chromium headless"
+            }
+          ]
+        },
+        {
+          "id": "rec1.5",
+          "title": "Add vitest job to test-ui.yml CI workflow",
+          "description": "Add a new parallel vitest job to .github/workflows/test-ui.yml that installs Chromium and runs bunx vitest --project client --run.",
+          "status": "completed",
+          "files": [
+            {
+              "path": ".github/workflows/test-ui.yml",
+              "lines": "1-33",
+              "note": "Add vitest job after line 16 (jobs:), before playwright:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rec2",
+      "title": "Add Playwright validation-error and API-failure tests",
+      "description": "Extend the existing Playwright e2e suite with four tests covering error paths: short password, mismatched passwords, missing Anthropic key, and setup.complete returning 500. No CI changes are needed.",
+      "status": "completed",
+      "planFile": ".plans/rec2-playwright-error-tests.md",
+      "files": [
+        {
+          "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
+          "lines": "1-99",
+          "note": "Target file \u2014 all four new tests are appended after line 98"
+        },
+        {
+          "path": "packages/ui/e2e/helpers.ts",
+          "lines": "3",
+          "note": "ADMIN_TOKEN = test-token-e2e used by openWizard helper"
+        },
+        {
+          "path": "packages/ui/e2e/env.ts",
+          "lines": "16-100",
+          "note": "PORT = 13456, OPENPALM_TEST_MODE=1 \u2014 test server config"
+        },
+        {
+          "path": "packages/ui/playwright.config.ts",
+          "lines": "1-24",
+          "note": "Single Chromium worker, baseURL = http://localhost:13456"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "62-96",
+          "note": "Profile step validation \u2014 password length and match checks"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "114-118",
+          "note": "Providers step validation \u2014 missing Anthropic key check"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "186-246",
+          "note": "finishSetup() \u2014 setup.complete error handler and finally block"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "280-282",
+          "note": ".wiz-error.visible error display element"
+        },
+        {
+          "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+          "lines": "289-291",
+          "note": "Finish Setup button disabled={finishInProgress}"
+        },
+        {
+          "path": "packages/ui/src/lib/components/ProfileStep.svelte",
+          "lines": "36-41",
+          "note": "#wiz-profile-password input"
+        },
+        {
+          "path": "packages/ui/src/lib/components/ProfileStep.svelte",
+          "lines": "43-48",
+          "note": "#wiz-profile-password2 confirm-password input"
+        },
+        {
+          "path": "packages/ui/src/lib/components/ProvidersStep.svelte",
+          "lines": "38",
+          "note": "#wiz-anthropic-key input"
+        },
+        {
+          "path": "packages/ui/src/lib/api.ts",
+          "lines": "19",
+          "note": "url construction \u2014 calls go to /command in test mode"
+        }
+      ],
+      "subtasks": [
+        {
+          "id": "rec2.1",
+          "title": "Add test: profile step rejects short password",
+          "description": "Append a test inside the existing describe block that fills #wiz-profile-password with 'short', clicks Next, and asserts the wizard stays on Profile with the error message visible.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
+              "lines": "98",
+              "note": "Insert after this line, inside the existing describe block"
+            },
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "75-78",
+              "note": "password.length < 8 guard that sets stepError"
+            }
+          ]
+        },
+        {
+          "id": "rec2.2",
+          "title": "Add test: profile step rejects mismatched passwords",
+          "description": "Append a test that fills both password fields with different valid-length values, clicks Next, and asserts the 'Passwords do not match.' error is visible.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
+              "lines": "98",
+              "note": "Insert after rec2.1 test"
+            },
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "79-82",
+              "note": "password !== password2 guard that sets stepError"
+            }
+          ]
+        },
+        {
+          "id": "rec2.3",
+          "title": "Add test: providers step rejects missing Anthropic key",
+          "description": "Append a test that navigates through Welcome and Profile steps (using fillProfileStep helper) then clicks Next on AI Providers with an empty key field, asserting the error message.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
+              "lines": "98",
+              "note": "Insert after rec2.2 test"
+            },
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "115-118",
+              "note": "!anthropicApiKey.trim() guard"
+            },
+            {
+              "path": "packages/ui/src/lib/components/ProvidersStep.svelte",
+              "lines": "38",
+              "note": "#wiz-anthropic-key defaults to empty value"
+            }
+          ]
+        },
+        {
+          "id": "rec2.4",
+          "title": "Add test: setup.complete 500 shows error and re-enables button",
+          "description": "Append a test that intercepts only setup.complete POSTs to return 500, drives the wizard to Health Check, clicks Finish Setup, and asserts the error banner and re-enabled button.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
+              "lines": "98",
+              "note": "Insert after rec2.3 test; uses page.route() for selective intercept"
+            },
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "232-243",
+              "note": "setup.complete error handler and finally { finishInProgress = false }"
+            },
+            {
+              "path": "packages/ui/src/lib/components/SetupWizard.svelte",
+              "lines": "280-282",
+              "note": "Wizard-level error display element"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rec3",
+      "title": "Add Docker-backed setup wizard E2E gate",
+      "description": "Create a new test/install-e2e/happy-path.docker.ts that drives the full wizard API against a real Docker-built admin container (no OPENPALM_TEST_MODE), and wire it as a conditional release gate in release.yml.",
+      "status": "completed",
+      "planFile": ".plans/rec3-docker-e2e-gate.md",
+      "files": [
+        {
+          "path": "test/docker/docker-stack.docker.ts",
+          "lines": "31-34",
+          "note": "Guard pattern (dockerAvailable + env var) to mirror"
+        },
+        {
+          "path": "test/docker/docker-stack.docker.ts",
+          "lines": "57-87",
+          "note": "waitForHealth, api, authedJson helpers to copy"
+        },
+        {
+          "path": "test/docker/docker-stack.docker.ts",
+          "lines": "100-227",
+          "note": "beforeAll structure (temp dir, env files, compose overlay, build, up, wait)"
+        },
+        {
+          "path": "test/docker/docker-stack.docker.ts",
+          "lines": "268-276",
+          "note": "Auth rejection assertion pattern used in test 10"
+        },
+        {
+          "path": "packages/ui/src/routes/setup/status/+server.ts",
+          "lines": "7-44",
+          "note": "GET /setup/status response shape for tests 1 and 9"
+        },
+        {
+          "path": "packages/ui/src/routes/setup/step/+server.ts",
+          "lines": "6-35",
+          "note": "POST /setup/step handler \u2014 valid step names"
+        },
+        {
+          "path": "packages/ui/src/routes/setup/complete/+server.ts",
+          "lines": "11-43",
+          "note": "POST /setup/complete REST endpoint \u2014 real compose path exercised in test 8"
+        },
+        {
+          "path": "packages/ui/src/routes/command/+server.ts",
+          "lines": "245-270",
+          "note": "setup.profile command handler"
+        },
+        {
+          "path": "packages/ui/src/routes/command/+server.ts",
+          "lines": "272-317",
+          "note": "setup.service_instances command \u2014 Anthropic key required on first setup"
+        },
+        {
+          "path": "packages/ui/src/routes/command/+server.ts",
+          "lines": "227-243",
+          "note": "setup.access_scope command"
+        },
+        {
+          "path": "packages/ui/src/routes/command/+server.ts",
+          "lines": "318-340",
+          "note": "setup.channels command"
+        },
+        {
+          "path": "packages/ui/src/routes/command/+server.ts",
+          "lines": "341-351",
+          "note": "setup.complete command \u2014 real compose path, no test mode bypass"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.ts",
+          "lines": "37-65",
+          "note": "DEFAULT_STATE \u2014 all step names and shape for assertions"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "lines": "100-165",
+          "note": "docker-build job and release job \u2014 insertion point for new job"
+        },
+        {
+          "path": "package.json",
+          "lines": "47",
+          "note": "test:docker script \u2014 pattern for new test:install:smoke script"
+        }
+      ],
+      "subtasks": [
+        {
+          "id": "rec3.1",
+          "title": "Create test/install-e2e/ directory and test file",
+          "description": "Create test/install-e2e/happy-path.docker.ts mirroring the docker-stack.docker.ts pattern with guard, constants, helpers, beforeAll/afterAll, and all 10 tests.",
+          "status": "pending",
+          "files": [
+            {
+              "path": "test/docker/docker-stack.docker.ts",
+              "lines": "31-34",
+              "note": "Guard pattern to mirror for runDockerStackTests"
+            },
+            {
+              "path": "test/docker/docker-stack.docker.ts",
+              "lines": "100-227",
+              "note": "beforeAll structure to follow"
+            }
+          ]
+        },
+        {
+          "id": "rec3.2",
+          "title": "Write compose overlay with stub services",
+          "description": "Write a Docker Compose overlay that builds admin from core/admin/Dockerfile, exposes ADMIN_PORT, and adds busybox stub entries for all SetupCoreServices so docker compose up succeeds without a full stack.",
+          "status": "pending",
+          "files": [
+            {
+              "path": "packages/ui/src/routes/command/+server.ts",
+              "lines": "47-56",
+              "note": "SetupCoreServices list \u2014 admin, caddy, assistant, gateway, openmemory, openmemory-ui, postgres, qdrant"
+            },
+            {
+              "path": "packages/ui/src/routes/command/+server.ts",
+              "lines": "341-351",
+              "note": "setup.complete calls applyStack and composeAction('up', SetupCoreServices)"
+            }
+          ]
+        },
+        {
+          "id": "rec3.3",
+          "title": "Implement all 10 wizard API test assertions",
+          "description": "Implement each test (first-boot status, welcome step, profile, service instances, access scope, channels, security/healthCheck, setup.complete, post-complete status, and 401 rejection) with correct assertions.",
+          "status": "pending",
+          "files": [
+            {
+              "path": "packages/ui/src/routes/setup/status/+server.ts",
+              "lines": "7-44",
+              "note": "Response shape for tests 1 and 9"
+            },
+            {
+              "path": "test/docker/docker-stack.docker.ts",
+              "lines": "268-276",
+              "note": "Auth rejection pattern for test 10"
+            }
+          ]
+        },
+        {
+          "id": "rec3.4",
+          "title": "Add test:install:smoke script to package.json",
+          "description": "Add a test:install:smoke script to root package.json alongside test:docker so developers have a named command to run the E2E test locally.",
+          "status": "pending",
+          "files": [
+            {
+              "path": "package.json",
+              "lines": "47",
+              "note": "test:docker script \u2014 add test:install:smoke after this line"
+            }
+          ]
+        },
+        {
+          "id": "rec3.5",
+          "title": "Add setup-wizard-e2e job to release.yml",
+          "description": "Insert the setup-wizard-e2e job between docker-build and the release job, conditioned on platform or admin component, and add it to the release job's needs array.",
+          "status": "pending",
+          "files": [
+            {
+              "path": ".github/workflows/release.yml",
+              "lines": "100-165",
+              "note": "Insert new job between line 160 and 163; update needs: on line 165"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rec4",
+      "title": "Set bunfig.toml frozen=true for reproducible installs",
+      "description": "Change bunfig.toml line 6 from frozen=false to frozen=true to enforce reproducible installs locally. All CI workflows already pass --frozen-lockfile explicitly so CI behaviour is unchanged.",
+      "status": "completed",
+      "planFile": ".plans/rec4-bunfig-frozen.md",
+      "files": [
+        {
+          "path": "bunfig.toml",
+          "lines": "6",
+          "note": "frozen = false \u2192 frozen = true \u2014 the only required code change"
+        },
+        {
+          "path": ".github/workflows/test.yml",
+          "lines": "19",
+          "note": "Already passes --frozen-lockfile \u2014 no change needed"
+        },
+        {
+          "path": ".github/workflows/test-ui.yml",
+          "lines": "23",
+          "note": "Already passes --frozen-lockfile \u2014 no change needed"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "lines": "66",
+          "note": "Already passes --frozen-lockfile in unit-tests job"
+        },
+        {
+          "path": ".github/workflows/publish-cli.yml",
+          "lines": "29",
+          "note": "Already passes --frozen-lockfile \u2014 no change needed"
+        },
+        {
+          "path": ".github/workflows/version-bump-pr.yml",
+          "lines": "70",
+          "note": "Already passes --frozen-lockfile \u2014 no change needed"
+        },
+        {
+          "path": "dev/docs/development-workflow.md",
+          "lines": "5",
+          "note": "Optional: add note that bun add is the correct way to introduce new dependencies"
+        }
+      ],
+      "subtasks": [
+        {
+          "id": "rec4.1",
+          "title": "Change frozen=false to frozen=true in bunfig.toml",
+          "description": "Edit bunfig.toml line 6 to set frozen = true under the [install] section.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "bunfig.toml",
+              "lines": "6",
+              "note": "The single line to change"
+            }
+          ]
+        },
+        {
+          "id": "rec4.2",
+          "title": "Update development-workflow.md with bun add guidance",
+          "description": "Add a note to dev/docs/development-workflow.md line 5 explaining that bun add <package> is the correct way to add dependencies when frozen=true is set.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "dev/docs/development-workflow.md",
+              "lines": "5",
+              "note": "Bare bun install in quick-start \u2014 annotate with bun add workflow note"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rec5",
+      "title": "Add SetupManager edge-case unit tests",
+      "description": "Add three missing test cases to setup-manager.test.ts: setEnabledChannels deduplication, completeSetup idempotency, and forward-compatibility with unknown state fields.",
+      "status": "completed",
+      "planFile": ".plans/rec5-setup-manager-tests.md",
+      "files": [
+        {
+          "path": "packages/lib/src/admin/setup-manager.test.ts",
+          "lines": "1-5",
+          "note": "Existing imports \u2014 no new imports needed"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.test.ts",
+          "lines": "196-220",
+          "note": "Existing completeSetup describe \u2014 Test B appended inside here after line 219"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.test.ts",
+          "lines": "138-163",
+          "note": "Existing corrupt-file describe \u2014 Test C appended after line 163"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.test.ts",
+          "lines": "251",
+          "note": "End of file \u2014 Test A describe block appended here"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.ts",
+          "lines": "67-81",
+          "note": "isValidSetupState \u2014 validates only known fields, passes unknown fields through"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.ts",
+          "lines": "91-100",
+          "note": "getState \u2014 read/validate/default path under test for Test C"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.ts",
+          "lines": "151-157",
+          "note": "completeSetup \u2014 idempotency path under test for Test B"
+        },
+        {
+          "path": "packages/lib/src/admin/setup-manager.ts",
+          "lines": "166-171",
+          "note": "setEnabledChannels \u2014 deduplication via Set under test for Test A"
+        }
+      ],
+      "subtasks": [
+        {
+          "id": "rec5.1",
+          "title": "Add setEnabledChannels deduplication test",
+          "description": "Append a new describe('SetupManager.setEnabledChannels') block after line 251 with a test that passes a list with duplicates and asserts the returned and persisted state contains a deduplicated array.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/lib/src/admin/setup-manager.test.ts",
+              "lines": "251",
+              "note": "Append new describe block after end of file"
+            },
+            {
+              "path": "packages/lib/src/admin/setup-manager.ts",
+              "lines": "166-171",
+              "note": "setEnabledChannels \u2014 uses new Set(channels) to deduplicate"
+            }
+          ]
+        },
+        {
+          "id": "rec5.2",
+          "title": "Add completeSetup idempotency test",
+          "description": "Insert a third it() inside the existing describe('SetupManager.completeSetup') block after line 219, asserting that a second call does not throw, keeps completed=true, and does not clear previously set step state.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/lib/src/admin/setup-manager.test.ts",
+              "lines": "196-220",
+              "note": "Insert new it() after line 219 inside this describe block"
+            },
+            {
+              "path": "packages/lib/src/admin/setup-manager.ts",
+              "lines": "151-157",
+              "note": "completeSetup does getState \u2192 mutate \u2192 save; second call re-reads persisted state"
+            }
+          ]
+        },
+        {
+          "id": "rec5.3",
+          "title": "Add forward-compatibility unknown-fields test",
+          "description": "Insert a new describe('getState forward-compatibility') block after line 163 with a test that writes a state file containing an extra unknown field and asserts all known fields are read back correctly.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "packages/lib/src/admin/setup-manager.test.ts",
+              "lines": "138-163",
+              "note": "Insert new describe block after line 163"
+            },
+            {
+              "path": "packages/lib/src/admin/setup-manager.ts",
+              "lines": "67-81",
+              "note": "isValidSetupState checks only known fields \u2014 unknown keys pass through"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rec6",
+      "title": "Fix integration test silent-skip false gate in CI",
+      "description": "Replace the runtime fetch-probe guards in three integration test files with an OPENPALM_INTEGRATION env-var guard, and remove the vacuous integration job from release.yml's needs array so CI no longer has a false-passing gate.",
+      "status": "completed",
+      "planFile": ".plans/rec6-integration-silent-skip.md",
+      "files": [
+        {
+          "path": "test/integration/container-health.integration.test.ts",
+          "lines": "9-13",
+          "note": "Fetch probe to remove; describe.skipIf guard to update to env-var check"
+        },
+        {
+          "path": "test/integration/admin-auth.integration.test.ts",
+          "lines": "11-13",
+          "note": "Fetch probe to remove; stackAvailable assignment to replace"
+        },
+        {
+          "path": "test/integration/admin-auth.integration.test.ts",
+          "lines": "22",
+          "note": "describe.skipIf call \u2014 guard expression to update"
+        },
+        {
+          "path": "test/integration/admin-health-check.integration.test.ts",
+          "lines": "10-12",
+          "note": "Fetch probe to remove; stackAvailable assignment to replace"
+        },
+        {
+          "path": "test/integration/admin-health-check.integration.test.ts",
+          "lines": "14",
+          "note": "describe.skipIf call \u2014 guard expression to update"
+        },
+        {
+          "path": "test/integration/channel-gateway.integration.test.ts",
+          "lines": "1-143",
+          "note": "No changes \u2014 already correctly structured, continues running in unit-tests job"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "lines": "70-78",
+          "note": "integration job to delete"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "lines": "165",
+          "note": "needs: array \u2014 remove integration from the list"
+        },
+        {
+          "path": "test/docker/docker-stack.docker.ts",
+          "lines": "31-34",
+          "note": "Reference env-var guard pattern"
+        }
+      ],
+      "subtasks": [
+        {
+          "id": "rec6.1",
+          "title": "Replace fetch probe in container-health test",
+          "description": "Remove the top-level await fetch() probe on lines 9-11 of container-health.integration.test.ts and replace the stackAvailable assignment with Bun.env.OPENPALM_INTEGRATION === '1'.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "test/integration/container-health.integration.test.ts",
+              "lines": "9-13",
+              "note": "Remove fetch probe; update describe.skipIf guard"
+            }
+          ]
+        },
+        {
+          "id": "rec6.2",
+          "title": "Replace fetch probe in admin-auth test",
+          "description": "Remove the fetch probe on lines 11-13 of admin-auth.integration.test.ts and replace stackAvailable with the env-var check; the describe.skipIf on line 22 is unchanged.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "test/integration/admin-auth.integration.test.ts",
+              "lines": "11-13",
+              "note": "Remove fetch probe"
+            },
+            {
+              "path": "test/integration/admin-auth.integration.test.ts",
+              "lines": "22",
+              "note": "describe.skipIf \u2014 expression changes to use new stackAvailable"
+            }
+          ]
+        },
+        {
+          "id": "rec6.3",
+          "title": "Replace fetch probe in admin-health-check test",
+          "description": "Remove the fetch probe on lines 10-12 of admin-health-check.integration.test.ts and replace stackAvailable with the env-var check.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "test/integration/admin-health-check.integration.test.ts",
+              "lines": "10-12",
+              "note": "Remove fetch probe"
+            },
+            {
+              "path": "test/integration/admin-health-check.integration.test.ts",
+              "lines": "14",
+              "note": "describe.skipIf \u2014 expression changes to use new stackAvailable"
+            }
+          ]
+        },
+        {
+          "id": "rec6.4",
+          "title": "Delete integration job and update needs in release.yml",
+          "description": "Delete the integration job block (lines 70-78) from release.yml and remove 'integration' from the release job's needs array on line 165.",
+          "status": "completed",
+          "files": [
+            {
+              "path": ".github/workflows/release.yml",
+              "lines": "70-78",
+              "note": "Delete this entire job block"
+            },
+            {
+              "path": ".github/workflows/release.yml",
+              "lines": "165",
+              "note": "Remove integration from needs: array"
+            }
+          ]
+        },
+        {
+          "id": "rec6.5",
+          "title": "Verify channel-gateway tests run in unit-tests job",
+          "description": "Confirm that channel-gateway.integration.test.ts (which has no skip guard) is picked up by bun test in the unit-tests job; add an explicit step if the test directory is not traversed by default.",
+          "status": "completed",
+          "files": [
+            {
+              "path": "test/integration/channel-gateway.integration.test.ts",
+              "lines": "1-143",
+              "note": "No changes needed \u2014 verify it runs under unit-tests job"
+            },
+            {
+              "path": ".github/workflows/release.yml",
+              "lines": "68",
+              "note": "unit-tests job runs bun test \u2014 confirm it covers test/integration/"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

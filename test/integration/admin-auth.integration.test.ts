@@ -8,9 +8,7 @@ const TIMEOUT = 5_000;
 const ADMIN_BASE = "http://localhost:8100";
 const ADMIN_TOKEN = "dev-admin-token";
 
-const stackAvailable = await fetch(`${ADMIN_BASE}/health`, { signal: AbortSignal.timeout(2_000) })
-  .then(r => r.ok)
-  .catch(() => false);
+const stackAvailable = Bun.env.OPENPALM_INTEGRATION === "1";
 
 const protectedEndpoints = [
   "/state",

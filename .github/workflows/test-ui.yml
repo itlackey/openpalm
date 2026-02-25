@@ -14,6 +14,21 @@ permissions:
   contents: read
 
 jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - name: Install Chromium for vitest browser mode
+        run: bunx playwright install --with-deps chromium
+        working-directory: packages/ui
+      - name: Run vitest browser tests
+        run: bunx vitest --project client --run
+        working-directory: packages/ui
+
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 15
