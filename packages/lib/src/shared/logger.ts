@@ -1,5 +1,5 @@
 /**
- * Lightweight structured JSON logger.
+ * Lightweight structured JSON logger with optional file persistence.
  *
  * Usage:
  *   import { createLogger } from "@openpalm/lib/shared/logger.ts";
@@ -11,7 +11,15 @@
  *   Set LOG_LEVEL=debug|info|warn|error (default: "info").
  *   DEBUG=1 is a shorthand for LOG_LEVEL=debug.
  *   Messages below the configured level are silently dropped.
+ *
+ * File logging:
+ *   Set LOG_DIR to a writable directory path. When set, all log entries are
+ *   also appended as JSONL to ${LOG_DIR}/service.log. Files are rotated at
+ *   50 MB (renamed to .log.1). Both console and file output are produced.
  */
+
+import { mkdirSync, statSync, renameSync, appendFileSync } from "node:fs";
+import { join } from "node:path";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -29,6 +37,8 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
+const MAX_LOG_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+
 function getMinLevel(): LogLevel {
   if (Bun.env.DEBUG === "1") return "debug";
   const raw = Bun.env.LOG_LEVEL;
@@ -38,6 +48,38 @@ function getMinLevel(): LogLevel {
 
 function shouldLog(level: LogLevel): boolean {
   return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[getMinLevel()];
+}
+
+function getLogFilePath(): string | null {
+  const dir = Bun.env.LOG_DIR;
+  if (!dir) return null;
+  return join(dir, "service.log");
+}
+
+let logDirInitialized = false;
+
+function writeToFile(filePath: string, line: string): void {
+  if (!logDirInitialized) {
+    try {
+      mkdirSync(filePath.substring(0, filePath.lastIndexOf("/")), { recursive: true });
+    } catch {
+      // directory may already exist
+    }
+    logDirInitialized = true;
+  }
+  try {
+    const stats = statSync(filePath);
+    if (stats.size >= MAX_LOG_FILE_SIZE) {
+      renameSync(filePath, `${filePath}.1`);
+    }
+  } catch {
+    // file may not exist yet — that is fine
+  }
+  try {
+    appendFileSync(filePath, line + "\n", "utf8");
+  } catch {
+    // silently ignore file write errors to avoid log loops
+  }
 }
 
 function emit(level: LogLevel, service: string, msg: string, extra?: Record<string, unknown>): void {
@@ -59,6 +101,9 @@ function emit(level: LogLevel, service: string, msg: string, extra?: Record<stri
   } else {
     console.log(line);
   }
+
+  const filePath = getLogFilePath();
+  if (filePath) writeToFile(filePath, line);
 }
 
 export function createLogger(service: string): Logger {
@@ -76,4 +121,9 @@ export function createLogger(service: string): Logger {
       emit("error", service, msg, extra);
     },
   };
+}
+
+/** Reset internal state. For testing only. */
+export function _resetLogDirState(): void {
+  logDirInitialized = false;
 }
