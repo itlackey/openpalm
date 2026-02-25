@@ -6,6 +6,19 @@ Goal: catch setup-wizard breakage **before release** with tests that prove insta
 
 Current setup coverage is weighted toward unit/string checks and test-mode flows, which do not reliably validate the full install→wizard→apply→healthy-runtime path. The release workflow currently runs unit/integration/contract/security/UI and Docker image build, but does **not** run a Docker-backed setup wizard completion gate. That leaves a gap where setup can still fail in real environments even when CI is green.
 
+
+## Current implementation gap analysis (strategy vs reality)
+
+The strategy is directionally correct, but a few concrete gaps remain when compared to the current repo:
+
+| Area | Current implementation | Gap to close | Recommendation |
+|---|---|---|---|
+| Setup wizard tests | `packages/ui/src/lib/components/setup-wizard.test.ts` is mostly source-string assertions. | Low confidence that real wizard completion works against runtime + compose. | Add behavior-first e2e tests that drive real setup steps and validate side effects (`setup.complete` + healthy services). |
+| Setup completion path | `setup.complete` performs real apply/startup only when `OPENPALM_TEST_MODE !== 1`. | Test-mode can mask runtime/apply failures that only happen with real Docker compose. | Ensure release-gating tests run with real compose path (test mode off) in Docker-capable runners. |
+| Existing docker integration | `test/docker/docker-stack.docker.ts` is opt-in (`OPENPALM_RUN_DOCKER_STACK_TESTS=1`) and validates mostly admin/gateway bring-up. | Does not prove full install + wizard completion end-to-end. | Introduce dedicated install/setup wizard docker scenarios (happy path + negatives), separate from generic stack bring-up tests. |
+| Contract gate for wizard | `test/contracts/setup-wizard-gate.contract.test.ts` is skipped unless stack is already available. | Gate validates auth behavior, but not install/setup orchestration on clean CI hosts. | Keep contract test, but add independent scenario runner that provisions its own isolated environment and never relies on pre-existing stack state. |
+| Release workflow gates | `release.yml` runs unit/integration/contracts/security/ui/docker-build, but no wizard completion e2e gate. | Releases can still pass without proving setup completion works in real runtime conditions. | Add a dedicated `setup-wizard-e2e` required job to release workflow and path-filtered PR workflow. |
+
 ## Distribution of highest-value ideas (chance to catch real setup failures)
 
 The percentages below are the recommended confidence distribution for expected detection impact in aggregate. They are not mathematically exact probabilities; they are planning weights to prioritize engineering effort where bug catch-rate is highest.
@@ -129,3 +142,31 @@ A release is not eligible unless all are true:
 3. Add artifact/contract assertions from Idea #3.
 4. Backfill replay pack from recent incidents (Idea #4).
 5. Add nightly multi-platform smoke (Idea #5).
+
+
+## Additional recommendations to strengthen the strategy
+
+1. **Define explicit SLOs for the install/setup funnel**
+   - Track: install start -> admin healthy -> wizard complete -> core healthy.
+   - Require percentile bounds (example: p95 completion under X minutes in CI).
+
+2. **Add strict artifact standards to every failed e2e run**
+   - Minimum bundle: command transcript, compose config output, `compose ps`, `compose logs`, setup-state snapshot, generated env/caddy/compose files.
+   - Fail tests if artifact bundle cannot be produced (debuggability is part of quality).
+
+3. **Introduce flake accounting separate from product failures**
+   - Label failures as `product_regression` vs `test_flake` in summary JSON.
+   - Put a retry cap (max 1 retry) and report both first-fail + final status.
+
+4. **Codify a “bug -> scenario” policy in CONTRIBUTING/release docs**
+   - Any setup bug fix requires a matching scenario in the replay pack.
+   - Enforce via PR template checklist item.
+
+5. **Add a lightweight local developer command for fast confidence**
+   - `bun run test:install:smoke` should be the one-command pre-PR setup validation.
+   - Keep runtime under ~10 minutes so engineers actually run it before merge.
+
+6. **Protect against hidden environment coupling**
+   - Require scenario isolation (unique project name, ports, DATA/STATE/CONFIG roots).
+   - Explicitly block tests from using existing `.dev` state to avoid false positives.
+
