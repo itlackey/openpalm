@@ -50,11 +50,12 @@ Cancel an active loop:
 
 ## How It Works
 
-1. `/ralph-loop` runs `scripts/setup-ralph-loop.sh` to create `.opencode/ralph-loop.local.md`
-2. The `ralph-wiggum.ts` plugin listens for `session.idle` on every session
-3. On idle, it checks for the state file to see if a loop is active
-4. If active and not complete, it increments the iteration counter and sends the same prompt back
-5. The loop ends when the completion promise is found in the last assistant message, or max iterations is reached
+1. `/ralph-loop` runs `scripts/setup-ralph-loop.sh` to create `.opencode/ralph-loop.local.md` (iteration starts at 0)
+2. The `ralph-wiggum.ts` plugin listens for `session.idle` events
+3. On idle, it reads the state file; if active and owned by this session, it proceeds
+4. Checks max iterations and completion promise against the last assistant message
+5. If not complete, increments the iteration counter and re-injects the prompt via `client.session.promptAsync()` (fire-and-forget, returns immediately)
+6. The loop ends when the completion promise `<promise>TEXT</promise>` is detected, or max iterations is reached
 
 ## State File
 
