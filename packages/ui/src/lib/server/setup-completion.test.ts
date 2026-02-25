@@ -21,6 +21,7 @@ describe('setup-completion orchestrator', () => {
 		const applyStackMock = mock(async () => applyResult);
 		const composeActionMock = mock(async () => ({ ok: true, stdout: '', stderr: '' }));
 		const syncAutomationsMock = mock(() => undefined);
+		const ensureCoreServicesReadyMock = mock(async () => ({ ok: true, code: 'ready', checks: [], diagnostics: { failedServices: [] } }));
 		const completeSetupMock = mock(() => ({ completed: true }));
 		const listAutomationsMock = mock(() => [{ id: 'auto-1' }]);
 
@@ -39,7 +40,8 @@ describe('setup-completion orchestrator', () => {
 				writeFileSync: writeFileSyncMock,
 				applyStack: applyStackMock,
 				composeAction: composeActionMock,
-				syncAutomations: syncAutomationsMock
+				syncAutomations: syncAutomationsMock,
+				ensureCoreServicesReady: ensureCoreServicesReadyMock
 			} as never)
 		);
 
@@ -48,6 +50,7 @@ describe('setup-completion orchestrator', () => {
 		expect(applyStackMock).toHaveBeenCalledTimes(1);
 		expect(composeActionMock).toHaveBeenCalledTimes(1);
 		expect(composeActionMock).toHaveBeenCalledWith('up', [...SetupStartupServices]);
+		expect(ensureCoreServicesReadyMock).toHaveBeenCalledTimes(1);
 		expect(syncAutomationsMock).toHaveBeenCalledTimes(1);
 		expect(completeSetupMock).toHaveBeenCalledTimes(1);
 		expect(result.apply).toBe(applyResult);
@@ -72,7 +75,8 @@ describe('setup-completion orchestrator', () => {
 				writeFileSync: writeFileSyncMock,
 				applyStack: async () => ({ ok: true }),
 				composeAction: async () => ({ ok: true, stdout: '', stderr: '' }),
-				syncAutomations: () => undefined
+				syncAutomations: () => undefined,
+				ensureCoreServicesReady: async () => ({ ok: true, code: 'ready', checks: [], diagnostics: { failedServices: [] } })
 			} as never)
 		);
 
@@ -96,9 +100,48 @@ describe('setup-completion orchestrator', () => {
 					writeFileSync: () => undefined,
 					applyStack: async () => ({ ok: true }),
 					composeAction: async () => ({ ok: false, stdout: '', stderr: 'compose failed' }),
-					syncAutomations: () => undefined
+					syncAutomations: () => undefined,
+					ensureCoreServicesReady: async () => ({ ok: true, code: 'ready', checks: [], diagnostics: { failedServices: [] } })
 				} as never)
 			)
 		).rejects.toThrow('core_startup_failed:compose failed');
+	});
+
+	it('includes readiness diagnostics when core services are not ready', async () => {
+		const readinessResult = {
+			ok: false as const,
+			code: 'setup_not_ready' as const,
+			checks: [],
+			diagnostics: {
+				failedServices: [
+					{ service: 'gateway', state: 'not_ready' as const, status: 'running', health: 'starting', reason: 'unhealthy' as const }
+				]
+			}
+		};
+
+		const result = await completeSetupOrchestration(
+			{ completeSetup: () => ({ completed: true }) } as never,
+			{ listAutomations: () => [] } as never,
+			({
+				secretsEnvPath: '/tmp/config/secrets.env',
+				existsSync: () => true,
+				readFileSync: () => 'POSTGRES_PASSWORD=already-set\n',
+				parseRuntimeEnvContent: () => ({ POSTGRES_PASSWORD: 'already-set' }),
+				updateRuntimeEnvContent: () => 'unused',
+				generateToken: () => 'unused',
+				mkdirSync: () => undefined,
+				dirname: () => '/tmp/config',
+				writeFileSync: () => undefined,
+				applyStack: async () => ({ ok: true }),
+				composeAction: async () => ({ ok: true, stdout: '', stderr: '' }),
+				syncAutomations: () => undefined,
+				ensureCoreServicesReady: async () => readinessResult
+			} as never)
+		);
+
+		expect(result.state.completed).toBeTrue();
+		expect(result.readiness).toBeDefined();
+		expect(result.readiness!.ok).toBeFalse();
+		expect(result.readiness!.diagnostics.failedServices[0].service).toBe('gateway');
 	});
 });

@@ -52,10 +52,19 @@ describe("automations", () => {
   it("POST /automations/update updates automation", async () => {
     const listRes = await authedGet("/automations");
     const listBody = await listRes.json();
-    const nonCore = listBody.automations.find(
+    let nonCore = listBody.automations.find(
       (a: { core?: boolean }) => !a.core
     );
-    if (!nonCore) return;
+    if (!nonCore) {
+      const createRes = await authedPost("/automations", {
+        name: "Update Seed Automation",
+        schedule: "15 * * * *",
+        script: "echo seed"
+      });
+      expect(createRes.status).toBe(201);
+      const createBody = await createRes.json();
+      nonCore = createBody.automation;
+    }
 
     const res = await authedPost("/automations/update", {
       id: nonCore.id,
@@ -71,10 +80,19 @@ describe("automations", () => {
   it("POST /automations/delete deletes automation", async () => {
     const listRes = await authedGet("/automations");
     const listBody = await listRes.json();
-    const nonCore = listBody.automations.find(
+    let nonCore = listBody.automations.find(
       (a: { core?: boolean }) => !a.core
     );
-    if (!nonCore) return;
+    if (!nonCore) {
+      const createRes = await authedPost("/automations", {
+        name: "Delete Seed Automation",
+        schedule: "45 * * * *",
+        script: "echo delete-seed"
+      });
+      expect(createRes.status).toBe(201);
+      const createBody = await createRes.json();
+      nonCore = createBody.automation;
+    }
 
     const res = await authedPost("/automations/delete", { id: nonCore.id });
     expect(res.status).toBe(200);
@@ -88,7 +106,7 @@ describe("automations", () => {
     const core = listBody.automations.find(
       (a: { core?: boolean }) => a.core === true
     );
-    if (!core) return;
+    expect(core).toBeDefined();
 
     const res = await authedPost("/automations/delete", { id: core.id });
     expect(res.status).toBe(400);

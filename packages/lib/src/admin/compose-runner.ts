@@ -154,8 +154,10 @@ export type ServiceHealthState = {
 async function runPs(run: RunFn): Promise<{ ok: boolean; services: ServiceHealthState[]; stderr: string }> {
   const result = await run(["ps", "--format", "json"]);
   if (!result.ok) return { ok: false, services: [], stderr: result.stderr };
+  const trimmed = result.stdout.trim();
+  if (trimmed.length === 0) return { ok: true, services: [], stderr: "" };
   try {
-    const raw = JSON.parse(result.stdout) as Array<Record<string, unknown>>;
+    const raw = JSON.parse(trimmed) as Array<Record<string, unknown>>;
     const services = raw.map((entry) => ({
       name: String(entry.Service ?? entry.Name ?? ""),
       status: String(entry.State ?? entry.Status ?? ""),

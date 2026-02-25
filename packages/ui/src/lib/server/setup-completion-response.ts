@@ -11,7 +11,7 @@ export async function completeSetupCommandResponse(
 	completeSetup: CompleteSetupFn = completeSetupOrchestration
 ) {
 	const result = await completeSetup(setupManager, stackManager, { secretsEnvPath });
-	return { ok: true as const, data: result.state, apply: result.apply };
+	return { ok: true as const, data: result.state, apply: result.apply, readiness: result.readiness };
 }
 
 export async function completeSetupRouteResponse(
@@ -21,5 +21,5 @@ export async function completeSetupRouteResponse(
 	completeSetup: CompleteSetupFn = completeSetupOrchestration
 ) {
 	const result = await completeSetup(setupManager, stackManager, { secretsEnvPath });
-	return { ok: true as const, state: result.state, apply: result.apply };
+	return { ok: true as const, state: result.state, apply: result.apply, readiness: result.readiness };
 }

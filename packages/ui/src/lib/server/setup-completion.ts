@@ -1,7 +1,12 @@
 import type { SetupManager } from '@openpalm/lib/admin/setup-manager';
 import type { StackManager } from '@openpalm/lib/admin/stack-manager';
+import type { EnsureCoreServicesReadyResult } from '@openpalm/lib/types';
 import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
-import { composeAction, SetupStartupServices } from '@openpalm/lib/admin/compose-runner';
+import {
+	composeAction,
+	SetupStartupServices
+} from '@openpalm/lib/admin/compose-runner';
+import { ensureCoreServicesReady } from '@openpalm/lib/admin/core-readiness';
 import { syncAutomations } from '@openpalm/lib/admin/automations';
 import { parseRuntimeEnvContent, updateRuntimeEnvContent } from '@openpalm/lib/admin/runtime-env';
 import { generateToken } from '@openpalm/lib/tokens';
@@ -21,6 +26,7 @@ type SetupCompletionDependencies = {
 	applyStack: typeof applyStack;
 	composeAction: typeof composeAction;
 	syncAutomations: typeof syncAutomations;
+	ensureCoreServicesReady: typeof ensureCoreServicesReady;
 };
 
 const defaultDependencies: SetupCompletionDependencies = {
@@ -35,7 +41,8 @@ const defaultDependencies: SetupCompletionDependencies = {
 	writeFileSync,
 	applyStack,
 	composeAction,
-	syncAutomations
+	syncAutomations,
+	ensureCoreServicesReady
 };
 
 function ensurePostgresPassword(dependencies: SetupCompletionDependencies) {
@@ -62,7 +69,21 @@ export async function completeSetupOrchestration(
 	const apply = await dependencies.applyStack(stackManager);
 	const startup = await dependencies.composeAction('up', [...SetupStartupServices]);
 	if (!startup.ok) throw new Error(`core_startup_failed:${startup.stderr}`);
+
+	// Check runtime readiness convergence (non-blocking — setup completes regardless,
+	// but the readiness result is surfaced so callers/UI can display status and retry)
+	let readiness: EnsureCoreServicesReadyResult | undefined;
+	try {
+		readiness = await dependencies.ensureCoreServicesReady({
+			targetServices: SetupStartupServices,
+			maxAttempts: 6,
+			pollIntervalMs: 2_000
+		});
+	} catch {
+		// Best-effort: readiness check failure should not block setup completion
+	}
+
 	dependencies.syncAutomations(stackManager.listAutomations());
 	const state = setupManager.completeSetup();
-	return { state, apply };
+	return { state, apply, readiness };
 }

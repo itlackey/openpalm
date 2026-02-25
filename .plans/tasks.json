@@ -120,7 +120,7 @@
       {
         "id": "rec-02-05",
         "description": "Wire setup.complete endpoints to readiness gate and call completeSetup only on readiness success.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 362 },
           { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 17 },

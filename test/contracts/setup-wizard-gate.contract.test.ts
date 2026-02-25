@@ -30,15 +30,18 @@ function backupState(): void {
 }
 
 function restoreState(): void {
-  if (!_backupDir) return;
-  const backupFile = join(_backupDir, "setup-state.json.bak");
+  const backupDir = _backupDir;
+  if (backupDir === null) {
+    return;
+  }
+  const backupFile = join(backupDir, "setup-state.json.bak");
   if (_hadFile && existsSync(backupFile)) {
     mkdirSync(dirname(STATE_FILE_HOST), { recursive: true });
     copyFileSync(backupFile, STATE_FILE_HOST);
   } else if (existsSync(STATE_FILE_HOST)) {
     rmSync(STATE_FILE_HOST);
   }
-  rmSync(_backupDir, { recursive: true, force: true });
+  rmSync(backupDir, { recursive: true, force: true });
   _backupDir = null;
 }
 
