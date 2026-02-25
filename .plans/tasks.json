@@ -1160,14 +1160,14 @@
     "title": "Deduplicate parameterized tests",
     "description": "Collapse ~46 duplicate test cases across 8 files into parameterized for...of loops, reducing code duplication while maintaining the same test coverage.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R16-deduplicate-parameterized-tests.md",
     "subtasks": [
       {
         "id": "R16.1",
         "description": "Pattern 1 & 2: Parameterize setAccessScope and completeStep tests in setup-manager.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/setup-manager.test.ts",
@@ -1179,7 +1179,7 @@
       {
         "id": "R16.2",
         "description": "Pattern 3 & 4: Parameterize help/version flag and subcommand validation tests in main.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/cli/test/main.test.ts",
@@ -1191,7 +1191,7 @@
       {
         "id": "R16.3",
         "description": "Pattern 5: Remove redundant individual loadComposeConfig tests from management-commands.test.ts (already covered by shared loop)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/cli/test/management-commands.test.ts",
@@ -1203,7 +1203,7 @@
       {
         "id": "R16.4",
         "description": "Pattern 6 & 7: Parameterize safeRequestId and validatePayload tests in core/gateway/src/server.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "core/gateway/src/server.test.ts",
@@ -1215,7 +1215,7 @@
       {
         "id": "R16.5",
         "description": "Pattern 8 & 9: Parameterize missing text field and malformed body tests in input-bounds.security.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/security/input-bounds.security.test.ts",
@@ -1227,7 +1227,7 @@
       {
         "id": "R16.6",
         "description": "Pattern 10: Parameterize parseCustomCommands invalid-input tests in channels/discord/server.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "channels/discord/server.test.ts",
@@ -1239,7 +1239,7 @@
       {
         "id": "R16.7",
         "description": "Pattern 11: Parameterize validateCron out-of-range tests in cron.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/cron.test.ts",
@@ -1251,7 +1251,7 @@
       {
         "id": "R16.8",
         "description": "Pattern 12: Parameterize HMAC special body content tests in hmac.security.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/security/hmac.security.test.ts",
@@ -1263,7 +1263,7 @@
       {
         "id": "R16.9",
         "description": "Run full test suite and verify test count remains approximately the same",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/setup-manager.test.ts",

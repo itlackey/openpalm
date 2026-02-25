@@ -119,111 +119,53 @@ describe("security: input bounds — authentication", () => {
 // Missing / empty required field: text
 // ---------------------------------------------------------------------------
 describe("security: input bounds — missing text field", () => {
-  it("rejects body with no text property", async () => {
-    const h = handler();
-    const resp = await h(postChat(JSON.stringify({})));
-    expect(resp.status).toBe(400);
-  });
+  const cases: [string, string][] = [
+    ["no text property", JSON.stringify({})],
+    ["text is null", JSON.stringify({ text: null })],
+    ["text is empty string", JSON.stringify({ text: "" })],
+    ["text is false", JSON.stringify({ text: false })],
+    ["text is 0", JSON.stringify({ text: 0 })],
+    ["only unrelated fields", JSON.stringify({ userId: "u1", metadata: {} })],
+  ];
 
-  it("rejects body where text is null", async () => {
-    const h = handler();
-    const resp = await h(postChat(JSON.stringify({ text: null })));
-    expect(resp.status).toBe(400);
-  });
-
-  it("rejects body where text is an empty string", async () => {
-    const h = handler();
-    // Empty string is falsy; the handler guards with `if (!body.text)`
-    const resp = await h(postChat(JSON.stringify({ text: "" })));
-    expect(resp.status).toBe(400);
-  });
-
-  it("rejects body where text is false", async () => {
-    const h = handler();
-    const resp = await h(postChat(JSON.stringify({ text: false })));
-    expect(resp.status).toBe(400);
-  });
-
-  it("rejects body where text is 0", async () => {
-    const h = handler();
-    const resp = await h(postChat(JSON.stringify({ text: 0 })));
-    expect(resp.status).toBe(400);
-  });
-
-  it("rejects a body that only contains unrelated fields", async () => {
-    const h = handler();
-    const resp = await h(postChat(JSON.stringify({ userId: "u1", metadata: {} })));
-    expect(resp.status).toBe(400);
-  });
+  for (const [label, body] of cases) {
+    it(`rejects body where ${label}`, async () => {
+      const h = handler();
+      const resp = await h(postChat(body));
+      expect(resp.status).toBe(400);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // Invalid / malformed JSON body
 // ---------------------------------------------------------------------------
 describe("security: input bounds — malformed request body", () => {
-  it("throws or returns non-200 for invalid JSON", async () => {
-    const h = handler();
-    let status: number;
-    try {
-      const resp = await h(postChat("not-json"));
-      status = resp.status;
-    } catch {
-      // Bun's req.json() throws a SyntaxError — propagating it is acceptable;
-      // what is NOT acceptable is silently forwarding to the gateway.
-      status = 500;
-    }
-    expect(status).not.toBe(200);
-  });
+  const cases: [string, string][] = [
+    ["invalid JSON", "not-json"],
+    ["truncated JSON body", '{"text":"hi"'],
+    ["empty body", ""],
+    ["JSON array body", JSON.stringify([{ text: "hi" }])],
+    ["plain string JSON body", JSON.stringify("just a string")],
+  ];
 
-  it("throws or returns non-200 for a truncated JSON body", async () => {
+  async function expectNon200(body: string) {
     const h = handler();
     let status: number;
     try {
-      const resp = await h(postChat('{"text":"hi"'));
+      const resp = await h(postChat(body));
       status = resp.status;
     } catch {
       status = 500;
     }
     expect(status).not.toBe(200);
-  });
+  }
 
-  it("throws or returns non-200 for an empty body", async () => {
-    const h = handler();
-    let status: number;
-    try {
-      const resp = await h(postChat(""));
-      status = resp.status;
-    } catch {
-      status = 500;
-    }
-    expect(status).not.toBe(200);
-  });
-
-  it("throws or returns non-200 for a JSON array body (not an object)", async () => {
-    const h = handler();
-    let status: number;
-    try {
-      const resp = await h(postChat(JSON.stringify([{ text: "hi" }])));
-      status = resp.status;
-    } catch {
-      status = 500;
-    }
-    // An array has no `.text` property at the top level, so either we get 400
-    // or the request is not forwarded.
-    expect(status).not.toBe(200);
-  });
-
-  it("throws or returns non-200 for a plain string JSON body", async () => {
-    const h = handler();
-    let status: number;
-    try {
-      const resp = await h(postChat(JSON.stringify("just a string")));
-      status = resp.status;
-    } catch {
-      status = 500;
-    }
-    expect(status).not.toBe(200);
-  });
+  for (const [label, body] of cases) {
+    it(`throws or returns non-200 for ${label}`, async () => {
+      await expectNon200(body);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -36,44 +36,30 @@ async function runCli(...args: string[]): Promise<{ stdout: string; stderr: stri
 }
 
 describe("CLI entry point", () => {
-  it("prints help with no arguments", async () => {
-    const { stdout, exitCode } = await runCli();
+  // ── Help flags ──────────────────────────────────────────────────────────
+  for (const { label, args } of [
+    { label: "no arguments", args: [] as string[] },
+    { label: "--help flag", args: ["--help"] },
+    { label: "help command", args: ["help"] },
+    { label: "-h flag", args: ["-h"] },
+  ]) {
+    it(`prints help with ${label}`, async () => {
+      const { stdout, exitCode } = await runCli(...args);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("openpalm");
+      expect(stdout).toContain("Usage:");
+      expect(stdout).toContain("Commands:");
+    });
+  }
 
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("openpalm");
-    expect(stdout).toContain("Usage:");
-    expect(stdout).toContain("Commands:");
-  });
-
-  it("prints help with --help flag", async () => {
-    const { stdout, exitCode } = await runCli("--help");
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("Usage:");
-    expect(stdout).toContain("Commands:");
-  });
-
-  it("prints help with help command", async () => {
-    const { stdout, exitCode } = await runCli("help");
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("Usage:");
-    expect(stdout).toContain("Commands:");
-  });
-
-  it("prints version with version command", async () => {
-    const { stdout, exitCode } = await runCli("version");
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain(CliVersion);
-  });
-
-  it("prints version with --version flag", async () => {
-    const { stdout, exitCode } = await runCli("--version");
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain(CliVersion);
-  });
+  // ── Version flags ──────────────────────────────────────────────────────
+  for (const arg of ["version", "--version", "-v"]) {
+    it(`prints version with ${arg}`, async () => {
+      const { stdout, exitCode } = await runCli(arg);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain(CliVersion);
+    });
+  }
 
   it("exits with error for unknown command", async () => {
     const { stderr, exitCode } = await runCli("fakecmd");
@@ -131,60 +117,19 @@ describe("CLI entry point", () => {
     expect(stdout).toContain("--yes");
   });
 
-  it("supports ext as alias for extensions", async () => {
-    const { stderr, exitCode } = await runCli("ext");
-
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Missing subcommand");
-  });
-
-
-  it("supports dev command with subcommand validation", async () => {
-    const { stderr, exitCode } = await runCli("dev");
-
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Missing subcommand");
-  });
+  // ── Subcommand validation ──────────────────────────────────────────────
+  for (const cmd of ["ext", "dev", "service", "channel", "automation"]) {
+    it(`${cmd} without subcommand exits with error`, async () => {
+      const { stderr, exitCode } = await runCli(cmd);
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain("Missing subcommand");
+    });
+  }
 
   it("does not expose admin command", async () => {
     const { stderr, exitCode } = await runCli("admin");
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("Unknown command");
-  });
-
-  it("supports service command with subcommand validation", async () => {
-    const { stderr, exitCode } = await runCli("service");
-
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Missing subcommand");
-  });
-
-  it("supports channel command with subcommand validation", async () => {
-    const { stderr, exitCode } = await runCli("channel");
-
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Missing subcommand");
-  });
-
-  it("supports automation command with subcommand validation", async () => {
-    const { stderr, exitCode } = await runCli("automation");
-
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Missing subcommand");
-  });
-  it("prints version with -v flag", async () => {
-    const { stdout, exitCode } = await runCli("-v");
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain(CliVersion);
-  });
-
-  it("prints help with -h flag", async () => {
-    const { stdout, exitCode } = await runCli("-h");
-
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("Usage:");
-    expect(stdout).toContain("Commands:");
   });
 
   it.skipIf(!openpalmInstalled)("supports ps as alias for status", async () => {

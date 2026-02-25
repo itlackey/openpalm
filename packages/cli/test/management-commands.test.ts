@@ -42,10 +42,6 @@ describe("shared loadComposeConfig module", () => {
 describe("update command", () => {
   const source = readSourceFile("update.ts");
 
-  it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
-  });
-
   it("calls loadComposeConfig before compose operations", () => {
     expect(source).toContain("const config = await loadComposeConfig()");
   });
@@ -68,10 +64,6 @@ describe("update command", () => {
 describe("start command", () => {
   const source = readSourceFile("start.ts");
 
-  it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
-  });
-
   it("accepts optional service names", () => {
     expect(source).toContain("services?: string[]");
     expect(source).toContain("export async function start(services?: string[])");
@@ -91,10 +83,6 @@ describe("start command", () => {
 describe("stop command", () => {
   const source = readSourceFile("stop.ts");
 
-  it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
-  });
-
   it("calls composeStop (not composeDown)", () => {
     expect(source).toContain("import { composeStop }");
     expect(source).toContain("composeStop(config");
@@ -110,10 +98,6 @@ describe("stop command", () => {
 describe("restart command", () => {
   const source = readSourceFile("restart.ts");
 
-  it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
-  });
-
   it("calls composeRestart", () => {
     expect(source).toContain("import { composeRestart }");
     expect(source).toContain("composeRestart(config, services)");
@@ -127,10 +111,6 @@ describe("restart command", () => {
 
 describe("logs command", () => {
   const source = readSourceFile("logs.ts");
-
-  it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
-  });
 
   it("follows logs by default", () => {
     expect(source).toContain("follow: true");
@@ -152,10 +132,6 @@ describe("logs command", () => {
 
 describe("status command", () => {
   const source = readSourceFile("status.ts");
-
-  it("imports loadComposeConfig from shared module", () => {
-    expect(source).toContain('import { loadComposeConfig } from "@openpalm/lib/config.ts"');
-  });
 
   it("calls composePs", () => {
     expect(source).toContain("import { composePs }");
