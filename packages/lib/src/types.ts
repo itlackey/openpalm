@@ -88,6 +88,7 @@ export type CoreServiceReadinessCheck = {
 export type CoreReadinessDiagnostics = {
   composePsStderr?: string;
   failedServices: CoreServiceReadinessCheck[];
+  failedServiceLogs?: Record<string, string>;
 };
 
 export type EnsureCoreServicesReadyResult =

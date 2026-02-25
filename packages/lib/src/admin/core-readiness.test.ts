@@ -237,6 +237,141 @@ describe("ensureCoreServicesReady", () => {
         reason: "unhealthy",
       },
     ]);
+    expect(result.diagnostics.composePsStderr).toBe("");
+    expect(result.diagnostics.failedServiceLogs).toEqual({
+      gateway: "",
+    });
+  });
+
+  it("collects failed service logs and preserves raw compose ps stderr", async () => {
+    const runner = createMockRunner({
+      ps: async () => ({
+        ok: true,
+        stderr: "compose warning: stale orphan",
+        services: [{ name: "gateway", status: "running", health: "starting" }],
+      }),
+      logs: async (service) => {
+        if (service === "gateway") {
+          return { ok: true, stdout: "gateway-log-line", stderr: "" };
+        }
+        return { ok: false, stdout: "", stderr: "service_not_allowed" };
+      },
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["gateway"],
+      maxAttempts: 1,
+      fetchImpl: healthyProbeFetch,
+    });
+
+    expect(result.ok).toBeFalse();
+    expect(result.code).toBe("setup_not_ready");
+    expect(result.diagnostics.composePsStderr).toBe("compose warning: stale orphan");
+    expect(result.diagnostics.failedServiceLogs).toEqual({
+      gateway: "gateway-log-line",
+    });
+  });
+
+  it("retains latest non-empty compose ps stderr across retries", async () => {
+    let psCalls = 0;
+    const runner = createMockRunner({
+      ps: async () => {
+        psCalls += 1;
+        if (psCalls === 1) {
+          return {
+            ok: true,
+            stderr: "compose warning: first attempt had partial timeout",
+            services: [{ name: "gateway", status: "running", health: "starting" }],
+          };
+        }
+        return {
+          ok: true,
+          stderr: "",
+          services: [{ name: "gateway", status: "running", health: "starting" }],
+        };
+      },
+      logs: async () => ({
+        ok: true,
+        stdout: "gateway-late-log",
+        stderr: "",
+      }),
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["gateway"],
+      maxAttempts: 3,
+      pollIntervalMs: 0,
+      sleep: async () => {},
+      fetchImpl: healthyProbeFetch,
+    });
+
+    expect(result.ok).toBeFalse();
+    expect(result.code).toBe("setup_not_ready");
+    expect(result.diagnostics.composePsStderr).toBe(
+      "compose warning: first attempt had partial timeout",
+    );
+    expect(result.diagnostics.failedServiceLogs).toEqual({
+      gateway: "gateway-late-log",
+    });
+  });
+
+  it("surfaces log collection failures in diagnostics", async () => {
+    const runner = createMockRunner({
+      ps: async () => ({
+        ok: true,
+        stderr: "",
+        services: [{ name: "openmemory", status: "running", health: "starting" }],
+      }),
+      logs: async () => ({
+        ok: false,
+        stdout: "",
+        stderr: "permission_denied",
+      }),
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["openmemory"],
+      maxAttempts: 1,
+      fetchImpl: healthyProbeFetch,
+    });
+
+    expect(result.ok).toBeFalse();
+    expect(result.code).toBe("setup_not_ready");
+    expect(result.diagnostics.failedServiceLogs).toEqual({
+      openmemory: "log_fetch_failed:permission_denied",
+    });
+  });
+
+  it("uses explicit fallback detail when log collection fails without stderr", async () => {
+    const runner = createMockRunner({
+      ps: async () => ({
+        ok: true,
+        stderr: "compose warning: timeout while inspecting health",
+        services: [{ name: "gateway", status: "running", health: "starting" }],
+      }),
+      logs: async () => ({
+        ok: false,
+        stdout: "",
+        stderr: "",
+      }),
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["gateway"],
+      maxAttempts: 1,
+      fetchImpl: healthyProbeFetch,
+    });
+
+    expect(result.ok).toBeFalse();
+    expect(result.code).toBe("setup_not_ready");
+    expect(result.diagnostics.composePsStderr).toBe("compose warning: timeout while inspecting health");
+    expect(result.diagnostics.failedServiceLogs).toEqual({
+      gateway: "log_fetch_failed:log_collection_failed",
+    });
   });
 
   it("coerces maxAttempts lower bound to one attempt", async () => {

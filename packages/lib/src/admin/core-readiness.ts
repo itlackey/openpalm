@@ -46,8 +46,12 @@ export async function ensureCoreServicesReady(
   const probeTimeoutMs = normalizeProbeTimeoutMs(options.probeTimeoutMs);
 
   let lastChecks: CoreServiceReadinessCheck[] = [];
+  let lastComposePsStderr = "";
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const psResult = await runner.ps();
+    if (psResult.stderr) {
+      lastComposePsStderr = psResult.stderr;
+    }
 
     if (!psResult.ok) {
       const failedServices = targetServices.map((service) => ({
@@ -101,12 +105,17 @@ export async function ensureCoreServicesReady(
     }
   }
 
+  const failedServices = lastChecks.filter((service) => service.state === "not_ready");
+  const failedServiceLogs = await collectFailedServiceLogs(runner, failedServices);
+
   return {
     ok: false,
     code: "setup_not_ready",
     checks: lastChecks,
     diagnostics: {
-      failedServices: lastChecks.filter((service) => service.state === "not_ready"),
+      composePsStderr: lastComposePsStderr,
+      failedServices,
+      failedServiceLogs,
     },
   };
 }
@@ -298,4 +307,30 @@ function envValue(name: string): string | undefined {
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+async function collectFailedServiceLogs(
+  runner: ComposeRunner,
+  failedServices: CoreServiceReadinessCheck[],
+): Promise<Record<string, string>> {
+  const names = Array.from(
+    new Set(
+      failedServices
+        .map((service) => service.service)
+        .filter((service) => service.length > 0),
+    ),
+  );
+
+  const entries = await Promise.all(
+    names.map(async (service) => {
+      const result = await runner.logs(service, 200);
+      if (result.ok) {
+        return [service, result.stdout] as const;
+      }
+      const detail = result.stderr || "log_collection_failed";
+      return [service, `log_fetch_failed:${detail}`] as const;
+    }),
+  );
+
+  return Object.fromEntries(entries);
 }

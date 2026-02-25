@@ -111,7 +111,7 @@
       {
         "id": "rec-02-04",
         "description": "Collect failed-service logs and raw compose stderr into setup_not_ready diagnostics payloads.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 55 },
           { "file": "packages/lib/src/types.ts", "line": 18 }
