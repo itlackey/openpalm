@@ -539,14 +539,14 @@
     "title": "Break the sequential state machine in setup API test",
     "description": "Collapse 23 sequential test() calls in 03-setup-api.pw.ts into a single test() with test.step() sub-steps to eliminate cascading failures and honestly represent the linear workflow.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1-2 hours",
     "planFile": ".plans/R08-break-sequential-state-machine.md",
     "subtasks": [
       {
         "id": "R08.1",
         "description": "Replace 23 test() calls with a single test() containing 23 test.step() calls organized by phase",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/03-setup-api.pw.ts",
@@ -558,7 +558,7 @@
       {
         "id": "R08.2",
         "description": "Remove the wrapping test.describe() block or simplify it",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/03-setup-api.pw.ts",
@@ -570,7 +570,7 @@
       {
         "id": "R08.3",
         "description": "Run full Playwright E2E suite and verify downstream files 04-11 are unaffected",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/03-setup-api.pw.ts",
