@@ -40,7 +40,7 @@
       {
         "id": "rec-01-04",
         "description": "Make setup.access_scope and setup.profile configuration-only without compose up side effects.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 236 },
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 267 },

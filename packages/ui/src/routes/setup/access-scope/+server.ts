@@ -2,7 +2,6 @@ import { json, unauthorizedJson } from '$lib/server/json';
 import { getSetupManager, getStackManager } from '$lib/server/init';
 import { setRuntimeBindScope } from '$lib/server/env-helpers';
 import { isLocalRequest } from '$lib/server/auth';
-import { composeAction } from '@openpalm/lib/admin/compose-runner';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -22,15 +21,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	stackManager.setAccessScope(body.scope);
 	await setRuntimeBindScope(body.scope);
-	if (current.completed) {
-		await Promise.all([
-			composeAction('up', 'caddy'),
-			composeAction('up', 'openmemory'),
-			composeAction('up', 'assistant')
-		]);
-	} else {
-		await composeAction('up', 'caddy').catch(() => {});
-	}
 	const state = setupManager.setAccessScope(body.scope);
 	return json(200, { ok: true, state });
 };
