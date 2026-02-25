@@ -661,7 +661,7 @@
       "id": "rec6",
       "title": "Fix integration test silent-skip false gate in CI",
       "description": "Replace the runtime fetch-probe guards in three integration test files with an OPENPALM_INTEGRATION env-var guard, and remove the vacuous integration job from release.yml's needs array so CI no longer has a false-passing gate.",
-      "status": "pending",
+      "status": "completed",
       "planFile": ".plans/rec6-integration-silent-skip.md",
       "files": [
         {
@@ -715,7 +715,7 @@
           "id": "rec6.1",
           "title": "Replace fetch probe in container-health test",
           "description": "Remove the top-level await fetch() probe on lines 9-11 of container-health.integration.test.ts and replace the stackAvailable assignment with Bun.env.OPENPALM_INTEGRATION === '1'.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "test/integration/container-health.integration.test.ts",
@@ -728,7 +728,7 @@
           "id": "rec6.2",
           "title": "Replace fetch probe in admin-auth test",
           "description": "Remove the fetch probe on lines 11-13 of admin-auth.integration.test.ts and replace stackAvailable with the env-var check; the describe.skipIf on line 22 is unchanged.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "test/integration/admin-auth.integration.test.ts",
@@ -746,7 +746,7 @@
           "id": "rec6.3",
           "title": "Replace fetch probe in admin-health-check test",
           "description": "Remove the fetch probe on lines 10-12 of admin-health-check.integration.test.ts and replace stackAvailable with the env-var check.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "test/integration/admin-health-check.integration.test.ts",
@@ -764,7 +764,7 @@
           "id": "rec6.4",
           "title": "Delete integration job and update needs in release.yml",
           "description": "Delete the integration job block (lines 70-78) from release.yml and remove 'integration' from the release job's needs array on line 165.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": ".github/workflows/release.yml",
@@ -782,7 +782,7 @@
           "id": "rec6.5",
           "title": "Verify channel-gateway tests run in unit-tests job",
           "description": "Confirm that channel-gateway.integration.test.ts (which has no skip guard) is picked up by bun test in the unit-tests job; add an explicit step if the test directory is not traversed by default.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "test/integration/channel-gateway.integration.test.ts",

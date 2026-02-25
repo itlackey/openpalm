@@ -67,15 +67,6 @@ jobs:
       - run: bun run typecheck
       - run: bun test
 
-  integration:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter integration
-
   contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -162,7 +153,7 @@ jobs:
   # Release — only runs after all validation gates pass
   # -----------------------------------------------------------------------
   release:
-    needs: [unit-tests, integration, contracts, security, ui, docker-build]
+    needs: [unit-tests, contracts, security, ui, docker-build]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 15
