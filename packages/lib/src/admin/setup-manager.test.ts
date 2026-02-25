@@ -162,6 +162,52 @@ describe("getState validation (corrupt file handling)", () => {
   });
 });
 
+// Test C (rec5.3): forward-compatibility — unknown fields in the persisted JSON
+// must not cause isValidSetupState to fail, so known fields are read back intact.
+describe("getState forward-compatibility (unknown fields)", () => {
+  it("reads back all known fields correctly when state file contains an extra unknown field", () => {
+    withTempDir((dir) => {
+      const manager = new SetupManager(dir);
+      // Write a fully-valid state with one extra field that a future version might add
+      const futureState = {
+        completed: true,
+        completedAt: "2099-01-01T00:00:00.000Z",
+        accessScope: "lan",
+        serviceInstances: { openmemory: "http://mem:3000", psql: "", qdrant: "" },
+        smallModel: { endpoint: "", modelId: "" },
+        profile: { name: "Ada", email: "ada@example.com" },
+        steps: {
+          welcome: true,
+          profile: true,
+          accessScope: false,
+          serviceInstances: false,
+          healthCheck: false,
+          security: false,
+          channels: false,
+          extensions: false,
+        },
+        enabledChannels: ["discord"],
+        installedExtensions: [],
+        // extra field that does not exist in the current SetupState type:
+        futureFeatureFlag: true,
+      };
+      writeFileSync(
+        join(dir, "setup-state.json"),
+        JSON.stringify(futureState, null, 2),
+        "utf8"
+      );
+
+      const state = manager.getState();
+      // All known fields must survive the round-trip
+      expect(state.completed).toBe(true);
+      expect(state.accessScope).toBe("lan");
+      expect(state.profile).toEqual({ name: "Ada", email: "ada@example.com" });
+      expect(state.enabledChannels).toEqual(["discord"]);
+      expect(state.steps.welcome).toBe(true);
+    });
+  });
+});
+
 describe("SetupManager.setServiceInstances", () => {
   it("persists all three service instance values", () => {
     withTempDir((dir) => {
@@ -217,6 +263,21 @@ describe("SetupManager.completeSetup", () => {
       expect(manager.getState().completed).toBe(true);
     });
   });
+
+  // Test B (rec5.2): idempotency — calling completeSetup a second time must not
+  // throw, must keep completed=true, and must not clear previously-set step state.
+  it("is idempotent — a second call keeps completed=true and preserves step state", () => {
+    withTempDir((dir) => {
+      const manager = new SetupManager(dir);
+      manager.completeStep("welcome");
+      manager.completeSetup();
+      // Second call — must not throw
+      const state = manager.completeSetup();
+      expect(state.completed).toBe(true);
+      // The previously completed step must still be true
+      expect(state.steps.welcome).toBe(true);
+    });
+  });
 });
 
 describe("SetupManager.isFirstBoot", () => {
@@ -246,6 +307,30 @@ describe("SetupManager.setProfile", () => {
         name: "Taylor",
         email: "taylor@example.com",
       });
+    });
+  });
+});
+
+// Test A (rec5.1): setEnabledChannels deduplication — duplicate entries in the
+// input array must be collapsed to unique values in the persisted state.
+describe("SetupManager.setEnabledChannels", () => {
+  it("deduplicates the channel list and persists only unique entries", () => {
+    withTempDir((dir) => {
+      const manager = new SetupManager(dir);
+      const state = manager.setEnabledChannels(["discord", "telegram", "discord", "telegram", "chat"]);
+      // Returned state must be deduplicated
+      expect(state.enabledChannels).toEqual(["discord", "telegram", "chat"]);
+      // Reloading from disk must also reflect the deduplicated list
+      expect(manager.getState().enabledChannels).toEqual(["discord", "telegram", "chat"]);
+    });
+  });
+
+  it("replaces any previously set channels (not additive)", () => {
+    withTempDir((dir) => {
+      const manager = new SetupManager(dir);
+      manager.setEnabledChannels(["discord", "telegram"]);
+      manager.setEnabledChannels(["chat"]);
+      expect(manager.getState().enabledChannels).toEqual(["chat"]);
     });
   });
 });

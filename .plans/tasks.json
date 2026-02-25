@@ -556,7 +556,7 @@
       "id": "rec5",
       "title": "Add SetupManager edge-case unit tests",
       "description": "Add three missing test cases to setup-manager.test.ts: setEnabledChannels deduplication, completeSetup idempotency, and forward-compatibility with unknown state fields.",
-      "status": "pending",
+      "status": "completed",
       "planFile": ".plans/rec5-setup-manager-tests.md",
       "files": [
         {
@@ -605,7 +605,7 @@
           "id": "rec5.1",
           "title": "Add setEnabledChannels deduplication test",
           "description": "Append a new describe('SetupManager.setEnabledChannels') block after line 251 with a test that passes a list with duplicates and asserts the returned and persisted state contains a deduplicated array.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/setup-manager.test.ts",
@@ -623,7 +623,7 @@
           "id": "rec5.2",
           "title": "Add completeSetup idempotency test",
           "description": "Insert a third it() inside the existing describe('SetupManager.completeSetup') block after line 219, asserting that a second call does not throw, keeps completed=true, and does not clear previously set step state.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/setup-manager.test.ts",
@@ -641,7 +641,7 @@
           "id": "rec5.3",
           "title": "Add forward-compatibility unknown-fields test",
           "description": "Insert a new describe('getState forward-compatibility') block after line 163 with a test that writes a state file containing an extra unknown field and asserts all known fields are read back correctly.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "packages/lib/src/admin/setup-manager.test.ts",
