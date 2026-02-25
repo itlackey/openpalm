@@ -339,14 +339,14 @@
     "title": "Extract API tests from Playwright into bun:test",
     "description": "Migrate 9 Playwright E2E test files (56 tests) that make pure HTTP API calls into bun:test integration tests using native fetch(), removing unnecessary Chromium dependency.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "3-5 days",
     "planFile": ".plans/R07-extract-api-tests-from-playwright.md",
     "subtasks": [
       {
         "id": "R07.1",
         "description": "Create packages/ui/test/api/ directory and shared helpers.ts with server lifecycle, temp dir, and fetch wrappers",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/helpers.ts",
@@ -358,7 +358,7 @@
       {
         "id": "R07.2",
         "description": "Migrate 01-health-meta.pw.ts (3 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/01-health-meta.test.ts",
@@ -375,7 +375,7 @@
       {
         "id": "R07.3",
         "description": "Migrate 02-auth.pw.ts (8 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/02-auth-api.test.ts",
@@ -392,7 +392,7 @@
       {
         "id": "R07.4",
         "description": "Migrate 03-setup-api.pw.ts (20 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/03-setup-api.test.ts",
@@ -409,7 +409,7 @@
       {
         "id": "R07.5",
         "description": "Migrate 04-stack-api.pw.ts (4 tests) to bun:test with runMinimalSetup() helper",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/04-stack-api.test.ts",
@@ -426,7 +426,7 @@
       {
         "id": "R07.6",
         "description": "Migrate 05-secrets-api.pw.ts (5 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/05-secrets-api.test.ts",
@@ -443,7 +443,7 @@
       {
         "id": "R07.7",
         "description": "Migrate 06-automations-api.pw.ts (6 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/06-automations-api.test.ts",
@@ -460,7 +460,7 @@
       {
         "id": "R07.8",
         "description": "Migrate 07-channels-api.pw.ts (3 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/07-channels-api.test.ts",
@@ -477,7 +477,7 @@
       {
         "id": "R07.9",
         "description": "Migrate 08-command-api.pw.ts (5 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/08-command-api.test.ts",
@@ -494,7 +494,7 @@
       {
         "id": "R07.10",
         "description": "Migrate 11-container-automation-management-api.pw.ts (2 tests) to bun:test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/test/api/11-container-automation-management-api.test.ts",
@@ -511,7 +511,7 @@
       {
         "id": "R07.11",
         "description": "Add test:api script to packages/ui/package.json and update test script to include it",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/package.json",
@@ -523,7 +523,7 @@
       {
         "id": "R07.12",
         "description": "Add bun-api job to .github/workflows/test-ui.yml that runs API tests without Chromium",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/test-ui.yml",

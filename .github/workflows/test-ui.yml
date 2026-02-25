@@ -29,6 +29,21 @@ jobs:
         run: bunx vitest --project client --run
         working-directory: packages/ui
 
+  bun-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - name: Build SvelteKit app
+        run: bun run build
+        working-directory: packages/ui
+      - name: Run API integration tests
+        run: bun test test/api/
+        working-directory: packages/ui
+
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 15
