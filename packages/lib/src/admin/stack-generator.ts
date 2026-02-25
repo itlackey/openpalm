@@ -393,12 +393,8 @@ function renderChannelComposeService(name: string, config: StackChannelConfig): 
     environment: [
       `PORT=${containerPort}`,
       "GATEWAY_URL=http://gateway:8080",
-      "LOG_DIR=/app/logs",
     ],
     ports: [portBinding],
-    volumes: [
-      `${"${OPENPALM_STATE_HOME}"}/${svcName}/logs:/app/logs`,
-    ],
     networks: ["channel_net"],
     depends_on: { gateway: { condition: "service_healthy" } },
     healthcheck: {
@@ -458,7 +454,6 @@ function renderGatewayComposeService(): ComposeService {
       "PORT=8080",
       "OPENPALM_ASSISTANT_URL=http://assistant:4096",
       "OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
-      "LOG_DIR=/app/data",
     ],
     volumes: [
       "${OPENPALM_STATE_HOME}/gateway:/app/data",
@@ -490,7 +485,6 @@ function renderAdminComposeService(): ComposeService {
       "OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
       "OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
       "OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
-      "LOG_DIR=/state/admin/logs",
     ],
     volumes: [
       "${OPENPALM_DATA_HOME}:/data",

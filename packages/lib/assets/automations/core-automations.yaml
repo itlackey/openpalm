@@ -20,27 +20,3 @@
     #!/usr/bin/env bash
     set -euo pipefail
     curl -fs --max-time 5 http://admin:8100/stack/drift || echo "drift check failed"
-
-- id: openpalm-log-rotation
-  name: Log Rotation
-  description: Rotates service log files and deletes logs older than 90 days
-  schedule: "0 3 * * *"
-  enabled: true
-  core: true
-  script: |
-    #!/usr/bin/env bash
-    set -euo pipefail
-    STATE_DIR="/state"
-    RETENTION_DAYS=90
-
-    # Find and rotate large log files (>50 MB), then delete old rotated logs
-    find "$STATE_DIR" -name "service.log" -size +50M 2>/dev/null | while read -r logfile; do
-      mv "$logfile" "${logfile}.1"
-      echo "rotated: $logfile"
-    done
-
-    # Delete rotated and aged-out log files older than retention period
-    find "$STATE_DIR" -name "*.log.1" -mtime +${RETENTION_DAYS} -delete 2>/dev/null
-    find "$STATE_DIR" -name "audit.log.1" -mtime +${RETENTION_DAYS} -delete 2>/dev/null
-
-    echo "log rotation complete"
