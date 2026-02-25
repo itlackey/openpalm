@@ -77,6 +77,10 @@ export async function install(options: InstallOptions): Promise<void> {
     w.message.includes("Could not verify")
   );
   if (daemonWarning) {
+    error("Container runtime daemon is unavailable. Please start it and rerun install.");
+    info("");
+    info("  If this keeps happening, report the issue:");
+    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: daemonWarning.message }))}`);
     process.exit(1);
   }
 

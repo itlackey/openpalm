@@ -123,6 +123,10 @@ async function main(): Promise<void> {
   try {
     switch (command) {
       case "install": {
+        if (args.includes("--help") || args.includes("-h")) {
+          printHelp();
+          return;
+        }
         const runtimeArg = parseArg(args, "runtime");
         if (runtimeArg && !VALID_RUNTIMES.includes(runtimeArg as ContainerPlatform)) {
           error(`Invalid runtime "${runtimeArg}". Must be one of: ${VALID_RUNTIMES.join(", ")}`);

@@ -4,6 +4,8 @@
 - Channel adapters are ingress translators, not business-logic engines.
 - Forward assistant-bound traffic only to Gateway.
 - Validate and normalize untrusted platform input before forwarding.
+- **When adding a new channel**, update the four release assets listed in the root
+  `AGENTS.md` under "Adding a new channel, package, or core container".
 
 ## Patterns
 - Keep provider parsing isolated from OpenPalm payload construction.
