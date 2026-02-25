@@ -3,6 +3,12 @@ import { describe, expect, it } from 'bun:test';
 const commandFile = new URL('./+server.ts', import.meta.url).pathname;
 
 describe('command/+server.ts — setup flow safeguards', () => {
+	it('setup.complete delegates to shared completion orchestrator', async () => {
+		const content = await Bun.file(commandFile).text();
+		expect(content).toContain("import { completeSetupCommandResponse } from '$lib/server/setup-completion-response';");
+		expect(content).toContain('await completeSetupCommandResponse(setupManager, stackManager, SECRETS_ENV_PATH)');
+	});
+
 	it('setup.channels updates stack spec enabled flags', async () => {
 		const content = await Bun.file(commandFile).text();
 		expect(content).toContain("const spec = stackManager.getSpec();");

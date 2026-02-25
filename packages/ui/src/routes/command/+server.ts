@@ -19,14 +19,14 @@ import {
 	validateSecretsRawContent
 } from '$lib/server/env-helpers';
 import { applySmallModelToOpencodeConfig } from '$lib/server/opencode-config';
+import { completeSetupCommandResponse } from '$lib/server/setup-completion-response';
 import {
 	parseStackSpec,
 	type StackChannelConfig,
 	type StackServiceConfig,
 	type StackAutomation
 } from '@openpalm/lib/admin/stack-spec';
-import { sanitizeEnvScalar, updateRuntimeEnvContent } from '@openpalm/lib/admin/runtime-env';
-import { generateToken } from '@openpalm/lib/tokens';
+import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env';
 import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
 import {
 	composeAction,
@@ -40,21 +40,13 @@ import {
 import { syncAutomations, triggerAutomation } from '@openpalm/lib/admin/automations';
 import { parse as yamlParse } from 'yaml';
 import { randomUUID } from 'node:crypto';
-import { SECRETS_ENV_PATH, RUNTIME_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib/server/config';
+import {
+	SECRETS_ENV_PATH,
+	RUNTIME_ENV_PATH,
+	OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL
+} from '$lib/server/config';
 import { upsertEnvVar } from '@openpalm/lib/env';
-import { writeFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import type { RequestHandler } from './$types';
-
-const SetupCoreServices = [
-	'caddy',
-	'assistant',
-	'gateway',
-	'openmemory',
-	'openmemory-ui',
-	'postgres',
-	'qdrant'
-] as const;
 
 async function normalizeSelectedChannels(value: unknown): Promise<string[]> {
 	if (!Array.isArray(value)) return [];
@@ -346,20 +338,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
 			}
 		if (type === 'setup.complete') {
-		// Auto-generate POSTGRES_PASSWORD if not already set (required for compose interpolation).
-		// Write synchronously to secrets.env so it is available when applyStack reads secrets.
-		const existingSecrets = readSecretsEnv();
-		if (!existingSecrets.POSTGRES_PASSWORD) {
-			const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, 'utf8') : '';
-			const next = updateRuntimeEnvContent(current, { POSTGRES_PASSWORD: generateToken(32) });
-			mkdirSync(dirname(SECRETS_ENV_PATH), { recursive: true });
-			writeFileSync(SECRETS_ENV_PATH, next, 'utf8');
-		}
-			const applyResult = await applyStack(stackManager);
-			const startupResult = await composeAction('up', [...SetupCoreServices]);
-			if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
-			syncAutomations(stackManager.listAutomations());
-			return json(200, { ok: true, data: setupManager.completeSetup(), apply: applyResult });
+			return json(
+				200,
+				await completeSetupCommandResponse(setupManager, stackManager, SECRETS_ENV_PATH)
+			);
 		}
 		if (type === 'channel.configure') {
 			const channel = sanitizeEnvScalar(payload.channel);
