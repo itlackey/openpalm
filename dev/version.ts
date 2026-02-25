@@ -71,9 +71,34 @@ export const COMPONENTS: Record<string, ComponentMeta> = {
     packageJson: "channels/api/package.json",
     image: true,
   },
+  "channel-a2a": {
+    context: "channels/a2a",
+    packageJson: "channels/a2a/package.json",
+    image: true,
+  },
+  "channel-mcp": {
+    context: "channels/mcp",
+    packageJson: "channels/mcp/package.json",
+    image: true,
+  },
+  "channel-webhook": {
+    context: "channels/webhook",
+    packageJson: "channels/webhook/package.json",
+    image: true,
+  },
   cli: {
     context: "packages/cli",
     packageJson: "packages/cli/package.json",
+    image: false,
+  },
+  lib: {
+    context: "packages/lib",
+    packageJson: "packages/lib/package.json",
+    image: false,
+  },
+  ui: {
+    context: "packages/ui",
+    packageJson: "packages/ui/package.json",
     image: false,
   },
 };
