@@ -43,6 +43,7 @@ describe("ensureCoreServicesReady", () => {
     const result = await ensureCoreServicesReady({
       runner,
       targetServices: ["gateway", "assistant"],
+      maxAttempts: 1,
     });
 
     expect(result.ok).toBeFalse();
@@ -70,6 +71,7 @@ describe("ensureCoreServicesReady", () => {
     const result = await ensureCoreServicesReady({
       runner,
       targetServices: ["gateway"],
+      maxAttempts: 1,
     });
 
     expect(result.ok).toBeFalse();
@@ -97,6 +99,7 @@ describe("ensureCoreServicesReady", () => {
     const result = await ensureCoreServicesReady({
       runner,
       targetServices: ["gateway"],
+      maxAttempts: 1,
     });
 
     expect(result.ok).toBeFalse();
@@ -110,6 +113,112 @@ describe("ensureCoreServicesReady", () => {
         reason: "not_running",
       },
     ]);
+  });
+
+  it("retries until ready within maxAttempts and sleeps between attempts", async () => {
+    let psCalls = 0;
+    const sleepCalls: number[] = [];
+    const runner = createMockRunner({
+      ps: async () => {
+        psCalls += 1;
+        if (psCalls === 1) {
+          return {
+            ok: true,
+            stderr: "",
+            services: [{ name: "gateway", status: "running", health: "starting" }],
+          };
+        }
+        return {
+          ok: true,
+          stderr: "",
+          services: [{ name: "gateway", status: "running", health: "healthy" }],
+        };
+      },
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["gateway"],
+      maxAttempts: 3,
+      pollIntervalMs: 7,
+      sleep: async (ms) => {
+        sleepCalls.push(ms);
+      },
+    });
+
+    expect(result.ok).toBeTrue();
+    expect(result.code).toBe("ready");
+    expect(psCalls).toBe(2);
+    expect(sleepCalls).toEqual([7]);
+  });
+
+  it("returns setup_not_ready after maxAttempts when still not ready", async () => {
+    let psCalls = 0;
+    const sleepCalls: number[] = [];
+    const runner = createMockRunner({
+      ps: async () => {
+        psCalls += 1;
+        return {
+          ok: true,
+          stderr: "",
+          services: [{ name: "gateway", status: "running", health: "starting" }],
+        };
+      },
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["gateway"],
+      maxAttempts: 3,
+      pollIntervalMs: 5,
+      sleep: async (ms) => {
+        sleepCalls.push(ms);
+      },
+    });
+
+    expect(result.ok).toBeFalse();
+    expect(result.code).toBe("setup_not_ready");
+    expect(psCalls).toBe(3);
+    expect(sleepCalls).toEqual([5, 5]);
+    expect(result.diagnostics.failedServices).toEqual([
+      {
+        service: "gateway",
+        state: "not_ready",
+        status: "running",
+        health: "starting",
+        reason: "unhealthy",
+      },
+    ]);
+  });
+
+  it("coerces maxAttempts lower bound to one attempt", async () => {
+    let psCalls = 0;
+    const sleepCalls: number[] = [];
+    const runner = createMockRunner({
+      ps: async () => {
+        psCalls += 1;
+        return {
+          ok: true,
+          stderr: "",
+          services: [{ name: "gateway", status: "running", health: "starting" }],
+        };
+      },
+    });
+
+    const result = await ensureCoreServicesReady({
+      runner,
+      targetServices: ["gateway"],
+      maxAttempts: 0,
+      pollIntervalMs: 11,
+      sleep: async (ms) => {
+        sleepCalls.push(ms);
+      },
+    });
+
+    expect(result.ok).toBeFalse();
+    expect(result.code).toBe("setup_not_ready");
+    expect(psCalls).toBe(1);
+    expect(sleepCalls).toEqual([]);
   });
 
   it("returns compose_ps_failed when runner.ps fails and surfaces stderr diagnostics", async () => {
@@ -154,7 +263,7 @@ describe("ensureCoreServicesReady", () => {
       }),
     });
 
-    const result = await ensureCoreServicesReady({ runner });
+    const result = await ensureCoreServicesReady({ runner, maxAttempts: 1 });
     expect(result.ok).toBeFalse();
     expect(result.code).toBe("setup_not_ready");
     expect(result.checks.length).toBeGreaterThan(0);

@@ -93,7 +93,7 @@
       {
         "id": "rec-02-02",
         "description": "Add bounded polling that checks compose ps state and health semantics for each target service.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 147 },
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 153 }

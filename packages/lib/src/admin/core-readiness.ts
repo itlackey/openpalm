@@ -12,6 +12,9 @@ import {
 export type EnsureCoreServicesReadyOptions = {
   runner?: ComposeRunner;
   targetServices?: readonly string[];
+  maxAttempts?: number;
+  pollIntervalMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 };
 
 export async function ensureCoreServicesReady(
@@ -19,47 +22,75 @@ export async function ensureCoreServicesReady(
 ): Promise<EnsureCoreServicesReadyResult> {
   const runner = options.runner ?? createComposeRunner();
   const targetServices = options.targetServices ?? CoreServices;
-  const psResult = await runner.ps();
+  const maxAttempts = normalizeMaxAttempts(options.maxAttempts);
+  const pollIntervalMs = normalizePollIntervalMs(options.pollIntervalMs);
+  const sleep = options.sleep ?? defaultSleep;
 
-  if (!psResult.ok) {
-    const failedServices = targetServices.map((service) => ({
-      service,
-      state: "not_ready" as const,
-      status: "unknown",
-      health: null,
-    }));
-    return {
-      ok: false,
-      code: "compose_ps_failed",
-      checks: failedServices,
-      diagnostics: {
-        composePsStderr: psResult.stderr,
-        failedServices,
-      },
-    };
-  }
+  let lastChecks: CoreServiceReadinessCheck[] = [];
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const psResult = await runner.ps();
 
-  const checks = buildReadinessChecks(psResult.services, targetServices);
-  const failedServices = checks.filter((service) => service.state === "not_ready");
-  if (failedServices.length > 0) {
-    return {
-      ok: false,
-      code: "setup_not_ready",
-      checks,
-      diagnostics: {
-        failedServices,
-      },
-    };
+    if (!psResult.ok) {
+      const failedServices = targetServices.map((service) => ({
+        service,
+        state: "not_ready" as const,
+        status: "unknown",
+        health: null,
+      }));
+      return {
+        ok: false,
+        code: "compose_ps_failed",
+        checks: failedServices,
+        diagnostics: {
+          composePsStderr: psResult.stderr,
+          failedServices,
+        },
+      };
+    }
+
+    const checks = buildReadinessChecks(psResult.services, targetServices);
+    const failedServices = checks.filter((service) => service.state === "not_ready");
+    if (failedServices.length === 0) {
+      return {
+        ok: true,
+        code: "ready",
+        checks,
+        diagnostics: {
+          failedServices: [],
+        },
+      };
+    }
+
+    lastChecks = checks;
+    if (attempt < maxAttempts - 1) {
+      await sleep(pollIntervalMs);
+    }
   }
 
   return {
-    ok: true,
-    code: "ready",
-    checks,
+    ok: false,
+    code: "setup_not_ready",
+    checks: lastChecks,
     diagnostics: {
-      failedServices: [],
+      failedServices: lastChecks.filter((service) => service.state === "not_ready"),
     },
   };
+}
+
+function normalizeMaxAttempts(value?: number): number {
+  if (!Number.isFinite(value)) return 12;
+  return Math.max(1, Math.floor(value as number));
+}
+
+function normalizePollIntervalMs(value?: number): number {
+  if (!Number.isFinite(value)) return 1_000;
+  return Math.max(0, Math.floor(value as number));
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function buildReadinessChecks(
