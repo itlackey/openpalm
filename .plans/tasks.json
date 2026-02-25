@@ -14,7 +14,7 @@
       {
         "id": "rec-01-01",
         "description": "Create a shared setup completion orchestrator used by both completion endpoints.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
           { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 28 }

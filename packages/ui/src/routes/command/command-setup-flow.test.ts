@@ -6,7 +6,9 @@ describe('command/+server.ts — setup flow safeguards', () => {
 	it('setup.complete delegates to shared completion orchestrator', async () => {
 		const content = await Bun.file(commandFile).text();
 		expect(content).toContain("import { completeSetupCommandResponse } from '$lib/server/setup-completion-response';");
+		expect(content).toContain('SECRETS_ENV_PATH');
 		expect(content).toContain('await completeSetupCommandResponse(setupManager, stackManager, SECRETS_ENV_PATH)');
+		expect(content).not.toContain('completeSetupOrchestration(setupManager, stackManager');
 	});
 
 	it('setup.channels updates stack spec enabled flags', async () => {
