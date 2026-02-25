@@ -80,3 +80,5 @@ If your change is scoped, run targeted suites too (workspace or file-level).
 Detailed implementation guidance has moved to `dev/docs/install-setup-reliability-implementation-guide.md` to keep this document focused on test tiers and merge-time checks.
 
 For installer-focused end-to-end planning, scenario design, and rollout steps, use the dedicated guide.
+
+For release-critical setup wizard strategy and prioritized e2e gates, see `dev/docs/setup-wizard-e2e-test-strategy.md`.
