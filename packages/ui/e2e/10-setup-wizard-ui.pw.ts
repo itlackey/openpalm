@@ -57,6 +57,50 @@ async function fillProvidersStep(page: Page) {
 	await page.locator('#wiz-anthropic-key').fill('sk-ant-test-key-for-e2e');
 }
 
+/** Navigate through all wizard steps up to (but not including) clicking Finish Setup.
+ *  Leaves the wizard on the Health Check step with "Finish Setup" ready to click.
+ */
+async function navigateToHealthCheckStep(page: Page) {
+	await openWizard(page);
+	// Welcome -> Next
+	await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+	// Profile
+	await expect(page.locator('.wizard h2')).toContainText('Profile');
+	await fillProfileStep(page);
+	await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+	// AI Providers
+	await expect(page.locator('.wizard h2')).toContainText('AI Providers');
+	await fillProvidersStep(page);
+	await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+	// Security
+	await expect(page.locator('.wizard h2')).toContainText('Security');
+	await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+	// Channels
+	await expect(page.locator('.wizard h2')).toContainText('Channels');
+	await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+	// Access
+	await expect(page.locator('.wizard h2')).toContainText('Access');
+	await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+	// Health Check
+	await expect(page.locator('.wizard h2')).toContainText('Health Check');
+}
+
+/** Mock setup.complete command to return success so the wizard reaches the Complete step. */
+async function mockSetupCompleteOk(page: Page) {
+	await page.route('**/command', async (route) => {
+		const body = route.request().postDataJSON() as { type?: string } | null;
+		if (body?.type === 'setup.complete') {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ ok: true, state: { completed: true } })
+			});
+		} else {
+			await route.continue();
+		}
+	});
+}
+
 test.beforeEach(async ({ page }) => {
 	await page.goto('/');
 	await page.evaluate((token) => localStorage.setItem('op_admin', token), ADMIN_TOKEN);
@@ -272,28 +316,207 @@ test.describe('setup wizard browser flow', () => {
 			}
 		});
 
-		await openWizard(page);
-
-		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-		await expect(page.locator('.wizard h2')).toContainText('Profile');
-		await fillProfileStep(page);
-		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-		await expect(page.locator('.wizard h2')).toContainText('AI Providers');
-		await fillProvidersStep(page);
-		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-		await expect(page.locator('.wizard h2')).toContainText('Security');
-		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-		await expect(page.locator('.wizard h2')).toContainText('Channels');
-		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-		await expect(page.locator('.wizard h2')).toContainText('Access');
-		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-		await expect(page.locator('.wizard h2')).toContainText('Health Check');
-
+		await navigateToHealthCheckStep(page);
 		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
 
 		await expect(page.locator('.wiz-error.visible').first()).toContainText('Setup failed:');
 		await expect(
 			page.locator('.wizard .actions button', { hasText: 'Finish Setup' })
 		).toBeEnabled();
+	});
+
+	// ── R15: Health-check failure tests ──────────────────────────────────────
+
+	// R15.1 — All non-admin services return ok:false → fast-fail after 5 polls
+	test('Complete step shows error state when all services report ok:false', async ({ page }) => {
+		// Mock: all non-admin services are down → triggers fast-fail after 5 polls
+		await page.route('**/setup/health-check', (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					services: {
+						gateway: { ok: false, error: 'status 502' },
+						assistant: { ok: false, error: 'connection refused' },
+						openmemory: { ok: false, error: 'status 503' },
+						admin: { ok: true, time: new Date().toISOString() }
+					},
+					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
+				})
+			});
+		});
+
+		await mockSetupCompleteOk(page);
+		await navigateToHealthCheckStep(page);
+		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
+
+		// Wait for Complete step and the fast-fail timeout (~5s)
+		await expect(page.locator('.wizard h2')).toContainText('Complete');
+		await expect(page.locator('text=Some services took too long to start')).toBeVisible({
+			timeout: 15_000
+		});
+
+		// Per-service "not ready" labels are shown
+		await expect(page.locator('text=not ready').first()).toBeVisible();
+
+		// "Everything is ready!" must NOT appear
+		await expect(page.locator('text=Everything is ready!')).not.toBeVisible();
+
+		// The secondary "Continue to Admin" button (fallback) is shown
+		await expect(
+			page.locator('button.btn-secondary', { hasText: 'Continue to Admin' })
+		).toBeVisible();
+
+		// Help text is shown
+		await expect(page.locator('text=openpalm logs')).toBeVisible();
+	});
+
+	// R15.2 — Partial readiness: services come up gradually, then all healthy
+	test('Complete step renders per-service status during polling', async ({ page }) => {
+		let callCount = 0;
+
+		await page.route('**/setup/health-check', (route) => {
+			callCount++;
+			const services: Record<string, { ok: boolean; time?: string; error?: string }> = {
+				admin: { ok: true, time: new Date().toISOString() }
+			};
+
+			// Phase 1 (calls 1-3): only admin is up
+			if (callCount <= 3) {
+				services.gateway = { ok: false, error: 'connection refused' };
+				services.assistant = { ok: false, error: 'connection refused' };
+				services.openmemory = { ok: false, error: 'connection refused' };
+			}
+			// Phase 2 (calls 4-7): gateway comes up, others still down
+			else if (callCount <= 7) {
+				services.gateway = { ok: true, time: new Date().toISOString() };
+				services.assistant = { ok: false, error: 'connection refused' };
+				services.openmemory = { ok: false, error: 'connection refused' };
+			}
+			// Phase 3 (calls 8+): all services come up
+			else {
+				services.gateway = { ok: true, time: new Date().toISOString() };
+				services.assistant = { ok: true, time: new Date().toISOString() };
+				services.openmemory = { ok: true, time: new Date().toISOString() };
+			}
+
+			route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					services,
+					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
+				})
+			});
+		});
+
+		await mockSetupCompleteOk(page);
+		await navigateToHealthCheckStep(page);
+		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
+		await expect(page.locator('.wizard h2')).toContainText('Complete');
+
+		// During Phase 2 (calls 4-7), the live per-service list should show
+		// gateway as ready while assistant/openmemory are still starting
+		await expect(page.locator('li', { hasText: /gateway.*ready/ })).toBeVisible({
+			timeout: 10_000
+		});
+		await expect(page.locator('li', { hasText: /assistant.*starting/ })).toBeVisible();
+
+		// Eventually all services come up and we reach the success state
+		await expect(page.locator('text=Everything is ready!')).toBeVisible({
+			timeout: 15_000
+		});
+
+		// Primary "Continue to Admin" button (not the secondary fallback)
+		const continueBtn = page.locator('button', { hasText: 'Continue to Admin' });
+		await expect(continueBtn).toBeVisible();
+		await expect(continueBtn).not.toHaveClass(/btn-secondary/);
+	});
+
+	// R15.3 — Full polling timeout: some services up, but not all → 60-poll timeout
+	test('Complete step shows timeout message after polling exhaustion', async ({ page }) => {
+		test.setTimeout(90_000); // 60s polling + margin
+
+		// Mock: openmemory is up (prevents fast-fail) but gateway/assistant stay down
+		await page.route('**/setup/health-check', (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					services: {
+						gateway: { ok: false, error: 'connection refused' },
+						assistant: { ok: false, error: 'connection refused' },
+						openmemory: { ok: true, time: new Date().toISOString() },
+						admin: { ok: true, time: new Date().toISOString() }
+					},
+					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
+				})
+			});
+		});
+
+		await mockSetupCompleteOk(page);
+		await navigateToHealthCheckStep(page);
+		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
+		await expect(page.locator('.wizard h2')).toContainText('Complete');
+
+		// During polling, the counter message should be visible
+		await expect(page.locator('text=Starting services...')).toBeVisible();
+
+		// After 60 polls (~60s), the timeout message appears
+		await expect(page.locator('text=Some services took too long to start')).toBeVisible({
+			timeout: 75_000
+		});
+
+		// Mixed status: openmemory shows "ready", gateway/assistant show "not ready"
+		await expect(page.locator('li', { hasText: /openmemory.*ready/ })).toBeVisible();
+		await expect(page.locator('li', { hasText: /gateway.*not ready/ })).toBeVisible();
+		await expect(page.locator('li', { hasText: /assistant.*not ready/ })).toBeVisible();
+
+		// Fallback continue button is available
+		await expect(
+			page.locator('button.btn-secondary', { hasText: 'Continue to Admin' })
+		).toBeVisible();
+	});
+
+	// R15.4 — HealthStep dot indicators for mixed healthy/unhealthy services
+	test('Health Check step shows per-service dot indicators for mixed health', async ({
+		page
+	}) => {
+		await page.route('**/setup/health-check', (route) => {
+			route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					services: {
+						gateway: { ok: true, time: new Date().toISOString() },
+						assistant: { ok: false, error: 'connection refused' },
+						openmemory: { ok: false, error: 'status 503' },
+						admin: { ok: true, time: new Date().toISOString() }
+					},
+					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
+				})
+			});
+		});
+
+		await navigateToHealthCheckStep(page);
+
+		// Scope assertions to the wizard overlay to avoid matching the
+		// dashboard's HealthStatus widget which also renders dot indicators.
+		const wizard = page.locator('.wizard-overlay');
+
+		// Wait for health data to load
+		await expect(wizard.locator('.dot-ok').first()).toBeVisible({ timeout: 5_000 });
+
+		// Healthy services have green dot
+		await expect(wizard.locator('.dot-ok')).toHaveCount(2); // gateway + admin
+		// Unhealthy services have red dot
+		await expect(wizard.locator('.dot-err')).toHaveCount(2); // assistant + openmemory
+
+		// Error text is rendered for unhealthy services
+		await expect(wizard.locator('text=connection refused')).toBeVisible();
+		await expect(wizard.locator('text=status 503')).toBeVisible();
+
+		// Healthy services show "Healthy"
+		await expect(wizard.locator('text=Healthy').first()).toBeVisible();
 	});
 });

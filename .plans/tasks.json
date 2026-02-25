@@ -996,7 +996,7 @@
       },
       {
         "id": "R14.4",
-        "description": "Remove CRON_DIR export from config.ts (no longer needed — derived from STATE_ROOT in init.ts)",
+        "description": "Remove CRON_DIR export from config.ts (no longer needed \u2014 derived from STATE_ROOT in init.ts)",
         "status": "completed",
         "files": [
           {
@@ -1065,14 +1065,14 @@
     "title": "Add health-check failure tests",
     "description": "Add 4 new Playwright E2E tests to 10-setup-wizard-ui.pw.ts covering health-check failure scenarios: service errors, polling timeout, partial readiness, and HealthStep dot indicators.",
     "priority": "P5",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R15-add-health-check-failure-tests.md",
     "subtasks": [
       {
         "id": "R15.1",
         "description": "Extract navigateToHealthCheckStep() helper function to reduce wizard navigation duplication",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1084,7 +1084,7 @@
       {
         "id": "R15.2",
         "description": "Extract mockSetupCompleteOk() helper function for shared setup.complete command mocking",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1096,7 +1096,7 @@
       {
         "id": "R15.3",
         "description": "Add Test 1: Complete step shows error state when all non-admin services report ok:false (fast-fail after 5 polls)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1108,7 +1108,7 @@
       {
         "id": "R15.4",
         "description": "Add Test 2: Complete step shows timeout message after full 60-poll polling exhaustion (partial failure: some services up, some down)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1120,7 +1120,7 @@
       {
         "id": "R15.5",
         "description": "Add Test 3: Complete step renders per-service status during polling with phased mock (services come up incrementally)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1132,7 +1132,7 @@
       {
         "id": "R15.6",
         "description": "Add Test 4: Health Check step shows per-service dot indicators for mixed health (dot-ok, dot-err, error text)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
@@ -1144,7 +1144,7 @@
       {
         "id": "R15.7",
         "description": "Run full Playwright suite and verify all new and existing tests pass",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
