@@ -126,7 +126,7 @@ resolve_session_id() {
 	fi
 
 	for candidate in "${OPENCODE_SESSION_ID:-}" "${SESSION_ID:-}" "${sessionID:-}"; do
-		if [[ -n "$candidate" ]]; then
+		if [[ "$candidate" =~ ^ses_[A-Za-z0-9_-]+$ ]]; then
 			echo "$candidate"
 			return 0
 		fi
@@ -160,7 +160,7 @@ if candidates:
 PY
 	)"
 
-	if [[ -n "$discovered" ]]; then
+	if [[ "$discovered" =~ ^ses_[A-Za-z0-9_-]+$ ]]; then
 		echo "$discovered"
 		return 0
 	fi

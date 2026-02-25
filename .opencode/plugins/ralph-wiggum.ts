@@ -40,14 +40,7 @@ type Registry = Record<string, RegistryEntry>
 // Each session gets its own guard so parallel loops don't block each other.
 const processing = new Set<string>()
 
-// Global claim lock: prevents two sessions from racing to claim the same
-// unclaimed state file during the scan phase.
-let claimLock = false
-
-// In-memory cache: session ID -> absolute path to that session's state file.
-// Once a session claims a state file, we cache the mapping so subsequent
-// idle events skip the scan phase entirely.
-const sessionStateMap = new Map<string, string>()
+// No global/cache-based claim state; always resolve from on-disk loop files.
 
 function parseStateFile(content: string): RalphState | null {
   try {
@@ -74,10 +67,17 @@ function parseStateFile(content: string): RalphState | null {
     if (isNaN(iteration) || isNaN(maxIterations)) return null
 
     const rawSessionId = getField("session_id")
-    const sessionId =
+    const parsedSessionId =
       rawSessionId === "null" || rawSessionId === null || rawSessionId === SESSION_PENDING
         ? null
         : rawSessionId.replace(/^"(.*)"$/, "$1")
+
+    // Only treat canonical OpenCode session IDs as claimed owners.
+    // This recovers from accidental values like numeric shell SESSION_IDs.
+    const sessionId =
+      parsedSessionId && /^ses_[A-Za-z0-9_-]+$/.test(parsedSessionId)
+        ? parsedSessionId
+        : null
 
     return {
       active: getField("active") === "true",
@@ -165,155 +165,26 @@ function scanForStateFiles(repoRoot: string): string[] {
   })
 }
 
-/**
- * Scan for an unclaimed state file and claim it for the given session.
- * Returns the absolute path to the claimed file, or null if none found.
- */
-function scanAndClaim(repoRoot: string, sessionId: string): string | null {
+function findStateFileForSession(repoRoot: string, sessionId: string): string | null {
   const stateFiles = scanForStateFiles(repoRoot)
 
+  // Prefer an already claimed loop for this session.
   for (const filePath of stateFiles) {
     const state = readState(filePath)
     if (!state || !state.active) continue
+    if (state.sessionId === sessionId) return filePath
+  }
 
-    // Already claimed by this session (shouldn't happen if cache is in sync, but be safe)
-    if (state.sessionId === sessionId) {
-      return filePath
-    }
-
-    // Unclaimed — claim it
-    if (state.sessionId === null) {
-      claimSession(filePath, sessionId)
-      return filePath
-    }
-
-    // Claimed by another session — skip
+  // Otherwise claim the newest unclaimed active loop file.
+  for (const filePath of stateFiles) {
+    const state = readState(filePath)
+    if (!state || !state.active) continue
+    if (state.sessionId !== null) continue
+    claimSession(filePath, sessionId)
+    return filePath
   }
 
   return null
-}
-
-function tryClaimStateFile(filePath: string, sessionId: string): boolean {
-  const state = readState(filePath)
-  if (!state || !state.active) return false
-  if (state.sessionId && state.sessionId !== sessionId) return false
-  claimSession(filePath, sessionId)
-  return true
-}
-
-function parseWorktreePathFromText(text: string): string | null {
-  const patterns = [
-    /--worktree\s+"([^"]+)"/,
-    /--worktree\s+'([^']+)'/,
-    /--worktree\s+(\S+)/,
-    /implement-tasks in worktree\s+([^:\n]+):/,
-  ]
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern)
-    if (match?.[1]) return resolve(match[1].trim())
-  }
-
-  return null
-}
-
-function findWorktreePathHint(event: any): string | null {
-  const directCandidates = [
-    event?.properties?.worktree,
-    event?.worktree,
-    event?.properties?.directory,
-    event?.directory,
-  ]
-
-  for (const candidate of directCandidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return resolve(candidate.trim())
-    }
-  }
-
-  const textCandidates = [
-    event?.properties?.input?.command,
-    event?.input?.command,
-    event?.properties?.command,
-    event?.command,
-    (() => {
-      try {
-        return JSON.stringify(event)
-      } catch {
-        return ""
-      }
-    })(),
-  ]
-
-  for (const text of textCandidates) {
-    if (typeof text !== "string" || text.length === 0) continue
-    const parsed = parseWorktreePathFromText(text)
-    if (parsed) return parsed
-  }
-
-  return null
-}
-
-function claimByWorktreeHint(repoRoot: string, sessionId: string, worktreePath: string): string | null {
-  const stateFilePath = resolve(join(worktreePath, OPENCODE_DIR, STATE_FILENAME))
-  if (!existsSync(stateFilePath)) return null
-  if (!tryClaimStateFile(stateFilePath, sessionId)) return null
-
-  sessionStateMap.set(sessionId, stateFilePath)
-  const startedAt = getStartedAt(stateFilePath)
-  const state = readState(stateFilePath)
-  updateRegistryEntry(repoRoot, sessionId, stateFilePath, state?.iteration ?? 0, startedAt)
-  return stateFilePath
-}
-
-function claimLatestPendingFromRegistry(repoRoot: string, sessionId: string): string | null {
-  const registry = readRegistry(repoRoot)
-
-  const pending = Object.entries(registry)
-    .filter(([key, value]) => key.startsWith(REGISTRY_PENDING_PREFIX) && !!value?.path)
-    .sort((a, b) => {
-      const at = Date.parse(a[1].started_at ?? "")
-      const bt = Date.parse(b[1].started_at ?? "")
-      return (isNaN(bt) ? 0 : bt) - (isNaN(at) ? 0 : at)
-    })
-
-  for (const [, entry] of pending) {
-    const stateFilePath = resolve(join(entry.path, OPENCODE_DIR, STATE_FILENAME))
-    if (!existsSync(stateFilePath)) continue
-    if (!tryClaimStateFile(stateFilePath, sessionId)) continue
-
-    sessionStateMap.set(sessionId, stateFilePath)
-    const startedAt = getStartedAt(stateFilePath)
-    const state = readState(stateFilePath)
-    updateRegistryEntry(repoRoot, sessionId, stateFilePath, state?.iteration ?? 0, startedAt)
-    return stateFilePath
-  }
-
-  return null
-}
-
-function claimSessionState(repoRoot: string, sessionId: string, event: any): string | null {
-  const cached = sessionStateMap.get(sessionId)
-  if (cached) return cached
-
-  const hintedWorktree = findWorktreePathHint(event)
-  if (hintedWorktree) {
-    const hinted = claimByWorktreeHint(repoRoot, sessionId, hintedWorktree)
-    if (hinted) return hinted
-  }
-
-  const fromRegistry = claimLatestPendingFromRegistry(repoRoot, sessionId)
-  if (fromRegistry) return fromRegistry
-
-  // Fallback: scan and claim first available active/unclaimed state file.
-  const claimed = scanAndClaim(repoRoot, sessionId)
-  if (!claimed) return null
-
-  sessionStateMap.set(sessionId, claimed)
-  const startedAt = getStartedAt(claimed)
-  const state = readState(claimed)
-  updateRegistryEntry(repoRoot, sessionId, claimed, state?.iteration ?? 0, startedAt)
-  return claimed
 }
 
 /**
@@ -329,64 +200,17 @@ function readRegistry(repoRoot: string): Registry {
   }
 }
 
-function findStringByKeyRecursive(
-  value: unknown,
-  keyPattern: RegExp,
-  depth = 0,
-  visited = new Set<unknown>()
-): string | null {
-  if (depth > 6 || value == null) return null
-  if (typeof value !== "object") return null
-  if (visited.has(value)) return null
-  visited.add(value)
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findStringByKeyRecursive(item, keyPattern, depth + 1, visited)
-      if (found) return found
-    }
-    return null
-  }
-
-  for (const [key, field] of Object.entries(value as Record<string, unknown>)) {
-    if (keyPattern.test(key) && typeof field === "string" && field.trim().length > 0) {
-      return field.trim()
-    }
-    const nested = findStringByKeyRecursive(field, keyPattern, depth + 1, visited)
-    if (nested) return nested
-  }
-
-  return null
-}
-
 function getSessionIdFromEvent(event: any): string | null {
   const candidates = [
     event?.properties?.sessionID,
     event?.properties?.sessionId,
     event?.properties?.session_id,
-    event?.sessionID,
-    event?.sessionId,
-    event?.session_id,
-    event?.path?.id,
   ]
 
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate.trim()
     }
-  }
-
-  const recursive = findStringByKeyRecursive(event, /^session(?:_?id)?$/i)
-  if (recursive) return recursive
-
-  // Last-resort fallback: scan serialized event for a session-like token.
-  // OpenCode session IDs are typically prefixed with "ses_".
-  try {
-    const serialized = JSON.stringify(event)
-    const match = serialized.match(/\b(ses_[A-Za-z0-9_-]+)\b/)
-    if (match?.[1]) return match[1]
-  } catch {
-    // ignore
   }
 
   return null
@@ -498,9 +322,15 @@ function getStartedAt(stateFilePath: string): string {
 }
 
 export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
-  event: async ({ event }) => {
+  event: async (payload) => {
+    const event = (payload as any)?.event ?? payload
+
+    if (!event?.type) return
+    if (event.type !== "session.idle") return
+
     // Extract session ID from the event
     const sessionId = getSessionIdFromEvent(event)
+
     if (!sessionId) {
       if (event.type !== "session.idle") return
 
@@ -533,26 +363,9 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
 
     try {
       const repoRoot = resolveRepoRoot(directory)
+      const stateFilePath = findStateFileForSession(repoRoot, sessionId)
 
-      // Ensure this session is mapped to a concrete state file as early as
-      // possible, not only at session.idle. This gives a deterministic
-      // session->worktree registry entry immediately after setup.
-      let stateFilePath = sessionStateMap.get(sessionId) ?? null
-
-      if (!stateFilePath) {
-        if (claimLock) return
-        claimLock = true
-        try {
-          stateFilePath = claimSessionState(repoRoot, sessionId, event as any)
-        } finally {
-          claimLock = false
-        }
-      }
-
-      // For non-idle events, claim/update mapping only; don't run the loop body.
-      if (event.type !== "session.idle") return
-
-      // No state file found or claimed — nothing to do
+      // No state file found for this session — nothing to do
       if (!stateFilePath) return
 
       const state = readState(stateFilePath)
@@ -562,15 +375,12 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
         if (state && !state.active && existsSync(stateFilePath)) {
           unlinkSync(stateFilePath)
         }
-        sessionStateMap.delete(sessionId)
         removeRegistryEntry(repoRoot, sessionId)
         return
       }
 
       // Verify this session still owns the state file
       if (state.sessionId && state.sessionId !== sessionId) {
-        // Someone else claimed it — evict from our cache
-        sessionStateMap.delete(sessionId)
         return
       }
 
@@ -586,7 +396,6 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
           },
         })
         unlinkSync(stateFilePath)
-        sessionStateMap.delete(sessionId)
         removeRegistryEntry(repoRoot, sessionId)
         return
       }
@@ -627,7 +436,6 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
           },
         })
         unlinkSync(stateFilePath)
-        sessionStateMap.delete(sessionId)
         removeRegistryEntry(repoRoot, sessionId)
         return
       }
@@ -636,7 +444,6 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
       // while we were checking messages (async gap).
       const freshState = readState(stateFilePath)
       if (!freshState || !freshState.active) {
-        sessionStateMap.delete(sessionId)
         removeRegistryEntry(repoRoot, sessionId)
         return
       }
