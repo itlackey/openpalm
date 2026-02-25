@@ -26,6 +26,20 @@ function createManager(dir: string) {
   });
 }
 
+function parseEnvFile(content: string): Record<string, string> {
+  const parsed: Record<string, string> = {};
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const idx = line.indexOf("=");
+    if (idx === -1) continue;
+    const key = line.slice(0, idx);
+    const value = line.slice(idx + 1);
+    parsed[key] = value;
+  }
+  return parsed;
+}
+
 describe("stack manager", () => {
   it("writes all generated stack artifacts", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
@@ -86,6 +100,110 @@ describe("stack manager", () => {
     const systemEnv = readFileSync(join(dir, "system.env"), "utf8");
     expect(systemEnv).toContain("OPENPALM_ACCESS_SCOPE=lan");
     expect(systemEnv).toContain("OPENPALM_ENABLED_CHANNELS=");
+  });
+
+  it("writes scoped core .env files in state with the expected key sets", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-core-env-"));
+    const manager = createManager(dir);
+
+    manager.upsertSecret("OPENPALM_GATEWAY_HMAC_SECRET", "gateway-hmac");
+    manager.upsertSecret("GATEWAY_EXTRA_FLAG", "1");
+    manager.upsertSecret("OPENPALM_SMALL_MODEL_API_KEY", "small-model-key");
+    manager.upsertSecret("ANTHROPIC_API_KEY", "anthropic-key");
+    manager.upsertSecret("OPENAI_BASE_URL", "https://api.openai.example/v1");
+    manager.upsertSecret("OPENAI_API_KEY", "openai-key");
+    manager.upsertSecret("POSTGRES_DB", "openpalm");
+    manager.upsertSecret("POSTGRES_USER", "openpalm-user");
+    manager.upsertSecret("POSTGRES_PASSWORD", "postgres-pass");
+    manager.upsertSecret("OPENPALM_PROFILE_NAME", "OpenPalm Bot");
+    manager.upsertSecret("OPENPALM_PROFILE_EMAIL", "bot@openpalm.dev");
+    manager.upsertSecret("SHOULD_NOT_BE_ROUTED", "nope");
+
+    manager.renderArtifacts();
+
+    const gatewayEnv = parseEnvFile(readFileSync(join(dir, "gateway", ".env"), "utf8"));
+    expect(gatewayEnv.OPENPALM_GATEWAY_HMAC_SECRET).toBe("gateway-hmac");
+    expect(gatewayEnv.GATEWAY_EXTRA_FLAG).toBe("1");
+    expect(gatewayEnv.OPENPALM_SMALL_MODEL_API_KEY).toBe("small-model-key");
+    expect(gatewayEnv.ANTHROPIC_API_KEY).toBe("anthropic-key");
+    expect(gatewayEnv.SHOULD_NOT_BE_ROUTED).toBeUndefined();
+
+    const openmemoryEnv = parseEnvFile(readFileSync(join(dir, "openmemory", ".env"), "utf8"));
+    expect(openmemoryEnv.OPENAI_BASE_URL).toBe("https://api.openai.example/v1");
+    expect(openmemoryEnv.OPENAI_API_KEY).toBe("openai-key");
+    expect(Object.keys(openmemoryEnv).sort()).toEqual(["OPENAI_API_KEY", "OPENAI_BASE_URL"]);
+
+    const postgresEnv = parseEnvFile(readFileSync(join(dir, "postgres", ".env"), "utf8"));
+    expect(postgresEnv.POSTGRES_DB).toBe("openpalm");
+    expect(postgresEnv.POSTGRES_USER).toBe("openpalm-user");
+    expect(postgresEnv.POSTGRES_PASSWORD).toBe("postgres-pass");
+
+    const assistantEnv = parseEnvFile(readFileSync(join(dir, "assistant", ".env"), "utf8"));
+    expect(assistantEnv.OPENPALM_SMALL_MODEL_API_KEY).toBe("small-model-key");
+    expect(assistantEnv.ANTHROPIC_API_KEY).toBe("anthropic-key");
+    expect(assistantEnv.OPENPALM_PROFILE_NAME).toBe("OpenPalm Bot");
+    expect(assistantEnv.OPENPALM_PROFILE_EMAIL).toBe("bot@openpalm.dev");
+    expect(assistantEnv.GATEWAY_EXTRA_FLAG).toBeUndefined();
+
+    const qdrantEnvRaw = readFileSync(join(dir, "qdrant", ".env"), "utf8");
+    expect(qdrantEnvRaw).toBe("# Generated qdrant env\n");
+  });
+
+  it("writes channel and service .env files with resolved and literal values", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-channel-service-env-"));
+    const manager = createManager(dir);
+
+    manager.upsertSecret("CHAT_INBOUND_SECRET", "chat-token");
+    manager.upsertSecret("SVC_API_KEY_SECRET", "svc-key");
+
+    const spec = manager.getSpec();
+    spec.channels.chat.enabled = true;
+    spec.channels.chat.config.CHAT_INBOUND_TOKEN = "${CHAT_INBOUND_SECRET}";
+    spec.channels.chat.config.CHANNEL_CHAT_SECRET = "literal-chat-secret";
+    spec.services["worker"] = {
+      enabled: true,
+      image: "worker:latest",
+      containerPort: 9400,
+      config: {
+        WORKER_MODE: "nightly",
+        API_KEY: "${SVC_API_KEY_SECRET}",
+        OPTIONAL_FLAG: "",
+      },
+    };
+    manager.setSpec(spec);
+
+    const chatEnv = parseEnvFile(readFileSync(join(dir, "channel-chat", ".env"), "utf8"));
+    expect(chatEnv.CHAT_INBOUND_TOKEN).toBe("chat-token");
+    expect(chatEnv.CHANNEL_CHAT_SECRET).toBe("literal-chat-secret");
+
+    const workerEnv = parseEnvFile(readFileSync(join(dir, "service-worker", ".env"), "utf8"));
+    expect(workerEnv.WORKER_MODE).toBe("nightly");
+    expect(workerEnv.API_KEY).toBe("svc-key");
+    expect(workerEnv.OPTIONAL_FLAG).toBe("");
+  });
+
+  it("does not write .env files for disabled channels or services even with unresolved secrets", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-disabled-env-"));
+    const manager = createManager(dir);
+
+    const spec = manager.getSpec();
+    spec.channels["disabled-hook"] = {
+      enabled: false,
+      exposure: "lan",
+      image: "hook:latest",
+      containerPort: 7000,
+      config: { HOOK_TOKEN: "${MISSING_HOOK_TOKEN}" },
+    };
+    spec.services["disabled-worker"] = {
+      enabled: false,
+      image: "worker:latest",
+      containerPort: 7100,
+      config: { WORKER_TOKEN: "${MISSING_WORKER_TOKEN}" },
+    };
+
+    expect(() => manager.setSpec(spec)).not.toThrow();
+    expect(existsSync(join(dir, "channel-disabled-hook", ".env"))).toBeFalse();
+    expect(existsSync(join(dir, "service-disabled-worker", ".env"))).toBeFalse();
   });
 
   it("system.env updates when access scope changes", () => {
