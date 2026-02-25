@@ -113,13 +113,6 @@ export async function checkPort(port: number = 80): Promise<PreflightWarning | n
 }
 
 /**
- * @deprecated Use checkPort() instead.
- */
-export async function checkPort80(): Promise<PreflightWarning | null> {
-  return checkPort(80);
-}
-
-/**
  * Check if the Docker/Podman daemon is actually running.
  * Returns a typed issue if the daemon is unreachable.
  */

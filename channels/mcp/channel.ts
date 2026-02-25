@@ -80,7 +80,7 @@ export function createMcpChannel(): ChannelAdapter {
               body: jsonrpcResult(rpc.id, {
                 protocolVersion: "2025-03-26",
                 capabilities: { tools: {} },
-                serverInfo: { name: "openpalm-mcp", version: "0.3.4" },
+                serverInfo: { name: "openpalm-mcp", version: "0.4.0" },
               }),
             };
           }

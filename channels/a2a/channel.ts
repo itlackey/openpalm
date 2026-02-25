@@ -10,7 +10,7 @@ const AGENT_CARD = {
   name: "OpenPalm",
   description: "OpenPalm AI assistant accessible via the Agent-to-Agent protocol.",
   url: Bun.env.A2A_PUBLIC_URL ?? "http://localhost:8188",
-  version: "0.3.4",
+  version: "0.4.0",
   capabilities: {
     streaming: false,
     pushNotifications: false,

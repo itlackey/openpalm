@@ -1,7 +1,6 @@
 import { createA2aChannel } from "./channel.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
-import { json } from "@openpalm/lib/shared/http.ts";
+import { createJsonRpcAdapterFetch } from "@openpalm/lib/shared/channel-adapter-server.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 const log = createLogger("channel-a2a");
@@ -16,81 +15,17 @@ export function createFetch(
   sharedSecret: string,
   forwardFetch: typeof fetch = fetch,
 ) {
-  const routeMap = new Map(adapter.routes.map((route) => [`${route.method} ${route.path}`, route.handler]));
-
-  return async function handle(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    if (url.pathname === "/health") return json(200, adapter.health());
-
-    const handler = routeMap.get(`${req.method} ${url.pathname}`);
-    if (!handler) return json(404, { error: "not_found" });
-
-    const result = await handler(req);
-
-    if (!result.ok) {
-      return new Response(JSON.stringify(result.body), {
-        status: result.status,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    const gatewayPayload = {
-      ...result.payload,
-      nonce: crypto.randomUUID(),
-      timestamp: Date.now(),
-    };
-
-    const serialized = JSON.stringify(gatewayPayload);
-    const sig = signPayload(sharedSecret, serialized);
-    const rpcId = (result.payload.metadata?.rpcId as string | number | null) ?? null;
-    const taskId = (result.payload.metadata?.taskId as string) ?? "";
-
-    const resp = await forwardFetch(`${gatewayUrl}/channel/inbound`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-channel-signature": sig,
-      },
-      body: serialized,
-    });
-
-    if (!resp.ok) {
-      return new Response(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: rpcId,
-          error: { code: -32000, message: `Gateway error (${resp.status})` },
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }
-
-    const answerBody = await resp.text();
-    let answer = "";
-    try {
-      const parsed = JSON.parse(answerBody) as Record<string, unknown>;
-      if (typeof parsed.answer === "string") answer = parsed.answer;
-    } catch {
-      answer = answerBody;
-    }
-
-    return new Response(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: rpcId,
-        result: {
-          id: taskId,
-          status: { state: "completed" },
-          artifacts: [
-            {
-              parts: [{ type: "text", text: answer }],
-            },
-          ],
-        },
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  };
+  return createJsonRpcAdapterFetch(
+    adapter,
+    gatewayUrl,
+    sharedSecret,
+    ({ metadata, answer }) => ({
+      id: (metadata?.taskId as string | undefined) ?? "",
+      status: { state: "completed" },
+      artifacts: [{ parts: [{ type: "text", text: answer }] }],
+    }),
+    forwardFetch,
+  );
 }
 
 if (import.meta.main) {

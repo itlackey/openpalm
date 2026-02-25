@@ -9,10 +9,13 @@ import { dirname } from "node:path";
 
 const CLOCK_SKEW_MS = 300_000; // 5 minutes
 const PRUNE_INTERVAL_MS = 60_000; // 1 minute
+const PERSIST_DEBOUNCE_MS = 1_000;
 
 export class NonceCache {
   private seen = new Map<string, number>();
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private dirty = false;
 
   constructor(private readonly persistPath?: string) {
     this.loadFromDisk();
@@ -39,7 +42,7 @@ export class NonceCache {
     }
 
     this.seen.set(nonce, timestamp);
-    this.persistToDisk();
+    this.schedulePersist();
     return true;
   }
 
@@ -53,7 +56,7 @@ export class NonceCache {
         changed = true;
       }
     }
-    if (changed) this.persistToDisk();
+    if (changed) this.schedulePersist();
   }
 
   private loadFromDisk(): void {
@@ -78,7 +81,20 @@ export class NonceCache {
     }
   }
 
+  private schedulePersist(): void {
+    this.dirty = true;
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.persistToDisk();
+    }, PERSIST_DEBOUNCE_MS);
+    if (this.persistTimer && typeof this.persistTimer === "object" && "unref" in this.persistTimer) {
+      this.persistTimer.unref();
+    }
+  }
+
   private persistToDisk(): void {
+    if (!this.dirty) return;
     if (!this.persistPath) return;
     try {
       const payload = JSON.stringify({ entries: Array.from(this.seen.entries()) });
@@ -87,6 +103,7 @@ export class NonceCache {
       const temp = `${this.persistPath}.tmp`;
       writeFileSync(temp, payload, "utf8");
       renameSync(temp, this.persistPath);
+      this.dirty = false;
     } catch {
       // best-effort persistence only
     }
@@ -98,10 +115,17 @@ export class NonceCache {
       clearInterval(this.pruneTimer);
       this.pruneTimer = null;
     }
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
     if (options?.clear) {
       this.seen.clear();
+      this.dirty = true;
       this.persistToDisk();
+      return;
     }
+    this.persistToDisk();
   }
 }
 

@@ -1,10 +1,9 @@
 /**
  * Standard channel adapter interface.
  *
- * @planned These types define the intended design direction for channel adapters.
- * They are not yet imported or used by any channel implementation. Current channel
- * adapters use `createXxxFetch` factory functions instead. These interfaces will
- * become active when the channel adapter harness is standardised.
+ * These types define the shared adapter contract used by channel wrappers.
+ * They are currently implemented by the MCP and A2A channels, and can be adopted
+ * incrementally by other channels as they migrate away from ad-hoc handlers.
  *
  * Every channel adapter must export a `createChannel()` function that returns
  * an object satisfying this interface. The scaffold script generates a

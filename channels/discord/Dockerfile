@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.5
+FROM oven/bun:1.3.9
 WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the
 # raw TypeScript source of @openpalm/lib directly into node_modules.

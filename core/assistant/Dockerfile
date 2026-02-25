@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.5
+FROM oven/bun:1.3.9
 
 ARG OPENCODE_VERSION=1.2.10
 RUN bun add -g opencode-ai@${OPENCODE_VERSION} \

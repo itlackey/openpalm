@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseRuntimeEnvContent } from "@openpalm/lib/admin/runtime-env.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { AuditLog } from "./audit.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
@@ -24,20 +25,6 @@ function sanitizeSummary(summary: string): string {
   return sanitized;
 }
 
-function parseEnvContent(content: string): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const idx = line.indexOf("=");
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    values[key] = value;
-  }
-  return values;
-}
-
 function defaultSecretKeyForChannel(channelName: string): string {
   return `CHANNEL_${channelName.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_SECRET`;
 }
@@ -54,7 +41,7 @@ export function discoverChannelSecretsFromState(stateRoot: string, fallbackEnv: 
     const envPath = join(stateRoot, dirName, ".env");
     if (!existsSync(envPath)) continue;
 
-    const envValues = parseEnvContent(readFileSync(envPath, "utf8"));
+    const envValues = parseRuntimeEnvContent(readFileSync(envPath, "utf8"));
     const defaultSecretKey = defaultSecretKeyForChannel(channelName);
 
     if (envValues[defaultSecretKey]) {

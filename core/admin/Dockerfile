@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.5
+FROM oven/bun:1.3.9
 RUN apt-get update \
   && apt-get install -y cron curl ca-certificates gnupg gosu \
   && install -m 0755 -d /etc/apt/keyrings \
@@ -16,11 +16,12 @@ RUN groupmod -n openpalm bun && \
     usermod -l openpalm -d /home/openpalm -m bun
 
 WORKDIR /app
-COPY packages/lib ./packages/lib
-COPY packages/ui ./packages/ui
+COPY --chown=openpalm:openpalm packages/lib ./packages/lib
+COPY --chown=openpalm:openpalm packages/ui ./packages/ui
 # @openpalm/lib is resolved by SvelteKit alias (svelte.config.js) pointing to
 # ../../packages/lib — no workspace:* dependency needed in package.json.
 # The built output is a bundled Node.js server; no runtime resolution required.
+USER openpalm
 RUN cd /app/packages/lib \
   && rm -f bun.lock \
   && bun install
@@ -28,7 +29,7 @@ RUN cd /app/packages/ui \
   && rm -f bun.lock \
   && bun install \
   && bun run build
-RUN chown -R openpalm:openpalm /app
+USER root
 EXPOSE 8100
 COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
 RUN chmod +x /usr/local/bin/admin-entrypoint.sh
