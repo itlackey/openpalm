@@ -1,16 +1,13 @@
 # Core: Gateway
 
-## Rules
-- Gateway is the only ingress to assistant runtime from channels.
-- Enforce HMAC/auth, validation, and rate limits before intake execution.
-- Keep channel-intake contract strict and deterministic.
+## Most important rules
+- Gateway is the only channel-to-assistant ingress path.
+- Enforce auth/HMAC, validation, and rate limits before intake execution.
+- Keep intake contract strict, deterministic, and auditable.
+- Preserve nonce/timestamp/channel metadata for logs and replay safety.
+- Avoid duplicate assistant calls by handling retries/timeouts carefully.
 
-## Patterns
-- Keep handlers small: authenticate → validate → intake → dispatch → audit.
-- Prefer explicit error codes for invalid payload/intake outcomes.
-- Isolate provider adapters from core routing logic.
-
-## Gotchas
-- Never bypass intake validation for convenience paths.
-- Be careful with timeout/retry behavior to avoid duplicate assistant calls.
-- Preserve auditability (nonce, timestamps, channel metadata) in logs/events.
+## Key links
+- `core/gateway/README.md`
+- `dev/docs/architecture.md`
+- `dev/docs/api-reference.md`

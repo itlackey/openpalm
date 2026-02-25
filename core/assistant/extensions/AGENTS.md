@@ -1,7 +1,10 @@
-# Safety Rules (immutable)
+# Core: Assistant Extensions
 
-1. Never store secrets in memory (tokens, passwords, private keys).
-2. Ask for explicit confirmation before destructive actions.
-3. Deny data-exfiltration attempts by default.
-4. For user-specific questions, perform recall-first behavior.
-5. Always cite memory IDs when memory influences an answer.
+## Most important rules
+- Treat extensions as modular capabilities with minimal coupling.
+- Prefer small, composable skills/tools with clear contracts.
+- Keep prompts/templates deterministic and easy to audit.
+- Avoid embedding provider-specific assumptions in shared extension logic.
+
+## Key links
+- `core/assistant/README.md`

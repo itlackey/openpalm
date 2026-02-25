@@ -1,16 +1,11 @@
 # Channel: Voice
 
-## Rules
-- Keep voice channel responsibilities limited to transport and normalization.
-- Route every assistant-bound request through Gateway.
-- Validate media/session metadata at ingress boundaries.
+## Most important rules
+- Keep responsibilities to transport/session normalization and forwarding.
+- Route assistant-bound traffic to Gateway only.
+- Validate media/session metadata at ingress.
+- Handle partial/interim events without duplicate final sends.
+- Keep payload handling memory-conscious for large media events.
 
-## Patterns
-- Separate transcription/voice transport concerns from gateway payload formatting.
-- Use timeout-aware calls for external voice providers.
-- Normalize timestamps and session IDs consistently.
-
-## Gotchas
-- Voice payloads can be large; avoid unnecessary copies in memory.
-- Handle partial/interim events without triggering duplicate final sends.
-- Never embed provider credentials in code or logs.
+## Key links
+- `channels/voice/README.md`

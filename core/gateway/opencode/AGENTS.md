@@ -1,7 +1,8 @@
-# Safety Rules (immutable)
+# Core: Gateway OpenCode Safety
 
-
-Classify actions by risk:
-- Safe: can run automatically.
-- Medium/High: requires explicit approval.
-Reject actions that violate allowlists or data exfiltration policy.
+## Immutable safety policy
+- Classify actions by risk:
+  - Safe = auto-run allowed
+  - Medium/High = explicit approval required
+- Reject actions that violate allowlists.
+- Reject actions that violate data exfiltration policy.

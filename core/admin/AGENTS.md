@@ -1,16 +1,21 @@
 # Core: Admin
 
-## Rules
-- Admin owns orchestration (setup, config apply, compose lifecycle), not channel logic.
-- Preserve strict allowlists for any shell/compose operations.
-- Keep generated runtime artifacts in STATE/DATA/CONFIG contracts.
+## Most important rules
+- Keep apply flow simple:
+  - render artifacts
+  - write files
+  - `docker compose up -d --remove-orphans`
+- Reuse shared compose runner; do not add a second compose execution path.
+- Do not add custom rollout/recovery/drift-detection systems.
+- Validate intent at parse boundary and generated compose with `docker compose config`.
+- Keep setup/installer flows resumable and stateful via setup manager.
 
-## Patterns
-- Put business rules in reusable lib helpers; keep HTTP handlers thin.
-- Validate all API inputs and surface actionable error messages.
-- Keep installer/setup flows resumable and idempotent.
+## Key files to prefer
+- `packages/lib/src/admin/stack-spec.ts`
+- `packages/lib/src/admin/stack-generator.ts`
+- `packages/lib/src/admin/setup-manager.ts`
+- `packages/lib/src/compose.ts`
 
-## Gotchas
-- Avoid writing derived runtime state back into intent config.
-- Be careful with path handling for mounted host directories.
-- Never relax auth/session checks for non-setup endpoints.
+## Key links
+- `core/admin/README.md`
+- `dev/docs/api-reference.md`

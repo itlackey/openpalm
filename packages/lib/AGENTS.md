@@ -1,16 +1,14 @@
 # Package: Lib
 
-## Rules
-- `packages/lib` is the shared source of truth for config, generation, and validation logic.
-- Keep APIs deterministic and side-effect minimal.
-- Changes here must remain backward-safe for admin, CLI, and tests.
+## Most important rules
+- `packages/lib` is source of truth for stack spec parsing and stack generation.
+- Keep APIs deterministic, typed, and side-effect minimal.
+- Centralize validation/normalization logic; avoid duplicating contracts elsewhere.
+- Keep compose helpers thin wrappers around Docker Compose commands.
 
-## Patterns
-- Prefer pure functions and explicit input/output types.
-- Centralize schema validation and normalization logic.
-- Keep path and env helpers platform-safe and unit-testable.
-
-## Gotchas
-- Avoid leaking runtime-only assumptions into intent-level models.
-- Be careful with YAML/env interpolation edge cases.
-- Do not duplicate constants/contracts already consumed across workspaces.
+## Key files to prefer
+- `packages/lib/src/admin/stack-spec.ts`
+- `packages/lib/src/admin/stack-generator.ts`
+- `packages/lib/src/admin/snippet-discovery.ts`
+- `packages/lib/src/admin/setup-manager.ts`
+- `packages/lib/src/compose.ts`
