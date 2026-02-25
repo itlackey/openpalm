@@ -48,6 +48,8 @@ export type StackManagerPaths = {
   stateRootPath: string;
   caddyJsonPath: string;
   composeFilePath: string;
+  /** Runtime env file at $STATE/.env — contains host-side paths and generated secrets (POSTGRES_PASSWORD etc.) used by docker compose interpolation. */
+  runtimeEnvPath: string;
   systemEnvPath: string;
   secretsEnvPath: string;
   stackSpecPath: string;

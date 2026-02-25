@@ -16,7 +16,7 @@ export type StackApplyResult = {
  * When `apply` is false (dry-run), only renders and validates without writing or running compose.
  */
 export async function applyStack(manager: StackManager, options?: { apply?: boolean; runner?: ComposeRunner }): Promise<StackApplyResult> {
-  const runner = options?.runner ?? createComposeRunner();
+  const runner = options?.runner ?? createComposeRunner(manager.getPaths().runtimeEnvPath);
   const generated = manager.renderPreview();
 
   // Validate secret references before any side effects
@@ -37,7 +37,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
     // Write a temp compose file for validation before committing artifacts
     const tempComposePath = join(manager.getPaths().stateRootPath, "docker-compose.yml.next");
     writeFileSync(tempComposePath, generated.composeFile, "utf8");
-    const composeValidate = await runner.configValidateForFile(tempComposePath, manager.getPaths().systemEnvPath);
+    const composeValidate = await runner.configValidateForFile(tempComposePath);
     if (!composeValidate.ok) {
       throw new Error(`compose_validation_failed:${composeValidate.stderr}`);
     }

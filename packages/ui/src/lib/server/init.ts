@@ -8,6 +8,7 @@ import {
 	STACK_SPEC_PATH,
 	SYSTEM_ENV_PATH,
 	COMPOSE_FILE_PATH,
+	RUNTIME_ENV_PATH,
 	ADMIN_TOKEN,
 	DEFAULT_INSECURE_TOKEN,
 	CRON_DIR
@@ -46,6 +47,7 @@ export async function getStackManager(): Promise<StackManager> {
 			caddyJsonPath: env.CADDY_JSON_PATH ?? `${STATE_ROOT}/caddy.json`,
 			secretsEnvPath: SECRETS_ENV_PATH,
 			stackSpecPath: STACK_SPEC_PATH,
+			runtimeEnvPath: RUNTIME_ENV_PATH,
 			systemEnvPath: SYSTEM_ENV_PATH,
 			gatewayEnvPath: env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/gateway/.env`,
 			openmemoryEnvPath: env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/openmemory/.env`,
