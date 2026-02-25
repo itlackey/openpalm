@@ -25,7 +25,8 @@ import {
 	type StackServiceConfig,
 	type StackAutomation
 } from '@openpalm/lib/admin/stack-spec';
-import { sanitizeEnvScalar } from '@openpalm/lib/admin/runtime-env';
+import { sanitizeEnvScalar, updateRuntimeEnvContent } from '@openpalm/lib/admin/runtime-env';
+import { generateToken } from '@openpalm/lib/tokens';
 import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
 import {
 	composeAction,
@@ -41,11 +42,11 @@ import { parse as yamlParse } from 'yaml';
 import { randomUUID } from 'node:crypto';
 import { SECRETS_ENV_PATH, RUNTIME_ENV_PATH, OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL } from '$lib/server/config';
 import { upsertEnvVar } from '@openpalm/lib/env';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { RequestHandler } from './$types';
 
 const SetupCoreServices = [
-	'admin',
 	'caddy',
 	'assistant',
 	'gateway',
@@ -339,13 +340,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
 		}
 		if (type === 'setup.complete') {
-			const testMode = process.env.OPENPALM_TEST_MODE === '1';
-			let applyResult: unknown = { skipped: true };
-			if (!testMode) {
-				applyResult = await applyStack(stackManager);
-				const startupResult = await composeAction('up', [...SetupCoreServices]);
-				if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
-			}
+		// Auto-generate POSTGRES_PASSWORD if not already set (required for compose interpolation).
+		// Write synchronously to secrets.env so it is available when applyStack reads secrets.
+		const existingSecrets = readSecretsEnv();
+		if (!existingSecrets.POSTGRES_PASSWORD) {
+			const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, 'utf8') : '';
+			const next = updateRuntimeEnvContent(current, { POSTGRES_PASSWORD: generateToken(32) });
+			mkdirSync(dirname(SECRETS_ENV_PATH), { recursive: true });
+			writeFileSync(SECRETS_ENV_PATH, next, 'utf8');
+		}
+			const applyResult = await applyStack(stackManager);
+			const startupResult = await composeAction('up', [...SetupCoreServices]);
+			if (!startupResult.ok) throw new Error(`core_startup_failed:${startupResult.stderr}`);
 			syncAutomations(stackManager.listAutomations());
 			return json(200, { ok: true, data: setupManager.completeSetup(), apply: applyResult });
 		}

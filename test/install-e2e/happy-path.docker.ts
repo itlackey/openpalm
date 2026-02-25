@@ -19,7 +19,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
-const COMPOSE_BASE = join(REPO_ROOT, "packages/lib/src/embedded/state/docker-compose.yml");
 const PROJECT_NAME = "openpalm-install-e2e";
 const TIMEOUT = 15_000;
 const ADMIN_TOKEN = "test-e2e-wizard-token"; // ≥8 chars, satisfies password validation
@@ -40,7 +39,7 @@ let envFilePath: string;
 function compose(...args: string[]) {
   return Bun.spawn(
     ["docker", "compose", "-p", PROJECT_NAME, "--env-file", envFilePath,
-      "-f", COMPOSE_BASE, "-f", composeTestFile, "--project-directory", REPO_ROOT, ...args],
+      "-f", composeTestFile, "--project-directory", REPO_ROOT, ...args],
     { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" },
   );
 }
@@ -173,9 +172,14 @@ beforeAll(async () => {
   // Write compose overlay:
   // - admin: real build, port exposed, volumes mounted, NO OPENPALM_TEST_MODE
   // - all SetupCoreServices: busybox stubs so compose up succeeds in setup.complete
-  composeTestFile = join(tmpDir, "docker-compose.test.yml");
+  // Key: written to stateDir so it's accessible inside the container via same-path mount.
+  // Key: OPENPALM_COMPOSE_FILE points admin's compose calls at this test overlay
+  //      (with busybox stubs) rather than the generated docker-compose.yml (real images).
+  composeTestFile = join(stateDir, "docker-compose.test.yml");
   const composeOverlay = `# Generated install-e2e overlay — hardcodes volume paths to temp dir.
 # Key: OPENPALM_TEST_MODE is NOT set so setup.complete runs the real compose path.
+# Key: volumes use identical host:container paths so STATE_ROOT paths are host-resolvable by compose.
+# Key: OPENPALM_COMPOSE_FILE set to this file so admin's compose up uses busybox stubs.
 services:
   admin:
     build:
@@ -185,14 +189,27 @@ services:
       - "${ADMIN_PORT}:8100"
     volumes:
       - .:/compose:ro
-      - ${dataDir}:/data
-      - ${configDir}:/config
-      - ${stateDir}:/state
+      - ${dataDir}:${dataDir}
+      - ${configDir}:${configDir}
+      - ${stateDir}:${stateDir}
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       OPENCODE_CORE_URL: "http://assistant:4096"
-      COMPOSE_PROJECT_PATH: /compose
-      OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
+      PORT: "8100"
+      COMPOSE_PROJECT_PATH: ${stateDir}
+      OPENPALM_COMPOSE_FILE: docker-compose.test.yml
       ADMIN_TOKEN: "${ADMIN_TOKEN}"
+      OPENPALM_DATA_ROOT: "${dataDir}"
+      OPENPALM_CONFIG_ROOT: "${configDir}"
+      OPENPALM_STATE_ROOT: "${stateDir}"
+      OPENPALM_COMPOSE_BIN: docker
+      OPENPALM_COMPOSE_SUBCOMMAND: compose
+      OPENPALM_CONTAINER_SOCKET_URI: unix:///var/run/docker.sock
+      OPENPALM_CONTAINER_SOCKET_PATH: /var/run/docker.sock
+      OPENPALM_CONTAINER_SOCKET_IN_CONTAINER: /var/run/docker.sock
+      OPENPALM_IMAGE_NAMESPACE: openpalm
+      OPENPALM_IMAGE_TAG: latest
+      CRON_DIR: "${stateDir}/automations"
 
   assistant:
     image: busybox

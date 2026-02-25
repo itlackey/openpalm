@@ -63,8 +63,8 @@ function validateCommandOption(opt: unknown, cmdName: string): CustomCommandOpti
     return null;
   }
 
-  const validTypes = new Set(Object.values(CommandOptionType));
-  const type = typeof o.type === "number" && validTypes.has(o.type) ? o.type : CommandOptionType.STRING;
+  const validTypes = new Set<number>(Object.values(CommandOptionType));
+  const type = typeof o.type === "number" && validTypes.has(o.type) ? (o.type as typeof CommandOptionType[keyof typeof CommandOptionType]) : CommandOptionType.STRING;
 
   let choices: Array<{ name: string; value: string }> | undefined;
   if (Array.isArray(o.choices)) {

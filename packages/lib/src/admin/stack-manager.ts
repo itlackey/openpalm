@@ -46,6 +46,10 @@ export type StackCatalogItem = {
 
 export type StackManagerPaths = {
   stateRootPath: string;
+  /** Host path mounted at /data inside the admin container. Written to runtimeEnvPath as OPENPALM_STATE_HOME for compose interpolation. */
+  dataRootPath: string;
+  /** Host path mounted at /config inside the admin container. Written to runtimeEnvPath as OPENPALM_CONFIG_HOME for compose interpolation. */
+  configRootPath: string;
   caddyJsonPath: string;
   composeFilePath: string;
   /** Runtime env file at $STATE/.env — contains host-side paths and generated secrets (POSTGRES_PASSWORD etc.) used by docker compose interpolation. */
@@ -475,6 +479,24 @@ export class StackManager {
       write(join(this.paths.stateRootPath, serviceName, ".env"), content);
     }
 
+    // Write host-side path vars and compose-interpolation secrets into runtimeEnvPath ($STATE/.env).
+    // These are needed by `docker compose --env-file` to interpolate ${OPENPALM_STATE_HOME},
+    // ${OPENPALM_DATA_HOME}, ${OPENPALM_CONFIG_HOME}, and ${POSTGRES_PASSWORD} in the generated
+    // docker-compose.yml. They are not available inside the admin container process environment.
+    const secrets = this.readSecretsEnv();
+    const runtimeEnvEntries: Record<string, string | undefined> = {
+      OPENPALM_STATE_HOME: this.paths.stateRootPath,
+      OPENPALM_DATA_HOME: this.paths.dataRootPath,
+      OPENPALM_CONFIG_HOME: this.paths.configRootPath,
+      POSTGRES_PASSWORD: secrets["POSTGRES_PASSWORD"],
+    };
+    const existingRuntime = existsSync(this.paths.runtimeEnvPath)
+      ? readFileSync(this.paths.runtimeEnvPath, "utf8")
+      : "";
+    const updatedRuntime = updateRuntimeEnvContent(existingRuntime, runtimeEnvEntries);
+    mkdirSync(dirname(this.paths.runtimeEnvPath), { recursive: true });
+    writeFileSync(this.paths.runtimeEnvPath, updatedRuntime, "utf8");
+
     const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
     const renderReport = {
       ...generated.renderReport,
@@ -673,6 +695,17 @@ export class StackManager {
     const dataEnv = parseRuntimeEnvContent(readFileSync(dataEnvPath, "utf8"));
     const profileEnv = pickEnv(dataEnv, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]);
     return { ...secrets, ...profileEnv };
+  }
+
+  /** Returns the compose interpolation entries that must be present in runtimeEnvPath. */
+  getRuntimeEnvEntries(): Record<string, string | undefined> {
+    const secrets = this.readSecretsEnv();
+    return {
+      OPENPALM_STATE_HOME: this.paths.stateRootPath,
+      OPENPALM_DATA_HOME: this.paths.dataRootPath,
+      OPENPALM_CONFIG_HOME: this.paths.configRootPath,
+      POSTGRES_PASSWORD: secrets["POSTGRES_PASSWORD"],
+    };
   }
 
   private updateSecretsEnv(entries: Record<string, string | undefined>) {

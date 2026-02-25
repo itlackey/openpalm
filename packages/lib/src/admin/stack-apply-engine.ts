@@ -1,19 +1,23 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { type ComposeRunner, createComposeRunner } from "./compose-runner.ts";
 import { StackManager } from "./stack-manager.ts";
+import { updateRuntimeEnvContent } from "./runtime-env.ts";
 
 export type StackApplyResult = {
   ok: boolean;
   generated: ReturnType<StackManager["renderPreview"]>;
-  caddyReloaded: boolean;
   warnings: string[];
 };
 
 /**
- * Applies the current stack spec: render artifacts → validate compose → write files → compose up → caddy reload.
+ * Applies the current stack spec: render artifacts → validate compose → write files.
  *
- * When `apply` is false (dry-run), only renders and validates without writing or running compose.
+ * Does NOT run `compose up` — the caller is responsible for starting services after
+ * calling this function. This keeps applyStack a pure render+validate+write step and
+ * lets callers decide which services to start (and with which compose file).
+ *
+ * When `apply` is false (dry-run), only renders and validates without writing.
  */
 export async function applyStack(manager: StackManager, options?: { apply?: boolean; runner?: ComposeRunner }): Promise<StackApplyResult> {
   const runner = options?.runner ?? createComposeRunner(manager.getPaths().runtimeEnvPath);
@@ -26,13 +30,16 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
   }
 
   const warnings: string[] = [];
-  let caddyReloaded = false;
 
   if (options?.apply ?? true) {
-    // Detect caddy config change before writing new artifacts
-    const caddyJsonPath = manager.getPaths().caddyJsonPath;
-    const existingCaddyJson = existsSync(caddyJsonPath) ? readFileSync(caddyJsonPath, "utf8") : "";
-    const caddyChanged = existingCaddyJson !== generated.caddyJson;
+    // Write host-side path vars to runtimeEnvPath BEFORE compose validation so that
+    // docker compose can interpolate ${OPENPALM_STATE_HOME} etc. in the generated file.
+    // This is a no-op if already correct (updateRuntimeEnvContent is idempotent).
+    const runtimeEnvPath = manager.getPaths().runtimeEnvPath;
+    const existingRuntime = existsSync(runtimeEnvPath) ? readFileSync(runtimeEnvPath, "utf8") : "";
+    const updatedRuntime = updateRuntimeEnvContent(existingRuntime, manager.getRuntimeEnvEntries());
+    mkdirSync(dirname(runtimeEnvPath), { recursive: true });
+    writeFileSync(runtimeEnvPath, updatedRuntime, "utf8");
 
     // Write a temp compose file for validation before committing artifacts
     const tempComposePath = join(manager.getPaths().stateRootPath, "docker-compose.yml.next");
@@ -44,18 +51,7 @@ export async function applyStack(manager: StackManager, options?: { apply?: bool
 
     // Write all artifacts to their live paths
     manager.renderArtifacts(generated);
-
-    // Single compose up -d --remove-orphans (Docker Compose handles change detection)
-    const upResult = await runner.action("up", []);
-    if (!upResult.ok) throw new Error(`compose_up_failed:${upResult.stderr}`);
-
-    // Caddy uses hot-reload rather than container restart
-    if (caddyChanged) {
-      const reloadResult = await runner.exec("caddy", ["caddy", "reload", "--config", "/etc/caddy/caddy.json"]);
-      if (!reloadResult.ok) throw new Error(`caddy_reload_failed:${reloadResult.stderr}`);
-      caddyReloaded = true;
-    }
   }
 
-  return { ok: true, generated, caddyReloaded, warnings };
+  return { ok: true, generated, warnings };
 }
