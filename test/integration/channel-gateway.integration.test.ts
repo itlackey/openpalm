@@ -54,7 +54,14 @@ describe("integration: channel adapters -> gateway", () => {
       }
     });
 
-    const discord = Bun.serve({ port: 0, fetch: createDiscordFetch(`http://localhost:${gateway.port}`, "secret") });
+    const discord = Bun.serve({ port: 0, fetch: createDiscordFetch({
+      gatewayUrl: `http://localhost:${gateway.port}`,
+      sharedSecret: "secret",
+      publicKey: "",
+      applicationId: "",
+      commands: [],
+      permissions: { allowedGuilds: new Set(), allowedRoles: new Set(), allowedUsers: new Set(), blockedUsers: new Set() },
+    }) });
     const telegram = Bun.serve({ port: 0, fetch: createTelegramFetch(`http://localhost:${gateway.port}`, "secret", "") });
 
     try {
