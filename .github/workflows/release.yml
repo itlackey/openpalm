@@ -31,6 +31,9 @@ on:
           - channel-voice
           - channel-telegram
           - channel-api
+          - channel-a2a
+          - channel-mcp
+          - channel-webhook
           - cli
       bump:
         description: "Version bump type"
@@ -105,7 +108,7 @@ jobs:
           FAILED=0
           # Select Dockerfiles based on component
           if [ "${{ inputs.component }}" = "platform" ]; then
-            DOCKERFILES="core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile channels/api/Dockerfile"
+            DOCKERFILES="core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile channels/api/Dockerfile channels/a2a/Dockerfile channels/mcp/Dockerfile"
           elif [ "${{ inputs.component }}" = "assistant" ]; then
             DOCKERFILES="core/assistant/Dockerfile"
           else
@@ -118,6 +121,9 @@ jobs:
               channel-voice)     DOCKERFILES="channels/voice/Dockerfile" ;;
               channel-telegram)  DOCKERFILES="channels/telegram/Dockerfile" ;;
               channel-api)       DOCKERFILES="channels/api/Dockerfile" ;;
+              channel-a2a)       DOCKERFILES="channels/a2a/Dockerfile" ;;
+              channel-mcp)       DOCKERFILES="channels/mcp/Dockerfile" ;;
+              channel-webhook)   DOCKERFILES="channels/webhook/Dockerfile" ;;
             esac
           fi
 

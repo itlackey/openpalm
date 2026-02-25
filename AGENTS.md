@@ -309,6 +309,32 @@ describe("channel intake", () => {
   workflow gates are the primary defense.
 - See `dev/docs/release-quality-gates.md` for the full pre-release checklist.
 
+### Adding a new channel, package, or core container
+
+Whenever a new channel (`channels/<name>/`), package (`packages/<name>/`), or core
+container (`core/<name>/`) is introduced, update **all four** of the following assets in
+the same PR — missing any one will cause the version bump or Docker publish to silently
+skip the new component:
+
+1. **`dev/version.ts`** — Add an entry to the `COMPONENTS` record:
+   - `image: true` for anything that has a `Dockerfile` (channels, core containers)
+   - `image: false` for npm-only packages (`cli`, `lib`, `ui`)
+   - The `packageJson` path must point to the component's own `package.json`
+
+2. **`.github/workflows/publish-images.yml`** (image-bearing components only):
+   - Add `"<name>/v*"` to the `on.push.tags` list
+   - Add `"<name>"` to the `workflow_dispatch.inputs.component.options` list
+   - Add a JSON object to the `ALL_IMAGES` array in the `Build matrix` step
+     (use root context `"."` if the Dockerfile copies from `packages/lib`)
+
+3. **`.github/workflows/release.yml`**:
+   - Add `"<name>"` to the `inputs.component.options` list
+   - Add a `case` entry inside the `docker-build` job's shell script (image-bearing only)
+   - Add the Dockerfile to the `platform` DOCKERFILES line (image-bearing only)
+
+4. **`.github/workflows/version-bump-pr.yml`**:
+   - Add `"<name>"` to the `inputs.component.options` list
+
 ### Environment Variables
 
 - Use `Bun.env` with defaults: `const PORT = Number(Bun.env.PORT ?? 8090);`
