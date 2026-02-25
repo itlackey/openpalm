@@ -366,8 +366,8 @@
 						{#if editingItemKey === key}
 							<div style="margin-top:0.5rem">
 								{#if item.type === 'channel'}
-									<label style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
-									<select bind:value={exposureDraft} style="margin-bottom:0.45rem">
+									<label for="exposure-select" style="display:block;font-size:13px;margin-bottom:0.2rem">Exposure</label>
+									<select id="exposure-select" bind:value={exposureDraft} style="margin-bottom:0.45rem">
 										<option value="host">host</option>
 										<option value="lan">lan</option>
 										<option value="public">public</option>
@@ -377,10 +377,11 @@
 									<div class="muted" style="font-size:13px">No configuration fields defined.</div>
 								{/if}
 								{#each item.fields as field}
-									<label style="display:block;margin:0.35rem 0 0.2rem;font-size:13px">
+									<label for="cfg-{item.name}-{field.key}" style="display:block;margin:0.35rem 0 0.2rem;font-size:13px">
 										{field.key}{field.required ? ' *' : ''}
 									</label>
 									<input
+										id="cfg-{item.name}-{field.key}"
 										type={isSecretField(field) ? 'password' : 'text'}
 										value={configDraft[field.key] ?? ''}
 										oninput={(event) =>

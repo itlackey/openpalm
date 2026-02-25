@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { parseArgs } from "node:util";
 import type { ContainerPlatform, InstallOptions, UninstallOptions } from "./types.ts";
 import { install } from "./commands/install.ts";
 import { uninstall } from "./commands/uninstall.ts";
@@ -73,36 +74,39 @@ function printHelp(): void {
   log("  openpalm automation run daily-status");
 }
 
+function parseCliArgs(args: string[]) {
+  return parseArgs({
+    args,
+    strict: false,
+    allowPositionals: true,
+    options: {
+      runtime: { type: "string" },
+      ref: { type: "string" },
+      plugin: { type: "string" },
+      port: { type: "string" },
+      "no-open": { type: "boolean" },
+      force: { type: "boolean" },
+      "remove-all": { type: "boolean" },
+      "remove-images": { type: "boolean" },
+      "remove-binary": { type: "boolean" },
+      yes: { type: "boolean" },
+    },
+  });
+}
+
 function parseArg(args: string[], name: string): string | undefined {
-  const index = args.indexOf(`--${name}`);
-  if (index >= 0 && index + 1 < args.length) {
-    return args[index + 1];
-  }
-  return undefined;
+  const parsed = parseCliArgs(args);
+  const value = parsed.values[name];
+  return typeof value === "string" ? value : undefined;
 }
 
 function hasFlag(args: string[], name: string): boolean {
-  return args.includes(`--${name}`);
+  const parsed = parseCliArgs(args);
+  return parsed.values[name] === true;
 }
 
 function getPositionalArgs(args: string[]): string[] {
-  const result: string[] = [];
-  let i = 0;
-  while (i < args.length) {
-    if (args[i].startsWith("--")) {
-      // Skip flag and its value if it has one
-      const flagName = args[i].slice(2);
-      if (["runtime", "ref", "plugin", "port"].includes(flagName)) {
-        i += 2; // skip flag + value
-      } else {
-        i += 1; // skip boolean flag
-      }
-    } else {
-      result.push(args[i]);
-      i += 1;
-    }
-  }
-  return result;
+  return parseCliArgs(args).positionals;
 }
 
 const VALID_RUNTIMES: readonly ContainerPlatform[] = ["docker", "podman", "orbstack"] as const;

@@ -1,6 +1,7 @@
-import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
+import { forwardNormalizedChannelMessage, readJsonObject, rejectPayloadTooLarge } from "@openpalm/lib/shared/channel-http.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-voice");
 
@@ -14,47 +15,29 @@ export function createVoiceFetch(gatewayUrl: string, sharedSecret: string, forwa
     if (url.pathname === "/health") return json(200, { ok: true, service: "channel-voice" });
 
     if (url.pathname === "/voice/transcription" && req.method === "POST") {
-      const contentLength = Number(req.headers.get("content-length") ?? "0");
-      if (contentLength > 1_048_576) {
-        return new Response(JSON.stringify({ error: "payload_too_large" }), { status: 413 });
-      }
+      const tooLarge = rejectPayloadTooLarge(req);
+      if (tooLarge) return tooLarge;
 
-      let body: {
-        userId?: string;
-        text?: string;
-        audioRef?: string;
-        language?: string;
-        metadata?: Record<string, unknown>;
-      };
-      try {
-        body = await req.json();
-      } catch {
-        return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
-      }
+      const body = await readJsonObject<Record<string, unknown>>(req);
+      if (!body) return json(400, { error: "invalid_json" });
 
-      if (!body.text) return json(400, { error: "text_required" });
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      if (!text) return json(400, { error: "text_required" });
 
-      const payload = buildChannelMessage({
-        userId: body.userId ?? "voice-user",
+      const metadata = typeof body.metadata === "object" && body.metadata !== null && !Array.isArray(body.metadata)
+        ? { ...(body.metadata as Record<string, unknown>) }
+        : {};
+      metadata.audioRef = body.audioRef;
+      metadata.language = typeof body.language === "string" && body.language.trim() ? body.language : "en";
+
+      return forwardNormalizedChannelMessage({
+        gatewayUrl,
+        sharedSecret,
         channel: "voice",
-        text: body.text,
-        metadata: {
-          ...body.metadata,
-          audioRef: body.audioRef,
-          language: body.language ?? "en"
-        }
-      });
-
-      const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
-
-      if (!resp.ok) {
-        return new Response(JSON.stringify({ error: "gateway_error", status: resp.status }), {
-          status: resp.status >= 500 ? 502 : resp.status,
-          headers: { "content-type": "application/json" },
-        });
-      }
-
-      return new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } });
+        userId: typeof body.userId === "string" && body.userId.trim() ? body.userId : "voice-user",
+        text,
+        metadata,
+      }, forwardFetch);
     }
 
     if (url.pathname === "/voice/stream") {
@@ -73,6 +56,7 @@ if (import.meta.main) {
     log.error("CHANNEL_VOICE_SECRET is not set, exiting");
     process.exit(1);
   }
-  Bun.serve({ port: PORT, fetch: createVoiceFetch(GATEWAY_URL, SHARED_SECRET) });
+  const server = Bun.serve({ port: PORT, fetch: createVoiceFetch(GATEWAY_URL, SHARED_SECRET) });
+  installGracefulShutdown(server, { service: "channel-voice", logger: log });
   log.info("started", { port: PORT });
 }

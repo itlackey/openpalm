@@ -2,6 +2,7 @@ import { createMcpChannel } from "./channel.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
 import { createJsonRpcAdapterFetch } from "@openpalm/lib/shared/channel-adapter-server.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-mcp");
 
@@ -32,6 +33,7 @@ if (import.meta.main) {
     process.exit(1);
   }
   const adapter = createMcpChannel();
-  Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
+  const server = Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
+  installGracefulShutdown(server, { service: "channel-mcp", logger: log });
   log.info("started", { port: PORT });
 }

@@ -1,6 +1,7 @@
 import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-api");
 
@@ -247,6 +248,7 @@ if (import.meta.main) {
     log.error("CHANNEL_API_SECRET is not set, exiting");
     process.exit(1);
   }
-  Bun.serve({ port: PORT, fetch: createApiFetch(GATEWAY_URL, SHARED_SECRET, API_KEY) });
+  const server = Bun.serve({ port: PORT, fetch: createApiFetch(GATEWAY_URL, SHARED_SECRET, API_KEY) });
+  installGracefulShutdown(server, { service: "channel-api", logger: log });
   log.info("started", { port: PORT });
 }

@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { parseRuntimeEnvContent } from "@openpalm/lib/admin/runtime-env.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { AuditLog } from "./audit.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 import { verifySignature } from "./channel-security.ts";
-import { allowRequest } from "./rate-limit.ts";
+import { RateLimiter } from "./rate-limit.ts";
 import { nonceCache } from "./nonce-cache.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
 import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
@@ -70,12 +71,13 @@ export type GatewayDeps = {
 
 export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise<Response> {
   const { channelSecrets, openCode, audit } = deps;
+  const rateLimiter = new RateLimiter();
 
   async function processChannelInbound(payload: ChannelMessage, requestId: string) {
     const sessionId = randomUUID();
 
     const rlKey = payload.userId;
-    if (!allowRequest(rlKey, 120, 60_000) || !allowRequest(`channel:${payload.channel}`, 200, 60_000)) {
+    if (!rateLimiter.allow(rlKey, 120, 60_000) || !rateLimiter.allow(`channel:${payload.channel}`, 200, 60_000)) {
       audit.write({
         ts: new Date().toISOString(),
         requestId,
@@ -255,6 +257,11 @@ if (import.meta.main) {
   const server = Bun.serve({
     port: PORT,
     fetch: createGatewayFetch({ channelSecrets: CHANNEL_SHARED_SECRETS, openCode, audit }),
+  });
+  installGracefulShutdown(server, {
+    service: "gateway",
+    logger: log,
+    cleanup: () => nonceCache.destroy(),
   });
 
   log.info("started", { port: server.port });

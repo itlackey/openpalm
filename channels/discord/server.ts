@@ -19,6 +19,7 @@ import { loadPermissionConfig } from "./permissions.ts";
 import { parseCustomCommands, buildCommandRegistry } from "./commands.ts";
 import { registerCommands, type DiscordApiConfig } from "./discord-api.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-discord");
 
@@ -258,7 +259,8 @@ if (import.meta.main) {
     permissions,
   };
 
-  Bun.serve({ port: PORT, fetch: createDiscordFetch(serverConfig) });
+  const server = Bun.serve({ port: PORT, fetch: createDiscordFetch(serverConfig) });
+  installGracefulShutdown(server, { service: "channel-discord", logger: log });
 
   log.info("startup", {
     port: PORT,

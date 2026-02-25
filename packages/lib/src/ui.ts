@@ -2,6 +2,8 @@
  * Terminal UI helpers with no external dependencies
  */
 
+import { createInterface } from "node:readline/promises";
+
 // Detect if colors should be disabled
 const NO_COLOR = Bun.env.NO_COLOR !== undefined;
 const IS_TTY = process.stdout.isTTY;
@@ -127,23 +129,12 @@ export function spinner(msg: string): { stop: (finalMsg?: string) => void } {
  * Prompt user for yes/no confirmation
  */
 export async function confirm(prompt: string): Promise<boolean> {
-  process.stdout.write(`${prompt} ${dim("(y/N)")}: `);
-
-  const reader = Bun.stdin.stream().getReader();
-  const decoder = new TextDecoder();
-  let input = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    input += decoder.decode(value, { stream: true });
-    if (input.includes("\n")) {
-      break;
-    }
-  }
-
-  reader.releaseLock();
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const input = await rl.question(`${prompt} ${dim("(y/N)")}: `);
+  rl.close();
 
   const answer = input.trim().toLowerCase();
   return answer === "y" || answer === "yes";

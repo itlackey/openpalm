@@ -34,7 +34,7 @@
 		<a href="https://console.anthropic.com/" target="_blank" rel="noopener">create one at console.anthropic.com</a>
 		(sign up is free, you pay per use).
 	</div>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Anthropic API Key</label>
+	<label for="wiz-anthropic-key" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Anthropic API Key</label>
 	<input id="wiz-anthropic-key" type="password" placeholder="sk-ant-..." value="" />
 	{#if state?.anthropicKeyConfigured}
 		<div class="muted" style="font-size:12px;margin-top:0.2rem">
@@ -49,7 +49,7 @@
 		Optional but recommended. Lets your assistant remember past conversations. Uses an
 		OpenAI-compatible API for embeddings. If you skip this, memory features won't work.
 	</div>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px"
+	<label for="wiz-openmemory-openai-base" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px"
 		>AI model endpoint for memory</label
 	>
 	<input
@@ -57,7 +57,7 @@
 		placeholder="e.g. https://api.openai.com/v1 (leave blank for default)"
 		value={openmemoryProvider.openaiBaseUrl || ''}
 	/>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px"
+	<label for="wiz-openmemory-openai-key" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px"
 		>AI model API key for memory</label
 	>
 	<input id="wiz-openmemory-openai-key" type="password" placeholder="sk-..." value="" />
@@ -82,19 +82,19 @@
 		<strong>Warning:</strong> Changing these values after setup is complete may affect your data and
 		workflows.
 	</div>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Memory service address</label>
+	<label for="wiz-svc-openmemory" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Memory service address</label>
 	<input
 		id="wiz-svc-openmemory"
 		placeholder="Leave blank to use built-in"
 		value={serviceInstances.openmemory || ''}
 	/>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Database connection</label>
+	<label for="wiz-svc-psql" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Database connection</label>
 	<input
 		id="wiz-svc-psql"
 		placeholder="Leave blank to use built-in"
 		value={serviceInstances.psql || ''}
 	/>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Search service address</label>
+	<label for="wiz-svc-qdrant" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Search service address</label>
 	<input
 		id="wiz-svc-qdrant"
 		placeholder="Leave blank to use built-in"
@@ -105,7 +105,7 @@
 	<div class="muted" style="font-size:12px;margin-bottom:0.5rem">
 		Configure a lightweight model for system tasks like summaries and title generation.
 	</div>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px"
+	<label for="wiz-small-model-endpoint" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px"
 		>Small model endpoint (OpenAI-compatible)</label
 	>
 	<input
@@ -113,7 +113,7 @@
 		placeholder="http://localhost:11434/v1"
 		value={smallModelProvider.endpoint || ''}
 	/>
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Small model API key</label>
+	<label for="wiz-small-model-key" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Small model API key</label>
 	<input
 		id="wiz-small-model-key"
 		type="password"
@@ -129,7 +129,7 @@
 			Leave blank if your endpoint does not require authentication (e.g. local Ollama).
 		</div>
 	{/if}
-	<label style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Small model name</label>
+	<label for="wiz-small-model-id" style="display:block;margin:0.5rem 0 0.2rem;font-size:13px">Small model name</label>
 	<input
 		id="wiz-small-model-id"
 		placeholder="ollama/tinyllama:latest"

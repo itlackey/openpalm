@@ -1,3 +1,5 @@
+import { parseEnvContent, parseEnvLine } from "../shared/env-parser.ts";
+
 export type AccessScope = "host" | "lan" | "public";
 
 const RUNTIME_BIND_KEYS = {
@@ -8,21 +10,8 @@ const RUNTIME_BIND_KEYS = {
   OPENPALM_ASSISTANT_SSH_BIND_ADDRESS: true,
 } as const;
 
-function parseEnvLine(line: string): [key: string, value: string] | null {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) return null;
-  const [key, ...rest] = trimmed.split("=");
-  return [key.trim(), rest.join("=").trim()];
-}
-
 export function parseRuntimeEnvContent(content: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of content.split(/\r?\n/)) {
-    const parsed = parseEnvLine(line);
-    if (!parsed) continue;
-    out[parsed[0]] = parsed[1];
-  }
-  return out;
+  return parseEnvContent(content);
 }
 
 export function updateRuntimeEnvContent(content: string, entries: Record<string, string | undefined>): string {

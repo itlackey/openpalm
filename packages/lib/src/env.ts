@@ -1,3 +1,5 @@
+import { parseEnvContent } from "./shared/env-parser.ts";
+
 export async function readEnvFile(path: string): Promise<Record<string, string>> {
   const file = Bun.file(path);
   const exists = await file.exists();
@@ -6,33 +8,7 @@ export async function readEnvFile(path: string): Promise<Record<string, string>>
   }
 
   const content = await file.text();
-  const lines = content.split("\n");
-  const env: Record<string, string> = {};
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // Skip comments and blank lines
-    if (trimmed === "" || trimmed.startsWith("#")) {
-      continue;
-    }
-
-    // Split on first = only
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex === -1) {
-      continue;
-    }
-
-    const key = trimmed.substring(0, eqIndex).trim();
-    let value = trimmed.substring(eqIndex + 1).trim();
-    // Strip matching leading/trailing quotes (common in .env files)
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    env[key] = value;
-  }
-
-  return env;
+  return parseEnvContent(content, { stripQuotedValues: true });
 }
 
 export async function readEnvVar(path: string, key: string): Promise<string | undefined> {

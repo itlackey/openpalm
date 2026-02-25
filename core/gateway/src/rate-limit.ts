@@ -1,25 +1,65 @@
-const buckets = new Map<string, { count: number; windowStart: number }>();
-
 const MAX_BUCKETS = 10_000;
 
-export function allowRequest(key: string, limit: number, windowMs: number): boolean {
-  const now = Date.now();
-  const current = buckets.get(key);
-  if (!current || now - current.windowStart > windowMs) {
-    buckets.set(key, { count: 1, windowStart: now });
-  } else if (current.count >= limit) {
-    return false;
-  } else {
-    current.count += 1;
-    buckets.set(key, current);
-  }
+type Bucket = {
+  timestamps: number[];
+  lastSeen: number;
+};
 
-  // Evict expired entries when the map exceeds the maximum size.
-  if (buckets.size > MAX_BUCKETS) {
-    for (const [k, v] of buckets) {
-      if (now - v.windowStart > windowMs) buckets.delete(k);
+export class RateLimiter {
+  private readonly buckets = new Map<string, Bucket>();
+
+  allow(key: string, limit: number, windowMs: number): boolean {
+    const now = Date.now();
+    const cutoff = now - windowMs;
+    const bucket = this.buckets.get(key) ?? { timestamps: [], lastSeen: now };
+
+    while (bucket.timestamps.length > 0 && bucket.timestamps[0] <= cutoff) {
+      bucket.timestamps.shift();
     }
+
+    if (bucket.timestamps.length >= limit) {
+      bucket.lastSeen = now;
+      this.buckets.set(key, bucket);
+      this.evictIfNeeded(now, windowMs);
+      return false;
+    }
+
+    bucket.timestamps.push(now);
+    bucket.lastSeen = now;
+    this.buckets.set(key, bucket);
+    this.evictIfNeeded(now, windowMs);
+    return true;
   }
 
-  return true;
+  reset(): void {
+    this.buckets.clear();
+  }
+
+  private evictIfNeeded(now: number, windowMs: number): void {
+    if (this.buckets.size <= MAX_BUCKETS) return;
+    const staleCutoff = now - windowMs;
+
+    for (const [key, bucket] of this.buckets) {
+      if (bucket.lastSeen <= staleCutoff) {
+        this.buckets.delete(key);
+      }
+    }
+
+    if (this.buckets.size <= MAX_BUCKETS) return;
+    const overflow = this.buckets.size - MAX_BUCKETS;
+    const oldest = [...this.buckets.entries()]
+      .sort((a, b) => a[1].lastSeen - b[1].lastSeen)
+      .slice(0, overflow);
+    for (const [key] of oldest) this.buckets.delete(key);
+  }
+}
+
+const defaultRateLimiter = new RateLimiter();
+
+export function allowRequest(key: string, limit: number, windowMs: number): boolean {
+  return defaultRateLimiter.allow(key, limit, windowMs);
+}
+
+export function resetRateLimiter(): void {
+  defaultRateLimiter.reset();
 }

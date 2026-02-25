@@ -1,6 +1,7 @@
-import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
+import { forwardNormalizedChannelMessage, readJsonObject, rejectPayloadTooLarge } from "@openpalm/lib/shared/channel-http.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-telegram");
 
@@ -19,45 +20,40 @@ export function createTelegramFetch(gatewayUrl: string, sharedSecret: string, we
       return json(401, { error: "invalid_telegram_secret" });
     }
 
-    const contentLength = Number(req.headers.get("content-length") ?? "0");
-    if (contentLength > 1_048_576) {
-      return new Response(JSON.stringify({ error: "payload_too_large" }), { status: 413 });
-    }
+    const tooLarge = rejectPayloadTooLarge(req);
+    if (tooLarge) return tooLarge;
 
-    let update: {
-      message?: { text?: string; from?: { id?: number; username?: string }; chat?: { id?: number } };
-    };
-    try {
-      update = await req.json();
-    } catch {
-      return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
-    }
+    const update = await readJsonObject<Record<string, unknown>>(req);
+    if (!update) return json(400, { error: "invalid_json" });
 
-    const text = update.message?.text;
+    const message = typeof update.message === "object" && update.message !== null && !Array.isArray(update.message)
+      ? update.message as Record<string, unknown>
+      : undefined;
+    const user = typeof message?.from === "object" && message.from !== null && !Array.isArray(message.from)
+      ? message.from as Record<string, unknown>
+      : undefined;
+    const chat = typeof message?.chat === "object" && message.chat !== null && !Array.isArray(message.chat)
+      ? message.chat as Record<string, unknown>
+      : undefined;
+
+    const text = typeof message?.text === "string" ? message.text.trim() : "";
     if (!text) return json(200, { ok: true, skipped: "non-text message" });
 
-    const user = update.message?.from;
-    const userId = user?.id ? `telegram:${user.id}` : `telegram:${user?.username ?? "unknown"}`;
-    const payload = buildChannelMessage({
-      userId,
+    const userId = typeof user?.id === "number"
+      ? `telegram:${user.id}`
+      : `telegram:${typeof user?.username === "string" && user.username ? user.username : "unknown"}`;
+
+    return forwardNormalizedChannelMessage({
+      gatewayUrl,
+      sharedSecret,
       channel: "telegram",
+      userId,
       text,
       metadata: {
-        chatId: update.message?.chat?.id,
-        username: user?.username
-      }
-    });
-
-    const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
-
-    if (!resp.ok) {
-      return new Response(JSON.stringify({ error: "gateway_error", status: resp.status }), {
-        status: resp.status >= 500 ? 502 : resp.status,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    return new Response(await resp.text(), { status: resp.status, headers: { "content-type": "application/json" } });
+        chatId: chat?.id,
+        username: user?.username,
+      },
+    }, forwardFetch);
   };
 }
 
@@ -69,6 +65,7 @@ if (import.meta.main) {
   if (!TELEGRAM_WEBHOOK_SECRET) {
     log.warn("TELEGRAM_WEBHOOK_SECRET is not set — webhook verification disabled");
   }
-  Bun.serve({ port: PORT, fetch: createTelegramFetch(GATEWAY_URL, SHARED_SECRET, TELEGRAM_WEBHOOK_SECRET) });
+  const server = Bun.serve({ port: PORT, fetch: createTelegramFetch(GATEWAY_URL, SHARED_SECRET, TELEGRAM_WEBHOOK_SECRET) });
+  installGracefulShutdown(server, { service: "channel-telegram", logger: log });
   log.info("started", { port: PORT });
 }

@@ -7,13 +7,13 @@
 {#if toasts.length > 0}
 	<div class="toast-container">
 		{#each toasts as toast (toast.id)}
-			<div
+			<button
 				class="toast toast-{toast.type}"
 				role="alert"
 				onclick={() => removeToast(toast.id)}
 			>
 				{toast.message}
-			</div>
+			</button>
 		{/each}
 	</div>
 {/if}

@@ -85,10 +85,11 @@
 		{#if channel.fields.length > 0}
 			<div class="channel-fields" id="ch-fields-{channel.id}" style={checked ? '' : 'display:none'}>
 				{#each channel.fields as field}
-				<label style="display:block;margin:0.4rem 0 0.2rem;font-size:13px">
+				<label for="{channel.id}-{field.key}" style="display:block;margin:0.4rem 0 0.2rem;font-size:13px">
 					{field.helpText || humanizeKey(field.key)}{field.required ? ' *' : ''}
 				</label>
 					<input
+						id="{channel.id}-{field.key}"
 						class="wiz-ch-field"
 						data-channel={channel.id}
 						data-key={field.key}

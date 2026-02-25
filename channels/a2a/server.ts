@@ -2,6 +2,7 @@ import { createA2aChannel } from "./channel.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
 import { createJsonRpcAdapterFetch } from "@openpalm/lib/shared/channel-adapter-server.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-a2a");
 
@@ -34,6 +35,7 @@ if (import.meta.main) {
     process.exit(1);
   }
   const adapter = createA2aChannel();
-  Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
+  const server = Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
+  installGracefulShutdown(server, { service: "channel-a2a", logger: log });
   log.info("started", { port: PORT });
 }
