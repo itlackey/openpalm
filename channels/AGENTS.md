@@ -1,18 +1,16 @@
 # Channels Workspace
 
-## Rules
-- Channel adapters are ingress translators, not business-logic engines.
-- Forward assistant-bound traffic only to Gateway.
-- Validate and normalize untrusted platform input before forwarding.
-- **When adding a new channel**, update the four release assets listed in the root
-  `AGENTS.md` under "Adding a new channel, package, or core container".
+## Most important rules
+- Channels are ingress translators, not business-logic engines.
+- Validate and normalize untrusted provider payloads at the edge.
+- Forward assistant-bound traffic to Gateway only.
+- Keep identifiers stable for auditability and idempotency.
+- For new channels, update release/version workflow files listed in root `AGENTS.md`.
 
-## Patterns
-- Keep provider parsing isolated from OpenPalm payload construction.
-- Return retry-safe HTTP codes for webhook/event delivery semantics.
-- Preserve stable channel/user/event identifiers for auditability.
-
-## Gotchas
-- Providers may redeliver events; keep behavior idempotent.
-- Avoid coupling channel code to assistant runtime internals.
-- Keep secrets in scoped env, never in code/log output.
+## Key links
+- `channels/discord/AGENTS.md`
+- `channels/telegram/AGENTS.md`
+- `channels/voice/AGENTS.md`
+- `channels/chat/AGENTS.md`
+- `channels/webhook/AGENTS.md`
+- `dev/docs/architecture.md`

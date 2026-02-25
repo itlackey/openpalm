@@ -1,18 +1,16 @@
 # Core Workspace
 
-## Rules
-- Preserve strict service boundaries: Admin orchestration, Gateway ingress/security, Assistant runtime.
-- Keep Gateway as the only channel-to-assistant entry path.
-- Keep generated runtime artifacts and host path contracts deterministic.
-- **When adding a new core container**, update the four release assets listed in the root
-  `AGENTS.md` under "Adding a new channel, package, or core container".
+## Most important rules
+- Maintain strict boundaries:
+  - Admin = config/render/apply UX
+  - Gateway = ingress/security/intake
+  - Assistant = runtime/extensions
+- Keep channels isolated from assistant internals; ingress flows through Gateway.
+- Keep generated artifacts deterministic and aligned with DATA/STATE/CONFIG contracts.
+- For new core containers, update release/version workflow files listed in root `AGENTS.md`.
 
-## Patterns
-- Place shared validation/generation logic in `packages/lib`.
-- Keep HTTP handlers thin and push complex rules into reusable helpers.
-- Prefer explicit errors and deterministic state transitions.
-
-## Gotchas
-- Do not bypass auth/rate-limit/intake checks.
-- Do not write derived runtime state into intent configuration.
-- Avoid hidden coupling between core services.
+## Key links
+- `core/admin/AGENTS.md`
+- `core/gateway/AGENTS.md`
+- `core/assistant/AGENTS.md`
+- `dev/docs/architecture.md`
