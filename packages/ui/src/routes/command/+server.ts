@@ -3,8 +3,7 @@ import {
 	getSetupManager,
 	getStackManager,
 	allChannelServiceNames,
-	knownServices,
-	log
+	knownServices
 } from '$lib/server/init';
 import { isLocalRequest } from '$lib/server/auth';
 import {
@@ -194,37 +193,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			);
 			return json(200, { ok: true, data: state });
 		}
-			if (type === 'setup.start_core') {
-				stackManager.renderArtifacts();
-				(async () => {
-				const services = [
-					'postgres',
-					'qdrant',
-					'openmemory',
-					'openmemory-ui',
-					'assistant',
-					'gateway'
-				];
-					await Promise.allSettled(services.map((svc) => composePull(svc)));
-					for (const svc of services) {
-						await composeAction('up', svc)
-							.then((result) => {
-								if (!result.ok) {
-									log.error(`Start ${svc} failed`, { error: result.stderr || 'compose up failed' });
-								}
-							})
-							.catch((e) => log.error(`Start ${svc} failed`, { error: String(e) }));
-					}
-					await composeAction('restart', 'caddy')
-						.then((result) => {
-							if (!result.ok) {
-								log.error('Caddy reload failed', { error: result.stderr || 'compose restart failed' });
-							}
-						})
-						.catch((e) => log.error('Caddy reload failed', { error: String(e) }));
-				})().catch((e) => log.error('Core startup failed', { error: String(e) }));
-				return json(200, { ok: true, status: 'starting' });
-			}
 		if (type === 'setup.access_scope') {
 			const scope = payload.scope;
 			if (scope !== 'host' && scope !== 'lan' && scope !== 'public')

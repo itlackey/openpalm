@@ -23,7 +23,7 @@
       {
         "id": "rec-01-02",
         "description": "Remove the setup.start_core command branch and detached startup logic.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 205, "lineEnd": 234 }
         ]
