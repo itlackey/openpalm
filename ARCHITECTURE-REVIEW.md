@@ -53,19 +53,6 @@ The `NonceCache` is instantiated at **module load time** as a singleton. This me
 
 **Impact:** Test pollution, resource leaks, impossible to test in isolation without workarounds.
 
-### C2. Hardcoded Default Admin Token is Insecure
-
-**File:** `packages/ui/src/lib/server/config.ts:17-18`
-
-```ts
-export const ADMIN_TOKEN = env.ADMIN_TOKEN ?? 'change-me-admin-token';
-export const DEFAULT_INSECURE_TOKEN = 'change-me-admin-token';
-```
-
-The admin token defaults to a well-known string. While `verifyAdminToken()` rejects this default, the system still **starts and serves requests**. There is only a `log.warn()` in `init.ts:95-98`. An operator who forgets to set `ADMIN_TOKEN` will have a running instance with all authenticated endpoints returning 401, but unauthenticated endpoints (setup wizard, health, meta) fully accessible.
-
-**Impact:** Operators may unknowingly run an unauthenticated admin panel.
-
 ### C3. `isLocalRequest()` Trusts Spoofable `x-forwarded-for` Header
 
 **File:** `packages/ui/src/lib/server/auth.ts:38-64`
@@ -81,41 +68,6 @@ This function uses `x-forwarded-for` to determine if a request is local. This he
 Worse: when `x-forwarded-for` is absent, it **defaults to `127.0.0.1`**, meaning any request without the header is treated as local.
 
 **Impact:** Setup wizard endpoints may be accessible from the public internet.
-
-### C4. Channel Servers Lack `content-length` Enforcement Before Body Parsing
-
-**Files:** All channel `server.ts` files
-
-Every channel checks `content-length` header but then immediately calls `req.json()` regardless:
-
-```ts
-const contentLength = Number(req.headers.get("content-length") ?? "0");
-if (contentLength > 1_048_576) {
-  return new Response(..., { status: 413 });
-}
-let body: any;
-try {
-  body = await req.json();  // reads entire body anyway if header is absent/wrong
-} catch { ... }
-```
-
-The `content-length` header is client-supplied and can be omitted or falsified. A malicious client can send a 100MB body with `content-length: 0` and the server will happily parse it. The check only guards against honest clients.
-
-**Impact:** Denial of service via memory exhaustion.
-
-### C5. Automation Runner Script Has Shell Injection Vulnerability
-
-**File:** `packages/lib/src/admin/automations.ts:120-155`
-
-The `writeRunner()` function generates a bash script that uses `$ID` in file paths:
-```bash
-ID="${1:?automation ID required}"
-SCRIPT="${scriptsDir()}/${ID}.sh"
-```
-
-While `fileSafeId()` validates the ID format (`/^[a-zA-Z0-9_-]+$/`), the validation is only called in `syncAutomations()` and `triggerAutomation()` — but the runner script itself is a standalone bash script that can be invoked directly. If the runner is called with a crafted argument outside of the TypeScript validation boundary, it could execute arbitrary commands via path traversal.
-
-**Impact:** Potential command injection if runner script is invoked outside the TypeScript boundary.
 
 ---
 
@@ -406,24 +358,6 @@ This package has no scripts, no dependencies, and no source code. It exists only
 
 ## 4. Low-Severity Issues
 
-### L1. `.plans/` Directory Contains 17 Plan Files Checked into Git
-
-**Directory:** `.plans/`
-
-Seventeen remediation plan files (R01-R17) and a `tasks.json` are committed to the repo. These are internal task-tracking artifacts that belong in an issue tracker, not in the source tree.
-
-### L2. `.opencode/` Directory Contains Development-Specific AI Tooling Config
-
-**Directory:** `.opencode/`
-
-The `.opencode/` directory contains "Ralph Wiggum" plugin code, skill definitions, and worktree management scripts. This is developer-specific AI tooling configuration that shouldn't be in the repo root.
-
-### L3. Multiple AGENTS.md Files Scattered Across the Repo
-
-**Files:** 10+ `AGENTS.md` files across `channels/`, `core/`, `packages/`
-
-These are AI-assistant instruction files. They add noise and create maintenance burden (they must be updated when the code changes).
-
 ### L4. `bunfig.toml` Contains Only Install Configuration
 
 **File:** `bunfig.toml`
@@ -434,28 +368,6 @@ peer = false
 ```
 
 A configuration file that exists only to disable peer dependency installation.
-
-### L5. Two VSCode Settings Files
-
-**Files:** `.vscode/settings.json`, `packages/ui/.vscode/mcp.json`
-
-IDE-specific configuration committed to the repo.
-
-### L6. `packages/lib/src/embedded/state/` Contains Binary and JSON Fixtures
-
-**Files:** `banner.png`, `caddy.json`, `docker-compose.yml`, `registry/`
-
-These are runtime state files embedded in the source tree of a library package. They mix concerns — the lib package should not contain deployment artifacts.
-
-### L7. `dev/docs/` Contains 12+ Analysis/Review Documents
-
-**Directory:** `dev/docs/`
-
-An unusually large number of review documents, strategy docs, and TODO lists are committed to the repo, several of which acknowledge the issues identified in this review.
-
-### L8. Community Snippets Have No Schema Validation in Loader
-
-**File:** `community/snippet-schema.json` exists but `packages/lib/src/admin/snippet-discovery.ts` does not validate against it at load time (ajv is a devDependency, not a runtime dependency).
 
 ### L9. `export * from` Barrel File Re-exports Everything
 
@@ -468,136 +380,3 @@ All 14 modules are re-exported via `export *`. This makes the public API surface
 **File:** `packages/lib/src/compose.ts:2`
 
 The `compose.ts` file imports from `./compose-runner.ts`. Meanwhile, there's also a `packages/lib/src/admin/compose-runner.ts` with different functionality. Having two `compose-runner` files at different levels is confusing.
-
----
-
-## 5. Architecture Decisions & Concerns
-
-### A1. Two-Phase LLM Intake — Intentional but Has Robustness Concerns
-
-The gateway makes **two sequential LLM calls** for every inbound message:
-1. An "intake" call to validate/filter the user message (security gate)
-2. A "core" call to generate the actual response
-
-**Note:** This is an intentional security architecture decision — the intake phase provides LLM-based content filtering before messages reach the core runtime. The concern is not the two-phase design itself, but the robustness of parsing LLM output as structured JSON. The `extractJsonObject()` function (which scans for `{` and `}` in raw LLM output) is a fragile heuristic. Consider requesting structured/JSON output from the LLM runtime, or adding a fallback policy (e.g., reject if JSON parsing fails) rather than silently propagating parse errors.
-
-### A2. Tight Coupling Between Docker Compose and Business Logic
-
-The `StackManager`, `stack-generator`, `compose-runner`, and `core-services` modules generate raw Docker Compose YAML files, Caddy JSON configs, and env files as strings. The business logic (channel management, access control) is directly coupled to infrastructure concerns (Docker networking, port bindings, volume mounts). For a v1 MVP this is reasonable — but as the stack spec grows more complex, consider separating the "what" (desired state) from the "how" (compose/caddy generation) behind a renderer interface.
-
-### A3. File-Based State — Intentional for MVP, Watch for Scaling Pain
-
-All state is stored as flat files (YAML, JSON, dotenv, JSONL). PostgreSQL is present in the stack for OpenMemory's dependencies (Qdrant, vector storage) and may be used by OpenPalm core services in the future.
-
-**Note:** For a v1 MVP, file-based state avoids adding migration/schema complexity and keeps the system simple. The main concerns to watch for as usage grows are:
-- **Concurrent access:** `StackManager` does synchronous read-modify-write without file locking. Two concurrent admin API requests could clobber each other's writes.
-- **Nonce cache I/O:** The nonce cache writes to disk on every request (see M11), which will bottleneck under load.
-- **No atomic multi-file updates:** Rendering artifacts writes 10+ files sequentially — a crash mid-render leaves inconsistent state.
-
-### A4. Admin as Hub Container — Intentional, but Docker Socket Exposure Deserves Attention
-
-The admin container is intentionally designed as the central management hub — running the SvelteKit UI, managing Docker containers, handling setup wizard state, secrets, and cron automation. This is a deliberate lean architecture choice for v1.
-
-**Note:** The main concern is not the hub pattern itself, but the Docker socket mount (`/var/run/docker.sock`) which grants the container root-equivalent access to the host. Consider documenting this security trade-off prominently for operators, and ensuring the admin API authentication is airtight (see C2, C3) since any admin API compromise transitively becomes host compromise.
-
-### A5. Synchronous Channel↔Gateway Communication
-
-Every channel sends a message to the gateway and **blocks waiting for the LLM to respond**. For platforms like Discord (which expects responses within 3 seconds), this is handled by deferring — but the underlying pattern means every channel is blocked on a 15-second timeout for the LLM.
-
-**Note:** For a v1 MVP, synchronous request-response keeps the architecture simple. The Discord channel already handles this correctly with deferred responses. As channels and throughput grow, consider whether an async pattern (webhook callbacks) would be warranted.
-
----
-
-## 6. Configuration Sprawl
-
-The project has an extraordinary number of configuration files and env vars:
-
-### Config Files Per Deployment
-| File | Purpose |
-|------|---------|
-| `openpalm.yaml` | Stack spec (channels, services, automations) |
-| `secrets.env` | User secrets (API keys, passwords) |
-| `system.env` | Generated system config |
-| `.env` (state root) | Runtime compose interpolation vars |
-| `docker-compose.yml` | Generated compose file |
-| `caddy.json` | Generated reverse proxy config |
-| `gateway/.env` | Gateway-specific env |
-| `assistant/.env` | Assistant-specific env |
-| `openmemory/.env` | OpenMemory-specific env |
-| `postgres/.env` | Postgres-specific env |
-| `qdrant/.env` | Qdrant-specific env |
-| `channel-*/.env` | Per-channel env (one per channel) |
-| `service-*/.env` | Per-service env (one per service) |
-| `setup-state.json` | Setup wizard state |
-| `nonce-cache.json` | Nonce replay cache |
-| `render-report.json` | Last render report |
-| `automations/cron.schedule` | Combined cron schedule |
-| `automations/scripts/*.sh` | Per-automation scripts |
-
-That's **18+ files** for a single deployment, not counting per-channel and per-service env files. Adding 3 channels means 21+ config files.
-
-### Environment Variables
-The system uses 40+ environment variables across containers, with multiple naming conventions:
-- `OPENPALM_*` (26 vars)
-- `CHANNEL_*_SECRET` (per channel)
-- `ADMIN_TOKEN`
-- `POSTGRES_*`
-- `GATEWAY_*`
-- `OPENCODE_*`
-- `LOG_LEVEL`, `DEBUG`
-- `NO_COLOR`
-
----
-
-## 7. Testing Assessment
-
-### What's Good
-- Gateway server tests (`core/gateway/src/server.test.ts`) are thorough and well-structured
-- HMAC security tests are comprehensive with edge cases
-- Channel adapter tests verify HMAC signing and forwarding
-- Stack manager tests cover configuration mutations
-- Setup manager tests cover state persistence
-
-### What's Problematic
-- **Admin API contract test** (`test/contracts/admin-api.contract.test.ts`) only checks that strings appear in a markdown documentation file — it doesn't test any actual API behavior.
-- **Integration tests** require running Docker containers and are permanently skipped in CI (acknowledged in `testing-architecture-review.md`).
-- **No UI unit test coverage** for most Svelte components — only 5 component test files exist for 20+ components.
-- **E2E tests** (`packages/ui/e2e/`) are numbered sequentially (01-11) suggesting they must run in order — a state machine disguised as independent tests.
-- **The project's own testing review** (`dev/docs/testing-architecture-review.md`) states: *"Roughly 40% of the test suite provides no meaningful safety net."*
-- **Channel test files** are minimal (2-3 tests each) and only test happy path.
-- No fuzz testing, no property-based testing, no load testing.
-
----
-
-## 8. Recommendations
-
-*Prioritized for a v1 MVP — focus on security fixes, deduplication, and reliability. Avoid over-engineering.*
-
-### Immediate (P0) — Security & Correctness
-1. **Fix `isLocalRequest()`** — default to deny when `x-forwarded-for` is absent, or use the connection's remote address.
-2. **Add real request body size limiting** — use Bun's built-in body size limits or read the body with a size-capped stream, rather than trusting `content-length`.
-3. **Synchronize versions** — use a single version source (root `package.json`) and derive all others. The 0.3.0/0.3.4/0.4.0 mismatch is confusing.
-4. **Harden intake JSON parsing** — add a fallback policy (reject on parse failure) instead of the fragile `extractJsonObject` heuristic.
-
-### Short-term (P1) — Code Quality & Maintainability
-5. **Extract channel duplication into a shared harness** — complete the `ChannelAdapter` migration for chat, webhook, voice, and telegram. This is the single highest-leverage deduplication opportunity (~200 lines of copy-paste).
-6. **Consolidate env file parsers** into a single implementation in `@openpalm/lib`. Three parsers with different behavior is a bug factory.
-7. **Remove dead code** — `checkPort80()`, `resolveInContainerSocketPath()` dead branch, unused `signPayload` re-exports from channels.
-8. **Replace module-level singletons** (nonce cache, rate limiter) with constructor injection to improve testability.
-9. **Add graceful shutdown** — handle SIGTERM, drain connections, flush nonce cache and audit log.
-
-### Medium-term (P2) — Robustness
-10. **Add file locking to `StackManager` writes** — concurrent admin API requests can currently clobber each other's config changes.
-11. **Consolidate `SetupState` and `StackSpec`** into a single source of truth for access scope and channel state.
-12. **Batch nonce cache persistence** — write to disk on a timer (e.g., every 5s) instead of on every request.
-13. **Make `StackManager` cache the parsed spec** instead of re-reading and re-parsing YAML on every call.
-14. **Add OpenCode client retry logic** — retry transient failures (503, timeouts) with backoff for the assistant client.
-
-### Post-MVP (P3) — Future Consideration
-15. **Consider using PostgreSQL** for OpenPalm state management as complexity grows beyond what flat files handle well.
-16. **Add structured API documentation** (OpenAPI/Swagger) for the admin API.
-17. **Extract infrastructure generation** behind a renderer interface as the stack spec grows more complex.
-
----
-
-*End of review.*

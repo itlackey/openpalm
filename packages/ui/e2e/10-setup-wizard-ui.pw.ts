@@ -157,29 +157,30 @@ test.describe('setup wizard browser flow', () => {
 		// Mock health-check for the HealthStep component
 		await mockHealthCheckAllOk(page);
 
-		// Intercept setup.complete: let the real server handle it (so it generates
-		// artifact files), but override the core readiness data in the response to
-		// show all services ready (no actual Docker services run in CI).
+		// Mock setup.complete: earlier commands (setup.channels etc.) go to the real
+		// server and generate artifact files (compose, caddy, spec).  setup.complete
+		// itself would try Docker orchestration which isn't available in CI, so we
+		// mock it to return a ready snapshot that CompleteStep applies immediately.
 		await page.route('**/command', async (route) => {
 			const body = route.request().postDataJSON() as { type?: string } | null;
 			if (body?.type === 'setup.complete') {
-				const response = await route.fetch();
-				const json = await response.json();
-				json.coreReadiness = {
-					phase: 'ready',
-					updatedAt: new Date().toISOString(),
-					checks: [
-						{ service: 'gateway', state: 'ready', status: 'running' },
-						{ service: 'assistant', state: 'ready', status: 'running' },
-						{ service: 'openmemory', state: 'ready', status: 'running' },
-						{ service: 'admin', state: 'ready', status: 'running' }
-					],
-					diagnostics: { failedServices: [] }
-				};
 				await route.fulfill({
-					status: response.status(),
+					status: 200,
 					contentType: 'application/json',
-					body: JSON.stringify(json)
+					body: JSON.stringify({
+						ok: true,
+						coreReadiness: {
+							phase: 'ready',
+							updatedAt: new Date().toISOString(),
+							checks: [
+								{ service: 'gateway', state: 'ready', status: 'running' },
+								{ service: 'assistant', state: 'ready', status: 'running' },
+								{ service: 'openmemory', state: 'ready', status: 'running' },
+								{ service: 'admin', state: 'ready', status: 'running' }
+							],
+							diagnostics: { failedServices: [] }
+						}
+					})
 				});
 			} else {
 				await route.continue();
