@@ -96,16 +96,16 @@
   {
     "id": "R03",
     "title": "Fix relative path in admin-api.contract.test.ts",
-    "description": "Replace bare relative path with import.meta.dir-anchored path to fix CWD-dependent test failure.",
+    "description": "Replace bare relative path with import.meta.dir-anchored path to fix CWD-dependent test failure. SUPERSEDED: R05 deleted the old admin-api.contract.test.ts and replaced it with a real HTTP contract test that has no relative file paths.",
     "priority": "P1",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R03-fix-relative-paths.md",
     "subtasks": [
       {
         "id": "R03.1",
         "description": "Add join import from node:path",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -117,7 +117,7 @@
       {
         "id": "R03.2",
         "description": "Replace bare relative path 'dev/docs/api-reference.md' with join(import.meta.dir, '../../dev/docs/api-reference.md')",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -129,7 +129,7 @@
       {
         "id": "R03.3",
         "description": "Verify test passes from both repo root and subdirectory",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -145,7 +145,7 @@
     "title": "Delete duplicate HMAC tests",
     "description": "Remove 9 duplicate HMAC tests: delete crypto.test.ts entirely and reduce channel-security.test.ts to a single re-export smoke test.",
     "priority": "P2",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "30 minutes",
     "planFile": ".plans/R04-delete-duplicate-hmac-tests.md",
     "subtasks": [
