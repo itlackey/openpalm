@@ -261,6 +261,16 @@ function removeRegistryEntry(repoRoot: string, sessionId: string): void {
   writeRegistry(repoRoot, registry)
 }
 
+function getStartedAt(stateFilePath: string): string {
+  try {
+    const content = readFileSync(stateFilePath, "utf-8")
+    const match = content.match(/^started_at:\s*"?([^"\n]+)"?/m)
+    return match ? match[1] : new Date().toISOString()
+  } catch {
+    return new Date().toISOString()
+  }
+}
+
 export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
   event: async ({ event }) => {
     if (event.type !== "session.idle") return
@@ -328,6 +338,11 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
         sessionStateMap.delete(sessionId)
         return
       }
+
+      // Ensure registry entry exists as soon as state is claimed, even before
+      // an iteration is advanced. This gives /cancel-ralph and operators a
+      // stable session->worktree map immediately after first idle.
+      updateRegistryEntry(repoRoot, sessionId, stateFilePath, state.iteration, getStartedAt(stateFilePath))
 
       // Check max iterations
       if (state.maxIterations > 0 && state.iteration >= state.maxIterations) {
@@ -398,16 +413,7 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
       updateIteration(stateFilePath, nextIteration)
 
       // Update registry with current iteration
-      const startedAt =
-        (() => {
-          try {
-            const content = readFileSync(stateFilePath, "utf-8")
-            const match = content.match(/^started_at:\s*"?([^"\n]+)"?/m)
-            return match ? match[1] : null
-          } catch {
-            return null
-          }
-        })() ?? new Date().toISOString()
+      const startedAt = getStartedAt(stateFilePath)
 
       updateRegistryEntry(repoRoot, sessionId, stateFilePath, nextIteration, startedAt)
 

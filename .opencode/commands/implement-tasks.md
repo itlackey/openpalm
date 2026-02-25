@@ -6,7 +6,7 @@ Run the following bash commands to set up the worktree and initialize the Ralph 
 
 ```
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-WORKTREE=$("$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh" "$ARGUMENTS")
+WORKTREE=$("$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh" "$ARGUMENTS" | tail -n1)
 "$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh" --worktree "$WORKTREE" "implement-tasks in worktree $WORKTREE: $ARGUMENTS  VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE"
 ```
 

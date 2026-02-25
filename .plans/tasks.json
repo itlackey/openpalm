@@ -1,1339 +1,814 @@
 [
   {
-    "id": "R01",
-    "title": "Add runtime artifacts to .gitignore",
-    "description": "Add e2e/screenshots/ to packages/ui/.gitignore to prevent test screenshot artifacts from being accidentally committed.",
-    "priority": "P1",
-    "status": "completed",
-    "estimatedEffort": "15 minutes",
-    "planFile": ".plans/R01-gitignore-runtime-artifacts.md",
+    "id": "rec-01",
+    "title": "Remove overlapping startup code paths",
+    "description": "Consolidate setup startup so non-terminal setup actions do not start runtime services and completion is the single startup trigger.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 49, "lineEnd": 362 },
+      { "file": "packages/ui/src/routes/setup/complete/+server.ts", "lineStart": 15, "lineEnd": 42 },
+      { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 },
+      { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 }
+    ],
     "subtasks": [
       {
-        "id": "R01.1",
-        "description": "Append e2e/screenshots/ rule to packages/ui/.gitignore after the existing e2e/.e2e-state.json line",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/.gitignore",
-            "lines": "26-27",
-            "action": "modify"
-          }
+        "id": "rec-01-01",
+        "description": "Create a shared setup completion orchestrator used by both completion endpoints.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+          { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 28 }
         ]
       },
       {
-        "id": "R01.2",
-        "description": "Verify the ignore rule matches screenshots directory and files using git check-ignore",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/.gitignore",
-            "lines": "27",
-            "action": "modify"
-          }
+        "id": "rec-01-02",
+        "description": "Remove the setup.start_core command branch and detached startup logic.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 205, "lineEnd": 234 }
+        ]
+      },
+      {
+        "id": "rec-01-03",
+        "description": "Remove wizard invocation of setup.start_core and keep startup messaging on finalization.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 },
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 218 }
+        ]
+      },
+      {
+        "id": "rec-01-04",
+        "description": "Make setup.access_scope and setup.profile configuration-only without compose up side effects.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 236 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 267 },
+          { "file": "packages/ui/src/routes/setup/access-scope/+server.ts", "line": 25 }
+        ]
+      },
+      {
+        "id": "rec-01-05",
+        "description": "Replace route-local setup service arrays with canonical lib-derived service definitions.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 49 },
+          { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 15 }
+        ]
+      },
+      {
+        "id": "rec-01-06",
+        "description": "Update setup docs and tests to enforce one startup path and no setup.start_core usage.",
+        "status": "pending",
+        "references": [
+          { "file": "docs/cli.md", "lineStart": 147, "lineEnd": 156 },
+          { "file": "packages/ui/src/routes/command/command-setup-flow.test.ts", "line": 1 },
+          { "file": "packages/ui/test/api/03-setup-api.test.ts", "line": 171 }
         ]
       }
     ]
   },
   {
-    "id": "R02",
-    "title": "Fix contract test state mutation",
-    "description": "Replace fragile in-memory save/restore of setup-state.json in setup-wizard-gate.contract.test.ts with file-based backup using mkdtempSync for crash-safe restoration.",
-    "priority": "P1",
-    "status": "completed",
-    "estimatedEffort": "1 hour",
-    "planFile": ".plans/R02-fix-contract-test-state-mutation.md",
+    "id": "rec-02",
+    "title": "Add ensureCoreServicesReady health gate",
+    "description": "Gate setup completion on full core runtime convergence with typed diagnostics and Docker-first error visibility.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
+      { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+      { "file": "packages/ui/src/routes/setup/health-check/+server.ts", "line": 13 },
+      { "file": "packages/lib/src/admin/stack-apply-engine.ts", "line": 14 }
+    ],
     "subtasks": [
       {
-        "id": "R02.1",
-        "description": "Update imports to add copyFileSync, mkdtempSync, tmpdir, and join; remove readFileSync",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/setup-wizard-gate.contract.test.ts",
-            "lines": "2-3",
-            "action": "modify"
-          }
+        "id": "rec-02-01",
+        "description": "Implement packages/lib/src/admin/core-readiness.ts with ensureCoreServicesReady and typed result contracts.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 46 },
+          { "file": "packages/lib/src/types.ts", "line": 18 }
         ]
       },
       {
-        "id": "R02.2",
-        "description": "Remove module-level savedState variable and add backupState/restoreState helper functions using mkdtempSync",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/setup-wizard-gate.contract.test.ts",
-            "lines": "14-16",
-            "action": "modify"
-          }
+        "id": "rec-02-02",
+        "description": "Add bounded polling that checks compose ps state and health semantics for each target service.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 147 },
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 153 }
         ]
       },
       {
-        "id": "R02.3",
-        "description": "Replace outer beforeAll/afterAll with backupState() and restoreState() calls",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/setup-wizard-gate.contract.test.ts",
-            "lines": "18-32",
-            "action": "modify"
-          }
+        "id": "rec-02-03",
+        "description": "Integrate HTTP readiness probes for admin, gateway, assistant, and openmemory into convergence checks.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/server/health.ts", "line": 1 },
+          { "file": "packages/ui/src/routes/setup/health-check/+server.ts", "line": 22 }
         ]
       },
       {
-        "id": "R02.4",
-        "description": "Verify contract test passes with OPENPALM_INTEGRATION=1 and state file is properly restored",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/setup-wizard-gate.contract.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-02-04",
+        "description": "Collect failed-service logs and raw compose stderr into setup_not_ready diagnostics payloads.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 55 },
+          { "file": "packages/lib/src/types.ts", "line": 18 }
+        ]
+      },
+      {
+        "id": "rec-02-05",
+        "description": "Wire setup.complete endpoints to readiness gate and call completeSetup only on readiness success.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 362 },
+          { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 17 },
+          { "file": "packages/lib/src/admin/setup-manager.ts", "line": 151 }
+        ]
+      },
+      {
+        "id": "rec-02-06",
+        "description": "Add lib, route, API, and E2E tests for convergence success, timeout, and compose failure paths.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 94 },
+          { "file": "packages/ui/src/routes/command/command-setup-flow.test.ts", "line": 1 },
+          { "file": "test/install-e2e/happy-path.docker.ts", "line": 379 }
         ]
       }
     ]
   },
   {
-    "id": "R03",
-    "title": "Fix relative path in admin-api.contract.test.ts",
-    "description": "Replace bare relative path with import.meta.dir-anchored path to fix CWD-dependent test failure. SUPERSEDED: R05 deleted the old admin-api.contract.test.ts and replaced it with a real HTTP contract test that has no relative file paths.",
-    "priority": "P1",
-    "status": "completed",
-    "estimatedEffort": "15 minutes",
-    "planFile": ".plans/R03-fix-relative-paths.md",
+    "id": "rec-03",
+    "title": "Make setup.complete authoritative transition",
+    "description": "Enforce setup completion invariants so setup state is completed only after stack apply and runtime readiness succeed.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 348, "lineEnd": 362 },
+      { "file": "packages/ui/src/routes/setup/complete/+server.ts", "lineStart": 15, "lineEnd": 42 },
+      { "file": "packages/lib/src/admin/setup-manager.ts", "line": 151 }
+    ],
     "subtasks": [
       {
-        "id": "R03.1",
-        "description": "Add join import from node:path",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/admin-api.contract.test.ts",
-            "lines": "2",
-            "action": "modify"
-          }
+        "id": "rec-03-01",
+        "description": "Introduce a shared finalizeSetup orchestration API in lib/admin with strict operation ordering.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/stack-apply-engine.ts", "line": 22 },
+          { "file": "packages/lib/src/admin/setup-manager.ts", "line": 151 }
         ]
       },
       {
-        "id": "R03.2",
-        "description": "Replace bare relative path 'dev/docs/api-reference.md' with join(import.meta.dir, '../../dev/docs/api-reference.md')",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/admin-api.contract.test.ts",
-            "lines": "8",
-            "action": "modify"
-          }
+        "id": "rec-03-02",
+        "description": "Centralize setup startup service derivation from CoreServices and remove route-local lists.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 49 }
         ]
       },
       {
-        "id": "R03.3",
-        "description": "Verify test passes from both repo root and subdirectory",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/admin-api.contract.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-03-03",
+        "description": "Return stable setup_not_ready failure payloads with consistent HTTP status behavior.",
+        "status": "pending",
+        "references": [
+          { "file": "dev/docs/api-reference.md", "line": 33 },
+          { "file": "packages/lib/src/types.ts", "line": 18 }
+        ]
+      },
+      {
+        "id": "rec-03-04",
+        "description": "Refactor /command setup.complete path to use orchestrator and remove non-terminal startup side effects.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 205 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 236 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 }
+        ]
+      },
+      {
+        "id": "rec-03-05",
+        "description": "Refactor /setup/complete and /setup/access-scope routes to delegate and remain mutation-only.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 15 },
+          { "file": "packages/ui/src/routes/setup/access-scope/+server.ts", "line": 25 }
+        ]
+      },
+      {
+        "id": "rec-03-06",
+        "description": "Update docs and tests to verify invariants, endpoint parity, and completion-only state promotion.",
+        "status": "pending",
+        "references": [
+          { "file": "docs/cli.md", "line": 151 },
+          { "file": "packages/ui/test/api/03-setup-api.test.ts", "line": 171 },
+          { "file": "test/install-e2e/happy-path.docker.ts", "line": 379 }
         ]
       }
     ]
   },
   {
-    "id": "R04",
-    "title": "Delete duplicate HMAC tests",
-    "description": "Remove 9 duplicate HMAC tests: delete crypto.test.ts entirely and reduce channel-security.test.ts to a single re-export smoke test.",
-    "priority": "P2",
-    "status": "completed",
-    "estimatedEffort": "30 minutes",
-    "planFile": ".plans/R04-delete-duplicate-hmac-tests.md",
+    "id": "rec-04",
+    "title": "Remove fire-and-forget setup.start_core",
+    "description": "Eliminate detached startup behavior and keep startup/failure semantics synchronous at setup completion.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 205, "lineEnd": 234 },
+      { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 },
+      { "file": "docs/cli.md", "line": 151 }
+    ],
     "subtasks": [
       {
-        "id": "R04.1",
-        "description": "Delete packages/lib/src/shared/crypto.test.ts (strict subset of hmac.security.test.ts)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/shared/crypto.test.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-04-01",
+        "description": "Remove setup.start_core command implementation and detached async startup return path.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 205 }
         ]
       },
       {
-        "id": "R04.2",
-        "description": "Replace channel-security.test.ts contents with a single re-export smoke test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "core/gateway/src/channel-security.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-04-02",
+        "description": "Remove setup.start_core call from wizard service-instances step.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 }
         ]
       },
       {
-        "id": "R04.3",
-        "description": "Verify hmac.security.test.ts, channel-security.test.ts, and full test suite pass",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/security/hmac.security.test.ts",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "core/gateway/src/channel-security.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-04-03",
+        "description": "Keep setup.complete as synchronous startup boundary with explicit structured failure responses.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "lineStart": 348, "lineEnd": 360 }
+        ]
+      },
+      {
+        "id": "rec-04-04",
+        "description": "Ensure /setup/complete parity and confirm no residual startup triggers in setup subroutes.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 39 },
+          { "file": "packages/ui/src/routes/setup/access-scope/+server.ts", "line": 25 }
+        ]
+      },
+      {
+        "id": "rec-04-05",
+        "description": "Decide and implement compatibility behavior: temporary no-op deprecation shim or immediate unknown_command removal.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 680 },
+          { "file": "packages/ui/test/api/08-command-api.test.ts", "line": 49 }
+        ]
+      },
+      {
+        "id": "rec-04-06",
+        "description": "Update tests and docs to remove setup.start_core narrative and validate wizard flow behavior.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/command-setup-flow.test.ts", "line": 5 },
+          { "file": "packages/ui/e2e/10-setup-wizard-ui.pw.ts", "line": 156 },
+          { "file": "docs/cli.md", "line": 147 }
         ]
       }
     ]
   },
   {
-    "id": "R05",
-    "title": "Delete fake contract tests",
-    "description": "Move doc-lint checks to a pre-commit hook/lint script, delete 3 fake contract tests, and write a real admin API contract test with live HTTP assertions.",
-    "priority": "P2",
-    "status": "completed",
-    "estimatedEffort": "2-3 hours",
-    "planFile": ".plans/R05-delete-fake-contract-tests.md",
+    "id": "rec-05",
+    "title": "Collapse startup entry points to one path",
+    "description": "Route all setup-time runtime startup through one shared backend orchestration function used by completion endpoints.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
+      { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+      { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 15 }
+    ],
     "subtasks": [
       {
-        "id": "R05.1",
-        "description": "Create dev/scripts/lint-docs.sh with documentation invariant checks extracted from the fake contract tests",
-        "status": "completed",
-        "files": [
-          {
-            "path": "dev/scripts/lint-docs.sh",
-            "lines": null,
-            "action": "create"
-          }
+        "id": "rec-05-01",
+        "description": "Add shared reconcileCoreRuntime function in lib compose/admin layer with structured result typing.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "lineStart": 4, "lineEnd": 66 }
         ]
       },
       {
-        "id": "R05.2",
-        "description": "Update dev/hooks/pre-commit to call lint-docs.sh when README or api-reference.md are staged",
-        "status": "completed",
-        "files": [
-          {
-            "path": "dev/hooks/pre-commit",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-05-02",
+        "description": "Delete setup.start_core entry point and related wizard fire-and-forget caller.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 205 },
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 }
         ]
       },
       {
-        "id": "R05.3",
-        "description": "Add lint:docs script to package.json",
-        "status": "completed",
-        "files": [
-          {
-            "path": "package.json",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-05-03",
+        "description": "Remove startup side effects from command and REST access-scope handlers.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 236 },
+          { "file": "packages/ui/src/routes/setup/access-scope/+server.ts", "line": 25 }
         ]
       },
       {
-        "id": "R05.4",
-        "description": "Delete fake contract test: test/contracts/admin-api.contract.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/admin-api.contract.test.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-05-04",
+        "description": "Switch /command setup.complete and /setup/complete to call the same shared orchestration function.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+          { "file": "packages/ui/src/routes/setup/complete/+server.ts", "line": 15 }
         ]
       },
       {
-        "id": "R05.5",
-        "description": "Delete fake contract test: test/contracts/readme-no-npx.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/readme-no-npx.test.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-05-05",
+        "description": "Update API, wizard-order, and install E2E tests to assert one startup path and removed legacy command.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/test/api/08-command-api.test.ts", "line": 40 },
+          { "file": "packages/ui/src/lib/components/setup-wizard-order.test.ts", "line": 6 },
+          { "file": "test/install-e2e/happy-path.docker.ts", "line": 379 }
         ]
       },
       {
-        "id": "R05.6",
-        "description": "Delete fake contract test: test/contracts/channel-message.contract.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/channel-message.contract.test.ts",
-            "lines": null,
-            "action": "delete"
-          }
-        ]
-      },
-      {
-        "id": "R05.7",
-        "description": "Write real admin API contract test with HTTP assertions against live admin server, guarded by OPENPALM_INTEGRATION=1",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/admin-api.contract.test.ts",
-            "lines": null,
-            "action": "create"
-          }
-        ]
-      },
-      {
-        "id": "R05.8",
-        "description": "Optionally add bun run lint:docs to the unit-tests job in .github/workflows/release.yml",
-        "status": "completed",
-        "files": [
-          {
-            "path": ".github/workflows/release.yml",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-05-06",
+        "description": "Update release workflow assertions and docs to describe completion-only startup orchestration.",
+        "status": "pending",
+        "references": [
+          { "file": ".github/workflows/release.yml", "line": 161 },
+          { "file": "docs/cli.md", "line": 151 }
         ]
       }
     ]
   },
   {
-    "id": "R06",
-    "title": "Eliminate silent test passes",
-    "description": "Audit confirmed no silent guard anti-patterns exist. Optionally add a CI grep check to prevent future regressions.",
-    "priority": "P2",
-    "status": "completed",
-    "estimatedEffort": "15 minutes",
-    "planFile": ".plans/R06-eliminate-silent-test-passes.md",
+    "id": "rec-06",
+    "title": "Add core readiness UX stage",
+    "description": "Introduce explicit final-step readiness phases, per-service status, diagnostics, and retry controls in setup UI.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 184 },
+      { "file": "packages/ui/src/lib/components/CompleteStep.svelte", "line": 11 },
+      { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 }
+    ],
     "subtasks": [
       {
-        "id": "R06.1",
-        "description": "Run verification grep command to confirm no silent if/return patterns exist in test files",
-        "status": "completed",
-        "files": [
-          {
-            "path": "dev/docs/release-quality-gates.md",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-06-01",
+        "description": "Define shared readiness phase and snapshot types for API and UI contracts.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/types.ts", "line": 18 },
+          { "file": "packages/lib/src/admin/setup-manager.ts", "line": 151 }
         ]
       },
       {
-        "id": "R06.2",
-        "description": "Optionally add silent test guard check step to the unit-tests job in release.yml",
-        "status": "completed",
-        "files": [
-          {
-            "path": ".github/workflows/release.yml",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-06-02",
+        "description": "Implement backend readiness orchestration and typed setup.complete responses with phase snapshots.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 }
+        ]
+      },
+      {
+        "id": "rec-06-03",
+        "description": "Add readiness status endpoints and retry endpoint under /setup/core-readiness.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/setup/core-readiness/+server.ts", "line": 1 },
+          { "file": "packages/ui/src/routes/setup/core-readiness/retry/+server.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "rec-06-04",
+        "description": "Refactor SetupWizard finish flow to render backend-driven phases and gate success on ready.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 184 },
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 }
+        ]
+      },
+      {
+        "id": "rec-06-05",
+        "description": "Enhance CompleteStep with per-service status, diagnostics panel, retry action, and copy diagnostics.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/CompleteStep.svelte", "line": 16 },
+          { "file": "packages/ui/src/lib/components/CompleteStep.svelte", "line": 65 }
+        ]
+      },
+      {
+        "id": "rec-06-06",
+        "description": "Add accessibility and mobile regression tests for phase updates and failure recovery controls.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/complete-step.test.ts", "line": 12 },
+          { "file": "packages/ui/test/api/03-setup-api.test.ts", "line": 1 },
+          { "file": "test/install-e2e/happy-path.docker.ts", "line": 379 }
         ]
       }
     ]
   },
   {
-    "id": "R07",
-    "title": "Extract API tests from Playwright into bun:test",
-    "description": "Migrate 9 Playwright E2E test files (56 tests) that make pure HTTP API calls into bun:test integration tests using native fetch(), removing unnecessary Chromium dependency.",
-    "priority": "P3",
-    "status": "completed",
-    "estimatedEffort": "3-5 days",
-    "planFile": ".plans/R07-extract-api-tests-from-playwright.md",
+    "id": "rec-07",
+    "title": "Add structured preflight failure types",
+    "description": "Move install preflight handling from message parsing to typed codes and severities with compatibility shims.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/lib/src/preflight.ts", "lineStart": 4, "lineEnd": 126 },
+      { "file": "packages/cli/src/commands/install.ts", "lineStart": 60, "lineEnd": 88 },
+      { "file": "packages/lib/src/types.ts", "line": 18 }
+    ],
     "subtasks": [
       {
-        "id": "R07.1",
-        "description": "Create packages/ui/test/api/ directory and shared helpers.ts with server lifecycle, temp dir, and fetch wrappers",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/helpers.ts",
-            "lines": null,
-            "action": "create"
-          }
+        "id": "rec-07-01",
+        "description": "Define PreflightCode, PreflightSeverity, PreflightIssue, and PreflightResult in shared lib types.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/types.ts", "line": 18 },
+          { "file": "packages/lib/src/index.ts", "line": 14 }
         ]
       },
       {
-        "id": "R07.2",
-        "description": "Migrate 01-health-meta.pw.ts (3 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/01-health-meta.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/01-health-meta.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-07-02",
+        "description": "Implement runPreflightChecksDetailed and migrate check functions to return typed issues.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/preflight.ts", "line": 33 },
+          { "file": "packages/lib/src/preflight.ts", "line": 58 },
+          { "file": "packages/lib/src/preflight.ts", "line": 108 }
         ]
       },
       {
-        "id": "R07.3",
-        "description": "Migrate 02-auth.pw.ts (8 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/02-auth-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/02-auth.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-07-03",
+        "description": "Keep temporary runPreflightChecks compatibility shim mapping typed issues to legacy warnings.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/preflight.ts", "line": 126 }
         ]
       },
       {
-        "id": "R07.4",
-        "description": "Migrate 03-setup-api.pw.ts (20 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/03-setup-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/03-setup-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-07-04",
+        "description": "Refactor install command fatal branching to use preflight codes instead of message includes checks.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/cli/src/commands/install.ts", "line": 74 },
+          { "file": "packages/cli/src/commands/install.ts", "line": 88 }
         ]
       },
       {
-        "id": "R07.5",
-        "description": "Migrate 04-stack-api.pw.ts (4 tests) to bun:test with runMinimalSetup() helper",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/04-stack-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/04-stack-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
+        "id": "rec-07-05",
+        "description": "Add lib and CLI tests for mapping, severity contracts, and no message-parsing regression.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/preflight.test.ts", "line": 1 },
+          { "file": "packages/cli/src/commands/install.preflight-codes.test.ts", "line": 1 },
+          { "file": "packages/cli/test/install.test.ts", "line": 48 }
         ]
       },
       {
-        "id": "R07.6",
-        "description": "Migrate 05-secrets-api.pw.ts (5 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/05-secrets-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/05-secrets-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
-        ]
-      },
-      {
-        "id": "R07.7",
-        "description": "Migrate 06-automations-api.pw.ts (6 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/06-automations-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/06-automations-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
-        ]
-      },
-      {
-        "id": "R07.8",
-        "description": "Migrate 07-channels-api.pw.ts (3 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/07-channels-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/07-channels-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
-        ]
-      },
-      {
-        "id": "R07.9",
-        "description": "Migrate 08-command-api.pw.ts (5 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/08-command-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/08-command-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
-        ]
-      },
-      {
-        "id": "R07.10",
-        "description": "Migrate 11-container-automation-management-api.pw.ts (2 tests) to bun:test",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/11-container-automation-management-api.test.ts",
-            "lines": null,
-            "action": "create"
-          },
-          {
-            "path": "packages/ui/e2e/11-container-automation-management-api.pw.ts",
-            "lines": null,
-            "action": "delete"
-          }
-        ]
-      },
-      {
-        "id": "R07.11",
-        "description": "Add test:api script to packages/ui/package.json and update test script to include it",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/package.json",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R07.12",
-        "description": "Add bun-api job to .github/workflows/test-ui.yml that runs API tests without Chromium",
-        "status": "completed",
-        "files": [
-          {
-            "path": ".github/workflows/test-ui.yml",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-07-06",
+        "description": "Update docs and release workflow test coverage for typed preflight contract behavior.",
+        "status": "pending",
+        "references": [
+          { "file": "docs/cli.md", "line": 48 },
+          { "file": "dev/docs/api-reference.md", "line": 14 },
+          { "file": ".github/workflows/release.yml", "line": 77 }
         ]
       }
     ]
   },
   {
-    "id": "R08",
-    "title": "Break the sequential state machine in setup API test",
-    "description": "Collapse 23 sequential test() calls in 03-setup-api.pw.ts into a single test() with test.step() sub-steps to eliminate cascading failures and honestly represent the linear workflow.",
-    "priority": "P3",
-    "status": "completed",
-    "estimatedEffort": "1-2 hours",
-    "planFile": ".plans/R08-break-sequential-state-machine.md",
+    "id": "rec-08",
+    "title": "Align installer --port option in wrappers",
+    "description": "Add --port support and remediation guidance in install wrappers with docs and test parity.",
+    "status": "pending",
+    "references": [
+      { "file": "install.sh", "lineStart": 28, "lineEnd": 74 },
+      { "file": "install.ps1", "lineStart": 10, "lineEnd": 15 },
+      { "file": "packages/cli/src/main.ts", "lineStart": 135, "lineEnd": 146 }
+    ],
     "subtasks": [
       {
-        "id": "R08.1",
-        "description": "Replace 23 test() calls with a single test() containing 23 test.step() calls organized by phase",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/03-setup-api.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-08-01",
+        "description": "Update install.sh parser to accept --port and forward value to CLI args.",
+        "status": "pending",
+        "references": [
+          { "file": "install.sh", "line": 28 },
+          { "file": "install.sh", "line": 219 }
         ]
       },
       {
-        "id": "R08.2",
-        "description": "Remove the wrapping test.describe() block or simplify it",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/03-setup-api.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-08-02",
+        "description": "Add --port help text and wrapper usage examples in install.sh output.",
+        "status": "pending",
+        "references": [
+          { "file": "install.sh", "lineStart": 13, "lineEnd": 17 },
+          { "file": "install.sh", "lineStart": 53, "lineEnd": 64 }
         ]
       },
       {
-        "id": "R08.3",
-        "description": "Run full Playwright E2E suite and verify downstream files 04-11 are unaffected",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/03-setup-api.pw.ts",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/e2e/04-stack-api.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-08-03",
+        "description": "Add Port parameter validation and --port pass-through in install.ps1.",
+        "status": "pending",
+        "references": [
+          { "file": "install.ps1", "line": 10 },
+          { "file": "install.ps1", "line": 108 },
+          { "file": "install.ps1", "line": 125 }
+        ]
+      },
+      {
+        "id": "rec-08-04",
+        "description": "Add PowerShell comment-based help entries for Port and alternate-port install examples.",
+        "status": "pending",
+        "references": [
+          { "file": "install.ps1", "lineStart": 1, "lineEnd": 15 }
+        ]
+      },
+      {
+        "id": "rec-08-05",
+        "description": "Add wrapper-level post-failure remediation hints for known port-conflict errors without masking CLI output.",
+        "status": "pending",
+        "references": [
+          { "file": "install.sh", "lineStart": 218, "lineEnd": 219 },
+          { "file": "install.ps1", "lineStart": 124, "lineEnd": 126 },
+          { "file": "packages/cli/src/commands/install.ts", "line": 93 }
+        ]
+      },
+      {
+        "id": "rec-08-06",
+        "description": "Update docs and CLI wrapper tests to assert --port parsing, help text, and passthrough behavior.",
+        "status": "pending",
+        "references": [
+          { "file": "docs/cli.md", "lineStart": 20, "lineEnd": 47 },
+          { "file": "packages/cli/test/install-methods.test.ts", "line": 103 },
+          { "file": "packages/cli/test/main.test.ts", "line": 100 }
         ]
       }
     ]
   },
   {
-    "id": "R09",
-    "title": "Add resetServerState() utility",
-    "description": "Create a resetServerState(tmpDir) function that resets an OpenPalm state directory to first-boot condition, replacing ad-hoc state reset patterns scattered across the test suite.",
-    "priority": "P3",
-    "status": "completed",
-    "estimatedEffort": "1-2 hours",
-    "planFile": ".plans/R09-add-reset-server-state-utility.md",
+    "id": "rec-09",
+    "title": "Tighten docs expectation correctness",
+    "description": "Update user docs to match bootstrap-first setup flow and temporary admin token terminology.",
+    "status": "pending",
+    "references": [
+      { "file": "README.md", "line": 49 },
+      { "file": "docs/cli.md", "line": 61 },
+      { "file": "core/admin/docs/admin-guide.md", "line": 26 },
+      { "file": "core/admin/README.md", "line": 23 }
+    ],
     "subtasks": [
       {
-        "id": "R09.1",
-        "description": "Export DEFAULT_STATE from setup-manager.ts (change const to export const)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/setup-manager.ts",
-            "lines": "37",
-            "action": "modify"
-          }
+        "id": "rec-09-01",
+        "description": "Rewrite README install flow copy to describe bootstrap services first and full runtime at wizard completion.",
+        "status": "pending",
+        "references": [
+          { "file": "README.md", "lineStart": 46, "lineEnd": 51 },
+          { "file": "README.md", "line": 50 }
         ]
       },
       {
-        "id": "R09.2",
-        "description": "Create test-utils.ts with resetServerState(), createTestDirLayout(), ServerDirLayout type, and related constants",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/test-utils.ts",
-            "lines": null,
-            "action": "create"
-          }
+        "id": "rec-09-02",
+        "description": "Replace admin password wording with temporary admin token wording in README and CLI docs.",
+        "status": "pending",
+        "references": [
+          { "file": "README.md", "line": 49 },
+          { "file": "docs/cli.md", "line": 61 },
+          { "file": "docs/cli.md", "line": 95 }
         ]
       },
       {
-        "id": "R09.3",
-        "description": "Create test-utils.test.ts with tests for resetServerState (correct state file, artifact removal, service env cleanup, idempotency) and createTestDirLayout",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/test-utils.test.ts",
-            "lines": null,
-            "action": "create"
-          }
+        "id": "rec-09-03",
+        "description": "Update admin guide and admin README credential terminology to align with x-admin-token usage.",
+        "status": "pending",
+        "references": [
+          { "file": "core/admin/docs/admin-guide.md", "line": 57 },
+          { "file": "core/admin/docs/admin-guide.md", "line": 58 },
+          { "file": "core/admin/README.md", "line": 90 }
         ]
       },
       {
-        "id": "R09.4",
-        "description": "Verify all tests pass: bun test packages/lib/src/admin/test-utils.test.ts and bun run typecheck",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/test-utils.test.ts",
-            "lines": null,
-            "action": "create"
-          }
+        "id": "rec-09-04",
+        "description": "Remove or reframe stale setup.start_core narrative in docs/cli flow tables and sequence text.",
+        "status": "pending",
+        "references": [
+          { "file": "docs/cli.md", "line": 151 },
+          { "file": "docs/cli.md", "lineStart": 149, "lineEnd": 156 }
+        ]
+      },
+      {
+        "id": "rec-09-05",
+        "description": "Run wording consistency scans for bootstrap services and temporary admin token terminology.",
+        "status": "pending",
+        "references": [
+          { "file": "README.md", "line": 75 },
+          { "file": "docs/cli.md", "line": 67 },
+          { "file": "core/admin/docs/admin-guide.md", "line": 32 }
         ]
       }
     ]
   },
   {
-    "id": "R10",
-    "title": "Stop rebuilding every test run",
-    "description": "Add SKIP_BUILD env var support to start-webserver.cjs so Playwright skips the Vite build when build/index.js already exists, and pre-build in CI.",
-    "priority": "P3",
-    "status": "completed",
-    "estimatedEffort": "1 hour",
-    "planFile": ".plans/R10-stop-rebuilding-every-test-run.md",
+    "id": "rec-10",
+    "title": "Add self-healing retry affordances",
+    "description": "Provide explicit user-driven retry for core startup failures with diagnostics and idempotent behavior.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+      { "file": "packages/ui/src/lib/components/CompleteStep.svelte", "line": 65 },
+      { "file": "packages/lib/src/shared/logger.ts", "line": 50 }
+    ],
     "subtasks": [
       {
-        "id": "R10.1",
-        "description": "Modify start-webserver.cjs to check SKIP_BUILD=1 && existsSync('build/index.js') before running bun run build",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/start-webserver.cjs",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-10-01",
+        "description": "Extend setup.complete failure contract to return setup_not_ready diagnostics and retryable metadata.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+          { "file": "dev/docs/api-reference.md", "line": 33 }
         ]
       },
       {
-        "id": "R10.2",
-        "description": "Update .github/workflows/test-ui.yml to add explicit 'Build UI' step and pass SKIP_BUILD=1 to Playwright step",
-        "status": "completed",
-        "files": [
-          {
-            "path": ".github/workflows/test-ui.yml",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-10-02",
+        "description": "Add setup.retry_core command that reuses the same shared readiness reconciliation function.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 108 },
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 }
         ]
       },
       {
-        "id": "R10.3",
-        "description": "Optionally add build caching with actions/cache keyed on source file hashes",
-        "status": "completed",
-        "files": [
-          {
-            "path": ".github/workflows/test-ui.yml",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-10-03",
+        "description": "Ensure retry is user-initiated only and remove any silent auto-retry logic from setup UI.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 184 },
+          { "file": "packages/ui/src/lib/components/CompleteStep.svelte", "line": 16 }
         ]
       },
       {
-        "id": "R10.4",
-        "description": "Verify locally: SKIP_BUILD=1 works with existing build, fallback rebuilds when build is missing, default behavior unchanged",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/start-webserver.cjs",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-10-04",
+        "description": "Add failed-state UI diagnostics panel with service statuses, compose stderr, log tails, and copy action.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/components/CompleteStep.svelte", "line": 65 },
+          { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 184 }
+        ]
+      },
+      {
+        "id": "rec-10-05",
+        "description": "Emit structured server telemetry for failure, retry request/result, and diagnostics copy events.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/lib/server/init.ts", "line": 18 },
+          { "file": "packages/lib/src/shared/logger.ts", "line": 50 }
+        ]
+      },
+      {
+        "id": "rec-10-06",
+        "description": "Add API, component, and E2E tests covering failed completion, retry success, and idempotent repeated retries.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/ui/src/routes/command/command-setup-flow.test.ts", "line": 1 },
+          { "file": "packages/ui/test/api/08-command-api.test.ts", "line": 40 },
+          { "file": "test/install-e2e/happy-path.docker.ts", "line": 379 }
         ]
       }
     ]
   },
   {
-    "id": "R11",
-    "title": "Make integration tests run in CI",
-    "description": "Convert 3 stack-dependent integration test files to use in-process Bun.serve() mock servers instead of requiring a live Docker stack, following the pattern from channel-gateway.integration.test.ts.",
-    "priority": "P4",
-    "status": "completed",
-    "estimatedEffort": "2-3 hours",
-    "planFile": ".plans/R11-make-integration-tests-run-in-ci.md",
+    "id": "rec-11",
+    "title": "Add release gate core health check",
+    "description": "Add release-blocking full-stack setup E2E gate that verifies core service running and health convergence after setup completion.",
+    "status": "pending",
+    "references": [
+      { "file": ".github/workflows/release.yml", "line": 161 },
+      { "file": "test/install-e2e/happy-path.docker.ts", "line": 177 },
+      { "file": "bunfig.toml", "line": 7 },
+      { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 }
+    ],
     "subtasks": [
       {
-        "id": "R11.1",
-        "description": "Convert container-health.integration.test.ts: remove OPENPALM_INTEGRATION guard, import checkServiceHealth, create mock Bun.serve() servers, test against mocks",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/integration/container-health.integration.test.ts",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/lib/server/health.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-11-01",
+        "description": "Create full-stack core-health install E2E test without busybox stubs.",
+        "status": "pending",
+        "references": [
+          { "file": "test/install-e2e/core-health.docker.ts", "line": 1 },
+          { "file": "test/install-e2e/happy-path.docker.ts", "line": 105 }
         ]
       },
       {
-        "id": "R11.2",
-        "description": "Convert admin-auth.integration.test.ts: remove skipIf guard, create mock admin server with auth middleware pattern, test 401/200 responses",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/integration/admin-auth.integration.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-11-02",
+        "description": "Add shared helper to parse compose ps output and compute missing or unhealthy core services.",
+        "status": "pending",
+        "references": [
+          { "file": "test/install-e2e/helpers/core-health.ts", "line": 1 },
+          { "file": "packages/lib/src/admin/compose-runner.ts", "line": 4 }
         ]
       },
       {
-        "id": "R11.3",
-        "description": "Convert admin-health-check.integration.test.ts: remove skipIf guard, create mock service servers, test health-check response shape and aggregation",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/integration/admin-health-check.integration.test.ts",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/src/lib/server/health.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-11-03",
+        "description": "Assert post-setup compose running state, healthchecks, and HTTP probes for admin/gateway/assistant/openmemory.",
+        "status": "pending",
+        "references": [
+          { "file": "test/install-e2e/core-health.docker.ts", "line": 1 },
+          { "file": "dev/docs/install-setup-simplification-reliability-report-consolidated.md", "line": 222 }
         ]
       },
       {
-        "id": "R11.4",
-        "description": "Verify all integration tests pass without Docker: bun test --filter integration",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/integration/channel-gateway.integration.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-11-04",
+        "description": "Add package script test:install:core-health for local and CI parity.",
+        "status": "pending",
+        "references": [
+          { "file": "package.json", "line": 20 }
+        ]
+      },
+      {
+        "id": "rec-11-05",
+        "description": "Add setup-core-health-e2e workflow job with artifact upload and release-blocking needs linkage.",
+        "status": "pending",
+        "references": [
+          { "file": ".github/workflows/release.yml", "line": 161 },
+          { "file": ".github/workflows/release.yml", "line": 186 }
+        ]
+      },
+      {
+        "id": "rec-11-06",
+        "description": "Document fallback triage policy for transient runner failures without bypassing release gate.",
+        "status": "pending",
+        "references": [
+          { "file": "dev/docs/install-setup-simplification-reliability-report-consolidated.md", "line": 364 },
+          { "file": ".github/workflows/release.yml", "line": 173 }
         ]
       }
     ]
   },
   {
-    "id": "R12",
-    "title": "Fix bun test discovery",
-    "description": "Configure bunfig.toml to exclude Docker tests from default discovery, simplify test:unit script, remove dead scripts, and fix naming inconsistency.",
-    "priority": "P4",
-    "status": "completed",
-    "estimatedEffort": "15 minutes",
-    "planFile": ".plans/R12-fix-bun-test-discovery.md",
+    "id": "rec-12",
+    "title": "Add install idempotency metadata",
+    "description": "Replace install compose-content heuristics with persisted metadata and migration-safe lifecycle updates.",
+    "status": "pending",
+    "references": [
+      { "file": "packages/cli/src/commands/install.ts", "lineStart": 125, "lineEnd": 142 },
+      { "file": "packages/lib/src/paths.ts", "line": 24 },
+      { "file": "packages/ui/src/routes/command/+server.ts", "line": 362 },
+      { "file": "packages/cli/src/commands/uninstall.ts", "line": 110 }
+    ],
     "subtasks": [
       {
-        "id": "R12.1",
-        "description": "Rename test/contracts/readme-no-npx.test.ts to readme-no-npx.contract.test.ts for naming consistency",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/contracts/readme-no-npx.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-12-01",
+        "description": "Define install metadata schema and typed contracts including mode, version, runtime, port, and history.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/types.ts", "line": 51 }
         ]
       },
       {
-        "id": "R12.2",
-        "description": "Add exclude patterns for test/docker/** and test/install-e2e/** to bunfig.toml [test] section",
-        "status": "completed",
-        "files": [
-          {
-            "path": "bunfig.toml",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-12-02",
+        "description": "Implement metadata IO helper with atomic writes, validation, and legacy migration support.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/install-metadata.ts", "line": 1 },
+          { "file": "packages/lib/src/config.ts", "line": 12 }
         ]
       },
       {
-        "id": "R12.3",
-        "description": "Replace fragile deny-list test:unit script with directory allow-list: bun test packages/ channels/ core/ dev/",
-        "status": "completed",
-        "files": [
-          {
-            "path": "package.json",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-12-03",
+        "description": "Refactor install idempotency prompt logic to use metadata-first decisions with heuristic fallback.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/cli/src/commands/install.ts", "line": 125 },
+          { "file": "packages/cli/src/commands/install.ts", "line": 132 }
         ]
       },
       {
-        "id": "R12.4",
-        "description": "Remove dead test:compose and test:compose:ui scripts from package.json",
-        "status": "completed",
-        "files": [
-          {
-            "path": "package.json",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-12-04",
+        "description": "Write and update metadata on successful install bootstrap, setup completion, and update command success.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/cli/src/commands/install.ts", "line": 305 },
+          { "file": "packages/ui/src/routes/command/+server.ts", "line": 348 },
+          { "file": "packages/cli/src/commands/update.ts", "line": 5 }
         ]
       },
       {
-        "id": "R12.5",
-        "description": "Verify bun test excludes Docker tests, test:unit runs correctly, and test:contracts discovers renamed file",
-        "status": "completed",
-        "files": [
-          {
-            "path": "bunfig.toml",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "package.json",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "R13",
-    "title": "Inject dependencies instead of monkey-patching globals",
-    "description": "Add SpawnFn type and optional spawn parameter to runCompose, createComposeRunner, and composeExec, then rewrite two test files to use DI instead of monkey-patching Bun.spawn.",
-    "priority": "P5",
-    "status": "completed",
-    "estimatedEffort": "2-3 hours",
-    "planFile": ".plans/R13-inject-dependencies-not-globals.md",
-    "subtasks": [
-      {
-        "id": "R13.1",
-        "description": "Add SpawnFn type and spawn? field to ComposeRunOptions in packages/lib/src/types.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/types.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-12-05",
+        "description": "Preserve remove-all uninstall cleanup behavior and document metadata removal with state directory deletion.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/cli/src/commands/uninstall.ts", "line": 96 },
+          { "file": "packages/cli/src/commands/uninstall.ts", "line": 110 }
         ]
       },
       {
-        "id": "R13.2",
-        "description": "Update runComposeOnce in compose-runner.ts to use options.spawn ?? Bun.spawn instead of hard-coded Bun.spawn",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/compose-runner.ts",
-            "lines": "27-48",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R13.3",
-        "description": "Thread spawn parameter through createComposeRunner and execCompose in admin/compose-runner.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/compose-runner.ts",
-            "lines": "73-131",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R13.4",
-        "description": "Add spawn? to composeExec options in packages/lib/src/compose.ts and forward it",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/compose.ts",
-            "lines": "14",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R13.5",
-        "description": "Rewrite compose-runner.test.ts: remove all Bun.spawn monkey-patching, use createComposeRunner(envFile, mockSpawn) and createMockRunner()",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/compose-runner.test.ts",
-            "lines": "13-40",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R13.6",
-        "description": "Rewrite packages/cli/test/compose.test.ts: remove Bun.spawn monkey-patching, pass spawn via composeExec options",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/cli/test/compose.test.ts",
-            "lines": "47-56",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R13.7",
-        "description": "Run full test suite and grep for remaining Bun.spawn= assignments in test files",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/compose-runner.test.ts",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "packages/cli/test/compose.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "R14",
-    "title": "Fix module-load side effects in automations.ts",
-    "description": "Refactor automations.ts and automation-history.ts to use configureCronDir() setter instead of reading Bun.env.CRON_DIR, eliminating cache-busting import hacks, env var propagation, and the CRON_DIR config export.",
-    "priority": "P5",
-    "status": "completed",
-    "estimatedEffort": "2-3 hours",
-    "planFile": ".plans/R14-fix-module-load-side-effects.md",
-    "subtasks": [
-      {
-        "id": "R14.1",
-        "description": "Refactor automations.ts: replace cronDir() env reader with DEFAULT_CRON_DIR constant, configureCronDir() setter, and optional trailing cronDir param on all exports",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/automations.ts",
-            "lines": "10-18",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.2",
-        "description": "Refactor automation-history.ts: replace Bun.env.CRON_DIR read with same configureCronDir/default-param pattern",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/automation-history.ts",
-            "lines": "1-35",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.3",
-        "description": "Update init.ts: remove process.env.CRON_DIR propagation, call configureCronDir() for both modules at startup",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/src/lib/server/init.ts",
-            "lines": "67-90",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.4",
-        "description": "Remove CRON_DIR export from config.ts (no longer needed \u2014 derived from STATE_ROOT in init.ts)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/src/lib/server/config.ts",
-            "lines": "43-45",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.5",
-        "description": "Remove vestigial CRON_DIR env var settings from test helpers (helpers.ts, env.ts, happy-path.docker.ts)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/test/api/helpers.ts",
-            "lines": "119",
-            "action": "modify"
-          },
-          {
-            "path": "packages/ui/e2e/env.ts",
-            "lines": "98",
-            "action": "modify"
-          },
-          {
-            "path": "test/install-e2e/happy-path.docker.ts",
-            "lines": "212",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.6",
-        "description": "Rewrite automations.test.ts: static import, remove cache-busting hack, pass cronDir directly",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/automations.test.ts",
-            "lines": "1-33",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.7",
-        "description": "Rewrite automation-history.test.ts: static import, remove env var manipulation, pass cronDir directly",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/automation-history.test.ts",
-            "lines": "1-24",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R14.8",
-        "description": "Run full test suite (729 pass) and verify zero remaining Bun.env.CRON_DIR or cache-busting import patterns",
-        "status": "completed",
-        "files": []
-      }
-    ]
-  },
-  {
-    "id": "R15",
-    "title": "Add health-check failure tests",
-    "description": "Add 4 new Playwright E2E tests to 10-setup-wizard-ui.pw.ts covering health-check failure scenarios: service errors, polling timeout, partial readiness, and HealthStep dot indicators.",
-    "priority": "P5",
-    "status": "completed",
-    "estimatedEffort": "2-3 hours",
-    "planFile": ".plans/R15-add-health-check-failure-tests.md",
-    "subtasks": [
-      {
-        "id": "R15.1",
-        "description": "Extract navigateToHealthCheckStep() helper function to reduce wizard navigation duplication",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R15.2",
-        "description": "Extract mockSetupCompleteOk() helper function for shared setup.complete command mocking",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R15.3",
-        "description": "Add Test 1: Complete step shows error state when all non-admin services report ok:false (fast-fail after 5 polls)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R15.4",
-        "description": "Add Test 2: Complete step shows timeout message after full 60-poll polling exhaustion (partial failure: some services up, some down)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R15.5",
-        "description": "Add Test 3: Complete step renders per-service status during polling with phased mock (services come up incrementally)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R15.6",
-        "description": "Add Test 4: Health Check step shows per-service dot indicators for mixed health (dot-ok, dot-err, error text)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R15.7",
-        "description": "Run full Playwright suite and verify all new and existing tests pass",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/ui/e2e/10-setup-wizard-ui.pw.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "R16",
-    "title": "Deduplicate parameterized tests",
-    "description": "Collapse ~46 duplicate test cases across 8 files into parameterized for...of loops, reducing code duplication while maintaining the same test coverage.",
-    "priority": "P5",
-    "status": "completed",
-    "estimatedEffort": "2-3 hours",
-    "planFile": ".plans/R16-deduplicate-parameterized-tests.md",
-    "subtasks": [
-      {
-        "id": "R16.1",
-        "description": "Pattern 1 & 2: Parameterize setAccessScope and completeStep tests in setup-manager.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/setup-manager.test.ts",
-            "lines": "56-97",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.2",
-        "description": "Pattern 3 & 4: Parameterize help/version flag and subcommand validation tests in main.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/cli/test/main.test.ts",
-            "lines": "39-188",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.3",
-        "description": "Pattern 5: Remove redundant individual loadComposeConfig tests from management-commands.test.ts (already covered by shared loop)",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/cli/test/management-commands.test.ts",
-            "lines": "42-169",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.4",
-        "description": "Pattern 6 & 7: Parameterize safeRequestId and validatePayload tests in core/gateway/src/server.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "core/gateway/src/server.test.ts",
-            "lines": "23-93",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.5",
-        "description": "Pattern 8 & 9: Parameterize missing text field and malformed body tests in input-bounds.security.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/security/input-bounds.security.test.ts",
-            "lines": "121-227",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.6",
-        "description": "Pattern 10: Parameterize parseCustomCommands invalid-input tests in channels/discord/server.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "channels/discord/server.test.ts",
-            "lines": "429-444",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.7",
-        "description": "Pattern 11: Parameterize validateCron out-of-range tests in cron.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/cron.test.ts",
-            "lines": "24-45",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.8",
-        "description": "Pattern 12: Parameterize HMAC special body content tests in hmac.security.test.ts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/security/hmac.security.test.ts",
-            "lines": "130-166",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R16.9",
-        "description": "Run full test suite and verify test count remains approximately the same",
-        "status": "completed",
-        "files": [
-          {
-            "path": "packages/lib/src/admin/setup-manager.test.ts",
-            "lines": null,
-            "action": "modify"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "R17",
-    "title": "Dynamic port allocation for Docker tests",
-    "description": "Replace hardcoded host ports (18200, 18280, 18300) in Docker test files with dynamic port allocation using Docker Compose '0:<container_port>' syntax and docker compose port discovery.",
-    "priority": "P5",
-    "status": "completed",
-    "estimatedEffort": "1-2 hours",
-    "planFile": ".plans/R17-dynamic-port-allocation.md",
-    "subtasks": [
-      {
-        "id": "R17.1",
-        "description": "Create shared helper test/helpers/docker-compose-port.ts with resolveHostPort() function",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/helpers/docker-compose-port.ts",
-            "lines": null,
-            "action": "create"
-          }
-        ]
-      },
-      {
-        "id": "R17.2",
-        "description": "Modify docker-stack.docker.ts: remove hardcoded ADMIN_PORT/GATEWAY_PORT constants, use '0:8100' and '0:8080' in compose overlay, add resolveHostPort() calls after container startup",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/docker/docker-stack.docker.ts",
-            "lines": "96-217",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R17.3",
-        "description": "Modify happy-path.docker.ts: remove hardcoded ADMIN_PORT constant, use '0:8100' in compose overlay, add resolveHostPort() call after container startup",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/install-e2e/happy-path.docker.ts",
-            "lines": "25-254",
-            "action": "modify"
-          }
-        ]
-      },
-      {
-        "id": "R17.4",
-        "description": "Verify both Docker test suites pass with dynamic ports and can run in parallel without conflicts",
-        "status": "completed",
-        "files": [
-          {
-            "path": "test/docker/docker-stack.docker.ts",
-            "lines": null,
-            "action": "modify"
-          },
-          {
-            "path": "test/install-e2e/happy-path.docker.ts",
-            "lines": null,
-            "action": "modify"
-          }
+        "id": "rec-12-06",
+        "description": "Add tests and CI scripts for fresh, migrated, corrupt metadata, and uninstall cleanup scenarios.",
+        "status": "pending",
+        "references": [
+          { "file": "packages/lib/src/install-metadata.test.ts", "line": 1 },
+          { "file": "packages/cli/test/install.test.ts", "line": 7 },
+          { "file": "package.json", "line": 20 },
+          { "file": ".github/workflows/release.yml", "line": 161 }
         ]
       }
     ]

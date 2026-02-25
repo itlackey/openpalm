@@ -11,6 +11,41 @@ MAX_ITERATIONS=0
 COMPLETION_PROMISE="null"
 WORKTREE=""
 
+resolve_worktree_path() {
+	local raw="$1"
+	local abs=""
+	if [[ -z "$raw" ]]; then
+		echo ""
+		return 0
+	fi
+
+	# Fast path: exact input is already a directory
+	if [[ -d "$raw" ]]; then
+		abs="$(cd "$raw" && pwd -P)"
+		echo "$abs"
+		return 0
+	fi
+
+	# Recovery path: command substitution may include extra lines. Select the last
+	# non-empty line that resolves to a directory.
+	local candidate=""
+	while IFS= read -r line; do
+		[[ -z "$line" ]] && continue
+		if [[ -d "$line" ]]; then
+			candidate="$line"
+		fi
+	done <<<"$raw"
+
+	if [[ -n "$candidate" ]]; then
+		abs="$(cd "$candidate" && pwd -P)"
+		echo "$abs"
+		return 0
+	fi
+
+	echo ""
+	return 0
+}
+
 # Parse options and positional arguments
 while [[ $# -gt 0 ]]; do
 	case $1 in
@@ -144,6 +179,22 @@ fi
 
 # Determine state file location
 if [[ -n "$WORKTREE" ]]; then
+	WORKTREE_RESOLVED="$(resolve_worktree_path "$WORKTREE")"
+	if [[ -z "$WORKTREE_RESOLVED" ]]; then
+		echo "Error: --worktree must point to an existing directory" >&2
+		echo "" >&2
+		echo "   Received value:" >&2
+		printf '     %q\n' "$WORKTREE" >&2
+		echo "" >&2
+		echo "   Tip: capture setup-worktree output safely, for example:" >&2
+		echo "     WORKTREE=\"\$(.../setup-worktree.sh \"task label\")\"" >&2
+		exit 1
+	fi
+	if [[ "$WORKTREE_RESOLVED" != "$WORKTREE" ]]; then
+		echo "Warning: normalized --worktree to '$WORKTREE_RESOLVED'" >&2
+	fi
+	WORKTREE="$WORKTREE_RESOLVED"
+
 	# Worktree mode: state file lives inside the worktree
 	STATE_DIR="${WORKTREE}/.opencode"
 else

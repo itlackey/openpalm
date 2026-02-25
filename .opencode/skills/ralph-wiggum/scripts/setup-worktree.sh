@@ -19,10 +19,12 @@ BRANCH="task-impl/${SLUG}-${TIMESTAMP}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE_DIR="${REPO_ROOT}/.worktrees/${BRANCH//\//-}"
 
-# Create the worktree on a new branch
-git -C "$REPO_ROOT" worktree add -b "$BRANCH" "$WORKTREE_DIR"
+# Create the worktree on a new branch.
+# IMPORTANT: keep stdout reserved for the final machine-readable path so callers
+# can safely capture WORKTREE without parsing git/human output.
+git -C "$REPO_ROOT" worktree add -b "$BRANCH" "$WORKTREE_DIR" >&2
 
-cat <<EOF
+cat >&2 <<EOF
 
 Git worktree created
    Branch:   $BRANCH
