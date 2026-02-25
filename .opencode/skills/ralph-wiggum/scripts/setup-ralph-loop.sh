@@ -132,6 +132,39 @@ resolve_session_id() {
 		fi
 	done
 
+	# Fallback: discover session-like env vars from the current process context.
+	local discovered
+	discovered="$(
+		python3 - <<'PY'
+import os
+import re
+
+pattern = re.compile(r"session[_-]?id|session.*id", re.IGNORECASE)
+candidates = []
+
+for key, value in os.environ.items():
+    if not value:
+        continue
+    if not pattern.search(key):
+        continue
+    candidates.append((key, value))
+
+# Prefer canonical OpenCode-like IDs if present.
+for _, value in candidates:
+    if value.startswith("ses_"):
+        print(value)
+        raise SystemExit(0)
+
+if candidates:
+    print(candidates[0][1])
+PY
+	)"
+
+	if [[ -n "$discovered" ]]; then
+		echo "$discovered"
+		return 0
+	fi
+
 	echo ""
 	return 0
 }

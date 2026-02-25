@@ -7,11 +7,32 @@ Run the following bash commands to set up the worktree and initialize the Ralph 
 ```
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREE=$("$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh" "$ARGUMENTS" | tail -n1)
-SESSION_ID_ARG=()
-if [ -n "${SESSION_ID:-}" ]; then
-  SESSION_ID_ARG=(--session-id "$SESSION_ID")
+SESSION_ID_VALUE="$(python3 - <<'PY'
+import os
+import re
+
+pattern = re.compile(r"session[_-]?id|session.*id", re.IGNORECASE)
+candidates = []
+for k, v in os.environ.items():
+    if not v:
+        continue
+    if pattern.search(k):
+        candidates.append(v)
+
+for value in candidates:
+    if value.startswith("ses_"):
+        print(value)
+        raise SystemExit(0)
+
+if candidates:
+    print(candidates[0])
+PY
+)"
+if [ -z "$SESSION_ID_VALUE" ]; then
+  echo "Error: could not determine session id from environment; refusing to start loop with pending session_id" >&2
+  exit 1
 fi
-"$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh" --worktree "$WORKTREE" "implement-tasks in worktree $WORKTREE: $ARGUMENTS  VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE" "${SESSION_ID_ARG[@]}"
+"$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh" --worktree "$WORKTREE" "implement-tasks in worktree $WORKTREE: $ARGUMENTS  VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE" --session-id "$SESSION_ID_VALUE"
 ```
 
 **All implementation work must be performed inside the worktree.** After the setup commands complete, `cd` into the worktree path printed by the setup script and do not leave it during the loop. The worktree path is embedded in the Ralph prompt text above, so you can reference it on every iteration.
