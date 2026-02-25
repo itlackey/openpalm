@@ -414,6 +414,7 @@ function renderAssistantComposeService(): ComposeService {
     environment: [
       "OPENCODE_CONFIG_DIR=/opt/opencode",
       "OPENCODE_PORT=4096",
+      "OPENCODE_AUTH=false",
       "OPENCODE_ENABLE_SSH=${OPENCODE_ENABLE_SSH:-0}",
       "OPENPALM_ADMIN_API_URL=http://admin:8100",
       "OPENPALM_ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
@@ -484,8 +485,6 @@ function renderAdminComposeService(): ComposeService {
       "OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
       "OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
       "OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
-      "COMPOSE_PROJECT_PATH=/state",
-      "OPENPALM_COMPOSE_FILE=docker-compose.yml",
     ],
     volumes: [
       "${OPENPALM_DATA_HOME}:/data",

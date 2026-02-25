@@ -2,18 +2,17 @@ import { building } from '$app/environment';
 import { createLogger } from './logger';
 import {
 	DATA_DIR,
-	DATA_ROOT,
 	STATE_ROOT,
 	SECRETS_ENV_PATH,
 	STACK_SPEC_PATH,
 	SYSTEM_ENV_PATH,
 	COMPOSE_FILE_PATH,
 	RUNTIME_ENV_PATH,
+	DATA_ENV_PATH,
 	ADMIN_TOKEN,
 	DEFAULT_INSECURE_TOKEN,
 	CRON_DIR
 } from './config';
-import { env } from '$env/dynamic/private';
 
 export const log = createLogger('admin');
 
@@ -44,17 +43,17 @@ export async function getStackManager(): Promise<StackManager> {
 		const { StackManager } = await import('@openpalm/lib/admin/stack-manager');
 		_stackManager = new StackManager({
 			stateRootPath: STATE_ROOT,
-			caddyJsonPath: env.CADDY_JSON_PATH ?? `${STATE_ROOT}/caddy.json`,
+			caddyJsonPath: `${STATE_ROOT}/caddy.json`,
 			secretsEnvPath: SECRETS_ENV_PATH,
 			stackSpecPath: STACK_SPEC_PATH,
 			runtimeEnvPath: RUNTIME_ENV_PATH,
 			systemEnvPath: SYSTEM_ENV_PATH,
-			gatewayEnvPath: env.GATEWAY_ENV_PATH ?? `${STATE_ROOT}/gateway/.env`,
-			openmemoryEnvPath: env.OPENMEMORY_ENV_PATH ?? `${STATE_ROOT}/openmemory/.env`,
-			postgresEnvPath: env.POSTGRES_ENV_PATH ?? `${STATE_ROOT}/postgres/.env`,
-			qdrantEnvPath: env.QDRANT_ENV_PATH ?? `${STATE_ROOT}/qdrant/.env`,
-			assistantEnvPath: env.ASSISTANT_ENV_PATH ?? `${STATE_ROOT}/assistant/.env`,
-			dataEnvPath: env.DATA_ENV_PATH ?? `${DATA_ROOT}/.env`,
+			gatewayEnvPath: `${STATE_ROOT}/gateway/.env`,
+			openmemoryEnvPath: `${STATE_ROOT}/openmemory/.env`,
+			postgresEnvPath: `${STATE_ROOT}/postgres/.env`,
+			qdrantEnvPath: `${STATE_ROOT}/qdrant/.env`,
+			assistantEnvPath: `${STATE_ROOT}/assistant/.env`,
+			dataEnvPath: DATA_ENV_PATH,
 			composeFilePath: COMPOSE_FILE_PATH,
 		});
 	}

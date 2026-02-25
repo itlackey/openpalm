@@ -25,7 +25,7 @@ export GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 export OPENCODE_CORE_URL="${OPENCODE_CORE_URL:-http://localhost:4096}"
 export OPENCODE_CORE_BASE_URL="${OPENCODE_CORE_BASE_URL:-http://localhost:4096}"
 export OPENCODE_CONFIG_PATH="${OPENCODE_CONFIG_PATH:-$ROOT/opencode/extensions/opencode.jsonc}"
-export DATA_DIR="${DATA_DIR:-$ROOT/.dev/data}"
+export DATA_DIR="${DATA_DIR:-$ROOT/.dev/data/admin}"
 export CHANNEL_ENV_DIR="${CHANNEL_ENV_DIR:-$ROOT/.dev/config/channels}"
 
 # Channel shared secrets for gateway
@@ -40,48 +40,48 @@ mkdir -p "$DATA_DIR"
 PIDS=()
 
 cleanup() {
-  echo ""
-  echo "[dev] Stopping services..."
-  for pid in "${PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
-  done
-  wait 2>/dev/null
-  echo "[dev] Done."
+	echo ""
+	echo "[dev] Stopping services..."
+	for pid in "${PIDS[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+	wait 2>/dev/null
+	echo "[dev] Done."
 }
 trap cleanup EXIT INT TERM
 
 start_admin() {
-  echo "[dev] Starting admin UI on :8100 (hot reload)"
-  cd "$ROOT/packages/ui"
-  PORT=8100 bun run dev -- --host 0.0.0.0 --port 8100 &
-  PIDS+=($!)
+	echo "[dev] Starting admin UI on :8100 (hot reload)"
+	cd "$ROOT/packages/ui"
+	PORT=8100 bun run dev -- --host 0.0.0.0 --port 8100 &
+	PIDS+=($!)
 }
 
 start_gateway() {
-  echo "[dev] Starting gateway on :8080 (hot reload)"
-  cd "$ROOT/core/gateway"
-  PORT=8080 bun run --hot src/server.ts &
-  PIDS+=($!)
+	echo "[dev] Starting gateway on :8080 (hot reload)"
+	cd "$ROOT/core/gateway"
+	PORT=8080 bun run --hot src/server.ts &
+	PIDS+=($!)
 }
 
 # ── Main ─────────────────────────────────────────────────────────────
 TARGET="${1:-all}"
 
 case "$TARGET" in
-  admin)
-    start_admin
-    ;;
-  gateway)
-    start_gateway
-    ;;
-  all|"")
-    start_gateway
-    start_admin
-    ;;
-  *)
-    echo "Usage: $0 [admin|gateway|all]"
-    exit 1
-    ;;
+admin)
+	start_admin
+	;;
+gateway)
+	start_gateway
+	;;
+all | "")
+	start_gateway
+	start_admin
+	;;
+*)
+	echo "Usage: $0 [admin|gateway|all]"
+	exit 1
+	;;
 esac
 
 echo "[dev] Services running. Press Ctrl+C to stop."

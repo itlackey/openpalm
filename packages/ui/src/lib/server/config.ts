@@ -35,12 +35,13 @@ export const OPENMEMORY_URL = devDefault(
 	'http://openmemory:8765',
 	'http://localhost:8765'
 );
-export const RUNTIME_ENV_PATH = env.RUNTIME_ENV_PATH ?? `${STATE_ROOT}/.env`;
-export const SECRETS_ENV_PATH = env.SECRETS_ENV_PATH ?? `${CONFIG_ROOT}/secrets.env`;
-export const STACK_SPEC_PATH = env.STACK_SPEC_PATH ?? `${CONFIG_ROOT}/openpalm.yaml`;
-export const COMPOSE_FILE_PATH =
-	env.COMPOSE_FILE_PATH ?? `${STATE_ROOT}/docker-compose.yml`;
-export const SYSTEM_ENV_PATH = env.SYSTEM_ENV_PATH ?? `${STATE_ROOT}/system.env`;
-export const CRON_DIR = devDefault('CRON_DIR', '/state/automations', '../../.dev/state/automations');
+export const RUNTIME_ENV_PATH = `${STATE_ROOT}/.env`;
+export const SECRETS_ENV_PATH = `${CONFIG_ROOT}/secrets.env`;
+export const STACK_SPEC_PATH = `${CONFIG_ROOT}/openpalm.yaml`;
+export const COMPOSE_FILE_PATH = `${STATE_ROOT}/docker-compose.yml`;
+export const SYSTEM_ENV_PATH = `${STATE_ROOT}/system.env`;
+export const CRON_DIR = dev
+	? resolve('../../.dev/state/automations')
+	: '/state/automations';
 
-export const DATA_ENV_PATH = env.DATA_ENV_PATH ?? `${DATA_ROOT}/.env`;
+export const DATA_ENV_PATH = `${DATA_ROOT}/.env`;

@@ -224,7 +224,6 @@ export async function install(options: InstallOptions): Promise<void> {
     ["OPENPALM_WORK_HOME", normPath(resolveWorkHome())],
     ["OPENPALM_UID", String(process.getuid?.() ?? 1000)],
     ["OPENPALM_GID", String(process.getgid?.() ?? 1000)],
-    ["OPENPALM_ENABLED_CHANNELS", ""],
     ["OPENPALM_INGRESS_PORT", String(ingressPort)],
   ]);
 
@@ -332,8 +331,6 @@ export async function install(options: InstallOptions): Promise<void> {
       - OPENPALM_COMPOSE_BIN=\${OPENPALM_COMPOSE_BIN:-docker}
       - OPENPALM_COMPOSE_SUBCOMMAND=\${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
       - OPENPALM_CONTAINER_SOCKET_URI=\${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
-      - COMPOSE_PROJECT_PATH=/state
-      - OPENPALM_COMPOSE_FILE=docker-compose.yml
     volumes:
       - \${OPENPALM_DATA_HOME}:/data
       - \${OPENPALM_CONFIG_HOME}:/config

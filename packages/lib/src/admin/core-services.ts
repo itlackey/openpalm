@@ -5,7 +5,7 @@ export function renderCaddyComposeService(): ComposeService {
     image: "caddy:2-alpine",
     restart: "unless-stopped",
     ports: [
-      "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:80:80",
+      "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-80}:80",
       "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443",
     ],
     volumes: [
