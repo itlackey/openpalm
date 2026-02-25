@@ -55,8 +55,9 @@ describe("runtime env content helpers", () => {
     const next = setRuntimeBindScopeContent(current, "host");
     expect(next).toContain("OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1");
     expect(next).toContain("OPENPALM_OPENMEMORY_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OPENCODE_CORE_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OPENCODE_CORE_SSH_BIND_ADDRESS=127.0.0.1");
+    expect(next).toContain("OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS=127.0.0.1");
+    expect(next).toContain("OPENPALM_ASSISTANT_BIND_ADDRESS=127.0.0.1");
+    expect(next).toContain("OPENPALM_ASSISTANT_SSH_BIND_ADDRESS=127.0.0.1");
     expect(next).toContain("OTHER=keep");
   });
 

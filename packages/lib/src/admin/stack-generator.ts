@@ -421,8 +421,8 @@ function renderAssistantComposeService(): ComposeService {
       "HOME=/home/opencode",
     ],
     ports: [
-      "${OPENCODE_CORE_BIND_ADDRESS:-127.0.0.1}:4096:4096",
-      "${OPENCODE_CORE_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENCODE_CORE_SSH_PORT:-2222}:22",
+      "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:4096:4096",
+      "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22",
     ],
     volumes: [
       "${OPENPALM_DATA_HOME}/assistant:/home/opencode",
@@ -452,7 +452,7 @@ function renderGatewayComposeService(): ComposeService {
     ],
     environment: [
       "PORT=8080",
-      "OPENCODE_CORE_BASE_URL=http://assistant:4096",
+      "OPENPALM_ASSISTANT_URL=http://assistant:4096",
       "OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}",
     ],
     volumes: [
@@ -481,7 +481,7 @@ function renderAdminComposeService(): ComposeService {
       "PORT=8100",
       "ADMIN_TOKEN=${ADMIN_TOKEN:?ADMIN_TOKEN must be set}",
       "GATEWAY_URL=http://gateway:8080",
-      "OPENCODE_CORE_URL=http://assistant:4096",
+      "OPENPALM_ASSISTANT_URL=http://assistant:4096",
       "OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
       "OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
       "OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",

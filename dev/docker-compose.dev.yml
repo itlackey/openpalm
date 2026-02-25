@@ -35,7 +35,7 @@ services:
       - ./packages/lib/src/embedded/state/docker-compose.yml:/compose/packages/lib/src/embedded/state/docker-compose.yml:ro
       - ./dev/docker-compose.dev.yml:/compose/dev/docker-compose.dev.yml:ro
     environment:
-      OPENCODE_CORE_URL: "http://assistant:4096"
+      OPENPALM_ASSISTANT_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
       OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
 

@@ -5,7 +5,7 @@ import { isLocalRequest } from '$lib/server/auth';
 import { checkServiceHealth } from '$lib/server/health';
 import {
 	GATEWAY_URL,
-	OPENCODE_CORE_URL,
+	OPENPALM_ASSISTANT_URL,
 	OPENMEMORY_URL as DEFAULT_OPENMEMORY_URL
 } from '$lib/server/config';
 import type { RequestHandler } from './$types';
@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	const openmemoryBaseUrl = serviceInstances.openmemory || DEFAULT_OPENMEMORY_URL;
 	const [gateway, assistant, openmemory] = await Promise.all([
 		checkServiceHealth(`${GATEWAY_URL}/health`),
-		checkServiceHealth(`${OPENCODE_CORE_URL}/`, false),
+		checkServiceHealth(`${OPENPALM_ASSISTANT_URL}/`, false),
 		checkServiceHealth(`${openmemoryBaseUrl}/api/v1/config/`)
 	]);
 	return json(200, {

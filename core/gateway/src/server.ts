@@ -258,11 +258,11 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
 
 if (import.meta.main) {
   const PORT = Number(Bun.env.PORT ?? 8080);
-  const OPENCODE_CORE_BASE_URL = Bun.env.OPENCODE_CORE_BASE_URL ?? "http://assistant:4096";
+  const OPENPALM_ASSISTANT_URL = Bun.env.OPENPALM_ASSISTANT_URL ?? "http://assistant:4096";
 
   const CHANNEL_SHARED_SECRETS = discoverChannelSecretsFromState("/state", Bun.env);
 
-  const openCode = new OpenCodeClient(OPENCODE_CORE_BASE_URL);
+  const openCode = new OpenCodeClient(OPENPALM_ASSISTANT_URL);
   const audit = new AuditLog("/app/data/audit.log");
 
   const server = Bun.serve({

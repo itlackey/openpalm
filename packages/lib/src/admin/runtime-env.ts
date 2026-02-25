@@ -3,8 +3,9 @@ export type AccessScope = "host" | "lan" | "public";
 const RUNTIME_BIND_KEYS = {
   OPENPALM_INGRESS_BIND_ADDRESS: true,
   OPENPALM_OPENMEMORY_BIND_ADDRESS: true,
-  OPENCODE_CORE_BIND_ADDRESS: true,
-  OPENCODE_CORE_SSH_BIND_ADDRESS: true,
+  OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS: true,
+  OPENPALM_ASSISTANT_BIND_ADDRESS: true,
+  OPENPALM_ASSISTANT_SSH_BIND_ADDRESS: true,
 } as const;
 
 function parseEnvLine(line: string): [key: string, value: string] | null {
@@ -63,8 +64,9 @@ export function setRuntimeBindScopeContent(content: string, scope: AccessScope):
   const entries: Record<string, string> = {
     OPENPALM_INGRESS_BIND_ADDRESS: bindAddress,
     OPENPALM_OPENMEMORY_BIND_ADDRESS: bindAddress,
-    OPENCODE_CORE_BIND_ADDRESS: bindAddress,
-    OPENCODE_CORE_SSH_BIND_ADDRESS: bindAddress,
+    OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS: bindAddress,
+    OPENPALM_ASSISTANT_BIND_ADDRESS: bindAddress,
+    OPENPALM_ASSISTANT_SSH_BIND_ADDRESS: bindAddress,
   };
 
   const lines = content.length > 0 ? content.split(/\r?\n/) : [];

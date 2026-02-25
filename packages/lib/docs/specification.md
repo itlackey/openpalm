@@ -292,7 +292,7 @@ The compose file is built as a multi-line string from a static template for core
 | `openmemory` | `mem0/openmemory-mcp:latest` | Port 8765; mounts data dir; env_file from state |
 | `openmemory-ui` | `mem0/openmemory-ui:latest` | Port 3000; NEXT_PUBLIC_API_URL and NEXT_PUBLIC_USER_ID env vars |
 | `assistant` | `openpalm/assistant:latest` | Port 4096 + SSH port 22; mounts data home and workspace; healthcheck |
-| `gateway` | `openpalm/gateway:latest` | Port 8080; env_file from state; env OPENCODE_CORE_BASE_URL; healthcheck |
+| `gateway` | `openpalm/gateway:latest` | Port 8080; env_file from state; env OPENPALM_ASSISTANT_URL; healthcheck |
 | `admin` | `openpalm/admin:latest` | Port 8100; mounts data, config, state, workspace, and Docker socket; healthcheck |
 
 All services attach to the `assistant_net` Docker network defined at the bottom of the compose file.

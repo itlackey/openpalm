@@ -183,7 +183,7 @@ services:
       - ${configDir}:/config
       - ${stateDir}:/state
     environment:
-      OPENCODE_CORE_URL: "http://assistant:4096"
+      OPENPALM_ASSISTANT_URL: "http://assistant:4096"
       COMPOSE_PROJECT_PATH: /compose
       OPENPALM_COMPOSE_FILE: packages/lib/src/embedded/state/docker-compose.yml
       ADMIN_TOKEN: "${ADMIN_TOKEN}"

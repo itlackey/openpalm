@@ -73,7 +73,7 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 
 **Steps:**
 1. Identify which process is using the port: `lsof -i :<port>` or `ss -tlnp | grep <port>`
-2. Either stop the conflicting process or change the OpenPalm bind address in your env configuration (e.g., `OPENPALM_INGRESS_BIND_ADDRESS`, `OPENCODE_CORE_BIND_ADDRESS`).
+2. Either stop the conflicting process or change the OpenPalm bind address in your env configuration (e.g., `OPENPALM_INGRESS_BIND_ADDRESS`, `OPENPALM_ASSISTANT_BIND_ADDRESS`).
 
 ## Still stuck?
 

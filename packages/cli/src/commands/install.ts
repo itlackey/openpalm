@@ -327,7 +327,7 @@ export async function install(options: InstallOptions): Promise<void> {
       - PORT=8100
       - ADMIN_TOKEN=\${ADMIN_TOKEN:-change-me-admin-token}
       - GATEWAY_URL=http://gateway:8080
-      - OPENCODE_CORE_URL=http://assistant:4096
+      - OPENPALM_ASSISTANT_URL=http://assistant:4096
       - OPENPALM_COMPOSE_BIN=\${OPENPALM_COMPOSE_BIN:-docker}
       - OPENPALM_COMPOSE_SUBCOMMAND=\${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
       - OPENPALM_CONTAINER_SOCKET_URI=\${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}

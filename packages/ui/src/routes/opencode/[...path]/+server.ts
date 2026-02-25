@@ -1,5 +1,5 @@
 import { json, unauthorizedJson } from '$lib/server/json';
-import { OPENCODE_CORE_URL } from '$lib/server/config';
+import { OPENPALM_ASSISTANT_URL } from '$lib/server/config';
 import type { RequestHandler } from './$types';
 
 /** Headers safe to forward to the internal assistant container. */
@@ -18,7 +18,7 @@ const handler: RequestHandler = async ({ params, url, request, locals }) => {
 	if (!locals.authenticated) return unauthorizedJson();
 
 	const subpath = params.path ? `/${params.path}` : '/';
-	const target = `${OPENCODE_CORE_URL}${subpath}${url.search}`;
+	const target = `${OPENPALM_ASSISTANT_URL}${subpath}${url.search}`;
 	try {
 		const proxyResp = await fetch(target, {
 			method: request.method,

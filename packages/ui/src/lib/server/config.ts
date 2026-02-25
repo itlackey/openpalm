@@ -25,8 +25,8 @@ export const OPENCODE_CONFIG_PATH =
 	env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/assistant/.config/opencode/opencode.json`;
 export const DATA_DIR = env.DATA_DIR ?? `${DATA_ROOT}/admin`;
 export const GATEWAY_URL = devDefault('GATEWAY_URL', 'http://gateway:8080', 'http://localhost:8080');
-export const OPENCODE_CORE_URL = devDefault(
-	'OPENCODE_CORE_URL',
+export const OPENPALM_ASSISTANT_URL = devDefault(
+	'OPENPALM_ASSISTANT_URL',
 	'http://assistant:4096',
 	'http://localhost:4096'
 );

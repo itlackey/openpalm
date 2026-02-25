@@ -157,14 +157,14 @@ SSH into the assistant container is disabled by default.
 | Variable | Default | Description |
 |---|---|---|
 | `OPENCODE_ENABLE_SSH` | `0` | Set to `1` to enable SSH |
-| `OPENCODE_CORE_SSH_PORT` | `2222` | Host port mapped to container SSH port 22 |
-| `OPENCODE_CORE_SSH_BIND_ADDRESS` | `127.0.0.1` | Bind address (use `0.0.0.0` for LAN) |
+| `OPENPALM_ASSISTANT_SSH_PORT` | `2222` | Host port mapped to container SSH port 22 |
+| `OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | `127.0.0.1` | Bind address (use `0.0.0.0` for LAN) |
 
 To enable:
 1. Set `OPENCODE_ENABLE_SSH=1`
 2. Place your public key in `~/.config/openpalm/assistant/ssh/authorized_keys`
 3. Restart `assistant`
-4. Connect: `ssh -p ${OPENCODE_CORE_SSH_PORT} root@localhost`
+4. Connect: `ssh -p ${OPENPALM_ASSISTANT_SSH_PORT} root@localhost`
 
 ## Related docs
 

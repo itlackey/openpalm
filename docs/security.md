@@ -60,8 +60,9 @@ See the full 6-step Gateway pipeline: HMAC verification, payload validation, rat
 ## 7) Optional LAN SSH for assistant (disabled by default)
 
 - SSH is opt-in (`OPENCODE_ENABLE_SSH=1`).
-- Password auth is disabled; key auth only via `core/assistant/ssh/authorized_keys`.
-- Bind defaults are localhost unless explicitly opened to LAN.
+- Password auth is disabled; key auth only via `~/.config/openpalm/assistant/ssh/authorized_keys`.
+- Bind address and port are controlled via `OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` (default `127.0.0.1`) and `OPENPALM_ASSISTANT_SSH_PORT` (default `2222`).
+- The assistant web interface runs with `OPENCODE_AUTH=false` — authentication is handled by the Caddy/Gateway layer; the assistant is never directly reachable externally.
 
 See [core/assistant/README.md](../core/assistant/README.md#ssh-access-optional) for setup steps and environment variables.
 
