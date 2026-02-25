@@ -207,17 +207,6 @@
 				return;
 			}
 
-			// Start enabled channels — non-fatal, channels can be started later
-			for (const channel of enabledChannels) {
-				const upResult = await api('/command', {
-					method: 'POST',
-					body: JSON.stringify({ type: 'service.up', payload: { service: channel } })
-				});
-				if (!upResult.ok) {
-					console.warn(`Failed to start ${channel}: ${upResult.data?.error ?? 'unknown'}`);
-				}
-			}
-
 			// Mark step complete
 			const stepResult = await api('/command', {
 				method: 'POST',
@@ -237,6 +226,17 @@
 				const errorMsg = completeResult.data?.error ?? 'unknown error';
 				stepError = `Setup failed: ${errorMsg}. Check that Docker is running and you have internet access, then click "Finish Setup" to retry.`;
 				return;
+			}
+
+			// Start enabled channels after setup.complete applies full compose
+			for (const channel of enabledChannels) {
+				const upResult = await api('/command', {
+					method: 'POST',
+					body: JSON.stringify({ type: 'service.up', payload: { service: channel } })
+				});
+				if (!upResult.ok) {
+					console.warn(`Failed to start ${channel}: ${upResult.data?.error ?? 'unknown'}`);
+				}
 			}
 
 			setWizardStep(STEPS.length - 1);
