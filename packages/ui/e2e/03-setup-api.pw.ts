@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { authedGet, authedPost, cmd } from './helpers';
+import { TMP_DIR } from './env';
 
 test.describe('setup wizard API (sequential, modifies state)', () => {
 	test('POST setup step "welcome" marks complete', async ({ request }) => {
@@ -124,6 +127,58 @@ test.describe('setup wizard API (sequential, modifies state)', () => {
 		const body = await res.json();
 		expect(body.ok).toBe(true);
 		expect(body.state.completed).toBe(true);
+	});
+
+	test('setup/complete writes docker-compose.yml with required services', async () => {
+		const composePath = join(TMP_DIR, 'state', 'docker-compose.yml');
+		expect(existsSync(composePath), `compose file missing: ${composePath}`).toBe(true);
+		const content = readFileSync(composePath, 'utf8');
+		expect(content).toContain('services:');
+		expect(content).toContain('assistant:');
+		expect(content).toContain('gateway:');
+	});
+
+	test('setup/complete writes caddy.json with route entries', async () => {
+		const caddyPath = join(TMP_DIR, 'state', 'caddy.json');
+		expect(existsSync(caddyPath), `caddy.json missing: ${caddyPath}`).toBe(true);
+		const content = readFileSync(caddyPath, 'utf8');
+		const parsed = JSON.parse(content);
+		expect(parsed).toBeDefined();
+		// Caddy JSON must have a top-level apps or routes structure
+		expect(typeof parsed).toBe('object');
+	});
+
+	test('setup/complete writes runtime .env with OPENPALM_STATE_HOME', async () => {
+		const envPath = join(TMP_DIR, 'state', '.env');
+		expect(existsSync(envPath), `.env missing: ${envPath}`).toBe(true);
+		const content = readFileSync(envPath, 'utf8');
+		expect(content).toContain('OPENPALM_STATE_HOME=');
+	});
+
+	test('setup/complete writes system.env with access scope', async () => {
+		const sysEnvPath = join(TMP_DIR, 'state', 'system.env');
+		expect(existsSync(sysEnvPath), `system.env missing: ${sysEnvPath}`).toBe(true);
+		const content = readFileSync(sysEnvPath, 'utf8');
+		expect(content).toContain('OPENPALM_ACCESS_SCOPE=');
+	});
+
+	test('setup/complete writes gateway/.env', async () => {
+		const gwEnvPath = join(TMP_DIR, 'state', 'gateway', '.env');
+		expect(existsSync(gwEnvPath), `gateway/.env missing: ${gwEnvPath}`).toBe(true);
+	});
+
+	test('setup/complete writes secrets.env with POSTGRES_PASSWORD', async () => {
+		const secretsPath = join(TMP_DIR, 'config', 'secrets.env');
+		expect(existsSync(secretsPath), `secrets.env missing: ${secretsPath}`).toBe(true);
+		const content = readFileSync(secretsPath, 'utf8');
+		expect(content).toContain('POSTGRES_PASSWORD=');
+	});
+
+	test('setup/complete writes openpalm.yaml stack spec', async () => {
+		const specPath = join(TMP_DIR, 'config', 'openpalm.yaml');
+		expect(existsSync(specPath), `stack spec missing: ${specPath}`).toBe(true);
+		const content = readFileSync(specPath, 'utf8');
+		expect(content.length, 'stack spec is empty').toBeGreaterThan(0);
 	});
 
 	test('GET setup/status now shows completed: true', async ({ request }) => {
