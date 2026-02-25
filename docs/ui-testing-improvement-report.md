@@ -1,8 +1,14 @@
 # UI Testing Improvement Report: Setup Wizard & Install Flow
 
-**Date:** 2025-02-25
+**Date:** 2026-02-25
 **Scope:** Setup wizard, install flow, admin dashboard UI
 **Goal:** Achieve high-confidence testing that install and setup work correctly in all scenarios, with strategies for both Docker-available and Docker-unavailable environments.
+
+**Related documents:**
+- `dev/docs/testing-plan.md` — Test tier definitions and merge-time checks
+- `dev/docs/setup-wizard-e2e-test-strategy.md` — Release-critical E2E gate strategy with detection weights
+- `dev/docs/manual-install-setup-review.md` — Manual CLI install review findings
+- `dev/docs/manual-setup-readiness-review.md` — Manual setup readiness review findings
 
 ---
 
@@ -15,10 +21,14 @@
 5. [Tier 2: Integration Tests with API Mocking (No Docker)](#5-tier-2-integration-tests-with-api-mocking-no-docker)
 6. [Tier 3: E2E Browser Tests Against Live Server (No Docker)](#6-tier-3-e2e-browser-tests-against-live-server-no-docker)
 7. [Tier 4: Full-Stack Docker Tests (Docker Required)](#7-tier-4-full-stack-docker-tests-docker-required)
-8. [Visual Regression Testing](#8-visual-regression-testing)
-9. [CI/CD Pipeline Changes](#9-cicd-pipeline-changes)
-10. [Implementation Priorities](#10-implementation-priorities)
-11. [Test Matrix](#11-test-matrix)
+8. [Failure-Matrix Scenarios](#8-failure-matrix-scenarios)
+9. [Artifact & Compose Contract Validation](#9-artifact--compose-contract-validation)
+10. [Regression Replay Test Pack](#10-regression-replay-test-pack)
+11. [Visual Regression Testing](#11-visual-regression-testing)
+12. [CI/CD Pipeline Changes](#12-cicd-pipeline-changes)
+13. [Release Gate Policy](#13-release-gate-policy)
+14. [Implementation Priorities](#14-implementation-priorities)
+15. [Test Matrix](#15-test-matrix)
 
 ---
 
@@ -26,7 +36,7 @@
 
 ### What Exists Today
 
-The project has four testing layers, each with different coverage levels:
+The project has four testing layers, each with different coverage levels. The existing testing plan (`dev/docs/testing-plan.md`) defines three tiers: Tier 1 (hermetic unit/contract, `bun run test:ci`), Tier 2 (UI E2E under Bun with Playwright, `bun run test:ui`), and Tier 3 (Docker stack integration, `bun run test:docker`). This report aligns with that structure and extends it.
 
 #### 1.1 Unit Tests (setup-wizard.test.ts) — Source-Text Scanning
 
@@ -38,6 +48,8 @@ These tests read the `SetupWizard.svelte` file as raw text and assert that speci
 - **Cannot catch logic bugs** — if the password validation condition is present but unreachable due to a rendering bug, these tests still pass.
 - **Breaks on refactors** — renaming a variable or restructuring the template fails the test even if behavior is preserved.
 - **Cannot test state transitions** — the wizard's 8-step navigation flow is not exercised.
+
+This aligns with the gap analysis in `dev/docs/setup-wizard-e2e-test-strategy.md`, which notes: *"setup-wizard.test.ts is mostly source-string assertions"* providing *"low confidence that real wizard completion works against runtime + compose."*
 
 #### 1.2 SetupManager Unit Tests (setup-manager.test.ts)
 
@@ -75,11 +87,13 @@ These build real Docker images and start containers. They test admin health endp
 - They don't verify that the full install-to-running-assistant path works.
 - They are gated behind `OPENPALM_RUN_DOCKER_STACK_TESTS` and rarely run in CI.
 
+As noted in the E2E strategy doc: *"Does not prove full install + wizard completion end-to-end."*
+
 #### 1.5 Contract Tests (setup-wizard-gate.contract.test.ts)
 
 **File:** `test/contracts/setup-wizard-gate.contract.test.ts`
 
-These test the setup status API contract (first-boot vs. post-setup auth behavior) against a running admin server. They require the dev stack to be running and are skipped otherwise.
+These test the setup status API contract (first-boot vs. post-setup auth behavior) against a running admin server. They require the dev stack to be running and are skipped otherwise. The strategy doc identifies: *"Gate validates auth behavior, but not install/setup orchestration on clean CI hosts."*
 
 #### 1.6 Setup API E2E Tests (03-setup-api.pw.ts)
 
@@ -87,11 +101,26 @@ These test the setup status API contract (first-boot vs. post-setup auth behavio
 
 These exercise every setup API endpoint sequentially via Playwright's `request` API (not the browser). They cover profile save, step marking, service instances, channels, access scope, health check, and setup completion. **This is solid API-level coverage.**
 
+#### 1.7 Test-Mode Masking Risk
+
+A critical concern from the E2E strategy: `setup.complete` performs real apply/startup only when `OPENPALM_TEST_MODE !== 1`. Since the Playwright E2E tests run with `OPENPALM_TEST_MODE=1` (via `packages/ui/e2e/env.ts`), they bypass the actual compose/apply path. This means **test-mode can mask runtime/apply failures** that only happen with real Docker Compose.
+
 ### CI/CD Workflows
 
 - **test.yml**: Runs unit + contract tests on every PR (10min timeout). Does not run Docker tests.
 - **test-ui.yml**: Runs Playwright E2E tests on every PR (15min timeout). No Docker tests.
+- **release.yml**: Runs unit/integration/contracts/security/UI and Docker image build gates, but **no wizard completion E2E gate**.
 - Docker stack tests are effectively manual-only.
+
+### Findings from Manual Reviews
+
+The manual install/setup reviews (`dev/docs/manual-install-setup-review.md`, `dev/docs/manual-setup-readiness-review.md`) identified several issues that automated tests should cover:
+
+1. **Forced `--runtime docker` error message was too vague** when the daemon is unavailable (improved in recent patch, needs regression test)
+2. **Checksum verification warning** appears during normal install flow (security concern)
+3. **PATH guidance friction** after install to `~/.local/bin`
+4. **`install --help` was executing install** instead of showing help (fixed, needs regression test)
+5. **Dev preflight passes but `dev:build` fails** on missing Docker (misleading)
 
 ---
 
@@ -99,63 +128,57 @@ These exercise every setup API endpoint sequentially via Playwright's `request` 
 
 ### Gap 1: No Real Component Rendering Tests
 
-The `setup-wizard.test.ts` file uses source-code string matching instead of rendering components with Vitest Browser Mode. This means:
-
-- UI rendering bugs are invisible to the test suite.
-- State management bugs (Svelte 5 runes, `$derived`, `$state`) are untested.
-- User interaction sequences (fill form -> click Next -> see error) are untested at the component level.
+The `setup-wizard.test.ts` file uses source-code string matching instead of rendering components with Vitest Browser Mode. UI rendering bugs, state management bugs (Svelte 5 runes), and user interaction sequences are invisible.
 
 ### Gap 2: No Validation Error Path Testing
 
-The wizard has validation logic for:
-- Password minimum length (8 chars)
-- Password confirmation match
-- Required Anthropic API key
-- API call failures for profile save, service instances, access scope
-
-None of these error paths are tested in the Playwright E2E suite. The only coverage is the source-text scan in `setup-wizard.test.ts`.
+Password validation, password mismatch, required Anthropic key, and API call failure paths have no E2E test coverage. The only coverage is source-text scanning.
 
 ### Gap 3: No API Failure Simulation
 
-The E2E tests run against a real server. When `api('/command', ...)` is called, it either succeeds or the test hangs. There is no mechanism to simulate:
-- Network errors (`fetch` throws)
-- Server 500 responses
-- Timeout scenarios
-- Partial failures (channels save succeeds, but setup.complete fails)
+No mechanism to simulate network errors, server 500 responses, timeout scenarios, or partial failures (channels save succeeds but `setup.complete` fails).
 
 ### Gap 4: No Wizard State Persistence / Resume Testing
 
-The wizard saves state via API calls. If a user completes steps 1-4, closes the browser, and returns, they should be able to resume. This flow is untested.
+If a user completes steps 1-4, closes the browser, and returns, the resume flow is untested.
 
 ### Gap 5: No Health Check Polling Tests
 
-The `HealthStep` and `CompleteStep` components poll `/setup/health-check` repeatedly. The polling behavior (retry logic, timeout handling, partial readiness display) is completely untested.
+The `HealthStep` and `CompleteStep` polling behavior (retry logic, timeout handling, partial readiness) is completely untested.
 
 ### Gap 6: No Cross-Browser Testing
 
-Only Chromium is tested. The wizard may have rendering or behavior differences in Firefox and WebKit (Safari).
+Only Chromium is tested.
 
 ### Gap 7: No Visual Regression Testing
 
-UI changes (CSS, layout, component structure) are not caught by any automated test. A broken wizard layout would ship undetected.
+UI layout and styling changes are not caught by any automated test.
 
 ### Gap 8: Docker Stack Tests Are Not in CI
 
-The most realistic test environment (actual Docker containers) is manual-only. There is no scheduled CI run that validates the full containerized setup flow.
+No scheduled or release-gated CI run validates the full containerized setup flow.
 
-### Gap 9: No Install CLI -> Wizard -> Running System End-to-End
+### Gap 9: No Install -> Wizard -> Running System End-to-End
 
-The CLI install command, the wizard UI, and the containerized services are tested in isolation. Nobody tests: "run `openpalm install` -> complete the wizard -> verify the assistant responds."
+The CLI install, wizard UI, and containerized services are tested in isolation. The E2E strategy notes the release workflow *"does not run a Docker-backed setup wizard completion gate."*
+
+### Gap 10: No Failure-Handling Tests for Common First-Run Blockers
+
+Per the E2E strategy: *"Many setup incidents are not happy-path bugs; they are failure-handling bugs where users get stuck."* No tests for missing API keys, port conflicts, daemon unavailable, invalid channel config, or partial/interrupted setup retry.
+
+### Gap 11: No Regression Replay Pack
+
+No system to convert historical setup failure reports into permanent reproducible tests.
 
 ---
 
 ## 3. Recommended Testing Architecture
 
-The recommended approach uses a **four-tier testing pyramid** where each tier catches different classes of bugs:
+The recommended approach uses a **four-tier testing pyramid** aligned with the existing `dev/docs/testing-plan.md` tier definitions, extended with cross-cutting concerns from the E2E strategy:
 
 ```
                     +--------------------------+
-                    |  Tier 4: Docker Stack    |  (Weekly CI / Pre-release)
+                    |  Tier 4: Docker Stack    |  (Pre-release gate)
                     |  Full system E2E         |
                     +-----------+--------------+
                                 |
@@ -173,9 +196,18 @@ The recommended approach uses a **four-tier testing pyramid** where each tier ca
          |  Tier 1: Pure Unit Tests                    |  (Every PR)
          |  SetupManager, validators, state logic      |
          +---------------------------------------------+
+
+Cross-cutting (all tiers):
+  - Failure-matrix scenarios (common first-run blockers)
+  - Artifact/compose contract validation
+  - Regression replay test pack
 ```
 
-**Key principle:** Tiers 1-3 require **no Docker** and run in CI on every PR. Tier 4 requires Docker and runs on a schedule or before releases.
+**Key principles:**
+- Tiers 1-3 require **no Docker** and run in CI on every PR.
+- Tier 4 requires Docker and runs as a **required release gate** (via `release.yml`) or via `workflow_dispatch`.
+- Failure-matrix scenarios are tested at the appropriate tier (validation errors in Tier 2/3, Docker failures in Tier 4).
+- Every setup bug fix must include a replay test (policy from E2E strategy).
 
 ---
 
@@ -223,13 +255,10 @@ describe('SetupWizard - rendered component', () => {
 
     it('shows password validation error for short passwords', async () => {
         render(SetupWizard, { props: { onclose: () => {} } });
-        // Navigate to profile step
         await page.getByRole('button', { name: 'Next' }).click();
-        // Enter short password
         await page.getByLabel(/admin password/i).fill('short');
         await page.getByLabel(/confirm password/i).fill('short');
         await page.getByRole('button', { name: 'Next' }).click();
-        // Verify error message
         await expect.element(page.getByText('Password must be at least 8 characters')).toBeVisible();
     });
 
@@ -276,13 +305,31 @@ The existing `setup-manager.test.ts` is well-written. Add these edge cases:
 - State file with extra/unknown fields (forward compatibility)
 - Concurrent `save()` calls (race condition simulation)
 
+### 4.4 Add Install CLI Regression Tests
+
+Based on findings from the manual reviews, add tests for:
+
+```ts
+describe('install command --help', () => {
+    it('prints help and exits 0 without triggering runtime checks', () => {
+        // Regression: install --help previously ran the install flow
+    });
+});
+
+describe('install command --runtime docker', () => {
+    it('shows explicit daemon-unavailable error with issue link when Docker is not running', () => {
+        // Covers the improved error messaging from manual review
+    });
+});
+```
+
 ---
 
 ## 5. Tier 2: Integration Tests with API Mocking (No Docker)
 
 ### 5.1 Use MSW (Mock Service Worker) for API Layer Testing
 
-MSW intercepts `fetch` calls at the network level, allowing component tests to exercise real API call paths without a server.
+MSW intercepts `fetch` calls at the network level, allowing component tests to exercise real API call paths without a server. MSW v2 uses the `http` and `HttpResponse` API (not the deprecated v1 `rest` API).
 
 **Setup:**
 
@@ -306,7 +353,6 @@ export const handlers = [
 
     http.post('*/command', async ({ request }) => {
         const body = await request.json() as { type: string; payload: unknown };
-        // Simulate successful command responses
         return HttpResponse.json({ ok: true, data: { profile: body.payload } });
     }),
 
@@ -349,7 +395,6 @@ import { server } from '../../mocks/server';
 
 describe('SetupWizard - API error handling', () => {
     it('shows error when profile save returns 500', async () => {
-        // Override just for this test
         server.use(
             http.post('*/command', () => {
                 return HttpResponse.json(
@@ -358,10 +403,8 @@ describe('SetupWizard - API error handling', () => {
                 );
             })
         );
-
         render(SetupWizard, { props: { onclose: () => {} } });
         // Navigate to profile, fill valid data, click Next
-        // ...
         await expect.element(
             page.getByText('Could not save your profile')
         ).toBeVisible();
@@ -373,16 +416,13 @@ describe('SetupWizard - API error handling', () => {
                 return HttpResponse.error(); // Simulates network failure
             })
         );
-        // ...
+        // Verify "Server unreachable" message
     });
 
     it('handles partial failure in finishSetup', async () => {
-        let callCount = 0;
         server.use(
             http.post('*/command', async ({ request }) => {
                 const body = await request.json() as { type: string };
-                callCount++;
-                // Channels save succeeds, but setup.complete fails
                 if (body.type === 'setup.complete') {
                     return HttpResponse.json(
                         { ok: false, error: 'Docker daemon not running' },
@@ -393,7 +433,7 @@ describe('SetupWizard - API error handling', () => {
             })
         );
         // Navigate to health check step, click Finish Setup
-        // Verify the specific "Setup failed:" error message appears
+        // Verify "Setup failed:" error appears
         // Verify the retry button is enabled
     });
 });
@@ -423,7 +463,6 @@ describe('CompleteStep - polling behavior', () => {
     });
 
     it('shows timeout state when services never become ready', async () => {
-        // Use fake timers to skip the 120-second timeout
         vi.useFakeTimers();
         server.use(
             http.get('*/setup/health-check', () => {
@@ -436,7 +475,6 @@ describe('CompleteStep - polling behavior', () => {
             })
         );
         render(CompleteStep, { props: { oncontinue: () => {} } });
-        // Fast-forward through all polling cycles
         await vi.advanceTimersByTimeAsync(121_000);
         await expect.element(page.getByText('Some services are still starting')).toBeVisible();
         vi.useRealTimers();
@@ -464,7 +502,6 @@ test('profile step rejects short password', async ({ page }) => {
     await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
     await expect(page.locator('.wiz-error')).toContainText('at least 8 characters');
-    // Verify we're still on the Profile step
     await expect(page.locator('.wizard h2')).toContainText('Profile');
 });
 
@@ -481,57 +518,17 @@ test('profile step rejects mismatched passwords', async ({ page }) => {
 
 test('providers step requires Anthropic API key', async ({ page }) => {
     await openWizard(page);
-    // Navigate to providers step (through Welcome and Profile)
     await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
     await fillProfileStep(page);
     await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
-    // Try to proceed without filling Anthropic key
     await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
     await expect(page.locator('.wiz-error')).toContainText('Anthropic API key is required');
 });
 ```
 
-#### Wizard State Persistence Tests
-
-```ts
-test('wizard preserves progress after page reload', async ({ page }) => {
-    await openWizard(page);
-    // Complete Welcome step
-    await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
-    await expect(page.locator('.wizard h2')).toContainText('Profile');
-
-    // Reload the page
-    await page.reload();
-    await page.evaluate((token) => localStorage.setItem('op_admin', token), ADMIN_TOKEN);
-    await page.reload();
-
-    // Reopen wizard and verify state
-    await openWizard(page);
-    // Should show welcome step completed in the step indicator
-});
-```
-
-#### Accessibility Tests
-
-```ts
-test('wizard is keyboard navigable', async ({ page }) => {
-    await openWizard(page);
-    // Tab to Next button and press Enter
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('.wizard h2')).toContainText('Profile');
-});
-
-test('wizard has correct ARIA attributes', async ({ page }) => {
-    await openWizard(page);
-    await expect(page.locator('.wizard-overlay')).toHaveAttribute('role', 'dialog');
-    await expect(page.locator('.wizard-overlay')).toHaveAttribute('aria-modal', 'true');
-});
-```
-
-### 6.2 Add Route Interception for Error Simulation in Playwright
+#### Route Interception for Error Simulation
 
 Playwright can intercept network requests without MSW:
 
@@ -541,7 +538,6 @@ test('shows error when profile API fails', async ({ page }) => {
     await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
     await fillProfileStep(page);
 
-    // Intercept the command API call
     await page.route('**/command', (route) => {
         route.fulfill({
             status: 500,
@@ -555,10 +551,8 @@ test('shows error when profile API fails', async ({ page }) => {
 });
 
 test('finishSetup shows Docker error when complete fails', async ({ page }) => {
-    // Navigate to health check step first
-    // ...
+    // Navigate to health check step first...
 
-    // Intercept only setup.complete calls
     await page.route('**/command', async (route) => {
         const body = JSON.parse(route.request().postData() || '{}');
         if (body.type === 'setup.complete') {
@@ -574,12 +568,38 @@ test('finishSetup shows Docker error when complete fails', async ({ page }) => {
 
     await page.locator('button', { hasText: 'Finish Setup' }).click();
     await expect(page.locator('.wiz-error')).toContainText('Setup failed:');
-    // Verify button is re-enabled for retry
     await expect(page.locator('button', { hasText: 'Finish Setup' })).toBeEnabled();
 });
 ```
 
-### 6.3 Add Cross-Browser Testing
+#### Wizard State Persistence Tests
+
+```ts
+test('wizard preserves progress after page reload', async ({ page }) => {
+    await openWizard(page);
+    await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
+    await expect(page.locator('.wizard h2')).toContainText('Profile');
+
+    await page.reload();
+    await page.evaluate((token) => localStorage.setItem('op_admin', token), ADMIN_TOKEN);
+    await page.reload();
+
+    await openWizard(page);
+    // Should show welcome step completed in the step indicator
+});
+```
+
+#### Accessibility Tests
+
+```ts
+test('wizard has correct ARIA attributes', async ({ page }) => {
+    await openWizard(page);
+    await expect(page.locator('.wizard-overlay')).toHaveAttribute('role', 'dialog');
+    await expect(page.locator('.wizard-overlay')).toHaveAttribute('aria-modal', 'true');
+});
+```
+
+### 6.2 Add Cross-Browser Testing
 
 Update `playwright.config.ts` to test Firefox and WebKit:
 
@@ -588,9 +608,6 @@ projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
-    // Mobile viewports
-    { name: 'mobile-chrome', use: { ...devices['Pixel 5'] } },
-    { name: 'mobile-safari', use: { ...devices['iPhone 12'] } },
 ]
 ```
 
@@ -598,15 +615,17 @@ projects: [
 
 ## 7. Tier 4: Full-Stack Docker Tests (Docker Required)
 
-### 7.1 Add Setup Wizard E2E in Docker
+Per the E2E strategy doc, this tier provides **35% of the overall detection weight** — the single most valuable investment for catching real setup breakage.
 
-Create a new test that exercises the complete wizard flow against real containers:
+### 7.1 Docker-Backed Full Wizard Happy-Path E2E Gate
 
-**File:** `test/docker/setup-wizard-e2e.docker.ts`
+**File:** `test/install-e2e/happy-path.docker.ts`
+
+This is the highest-priority new test. It runs against real Docker Compose with `OPENPALM_TEST_MODE` **off**, ensuring the real apply/startup path is exercised:
 
 ```ts
 describe.skipIf(!runDockerStackTests)('docker stack: wizard E2E', () => {
-    it('completes the full setup wizard against real containers', async () => {
+    it('completes full install -> wizard -> healthy runtime path', async () => {
         // 1. Verify first-boot state
         const status = await api(ADMIN_PORT, '/setup/status');
         const statusBody = await status.json();
@@ -646,7 +665,7 @@ describe.skipIf(!runDockerStackTests)('docker stack: wizard E2E', () => {
             await cmd(ADMIN_PORT, 'setup.step', { step });
         }
 
-        // 7. Complete setup
+        // 7. Complete setup (real compose apply, NOT test-mode)
         const completeRes = await cmd(ADMIN_PORT, 'setup.complete', {});
         expect(completeRes.ok).toBe(true);
 
@@ -662,19 +681,16 @@ describe.skipIf(!runDockerStackTests)('docker stack: wizard E2E', () => {
 });
 ```
 
-### 7.2 Add Playwright Tests Against Docker Stack
+### 7.2 Playwright Tests Against Docker Stack
 
-For the most realistic testing, run Playwright browser tests against the Docker-hosted admin UI:
+For the most realistic testing, run Playwright browser tests against the Docker-hosted admin UI. This test would:
 
-**File:** `test/docker/setup-wizard-browser.docker.ts`
-
-This test would:
 1. Build and start the Docker stack.
 2. Launch a Playwright browser pointing at the admin container's exposed port.
 3. Exercise the complete wizard UI flow in the browser.
 4. Verify that services actually start and become healthy.
 
-This is the only test that would catch issues like:
+This is the only test that catches:
 - Caddy proxy misconfiguration
 - Container networking issues
 - Volume mount permission problems
@@ -682,7 +698,7 @@ This is the only test that would catch issues like:
 
 ### 7.3 Use Testcontainers for Programmatic Docker Management
 
-Instead of manually managing Docker Compose in tests, use the `testcontainers` npm package for more reliable container lifecycle management:
+Instead of manually managing Docker Compose in tests, consider the `testcontainers` npm package for more reliable container lifecycle management:
 
 ```ts
 import { GenericContainer, Wait } from 'testcontainers';
@@ -703,11 +719,140 @@ Benefits over raw Docker Compose in tests:
 - Built-in health check waiting
 - Better error messages
 
+### 7.4 Scenario Isolation Requirements
+
+Per the E2E strategy doc's recommendation:
+
+- Use unique project names per test run (`openpalm-test-<uuid>`)
+- Use unique ports via dynamic allocation (never hardcode)
+- Use unique DATA/STATE/CONFIG roots (temp directories)
+- Explicitly block tests from using existing `.dev` state to avoid false positives
+
 ---
 
-## 8. Visual Regression Testing
+## 8. Failure-Matrix Scenarios
 
-### 8.1 Add Playwright Screenshot Assertions
+The E2E strategy assigns **25% detection weight** to failure-matrix testing. These are *not* happy-path bugs — they are failure-handling bugs where users get stuck.
+
+### 8.1 Required Negative Scenarios
+
+Add scenario tests that intentionally trigger high-frequency setup failures and assert actionable error messages and safe state:
+
+| Scenario | Tier | What to Assert |
+|---|---|---|
+| Short password (<8 chars) | 2, 3 | Error visible, stays on Profile step, no API call made |
+| Mismatched passwords | 2, 3 | Error visible, stays on Profile step |
+| Missing Anthropic API key | 2, 3 | Error visible, stays on Providers step |
+| Profile API returns 500 | 2, 3 | "Could not save your profile" shown, retry possible |
+| Service instances API returns 500 | 2, 3 | "Could not save service settings" shown, retry possible |
+| `setup.complete` fails (Docker unavailable) | 2, 3, 4 | "Setup failed:" with actionable message, Finish button re-enabled |
+| Channel start fails (non-fatal) | 2, 3 | Warning logged, wizard continues to completion |
+| Network unreachable (fetch throws) | 2 | "Server unreachable" message shown |
+| Partial setup then retry | 3 | State preserved, wizard resumes from correct step |
+| Invalid channel config in payload | 3, 4 | API returns 400, error shown to user |
+| Port conflict during service startup | 4 | Clear error message, no orphaned containers |
+| Docker daemon stops mid-setup | 4 | Actionable error, state not corrupted |
+
+### 8.2 Release Policy for Failure Scenarios
+
+- At least the top 5 highest-frequency negative scenarios must pass before any release.
+- New failure scenarios are added when support issues reveal gaps.
+
+---
+
+## 9. Artifact & Compose Contract Validation
+
+The E2E strategy assigns **15% detection weight** to artifact validation. Wizard failures often originate from generated artifacts being subtly wrong.
+
+### 9.1 Assertion Helpers for Generated Artifacts
+
+Create assertion helpers that run in Docker E2E tests before and after `setup.complete`:
+
+```ts
+async function validateGeneratedArtifacts(stateDir: string) {
+    // 1. docker compose config passes
+    const configResult = await composeRun('config');
+    expect(configResult.exitCode).toBe(0);
+
+    // 2. Generated compose includes required core services
+    const composeYaml = readFileSync(join(stateDir, 'docker-compose.yml'), 'utf8');
+    expect(composeYaml).toContain('admin');
+    expect(composeYaml).toContain('gateway');
+
+    // 3. Generated caddy.json is valid JSON with required routes
+    const caddyJson = JSON.parse(readFileSync(join(stateDir, 'caddy.json'), 'utf8'));
+    expect(caddyJson).toHaveProperty('apps.http.servers');
+
+    // 4. Scoped env files include only referenced secrets
+    const gatewayEnv = readFileSync(join(stateDir, 'gateway/.env'), 'utf8');
+    // Should not contain secrets from other services
+}
+```
+
+### 9.2 Artifact Bundle on Failure
+
+When any Docker E2E test fails, upload a diagnostic artifact bundle containing:
+
+- Command transcript
+- `docker compose config` output
+- `docker compose ps` output
+- `docker compose logs`
+- `setup-state.json` snapshot
+- Generated env, caddy, and compose files
+
+This is enforced via the `actions/upload-artifact` step in CI workflows.
+
+---
+
+## 10. Regression Replay Test Pack
+
+The E2E strategy assigns **15% detection weight** to replay tests. This prevents bugs that already escaped once from regressing.
+
+### 10.1 Structure
+
+```
+test/regressions/
+    README.md           # Policy and instructions
+    ISSUE-2.test.ts     # Password in profile step (migrate from source scan)
+    ISSUE-9.test.ts     # finishSetup error handling (migrate from source scan)
+    ISSUE-NNN.test.ts   # Future: each setup bug gets a replay test
+```
+
+### 10.2 Policy
+
+Codified in `AGENTS.md` and PR template:
+
+- **Any setup bug fix must include a replay test in the same PR.**
+- Each test maps to an issue: `issue-id -> scenario-id`.
+- Tests reproduce the minimal trigger condition and assert correct behavior.
+- The existing source-text tests for ISSUE-2 and ISSUE-9 should be migrated to real rendered component tests.
+
+### 10.3 Example: Converting ISSUE-9 from Source Scan to Behavior Test
+
+Current (source scan):
+```ts
+it("has a finishInProgress state guard", async () => {
+    const content = await Bun.file(svelteFile).text();
+    expect(content).toContain("finishInProgress");
+});
+```
+
+Proposed (behavior test):
+```ts
+it("prevents double-click on Finish Setup", async () => {
+    // Navigate to health check step
+    // Click Finish Setup
+    // Verify button shows "Finishing..." and is disabled
+    // Verify a second click is ignored
+    // Verify button re-enables after completion or failure
+});
+```
+
+---
+
+## 11. Visual Regression Testing
+
+### 11.1 Add Playwright Screenshot Assertions
 
 Use Playwright's built-in `toHaveScreenshot()` for visual regression testing of each wizard step:
 
@@ -731,24 +876,20 @@ test.describe('wizard visual regression', () => {
         await page.locator('#wiz-profile-password2').fill('short');
         await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
         await expect(page.locator('.wizard')).toHaveScreenshot('wizard-profile-error.png', {
-            maxDiffPixelRatio: 0.01  // Allow 1% pixel variance for anti-aliasing
+            maxDiffPixelRatio: 0.01
         });
     });
-
-    // ... one test per wizard step
 });
 ```
 
 **Best practices for stable visual tests:**
-- Scope screenshots to `.wizard` element, not full page (avoids nav/footer changes)
+- Scope screenshots to `.wizard` element, not full page
 - Use `maxDiffPixelRatio: 0.01` to tolerate minor anti-aliasing differences
 - Mask dynamic content (timestamps, service health status text)
 - Store baselines in git, update via `npx playwright test --update-snapshots`
-- Run visual tests only in CI on Linux for consistency (different OS = different rendering)
+- Run visual tests only in CI on Linux for consistency (different OS = different font rendering)
 
-### 8.2 CI Workflow for Visual Tests
-
-Add a dedicated visual regression step that runs on Linux only:
+### 11.2 CI Workflow for Visual Tests
 
 ```yaml
 # .github/workflows/test-visual.yml
@@ -774,62 +915,32 @@ jobs:
 
 ---
 
-## 9. CI/CD Pipeline Changes
+## 12. CI/CD Pipeline Changes
 
-### 9.1 Current Pipeline
+### 12.1 Current Pipeline
 
 ```
-PR opened/pushed → test.yml (unit/contract) → test-ui.yml (Playwright E2E)
-                                              → (Docker tests: manual only)
+PR opened/pushed --> test.yml (unit/contract) --> test-ui.yml (Playwright E2E)
+                                               --> (Docker tests: manual only)
 ```
 
-### 9.2 Proposed Pipeline
+### 12.2 Proposed Pipeline
 
 ```
 PR opened/pushed:
-├─ test.yml (unit/contract tests)                    [~3 min]
-├─ test-ui.yml (Playwright E2E + validation errors)  [~5 min]
-├─ test-components.yml (Vitest browser mode)          [~3 min]  ← NEW
-└─ test-visual.yml (screenshot regression)            [~4 min]  ← NEW
++-- test.yml (unit/contract tests)                    [~3 min]
++-- test-ui.yml (Playwright E2E + validation errors)  [~5 min]
++-- test-components.yml (Vitest browser mode)          [~3 min]  <-- NEW
++-- test-visual.yml (screenshot regression)            [~4 min]  <-- NEW
 
-Nightly schedule:
-└─ test-docker.yml (full Docker stack + wizard E2E)   [~10 min] ← NEW
-
-Pre-release (tag push):
-└─ test-docker-full.yml (multi-arch Docker build      [~20 min] ← NEW
-   + wizard E2E + health checks)
+Pre-release (release.yml or workflow_dispatch):
++-- setup-wizard-e2e (Docker stack + wizard E2E gate)  [~10 min] <-- NEW
+    (added as a required job in release.yml)
 ```
 
-### 9.3 New CI Workflow: Nightly Docker Tests
+Docker stack tests run as part of the release workflow or via manual `workflow_dispatch`, not as a nightly scheduled job. This avoids the need for an upgraded Docker Hub account while still gating releases on real Docker validation.
 
-```yaml
-# .github/workflows/test-docker-nightly.yml
-name: docker-stack-nightly
-on:
-  schedule:
-    - cron: '0 6 * * *'  # 6 AM UTC daily
-  workflow_dispatch:       # Manual trigger
-
-jobs:
-  docker-stack:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - name: Run Docker stack tests
-        run: bun run test:docker
-        env:
-          OPENPALM_RUN_DOCKER_STACK_TESTS: '1'
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: docker-test-logs
-          path: /tmp/openpalm-docker-test-*/
-```
-
-### 9.4 New CI Workflow: Component Tests
+### 12.3 New CI Workflow: Component Tests
 
 ```yaml
 # .github/workflows/test-components.yml
@@ -838,6 +949,10 @@ on:
   pull_request:
   push:
     branches: [main]
+
+concurrency:
+  group: test-components-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   vitest-browser:
@@ -853,50 +968,112 @@ jobs:
         working-directory: packages/ui
 ```
 
+### 12.4 Release Workflow Addition
+
+Add a `setup-wizard-e2e` job to `release.yml` as a required gate:
+
+```yaml
+# Addition to .github/workflows/release.yml
+setup-wizard-e2e:
+  runs-on: ubuntu-latest
+  timeout-minutes: 20
+  needs: [unit, ui]
+  steps:
+    - uses: actions/checkout@v4
+    - uses: oven-sh/setup-bun@v2
+    - run: bun install --frozen-lockfile
+    - name: Run setup wizard E2E against Docker
+      run: bun run test:docker
+      env:
+        OPENPALM_RUN_DOCKER_STACK_TESTS: '1'
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: docker-e2e-logs
+        path: /tmp/openpalm-docker-test-*/
+```
+
+### 12.5 Lightweight Local Developer Command
+
+Per the E2E strategy recommendation, provide a one-command pre-PR setup validation:
+
+```bash
+bun run test:install:smoke
+```
+
+This runs the happy-path Docker E2E locally so engineers can validate setup before merge. Keep runtime under ~10 minutes.
+
 ---
 
-## 10. Implementation Priorities
+## 13. Release Gate Policy
+
+Aligned with the E2E strategy's minimal acceptance bar:
+
+### A release is not eligible unless:
+
+1. **All Tier 1-3 tests pass** (unit, component, Playwright E2E) — enforced by CI on every PR.
+2. **Docker-backed happy-path wizard E2E passes** — enforced as a required job in `release.yml`.
+3. **Top 5 failure-matrix scenarios pass** in at least Tier 3 (Playwright with route interception).
+4. **No unresolved P0/P1 setup bug without a replay test** — enforced via PR checklist.
+5. **Failure artifacts are available** for any failed Docker E2E scenario — enforced by CI upload step.
+
+### Flake Accounting
+
+Per the E2E strategy recommendation:
+- Label test failures as `product_regression` vs `test_flake` in CI summary.
+- Maximum 1 retry per test. Report both first-fail and final status.
+- Track flake rate separately from product failure rate.
+
+---
+
+## 14. Implementation Priorities
 
 ### Phase 1: Quick Wins (1-2 days)
 
 **Impact: High | Effort: Low**
 
-1. **Add validation error tests to `10-setup-wizard-ui.pw.ts`** — Test password validation, password mismatch, and required Anthropic key. These use existing infrastructure and catch the most common regression (broken validation = broken setup).
+1. **Add validation error tests to `10-setup-wizard-ui.pw.ts`** — Test password validation, password mismatch, and required Anthropic key. Uses existing infrastructure.
 
-2. **Add Playwright route interception tests for API failures** — Test the "Could not save your profile" and "Setup failed:" error paths. Uses existing Playwright setup, no new dependencies.
+2. **Add Playwright route interception tests for API failures** — Test "Could not save your profile" and "Setup failed:" error paths. No new dependencies.
 
-3. **Add cross-browser projects to `playwright.config.ts`** — Add Firefox and WebKit. Requires installing additional browsers in CI but catches browser-specific bugs immediately.
+3. **Add cross-browser projects to `playwright.config.ts`** — Add Firefox and WebKit.
 
 ### Phase 2: Component Testing Layer (3-5 days)
 
 **Impact: High | Effort: Medium**
 
-4. **Create real Vitest browser-mode component tests** — Replace the source-text scanning in `setup-wizard.test.ts` with rendered component tests using `vitest-browser-svelte`. This is the single biggest improvement to test quality.
+4. **Create real Vitest browser-mode component tests** — Replace source-text scanning in `setup-wizard.test.ts` with rendered component tests using `vitest-browser-svelte`.
 
-5. **Add MSW for API mocking** — Install `msw`, create handler files, and integrate with Vitest setup. This enables testing all error paths at the component level.
+5. **Add MSW for API mocking** — Install `msw`, create handler files, integrate with Vitest setup.
 
-6. **Test HealthStep and CompleteStep polling** — Use MSW + fake timers to test the health check polling, timeout behavior, and partial readiness display.
+6. **Test HealthStep and CompleteStep polling** — Use MSW + fake timers.
 
-### Phase 3: Visual & Docker (1-2 weeks)
+7. **Migrate ISSUE-2 and ISSUE-9 source-scan tests to behavior tests** — Convert existing regression tests from string matching to rendered component assertions.
 
-**Impact: Medium | Effort: Medium-High**
+### Phase 3: Docker & Visual (1-2 weeks)
 
-7. **Add Playwright visual regression tests** — Screenshot each wizard step and each error state. Store baselines in git.
+**Impact: High | Effort: Medium-High**
 
-8. **Enable Docker stack tests in nightly CI** — Add the `test-docker-nightly.yml` workflow. This catches containerization regressions before they reach users.
+8. **Add Docker-backed happy-path wizard E2E** (`test/install-e2e/happy-path.docker.ts`) — The single highest-value Docker test. Exercise the full install->wizard->apply->healthy path with `OPENPALM_TEST_MODE` off.
 
-9. **Add wizard API E2E in Docker tests** — Exercise the complete setup wizard flow against real Docker containers.
+9. **Add wizard E2E as a required gate in `release.yml`** — Blocks releases on setup wizard completion.
+
+10. **Add Playwright visual regression tests** — Screenshot each wizard step and error state.
+
+11. **Add artifact/compose contract validation** — Assert generated compose, caddy, and env files are valid.
 
 ### Phase 4: Full Confidence (Ongoing)
 
-10. **Add Playwright tests against Docker-hosted UI** — The most realistic test: browser + real containers.
-11. **Add CLI install -> wizard -> verify E2E** — The ultimate test: run the install command, complete setup, verify the assistant works.
+12. **Build regression replay test pack** — Codify the "bug -> scenario" policy.
+13. **Add failure-matrix scenarios for Docker-specific failures** — Port conflicts, daemon unavailable mid-setup, partial container startup.
+14. **Add CLI install -> wizard -> verify E2E** — The ultimate test.
+15. **Add `bun run test:install:smoke`** for local developer pre-PR validation.
 
 ---
 
-## 11. Test Matrix
+## 15. Test Matrix
 
-The following matrix shows what each test tier covers for the setup wizard:
+### Per-Scenario Coverage
 
 | Scenario | Tier 1 (Unit) | Tier 2 (MSW) | Tier 3 (E2E) | Tier 4 (Docker) |
 |---|:---:|:---:|:---:|:---:|
@@ -917,7 +1094,7 @@ The following matrix shows what each test tier covers for the setup wizard:
 | finishSetup button disabled during op | | x | x | |
 | Setup complete -> auth required | | | x | x |
 | First boot -> no auth needed | | | x | x |
-| Wizard state persistence | x | x | x | |
+| Wizard state persistence / resume | x | x | x | |
 | SetupManager file operations | x | | | |
 | Corrupt state file recovery | x | | | |
 | Cross-browser rendering | | | x | |
@@ -928,35 +1105,39 @@ The following matrix shows what each test tier covers for the setup wizard:
 | Multi-arch image build | | | | x |
 | Network error handling | | x | x | |
 | Keyboard accessibility | | | x | |
+| Compose config valid after apply | | | | x |
+| Caddy JSON valid after apply | | | | x |
+| Scoped env files correct | | | | x |
+| Real compose apply (test mode off) | | | | x |
+| Port conflict handling | | | | x |
+| Docker daemon unavailable mid-setup | | | | x |
+| Partial setup then retry | | x | x | x |
+| Install CLI --help shows help | x | | | |
+| Install CLI --runtime docker error msg | x | | | |
+
+### Coverage by Detection Weight (from E2E strategy)
+
+| Area | Detection Weight | Status |
+|---|---:|---|
+| Docker-backed wizard happy-path E2E | 35% | **Not implemented** — Phase 3, item 8 |
+| Failure-matrix scenarios | 25% | **Not implemented** — Phase 1-3 cover Tiers 2-3; Phase 4 item 13 covers Tier 4 |
+| Artifact/compose contract validation | 15% | **Not implemented** — Phase 3, item 11 |
+| Regression replay test pack | 15% | **Partially exists** (ISSUE-2, ISSUE-9 as source scans) — Phase 2, item 7 |
+| Multi-platform installer smoke | 10% | **Not implemented** — Phase 4, item 14 |
 
 ### Coverage Summary
 
 | Tier | Docker Required | Runs In CI | Catches |
 |---|:---:|:---:|---|
-| 1: Unit | No | Every PR | State logic bugs, data validation, persistence |
+| 1: Unit | No | Every PR | State logic bugs, data validation, persistence, CLI regressions |
 | 2: Component + MSW | No | Every PR | Rendering bugs, API error handling, polling logic, state management |
 | 3: Playwright E2E | No | Every PR | Full user flows, validation UX, cross-browser, visual regression |
-| 4: Docker Stack | Yes | Nightly/Pre-release | Container build, networking, volume mounts, real service integration |
+| 4: Docker Stack | Yes | Pre-release gate | Container build, networking, volumes, real compose apply, artifact correctness |
 
 **With all four tiers implemented, the only scenarios NOT covered by automated tests are:**
 - Hardware-specific issues (ARM vs x86 rendering differences)
 - Real third-party API integration (actual Anthropic key validation)
 - OS-specific Docker socket behavior (Linux vs macOS vs Windows)
+- Multi-platform installer behavior (Linux vs macOS shell differences)
 
-These remaining scenarios require manual testing as part of the release process but should be rare sources of regression.
-
----
-
-## Summary
-
-The current testing strategy has a solid foundation (SetupManager unit tests, Playwright E2E framework, Docker stack infrastructure) but has critical gaps in **component-level rendering tests**, **error path coverage**, and **automated Docker testing**. The source-text scanning approach in `setup-wizard.test.ts` provides a false sense of security — it verifies that code strings exist but not that they work.
-
-The recommended changes, prioritized for maximum impact:
-
-1. **Replace source-text tests with Vitest browser-mode component tests** — catches rendering and state bugs
-2. **Add validation and error path tests to Playwright E2E** — catches the most user-visible regressions
-3. **Integrate MSW for API failure simulation** — enables testing every error branch without a server
-4. **Enable nightly Docker stack tests in CI** — catches containerization regressions before release
-5. **Add visual regression testing** — catches layout and styling regressions
-
-This layered approach ensures that Docker-free environments (CI, development machines) catch 90%+ of bugs through Tiers 1-3, while Docker-based environments (nightly CI, pre-release) validate the remaining real-world integration concerns.
+These remaining scenarios require manual testing as part of the release process (see `dev/docs/manual-install-setup-review.md` and `dev/docs/manual-setup-readiness-review.md` for templates).
