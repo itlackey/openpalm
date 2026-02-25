@@ -21,6 +21,7 @@
     "prepare": "git config core.hooksPath dev/hooks",
     "test": "bun test",
     "typecheck": "bunx tsc",
+    "lint:docs": "sh dev/scripts/lint-docs.sh",
     "preflight": "bun run packages/cli/src/main.ts dev preflight",
     "dev:setup": "./dev/dev-setup.sh",
     "dev:setup:clean": "./dev/dev-setup.sh --clean",

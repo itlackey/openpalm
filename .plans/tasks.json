@@ -152,7 +152,7 @@
       {
         "id": "R04.1",
         "description": "Delete packages/lib/src/shared/crypto.test.ts (strict subset of hmac.security.test.ts)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/shared/crypto.test.ts",
@@ -164,7 +164,7 @@
       {
         "id": "R04.2",
         "description": "Replace channel-security.test.ts contents with a single re-export smoke test",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "core/gateway/src/channel-security.test.ts",
@@ -176,7 +176,7 @@
       {
         "id": "R04.3",
         "description": "Verify hmac.security.test.ts, channel-security.test.ts, and full test suite pass",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/security/hmac.security.test.ts",
@@ -197,14 +197,14 @@
     "title": "Delete fake contract tests",
     "description": "Move doc-lint checks to a pre-commit hook/lint script, delete 3 fake contract tests, and write a real admin API contract test with live HTTP assertions.",
     "priority": "P2",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R05-delete-fake-contract-tests.md",
     "subtasks": [
       {
         "id": "R05.1",
         "description": "Create dev/scripts/lint-docs.sh with documentation invariant checks extracted from the fake contract tests",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "dev/scripts/lint-docs.sh",
@@ -216,7 +216,7 @@
       {
         "id": "R05.2",
         "description": "Update dev/hooks/pre-commit to call lint-docs.sh when README or api-reference.md are staged",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "dev/hooks/pre-commit",
@@ -228,7 +228,7 @@
       {
         "id": "R05.3",
         "description": "Add lint:docs script to package.json",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "package.json",
@@ -240,7 +240,7 @@
       {
         "id": "R05.4",
         "description": "Delete fake contract test: test/contracts/admin-api.contract.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -252,7 +252,7 @@
       {
         "id": "R05.5",
         "description": "Delete fake contract test: test/contracts/readme-no-npx.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/readme-no-npx.test.ts",
@@ -264,7 +264,7 @@
       {
         "id": "R05.6",
         "description": "Delete fake contract test: test/contracts/channel-message.contract.test.ts",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/channel-message.contract.test.ts",
@@ -276,7 +276,7 @@
       {
         "id": "R05.7",
         "description": "Write real admin API contract test with HTTP assertions against live admin server, guarded by OPENPALM_INTEGRATION=1",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/admin-api.contract.test.ts",
@@ -288,7 +288,7 @@
       {
         "id": "R05.8",
         "description": "Optionally add bun run lint:docs to the unit-tests job in .github/workflows/release.yml",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/release.yml",
@@ -304,14 +304,14 @@
     "title": "Eliminate silent test passes",
     "description": "Audit confirmed no silent guard anti-patterns exist. Optionally add a CI grep check to prevent future regressions.",
     "priority": "P2",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "15 minutes",
     "planFile": ".plans/R06-eliminate-silent-test-passes.md",
     "subtasks": [
       {
         "id": "R06.1",
         "description": "Run verification grep command to confirm no silent if/return patterns exist in test files",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "dev/docs/release-quality-gates.md",
@@ -323,7 +323,7 @@
       {
         "id": "R06.2",
         "description": "Optionally add silent test guard check step to the unit-tests job in release.yml",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/release.yml",
