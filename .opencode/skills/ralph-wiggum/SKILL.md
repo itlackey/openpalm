@@ -34,7 +34,7 @@ cp .opencode/skills/ralph-wiggum/commands/cancel-ralph.md .opencode/commands/
 cp .opencode/skills/ralph-wiggum/commands/help.md .opencode/commands/ralph-help.md
 ```
 
-The plugin is automatically loaded by OpenCode from `.opencode/plugins/`. No config changes needed.
+The setup script ensures `./plugins/ralph-wiggum.ts` is present in `.opencode/opencode.json` so the plugin is enabled.
 
 ## Usage
 

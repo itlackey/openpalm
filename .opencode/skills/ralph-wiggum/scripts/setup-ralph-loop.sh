@@ -149,6 +149,43 @@ resolve_registry_root() {
 	return 0
 }
 
+ensure_plugin_registered() {
+	local repo_root="$1"
+	local config_path="${repo_root}/.opencode/opencode.json"
+	local plugin_id="./plugins/ralph-wiggum.ts"
+
+	mkdir -p "${repo_root}/.opencode"
+
+	python3 - "$config_path" "$plugin_id" <<'PY'
+import json
+import os
+import sys
+
+config_path = sys.argv[1]
+plugin_id = sys.argv[2]
+
+cfg = {}
+if os.path.exists(config_path):
+    with open(config_path, "r", encoding="utf-8") as f:
+        value = json.load(f)
+        if isinstance(value, dict):
+            cfg = value
+
+plugins = cfg.get("plugin")
+if not isinstance(plugins, list):
+    plugins = []
+
+if plugin_id not in plugins:
+    plugins.append(plugin_id)
+
+cfg["plugin"] = plugins
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PY
+}
+
 # Parse options and positional arguments
 while [[ $# -gt 0 ]]; do
 	case $1 in
@@ -290,6 +327,7 @@ if [[ -z "$PROMPT" ]]; then
 fi
 
 # Determine state file location
+REPO_ROOT=""
 if [[ -n "$WORKTREE" ]]; then
 	WORKTREE_RESOLVED="$(resolve_worktree_path "$WORKTREE")"
 	if [[ -z "$WORKTREE_RESOLVED" ]]; then
@@ -306,13 +344,22 @@ if [[ -n "$WORKTREE" ]]; then
 		echo "Warning: normalized --worktree to '$WORKTREE_RESOLVED'" >&2
 	fi
 	WORKTREE="$WORKTREE_RESOLVED"
+	REPO_ROOT="$(resolve_registry_root "$WORKTREE")"
 
 	# Worktree mode: state file lives inside the worktree
 	STATE_DIR="${WORKTREE}/.opencode"
 else
+	if REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+		REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
+	else
+		REPO_ROOT="$(pwd -P)"
+	fi
+
 	# Default: state file at repo root
 	STATE_DIR=".opencode"
 fi
+
+ensure_plugin_registered "$REPO_ROOT"
 
 # Create state file for the ralph-wiggum OpenCode plugin (markdown with YAML frontmatter)
 mkdir -p "$STATE_DIR"
@@ -351,7 +398,6 @@ EOF
 # Seed worktree registry immediately so operators can inspect active loops before
 # the first session.idle claim event occurs.
 if [[ -n "$WORKTREE" ]]; then
-	REPO_ROOT="$(resolve_registry_root "$WORKTREE")"
 	upsert_pending_registry_entry "$REPO_ROOT" "$WORKTREE" "0" "$STARTED_AT" "$REGISTRY_SESSION_KEY"
 fi
 

@@ -45,6 +45,8 @@ cp .opencode/skills/ralph-wiggum/commands/cancel-ralph.md .opencode/commands/
 cp .opencode/skills/ralph-wiggum/commands/help.md .opencode/commands/ralph-help.md
 ```
 
+`setup-ralph-loop.sh` also makes sure `./plugins/ralph-wiggum.ts` is listed in `.opencode/opencode.json`.
+
 ### Usage
 
 ```bash
@@ -186,4 +188,3 @@ Keep trying until success. The loop handles retry logic automatically.
 
 - Original technique: https://ghuntley.com/ralph/
 - Ralph Orchestrator: https://github.com/mikeyobrien/ralph-orchestrator
-
