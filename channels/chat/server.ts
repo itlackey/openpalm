@@ -1,8 +1,11 @@
 import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 export { signPayload };
+
+const log = createLogger("channel-chat");
 
 const PORT = Number(Bun.env.PORT ?? 8181);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -52,9 +55,9 @@ export function createChatFetch(gatewayUrl: string, sharedSecret: string, inboun
 
 if (import.meta.main) {
   if (!SHARED_SECRET) {
-    console.error("[channel-chat] FATAL: CHANNEL_CHAT_SECRET environment variable is not set. Exiting.");
+    log.error("CHANNEL_CHAT_SECRET is not set, exiting");
     process.exit(1);
   }
   Bun.serve({ port: PORT, fetch: createChatFetch(GATEWAY_URL, SHARED_SECRET, INBOUND_TOKEN) });
-  console.log(`chat channel listening on ${PORT}`);
+  log.info("started", { port: PORT });
 }

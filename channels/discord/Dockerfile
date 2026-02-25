@@ -7,7 +7,6 @@ COPY packages/lib /app/node_modules/@openpalm/lib
 COPY channels/discord/package.json ./
 COPY channels/discord/server.ts ./server.ts
 COPY channels/discord/types.ts ./types.ts
-COPY channels/discord/logger.ts ./logger.ts
 COPY channels/discord/permissions.ts ./permissions.ts
 COPY channels/discord/discord-api.ts ./discord-api.ts
 COPY channels/discord/commands.ts ./commands.ts

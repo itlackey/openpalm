@@ -1,8 +1,11 @@
 import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 export { signPayload };
+
+const log = createLogger("channel-telegram");
 
 const PORT = Number(Bun.env.PORT ?? 8182);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -63,12 +66,12 @@ export function createTelegramFetch(gatewayUrl: string, sharedSecret: string, we
 
 if (import.meta.main) {
   if (!SHARED_SECRET) {
-    console.error("[channel-telegram] FATAL: CHANNEL_TELEGRAM_SECRET environment variable is not set. Exiting.");
+    log.error("CHANNEL_TELEGRAM_SECRET is not set, exiting");
     process.exit(1);
   }
   if (!TELEGRAM_WEBHOOK_SECRET) {
-    console.warn("[channel-telegram] WARNING: TELEGRAM_WEBHOOK_SECRET is not set. Telegram webhook verification is disabled.");
+    log.warn("TELEGRAM_WEBHOOK_SECRET is not set — webhook verification disabled");
   }
   Bun.serve({ port: PORT, fetch: createTelegramFetch(GATEWAY_URL, SHARED_SECRET, TELEGRAM_WEBHOOK_SECRET) });
-  console.log(`telegram channel listening on ${PORT}`);
+  log.info("started", { port: PORT });
 }

@@ -2,7 +2,9 @@ import { mkdirSync, statSync, renameSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AuditEvent } from "./types.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
+const log = createLogger("gateway");
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 export class AuditLog {
@@ -31,7 +33,7 @@ export class AuditLog {
         await appendFile(this.filePath, line, "utf8");
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[audit] failed to write audit log: ${message}`);
+        log.error("failed to write audit log", { error: message });
       }
     });
   }

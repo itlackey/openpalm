@@ -8,7 +8,9 @@
 
 import type { CustomCommandDef, CustomCommandOption } from "./types.ts";
 import { CommandOptionType } from "./types.ts";
-import { log } from "./logger.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
+
+const log = createLogger("channel-discord");
 
 /* ── Built-in command definitions ──────────────────────────────────── */
 

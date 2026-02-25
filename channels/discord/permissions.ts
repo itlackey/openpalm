@@ -7,7 +7,9 @@
  */
 
 import type { DiscordInteraction, PermissionConfig, PermissionResult } from "./types.ts";
-import { log } from "./logger.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
+
+const log = createLogger("channel-discord");
 
 /** Parse a comma-separated env var into a Set of trimmed, non-empty strings. */
 export function parseIdList(raw: string | undefined): Set<string> {

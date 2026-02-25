@@ -23,7 +23,9 @@ import {
 import { checkPermissions, extractIdentifiers } from "./permissions.ts";
 import { findCommand, resolvePromptTemplate } from "./commands.ts";
 import { editOriginalResponse } from "./discord-api.ts";
-import { log } from "./logger.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
+
+const log = createLogger("channel-discord");
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 

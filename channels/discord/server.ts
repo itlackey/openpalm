@@ -18,7 +18,9 @@ import { handleInteraction, type InteractionDeps } from "./interactions.ts";
 import { loadPermissionConfig } from "./permissions.ts";
 import { parseCustomCommands, buildCommandRegistry } from "./commands.ts";
 import { registerCommands, type DiscordApiConfig } from "./discord-api.ts";
-import { log, setLogLevel, type LogLevel } from "./logger.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
+
+const log = createLogger("channel-discord");
 
 /* ── Discord signature verification ────────────────────────────────── */
 
@@ -208,9 +210,6 @@ if (import.meta.main) {
   const DISCORD_PUBLIC_KEY = Bun.env.DISCORD_PUBLIC_KEY ?? "";
   const DISCORD_APPLICATION_ID = Bun.env.DISCORD_APPLICATION_ID ?? "";
   const DISCORD_BOT_TOKEN = Bun.env.DISCORD_BOT_TOKEN ?? "";
-  const LOG_LEVEL = (Bun.env.DISCORD_LOG_LEVEL ?? "info") as LogLevel;
-
-  setLogLevel(LOG_LEVEL);
 
   // Validate required config
   if (!SHARED_SECRET) {

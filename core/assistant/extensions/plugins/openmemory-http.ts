@@ -19,21 +19,9 @@ import {
   formatRecallBlock,
   OpenMemoryClient,
 } from "../lib/openmemory-client.ts";
+import { createLogger } from "../lib/logger.ts";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function log(kind: string, payload: Record<string, unknown>) {
-  console.log(
-    JSON.stringify({
-      plugin: "openmemory-http",
-      kind,
-      ts: new Date().toISOString(),
-      ...payload,
-    }),
-  );
-}
+const log = createLogger("plugin-openmemory");
 
 // ---------------------------------------------------------------------------
 // Plugin
@@ -80,13 +68,13 @@ export const OpenMemoryHTTP: Plugin = async ({ client }) => {
           output.system.push(block);
         }
 
-        log("recall", {
+        log.info("recall", {
           count: hits.length,
           chars: block.length,
           ms: Date.now() - start,
         });
       } catch (err: unknown) {
-        log("recall_error", { error: String(err), ms: Date.now() - start });
+        log.error("recall_error", { error: String(err), ms: Date.now() - start });
       }
     },
 
@@ -134,7 +122,7 @@ export const OpenMemoryHTTP: Plugin = async ({ client }) => {
         if (!text.trim()) return;
         if (!isSaveWorthy(text)) return;
         if (containsSecret(text)) {
-          log("writeback_blocked", { reason: "secret_detected" });
+          log.warn("writeback_blocked", { reason: "secret_detected" });
           return;
         }
 
@@ -143,9 +131,9 @@ export const OpenMemoryHTTP: Plugin = async ({ client }) => {
           session_id: sessionId,
           tags: ["auto-writeback"],
         });
-        log("writeback", { id: result.id ?? "unknown" });
+        log.info("writeback", { id: result.id ?? "unknown" });
       } catch (err: unknown) {
-        log("writeback_error", { error: String(err) });
+        log.error("writeback_error", { error: String(err) });
       }
     },
 
@@ -174,9 +162,9 @@ export const OpenMemoryHTTP: Plugin = async ({ client }) => {
           output.context.push(block);
         }
 
-        log("compaction_preserve", { count: hits.length });
+        log.info("compaction_preserve", { count: hits.length });
       } catch (err: unknown) {
-        log("compaction_error", { error: String(err) });
+        log.error("compaction_error", { error: String(err) });
       }
     },
   };

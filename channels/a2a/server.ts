@@ -2,8 +2,11 @@ import { createA2aChannel } from "./channel.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 export { signPayload };
+
+const log = createLogger("channel-a2a");
 
 const PORT = Number(Bun.env.PORT ?? 8188);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
@@ -94,10 +97,10 @@ export function createFetch(
 
 if (import.meta.main) {
   if (!SHARED_SECRET) {
-    console.error("[channel-a2a] FATAL: CHANNEL_A2A_SECRET environment variable is not set. Exiting.");
+    log.error("CHANNEL_A2A_SECRET is not set, exiting");
     process.exit(1);
   }
   const adapter = createA2aChannel();
   Bun.serve({ port: PORT, fetch: createFetch(adapter, GATEWAY_URL, SHARED_SECRET) });
-  console.log(JSON.stringify({ kind: "startup", service: "channel-a2a", port: PORT }));
+  log.info("started", { port: PORT });
 }

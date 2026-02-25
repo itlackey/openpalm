@@ -5,7 +5,9 @@
  * with no external dependencies, consistent with the project's lightweight approach.
  */
 
-import { log } from "./logger.ts";
+import { createLogger } from "@openpalm/lib/shared/logger.ts";
+
+const log = createLogger("channel-discord");
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 
