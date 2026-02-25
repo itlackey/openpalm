@@ -318,7 +318,7 @@
       "id": "rec3",
       "title": "Add Docker-backed setup wizard E2E gate",
       "description": "Create a new test/install-e2e/happy-path.docker.ts that drives the full wizard API against a real Docker-built admin container (no OPENPALM_TEST_MODE), and wire it as a conditional release gate in release.yml.",
-      "status": "pending",
+      "status": "completed",
       "planFile": ".plans/rec3-docker-e2e-gate.md",
       "files": [
         {
