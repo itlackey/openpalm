@@ -141,7 +141,7 @@ cat >.opencode/ralph-loop.local.md <<EOF
 ---
 active: true
 session_id: null
-iteration: 1
+iteration: 0
 max_iterations: $MAX_ITERATIONS
 completion_promise: $COMPLETION_PROMISE_YAML
 started_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -149,6 +149,7 @@ started_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 $PROMPT
 EOF
+
 
 # Output setup message
 cat <<EOF

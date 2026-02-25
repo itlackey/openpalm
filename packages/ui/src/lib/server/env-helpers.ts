@@ -35,10 +35,8 @@ export function readRuntimeEnv(): Record<string, string> {
 	return parseRuntimeEnvContent(readFileSync(RUNTIME_ENV_PATH, 'utf8'));
 }
 
-export function updateRuntimeEnv(entries: Record<string, string | undefined>) {
-	// Wrap in file lock to prevent concurrent read-modify-write races.
-	// Using void return since callers treat this as sync-like (fire and forget lock).
-	void withFileLock(RUNTIME_ENV_PATH, async () => {
+export function updateRuntimeEnv(entries: Record<string, string | undefined>): Promise<void> {
+	return withFileLock(RUNTIME_ENV_PATH, async () => {
 		const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
 		const next = updateRuntimeEnvContent(current, entries);
 		mkdirSync(dirname(RUNTIME_ENV_PATH), { recursive: true });
@@ -46,8 +44,8 @@ export function updateRuntimeEnv(entries: Record<string, string | undefined>) {
 	});
 }
 
-export function setRuntimeBindScope(scope: 'host' | 'lan' | 'public') {
-	void withFileLock(RUNTIME_ENV_PATH, async () => {
+export function setRuntimeBindScope(scope: 'host' | 'lan' | 'public'): Promise<void> {
+	return withFileLock(RUNTIME_ENV_PATH, async () => {
 		const current = existsSync(RUNTIME_ENV_PATH) ? readFileSync(RUNTIME_ENV_PATH, 'utf8') : '';
 		const next = setRuntimeBindScopeContent(current, scope);
 		mkdirSync(dirname(RUNTIME_ENV_PATH), { recursive: true });
@@ -60,8 +58,8 @@ export function readSecretsEnv(): Record<string, string> {
 	return parseRuntimeEnvContent(readFileSync(SECRETS_ENV_PATH, 'utf8'));
 }
 
-export function updateSecretsEnv(entries: Record<string, string | undefined>) {
-	void withFileLock(SECRETS_ENV_PATH, async () => {
+export function updateSecretsEnv(entries: Record<string, string | undefined>): Promise<void> {
+	return withFileLock(SECRETS_ENV_PATH, async () => {
 		const current = existsSync(SECRETS_ENV_PATH) ? readFileSync(SECRETS_ENV_PATH, 'utf8') : '';
 		const next = updateRuntimeEnvContent(current, entries);
 		mkdirSync(dirname(SECRETS_ENV_PATH), { recursive: true });
@@ -99,8 +97,8 @@ export function readDataEnv(): Record<string, string> {
 	return parseRuntimeEnvContent(readFileSync(DATA_ENV_PATH, 'utf8'));
 }
 
-export function updateDataEnv(entries: Record<string, string | undefined>) {
-	void withFileLock(DATA_ENV_PATH, async () => {
+export function updateDataEnv(entries: Record<string, string | undefined>): Promise<void> {
+	return withFileLock(DATA_ENV_PATH, async () => {
 		const current = existsSync(DATA_ENV_PATH) ? readFileSync(DATA_ENV_PATH, 'utf8') : '';
 		const next = updateRuntimeEnvContent(current, entries);
 		mkdirSync(dirname(DATA_ENV_PATH), { recursive: true });

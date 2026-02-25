@@ -161,8 +161,8 @@ All setup commands enforce: unauthenticated setup access is allowed only while s
 1. Render desired artifacts from current stack spec.
 2. Validate referenced secrets.
 3. Validate compose configuration.
-4. Write artifacts and execute `docker compose up -d --remove-orphans`.
-5. On failure, return the error to the admin UI.
+4. Write artifacts to their live paths.
+5. The caller then runs `docker compose up` for the intended service set (for setup completion this is core runtime services), and errors are returned to the admin UI.
 
 This is the reliability boundary that turns wizard inputs into a running full stack.
 

@@ -49,7 +49,7 @@ Start a Ralph loop in your current session.
 1. Creates `.opencode/ralph-loop.local.md` state file
 2. You work on the task
 3. When the session goes idle, the `ralph-wiggum` plugin intercepts via `session.idle`
-4. Same prompt fed back via `client.session.prompt()`
+4. Same prompt fed back via `client.session.promptAsync()`
 5. You see your previous work in files and git history
 6. Continues until promise detected or max iterations
 

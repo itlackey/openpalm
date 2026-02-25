@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	stackManager.setAccessScope(body.scope);
-	setRuntimeBindScope(body.scope);
+	await setRuntimeBindScope(body.scope);
 	if (current.completed) {
 		await Promise.all([
 			composeAction('up', 'caddy'),

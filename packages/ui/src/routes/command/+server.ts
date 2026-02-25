@@ -202,9 +202,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			);
 			return json(200, { ok: true, data: state });
 		}
-		if (type === 'setup.start_core') {
-			stackManager.renderArtifacts();
-			(async () => {
+			if (type === 'setup.start_core') {
+				stackManager.renderArtifacts();
+				(async () => {
 				const services = [
 					'postgres',
 					'qdrant',
@@ -213,24 +213,32 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					'assistant',
 					'gateway'
 				];
-				await Promise.allSettled(services.map((svc) => composePull(svc)));
-				for (const svc of services) {
-					await composeAction('up', svc).catch((e) =>
-						log.error(`Start ${svc} failed`, { error: String(e) })
-					);
-				}
-				await composeAction('restart', 'caddy').catch((e) =>
-					log.error('Caddy reload failed', { error: String(e) })
-				);
-			})().catch((e) => log.error('Core startup failed', { error: String(e) }));
-			return json(200, { ok: true, status: 'starting' });
-		}
+					await Promise.allSettled(services.map((svc) => composePull(svc)));
+					for (const svc of services) {
+						await composeAction('up', svc)
+							.then((result) => {
+								if (!result.ok) {
+									log.error(`Start ${svc} failed`, { error: result.stderr || 'compose up failed' });
+								}
+							})
+							.catch((e) => log.error(`Start ${svc} failed`, { error: String(e) }));
+					}
+					await composeAction('restart', 'caddy')
+						.then((result) => {
+							if (!result.ok) {
+								log.error('Caddy reload failed', { error: result.stderr || 'compose restart failed' });
+							}
+						})
+						.catch((e) => log.error('Caddy reload failed', { error: String(e) }));
+				})().catch((e) => log.error('Core startup failed', { error: String(e) }));
+				return json(200, { ok: true, status: 'starting' });
+			}
 		if (type === 'setup.access_scope') {
 			const scope = payload.scope;
 			if (scope !== 'host' && scope !== 'lan' && scope !== 'public')
 				return json(400, { ok: false, error: 'invalid_scope', code: 'invalid_scope' });
 			stackManager.setAccessScope(scope);
-			setRuntimeBindScope(scope);
+				await setRuntimeBindScope(scope);
 			if (setupManager.getState().completed) {
 				await Promise.all([
 					composeAction('up', 'caddy'),
@@ -247,10 +255,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const name = sanitizeEnvScalar(payload.name);
 			const email = sanitizeEnvScalar(payload.email);
 			const password = typeof payload.password === 'string' ? payload.password.trim() : '';
-			updateDataEnv({
-				OPENPALM_PROFILE_NAME: name || undefined,
-				OPENPALM_PROFILE_EMAIL: email || undefined
-			});
+				await updateDataEnv({
+					OPENPALM_PROFILE_NAME: name || undefined,
+					OPENPALM_PROFILE_EMAIL: email || undefined
+				});
 			if (password.length >= 8) {
 				await upsertEnvVar(RUNTIME_ENV_PATH, 'ADMIN_TOKEN', password);
 			}
@@ -293,7 +301,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			if (anthropicApiKey.length > 0) secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
 			if (smallModelApiKey.length > 0)
 				secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
-			updateSecretsEnv(secretEntries);
+				await updateSecretsEnv(secretEntries);
 			const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
 			if (smallModelId) {
 				setupManager.setSmallModel({ endpoint: smallModelEndpoint, modelId: smallModelId });
@@ -310,9 +318,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 		if (type === 'setup.channels') {
 			const channels = await normalizeSelectedChannels(payload.channels);
-			updateRuntimeEnv({
-				OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(',') : undefined
-			});
+				await updateRuntimeEnv({
+					OPENPALM_ENABLED_CHANNELS: channels.length ? channels.join(',') : undefined
+				});
 			const channelConfigs = payload.channelConfigs;
 			if (channelConfigs && typeof channelConfigs === 'object') {
 				const validServices = new Set(await allChannelServiceNames());
@@ -329,8 +337,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					stackManager.setChannelConfig(channelName, values as Record<string, string>);
 				}
 			}
-			return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
-		}
+				const spec = stackManager.getSpec();
+				for (const channelName of stackManager.listChannelNames()) {
+					const service = `channel-${channelName}`;
+					spec.channels[channelName].enabled = channels.includes(service);
+				}
+				stackManager.setSpec(spec);
+				return json(200, { ok: true, data: setupManager.setEnabledChannels(channels) });
+			}
 		if (type === 'setup.complete') {
 		// Auto-generate POSTGRES_PASSWORD if not already set (required for compose interpolation).
 		// Write synchronously to secrets.env so it is available when applyStack reads secrets.
@@ -580,7 +594,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const result = await triggerAutomation(id);
 			return json(200, { ok: true, data: { id, ...result } });
 		}
-		if (type === 'service.restart') {
+			if (type === 'service.restart') {
 			const service = sanitizeEnvScalar(payload.service);
 			if (!(await knownServices()).has(service))
 				return json(400, {
@@ -588,9 +602,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					error: 'service_not_allowed',
 					code: 'service_not_allowed'
 				});
-			await composeAction('restart', service);
-			return json(200, { ok: true, data: { service } });
-		}
+				const result = await composeAction('restart', service);
+				if (!result.ok) throw new Error(result.stderr || 'service_restart_failed');
+				return json(200, { ok: true, data: { service } });
+			}
 		if (type === 'service.stop') {
 			const service = sanitizeEnvScalar(payload.service);
 			if (!(await knownServices()).has(service))
@@ -599,9 +614,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					error: 'service_not_allowed',
 					code: 'service_not_allowed'
 				});
-			await composeAction('stop', service);
-			return json(200, { ok: true, data: { service } });
-		}
+				const result = await composeAction('stop', service);
+				if (!result.ok) throw new Error(result.stderr || 'service_stop_failed');
+				return json(200, { ok: true, data: { service } });
+			}
 		if (type === 'service.up') {
 			const service = sanitizeEnvScalar(payload.service);
 			if (!(await knownServices()).has(service))
@@ -610,9 +626,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					error: 'service_not_allowed',
 					code: 'service_not_allowed'
 				});
-			await composeAction('up', service);
-			return json(200, { ok: true, data: { service } });
-		}
+				const result = await composeAction('up', service);
+				if (!result.ok) throw new Error(result.stderr || 'service_up_failed');
+				return json(200, { ok: true, data: { service } });
+			}
 		if (type === 'service.update') {
 			const service = sanitizeEnvScalar(payload.service);
 			if (!(await knownServices()).has(service))
@@ -623,9 +640,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				});
 			const pullResult = await composePull(service);
 			if (!pullResult.ok) throw new Error(pullResult.stderr || 'service_pull_failed');
-			await composeAction('up', service);
-			return json(200, { ok: true, data: { service } });
-		}
+				const result = await composeAction('up', service);
+				if (!result.ok) throw new Error(result.stderr || 'service_up_failed');
+				return json(200, { ok: true, data: { service } });
+			}
 		if (type === 'service.logs') {
 			const service = sanitizeEnvScalar(payload.service);
 			if (payload.tail !== undefined && typeof payload.tail !== 'number')

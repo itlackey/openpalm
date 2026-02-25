@@ -20,11 +20,11 @@ This plugin implements Ralph using an OpenCode **plugin** that listens for the `
 # 1. Works on the task
 # 2. Session goes idle (completes)
 # 3. Plugin intercepts session.idle event
-# 4. Plugin sends the SAME prompt back via client.session.prompt()
+# 4. Plugin sends the SAME prompt back via client.session.promptAsync()
 # 5. Repeat until completion
 ```
 
-The loop happens by re-injecting the prompt after each `session.idle` event. The `ralph-wiggum.ts` plugin in `plugins/` creates the self-referential feedback loop by calling `client.session.prompt()` with the same task prompt.
+The loop happens by re-injecting the prompt after each `session.idle` event. The `ralph-wiggum.ts` plugin in `plugins/` creates the self-referential feedback loop by calling `client.session.promptAsync()` with the same task prompt.
 
 This creates a **self-referential feedback loop** where:
 - The prompt never changes between iterations

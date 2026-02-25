@@ -104,4 +104,7 @@ docs/draft/
 admin/playwright-report/
 .claude/
 CLAUDE.md
-.opencode/ralph-loop.local copy.md
+
+# Ralph Wiggum plugin state files (per-session, ephemeral)
+.opencode/*.local.md
+.opencode/*.local copy.md

@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const smallModelApiKey = sanitizeEnvScalar(body.smallModelApiKey);
 	const smallModelId = sanitizeEnvScalar(body.smallModelId);
 
-	updateRuntimeEnv({
+	await updateRuntimeEnv({
 		OPENMEMORY_URL: openmemory || undefined,
 		OPENMEMORY_POSTGRES_URL: psql || undefined,
 		OPENMEMORY_QDRANT_URL: qdrant || undefined
@@ -54,7 +54,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (openaiApiKey.length > 0) secretEntries.OPENAI_API_KEY = openaiApiKey;
 	if (anthropicApiKey.length > 0) secretEntries.ANTHROPIC_API_KEY = anthropicApiKey;
 	if (smallModelApiKey.length > 0) secretEntries.OPENPALM_SMALL_MODEL_API_KEY = smallModelApiKey;
-	updateSecretsEnv(secretEntries);
+	await updateSecretsEnv(secretEntries);
 
 	const state = setupManager.setServiceInstances({ openmemory, psql, qdrant });
 	if (smallModelId) {

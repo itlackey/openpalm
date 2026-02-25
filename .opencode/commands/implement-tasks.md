@@ -2,15 +2,15 @@
 description: "Start a Ralph loop that implements each task in the task list with review and approval"
 ---
 
-Run the following bash commands to set up the worktree and initialize the Ralph loop:
+Run the following bash commands to set up the worktree and initialize the Ralph loop. Both scripts must run from the repo root so the state files are created in the correct location:
 
 ```
-WORKTREE=$(.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh "$ARGUMENTS")
-cd "$WORKTREE"
-.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh "implement-tasks in worktree $WORKTREE: $ARGUMENTS VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+WORKTREE=$("$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-worktree.sh" "$ARGUMENTS")
+"$REPO_ROOT/.opencode/skills/ralph-wiggum/scripts/setup-ralph-loop.sh" "implement-tasks in worktree $WORKTREE: $ARGUMENTS  VERY IMPORTANT: when all tasks are complete, reply with only <promise>ALL TASKS COMPLETE</promise>" --completion-promise "ALL TASKS COMPLETE"
 ```
 
-**All implementation work must be performed inside `$WORKTREE`.** After the setup commands complete, `cd` into the worktree path printed by the setup script and do not leave it during the loop. The worktree path and branch name are also recorded in `.opencode/worktree.local.md` so you can re-read them on every iteration.
+**All implementation work must be performed inside the worktree.** After the setup commands complete, `cd` into the worktree path printed by the setup script and do not leave it during the loop. The worktree path and branch name are recorded in `.opencode/worktree.local.md` so you can re-read them on every iteration.
 
 After the setup script completes successfully, begin the following workflow:
 
