@@ -591,14 +591,14 @@
     "title": "Add resetServerState() utility",
     "description": "Create a resetServerState(tmpDir) function that resets an OpenPalm state directory to first-boot condition, replacing ad-hoc state reset patterns scattered across the test suite.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1-2 hours",
     "planFile": ".plans/R09-add-reset-server-state-utility.md",
     "subtasks": [
       {
         "id": "R09.1",
         "description": "Export DEFAULT_STATE from setup-manager.ts (change const to export const)",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/setup-manager.ts",
@@ -610,7 +610,7 @@
       {
         "id": "R09.2",
         "description": "Create test-utils.ts with resetServerState(), createTestDirLayout(), ServerDirLayout type, and related constants",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/test-utils.ts",
@@ -622,7 +622,7 @@
       {
         "id": "R09.3",
         "description": "Create test-utils.test.ts with tests for resetServerState (correct state file, artifact removal, service env cleanup, idempotency) and createTestDirLayout",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/test-utils.test.ts",
@@ -634,7 +634,7 @@
       {
         "id": "R09.4",
         "description": "Verify all tests pass: bun test packages/lib/src/admin/test-utils.test.ts and bun run typecheck",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/lib/src/admin/test-utils.test.ts",

@@ -34,7 +34,7 @@ export type SetupState = {
   installedExtensions: string[];
 };
 
-const DEFAULT_STATE: SetupState = {
+export const DEFAULT_STATE: SetupState = {
   completed: false,
   accessScope: "host",
   serviceInstances: {
