@@ -484,7 +484,7 @@
       "id": "rec4",
       "title": "Set bunfig.toml frozen=true for reproducible installs",
       "description": "Change bunfig.toml line 6 from frozen=false to frozen=true to enforce reproducible installs locally. All CI workflows already pass --frozen-lockfile explicitly so CI behaviour is unchanged.",
-      "status": "pending",
+      "status": "completed",
       "planFile": ".plans/rec4-bunfig-frozen.md",
       "files": [
         {
@@ -528,7 +528,7 @@
           "id": "rec4.1",
           "title": "Change frozen=false to frozen=true in bunfig.toml",
           "description": "Edit bunfig.toml line 6 to set frozen = true under the [install] section.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "bunfig.toml",
@@ -541,7 +541,7 @@
           "id": "rec4.2",
           "title": "Update development-workflow.md with bun add guidance",
           "description": "Add a note to dev/docs/development-workflow.md line 5 explaining that bun add <package> is the correct way to add dependencies when frozen=true is set.",
-          "status": "pending",
+          "status": "completed",
           "files": [
             {
               "path": "dev/docs/development-workflow.md",

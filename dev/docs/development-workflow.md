@@ -7,6 +7,11 @@ bun run dev:setup
 bun run dev:build
 ```
 
+> **Adding dependencies:** `bunfig.toml` sets `frozen = true`, so a bare `bun install`
+> will fail if `bun.lock` is out of date. Use `bun add <package>` (or
+> `bun add -d <package>` for dev dependencies) to add new packages — this updates
+> `bun.lock` automatically.
+
 Use `bun run dev:up`, `bun run dev:down`, and `bun run dev:logs` for day-to-day control.
 
 ## 2) Make changes with clear ownership
