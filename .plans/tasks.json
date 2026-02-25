@@ -709,14 +709,14 @@
     "title": "Make integration tests run in CI",
     "description": "Convert 3 stack-dependent integration test files to use in-process Bun.serve() mock servers instead of requiring a live Docker stack, following the pattern from channel-gateway.integration.test.ts.",
     "priority": "P4",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "2-3 hours",
     "planFile": ".plans/R11-make-integration-tests-run-in-ci.md",
     "subtasks": [
       {
         "id": "R11.1",
         "description": "Convert container-health.integration.test.ts: remove OPENPALM_INTEGRATION guard, import checkServiceHealth, create mock Bun.serve() servers, test against mocks",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/container-health.integration.test.ts",
@@ -733,7 +733,7 @@
       {
         "id": "R11.2",
         "description": "Convert admin-auth.integration.test.ts: remove skipIf guard, create mock admin server with auth middleware pattern, test 401/200 responses",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/admin-auth.integration.test.ts",
@@ -745,7 +745,7 @@
       {
         "id": "R11.3",
         "description": "Convert admin-health-check.integration.test.ts: remove skipIf guard, create mock service servers, test health-check response shape and aggregation",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/admin-health-check.integration.test.ts",
@@ -762,7 +762,7 @@
       {
         "id": "R11.4",
         "description": "Verify all integration tests pass without Docker: bun test --filter integration",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/integration/channel-gateway.integration.test.ts",
