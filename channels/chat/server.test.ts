@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { createChatFetch, signPayload } from "./server.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createChatFetch } from "./server.ts";
 
 describe("chat adapter", () => {
   it("returns health and auth rejects when token is configured", async () => {

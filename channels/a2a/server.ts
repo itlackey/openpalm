@@ -4,8 +4,6 @@ import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
-export { signPayload };
-
 const log = createLogger("channel-a2a");
 
 const PORT = Number(Bun.env.PORT ?? 8188);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { createWebhookFetch, signPayload } from "./server.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createWebhookFetch } from "./server.ts";
 
 describe("webhook adapter", () => {
   it("returns health and rejects unauthorized requests", async () => {

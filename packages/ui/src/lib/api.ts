@@ -4,7 +4,7 @@ import { getAdminToken } from './stores/auth.svelte.ts';
 interface ApiResult {
 	ok: boolean;
 	status: number;
-	data: any;
+	data: unknown;
 }
 
 export async function api(path: string, opts: RequestInit = {}): Promise<ApiResult> {

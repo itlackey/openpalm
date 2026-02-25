@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { createMcpChannel } from "./channel.ts";
-import { createFetch, signPayload } from "./server.ts";
+import { createFetch } from "./server.ts";
 
 describe("mcp adapter", () => {
   const adapter = createMcpChannel();

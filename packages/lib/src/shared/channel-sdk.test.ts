@@ -45,6 +45,43 @@ describe("buildChannelMessage", () => {
     const msg = buildChannelMessage({ ...base, metadata: { foo: "bar" } });
     expect(msg.metadata).toEqual({ foo: "bar" });
   });
+
+  it("sanitizes metadata to plain, bounded JSON values", () => {
+    const metadata: Record<string, unknown> = {
+      ok: "yes",
+      nested: {
+        level1: {
+          level2: {
+            level3: {
+              level4: "drop-me",
+            },
+          },
+        },
+      },
+      list: ["a", { safe: true }, () => "drop"],
+    };
+    Object.defineProperty(metadata, "__proto__", {
+      value: { polluted: true },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+
+    const msg = buildChannelMessage({
+      ...base,
+      metadata,
+    });
+
+    expect(msg.metadata).toEqual({
+      ok: "yes",
+      nested: {
+        level1: {
+          level2: {},
+        },
+      },
+      list: ["a", { safe: true }],
+    });
+  });
 });
 
 describe("forwardChannelMessage", () => {

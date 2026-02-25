@@ -1,9 +1,6 @@
 import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
-
-export { signPayload };
 
 const log = createLogger("channel-voice");
 

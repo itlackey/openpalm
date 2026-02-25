@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { createVoiceFetch, signPayload } from "./server.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createVoiceFetch } from "./server.ts";
 
 describe("voice adapter", () => {
   it("returns 501 for voice stream endpoint", async () => {

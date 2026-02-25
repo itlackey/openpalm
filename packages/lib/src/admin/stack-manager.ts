@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUILTIN_CHANNELS } from "../../assets/channels/index.ts";
 import { generateStackArtifacts } from "./stack-generator.ts";
+import { composeServiceName } from "./service-name.ts";
 
 import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
@@ -71,10 +72,6 @@ export const CoreSecretRequirements = [
   { service: "postgres", key: "POSTGRES_PASSWORD", required: true },
 ] as const;
 
-
-function composeServiceName(name: string): string {
-  return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
-}
 
 function nextInstanceName(baseName: string, used: Set<string>): string {
   if (!used.has(baseName)) return baseName;

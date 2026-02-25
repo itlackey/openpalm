@@ -1,9 +1,6 @@
 import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
-
-export { signPayload };
 
 const log = createLogger("channel-chat");
 
@@ -11,6 +8,17 @@ const PORT = Number(Bun.env.PORT ?? 8181);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const SHARED_SECRET = Bun.env.CHANNEL_CHAT_SECRET ?? "";
 const INBOUND_TOKEN = Bun.env.CHAT_INBOUND_TOKEN ?? "";
+
+type ChatRequestBody = {
+  userId?: string;
+  text?: string;
+  metadata?: Record<string, unknown>;
+};
+
+function asChatRequestBody(value: unknown): ChatRequestBody | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value as ChatRequestBody;
+}
 
 export function createChatFetch(gatewayUrl: string, sharedSecret: string, inboundToken: string, forwardFetch: typeof fetch = fetch) {
   return async function handle(req: Request): Promise<Response> {
@@ -24,9 +32,12 @@ export function createChatFetch(gatewayUrl: string, sharedSecret: string, inboun
       return new Response(JSON.stringify({ error: "payload_too_large" }), { status: 413 });
     }
 
-    let body: any;
+    let body: ChatRequestBody;
     try {
-      body = await req.json();
+      const parsed = await req.json();
+      const normalized = asChatRequestBody(parsed);
+      if (!normalized) return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
+      body = normalized;
     } catch {
       return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
     }

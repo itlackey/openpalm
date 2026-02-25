@@ -100,9 +100,7 @@ export function resolveSocketUri(platform: ContainerPlatform, os: HostOS): strin
 export function resolveInContainerSocketPath(platform: ContainerPlatform): string {
   // Inside containers (which always run Linux), the socket is always at the Unix path.
   // Docker Desktop maps the host named pipe to this path automatically.
-  if (platform === "podman") {
-    return "/var/run/docker.sock";
-  }
+  void platform;
   return "/var/run/docker.sock";
 }
 

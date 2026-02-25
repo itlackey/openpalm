@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { createTelegramFetch, signPayload } from "./server.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createTelegramFetch } from "./server.ts";
 
 describe("telegram adapter", () => {
   it("validates webhook secret and skips non-text updates", async () => {

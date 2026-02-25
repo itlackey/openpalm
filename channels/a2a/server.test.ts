@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { createA2aChannel } from "./channel.ts";
-import { createFetch, signPayload } from "./server.ts";
+import { createFetch } from "./server.ts";
 
 describe("a2a adapter", () => {
   const adapter = createA2aChannel();

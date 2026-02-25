@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { createApiFetch, signPayload } from "./server.ts";
+import { signPayload } from "@openpalm/lib/shared/crypto.ts";
+import { createApiFetch } from "./server.ts";
 
 describe("api adapter", () => {
   it("returns health and rejects unauthorized requests when api key is configured", async () => {

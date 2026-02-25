@@ -1,5 +1,6 @@
 import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, getBuiltInChannelDef } from "./stack-spec.ts";
 import type { BuiltInChannelName, StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
+import { composeServiceName } from "./service-name.ts";
 import { renderCaddyComposeService, renderOpenMemoryComposeService, renderOpenMemoryUiComposeService, renderPostgresComposeService, renderQdrantComposeService } from "./core-services.ts";
 import type { ComposeService, ComposeSpec } from "./compose-spec.ts";
 import { stringifyComposeSpec } from "./compose-spec-serializer.ts";
@@ -31,10 +32,6 @@ function publishedChannelPort(name: string, config: StackChannelConfig): string 
     return `127.0.0.1:${hostPort}:${containerPort}`;
   }
   return `${hostPort}:${containerPort}`;
-}
-
-function composeServiceName(name: string): string {
-  return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
 }
 
 export type GeneratedStackArtifacts = {
