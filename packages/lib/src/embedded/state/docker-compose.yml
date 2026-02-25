@@ -122,6 +122,7 @@ services:
       - PORT=8080
       - OPENPALM_ASSISTANT_URL=http://assistant:4096
       - OPENCODE_TIMEOUT_MS=${OPENCODE_TIMEOUT_MS:-15000}
+      - LOG_DIR=/app/data
     volumes:
       - ${OPENPALM_STATE_HOME}/gateway:/app/data
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
@@ -153,6 +154,7 @@ services:
       - OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
       - COMPOSE_PROJECT_PATH=/state
       - OPENPALM_COMPOSE_FILE=docker-compose.yml
+      - LOG_DIR=/state/admin/logs
     volumes:
       - ${OPENPALM_DATA_HOME}:/data
       - ${OPENPALM_CONFIG_HOME}:/config
@@ -176,6 +178,9 @@ services:
     environment:
       - PORT=8181
       - GATEWAY_URL=http://gateway:8080
+      - LOG_DIR=/app/logs
+    volumes:
+      - ${OPENPALM_STATE_HOME}/channel-chat/logs:/app/logs
     networks: [channel_net]
     depends_on:
       gateway:
@@ -195,6 +200,9 @@ services:
     environment:
       - PORT=8184
       - GATEWAY_URL=http://gateway:8080
+      - LOG_DIR=/app/logs
+    volumes:
+      - ${OPENPALM_STATE_HOME}/channel-discord/logs:/app/logs
     networks: [channel_net]
     depends_on:
       gateway:
@@ -214,6 +222,9 @@ services:
     environment:
       - PORT=8183
       - GATEWAY_URL=http://gateway:8080
+      - LOG_DIR=/app/logs
+    volumes:
+      - ${OPENPALM_STATE_HOME}/channel-voice/logs:/app/logs
     networks: [channel_net]
     depends_on:
       gateway:
@@ -233,6 +244,9 @@ services:
     environment:
       - PORT=8182
       - GATEWAY_URL=http://gateway:8080
+      - LOG_DIR=/app/logs
+    volumes:
+      - ${OPENPALM_STATE_HOME}/channel-telegram/logs:/app/logs
     networks: [channel_net]
     depends_on:
       gateway:
@@ -252,6 +266,9 @@ services:
     environment:
       - PORT=8187
       - GATEWAY_URL=http://gateway:8080
+      - LOG_DIR=/app/logs
+    volumes:
+      - ${OPENPALM_STATE_HOME}/channel-mcp/logs:/app/logs
     networks: [channel_net]
     depends_on:
       gateway:
@@ -271,6 +288,9 @@ services:
     environment:
       - PORT=8188
       - GATEWAY_URL=http://gateway:8080
+      - LOG_DIR=/app/logs
+    volumes:
+      - ${OPENPALM_STATE_HOME}/channel-a2a/logs:/app/logs
     networks: [channel_net]
     depends_on:
       gateway:
