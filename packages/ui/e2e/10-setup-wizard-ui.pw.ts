@@ -279,8 +279,8 @@ test.describe('setup wizard browser flow', () => {
 		await expect(page.locator('.wizard h2')).toContainText('Profile');
 	});
 
-	// rec2.3 — AI Providers step rejects a missing Anthropic key
-	test('AI Providers step shows error when Anthropic key is empty', async ({ page }) => {
+	// rec2.3 — AI Providers step accepts an empty Anthropic key (key is optional)
+	test('AI Providers step advances when Anthropic key is empty', async ({ page }) => {
 		await openWizard(page);
 
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
@@ -293,10 +293,8 @@ test.describe('setup wizard browser flow', () => {
 		await page.locator('#wiz-anthropic-key').fill('');
 		await page.locator('.wizard .actions button', { hasText: 'Next' }).click();
 
-		await expect(page.locator('.wiz-error.visible').first()).toContainText(
-			'An Anthropic API key is required.'
-		);
-		await expect(page.locator('.wizard h2')).toContainText('AI Providers');
+		// Wizard should advance past AI Providers — key is not required
+		await expect(page.locator('.wizard h2')).not.toContainText('AI Providers');
 	});
 
 	// rec2.4 — setup.complete returning 500 shows an error banner and re-enables Finish Setup

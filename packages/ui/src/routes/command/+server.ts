@@ -281,14 +281,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			const smallModelApiKey = sanitizeEnvScalar(payload.smallModelApiKey);
 			const smallModelId = sanitizeEnvScalar(payload.smallModelId);
 
-			// During initial setup, require Anthropic key unless already configured
-			if (!setupState.completed) {
-				const existingSecrets = readSecretsEnv();
-				if (!anthropicApiKey && !existingSecrets.ANTHROPIC_API_KEY) {
-					return json(400, { ok: false, error: 'anthropic_key_required', code: 'anthropic_key_required' });
-				}
-			}
-
 			updateRuntimeEnv({
 				OPENMEMORY_URL: openmemory || undefined,
 				OPENMEMORY_POSTGRES_URL: psql || undefined,
