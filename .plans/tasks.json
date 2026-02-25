@@ -102,7 +102,7 @@
       {
         "id": "rec-02-03",
         "description": "Integrate HTTP readiness probes for admin, gateway, assistant, and openmemory into convergence checks.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/lib/server/health.ts", "line": 1 },
           { "file": "packages/ui/src/routes/setup/health-check/+server.ts", "line": 22 }

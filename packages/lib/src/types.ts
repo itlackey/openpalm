@@ -80,7 +80,9 @@ export type CoreServiceReadinessCheck = {
   state: CoreServiceReadinessState;
   status: string;
   health?: string | null;
-  reason?: "missing" | "not_running" | "unhealthy";
+  reason?: "missing" | "not_running" | "unhealthy" | "http_probe_failed";
+  probeUrl?: string;
+  probeError?: string;
 };
 
 export type CoreReadinessDiagnostics = {

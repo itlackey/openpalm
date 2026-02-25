@@ -15,7 +15,24 @@ export type EnsureCoreServicesReadyOptions = {
   maxAttempts?: number;
   pollIntervalMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  fetchImpl?: FetchLike;
+  probeTimeoutMs?: number;
 };
+
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+type HttpProbeConfig = {
+  url: string;
+  expectJson?: boolean;
+};
+
+type HttpProbeFailure = {
+  service: string;
+  url: string;
+  error: string;
+};
+
+const DefaultProbeTimeoutMs = 3_000;
 
 export async function ensureCoreServicesReady(
   options: EnsureCoreServicesReadyOptions = {},
@@ -25,6 +42,8 @@ export async function ensureCoreServicesReady(
   const maxAttempts = normalizeMaxAttempts(options.maxAttempts);
   const pollIntervalMs = normalizePollIntervalMs(options.pollIntervalMs);
   const sleep = options.sleep ?? defaultSleep;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const probeTimeoutMs = normalizeProbeTimeoutMs(options.probeTimeoutMs);
 
   let lastChecks: CoreServiceReadinessCheck[] = [];
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -49,19 +68,34 @@ export async function ensureCoreServicesReady(
     }
 
     const checks = buildReadinessChecks(psResult.services, targetServices);
-    const failedServices = checks.filter((service) => service.state === "not_ready");
+    const composeFailedServices = checks.filter((service) => service.state === "not_ready");
+    if (composeFailedServices.length > 0) {
+      lastChecks = checks;
+      if (attempt < maxAttempts - 1) {
+        await sleep(pollIntervalMs);
+      }
+      continue;
+    }
+
+    const probeFailures = await runHttpReadinessProbes(
+      targetServices,
+      fetchImpl,
+      probeTimeoutMs,
+    );
+    const checksWithProbes = applyProbeFailuresToChecks(checks, probeFailures);
+    const failedServices = checksWithProbes.filter((service) => service.state === "not_ready");
     if (failedServices.length === 0) {
       return {
         ok: true,
         code: "ready",
-        checks,
+        checks: checksWithProbes,
         diagnostics: {
           failedServices: [],
         },
       };
     }
 
-    lastChecks = checks;
+    lastChecks = checksWithProbes;
     if (attempt < maxAttempts - 1) {
       await sleep(pollIntervalMs);
     }
@@ -85,6 +119,11 @@ function normalizeMaxAttempts(value?: number): number {
 function normalizePollIntervalMs(value?: number): number {
   if (!Number.isFinite(value)) return 1_000;
   return Math.max(0, Math.floor(value as number));
+}
+
+function normalizeProbeTimeoutMs(value?: number): number {
+  if (!Number.isFinite(value)) return DefaultProbeTimeoutMs;
+  return Math.max(1, Math.floor(value as number));
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -142,4 +181,121 @@ function buildReadinessChecks(
       health: service.health ?? null,
     };
   });
+}
+
+function probeConfigForService(service: string): HttpProbeConfig | null {
+  if (service === "admin") {
+    return {
+      url: `${trimTrailingSlash(envValue("OPENPALM_ADMIN_API_URL") ?? "http://admin:8100")}/health`,
+      expectJson: true,
+    };
+  }
+  if (service === "gateway") {
+    return {
+      url: `${trimTrailingSlash(envValue("GATEWAY_URL") ?? "http://gateway:8080")}/health`,
+      expectJson: true,
+    };
+  }
+  if (service === "assistant") {
+    return {
+      url: `${trimTrailingSlash(envValue("OPENPALM_ASSISTANT_URL") ?? "http://assistant:4096")}/`,
+      expectJson: false,
+    };
+  }
+  if (service === "openmemory") {
+    return {
+      url: `${trimTrailingSlash(envValue("OPENMEMORY_URL") ?? "http://openmemory:8765")}/api/v1/config/`,
+      expectJson: true,
+    };
+  }
+  return null;
+}
+
+async function runHttpReadinessProbes(
+  targetServices: readonly string[],
+  fetchImpl: FetchLike,
+  timeoutMs: number,
+): Promise<HttpProbeFailure[]> {
+  const probeTargets = targetServices
+    .map((service) => ({ service, config: probeConfigForService(service) }))
+    .filter((entry): entry is { service: string; config: HttpProbeConfig } => entry.config !== null);
+
+  const probeResults = await Promise.all(
+    probeTargets.map(async ({ service, config }) => {
+      const probe = await runHttpProbe(config, fetchImpl, timeoutMs);
+      if (probe.ok) return null;
+      return {
+        service,
+        url: config.url,
+        error: probe.error,
+      };
+    }),
+  );
+
+  return probeResults.filter((result): result is HttpProbeFailure => result !== null);
+}
+
+async function runHttpProbe(
+  config: HttpProbeConfig,
+  fetchImpl: FetchLike,
+  timeoutMs: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const response = await fetchImpl(config.url, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return { ok: false, error: `status ${response.status}` };
+    }
+
+    if (!config.expectJson) {
+      return { ok: true };
+    }
+
+    const body = await response.json() as { ok?: boolean };
+    if (body.ok === false) {
+      return { ok: false, error: "body.ok false" };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: message };
+  }
+}
+
+function applyProbeFailuresToChecks(
+  checks: CoreServiceReadinessCheck[],
+  probeFailures: HttpProbeFailure[],
+): CoreServiceReadinessCheck[] {
+  if (probeFailures.length === 0) {
+    return checks;
+  }
+
+  const failuresByService = new Map<string, HttpProbeFailure>(
+    probeFailures.map((failure) => [failure.service, failure]),
+  );
+
+  return checks.map((check) => {
+    const failure = failuresByService.get(check.service);
+    if (!failure) {
+      return check;
+    }
+    return {
+      ...check,
+      state: "not_ready",
+      reason: "http_probe_failed",
+      probeUrl: failure.url,
+      probeError: failure.error,
+    };
+  });
+}
+
+function envValue(name: string): string | undefined {
+  const bunEnv = (globalThis as { Bun?: { env?: Record<string, string | undefined> } }).Bun?.env;
+  return bunEnv?.[name] ?? process.env[name];
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
 }
