@@ -72,3 +72,32 @@ export type DetectedModel = {
   provider: string;
   isSmall: boolean;
 };
+
+export type CoreServiceReadinessState = "ready" | "not_ready";
+
+export type CoreServiceReadinessCheck = {
+  service: string;
+  state: CoreServiceReadinessState;
+  status: string;
+  health?: string | null;
+  reason?: "missing" | "not_running" | "unhealthy";
+};
+
+export type CoreReadinessDiagnostics = {
+  composePsStderr?: string;
+  failedServices: CoreServiceReadinessCheck[];
+};
+
+export type EnsureCoreServicesReadyResult =
+  | {
+    ok: true;
+    code: "ready";
+    checks: CoreServiceReadinessCheck[];
+    diagnostics: CoreReadinessDiagnostics;
+  }
+  | {
+    ok: false;
+    code: "setup_not_ready" | "compose_ps_failed";
+    checks: CoreServiceReadinessCheck[];
+    diagnostics: CoreReadinessDiagnostics;
+  };

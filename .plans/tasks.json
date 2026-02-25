@@ -84,7 +84,7 @@
       {
         "id": "rec-02-01",
         "description": "Implement packages/lib/src/admin/core-readiness.ts with ensureCoreServicesReady and typed result contracts.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 46 },
           { "file": "packages/lib/src/types.ts", "line": 18 }
@@ -93,7 +93,7 @@
       {
         "id": "rec-02-02",
         "description": "Add bounded polling that checks compose ps state and health semantics for each target service.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 147 },
           { "file": "packages/lib/src/admin/compose-runner.ts", "line": 153 }
