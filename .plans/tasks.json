@@ -31,7 +31,7 @@
       {
         "id": "rec-01-03",
         "description": "Remove wizard invocation of setup.start_core and keep startup messaging on finalization.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 149 },
           { "file": "packages/ui/src/lib/components/SetupWizard.svelte", "line": 218 }
