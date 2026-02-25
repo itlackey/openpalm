@@ -5,11 +5,10 @@
 </script>
 
 {#if toasts.length > 0}
-	<div class="toast-container">
+	<div class="toast-container" aria-live="assertive">
 		{#each toasts as toast (toast.id)}
 			<button
 				class="toast toast-{toast.type}"
-				role="alert"
 				onclick={() => removeToast(toast.id)}
 			>
 				{toast.message}

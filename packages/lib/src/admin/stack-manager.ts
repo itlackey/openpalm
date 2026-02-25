@@ -90,6 +90,8 @@ function pickEnv(source: Record<string, string>, keys: string[]): Record<string,
 }
 
 export class StackManager {
+  private cachedSpec: StackSpec | null = null;
+
   constructor(private readonly paths: StackManagerPaths) {}
 
   getPaths(): StackManagerPaths {
@@ -97,12 +99,16 @@ export class StackManager {
   }
 
   getSpec(): StackSpec {
-    return ensureStackSpec(this.paths.stackSpecPath);
+    if (!this.cachedSpec) {
+      this.cachedSpec = ensureStackSpec(this.paths.stackSpecPath);
+    }
+    return structuredClone(this.cachedSpec);
   }
 
   setSpec(raw: unknown): StackSpec {
     const spec = parseStackSpec(raw);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     this.renderArtifacts();
     return spec;
   }
@@ -125,6 +131,7 @@ export class StackManager {
     spec.channels[channel].enabled = true;
     spec.channels[channel].exposure = access;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     return this.renderArtifacts();
   }
 
@@ -146,6 +153,7 @@ export class StackManager {
       spec.channels[channel].config = next;
     }
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     return this.renderArtifacts();
   }
 
@@ -166,6 +174,7 @@ export class StackManager {
     spec.services[service].enabled = true;
     spec.services[service].config = next;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     return this.renderArtifacts();
   }
 
@@ -380,6 +389,7 @@ export class StackManager {
       }
       const validated = parseStackSpec(spec);
       this.writeStackSpecAtomically(stringifyStackSpec(validated));
+      this.cachedSpec = validated;
       this.renderArtifacts();
       const updated = this.listStackCatalogItems().find((item) =>
         item.type === type
@@ -439,6 +449,7 @@ export class StackManager {
     }
     const validated = parseStackSpec(spec);
     this.writeStackSpecAtomically(stringifyStackSpec(validated));
+    this.cachedSpec = validated;
     this.renderArtifacts();
     const updated = this.listStackCatalogItems().find((item) => item.type === type && item.name === name && item.entryKind === "installed");
     if (!updated) throw new Error(`catalog_item_not_found_after_mutation_${type}_${name}`);
@@ -449,6 +460,7 @@ export class StackManager {
     const spec = this.getSpec();
     spec.accessScope = scope;
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     return this.renderArtifacts();
   }
 
@@ -629,6 +641,7 @@ export class StackManager {
     if (index >= 0) spec.automations[index] = automation;
     else spec.automations.push(automation);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     return automation;
   }
 
@@ -641,6 +654,7 @@ export class StackManager {
     if (existing.core) throw new Error("cannot_delete_core_automation");
     spec.automations = spec.automations.filter((automation) => automation.id !== id);
     this.writeStackSpecAtomically(stringifyStackSpec(spec));
+    this.cachedSpec = spec;
     return true;
   }
 

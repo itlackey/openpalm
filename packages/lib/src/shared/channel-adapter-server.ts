@@ -1,4 +1,5 @@
 import type { ChannelAdapter } from "./channel.ts";
+import { buildChannelMessage } from "./channel-sdk.ts";
 import { signPayload } from "./crypto.ts";
 import { json } from "./http.ts";
 
@@ -36,11 +37,12 @@ export function createJsonRpcAdapterFetch(
 
     const metadata = result.payload.metadata;
     const rpcId = (metadata?.rpcId as RpcId | undefined) ?? null;
-    const gatewayPayload = {
-      ...result.payload,
-      nonce: crypto.randomUUID(),
-      timestamp: Date.now(),
-    };
+    const gatewayPayload = buildChannelMessage({
+      userId: result.payload.userId,
+      channel: result.payload.channel,
+      text: result.payload.text,
+      metadata: result.payload.metadata,
+    });
 
     const serialized = JSON.stringify(gatewayPayload);
     const sig = signPayload(sharedSecret, serialized);

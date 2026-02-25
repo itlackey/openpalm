@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { ensureStackSpec, stringifyStackSpec } from "./stack-spec.ts";
 
 export type SmallModelConfig = {
   endpoint: string;
@@ -82,20 +83,22 @@ function isValidSetupState(value: unknown): value is SetupState {
 
 export class SetupManager {
   private path: string;
+  private stackSpecPath?: string;
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, options?: { stackSpecPath?: string }) {
     this.path = `${dataDir}/setup-state.json`;
+    this.stackSpecPath = options?.stackSpecPath;
     mkdirSync(dirname(this.path), { recursive: true });
   }
 
   getState(): SetupState {
-    if (!existsSync(this.path)) return structuredClone(DEFAULT_STATE);
+    if (!existsSync(this.path)) return this.withStackSpecState(structuredClone(DEFAULT_STATE));
     try {
       const parsed = JSON.parse(readFileSync(this.path, "utf8"));
-      if (!isValidSetupState(parsed)) return structuredClone(DEFAULT_STATE);
-      return parsed;
+      if (!isValidSetupState(parsed)) return this.withStackSpecState(structuredClone(DEFAULT_STATE));
+      return this.withStackSpecState(parsed);
     } catch {
-      return structuredClone(DEFAULT_STATE);
+      return this.withStackSpecState(structuredClone(DEFAULT_STATE));
     }
   }
 
@@ -112,6 +115,9 @@ export class SetupManager {
   }
 
   setAccessScope(scope: "host" | "lan" | "public") {
+    this.withMutableStackSpec((spec) => {
+      spec.accessScope = scope;
+    });
     const state = this.getState();
     state.accessScope = scope;
     this.save(state);
@@ -164,8 +170,14 @@ export class SetupManager {
   }
 
   setEnabledChannels(channels: string[]) {
+    const enabled = new Set(channels);
+    this.withMutableStackSpec((spec) => {
+      for (const [name, channel] of Object.entries(spec.channels)) {
+        channel.enabled = enabled.has(name);
+      }
+    });
     const state = this.getState();
-    state.enabledChannels = [...new Set(channels)];
+    state.enabledChannels = [...enabled];
     this.save(state);
     return state;
   }
@@ -181,5 +193,31 @@ export class SetupManager {
 
   isFirstBoot(): boolean {
     return !existsSync(this.path);
+  }
+
+  private withStackSpecState(state: SetupState): SetupState {
+    if (!this.stackSpecPath) return state;
+    try {
+      const spec = ensureStackSpec(this.stackSpecPath);
+      state.accessScope = spec.accessScope;
+      state.enabledChannels = Object.entries(spec.channels)
+        .filter(([, config]) => config.enabled)
+        .map(([name]) => name)
+        .sort();
+    } catch {
+      // Best-effort sync only; fall back to setup-state values.
+    }
+    return state;
+  }
+
+  private withMutableStackSpec(mutator: (spec: ReturnType<typeof ensureStackSpec>) => void): void {
+    if (!this.stackSpecPath) return;
+    try {
+      const spec = ensureStackSpec(this.stackSpecPath);
+      mutator(spec);
+      writeFileSync(this.stackSpecPath, stringifyStackSpec(spec), "utf8");
+    } catch {
+      // Best-effort sync only; setup state remains writable.
+    }
   }
 }

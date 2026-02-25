@@ -154,9 +154,37 @@ test.describe('setup wizard browser flow', () => {
 	});
 
 	test('full wizard flow completes successfully with all services ready', async ({ page }) => {
-		// Mock health-check so all services respond ok immediately.
-		// The test FAILS if "services took too long to start" appears.
+		// Mock health-check for the HealthStep component
 		await mockHealthCheckAllOk(page);
+
+		// Mock setup.complete to return success with core readiness data
+		// showing all services ready (avoids Docker dependency in CI)
+		await page.route('**/command', async (route) => {
+			const body = route.request().postDataJSON() as { type?: string } | null;
+			if (body?.type === 'setup.complete') {
+				await route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						ok: true,
+						state: { completed: true },
+						coreReadiness: {
+							phase: 'ready',
+							updatedAt: new Date().toISOString(),
+							checks: [
+								{ service: 'gateway', state: 'ready', status: 'running' },
+								{ service: 'assistant', state: 'ready', status: 'running' },
+								{ service: 'openmemory', state: 'ready', status: 'running' },
+								{ service: 'admin', state: 'ready', status: 'running' }
+							],
+							diagnostics: { failedServices: [] }
+						}
+					})
+				});
+			} else {
+				await route.continue();
+			}
+		});
 
 		await openWizard(page);
 
@@ -189,16 +217,15 @@ test.describe('setup wizard browser flow', () => {
 		await expect(page.locator('.wizard h2')).toContainText('Health Check');
 		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
 
-		// Complete step — must reach "Everything is ready!" not the timeout path
+		// Complete step — must reach "Everything is ready!" not the error path
 		await expect(page.locator('.wizard h2')).toContainText('Complete');
 		await expect(page.locator('text=Finalizing setup')).toBeVisible();
 
-		// PASS: all services are mocked ok, so the ready state is reached quickly
+		// PASS: all services are mocked ok, so the ready state is shown immediately
 		await expect(page.locator('text=Everything is ready!')).toBeVisible({ timeout: 10_000 });
 
-		// FAIL if the timeout/error path is shown
-		await expect(page.locator('text=Some services took too long to start')).not.toBeVisible();
-		await expect(page.locator('text=not ready')).not.toBeVisible();
+		// FAIL if the error path is shown
+		await expect(page.locator('text=Some services need attention')).not.toBeVisible();
 
 		// The primary "Continue to Admin" button (not the secondary fallback) must be shown
 		await expect(page.locator('button', { hasText: 'Continue to Admin' })).toBeVisible();
@@ -328,21 +355,30 @@ test.describe('setup wizard browser flow', () => {
 
 	// ── R15: Health-check failure tests ──────────────────────────────────────
 
-	// R15.1 — All non-admin services return ok:false → fast-fail after 5 polls
+	// R15.1 — All non-admin services return failed → immediate failed state
 	test('Complete step shows error state when all services report ok:false', async ({ page }) => {
-		// Mock: all non-admin services are down → triggers fast-fail after 5 polls
-		await page.route('**/setup/health-check', (route) => {
+		// Mock core-readiness: all non-admin services failed
+		await page.route('**/setup/core-readiness', (route) => {
 			route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({
-					services: {
-						gateway: { ok: false, error: 'status 502' },
-						assistant: { ok: false, error: 'connection refused' },
-						openmemory: { ok: false, error: 'status 503' },
-						admin: { ok: true, time: new Date().toISOString() }
-					},
-					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
+					ok: true,
+					phase: 'failed',
+					updatedAt: new Date().toISOString(),
+					checks: [
+						{ service: 'gateway', state: 'not_ready', status: 'exited', reason: 'not_running' },
+						{ service: 'assistant', state: 'not_ready', status: 'exited', reason: 'not_running' },
+						{ service: 'openmemory', state: 'not_ready', status: 'exited', reason: 'not_running' },
+						{ service: 'admin', state: 'ready', status: 'running' }
+					],
+					diagnostics: {
+						failedServices: [
+							{ service: 'gateway', state: 'not_ready', status: 'exited', reason: 'not_running' },
+							{ service: 'assistant', state: 'not_ready', status: 'exited', reason: 'not_running' },
+							{ service: 'openmemory', state: 'not_ready', status: 'exited', reason: 'not_running' }
+						]
+					}
 				})
 			});
 		});
@@ -351,14 +387,14 @@ test.describe('setup wizard browser flow', () => {
 		await navigateToHealthCheckStep(page);
 		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
 
-		// Wait for Complete step and the fast-fail timeout (~5s)
+		// Wait for Complete step — core-readiness returns failed immediately
 		await expect(page.locator('.wizard h2')).toContainText('Complete');
-		await expect(page.locator('text=Some services took too long to start')).toBeVisible({
+		await expect(page.locator('text=Some services need attention')).toBeVisible({
 			timeout: 15_000
 		});
 
-		// Per-service "not ready" labels are shown
-		await expect(page.locator('text=not ready').first()).toBeVisible();
+		// Per-service failure reasons are shown
+		await expect(page.locator('text=stopped (exited)').first()).toBeVisible();
 
 		// "Everything is ready!" must NOT appear
 		await expect(page.locator('text=Everything is ready!')).not.toBeVisible();
@@ -376,39 +412,66 @@ test.describe('setup wizard browser flow', () => {
 	test('Complete step renders per-service status during polling', async ({ page }) => {
 		let callCount = 0;
 
-		await page.route('**/setup/health-check', (route) => {
+		await page.route('**/setup/core-readiness', (route) => {
 			callCount++;
-			const services: Record<string, { ok: boolean; time?: string; error?: string }> = {
-				admin: { ok: true, time: new Date().toISOString() }
-			};
 
-			// Phase 1 (calls 1-3): only admin is up
+			// Phase 1 (calls 1-3): only admin is up, still checking
 			if (callCount <= 3) {
-				services.gateway = { ok: false, error: 'connection refused' };
-				services.assistant = { ok: false, error: 'connection refused' };
-				services.openmemory = { ok: false, error: 'connection refused' };
+				route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						ok: true,
+						phase: 'checking',
+						updatedAt: new Date().toISOString(),
+						checks: [
+							{ service: 'gateway', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+							{ service: 'assistant', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+							{ service: 'openmemory', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+							{ service: 'admin', state: 'ready', status: 'running' }
+						],
+						diagnostics: { failedServices: [] }
+					})
+				});
 			}
-			// Phase 2 (calls 4-7): gateway comes up, others still down
+			// Phase 2 (calls 4-7): gateway comes up, others still starting
 			else if (callCount <= 7) {
-				services.gateway = { ok: true, time: new Date().toISOString() };
-				services.assistant = { ok: false, error: 'connection refused' };
-				services.openmemory = { ok: false, error: 'connection refused' };
+				route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						ok: true,
+						phase: 'checking',
+						updatedAt: new Date().toISOString(),
+						checks: [
+							{ service: 'gateway', state: 'ready', status: 'running' },
+							{ service: 'assistant', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+							{ service: 'openmemory', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+							{ service: 'admin', state: 'ready', status: 'running' }
+						],
+						diagnostics: { failedServices: [] }
+					})
+				});
 			}
-			// Phase 3 (calls 8+): all services come up
+			// Phase 3 (calls 8+): all services ready
 			else {
-				services.gateway = { ok: true, time: new Date().toISOString() };
-				services.assistant = { ok: true, time: new Date().toISOString() };
-				services.openmemory = { ok: true, time: new Date().toISOString() };
+				route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						ok: true,
+						phase: 'ready',
+						updatedAt: new Date().toISOString(),
+						checks: [
+							{ service: 'gateway', state: 'ready', status: 'running' },
+							{ service: 'assistant', state: 'ready', status: 'running' },
+							{ service: 'openmemory', state: 'ready', status: 'running' },
+							{ service: 'admin', state: 'ready', status: 'running' }
+						],
+						diagnostics: { failedServices: [] }
+					})
+				});
 			}
-
-			route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({
-					services,
-					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
-				})
-			});
 		});
 
 		await mockSetupCompleteOk(page);
@@ -417,11 +480,11 @@ test.describe('setup wizard browser flow', () => {
 		await expect(page.locator('.wizard h2')).toContainText('Complete');
 
 		// During Phase 2 (calls 4-7), the live per-service list should show
-		// gateway as ready while assistant/openmemory are still starting
-		await expect(page.locator('li', { hasText: /gateway.*ready/ })).toBeVisible({
+		// Message Router (gateway) as ready while AI Assistant is still starting
+		await expect(page.locator('li', { hasText: /Message Router.*ready/ })).toBeVisible({
 			timeout: 10_000
 		});
-		await expect(page.locator('li', { hasText: /assistant.*starting/ })).toBeVisible();
+		await expect(page.locator('li', { hasText: /AI Assistant.*starting/ })).toBeVisible();
 
 		// Eventually all services come up and we reach the success state
 		await expect(page.locator('text=Everything is ready!')).toBeVisible({
@@ -434,23 +497,27 @@ test.describe('setup wizard browser flow', () => {
 		await expect(continueBtn).not.toHaveClass(/btn-secondary/);
 	});
 
-	// R15.3 — Full polling timeout: some services up, but not all → 60-poll timeout
+	// R15.3 — Full polling timeout: some services up, but not all → 30-poll timeout
 	test('Complete step shows timeout message after polling exhaustion', async ({ page }) => {
-		test.setTimeout(90_000); // 60s polling + margin
+		test.setTimeout(90_000); // 30 polls × 2s = 60s + margin
 
-		// Mock: openmemory is up (prevents fast-fail) but gateway/assistant stay down
-		await page.route('**/setup/health-check', (route) => {
+		// Mock core-readiness: openmemory is up but gateway/assistant stay down
+		// The phase stays 'checking' so the component keeps polling until MAX_POLLS
+		await page.route('**/setup/core-readiness', (route) => {
 			route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({
-					services: {
-						gateway: { ok: false, error: 'connection refused' },
-						assistant: { ok: false, error: 'connection refused' },
-						openmemory: { ok: true, time: new Date().toISOString() },
-						admin: { ok: true, time: new Date().toISOString() }
-					},
-					serviceInstances: { openmemory: '', psql: '', qdrant: '' }
+					ok: true,
+					phase: 'checking',
+					updatedAt: new Date().toISOString(),
+					checks: [
+						{ service: 'gateway', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+						{ service: 'assistant', state: 'not_ready', status: 'starting', reason: 'http_probe_failed', probeError: 'connection refused' },
+						{ service: 'openmemory', state: 'ready', status: 'running' },
+						{ service: 'admin', state: 'ready', status: 'running' }
+					],
+					diagnostics: { failedServices: [] }
 				})
 			});
 		});
@@ -460,18 +527,18 @@ test.describe('setup wizard browser flow', () => {
 		await page.locator('.wizard .actions button', { hasText: 'Finish Setup' }).click();
 		await expect(page.locator('.wizard h2')).toContainText('Complete');
 
-		// During polling, the counter message should be visible
-		await expect(page.locator('text=Starting services...')).toBeVisible();
+		// During polling, the phase label should be visible
+		await expect(page.locator('text=Checking service readiness')).toBeVisible();
 
-		// After 60 polls (~60s), the timeout message appears
-		await expect(page.locator('text=Some services took too long to start')).toBeVisible({
+		// After 30 polls (~60s), the component marks phase as 'failed'
+		await expect(page.locator('text=Some services need attention')).toBeVisible({
 			timeout: 75_000
 		});
 
-		// Mixed status: openmemory shows "ready", gateway/assistant show "not ready"
-		await expect(page.locator('li', { hasText: /openmemory.*ready/ })).toBeVisible();
-		await expect(page.locator('li', { hasText: /gateway.*not ready/ })).toBeVisible();
-		await expect(page.locator('li', { hasText: /assistant.*not ready/ })).toBeVisible();
+		// Mixed status in the checks list: Memory shows ready, Message Router/AI Assistant show failure reason
+		await expect(page.locator('li', { hasText: /Memory.*ready/ })).toBeVisible();
+		await expect(page.locator('li', { hasText: /Message Router.*probe failed/ })).toBeVisible();
+		await expect(page.locator('li', { hasText: /AI Assistant.*probe failed/ })).toBeVisible();
 
 		// Fallback continue button is available
 		await expect(

@@ -27,16 +27,21 @@ Tracks implementation progress for issues listed in `ARCHITECTURE-REVIEW-HIGH-ME
 - M6: reworked `confirm()` in `packages/lib/src/ui.ts` to use `node:readline/promises` and close the interface cleanly.
 - M13: added retry/backoff for transient assistant failures in `core/gateway/src/assistant-client.ts`.
 - M15: removed empty workspace member noise (root `package.json` no longer lists `core/assistant`).
+- M4 (partial): reduced stack-spec filesystem churn by introducing cached spec reads in `packages/lib/src/admin/stack-manager.ts` (eliminates re-read/re-parse on every `getSpec()`).
+- M7: made setup state derive/sync `accessScope` and `enabledChannels` from stack spec in `packages/lib/src/admin/setup-manager.ts` (wired in `packages/ui/src/lib/server/init.ts`).
+- M12: ensured adapter-based channels also pass through metadata sanitization by building gateway payloads via `buildChannelMessage()` in `packages/lib/src/shared/channel-adapter-server.ts`.
 
 ## Remaining issues
 
 - H1 (remaining full channel harness consolidation), H2 (partial), H9
 - H5 (remaining locations)
-- M4, M7, M12 (remaining hardening)
+- M4 (remaining async I/O conversion)
 
 ## Validation run
 
 - `bun test channels/chat/server.test.ts channels/webhook/server.test.ts channels/voice/server.test.ts channels/telegram/server.test.ts channels/mcp/server.test.ts channels/a2a/server.test.ts core/gateway/src/server.test.ts core/gateway/src/nonce-cache.test.ts`
 - `bun test packages/lib/src/admin/runtime-env.test.ts packages/cli/test/env.test.ts`
 - `bun test core/gateway/src/rate-limit.test.ts core/gateway/src/audit.test.ts core/gateway/src/assistant-client.test.ts packages/cli/test/main.test.ts`
+- `bun test packages/lib/src/admin/setup-manager.test.ts packages/lib/src/admin/stack-manager.test.ts`
+- `bun test channels/mcp/server.test.ts channels/a2a/server.test.ts packages/lib/src/shared/channel-sdk.test.ts`
 - `bun run typecheck`

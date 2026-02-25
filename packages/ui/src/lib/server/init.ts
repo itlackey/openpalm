@@ -34,7 +34,7 @@ let _initialized = false;
 export async function getSetupManager(): Promise<SetupManager> {
 	if (!_setupManager) {
 		const { SetupManager } = await import('@openpalm/lib/admin/setup-manager');
-		_setupManager = new SetupManager(DATA_DIR);
+		_setupManager = new SetupManager(DATA_DIR, { stackSpecPath: STACK_SPEC_PATH });
 	}
 	return _setupManager;
 }
