@@ -650,14 +650,14 @@
     "title": "Stop rebuilding every test run",
     "description": "Add SKIP_BUILD env var support to start-webserver.cjs so Playwright skips the Vite build when build/index.js already exists, and pre-build in CI.",
     "priority": "P3",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1 hour",
     "planFile": ".plans/R10-stop-rebuilding-every-test-run.md",
     "subtasks": [
       {
         "id": "R10.1",
         "description": "Modify start-webserver.cjs to check SKIP_BUILD=1 && existsSync('build/index.js') before running bun run build",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/start-webserver.cjs",
@@ -669,7 +669,7 @@
       {
         "id": "R10.2",
         "description": "Update .github/workflows/test-ui.yml to add explicit 'Build UI' step and pass SKIP_BUILD=1 to Playwright step",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/test-ui.yml",
@@ -681,7 +681,7 @@
       {
         "id": "R10.3",
         "description": "Optionally add build caching with actions/cache keyed on source file hashes",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": ".github/workflows/test-ui.yml",
@@ -693,7 +693,7 @@
       {
         "id": "R10.4",
         "description": "Verify locally: SKIP_BUILD=1 works with existing build, fallback rebuilds when build is missing, default behavior unchanged",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "packages/ui/e2e/start-webserver.cjs",
