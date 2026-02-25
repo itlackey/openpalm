@@ -6,6 +6,7 @@ import {
   unlinkSync,
   readdirSync,
   mkdirSync,
+  statSync,
 } from "fs"
 import { join, resolve } from "path"
 import { execSync } from "child_process"
@@ -153,7 +154,15 @@ function scanForStateFiles(repoRoot: string): string[] {
     }
   }
 
-  return files
+  // Prefer most recently touched loop files. This reduces accidental claims of
+  // stale historical loops when multiple pending state files exist.
+  return files.sort((a, b) => {
+    try {
+      return statSync(b).mtimeMs - statSync(a).mtimeMs
+    } catch {
+      return 0
+    }
+  })
 }
 
 /**
@@ -257,6 +266,32 @@ function claimByWorktreeHint(repoRoot: string, sessionId: string, worktreePath: 
   return stateFilePath
 }
 
+function claimLatestPendingFromRegistry(repoRoot: string, sessionId: string): string | null {
+  const registry = readRegistry(repoRoot)
+
+  const pending = Object.entries(registry)
+    .filter(([key, value]) => key.startsWith(REGISTRY_PENDING_PREFIX) && !!value?.path)
+    .sort((a, b) => {
+      const at = Date.parse(a[1].started_at ?? "")
+      const bt = Date.parse(b[1].started_at ?? "")
+      return (isNaN(bt) ? 0 : bt) - (isNaN(at) ? 0 : at)
+    })
+
+  for (const [, entry] of pending) {
+    const stateFilePath = resolve(join(entry.path, OPENCODE_DIR, STATE_FILENAME))
+    if (!existsSync(stateFilePath)) continue
+    if (!tryClaimStateFile(stateFilePath, sessionId)) continue
+
+    sessionStateMap.set(sessionId, stateFilePath)
+    const startedAt = getStartedAt(stateFilePath)
+    const state = readState(stateFilePath)
+    updateRegistryEntry(repoRoot, sessionId, stateFilePath, state?.iteration ?? 0, startedAt)
+    return stateFilePath
+  }
+
+  return null
+}
+
 function claimSessionState(repoRoot: string, sessionId: string, event: any): string | null {
   const cached = sessionStateMap.get(sessionId)
   if (cached) return cached
@@ -266,6 +301,9 @@ function claimSessionState(repoRoot: string, sessionId: string, event: any): str
     const hinted = claimByWorktreeHint(repoRoot, sessionId, hintedWorktree)
     if (hinted) return hinted
   }
+
+  const fromRegistry = claimLatestPendingFromRegistry(repoRoot, sessionId)
+  if (fromRegistry) return fromRegistry
 
   // Fallback: scan and claim first available active/unclaimed state file.
   const claimed = scanAndClaim(repoRoot, sessionId)
@@ -291,6 +329,36 @@ function readRegistry(repoRoot: string): Registry {
   }
 }
 
+function findStringByKeyRecursive(
+  value: unknown,
+  keyPattern: RegExp,
+  depth = 0,
+  visited = new Set<unknown>()
+): string | null {
+  if (depth > 6 || value == null) return null
+  if (typeof value !== "object") return null
+  if (visited.has(value)) return null
+  visited.add(value)
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findStringByKeyRecursive(item, keyPattern, depth + 1, visited)
+      if (found) return found
+    }
+    return null
+  }
+
+  for (const [key, field] of Object.entries(value as Record<string, unknown>)) {
+    if (keyPattern.test(key) && typeof field === "string" && field.trim().length > 0) {
+      return field.trim()
+    }
+    const nested = findStringByKeyRecursive(field, keyPattern, depth + 1, visited)
+    if (nested) return nested
+  }
+
+  return null
+}
+
 function getSessionIdFromEvent(event: any): string | null {
   const candidates = [
     event?.properties?.sessionID,
@@ -306,6 +374,19 @@ function getSessionIdFromEvent(event: any): string | null {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate.trim()
     }
+  }
+
+  const recursive = findStringByKeyRecursive(event, /^session(?:_?id)?$/i)
+  if (recursive) return recursive
+
+  // Last-resort fallback: scan serialized event for a session-like token.
+  // OpenCode session IDs are typically prefixed with "ses_".
+  try {
+    const serialized = JSON.stringify(event)
+    const match = serialized.match(/\b(ses_[A-Za-z0-9_-]+)\b/)
+    if (match?.[1]) return match[1]
+  } catch {
+    // ignore
   }
 
   return null
@@ -422,11 +503,25 @@ export const RalphWiggumPlugin: Plugin = async ({ directory, client }) => ({
     const sessionId = getSessionIdFromEvent(event)
     if (!sessionId) {
       if (event.type !== "session.idle") return
+
+      const eventKeys =
+        (() => {
+          try {
+            return Object.keys((event ?? {}) as Record<string, unknown>)
+          } catch {
+            return []
+          }
+        })()
+
       await client.app.log({
         body: {
           service: "ralph-wiggum",
           level: "error",
           message: "Could not determine session ID from session.idle event",
+          extra: {
+            eventType: (event as any)?.type,
+            topLevelKeys: eventKeys,
+          },
         },
       })
       return

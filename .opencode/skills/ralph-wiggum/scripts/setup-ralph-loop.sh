@@ -105,6 +105,12 @@ registry[session_key] = {
     "started_at": started_at,
 }
 
+# If we now have a concrete session key, remove stale pending entries for this path.
+if not session_key.startswith(prefix):
+    stale = [k for k, v in registry.items() if k.startswith(prefix) and isinstance(v, dict) and v.get("path") == worktree_path]
+    for key in stale:
+        del registry[key]
+
 with open(temp_path, "w", encoding="utf-8") as f:
     json.dump(registry, f, indent=2)
     f.write("\n")
@@ -150,11 +156,11 @@ resolve_registry_root() {
 }
 
 ensure_plugin_registered() {
-	local repo_root="$1"
-	local config_path="${repo_root}/.opencode/opencode.json"
+	local config_path="$1"
 	local plugin_id="./plugins/ralph-wiggum.ts"
-
-	mkdir -p "${repo_root}/.opencode"
+	local config_dir
+	config_dir="$(dirname "$config_path")"
+	mkdir -p "$config_dir"
 
 	python3 - "$config_path" "$plugin_id" <<'PY'
 import json
@@ -184,6 +190,21 @@ with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
+}
+
+ensure_plugin_registered_for_context() {
+	local repo_root="$1"
+	local worktree_path="${2:-}"
+
+	ensure_plugin_registered "${repo_root}/.opencode/opencode.json"
+
+	if [[ -n "$worktree_path" ]]; then
+		ensure_plugin_registered "${worktree_path}/.opencode/opencode.json"
+	fi
+
+	if [[ -n "${OPENCODE_CONFIG_PATH:-}" ]]; then
+		ensure_plugin_registered "${OPENCODE_CONFIG_PATH}"
+	fi
 }
 
 # Parse options and positional arguments
@@ -359,7 +380,7 @@ else
 	STATE_DIR=".opencode"
 fi
 
-ensure_plugin_registered "$REPO_ROOT"
+ensure_plugin_registered_for_context "$REPO_ROOT" "$WORKTREE"
 
 # Create state file for the ralph-wiggum OpenCode plugin (markdown with YAML frontmatter)
 mkdir -p "$STATE_DIR"
