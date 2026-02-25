@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,6 +91,11 @@ function pickEnv(source: Record<string, string>, keys: string[]): Record<string,
 
 export class StackManager {
   private cachedSpec: StackSpec | null = null;
+  private artifactContentCache = new Map<string, string>();
+  private runtimeEnvCache: string | null = null;
+  private secretsFileMtimeMs: number | null = null;
+  private dataEnvFileMtimeMs: number | null = null;
+  private cachedSecrets: Record<string, string> | null = null;
 
   constructor(private readonly paths: StackManagerPaths) {}
 
@@ -499,12 +504,16 @@ export class StackManager {
       OPENPALM_CONFIG_HOME: this.paths.configRootPath,
       POSTGRES_PASSWORD: secrets["POSTGRES_PASSWORD"],
     };
-    const existingRuntime = existsSync(this.paths.runtimeEnvPath)
-      ? readFileSync(this.paths.runtimeEnvPath, "utf8")
-      : "";
+    if (this.runtimeEnvCache === null) {
+      this.runtimeEnvCache = existsSync(this.paths.runtimeEnvPath)
+        ? readFileSync(this.paths.runtimeEnvPath, "utf8")
+        : "";
+    }
+    const existingRuntime = this.runtimeEnvCache;
     const updatedRuntime = updateRuntimeEnvContent(existingRuntime, runtimeEnvEntries);
     mkdirSync(dirname(this.paths.runtimeEnvPath), { recursive: true });
     writeFileSync(this.paths.runtimeEnvPath, updatedRuntime, "utf8");
+    this.runtimeEnvCache = updatedRuntime;
 
     const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
     const renderReport = {
@@ -685,9 +694,15 @@ export class StackManager {
   }
 
   private writeArtifact(path: string, content: string, changedList: string[]): void {
-    if (!existsSync(path) || readFileSync(path, "utf8") !== content) changedList.push(path);
+    let current = this.artifactContentCache.get(path);
+    if (current === undefined) {
+      current = existsSync(path) ? readFileSync(path, "utf8") : "";
+      this.artifactContentCache.set(path, current);
+    }
+    if (current !== content) changedList.push(path);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content, "utf8");
+    this.artifactContentCache.set(path, content);
   }
 
   private writeStackSpecAtomically(content: string) {
@@ -698,14 +713,37 @@ export class StackManager {
   }
 
   private readSecretsEnv() {
+    const secretsMtime = existsSync(this.paths.secretsEnvPath)
+      ? statSync(this.paths.secretsEnvPath).mtimeMs
+      : -1;
+    const dataEnvPath = this.paths.dataEnvPath;
+    const dataMtime = dataEnvPath && existsSync(dataEnvPath)
+      ? statSync(dataEnvPath).mtimeMs
+      : -1;
+
+    if (
+      this.cachedSecrets
+      && this.secretsFileMtimeMs === secretsMtime
+      && this.dataEnvFileMtimeMs === dataMtime
+    ) {
+      return this.cachedSecrets;
+    }
+
     const secrets = existsSync(this.paths.secretsEnvPath)
       ? parseRuntimeEnvContent(readFileSync(this.paths.secretsEnvPath, "utf8"))
       : {};
-    const dataEnvPath = this.paths.dataEnvPath;
-    if (!dataEnvPath || !existsSync(dataEnvPath)) return secrets;
-    const dataEnv = parseRuntimeEnvContent(readFileSync(dataEnvPath, "utf8"));
-    const profileEnv = pickEnv(dataEnv, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]);
-    return { ...secrets, ...profileEnv };
+
+    let merged = secrets;
+    if (dataEnvPath && existsSync(dataEnvPath)) {
+      const dataEnv = parseRuntimeEnvContent(readFileSync(dataEnvPath, "utf8"));
+      const profileEnv = pickEnv(dataEnv, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]);
+      merged = { ...secrets, ...profileEnv };
+    }
+
+    this.secretsFileMtimeMs = secretsMtime;
+    this.dataEnvFileMtimeMs = dataMtime;
+    this.cachedSecrets = merged;
+    return merged;
   }
 
   /** Returns the compose interpolation entries that must be present in runtimeEnvPath. */
@@ -723,6 +761,8 @@ export class StackManager {
     const current = existsSync(this.paths.secretsEnvPath) ? readFileSync(this.paths.secretsEnvPath, "utf8") : "";
     const next = updateRuntimeEnvContent(current, entries);
     writeFileSync(this.paths.secretsEnvPath, next, "utf8");
+    this.cachedSecrets = null;
+    this.secretsFileMtimeMs = null;
   }
 
   private isValidSecretName(name: string) {

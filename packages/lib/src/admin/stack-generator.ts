@@ -481,17 +481,19 @@ function renderAdminComposeService(): ComposeService {
       "OPENPALM_ASSISTANT_URL=http://assistant:4096",
       "OPENPALM_COMPOSE_BIN=${OPENPALM_COMPOSE_BIN:-docker}",
       "OPENPALM_COMPOSE_SUBCOMMAND=${OPENPALM_COMPOSE_SUBCOMMAND:-compose}",
-      "OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}",
+      "OPENPALM_CONTAINER_SOCKET_URI=${OPENPALM_CONTAINER_SOCKET_URI:-tcp://docker-proxy:2375}",
     ],
     volumes: [
       "${OPENPALM_DATA_HOME}:/data",
       "${OPENPALM_CONFIG_HOME}:/config",
       "${OPENPALM_STATE_HOME}:/state",
       "${OPENPALM_WORK_HOME:-${HOME}/openpalm}:/work",
-      "${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}",
     ],
     networks: ["assistant_net"],
-    depends_on: { gateway: { condition: "service_healthy" } },
+    depends_on: {
+      gateway: { condition: "service_healthy" },
+      "docker-proxy": { condition: "service_started" },
+    },
     healthcheck: {
       test: ["CMD", "curl", "-fs", "http://localhost:8100/health"],
       interval: "30s",
@@ -499,6 +501,41 @@ function renderAdminComposeService(): ComposeService {
       retries: 3,
       start_period: "10s",
     },
+  };
+}
+
+function renderDockerProxyComposeService(): ComposeService {
+  return {
+    image: "tecnativa/docker-socket-proxy:0.4.1",
+    restart: "unless-stopped",
+    environment: [
+      "LOG_LEVEL=warning",
+      "CONTAINERS=1",
+      "IMAGES=1",
+      "NETWORKS=1",
+      "VOLUMES=1",
+      "SERVICES=1",
+      "TASKS=1",
+      "POST=1",
+      "AUTH=0",
+      "SECRETS=0",
+      "SWARM=0",
+      "SYSTEM=0",
+      "NODES=0",
+      "PLUGINS=0",
+      "SESSION=0",
+      "EXEC=1",
+      "BUILD=1",
+      "COMMIT=0",
+      "DISTRIBUTION=0",
+      "ALLOW_START=1",
+      "ALLOW_STOP=1",
+      "ALLOW_RESTARTS=1",
+    ],
+    volumes: [
+      "${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock:ro",
+    ],
+    networks: ["assistant_net"],
   };
 }
 
@@ -539,6 +576,7 @@ function renderFullComposeFile(spec: StackSpec): string {
     "openmemory-ui": renderOpenMemoryUiComposeService(),
     assistant: renderAssistantComposeService(),
     gateway: renderGatewayComposeService(),
+    "docker-proxy": renderDockerProxyComposeService(),
     admin: renderAdminComposeService(),
   };
 

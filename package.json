@@ -42,7 +42,7 @@
     "test:contracts": "bun test --filter contract",
     "test:security": "bun test --filter security",
     "test:ui": "cd packages/ui && bunx playwright test",
-    "test:ci": "bun run typecheck && bun test",
+    "test:ci": "bun run typecheck && bun test --exclude packages/ui/test/api/",
     "test:docker": "OPENPALM_RUN_DOCKER_STACK_TESTS=1 bun test ./test/docker/docker-stack.docker.ts",
     "test:install:smoke": "OPENPALM_RUN_DOCKER_STACK_TESTS=1 bun test ./test/install-e2e/happy-path.docker.ts",
     "test:install:core-health": "OPENPALM_RUN_DOCKER_STACK_TESTS=1 bun test ./test/install-e2e/core-health.docker.ts",

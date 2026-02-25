@@ -1,4 +1,6 @@
-import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
+import { createHttpAdapterFetch } from "@openpalm/lib/shared/channel-adapter-http-server.ts";
+import type { ChannelAdapter, InboundResult } from "@openpalm/lib/shared/channel.ts";
+import { readJsonObject, rejectPayloadTooLarge } from "@openpalm/lib/shared/channel-http.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
 import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
@@ -11,29 +13,23 @@ const SHARED_SECRET = Bun.env.CHANNEL_API_SECRET ?? "";
 const API_KEY = Bun.env.OPENAI_COMPAT_API_KEY ?? "";
 const ANTHROPIC_API_KEY = Bun.env.ANTHROPIC_COMPAT_API_KEY ?? "";
 
-function openAIError(status: number, message: string) {
-  return new Response(
-    JSON.stringify({
-      error: {
-        message,
-        type: "invalid_request_error",
-      },
-    }),
-    { status, headers: { "content-type": "application/json" } },
-  );
+function openAIErrorBody(message: string) {
+  return {
+    error: {
+      message,
+      type: "invalid_request_error",
+    },
+  };
 }
 
-function anthropicError(status: number, message: string) {
-  return new Response(
-    JSON.stringify({
-      type: "error",
-      error: {
-        type: "invalid_request_error",
-        message,
-      },
-    }),
-    { status, headers: { "content-type": "application/json" } },
-  );
+function anthropicErrorBody(message: string) {
+  return {
+    type: "error",
+    error: {
+      type: "invalid_request_error",
+      message,
+    },
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -93,154 +89,159 @@ export function createApiFetch(
   forwardFetch: typeof fetch = fetch,
   anthropicApiKey = ANTHROPIC_API_KEY,
 ) {
-  return async function handle(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    if (url.pathname === "/health") return json(200, { ok: true, service: "channel-api" });
-
-    const chatCompletions = url.pathname === "/v1/chat/completions" && req.method === "POST";
-    const completions = url.pathname === "/v1/completions" && req.method === "POST";
-    const anthropicMessages = url.pathname === "/v1/messages" && req.method === "POST";
-    const anthropicCompletions = url.pathname === "/v1/complete" && req.method === "POST";
-    if (!chatCompletions && !completions && !anthropicMessages && !anthropicCompletions) return json(404, { error: "not_found" });
-
-    if ((chatCompletions || completions) && apiKey) {
-      const authorization = req.headers.get("authorization");
-      if (authorization !== `Bearer ${apiKey}`) return openAIError(401, "Unauthorized");
-    }
-    if ((anthropicMessages || anthropicCompletions) && anthropicApiKey) {
-      const key = req.headers.get("x-api-key");
-      if (key !== anthropicApiKey) return anthropicError(401, "Unauthorized");
-    }
-
-    const contentLength = Number(req.headers.get("content-length") ?? "0");
-    if (contentLength > 1_048_576) {
-      if (chatCompletions || completions) return openAIError(413, "Payload too large");
-      return anthropicError(413, "Payload too large");
-    }
-
-    let body: Record<string, unknown>;
-    try {
-      body = await req.json();
-    } catch {
-      if (chatCompletions || completions) return openAIError(400, "Invalid JSON");
-      return anthropicError(400, "Invalid JSON");
-    }
-
-    if (body.stream === true) {
-      if (chatCompletions || completions) return openAIError(400, "Streaming is not supported");
-      return anthropicError(400, "Streaming is not supported");
-    }
-
-    const text = chatCompletions || anthropicMessages
-      ? extractChatText(body.messages)
-      : extractPromptText(body.prompt);
-    if (!text) {
-      if (anthropicMessages) return anthropicError(400, "messages with user content is required");
-      if (anthropicCompletions) return anthropicError(400, "prompt is required");
-      return openAIError(400, chatCompletions ? "messages with user content is required" : "prompt is required");
-    }
-
-    const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
-    const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
-
-    const payload = buildChannelMessage({
-      userId,
-      channel: "api",
-      text,
-      metadata: {
-        endpoint: chatCompletions
-          ? "chat.completions"
-          : anthropicMessages
-            ? "anthropic.messages"
-            : anthropicCompletions
-              ? "anthropic.complete"
-              : "completions",
-        model,
-      },
-    });
-
-    const gatewayResponse = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
-    if (!gatewayResponse.ok) {
-      if (anthropicMessages || anthropicCompletions) {
-        return anthropicError(gatewayResponse.status >= 500 ? 502 : gatewayResponse.status, `Gateway error (${gatewayResponse.status})`);
+  const openAiRoute = (endpoint: "chat.completions" | "completions"): ChannelAdapter["routes"][number] => ({
+    method: "POST",
+    path: endpoint === "chat.completions" ? "/v1/chat/completions" : "/v1/completions",
+    handler: async (req: Request): Promise<InboundResult> => {
+      if (apiKey) {
+        const authorization = req.headers.get("authorization");
+        if (authorization !== `Bearer ${apiKey}`) return { ok: false, status: 401, body: openAIErrorBody("Unauthorized") };
       }
-      return openAIError(gatewayResponse.status >= 500 ? 502 : gatewayResponse.status, `Gateway error (${gatewayResponse.status})`);
-    }
 
-    const answerBody = await gatewayResponse.text();
-    const answer = asGatewayAnswer(answerBody);
-    const created = Math.floor(Date.now() / 1000);
+      const tooLarge = rejectPayloadTooLarge(req);
+      if (tooLarge) return { ok: false, status: 413, body: openAIErrorBody("Payload too large") };
 
-    if (chatCompletions) {
+      const body = await readJsonObject<Record<string, unknown>>(req);
+      if (!body) return { ok: false, status: 400, body: openAIErrorBody("Invalid JSON") };
+      if (body.stream === true) return { ok: false, status: 400, body: openAIErrorBody("Streaming is not supported") };
+
+      const text = endpoint === "chat.completions" ? extractChatText(body.messages) : extractPromptText(body.prompt);
+      if (!text) {
+        return {
+          ok: false,
+          status: 400,
+          body: openAIErrorBody(endpoint === "chat.completions" ? "messages with user content is required" : "prompt is required"),
+        };
+      }
+
+      const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
+      const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
+
+      return {
+        ok: true,
+        payload: {
+          userId,
+          channel: "api",
+          text,
+          metadata: { endpoint, model },
+        },
+      };
+    },
+  });
+
+  const anthropicRoute = (endpoint: "anthropic.messages" | "anthropic.complete"): ChannelAdapter["routes"][number] => ({
+    method: "POST",
+    path: endpoint === "anthropic.messages" ? "/v1/messages" : "/v1/complete",
+    handler: async (req: Request): Promise<InboundResult> => {
+      if (anthropicApiKey) {
+        const key = req.headers.get("x-api-key");
+        if (key !== anthropicApiKey) return { ok: false, status: 401, body: anthropicErrorBody("Unauthorized") };
+      }
+
+      const tooLarge = rejectPayloadTooLarge(req);
+      if (tooLarge) return { ok: false, status: 413, body: anthropicErrorBody("Payload too large") };
+
+      const body = await readJsonObject<Record<string, unknown>>(req);
+      if (!body) return { ok: false, status: 400, body: anthropicErrorBody("Invalid JSON") };
+      if (body.stream === true) return { ok: false, status: 400, body: anthropicErrorBody("Streaming is not supported") };
+
+      const text = endpoint === "anthropic.messages" ? extractChatText(body.messages) : extractPromptText(body.prompt);
+      if (!text) {
+        return {
+          ok: false,
+          status: 400,
+          body: anthropicErrorBody(endpoint === "anthropic.messages" ? "messages with user content is required" : "prompt is required"),
+        };
+      }
+
+      const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
+      const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
+
+      return {
+        ok: true,
+        payload: {
+          userId,
+          channel: "api",
+          text,
+          metadata: { endpoint, model },
+        },
+      };
+    },
+  });
+
+  const adapter: ChannelAdapter = {
+    name: "api",
+    routes: [
+      openAiRoute("chat.completions"),
+      openAiRoute("completions"),
+      anthropicRoute("anthropic.messages"),
+      anthropicRoute("anthropic.complete"),
+    ],
+    health: () => ({ ok: true, service: "channel-api" }),
+  };
+
+  return createHttpAdapterFetch(adapter, gatewayUrl, sharedSecret, forwardFetch, {
+    onRouteError: ({ status, body }) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }),
+    onGatewayError: ({ gatewayStatus, payloadMetadata }) => {
+      const endpoint = payloadMetadata?.endpoint;
+      const message = `Gateway error (${gatewayStatus})`;
+      const status = gatewayStatus >= 500 ? 502 : gatewayStatus;
+      const body = typeof endpoint === "string" && endpoint.startsWith("anthropic.")
+        ? anthropicErrorBody(message)
+        : openAIErrorBody(message);
+      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    },
+    onSuccess: ({ payloadMetadata, gatewayBodyText }) => {
+      const answer = asGatewayAnswer(gatewayBodyText);
+      const endpoint = typeof payloadMetadata?.endpoint === "string" ? payloadMetadata.endpoint : "completions";
+      const model = typeof payloadMetadata?.model === "string" && payloadMetadata.model.trim()
+        ? payloadMetadata.model
+        : "openpalm";
+      const created = Math.floor(Date.now() / 1000);
+
+      if (endpoint === "chat.completions") {
+        return json(200, {
+          id: `chatcmpl-${crypto.randomUUID()}`,
+          object: "chat.completion",
+          created,
+          model,
+          choices: [{ index: 0, message: { role: "assistant", content: answer }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        });
+      }
+      if (endpoint === "anthropic.messages") {
+        return json(200, {
+          id: `msg_${crypto.randomUUID()}`,
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: answer }],
+          model,
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 0, output_tokens: 0 },
+        });
+      }
+      if (endpoint === "anthropic.complete") {
+        return json(200, {
+          id: `compl-${crypto.randomUUID()}`,
+          type: "completion",
+          completion: answer,
+          stop_reason: "stop_sequence",
+          model,
+        });
+      }
+
       return json(200, {
-        id: `chatcmpl-${crypto.randomUUID()}`,
-        object: "chat.completion",
+        id: `cmpl-${crypto.randomUUID()}`,
+        object: "text_completion",
         created,
         model,
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: "assistant",
-              content: answer,
-            },
-            finish_reason: "stop",
-          },
-        ],
-        usage: {
-          prompt_tokens: 0,
-          completion_tokens: 0,
-          total_tokens: 0,
-        },
+        choices: [{ text: answer, index: 0, logprobs: null, finish_reason: "stop" }],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       });
-    }
-
-    if (anthropicMessages) {
-      return json(200, {
-        id: `msg_${crypto.randomUUID()}`,
-        type: "message",
-        role: "assistant",
-        content: [{ type: "text", text: answer }],
-        model,
-        stop_reason: "end_turn",
-        stop_sequence: null,
-        usage: {
-          input_tokens: 0,
-          output_tokens: 0,
-        },
-      });
-    }
-
-    if (anthropicCompletions) {
-      return json(200, {
-        id: `compl-${crypto.randomUUID()}`,
-        type: "completion",
-        completion: answer,
-        stop_reason: "stop_sequence",
-        model,
-      });
-    }
-
-    return json(200, {
-      id: `cmpl-${crypto.randomUUID()}`,
-      object: "text_completion",
-      created,
-      model,
-      choices: [
-        {
-          text: answer,
-          index: 0,
-          logprobs: null,
-          finish_reason: "stop",
-        },
-      ],
-      usage: {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0,
-      },
-    });
-  };
+    },
+  });
 }
 
 if (import.meta.main) {

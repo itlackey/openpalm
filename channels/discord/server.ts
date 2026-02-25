@@ -11,7 +11,9 @@
  *   POST /discord/webhook       → REST webhook for external integrations
  */
 
-import { buildChannelMessage, forwardChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
+import { createHttpAdapterFetch } from "@openpalm/lib/shared/channel-adapter-http-server.ts";
+import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
+import { readJsonObject, rejectPayloadTooLarge } from "@openpalm/lib/shared/channel-http.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import type { DiscordInteraction, PermissionConfig, CustomCommandDef } from "./types.ts";
 import { handleInteraction, type InteractionDeps } from "./interactions.ts";
@@ -53,56 +55,46 @@ export async function verifyDiscordSignature(
 
 /* ── Webhook handler (unchanged protocol, adds permission awareness) ─ */
 
-async function handleWebhook(
-  req: Request,
-  gatewayUrl: string,
-  sharedSecret: string,
-  forwardFetch: typeof fetch,
-): Promise<Response> {
-  const contentLength = Number(req.headers.get("content-length") ?? "0");
-  if (contentLength > 1_048_576) {
-    return json(413, { error: "payload_too_large" });
-  }
+type DiscordWebhookBody = Record<string, unknown>;
 
-  let body: {
-    userId?: string;
-    text?: string;
-    channelId?: string;
-    guildId?: string;
-    username?: string;
+function createDiscordWebhookAdapter(): ChannelAdapter {
+  return {
+    name: "discord",
+    routes: [{
+      method: "POST",
+      path: "/discord/webhook",
+      handler: async (req: Request) => {
+        const tooLarge = rejectPayloadTooLarge(req);
+        if (tooLarge) return { ok: false, status: 413, body: { error: "payload_too_large" } };
+
+        const body = await readJsonObject<DiscordWebhookBody>(req);
+        if (!body) return { ok: false, status: 400, body: { error: "invalid_json" } };
+
+        const text = typeof body.text === "string" ? body.text.trim() : "";
+        if (!text) return { ok: false, status: 400, body: { error: "text_required" } };
+
+        const userId = typeof body.userId === "string" && body.userId.trim()
+          ? `discord:${body.userId}`
+          : "";
+        if (!userId) return { ok: false, status: 400, body: { error: "missing_user_id" } };
+
+        return {
+          ok: true,
+          payload: {
+            userId,
+            channel: "discord",
+            text,
+            metadata: {
+              channelId: body.channelId,
+              guildId: body.guildId,
+              username: body.username,
+            },
+          },
+        };
+      },
+    }],
+    health: () => ({ ok: true, service: "channel-discord" }),
   };
-  try {
-    body = await req.json();
-  } catch {
-    return json(400, { error: "invalid_json" });
-  }
-
-  if (!body.text) return json(400, { error: "text_required" });
-
-  const userId = body.userId ? `discord:${body.userId}` : "";
-  if (!userId) return json(400, { error: "missing_user_id" });
-
-  const payload = buildChannelMessage({
-    userId,
-    channel: "discord",
-    text: body.text,
-    metadata: {
-      channelId: body.channelId,
-      guildId: body.guildId,
-      username: body.username,
-    },
-  });
-
-  const resp = await forwardChannelMessage(gatewayUrl, sharedSecret, payload, forwardFetch);
-
-  if (!resp.ok) {
-    return json(resp.status >= 500 ? 502 : resp.status, {
-      error: "gateway_error",
-      status: resp.status,
-    });
-  }
-
-  return json(resp.status, await resp.json());
 }
 
 /* ── Server config ─────────────────────────────────────────────────── */
@@ -138,6 +130,16 @@ export function createDiscordFetch(config: DiscordServerConfig) {
     permissions,
     forwardFetch,
   };
+
+  const webhookFetch = createHttpAdapterFetch(createDiscordWebhookAdapter(), gatewayUrl, sharedSecret, forwardFetch, {
+    onSuccess: ({ gatewayStatus, gatewayBodyText }) => {
+      try {
+        return json(gatewayStatus, JSON.parse(gatewayBodyText) as unknown);
+      } catch {
+        return json(gatewayStatus, { answer: gatewayBodyText });
+      }
+    },
+  });
 
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -195,7 +197,7 @@ export function createDiscordFetch(config: DiscordServerConfig) {
 
     /* ── REST webhook (backward-compatible) ──────────────────────── */
     if (url.pathname === "/discord/webhook" && req.method === "POST") {
-      return handleWebhook(req, gatewayUrl, sharedSecret, forwardFetch);
+      return webhookFetch(req);
     }
 
     return json(404, { error: "not_found" });

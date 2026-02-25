@@ -157,29 +157,29 @@ test.describe('setup wizard browser flow', () => {
 		// Mock health-check for the HealthStep component
 		await mockHealthCheckAllOk(page);
 
-		// Mock setup.complete to return success with core readiness data
-		// showing all services ready (avoids Docker dependency in CI)
+		// Intercept setup.complete: let the real server handle it (so it generates
+		// artifact files), but override the core readiness data in the response to
+		// show all services ready (no actual Docker services run in CI).
 		await page.route('**/command', async (route) => {
 			const body = route.request().postDataJSON() as { type?: string } | null;
 			if (body?.type === 'setup.complete') {
+				const response = await route.fetch();
+				const json = await response.json();
+				json.coreReadiness = {
+					phase: 'ready',
+					updatedAt: new Date().toISOString(),
+					checks: [
+						{ service: 'gateway', state: 'ready', status: 'running' },
+						{ service: 'assistant', state: 'ready', status: 'running' },
+						{ service: 'openmemory', state: 'ready', status: 'running' },
+						{ service: 'admin', state: 'ready', status: 'running' }
+					],
+					diagnostics: { failedServices: [] }
+				};
 				await route.fulfill({
-					status: 200,
+					status: response.status(),
 					contentType: 'application/json',
-					body: JSON.stringify({
-						ok: true,
-						state: { completed: true },
-						coreReadiness: {
-							phase: 'ready',
-							updatedAt: new Date().toISOString(),
-							checks: [
-								{ service: 'gateway', state: 'ready', status: 'running' },
-								{ service: 'assistant', state: 'ready', status: 'running' },
-								{ service: 'openmemory', state: 'ready', status: 'running' },
-								{ service: 'admin', state: 'ready', status: 'running' }
-							],
-							diagnostics: { failedServices: [] }
-						}
-					})
+					body: JSON.stringify(json)
 				});
 			} else {
 				await route.continue();
@@ -389,7 +389,7 @@ test.describe('setup wizard browser flow', () => {
 
 		// Wait for Complete step — core-readiness returns failed immediately
 		await expect(page.locator('.wizard h2')).toContainText('Complete');
-		await expect(page.locator('text=Some services need attention')).toBeVisible({
+		await expect(page.locator('text=Some services need attention').first()).toBeVisible({
 			timeout: 15_000
 		});
 
@@ -531,7 +531,7 @@ test.describe('setup wizard browser flow', () => {
 		await expect(page.locator('text=Checking service readiness')).toBeVisible();
 
 		// After 30 polls (~60s), the component marks phase as 'failed'
-		await expect(page.locator('text=Some services need attention')).toBeVisible({
+		await expect(page.locator('text=Some services need attention').first()).toBeVisible({
 			timeout: 75_000
 		});
 

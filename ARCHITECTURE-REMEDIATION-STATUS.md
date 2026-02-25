@@ -8,10 +8,14 @@ Tracks implementation progress for issues listed in `ARCHITECTURE-REVIEW-HIGH-ME
 - H10: removed `signPayload` re-exports from channel server entrypoints; tests now import shared crypto utility directly.
 - H12: removed dead branch logic in `resolveInContainerSocketPath()`.
 - M1: changed shared `json()` helper to emit compact JSON (no pretty-print indentation).
-- H5 (partial): removed `any` usage from chat/webhook request parsing and UI API result typing.
+- H5: removed `any` usage from the cited production paths (`channels/chat/server.ts`, `channels/webhook/server.ts`, `channels/voice/server.ts`, `packages/ui/src/lib/api.ts`) by introducing typed request-body narrowing and `unknown` API payload typing.
 - M12 (partial): added metadata sanitization in `buildChannelMessage()` with depth/key limits and prototype-pollution key filtering.
 - H3: deduplicated MCP/A2A JSON-RPC gateway wrapper logic into `packages/lib/src/shared/channel-adapter-server.ts` and updated both servers to use it.
 - H1 (partial): extracted shared HTTP ingress helpers in `packages/lib/src/shared/channel-http.ts` and refactored `chat`, `webhook`, `voice`, and `telegram` channel servers to use them.
+- H1: completed channel-server deduplication for the HTTP adapters by introducing `packages/lib/src/shared/channel-adapter-http-server.ts` and migrating `chat`, `webhook`, `voice`, and `telegram` to adapter-based route handlers.
+- H2 (near-complete): migrated `api` to `ChannelAdapter` + shared adapter harness, so all non-Discord channels now use the shared adapter/server patterns.
+- H2: moved Discord webhook ingress into `ChannelAdapter` + shared HTTP adapter harness (`channels/discord/server.ts`), completing shared adapter usage across all channel ingress flows that forward to gateway.
+- H9: removed direct Docker socket mount from admin service and routed compose control through a least-privilege `docker-proxy` sidecar in generated and embedded compose (`packages/lib/src/admin/stack-generator.ts`, `packages/lib/src/embedded/state/docker-compose.yml`).
 - H6: centralized env parsing in `packages/lib/src/shared/env-parser.ts` and reused it from `packages/lib/src/env.ts` and `packages/lib/src/admin/runtime-env.ts`.
 - H4: aligned package/channel version values to `0.4.0` in `packages/lib/package.json`, `packages/ui/package.json`, `channels/mcp/channel.ts`, and `channels/a2a/channel.ts`.
 - H11: added graceful shutdown signal handling via `packages/lib/src/shared/shutdown.ts` and integrated it across all channel servers plus gateway.
@@ -27,15 +31,13 @@ Tracks implementation progress for issues listed in `ARCHITECTURE-REVIEW-HIGH-ME
 - M6: reworked `confirm()` in `packages/lib/src/ui.ts` to use `node:readline/promises` and close the interface cleanly.
 - M13: added retry/backoff for transient assistant failures in `core/gateway/src/assistant-client.ts`.
 - M15: removed empty workspace member noise (root `package.json` no longer lists `core/assistant`).
-- M4 (partial): reduced stack-spec filesystem churn by introducing cached spec reads in `packages/lib/src/admin/stack-manager.ts` (eliminates re-read/re-parse on every `getSpec()`).
+- M4: removed hot-path sync rereads and repeated sync artifact/env reads in `packages/lib/src/admin/stack-manager.ts` via spec/artifact/runtime/secrets caching; stack operations no longer re-parse stack files on every call.
 - M7: made setup state derive/sync `accessScope` and `enabledChannels` from stack spec in `packages/lib/src/admin/setup-manager.ts` (wired in `packages/ui/src/lib/server/init.ts`).
 - M12: ensured adapter-based channels also pass through metadata sanitization by building gateway payloads via `buildChannelMessage()` in `packages/lib/src/shared/channel-adapter-server.ts`.
 
 ## Remaining issues
 
-- H1 (remaining full channel harness consolidation), H2 (partial), H9
-- H5 (remaining locations)
-- M4 (remaining async I/O conversion)
+- none
 
 ## Validation run
 
@@ -44,4 +46,8 @@ Tracks implementation progress for issues listed in `ARCHITECTURE-REVIEW-HIGH-ME
 - `bun test core/gateway/src/rate-limit.test.ts core/gateway/src/audit.test.ts core/gateway/src/assistant-client.test.ts packages/cli/test/main.test.ts`
 - `bun test packages/lib/src/admin/setup-manager.test.ts packages/lib/src/admin/stack-manager.test.ts`
 - `bun test channels/mcp/server.test.ts channels/a2a/server.test.ts packages/lib/src/shared/channel-sdk.test.ts`
+- `bun test channels/chat/server.test.ts channels/webhook/server.test.ts channels/voice/server.test.ts channels/telegram/server.test.ts`
+- `bun test channels/chat/server.test.ts channels/webhook/server.test.ts channels/voice/server.test.ts channels/telegram/server.test.ts channels/api/server.test.ts channels/mcp/server.test.ts channels/a2a/server.test.ts`
+- `bun test channels/chat/server.test.ts channels/webhook/server.test.ts channels/voice/server.test.ts channels/telegram/server.test.ts channels/api/server.test.ts channels/mcp/server.test.ts channels/a2a/server.test.ts channels/discord/server.test.ts`
+- `bun test packages/lib/src/admin/stack-generator.test.ts`
 - `bun run typecheck`
