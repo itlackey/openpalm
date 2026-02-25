@@ -39,14 +39,14 @@
     "title": "Fix contract test state mutation",
     "description": "Replace fragile in-memory save/restore of setup-state.json in setup-wizard-gate.contract.test.ts with file-based backup using mkdtempSync for crash-safe restoration.",
     "priority": "P1",
-    "status": "pending",
+    "status": "completed",
     "estimatedEffort": "1 hour",
     "planFile": ".plans/R02-fix-contract-test-state-mutation.md",
     "subtasks": [
       {
         "id": "R02.1",
         "description": "Update imports to add copyFileSync, mkdtempSync, tmpdir, and join; remove readFileSync",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -58,7 +58,7 @@
       {
         "id": "R02.2",
         "description": "Remove module-level savedState variable and add backupState/restoreState helper functions using mkdtempSync",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -70,7 +70,7 @@
       {
         "id": "R02.3",
         "description": "Replace outer beforeAll/afterAll with backupState() and restoreState() calls",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
@@ -82,7 +82,7 @@
       {
         "id": "R02.4",
         "description": "Verify contract test passes with OPENPALM_INTEGRATION=1 and state file is properly restored",
-        "status": "pending",
+        "status": "completed",
         "files": [
           {
             "path": "test/contracts/setup-wizard-gate.contract.test.ts",
