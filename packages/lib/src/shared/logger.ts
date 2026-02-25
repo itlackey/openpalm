@@ -11,6 +11,13 @@
  *   Set LOG_LEVEL=debug|info|warn|error (default: "info").
  *   DEBUG=1 is a shorthand for LOG_LEVEL=debug.
  *   Messages below the configured level are silently dropped.
+ *
+ * Log persistence:
+ *   All output goes to stdout/stderr as structured JSON. Docker captures
+ *   container output automatically via its logging driver. Use
+ *   `docker compose logs` to read persisted logs. Rotation is configured
+ *   via the `logging:` key in docker-compose.yml (json-file driver with
+ *   max-size / max-file).
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
