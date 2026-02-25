@@ -10,13 +10,15 @@
 
 OpenPalm is a Docker Compose-based platform that routes messages from various channels (chat, Discord, Telegram, etc.) through an HMAC-secured gateway to an AI assistant runtime (OpenCode). It includes an admin UI (SvelteKit), a CLI installer, a stack configuration engine, and an automation/cron system.
 
-The architecture has a solid conceptual foundation — the channel→gateway→assistant pipeline, HMAC-signed payloads, and a declarative stack spec are well-designed primitives. However, the codebase suffers from significant code duplication, configuration sprawl, version drift, incomplete abstractions, dead code, and several security concerns that undermine the quality of the implementation.
+The architecture has a solid conceptual foundation — the channel→gateway→assistant pipeline with two-phase LLM security filtering, HMAC-signed payloads, a declarative stack spec, and a lean admin hub are well-designed primitives appropriate for a v1 MVP. Several design decisions (file-based state, hub admin container, synchronous channel communication) are intentional simplicity choices documented in this review.
+
+However, the codebase suffers from significant code duplication across channels, configuration sprawl, version drift, incomplete abstractions (the `ChannelAdapter` interface), dead code, and several security concerns at trust boundaries that should be addressed before wider deployment.
 
 **Severity summary:**
-- **Critical:** 5 findings
-- **High:** 12 findings
-- **Medium:** 15 findings
-- **Low:** 10 findings
+- **Critical:** 5 findings (security & correctness)
+- **High:** 12 findings (duplication, consistency, infrastructure)
+- **Medium:** 15 findings (robustness, code quality)
+- **Low:** 10 findings (cleanup, convention)
 
 ---
 
@@ -26,7 +28,7 @@ The architecture has a solid conceptual foundation — the channel→gateway→a
 2. [High-Severity Issues](#2-high-severity-issues)
 3. [Medium-Severity Issues](#3-medium-severity-issues)
 4. [Low-Severity Issues](#4-low-severity-issues)
-5. [Architecture Anti-Patterns](#5-architecture-anti-patterns)
+5. [Architecture Decisions & Concerns](#5-architecture-decisions--concerns)
 6. [Configuration Sprawl](#6-configuration-sprawl)
 7. [Testing Assessment](#7-testing-assessment)
 8. [Recommendations](#8-recommendations)
@@ -469,48 +471,40 @@ The `compose.ts` file imports from `./compose-runner.ts`. Meanwhile, there's als
 
 ---
 
-## 5. Architecture Anti-Patterns
+## 5. Architecture Decisions & Concerns
 
-### A1. Two-Phase LLM Processing is Expensive and Fragile
+### A1. Two-Phase LLM Intake — Intentional but Has Robustness Concerns
 
 The gateway makes **two sequential LLM calls** for every inbound message:
-1. An "intake" call to validate/summarize the user message
+1. An "intake" call to validate/filter the user message (security gate)
 2. A "core" call to generate the actual response
 
-This doubles latency and LLM cost for every request. The intake validation uses prompt engineering to make the LLM return JSON, which is inherently unreliable (the `extractJsonObject` function exists specifically to handle LLM responses that aren't clean JSON).
+**Note:** This is an intentional security architecture decision — the intake phase provides LLM-based content filtering before messages reach the core runtime. The concern is not the two-phase design itself, but the robustness of parsing LLM output as structured JSON. The `extractJsonObject()` function (which scans for `{` and `}` in raw LLM output) is a fragile heuristic. Consider requesting structured/JSON output from the LLM runtime, or adding a fallback policy (e.g., reject if JSON parsing fails) rather than silently propagating parse errors.
 
 ### A2. Tight Coupling Between Docker Compose and Business Logic
 
-The `StackManager`, `stack-generator`, `compose-runner`, and `core-services` modules generate raw Docker Compose YAML files, Caddy JSON configs, and env files as strings. The business logic (channel management, access control) is directly coupled to infrastructure concerns (Docker networking, port bindings, volume mounts).
+The `StackManager`, `stack-generator`, `compose-runner`, and `core-services` modules generate raw Docker Compose YAML files, Caddy JSON configs, and env files as strings. The business logic (channel management, access control) is directly coupled to infrastructure concerns (Docker networking, port bindings, volume mounts). For a v1 MVP this is reasonable — but as the stack spec grows more complex, consider separating the "what" (desired state) from the "how" (compose/caddy generation) behind a renderer interface.
 
-### A3. No Database — Everything is Files
+### A3. File-Based State — Intentional for MVP, Watch for Scaling Pain
 
-All state is stored as flat files:
-- Stack spec: `openpalm.yaml` (YAML)
-- Setup state: `setup-state.json` (JSON)
-- Secrets: `secrets.env` (dotenv)
-- Nonce cache: `nonce-cache.json` (JSON)
-- Audit log: `audit.log` (JSONL)
-- Automation history: JSONL files
-- Cron schedules: flat files in directories
+All state is stored as flat files (YAML, JSON, dotenv, JSONL). PostgreSQL is present in the stack for OpenMemory's dependencies (Qdrant, vector storage) and may be used by OpenPalm core services in the future.
 
-Despite having PostgreSQL in the stack (for OpenMemory), none of the OpenPalm core services use it. This leads to file locking issues, no transaction semantics, and O(n) lookups for everything.
+**Note:** For a v1 MVP, file-based state avoids adding migration/schema complexity and keeps the system simple. The main concerns to watch for as usage grows are:
+- **Concurrent access:** `StackManager` does synchronous read-modify-write without file locking. Two concurrent admin API requests could clobber each other's writes.
+- **Nonce cache I/O:** The nonce cache writes to disk on every request (see M11), which will bottleneck under load.
+- **No atomic multi-file updates:** Rendering artifacts writes 10+ files sequentially — a crash mid-render leaves inconsistent state.
 
-### A4. Admin Container is a "God Container"
+### A4. Admin as Hub Container — Intentional, but Docker Socket Exposure Deserves Attention
 
-The admin container:
-- Runs the SvelteKit UI
-- Manages Docker containers via mounted socket
-- Reads/writes stack specs and env files
-- Runs cron jobs
-- Manages secrets
-- Handles setup wizard state
+The admin container is intentionally designed as the central management hub — running the SvelteKit UI, managing Docker containers, handling setup wizard state, secrets, and cron automation. This is a deliberate lean architecture choice for v1.
 
-This violates the single responsibility principle. It's essentially a monolith deployed inside a "microservice" architecture.
+**Note:** The main concern is not the hub pattern itself, but the Docker socket mount (`/var/run/docker.sock`) which grants the container root-equivalent access to the host. Consider documenting this security trade-off prominently for operators, and ensuring the admin API authentication is airtight (see C2, C3) since any admin API compromise transitively becomes host compromise.
 
-### A5. Channel↔Gateway Communication Pattern is Synchronous Request-Response
+### A5. Synchronous Channel↔Gateway Communication
 
-Every channel sends a message to the gateway and **blocks waiting for the LLM to respond**. For platforms like Discord (which expects responses within 3 seconds), this is handled by deferring — but the underlying pattern means every channel is blocked on a 15-second timeout for the LLM. No queueing, no async processing, no webhooks back to channels.
+Every channel sends a message to the gateway and **blocks waiting for the LLM to respond**. For platforms like Discord (which expects responses within 3 seconds), this is handled by deferring — but the underlying pattern means every channel is blocked on a 15-second timeout for the LLM.
+
+**Note:** For a v1 MVP, synchronous request-response keeps the architecture simple. The Discord channel already handles this correctly with deferred responses. As channels and throughput grow, consider whether an async pattern (webhook callbacks) would be warranted.
 
 ---
 
@@ -577,31 +571,32 @@ The system uses 40+ environment variables across containers, with multiple namin
 
 ## 8. Recommendations
 
-### Immediate (P0)
+*Prioritized for a v1 MVP — focus on security fixes, deduplication, and reliability. Avoid over-engineering.*
+
+### Immediate (P0) — Security & Correctness
 1. **Fix `isLocalRequest()`** — default to deny when `x-forwarded-for` is absent, or use the connection's remote address.
-2. **Add real request body size limiting** — use Bun's built-in body size limits or read the body with a size-capped stream.
-3. **Extract channel duplication into a shared harness** — complete the `ChannelAdapter` migration for all channels.
-4. **Synchronize versions** — use a single version source (root `package.json`) and derive all others.
+2. **Add real request body size limiting** — use Bun's built-in body size limits or read the body with a size-capped stream, rather than trusting `content-length`.
+3. **Synchronize versions** — use a single version source (root `package.json`) and derive all others. The 0.3.0/0.3.4/0.4.0 mismatch is confusing.
+4. **Harden intake JSON parsing** — add a fallback policy (reject on parse failure) instead of the fragile `extractJsonObject` heuristic.
 
-### Short-term (P1)
-5. **Consolidate env file parsers** into a single implementation in `@openpalm/lib`.
-6. **Replace module-level singletons** (nonce cache, rate limiter) with dependency injection.
-7. **Add graceful shutdown** — handle SIGTERM, drain connections, flush audit log.
-8. **Remove dead code** — `checkPort80()`, `resolveInContainerSocketPath()` dead branch, unused `signPayload` re-exports.
-9. **Implement request-level body parsing limits** instead of trusting `content-length`.
+### Short-term (P1) — Code Quality & Maintainability
+5. **Extract channel duplication into a shared harness** — complete the `ChannelAdapter` migration for chat, webhook, voice, and telegram. This is the single highest-leverage deduplication opportunity (~200 lines of copy-paste).
+6. **Consolidate env file parsers** into a single implementation in `@openpalm/lib`. Three parsers with different behavior is a bug factory.
+7. **Remove dead code** — `checkPort80()`, `resolveInContainerSocketPath()` dead branch, unused `signPayload` re-exports from channels.
+8. **Replace module-level singletons** (nonce cache, rate limiter) with constructor injection to improve testability.
+9. **Add graceful shutdown** — handle SIGTERM, drain connections, flush nonce cache and audit log.
 
-### Medium-term (P2)
-10. **Consider async queuing** for the channel→gateway→assistant pipeline to handle LLM latency.
-11. **Extract infrastructure generation** (Caddy config, Docker Compose) from business logic.
-12. **Consolidate `SetupState` and `StackSpec`** into a single source of truth.
-13. **Add sliding window or token bucket** rate limiting.
-14. **Make `StackManager` cache the parsed spec** instead of re-reading on every call.
+### Medium-term (P2) — Robustness
+10. **Add file locking to `StackManager` writes** — concurrent admin API requests can currently clobber each other's config changes.
+11. **Consolidate `SetupState` and `StackSpec`** into a single source of truth for access scope and channel state.
+12. **Batch nonce cache persistence** — write to disk on a timer (e.g., every 5s) instead of on every request.
+13. **Make `StackManager` cache the parsed spec** instead of re-reading and re-parsing YAML on every call.
+14. **Add OpenCode client retry logic** — retry transient failures (503, timeouts) with backoff for the assistant client.
 
-### Long-term (P3)
-15. **Evaluate whether the two-phase LLM intake is worth the cost** — consider rule-based validation as an alternative.
-16. **Consider using PostgreSQL** for state management instead of flat files.
-17. **Separate admin API from admin UI** into distinct services.
-18. **Add structured API documentation** (OpenAPI/Swagger) for the admin API.
+### Post-MVP (P3) — Future Consideration
+15. **Consider using PostgreSQL** for OpenPalm state management as complexity grows beyond what flat files handle well.
+16. **Add structured API documentation** (OpenAPI/Swagger) for the admin API.
+17. **Extract infrastructure generation** behind a renderer interface as the stack spec grows more complex.
 
 ---
 
