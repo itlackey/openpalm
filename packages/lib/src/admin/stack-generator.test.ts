@@ -20,7 +20,7 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("user: ${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}");
     expect(out.composeFile).toContain("gateway:");
     expect(out.composeFile).toContain("${OPENPALM_DATA_HOME}:/data");
-    expect(out.composeFile).toContain("channel-discord:");
+    expect(out.composeFile).toContain("channel-chat:");
     expect(out.composeFile).toContain("8181:8181");
   });
 
@@ -76,18 +76,18 @@ describe("stack generator", () => {
 
   it("skips disabled channels in generated artifacts", () => {
     const spec = createDefaultStackSpec();
-    spec.channels.discord.enabled = false;
+    spec.channels.chat.enabled = false;
     const out = generateStackArtifacts(spec, {});
     const caddyConfig = JSON.parse(out.caddyJson);
-    // No /channels/discord* route should exist
+    // No /channels/chat* route should exist
     const routes = caddyConfig.apps.http.servers.main.routes;
-    const discordRoute = routes.find((r: Record<string, unknown>) =>
+    const chatRoute = routes.find((r: Record<string, unknown>) =>
       Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).some((p: string) => p.includes("discord"))
+        Array.isArray(m.path) && (m.path as string[]).some((p: string) => p.includes("/channels/chat"))
       )
     );
-    expect(discordRoute).toBeUndefined();
-    expect(out.composeFile).not.toContain("channel-discord:");
+    expect(chatRoute).toBeUndefined();
+    expect(out.composeFile).not.toContain("channel-chat:");
   });
 
   it("generates channel env artifacts from direct secret references", () => {
@@ -125,10 +125,16 @@ describe("stack generator", () => {
   it("binds host exposure channels to loopback while lan/public bind on all interfaces", () => {
     const spec = createDefaultStackSpec();
     spec.channels.chat.exposure = "host";
-    spec.channels.discord.exposure = "lan";
+    spec.channels["lan-channel"] = {
+      enabled: true,
+      exposure: "lan",
+      image: "lan-channel:latest",
+      containerPort: 8500,
+      config: {},
+    };
     const out = generateStackArtifacts(spec, {});
     expect(out.composeFile).toContain("127.0.0.1:8181:8181");
-    expect(out.composeFile).toContain("8184:8184");
+    expect(out.composeFile).toContain("8500:8500");
   });
 
   it("fails when a channel secret reference cannot be resolved", () => {
@@ -391,9 +397,6 @@ describe("stack generator", () => {
 
   it("generates correct compose services for multiple custom channels with diverse configs", () => {
     const spec = createDefaultStackSpec();
-    spec.channels.discord.enabled = false;
-    spec.channels.voice.enabled = false;
-    spec.channels.telegram.enabled = false;
 
     spec.channels["slack"] = {
       enabled: true,
@@ -432,7 +435,6 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("9201:9200");
     expect(out.composeFile).toContain("8500:8500");
     expect(out.composeFile).toContain("channel-chat:");
-    expect(out.composeFile).not.toContain("channel-discord:");
     expect(out.composeFile).toContain("depends_on:\n      gateway:\n        condition: service_healthy");
     expect(out.composeFile).toContain("curl -sf http://localhost:8500/health || exit 1");
     expect(out.composeFile).toContain("curl -sf http://localhost:3000/readyz || exit 1");
@@ -440,9 +442,6 @@ describe("stack generator", () => {
 
   it("generates correct Caddy JSON routing for channels with different routing strategies", () => {
     const spec = createDefaultStackSpec();
-    spec.channels.discord.enabled = false;
-    spec.channels.voice.enabled = false;
-    spec.channels.telegram.enabled = false;
 
     spec.channels["slack"] = {
       enabled: true,
@@ -559,7 +558,6 @@ describe("stack generator", () => {
     expect(out.systemEnv).toContain("OPENPALM_ACCESS_SCOPE=lan");
     expect(out.systemEnv).toContain("OPENPALM_ENABLED_CHANNELS=");
     expect(out.systemEnv).toContain("channel-chat");
-    expect(out.systemEnv).toContain("channel-discord");
   });
 
   it("systemEnv reflects accessScope from spec", () => {
@@ -571,13 +569,16 @@ describe("stack generator", () => {
 
   it("systemEnv OPENPALM_ENABLED_CHANNELS excludes disabled channels", () => {
     const spec = createDefaultStackSpec();
-    spec.channels.discord.enabled = false;
-    spec.channels.voice.enabled = false;
+    spec.channels["custom-svc"] = {
+      enabled: false,
+      exposure: "lan",
+      image: "custom:latest",
+      containerPort: 9000,
+      config: {},
+    };
     const out = generateStackArtifacts(spec, {});
     expect(out.systemEnv).toContain("channel-chat");
-    expect(out.systemEnv).toContain("channel-telegram");
-    expect(out.systemEnv).not.toContain("channel-discord");
-    expect(out.systemEnv).not.toContain("channel-voice");
+    expect(out.systemEnv).not.toContain("channel-custom-svc");
   });
 
   it("systemEnv is empty-channels string when all channels disabled", () => {
@@ -813,9 +814,6 @@ describe("stack generator", () => {
 
   it("renders compose YAML with expected service wiring for core, channel, and custom service", () => {
     const spec = createDefaultStackSpec();
-    spec.channels.discord.enabled = false;
-    spec.channels.voice.enabled = false;
-    spec.channels.telegram.enabled = false;
     spec.channels.chat.exposure = "host";
     spec.services["jobs-worker"] = {
       enabled: true,
@@ -904,9 +902,6 @@ describe("stack generator", () => {
   it("renders domain-based channel routes on tls_domains server and excludes them from main routes", () => {
     const spec = createDefaultStackSpec();
     spec.channels.chat.enabled = false;
-    spec.channels.discord.enabled = false;
-    spec.channels.voice.enabled = false;
-    spec.channels.telegram.enabled = false;
 
     spec.channels["api-gateway"] = {
       enabled: true,

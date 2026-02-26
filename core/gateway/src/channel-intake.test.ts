@@ -4,17 +4,17 @@ import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 describe("channel intake", () => {
   it("builds an intake command with strict json instructions", () => {
     const command = buildIntakeCommand({
-      userId: "discord:1",
-      channel: "discord",
+      userId: "chat:1",
+      channel: "chat",
       text: "hello",
-      metadata: { guildId: "g1" },
+      metadata: {},
       nonce: "n1",
       timestamp: Date.now(),
     });
 
     expect(command).toContain("strict JSON");
     expect(command).toContain('"valid": boolean');
-    expect(command).toContain('channel: "discord"');
+    expect(command).toContain('channel: "chat"');
     expect(command).toContain("<user_message>");
     expect(command).toContain("</user_message>");
     expect(command).toContain("hello");

@@ -25,13 +25,6 @@ on:
           - gateway
           - admin
           - channel-chat
-          - channel-discord
-          - channel-voice
-          - channel-telegram
-          - channel-api
-          - channel-a2a
-          - channel-mcp
-          - channel-webhook
           - cli
       bump:
         description: "Version bump type"

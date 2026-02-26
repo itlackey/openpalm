@@ -47,8 +47,7 @@ On the host, config lives at `OPENPALM_CONFIG_HOME` (default: `~/.config/openpal
 ├── config/          ← OPENPALM_CONFIG_HOME
 │   ├── caddy/caddy.json
 │   ├── core/assistant/opencode.jsonc
-│   ├── channels/{chat,discord,voice,telegram}.env
-│   ├── cron/        ← Automation definitions and cron payloads
+│   ├── channels/chat.env
 │   ├── ssh/authorized_keys
 │   ├── secrets.env
 │   └── user.env
@@ -87,7 +86,7 @@ bun run typecheck
 bun test
 ```
 
-Workspaces: `gateway`, `admin`, `channels/chat`, `channels/discord`, `channels/voice`, `channels/telegram`, `channels/webhook`, `packages/lib`, `packages/cli`, `packages/ui`.
+Workspaces: `gateway`, `admin`, `channels/chat`, `packages/lib`, `packages/cli`, `packages/ui`.
 
 ## Before pushing
 
@@ -97,7 +96,7 @@ After all local tests pass, verify the GitHub Actions workflows will succeed:
 bun run test:workflows
 ```
 
-This runs all 7 CI workflows locally using [act](https://github.com/nektos/act), including Docker image builds, CLI bundling, registry validation, and release workflow checks. You can also test individual workflows:
+This runs all CI workflows locally using [act](https://github.com/nektos/act), including Docker image builds, CLI bundling, and release workflow checks. You can also test individual workflows:
 
 ```bash
 ./dev/test-workflows.sh --list              # List available workflows

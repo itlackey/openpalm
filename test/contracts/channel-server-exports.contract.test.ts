@@ -3,13 +3,6 @@ import { readFileSync } from "node:fs";
 
 const CHANNEL_SERVERS = [
   "channels/chat/server.ts",
-  "channels/voice/server.ts",
-  "channels/telegram/server.ts",
-  "channels/discord/server.ts",
-  "channels/webhook/server.ts",
-  "channels/api/server.ts",
-  "channels/mcp/server.ts",
-  "channels/a2a/server.ts",
 ];
 
 describe("channel server export contract", () => {

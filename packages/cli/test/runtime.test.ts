@@ -39,10 +39,6 @@ describe("runtime", () => {
       expect(path).toContain("podman.sock");
     });
 
-    it("returns orbstack socket path for orbstack", () => {
-      const path = resolveSocketPath("orbstack", "linux");
-      expect(path).toContain("docker.sock");
-    });
   });
 
   describe("resolveComposeBin", () => {
@@ -55,17 +51,12 @@ describe("runtime", () => {
       const result = resolveComposeBin("podman");
       expect(result).toEqual({ bin: "podman", subcommand: "compose" });
     });
-
-    it("returns docker compose for orbstack platform", () => {
-      const result = resolveComposeBin("orbstack");
-      expect(result).toEqual({ bin: "docker", subcommand: "compose" });
-    });
   });
 
   describe("detectRuntime", () => {
     it("returns one of the valid container platforms or null", async () => {
       const result = await detectRuntime("linux");
-      const validValues = ["docker", "podman", "orbstack", null];
+      const validValues = ["docker", "podman", null];
       expect(validValues).toContain(result);
     });
   });

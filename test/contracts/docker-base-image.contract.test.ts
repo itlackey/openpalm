@@ -6,13 +6,6 @@ const DOCKERFILES = [
   "core/gateway/Dockerfile",
   "core/assistant/Dockerfile",
   "channels/chat/Dockerfile",
-  "channels/voice/Dockerfile",
-  "channels/telegram/Dockerfile",
-  "channels/discord/Dockerfile",
-  "channels/webhook/Dockerfile",
-  "channels/api/Dockerfile",
-  "channels/mcp/Dockerfile",
-  "channels/a2a/Dockerfile",
 ];
 
 describe("docker base image contract", () => {

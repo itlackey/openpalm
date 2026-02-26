@@ -63,7 +63,7 @@ describe("paths", () => {
         expect(configStats.isDirectory()).toBe(true);
 
         // Verify state subdirectories
-        const stateDirs = ["admin", "gateway", "postgres", "qdrant", "openmemory", "openmemory-ui", "assistant", "automations", "caddy/config", "caddy/data", "logs", "tmp"];
+        const stateDirs = ["admin", "gateway", "postgres", "qdrant", "openmemory", "openmemory-ui", "assistant", "caddy/config", "caddy/data", "logs", "tmp"];
         for (const dir of stateDirs) {
           const dirPath = join(xdg.state, dir);
           const stats = await stat(dirPath);

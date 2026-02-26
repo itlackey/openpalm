@@ -12,7 +12,6 @@ describe("stack spec", () => {
     const spec = ensureStackSpec(path);
     expect(spec.version).toBe(StackSpecVersion);
     expect(spec.channels.chat.enabled).toBe(true);
-    expect(Array.isArray(spec.automations)).toBe(true);
     expect(readFileSync(path, "utf8")).toContain("version:");
   });
 
@@ -112,10 +111,10 @@ describe("stack spec", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
     const path = join(dir, "openpalm.yaml");
     const spec = createDefaultStackSpec();
-    spec.channels.discord.exposure = "host";
+    spec.channels.chat.exposure = "host";
     writeStackSpec(path, spec);
     const saved = ensureStackSpec(path);
-    expect(saved.channels.discord.exposure).toBe("host");
+    expect(saved.channels.chat.exposure).toBe("host");
   });
 
   it("reads YAML stack spec from disk", () => {

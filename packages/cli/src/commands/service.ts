@@ -1,7 +1,7 @@
 import { loadComposeConfig } from "@openpalm/lib/config.ts";
 import { composePull, composeUp } from "@openpalm/lib/compose.ts";
 import { error, info } from "@openpalm/lib/ui.ts";
-import { executeAdminCommand, adminEnvContext } from "./admin.ts";
+import { getAdminClient, adminEnvContext } from "./admin.ts";
 import { start } from "./start.ts";
 import { stop } from "./stop.ts";
 import { restart } from "./restart.ts";
@@ -62,7 +62,8 @@ export async function service(subcommand: string, args: string[]): Promise<void>
   }
 
   if (subcommand === "status") {
-    const result = await executeAdminCommand("service.status");
+    const client = await getAdminClient();
+    const result = await client.listContainers();
     info(JSON.stringify(result, null, 2));
     return;
   }
@@ -72,22 +73,26 @@ export async function service(subcommand: string, args: string[]): Promise<void>
     process.exit(1);
   }
   if (subcommand === "up") {
-    const result = await executeAdminCommand("service.up", { service: serviceName });
+    const client = await getAdminClient();
+    const result = await client.containerUp(serviceName);
     info(JSON.stringify(result, null, 2));
     return;
   }
   if (subcommand === "stop") {
-    const result = await executeAdminCommand("service.stop", { service: serviceName });
+    const client = await getAdminClient();
+    const result = await client.containerStop(serviceName);
     info(JSON.stringify(result, null, 2));
     return;
   }
   if (subcommand === "restart") {
-    const result = await executeAdminCommand("service.restart", { service: serviceName });
+    const client = await getAdminClient();
+    const result = await client.containerRestart(serviceName);
     info(JSON.stringify(result, null, 2));
     return;
   }
   if (subcommand === "update") {
-    const result = await executeAdminCommand("service.update", { service: serviceName });
+    const client = await getAdminClient();
+    const result = await client.containerUpdate(serviceName);
     info(JSON.stringify(result, null, 2));
     return;
   }
@@ -100,10 +105,8 @@ export async function service(subcommand: string, args: string[]): Promise<void>
         throw new Error("The --tail parameter must be a positive integer");
       }
     }
-    const result = await executeAdminCommand("service.logs", {
-      service: serviceName,
-      ...(tail !== undefined ? { tail } : {}),
-    });
+    const client = await getAdminClient();
+    const result = await client.serviceLogs(serviceName, tail);
     info(JSON.stringify(result, null, 2));
     return;
   }

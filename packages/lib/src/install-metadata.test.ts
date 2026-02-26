@@ -110,14 +110,14 @@ describe("install-metadata", () => {
 
     const meta2 = createInstallMetadata({
       mode: "reinstall",
-      runtime: "orbstack",
+      runtime: "podman",
       port: 8080,
     });
     writeInstallMetadata(tmp, meta2);
 
     const read = readInstallMetadata(tmp);
     expect(read!.mode).toBe("reinstall");
-    expect(read!.runtime).toBe("orbstack");
+    expect(read!.runtime).toBe("podman");
     expect(read!.port).toBe(8080);
   });
 

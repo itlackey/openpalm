@@ -2,7 +2,7 @@
 
 <p>
   <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
-  Talk to it from Discord, Telegram, web chat, or voice. It remembers what matters and forgets what it should.
+  Talk to it from web chat. It remembers what matters and forgets what it should.
 </p>
 
 ---
@@ -11,10 +11,10 @@
 
 Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your conversations, your memory, your rules — nothing leaves your network unless you want it to.
 
-- **One command to install** — works with Docker, Podman, or OrbStack on Linux, macOS, or Windows.
-- **Connect your channels** — Discord, Telegram, web chat, and voice are built in. Add more without coding.
+- **One command to install** — works with Docker or Podman on Linux, macOS, or Windows.
+- **Web chat built in** — talk to your assistant from a browser.
 - **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
-- **Admin dashboard** — manage everything from a browser: services, extensions, agent config, and automations.
+- **Admin dashboard** — manage everything from a browser: services, extensions, and agent config.
 - **Built for safety** — defense-in-depth security protects the assistant and your data.
 
 ## Prerequisites
@@ -24,7 +24,7 @@ You need **one thing** installed before starting: a container runtime. If you ha
 | Your computer | What to install | Link |
 |---|---|---|
 | **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
-| **Mac** | Docker Desktop _or_ OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
+| **Mac** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com \| sh` |
 
 After installing, **open the app and wait for it to finish starting** (you'll see a green/running indicator). Then run the installer below.
@@ -55,9 +55,9 @@ No config files to edit. See the [CLI documentation](docs/cli.md) for all availa
 
 ## What you get
 
-### Talk from anywhere
+### Talk from the browser
 
-Connect Discord, Telegram, a web chat widget, or a voice interface. Each channel runs as a lightweight adapter — your assistant's core logic stays the same regardless of where the message comes from. MCP and A2A channels let AI clients and other agents interact with your assistant programmatically.
+Use the built-in web chat widget to talk to your assistant. The channel runs as a lightweight adapter — your assistant's core logic stays the same regardless of where the message comes from.
 
 ### It remembers
 
@@ -67,10 +67,9 @@ OpenPalm includes a built-in memory system (powered by OpenMemory). Your assista
 
 A web-based control panel lets you:
 - Start, stop, and restart services
-- Browse and install extensions from the community registry or npm
+- Browse and install extensions from npm
 - Edit agent configuration with validation
 - Toggle channel access between private and public
-- Create and manage automations
 - Monitor system health
 
 All admin operations require an admin token (`x-admin-token` header). The admin panel is only accessible from your local network.
@@ -85,11 +84,9 @@ The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`)
 
 Services are internal add-on containers that run on the private container network and are accessible only to the assistant and admin — never from the internet or your local network. Use them to add backend capabilities your assistant can call as a tool: search APIs, code execution sandboxes, custom databases, and so on. See [Admin Concepts](core/admin/docs/admin-concepts.md#services) for details.
 
-### Automations
+### System maintenance
 
-Automations let your assistant act on a schedule -- daily briefings, weekly reports, periodic checks -- without anyone sending a message. Create them with standard cron expressions, toggle them on and off, or trigger them manually from the admin UI.
-
-OpenPalm also ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics.
+OpenPalm ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics.
 
 ## OpenPalm vs OpenClaw
 
@@ -103,7 +100,7 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | **Extensions** | Admin-authenticated install | Auto-discovery from registry |
 | **Admin** | Web dashboard with token auth (LAN only) | Chat commands in messaging channels |
 | **Memory** | Explicit-save-only with secret detection | Session-based with compression |
-| **Deployment** | Single compose command (docker/podman/orbstack) | Daemon install with multiple modes |
+| **Deployment** | Single compose command (docker/podman) | Daemon install with multiple modes |
 
 For more context: [data exfiltration and prompt injection vulnerabilities found in OpenClaw's skill ecosystem](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/).
 
@@ -114,7 +111,7 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | [CLI](docs/cli.md) | Install methods, commands, flags, and building from source |
 | [User Concepts](docs/concepts.md) | What OpenPalm is and how end users interact with it |
 | [Admin Guide](core/admin/docs/admin-guide.md) | Installation, admin console, authentication |
-| [Admin Concepts](core/admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
+| [Admin Concepts](core/admin/docs/admin-concepts.md) | Extensions, secrets, channels, gateway |
 | [Security Guide](docs/security.md) | Security controls by layer and why they exist |
 | [Host System Reference](docs/host-system-reference.md) | Host paths, environment variables, system requirements |
 | [Maintenance](docs/maintenance.md) | Backup, restore, upgrade, and rollback procedures |
@@ -130,13 +127,6 @@ For more context: [data exfiltration and prompt injection vulnerabilities found 
 | Gateway service | [core/gateway/README.md](core/gateway/README.md) |
 | Assistant service | [core/assistant/README.md](core/assistant/README.md) |
 | Chat channel | [channels/chat/README.md](channels/chat/README.md) |
-| Discord channel | [channels/discord/README.md](channels/discord/README.md) |
-| Voice channel | [channels/voice/README.md](channels/voice/README.md) |
-| Telegram channel | [channels/telegram/README.md](channels/telegram/README.md) |
-| Webhook channel | [channels/webhook/README.md](channels/webhook/README.md) |
-| API channel | [channels/api/README.md](channels/api/README.md) |
-| MCP channel | [channels/mcp/README.md](channels/mcp/README.md) |
-| A2A channel | [channels/a2a/README.md](channels/a2a/README.md) |
 
 ## Contributing
 

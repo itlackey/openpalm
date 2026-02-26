@@ -5,7 +5,7 @@ This package contains the OpenPalm Admin web application (SvelteKit + TypeScript
 ## What this UI does
 - Drives setup and first-run workflows.
 - Provides authenticated admin controls for configuration and operations.
-- Calls Admin API endpoints for secrets, automations, channels, and stack lifecycle actions.
+- Calls Admin API endpoints for secrets, channels, and stack lifecycle actions.
 - Provides a three-tab stack configuration workflow:
   - **Configure** for enabled containers
   - **Add** for searchable template discovery and instance creation

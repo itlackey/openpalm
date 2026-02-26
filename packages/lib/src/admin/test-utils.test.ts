@@ -10,7 +10,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resetServerState, createTestDirLayout } from "./test-utils.ts";
-import { DEFAULT_STATE } from "./setup-manager.ts";
 
 function withTempDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "openpalm-test-utils-"));
@@ -22,36 +21,6 @@ function withTempDir(fn: (dir: string) => void): void {
 }
 
 describe("resetServerState", () => {
-  it("writes a correct first-boot setup-state.json", () => {
-    withTempDir((dir) => {
-      // Populate with a completed state
-      const dataAdmin = join(dir, "data", "admin");
-      mkdirSync(dataAdmin, { recursive: true });
-      writeFileSync(
-        join(dataAdmin, "setup-state.json"),
-        JSON.stringify({ completed: true, steps: { welcome: true } }),
-        "utf8"
-      );
-
-      resetServerState(dir);
-
-      const content = readFileSync(
-        join(dataAdmin, "setup-state.json"),
-        "utf8"
-      );
-      const state = JSON.parse(content);
-      expect(state.completed).toBe(false);
-      expect(state.steps.welcome).toBe(false);
-      expect(state.steps.profile).toBe(false);
-      expect(state.steps.channels).toBe(false);
-      expect(state.steps.security).toBe(false);
-      expect(state.steps.healthCheck).toBe(false);
-      expect(state.steps.serviceInstances).toBe(false);
-      expect(state.accessScope).toBe("host");
-      expect(state.enabledChannels).toEqual([]);
-    });
-  });
-
   it("removes generated state artifacts", () => {
     withTempDir((dir) => {
       const stateDir = join(dir, "state");
@@ -107,10 +76,10 @@ describe("resetServerState", () => {
   it("removes dynamically generated channel .env files", () => {
     withTempDir((dir) => {
       const stateDir = join(dir, "state");
-      mkdirSync(join(stateDir, "channel-discord"), { recursive: true });
+      mkdirSync(join(stateDir, "channel-chat"), { recursive: true });
       mkdirSync(join(stateDir, "service-custom"), { recursive: true });
       writeFileSync(
-        join(stateDir, "channel-discord", ".env"),
+        join(stateDir, "channel-chat", ".env"),
         "TOKEN=abc",
         "utf8"
       );
@@ -123,12 +92,12 @@ describe("resetServerState", () => {
 
       resetServerState(dir);
 
-      expect(existsSync(join(stateDir, "channel-discord", ".env"))).toBe(
+      expect(existsSync(join(stateDir, "channel-chat", ".env"))).toBe(
         false
       );
       expect(existsSync(join(stateDir, "service-custom", ".env"))).toBe(false);
       // Directories preserved
-      expect(existsSync(join(stateDir, "channel-discord"))).toBe(true);
+      expect(existsSync(join(stateDir, "channel-chat"))).toBe(true);
       expect(existsSync(join(stateDir, "service-custom"))).toBe(true);
     });
   });
@@ -156,31 +125,20 @@ describe("resetServerState", () => {
       mkdirSync(join(dir, "config"), { recursive: true });
       resetServerState(dir);
       resetServerState(dir); // second call should not throw
-
-      const content = readFileSync(
-        join(dir, "data", "admin", "setup-state.json"),
-        "utf8"
-      );
-      const state = JSON.parse(content);
-      expect(state.completed).toBe(false);
     });
   });
 
   it("works on a bare empty directory", () => {
     withTempDir((dir) => {
-      // No subdirectories at all
+      // No subdirectories at all — should not throw
       resetServerState(dir);
-
-      const statePath = join(dir, "data", "admin", "setup-state.json");
-      expect(existsSync(statePath)).toBe(true);
-      const state = JSON.parse(readFileSync(statePath, "utf8"));
-      expect(state.completed).toBe(false);
     });
   });
 
   it("supports custom layout overrides", () => {
     withTempDir((dir) => {
       mkdirSync(join(dir, ".dev", "config"), { recursive: true });
+      mkdirSync(join(dir, ".dev", "state"), { recursive: true });
 
       resetServerState(dir, {
         dataAdmin: ".dev/data/admin",
@@ -188,10 +146,8 @@ describe("resetServerState", () => {
         config: ".dev/config",
       });
 
-      const statePath = join(dir, ".dev", "data", "admin", "setup-state.json");
-      expect(existsSync(statePath)).toBe(true);
-      const state = JSON.parse(readFileSync(statePath, "utf8"));
-      expect(state.completed).toBe(false);
+      // Config artifacts should be removed
+      expect(existsSync(join(dir, ".dev", "config", "openpalm.yaml"))).toBe(false);
     });
   });
 });

@@ -2,17 +2,12 @@ name: Publish Docker images
 
 # Releases are controlled via version tags:
 #   v*                    → platform release  (all images)
-#   core/assistant/v*      → single component release
+#   assistant/v*          → single component release
 #   gateway/v*            → single component release
 #   admin/v*              → single component release
 #   channel-chat/v*       → single component release
-#   channel-discord/v*    → single component release
-#   channel-voice/v*      → single component release
-#   channel-telegram/v*   → single component release
-#   channel-api/v*        → single component release
 #
 # Manual dispatch accepts a version string and optional component filter.
-# Registry changes (registry/*.json) NEVER trigger this workflow.
 
 on:
   push:
@@ -22,13 +17,6 @@ on:
       - "gateway/v*"
       - "admin/v*"
       - "channel-chat/v*"
-      - "channel-discord/v*"
-      - "channel-voice/v*"
-      - "channel-telegram/v*"
-      - "channel-api/v*"
-      - "channel-a2a/v*"
-      - "channel-mcp/v*"
-      - "channel-webhook/v*"
 
   workflow_dispatch:
     inputs:
@@ -47,13 +35,6 @@ on:
           - gateway
           - admin
           - channel-chat
-          - channel-discord
-          - channel-voice
-          - channel-telegram
-          - channel-api
-          - channel-a2a
-          - channel-mcp
-          - channel-webhook
 
 concurrency:
   group: publish-images-${{ github.ref }}
@@ -111,14 +92,7 @@ jobs:
             {"image":"assistant","context":"./core/assistant","file":"./core/assistant/Dockerfile"},
             {"image":"gateway","context":".","file":"./core/gateway/Dockerfile"},
             {"image":"admin","context":".","file":"./core/admin/Dockerfile"},
-            {"image":"channel-chat","context":".","file":"./channels/chat/Dockerfile"},
-            {"image":"channel-discord","context":".","file":"./channels/discord/Dockerfile"},
-            {"image":"channel-voice","context":".","file":"./channels/voice/Dockerfile"},
-            {"image":"channel-telegram","context":".","file":"./channels/telegram/Dockerfile"},
-            {"image":"channel-api","context":".","file":"./channels/api/Dockerfile"},
-            {"image":"channel-a2a","context":".","file":"./channels/a2a/Dockerfile"},
-            {"image":"channel-mcp","context":".","file":"./channels/mcp/Dockerfile"},
-            {"image":"channel-webhook","context":".","file":"./channels/webhook/Dockerfile"}
+            {"image":"channel-chat","context":".","file":"./channels/chat/Dockerfile"}
           ]'
 
           if [ "${COMPONENT}" = "all" ]; then

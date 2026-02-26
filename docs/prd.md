@@ -3,30 +3,28 @@
 ## 1) Document Control
 
 - **Product:** OpenPalm
-- **Version:** 1.0 (living PRD)
+- **Version:** MVP (living PRD)
 - **Audience:** Product, engineering, design, DevOps, QA, docs
 - **Primary objective:** Define complete functional and non-functional requirements for OpenPalm with emphasis on:
   1. **Ease of use**
   2. **Reliable installation and operations**
   3. **Extensibility** through channels, services, and extensions
-  4. **Self-healing / self-maintaining** behavior through internal automations
 
 ---
 
 ## 2) Product Vision
 
-OpenPalm is a local-first, container-orchestrated AI assistant platform that lets users install once, configure through a guided setup wizard, and operate a secure multi-channel assistant via a centralized admin control plane. OpenPalm should remain a thin wrapper around generated Docker Compose and Caddy artifacts, while keeping operational complexity hidden from end users.
+OpenPalm is a local-first, container-orchestrated AI assistant platform that lets users install once, configure via CLI and admin API, and operate a secure assistant via a centralized admin control plane. OpenPalm should remain a thin wrapper around generated Docker Compose and Caddy artifacts, while keeping operational complexity hidden from end users.
 
 The v1 MVP architecture is intentionally lean and lightweight: prioritize a small number of proven runtime paths, avoid custom orchestration complexity, and keep seams clean so additional features can be layered in later without reworking the core control plane.
 
 ### 2.1 Product Principles
 
-1. **Simple by default:** one-command install, wizard-guided setup, sensible defaults.
+1. **Simple by default:** one-command install, sensible defaults.
 2. **Secure by default:** private/LAN-first exposure, gateway-validated ingress, token-authenticated admin actions.
 3. **Composable and extensible:** users can add channels, services, and OpenCode SDK extension integrations without rebuilding core.
-4. **Operationally resilient:** automated health checks, repair loops, update jobs, and maintenance tasks.
-5. **Transparent control plane:** surfacing runtime and Docker errors directly for diagnosability.
-6. **Lean MVP foundation:** optimize for lightweight architecture now, with explicit extension seams for future growth.
+4. **Transparent control plane:** surfacing runtime and Docker errors directly for diagnosability.
+5. **Lean MVP foundation:** optimize for lightweight architecture now, with explicit extension seams for future growth.
 
 ---
 
@@ -35,27 +33,24 @@ The v1 MVP architecture is intentionally lean and lightweight: prioritize a smal
 ## 3.1 Goals
 
 - Enable first-time users to install OpenPalm with minimal infrastructure expertise.
-- Provide reliable setup and day-2 operations with Docker as the official runtime and OrbStack as secondary support.
-- Offer secure multi-channel ingress while preserving a single validated path through Gateway.
+- Provide reliable setup and day-2 operations with Docker as the official runtime.
+- Offer secure channel ingress while preserving a single validated path through Gateway.
 - Support assistant capability expansion through OpenCode SDK extension points.
 - Support extension of deployment via custom channels and internal services.
-- Continuously maintain system health through built-in maintenance and automation cron jobs.
 
 ## 3.2 Non-Goals
 
 - Replacing Docker Compose with a custom orchestrator.
 - Allowing channels to bypass Gateway and call assistant directly.
-- Turning maintenance internals into user-programmable infrastructure orchestration.
 - Managing arbitrary enterprise IAM/SSO in current scope.
 
 ## 3.3 Success Metrics (Target)
 
 - **Install success rate:** ≥ 95% on supported OS/runtime combinations.
 - **Time to first successful setup:** ≤ 15 minutes (p50).
-- **Bootstrap reliability:** Admin setup endpoint healthy within target timeout for ≥ 99% of successful installs.
+- **Bootstrap reliability:** Admin API healthy within target timeout for ≥ 99% of successful installs.
 - **Gateway enforcement:** 100% of channel traffic validated through signature + schema + rate limit pipeline.
-- **Maintenance effectiveness:** automatic health job recovers failed core services in ≥ 95% of recoverable incidents.
-- **Extensibility usability:** users can add/configure a supported channel from Admin UI or CLI without manual compose edits.
+- **Extensibility usability:** users can add/configure a supported channel from CLI or Admin API without manual compose edits.
 
 ---
 
@@ -80,12 +75,11 @@ The v1 MVP architecture is intentionally lean and lightweight: prioritize a smal
 OpenPalm product scope includes:
 
 - CLI-driven installation lifecycle and runtime operations.
-- Setup wizard and admin control plane.
+- Admin control plane (API-first, UI as a client).
 - Core services: admin, assistant runtime, gateway, caddy, memory/data services.
-- Channel adapters (chat, discord, telegram, voice, webhook/API-class adapters as supported).
+- Channel adapter (chat).
 - OpenCode SDK-based extension model with OpenPalm core extensions and user-provided extension directories.
 - Secrets/config/state management with XDG directory strategy.
-- Built-in maintenance and user-defined automations.
 
 ---
 
@@ -123,9 +117,8 @@ OpenPalm product scope includes:
 ### FR-1: One-command installer wrappers
 - System SHALL provide bash and PowerShell installation paths that fetch CLI binary and delegate to `openpalm install`.
 
-### FR-2: Runtime support and selection
+### FR-2: Runtime support
 - Installer SHALL support Docker as the official runtime.
-- Installer SHOULD support OrbStack as a secondary runtime path.
 
 ### FR-3: Pre-flight validation
 - Installer SHALL run pre-flight checks before provisioning:
@@ -133,10 +126,8 @@ OpenPalm product scope includes:
   - required port availability checks
   - container daemon reachability checks
 
-### FR-4: Deterministic two-phase install
-- System SHALL execute setup in two phases:
-  1. setup/bootstrap artifact generation and minimal service start
-  2. early admin UI availability for setup wizard completion
+### FR-4: Deterministic install
+- `openpalm install` SHALL write config, render artifacts, and bring up the full stack.
 
 ### FR-5: Secure token and env initialization
 - Installer SHALL generate required secure tokens/passwords and persist canonical env state.
@@ -144,19 +135,10 @@ OpenPalm product scope includes:
 ### FR-6: Idempotent setup behavior
 - Installer SHOULD detect pre-existing stack state and guard against accidental destructive overwrite.
 
-### FR-7: Setup-only ingress mode
-- System SHALL generate minimal setup Caddy + compose artifacts to bring up admin setup safely prior to full stack render.
-
-### FR-8: Setup wizard-driven full stack activation
-- Setup completion SHALL apply stack intent, validate references and compose config, write artifacts, and start core runtime services.
-
-### FR-9: Browser launch UX
-- Installer SHOULD auto-open setup URL unless explicitly suppressed by option.
-
 ## 7.2 Admin Control Plane
 
 ### FR-10: Centralized management surface
-- Admin UI SHALL provide pages for system status, service control, config editing, extension management, secrets, and automations.
+- Admin SHALL provide API endpoints for system status, service control, config editing, extension management, and secrets.
 
 ### FR-11: Authenticated write operations
 - All mutating admin operations SHALL require valid admin token.
@@ -169,12 +151,12 @@ OpenPalm product scope includes:
 - Admin SHALL execute allowlisted compose lifecycle actions for approved services.
 
 ### FR-14: API for orchestration
-- Admin SHALL expose API endpoints used by UI and CLI domain commands for service/channel/automation operations.
+- Admin SHALL expose API endpoints used by UI and CLI domain commands for service and channel operations.
 
 ## 7.3 Channel Ingress and Communication Extensibility
 
 ### FR-15: Channel abstraction
-- Platform SHALL support multiple channel adapters with channel-specific configuration and credentials.
+- Platform SHALL support channel adapters with channel-specific configuration and credentials.
 
 ### FR-16: Gateway-only ingress
 - Channels SHALL send inbound traffic exclusively to Gateway for validation and dispatch.
@@ -237,41 +219,10 @@ OpenPalm product scope includes:
 - CLI SHALL provide install/uninstall/update/start/stop/restart/logs/status operations.
 
 ### FR-33: Domain CLI
-- CLI SHALL provide domain commands for service, channel, automation, and extensions.
+- CLI SHALL provide domain commands for service, channel, and render/apply operations.
 
 ### FR-34: API mode fallback
 - CLI SHOULD support local compose execution and admin-API mode via environment-based configuration.
-
-### FR-35: Development scaffolding
-- CLI SHALL provide channel scaffolding helpers for extensibility workflows.
-
-## 7.8 Automations and Self-Maintaining System
-
-### FR-36: User-defined automations
-- Users SHALL be able to create scheduled prompt automations with name, prompt, schedule, and enabled state.
-
-### FR-37: Automation lifecycle controls
-- Users SHALL be able to enable/disable, edit, run-now, and delete automations.
-
-### FR-38: Session isolation
-- Each automation run SHALL execute in an isolated session scope.
-
-### FR-39: Dynamic automation pickup
-- Cron host SHOULD detect automation payload changes without requiring service restart.
-
-### FR-40: Built-in maintenance automations
-- System SHALL run non-configurable internal maintenance jobs including:
-  - image pull/restart loop
-  - health checks and restart attempts
-  - log rotation and retention
-  - image pruning
-  - best-effort security scanning
-  - database maintenance
-  - temp file cleanup
-  - metrics snapshots with retention
-
-### FR-41: Maintenance observability
-- System SHALL persist maintenance logs to stable state path for troubleshooting/audit.
 
 ---
 
@@ -282,11 +233,8 @@ OpenPalm product scope includes:
 ### NFR-U1: Onboarding clarity
 - First install flow MUST provide explicit next steps and surfaced admin credential.
 
-### NFR-U2: Guided completion
-- Setup wizard MUST support progressive step completion and resumability while setup is incomplete.
-
-### NFR-U3: Low cognitive load
-- Common operations (status, restart, logs, channel setup, automation testing) SHOULD be available via UI and concise CLI commands.
+### NFR-U2: Low cognitive load
+- Common operations (status, restart, logs, channel setup) SHOULD be available via concise CLI commands and Admin API.
 
 ## 8.2 Reliability and Availability
 
@@ -296,13 +244,7 @@ OpenPalm product scope includes:
 ### NFR-R2: Fail-fast with actionable errors
 - Docker/runtime failures MUST be surfaced directly with guidance; system MUST avoid opaque custom recovery layers.
 
-### NFR-R3: Health monitoring
-- Core services MUST be health-checked periodically by internal maintenance workflow.
-
-### NFR-R4: Automated recovery
-- Non-running core services SHOULD be restarted automatically when safe and detected by health jobs.
-
-### NFR-R5: Install determinism
+### NFR-R3: Install determinism
 - Installer SHOULD avoid network dependency for config templates by using embedded templates.
 
 ## 8.3 Security and Privacy
@@ -343,7 +285,6 @@ OpenPalm product scope includes:
 
 ### NFR-P1: Runtime compatibility
 - Product MUST support Docker as the official runtime.
-- Product SHOULD support OrbStack as a documented secondary runtime.
 
 ### NFR-P2: XDG compliance
 - Product MUST resolve and honor data/config/state directories and related overrides.
@@ -356,11 +297,8 @@ OpenPalm product scope includes:
 ### NFR-O1: Logs access
 - Operators MUST be able to retrieve service logs by service name via CLI/compose.
 
-### NFR-O2: Maintenance logs
-- Internal maintenance output MUST be retained with bounded retention policies.
-
-### NFR-O3: System status visibility
-- Admin UI SHOULD expose service health/status summaries.
+### NFR-O2: System status visibility
+- Admin API SHOULD expose service health/status summaries.
 
 ---
 
@@ -369,15 +307,13 @@ OpenPalm product scope includes:
 ## 9.1 Ease of Use
 
 - One-command install wrappers.
-- Guided setup wizard with resumable steps.
-- Admin UI for routine operations.
-- Human-friendly channel and automation setup.
+- Admin API for routine operations.
+- Human-friendly channel setup.
 - CLI parity for operators preferring terminal workflows.
 
 ## 9.2 Reliable Installs
 
 - Pre-flight checks and runtime validation.
-- Setup-only bootstrap with health polling.
 - Compose validation before full apply.
 - Idempotent and guarded re-install behavior.
 - Explicit troubleshooting and rollback paths.
@@ -388,26 +324,15 @@ OpenPalm product scope includes:
 - Internal private service model for assistant capabilities.
 - OpenCode SDK extension points with core-in-container defaults.
 - User extension directory for OpenCode-compatible additions.
-- Channel scaffolding command for development workflows.
-
-## 9.4 Self-Healing / Self-Maintaining
-
-- User-defined automations for proactive assistant behavior.
-- Internal maintenance cron suite for platform health.
-- Automated health probes and restart attempts.
-- Routine image update/pull and cleanup cycles.
-- Maintenance observability for audit and debugging.
 
 ---
 
 ## 10) User Experience Requirements
 
-1. **Install UX:** User receives clear command, visible progress, explicit admin credential, and direct setup URL.
-2. **Setup UX:** User completes profile, service instance keys, channel selection, access scope, and final activation in ordered steps.
-3. **Operations UX:** User can observe system status and restart/log services from a single console.
-4. **Channel UX:** User can enable and configure channels with clear status and exposure settings.
-5. **Automation UX:** User can schedule recurring prompts, test immediately, and iterate safely.
-6. **Error UX:** User receives raw runtime errors with contextual remediation hints.
+1. **Install UX:** User receives clear command, visible progress, explicit admin credential, and access URL.
+2. **Operations UX:** User can observe system status and restart/log services from CLI or Admin API.
+3. **Channel UX:** User can enable and configure channels with clear status and exposure settings.
+4. **Error UX:** User receives raw runtime errors with contextual remediation hints.
 
 ---
 
@@ -418,8 +343,6 @@ OpenPalm product scope includes:
   - config (intent/source-of-truth + secrets)
   - state (generated runtime artifacts, logs, and ephemeral operational state)
 - Stack apply MUST be deterministic from intent + secrets + environment context.
-- Automation definitions MUST be persisted as durable payload files in state.
-- Setup completion state MUST be persisted and consulted for auth behavior during initial setup.
 
 ---
 
@@ -435,7 +358,6 @@ OpenPalm product scope includes:
 ## 13) API and Interface Requirements
 
 - Admin API SHALL be stable enough for first-party CLI and UI orchestration workflows.
-- Setup endpoints SHALL enforce local/private access rules while setup is incomplete.
 - Service control endpoints SHALL enforce service allowlist boundaries.
 
 ---
@@ -445,21 +367,18 @@ OpenPalm product scope includes:
 A release is acceptable when all are true:
 
 1. Fresh install succeeds on supported target environments with documented command path.
-2. Setup wizard can complete from zero-state and starts full stack.
+2. `openpalm install` brings up the full stack from zero-state.
 3. At least one channel can be enabled end-to-end through Gateway.
 4. Plugin lifecycle actions (install/list/uninstall) succeed from admin or CLI.
-5. User automation can be created, run-now executed, and observed.
-6. Internal maintenance jobs execute on schedule and produce logs.
-7. Health-check maintenance job restarts a deliberately stopped recoverable core service.
-8. Backup and restore procedures are validated in test environment.
-9. Security checks confirm token-authenticated admin writes and gateway ingress validation.
+5. Backup and restore procedures are validated in test environment.
+6. Security checks confirm token-authenticated admin writes and gateway ingress validation.
 
 ---
 
 ## 15) Risks and Mitigations
 
-1. **Runtime diversity risk (Docker/OrbStack behavior differences)**
-   - Mitigation: prioritize Docker-first paths and keep OrbStack compatibility documented and validated.
+1. **Runtime diversity risk**
+   - Mitigation: prioritize Docker-first paths.
 
 2. **Misconfiguration risk (secrets/config drift)**
    - Mitigation: secrets reference validation, partitioned env files, schema + policy lint.
@@ -470,17 +389,15 @@ A release is acceptable when all are true:
 4. **Extension safety risk**
    - Mitigation: OpenCode SDK extension boundary controls, core bundled extensions, and guarded channel-intake flow.
 
-5. **Maintenance job side effects**
-   - Mitigation: bounded schedules, logs, allowlisted operations, and explicit observability paths.
-
 ---
 
 ## 16) Open Questions / Future Enhancements
 
 - Should enterprise auth providers (OIDC/SAML) be added to admin control plane?
-- Should maintenance schedules become partially configurable with policy constraints?
-- Should channel marketplace metadata be introduced for discoverability/one-click installs?
 - Should SLO dashboards and alert routing be built into Admin by default?
+- Should additional channels (Discord, Telegram, Voice, Webhook) be added?
+- Should user-defined automations (scheduled prompts) be supported?
+- Should self-healing maintenance jobs be added?
 
 ---
 

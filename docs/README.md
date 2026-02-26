@@ -18,7 +18,7 @@ Guides for setting up, securing, maintaining, and troubleshooting a running inst
 | Guide | What's inside |
 |---|---|
 | [Admin Guide](../core/admin/docs/admin-guide.md) | Installation, admin console, authentication |
-| [Admin Concepts](../core/admin/docs/admin-concepts.md) | Extensions, secrets, channels, automations, gateway |
+| [Admin Concepts](../core/admin/docs/admin-concepts.md) | Extensions, secrets, channels, gateway |
 | [Security](security.md) | Defense-in-depth security model |
 | [Host System Reference](host-system-reference.md) | Host paths, environment variables, XDG layout |
 | [Maintenance](maintenance.md) | Backup, restore, upgrade, rollback |
@@ -49,8 +49,3 @@ Each service and channel has a README with implementation details co-located wit
 | Gateway service | [core/gateway/README.md](../core/gateway/README.md) |
 | Assistant service | [core/assistant/README.md](../core/assistant/README.md) |
 | Chat channel | [channels/chat/README.md](../channels/chat/README.md) |
-| Discord channel | [channels/discord/README.md](../channels/discord/README.md) |
-| Voice channel | [channels/voice/README.md](../channels/voice/README.md) |
-| Telegram channel | [channels/telegram/README.md](../channels/telegram/README.md) |
-| Webhook channel | [channels/webhook/README.md](../channels/webhook/README.md) |
-| API-compatible channel | [channels/api/README.md](../channels/api/README.md) |

@@ -25,8 +25,6 @@ describe("auth rejection", () => {
     "/stack/spec",
     "/secrets",
     "/channels",
-    "/automations",
-    "/installed",
   ];
 
   for (const path of protectedPaths) {

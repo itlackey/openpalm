@@ -87,8 +87,8 @@ See [API Reference](../dev/docs/api-reference.md) for full endpoint details.
 
 ```json
 {
-  "userId": "discord:123",
-  "channel": "discord",
+  "userId": "chat:123",
+  "channel": "chat",
   "text": "hello",
   "metadata": {},
   "nonce": "uuid",

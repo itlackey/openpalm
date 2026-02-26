@@ -9,6 +9,5 @@
 ## Key files to prefer
 - `packages/lib/src/admin/stack-spec.ts`
 - `packages/lib/src/admin/stack-generator.ts`
-- `packages/lib/src/admin/snippet-discovery.ts`
 - `packages/lib/src/admin/setup-manager.ts`
 - `packages/lib/src/compose.ts`

@@ -183,7 +183,7 @@ describe("install methods verification", () => {
     });
 
     it("supports -Runtime parameter", () => {
-      expect(installPs1).toContain('[ValidateSet("docker", "podman", "orbstack")]');
+      expect(installPs1).toContain('[ValidateSet("docker", "podman")]');
     });
 
     it("supports -Ref parameter", () => {
@@ -228,7 +228,7 @@ describe("install methods verification", () => {
   describe("CLI docs covers all commands", () => {
     const requiredCommands = [
       "install", "uninstall", "update", "start", "stop",
-      "restart", "logs", "status", "service", "channel", "automation", "extensions", "version", "help"
+      "restart", "logs", "status", "service", "channel", "render", "apply", "version", "help"
     ];
 
     for (const cmd of requiredCommands) {
@@ -241,7 +241,7 @@ describe("install methods verification", () => {
   describe("CLI docs covers all install options", () => {
     it("documents --runtime flag", () => {
       expect(cliDocs).toContain("--runtime");
-      expect(cliDocs).toContain("docker|podman|orbstack");
+      expect(cliDocs).toContain("docker|podman");
     });
 
     it("documents --port flag", () => {
@@ -267,18 +267,6 @@ describe("install methods verification", () => {
     });
   });
 
-  describe("CLI docs covers 2-phase install", () => {
-    it("documents Phase 1 (Setup)", () => {
-      expect(cliDocs).toContain("Phase 1");
-    });
-
-    it("documents Phase 2 (Early UI Access)", () => {
-      expect(cliDocs).toContain("Phase 2");
-      expect(cliDocs).toContain("Caddy");
-      expect(cliDocs).toContain("Admin");
-    });
-  });
-
   describe("CLI docs covers uninstall options", () => {
     it("documents --remove-all", () => {
       expect(cliDocs).toContain("--remove-all");
@@ -290,20 +278,6 @@ describe("install methods verification", () => {
 
     it("documents --yes", () => {
       expect(cliDocs).toContain("--yes");
-    });
-  });
-
-  describe("CLI docs covers extensions subcommands", () => {
-    it("documents extensions install", () => {
-      expect(cliDocs).toContain("extensions install");
-    });
-
-    it("documents extensions uninstall", () => {
-      expect(cliDocs).toContain("extensions uninstall");
-    });
-
-    it("documents extensions list", () => {
-      expect(cliDocs).toContain("extensions list");
     });
   });
 
@@ -333,16 +307,10 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("Podman");
     });
 
-    it("documents OrbStack support", () => {
-      expect(cliDocs).toContain("OrbStack");
-    });
-
     it("documents auto-detection order", () => {
-      const orbstackIdx = cliDocs.indexOf("OrbStack", cliDocs.indexOf("Auto-detection"));
-      const dockerIdx = cliDocs.indexOf("Docker", orbstackIdx);
+      const dockerIdx = cliDocs.indexOf("Docker", cliDocs.indexOf("Auto-detection"));
       const podmanIdx = cliDocs.indexOf("Podman", dockerIdx);
-      expect(orbstackIdx).toBeGreaterThan(-1);
-      expect(dockerIdx).toBeGreaterThan(orbstackIdx);
+      expect(dockerIdx).toBeGreaterThan(-1);
       expect(podmanIdx).toBeGreaterThan(dockerIdx);
     });
   });

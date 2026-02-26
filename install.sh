@@ -30,7 +30,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --runtime)
       if [ "$#" -lt 2 ]; then
-        echo "Missing value for --runtime. Expected: docker | podman | orbstack"
+        echo "Missing value for --runtime. Expected: docker | podman"
         exit 1
       fi
       CLI_ARGS+=(--runtime "$2")
@@ -63,7 +63,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: install.sh [--runtime docker|podman|orbstack] [--port <number>] [--no-open] [--ref <branch|tag>]
+Usage: install.sh [--runtime docker|podman] [--port <number>] [--no-open] [--ref <branch|tag>]
 
 Download the OpenPalm CLI and run `openpalm install`.
 

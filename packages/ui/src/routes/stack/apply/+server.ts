@@ -2,7 +2,6 @@ import { json, unauthorizedJson, errorJson } from '$lib/server/json';
 import { getStackManager } from '$lib/server/init';
 import { applyStack } from '@openpalm/lib/admin/stack-apply-engine';
 import { composeAction, composeExec } from '@openpalm/lib/admin/compose-runner';
-import { syncAutomations } from '@openpalm/lib/admin/automations';
 import { existsSync, readFileSync } from 'node:fs';
 import type { RequestHandler } from './$types';
 
@@ -25,7 +24,6 @@ export const POST: RequestHandler = async ({ locals }) => {
 			await composeExec('caddy', ['caddy', 'reload', '--config', '/etc/caddy/caddy.json']).catch(() => {});
 		}
 
-		syncAutomations(stackManager.listAutomations());
 		return json(200, result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

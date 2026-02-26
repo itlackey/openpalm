@@ -24,7 +24,7 @@ EXTRA_ACT_ARGS=()
 
 # ── Workflow definitions ─────────────────────────────────────────────
 # Each workflow has a test function below.
-WORKFLOWS=(test publish-images publish-cli release validate-registry update-registry-index version-bump-pr)
+WORKFLOWS=(test publish-images publish-cli release version-bump-pr)
 
 usage() {
   cat <<EOF
@@ -35,8 +35,6 @@ Workflows:
   publish-images       Docker image builds (builds only, no push)
   publish-cli          CLI bundle, package, and binary builds (no npm publish)
   release              Release workflow (dry-run only — requires RELEASE_TOKEN)
-  validate-registry    Registry entry validation
-  update-registry-index  Registry index rebuild
   version-bump-pr      Version bump PR creation (dry-run only)
 
 Options:
@@ -133,10 +131,6 @@ test_publish-images() {
     [gateway]=".|./core/gateway/Dockerfile"
     [admin]=".|./core/admin/Dockerfile"
     [channel-chat]=".|./channels/chat/Dockerfile"
-    [channel-discord]=".|./channels/discord/Dockerfile"
-    [channel-voice]=".|./channels/voice/Dockerfile"
-    [channel-telegram]=".|./channels/telegram/Dockerfile"
-    [channel-api]=".|./channels/api/Dockerfile"
   )
   local failed=()
   for name in "${!IMAGES[@]}"; do
@@ -247,17 +241,6 @@ test_release() {
   run_act_with_event "release" "workflow_dispatch" "$event_json" \
     -s RELEASE_TOKEN=test-token \
     -n
-}
-
-test_validate-registry() {
-  echo "Running: validate-registry.yml"
-  run_act "validate-registry" "pull_request" -j validate
-}
-
-test_update-registry-index() {
-  echo "Running: update-registry-index.yml (dry-run — commits to main)"
-  # This workflow commits to main, so always dry-run the git push part.
-  run_act "update-registry-index" "push" -j rebuild-index -n
 }
 
 test_version-bump-pr() {

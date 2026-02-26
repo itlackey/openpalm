@@ -1,10 +1,3 @@
-export type AdminCommandResponse<T = unknown> = {
-  ok?: boolean;
-  data?: T;
-  error?: string;
-  code?: string;
-};
-
 export type AdminClientOptions = {
   baseUrl: string;
   token: string;
@@ -74,33 +67,33 @@ export class AdminApiClient {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_ADMIN_TIMEOUT_MS;
   }
 
-  async command<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<AdminCommandResponse<T>> {
-    const response = await fetch(`${this.baseUrl}/command`, {
-      method: "POST",
+  private async request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method,
       headers: {
         "content-type": "application/json",
         "x-admin-token": this.token,
       },
-      body: JSON.stringify({ type, payload }),
+      ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
-    const bodyText = await response.text();
-    let body: AdminCommandResponse<T>;
-    if (bodyText.length === 0) {
-      if (!response.ok) throw new Error(`http_${response.status}: ${response.statusText}`);
-      body = { ok: response.ok } as AdminCommandResponse<T>;
-    } else {
-      try {
-        body = JSON.parse(bodyText) as AdminCommandResponse<T>;
-      } catch {
-        throw new Error("invalid_admin_api_response");
-      }
+    const text = await response.text();
+    if (!response.ok) {
+      const parsed = text ? JSON.parse(text) : {};
+      throw new Error(parsed.error ?? `http_${response.status}`);
     }
-    if (!response.ok || body.ok === false) {
-      const code = body.code ?? `http_${response.status}`;
-      const message = body.error ?? response.statusText ?? "admin_request_failed";
-      throw new Error(`${code}: ${message}`);
-    }
-    return body;
+    return text ? JSON.parse(text) : ({ ok: true } as T);
   }
+
+  async health() { return this.request("GET", "/health"); }
+  async listContainers() { return this.request("GET", "/containers"); }
+  async containerUp(service: string) { return this.request("POST", "/containers/up", { service }); }
+  async containerStop(service: string) { return this.request("POST", "/containers/stop", { service }); }
+  async containerRestart(service: string) { return this.request("POST", "/containers/restart", { service }); }
+  async containerUpdate(service: string) { return this.request("POST", "/containers/update", { service }); }
+  async serviceLogs(service: string, tail?: number) { return this.request("POST", "/containers/service-logs", { service, ...(tail ? { tail } : {}) }); }
+  async listChannels() { return this.request("GET", "/channels"); }
+  async getStackSpec() { return this.request("GET", "/stack/spec"); }
+  async setStackSpec(spec: unknown) { return this.request("POST", "/stack/spec", { spec }); }
+  async applyStack() { return this.request("POST", "/stack/apply"); }
 }

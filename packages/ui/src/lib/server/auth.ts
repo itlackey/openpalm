@@ -27,34 +27,3 @@ export function isAuthenticated(request: Request): boolean {
 	return verifyAdminToken(token);
 }
 
-function isLocalOrPrivateIp(ip: string): boolean {
-	const normalized = ip.trim().toLowerCase();
-	if (!normalized) return false;
-	if (normalized === '127.0.0.1' || normalized === '::1' || normalized === '[::1]') return true;
-	if (normalized.startsWith('::ffff:')) return isLocalOrPrivateIp(normalized.slice(7));
-	if (normalized.startsWith('10.') || normalized.startsWith('192.168.')) return true;
-	if (/^172\.(1[6-9]|2\d|3[01])\./.test(normalized)) return true;
-	return false;
-}
-
-function getForwardedClientIp(request: Request): string | null {
-	const forwarded = request.headers.get('x-forwarded-for');
-	if (!forwarded) return null;
-	const first = forwarded
-		.split(',')[0]
-		?.trim();
-	return first || null;
-}
-
-/**
- * Check if a request originates from a local/private IP address.
- * Used to restrict unauthenticated setup endpoints to local network access only.
- */
-export function isLocalRequest(request: Request, clientAddress = ''): boolean {
-	if (clientAddress && !isLocalOrPrivateIp(clientAddress)) return false;
-
-	const forwardedClientIp = getForwardedClientIp(request);
-	if (forwardedClientIp) return isLocalOrPrivateIp(forwardedClientIp);
-
-	return Boolean(clientAddress) && isLocalOrPrivateIp(clientAddress);
-}

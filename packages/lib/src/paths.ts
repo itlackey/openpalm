@@ -43,7 +43,6 @@ export async function createDirectoryTree(xdg: XDGPaths): Promise<void> {
     "openmemory",
     "openmemory-ui",
     "assistant",
-    "automations",
     "caddy/config",
     "caddy/data",
     "logs",

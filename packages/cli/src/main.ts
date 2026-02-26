@@ -9,12 +9,9 @@ import { stop } from "./commands/stop.ts";
 import { restart } from "./commands/restart.ts";
 import { logs } from "./commands/logs.ts";
 import { status } from "./commands/status.ts";
-import { extensions } from "./commands/extensions.ts";
 import { preflight } from "./commands/preflight.ts";
-import { createChannel } from "./commands/create-channel.ts";
 import { service } from "./commands/service.ts";
 import { channel } from "./commands/channel.ts";
-import { automation } from "./commands/automation.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 import pkg from "../package.json";
 
@@ -36,42 +33,30 @@ function printHelp(): void {
   log("  logs           View container logs");
   log("  status         Show container status");
   log("  service        Service lifecycle operations (up, stop, restart, logs, update, status)");
-  log("  channel        Channel operations (add, configure)");
-  log("  automation     Automation operations (run, trigger)");
-  log("  extensions     Manage extensions (install, uninstall, list)");
-  log("  dev            Development helpers (preflight, create-channel)");
+  log("  channel        Channel operations (configure)");
+  log("  dev            Development helpers (preflight)");
   log("  version        Print version");
   log("  help           Show this help");
   log("");
   log(bold("Install options:"));
-  log("  --runtime <docker|podman|orbstack>  Force container runtime");
-  log("  --no-open                           Don't auto-open browser");
-  log("  --ref <branch|tag>                  Git ref for asset download");
-  log("  --force                             Overwrite existing installation");
-  log("  --port <number>                     Use alternative port (default: 80)");
+  log("  --runtime <docker|podman>  Force container runtime");
+  log("  --no-open                  Don't auto-open browser");
+  log("  --ref <branch|tag>         Git ref for asset download");
+  log("  --force                    Overwrite existing installation");
+  log("  --port <number>            Use alternative port (default: 80)");
   log("");
   log(bold("Uninstall options:"));
-  log("  --runtime <docker|podman|orbstack>  Force container runtime");
-  log("  --remove-all                        Remove all data/config/state and CLI binary");
-  log("  --remove-images                     Remove container images");
-  log("  --remove-binary                     Remove the openpalm CLI binary");
-  log("  --yes                               Skip confirmation prompts");
+  log("  --runtime <docker|podman>  Force container runtime");
+  log("  --remove-all               Remove all data/config/state and CLI binary");
+  log("  --remove-images            Remove container images");
+  log("  --remove-binary            Remove the openpalm CLI binary");
+  log("  --yes                      Skip confirmation prompts");
   log("");
   log(bold("Management commands accept optional service names:"));
   log("  openpalm start [service...]");
   log("  openpalm stop [service...]");
   log("  openpalm restart [service...]");
   log("  openpalm logs [service...]");
-  log("");
-  log(bold("Extensions:"));
-  log("  openpalm extensions install --plugin <id>");
-  log("  openpalm extensions uninstall --plugin <id>");
-  log("  openpalm extensions list");
-  log("");
-  log(bold("Domain commands:"));
-  log("  openpalm service restart assistant");
-  log("  openpalm channel add --file /path/to/channel.yaml");
-  log("  openpalm automation run daily-status");
 }
 
 export function parseCliArgs(args: string[]) {
@@ -82,7 +67,6 @@ export function parseCliArgs(args: string[]) {
     options: {
       runtime: { type: "string" },
       ref: { type: "string" },
-      plugin: { type: "string" },
       port: { type: "string" },
       "no-open": { type: "boolean" },
       force: { type: "boolean" },
@@ -109,7 +93,7 @@ function getPositionalArgs(args: string[]): string[] {
   return parseCliArgs(args).positionals;
 }
 
-const VALID_RUNTIMES: readonly ContainerPlatform[] = ["docker", "podman", "orbstack"] as const;
+const VALID_RUNTIMES: readonly ContainerPlatform[] = ["docker", "podman"] as const;
 
 export async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
@@ -206,17 +190,6 @@ export async function main(): Promise<void> {
         break;
       }
 
-      case "extensions":
-      case "ext": {
-        const [subcommand, ...extArgs] = args;
-        if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm extensions <install|uninstall|list>");
-          process.exit(1);
-        }
-        await extensions(subcommand, extArgs);
-        break;
-      }
-
       case "service": {
         const [subcommand, ...serviceArgs] = args;
         if (!subcommand) {
@@ -230,35 +203,21 @@ export async function main(): Promise<void> {
       case "channel": {
         const [subcommand, ...channelArgs] = args;
         if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm channel <add|configure>");
+          error("Missing subcommand. Usage: openpalm channel <configure>");
           process.exit(1);
         }
         await channel(subcommand, channelArgs);
         break;
       }
 
-      case "automation": {
-        const [subcommand, ...automationArgs] = args;
-        if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm automation <run|trigger>");
-          process.exit(1);
-        }
-        await automation(subcommand, automationArgs);
-        break;
-      }
-
       case "dev": {
-        const [subcommand, ...devArgs] = args;
+        const [subcommand] = args;
         if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm dev <preflight|create-channel>");
+          error("Missing subcommand. Usage: openpalm dev <preflight>");
           process.exit(1);
         }
         if (subcommand === "preflight") {
           preflight();
-          break;
-        }
-        if (subcommand === "create-channel") {
-          createChannel(devArgs);
           break;
         }
         error(`Unknown dev subcommand: ${subcommand}`);

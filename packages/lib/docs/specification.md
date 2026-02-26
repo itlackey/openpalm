@@ -13,7 +13,6 @@ This document is the authoritative technical reference for the OpenPalm stack ge
      - 2.1.2 [accessScope](#212-accessscope)
      - 2.1.3 [caddy](#213-caddy)
      - 2.1.4 [channels](#214-channels)
-     - 2.1.5 [automations](#215-automations)
    - 2.2 [secrets.env](#22-secretsenv)
    - 2.3 [Secret Reference Syntax](#23-secret-reference-syntax)
 3. [Transformation Pipeline](#3-transformation-pipeline)
@@ -54,8 +53,7 @@ This document is the authoritative technical reference for the OpenPalm stack ge
    - 6.4 [Custom Channel Requirements](#64-custom-channel-requirements)
    - 6.5 [Config Key Validation](#65-config-key-validation)
    - 6.6 [Caddy Config Validation](#66-caddy-config-validation)
-   - 6.7 [Automation Validation](#67-automation-validation)
-   - 6.8 [Secret Resolution Errors](#68-secret-resolution-errors)
+   - 6.7 [Secret Resolution Errors](#67-secret-resolution-errors)
 7. [Stack Apply Engine](#7-stack-apply-engine)
    - 7.1 [Apply Flow](#71-apply-flow)
    - 7.2 [Result Type](#72-result-type)
@@ -92,7 +90,7 @@ Callers of the generator:
 
 ### 2.1 StackSpec Schema
 
-The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yaml` (v3). It captures the user's intent for the stack: which channels to run, how to expose them, what secrets they need, what services to add, and what automations to schedule. It is **not** a runtime state file — it contains no ephemeral values.
+The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yaml` (v3). It captures the user's intent for the stack: which channels to run, how to expose them, what secrets they need, and what services to add. It is **not** a runtime state file — it contains no ephemeral values.
 
 #### 2.1.1 Top-level Fields
 
@@ -103,9 +101,8 @@ The `StackSpec` is a YAML document stored at `$OPENPALM_CONFIG_HOME/openpalm.yam
 | `caddy` | `CaddyConfig` | No | Optional Caddy-specific configuration. |
 | `channels` | `Record<string, StackChannelConfig>` | Yes | Map of channel name → channel configuration. Built-in channels are default examples, but any non-empty community channel names are supported. |
 | `services` | `Record<string, StackServiceConfig>` | No | Map of service name → service configuration. Internal-only containers (no Caddy routing). Defaults to `{}`. |
-| `automations` | `StackAutomation[]` | No | List of scheduled automation definitions. Defaults to `[]`. |
 
-Unknown top-level keys are rejected with error `unknown_stack_spec_field_<key>`.
+Unknown top-level keys are rejected with error `unknown_stack_spec_field_<key>`. The `automations` key is accepted for forward compatibility but currently ignored.
 
 > **Note:** The `services` section was added in v3. Services are internal-only containers — they have no `exposure`, `domains`, or `pathPrefixes` fields, and no Caddy routing is generated for them. They always require `image` and `containerPort`.
 
@@ -149,15 +146,15 @@ type StackChannelConfig = {
 };
 ```
 
-**Built-in channels** (`chat`, `discord`, `voice`, `telegram`) are always required to be present. They have pre-configured defaults for `image`, `containerPort`, and `config` keys. They do not require `image` or `containerPort` to be set, but these can be overridden.
+**Built-in channels** (`chat`) are always required to be present. They have pre-configured defaults for `image`, `containerPort`, and `config` keys. They do not require `image` or `containerPort` to be set, but these can be overridden.
 
-**Custom channels** are any additional keys beyond the four built-ins. They require both `image` and `containerPort` to be explicitly specified.
+**Custom channels** are any additional keys beyond the built-ins. They require both `image` and `containerPort` to be explicitly specified.
 
 ##### Channel name constraints
 
 - Must match the pattern `/^[a-z][a-z0-9-]*$/` (lowercase letters, digits, and hyphens; starts with a letter).
 - Maximum length: 63 characters (DNS label limit).
-- The four built-in names (`chat`, `discord`, `voice`, `telegram`) are always reserved.
+- The built-in name `chat` is always reserved.
 
 ##### `exposure` field
 
@@ -174,24 +171,6 @@ Config values may be either:
 - **Literal strings** — used as-is in the generated `.env` file.
 - **Secret references** — a string of the form `${SECRET_NAME}`. These are resolved against `secrets.env` at generation time. Unresolved references cause the generation to fail.
 
-#### 2.1.5 `automations`
-
-Each automation is a `StackAutomation`:
-
-```typescript
-type StackAutomation = {
-  id:           string;   // Unique identifier; must match /^[a-zA-Z0-9_-]+$/
-  name:         string;   // Human-readable label
-  description?: string;   // What this automation does
-  schedule:     string;   // Standard Unix cron expression (e.g. "0 9 * * *")
-  script:       string;   // Shell script body executed on each run
-  enabled:      boolean;  // Whether the cron job is active
-  core?:        boolean;  // System automations cannot be deleted
-};
-```
-
-Automations are stored inside the spec but synced separately to cron files by `syncAutomations()` in `automations.ts`. The generator itself does not process automations — they are passed through untouched.
-
 ---
 
 ### 2.2 `secrets.env`
@@ -201,7 +180,6 @@ Automations are stored inside the spec but synced separately to cron files by `s
 ```
 # Comments are allowed
 OPENAI_API_KEY=sk-...
-DISCORD_BOT_TOKEN=MT...
 CHANNEL_CHAT_SECRET=some-long-shared-secret
 ```
 
@@ -238,14 +216,13 @@ Before `generateStackArtifacts` is called, the spec must have already passed thr
 `parseStackSpec` performs the following validations in order:
 
 1. Asserts the root value is a non-null object.
-2. Rejects any key not in the allowed set `{version, accessScope, caddy, channels, services, automations}`.
+2. Rejects any key not in the allowed set `{version, accessScope, caddy, channels, services}` (plus `automations` which is accepted but ignored).
 3. Validates `version` is `3`.
 4. Validates `accessScope` is one of `"host"`, `"lan"`, `"public"`.
 5. Parses the optional `caddy` sub-object.
 6. Asserts `channels` is a non-null object.
-7. Asserts all four built-in channel names are present.
+7. Asserts the `chat` built-in channel name is present.
 8. Validates and parses each channel entry (see [Section 6](#6-validation-rules-and-error-codes)).
-9. Parses the optional `automations` array.
 
 Version 1 and 2 specs are accepted and the output spec is upgraded to `version: 3` with `services: {}` added if missing.
 
@@ -412,9 +389,6 @@ Default bundled channels include the following rewrite paths (community channels
 | Channel | Rewrite path |
 |---|---|
 | `chat` | `/chat` |
-| `discord` | `/discord/webhook` |
-| `voice` | `/voice/transcription` |
-| `telegram` | `/telegram/webhook` |
 
 **Custom channels** use `handle_path` (which strips the matched prefix before forwarding):
 
@@ -495,7 +469,7 @@ OPENPALM_ACCESS_SCOPE=<spec.accessScope>
 OPENPALM_ENABLED_CHANNELS=<comma-separated enabled channel service names>
 ```
 
-`OPENPALM_ENABLED_CHANNELS` is the comma-separated list of Docker service names for all enabled channels (e.g. `channel-chat,channel-discord,channel-telegram`). Disabled channels are excluded. If no channels are enabled the value is an empty string.
+`OPENPALM_ENABLED_CHANNELS` is the comma-separated list of Docker service names for all enabled channels (e.g. `channel-chat`). Disabled channels are excluded. If no channels are enabled the value is an empty string.
 
 During initial installation, `install.sh` and `dev-setup.sh` seed an empty placeholder at `$OPENPALM_STATE_HOME/system.env` so Docker Compose can start before the first `renderArtifacts()` call.
 
@@ -560,7 +534,7 @@ The generated system env file. Exposes system-derived state values to the `admin
 | Variable | Value |
 |---|---|
 | `OPENPALM_ACCESS_SCOPE` | The `accessScope` field from the spec (`host`, `lan`, or `public`) |
-| `OPENPALM_ENABLED_CHANNELS` | Comma-separated Docker service names for all enabled channels (e.g. `channel-chat,channel-discord`). Empty string if no channels are enabled. |
+| `OPENPALM_ENABLED_CHANNELS` | Comma-separated Docker service names for all enabled channels (e.g. `channel-chat`). Empty string if no channels are enabled. |
 
 An empty placeholder is seeded by `install.sh` and `dev-setup.sh` so Docker Compose can start before the first `renderArtifacts()` call.
 
@@ -628,9 +602,6 @@ Contains metadata about the generation run: `applySafe` (boolean), `warnings` (a
 | Channel | Container port |
 |---|---|
 | `chat` | `8181` |
-| `telegram` | `8182` |
-| `voice` | `8183` |
-| `discord` | `8184` |
 
 The host port defaults to the container port unless `hostPort` is explicitly set in the channel config.
 
@@ -645,9 +616,6 @@ ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-<name>:${OPENPALM_IMAGE_TAG:-lates
 | Channel | Default image expression |
 |---|---|
 | `chat` | `${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-chat:${OPENPALM_IMAGE_TAG:-latest}` |
-| `discord` | `${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-discord:${OPENPALM_IMAGE_TAG:-latest}` |
-| `voice` | `${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-voice:${OPENPALM_IMAGE_TAG:-latest}` |
-| `telegram` | `${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-telegram:${OPENPALM_IMAGE_TAG:-latest}` |
 
 ### 5.3 Built-in Channel Config Keys
 
@@ -656,9 +624,6 @@ Each built-in channel has a fixed set of config keys. These keys are always pres
 | Channel | Config keys |
 |---|---|
 | `chat` | `CHAT_INBOUND_TOKEN`, `CHANNEL_CHAT_SECRET` |
-| `discord` | `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `CHANNEL_DISCORD_SECRET` |
-| `voice` | `CHANNEL_VOICE_SECRET` |
-| `telegram` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CHANNEL_TELEGRAM_SECRET` |
 
 For bundled default channels, the listed keys are the defaults generated by `createDefaultStackSpec()`. Community channels can use arbitrary non-empty config keys.
 
@@ -669,9 +634,6 @@ Built-in channels use Caddy's `rewrite` directive to remap the public path to th
 | Channel | Public path | Rewritten to |
 |---|---|---|
 | `chat` | `/channels/chat*` | `/chat` |
-| `discord` | `/channels/discord*` | `/discord/webhook` |
-| `voice` | `/channels/voice*` | `/voice/transcription` |
-| `telegram` | `/channels/telegram*` | `/telegram/webhook` |
 
 Custom channels use `handle_path` instead of `handle` + `rewrite`, which strips the matched prefix and forwards the remainder of the path.
 
@@ -709,30 +671,10 @@ channels:
     config:
       CHAT_INBOUND_TOKEN: ""
       CHANNEL_CHAT_SECRET: ""
-  discord:
-    enabled: true
-    exposure: lan
-    config:
-      DISCORD_BOT_TOKEN: ""
-      DISCORD_PUBLIC_KEY: ""
-      CHANNEL_DISCORD_SECRET: ""
-  voice:
-    enabled: true
-    exposure: lan
-    config:
-      CHANNEL_VOICE_SECRET: ""
-  telegram:
-    enabled: true
-    exposure: lan
-    config:
-      TELEGRAM_BOT_TOKEN: ""
-      TELEGRAM_WEBHOOK_SECRET: ""
-      CHANNEL_TELEGRAM_SECRET: ""
 services: {}
-automations: []
 ```
 
-All four built-in channels are enabled with `"lan"` exposure and empty config values. No `caddy` key is present in the default spec. The `services` section is empty by default.
+The `chat` built-in channel is enabled with `"lan"` exposure and empty config values. No `caddy` key is present in the default spec. The `services` section is empty by default.
 
 ---
 
@@ -812,19 +754,7 @@ Built-in channel config keys are not re-validated — only the predefined keys a
 | `email` is not a string | `invalid_caddy_email` |
 | `email` fails the email pattern | `invalid_caddy_email_format` |
 
-### 6.7 Automation Validation
-
-| Condition | Error code |
-|---|---|
-| `automations` is not an array | `invalid_automations` |
-| Automation entry is not an object | `invalid_automation_<index>` |
-| `id` is empty or missing | `invalid_automation_id_<index>` |
-| `name` is empty or missing | `invalid_automation_name_<index>` |
-| `schedule` is empty or missing | `invalid_automation_schedule_<index>` |
-| `script` is empty or missing | `invalid_automation_script_<index>` |
-| `enabled` is not a boolean | `invalid_automation_enabled_<index>` |
-
-### 6.8 Secret Resolution Errors
+### 6.7 Secret Resolution Errors
 
 These errors are thrown during artifact generation (step 7), not during spec parsing:
 
@@ -904,10 +834,8 @@ $OPENPALM_STATE_HOME/
 │   └── .env                           # assistantEnv artifact
 ├── channel-chat/
 │   └── .env                           # channelEnvs["channel-chat"]
-├── channel-discord/
-│   └── .env                           # channelEnvs["channel-discord"]
 └── channel-<name>/
-    └── .env                           # channelEnvs["channel-<name>"] for each enabled channel
+    └── .env                           # channelEnvs["channel-<name>"] for each enabled custom channel
 ```
 
 **Input files** (under `$OPENPALM_CONFIG_HOME`):
@@ -939,9 +867,8 @@ The `extra-user-overrides.caddy` snippet is **never overwritten** if it already 
 |---|---|
 | `packages/lib/src/admin/stack-spec.ts` | `StackSpec` type definitions, `parseStackSpec`, `createDefaultStackSpec`, `parseSecretReference` |
 | `packages/lib/src/admin/stack-generator.ts` | `generateStackArtifacts` — the pure generation function |
-| `packages/lib/src/admin/stack-manager.ts` | `StackManager` — file I/O orchestration, secret CRUD, channel/automation management |
+| `packages/lib/src/admin/stack-manager.ts` | `StackManager` — file I/O orchestration, secret CRUD, channel management |
 | `packages/lib/src/admin/stack-apply-engine.ts` | `applyStack` — validates secrets, writes artifacts, runs compose up, reloads Caddy |
 | `packages/lib/src/admin/runtime-env.ts` | Env file parsing/updating utilities and `sanitizeEnvScalar` |
-| `packages/lib/src/admin/automations.ts` | Cron file generation and automation runner script |
 | `packages/lib/src/admin/stack-generator.test.ts` | Comprehensive tests for artifact generation |
 | `packages/lib/src/admin/stack-spec.test.ts` | Comprehensive tests for spec parsing and validation |

@@ -72,7 +72,7 @@ See [core/assistant/README.md](../core/assistant/README.md#ssh-access-optional) 
 
 OpenPalm uses token-authenticated Admin API calls for assistant-initiated stack management.
 
-- Assistant uses domain CLI commands (`openpalm service ...`, `openpalm channel ...`, `openpalm automation ...`).
+- Assistant uses domain CLI commands (`openpalm service ...`, `openpalm channel ...`).
 - CLI calls admin over internal network (`assistant_net`) with `x-admin-token`.
 - Assistant does **not** receive Docker socket mounts or elevated container privileges.
 - Admin remains the only component with compose/socket access and enforces service allowlists.

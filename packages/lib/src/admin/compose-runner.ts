@@ -6,7 +6,6 @@ export const CoreServices = [
   "caddy", "openmemory-ui", "postgres", "qdrant"
 ] as const;
 export const UiManagedServiceExclusions = ["admin", "caddy"] as const;
-export const SetupStartupServices: readonly string[] = CoreServices.filter((service) => service !== "admin");
 
 type RuntimeEnv = Record<string, string | undefined>;
 

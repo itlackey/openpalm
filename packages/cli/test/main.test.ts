@@ -75,10 +75,8 @@ describe("CLI entry point", () => {
 
     // Verify all command names are present
     const commands = [
-      "automation",
       "channel",
       "dev",
-      "extensions",
       "help",
       "install",
       "logs",
@@ -119,7 +117,7 @@ describe("CLI entry point", () => {
   });
 
   // ── Subcommand validation ──────────────────────────────────────────────
-  for (const cmd of ["ext", "dev", "service", "channel", "automation"]) {
+  for (const cmd of ["dev", "service", "channel"]) {
     it(`${cmd} without subcommand exits with error`, async () => {
       const { stderr, exitCode } = await runCli(cmd);
       expect(exitCode).not.toBe(0);
@@ -143,21 +141,4 @@ describe("CLI entry point", () => {
     expect(stderr).not.toContain("Unknown command");
   });
 
-  it("supports ext as alias for extensions with valid subcommand", async () => {
-    // Run with isolated env: no ADMIN_TOKEN and a non-existent state dir
-    // so the CLI can't authenticate — proving "list" is recognized (not "Unknown command")
-    // but the command still fails (non-zero exit) because no token is available.
-    const proc = Bun.spawn(["bun", "run", join(REPO_ROOT, "packages/cli/src/main.ts"), "ext", "list"], {
-      cwd: REPO_ROOT,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, ADMIN_TOKEN: "", OPENPALM_STATE_HOME: "/tmp/nonexistent-openpalm-state" },
-    });
-    await proc.exited;
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = proc.exitCode ?? 1;
-
-    expect(exitCode).not.toBe(0);
-    expect(stderr).not.toContain("Unknown command");
-  });
 });

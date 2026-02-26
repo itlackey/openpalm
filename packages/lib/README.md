@@ -13,18 +13,16 @@ The library is organized into three zones, each with a distinct audience:
 **Consumers**: `packages/cli` (the `openpalm` CLI tool)
 
 Contains modules for host-level operations: XDG path resolution, Docker Compose
-orchestration, environment file management, provider detection, terminal UI
-helpers, and preflight checks. These modules often depend on the host filesystem
-layout and are not suitable for use inside containerized services.
+orchestration, environment file management, terminal UI helpers, and preflight
+checks. These modules often depend on the host filesystem layout and are not
+suitable for use inside containerized services.
 
-**Files**: `assets.ts`, `compose.ts`, `config.ts`, `detect-providers.ts`,
-`env.ts`, `paths.ts`, `preflight.ts`, `runtime.ts`, `tokens.ts`, `types.ts`,
-`ui.ts`
+**Files**: `assets.ts`, `compose.ts`, `config.ts`, `env.ts`, `paths.ts`,
+`preflight.ts`, `runtime.ts`, `tokens.ts`, `types.ts`, `ui.ts`
 
 ### 2. `src/shared/` — Cross-service shared code
 
-**Consumers**: Gateway, all channel adapters (chat, discord, voice, telegram,
-webhook)
+**Consumers**: Gateway, channel adapters (chat)
 
 Contains the primitives that services running inside Docker need: HMAC
 cryptography, HTTP response helpers, channel message types, and the channel SDK
@@ -36,15 +34,13 @@ for building and forwarding messages to the gateway.
 
 **Consumers**: The `admin` service exclusively
 
-Contains the admin control-plane logic: Docker Compose runner, setup wizard
-state machine, stack spec parsing and generation, stack apply engine, cron
-scheduling, automation history, runtime environment management, JSONC parsing,
-extension management, and JSON schema validation.
+Contains the admin control-plane logic: Docker Compose runner, stack spec
+parsing and generation, stack apply engine, runtime environment management,
+and JSONC parsing.
 
-**Files**: `automations.ts`, `automation-history.ts`, `compose-runner.ts`,
-`cron.ts`, `extensions.ts`, `jsonc.ts`, `runtime-env.ts`,
-`setup-manager.ts`, `stack-apply-engine.ts`,
-`stack-generator.ts`, `stack-manager.ts`, `stack-spec.ts`
+**Files**: `compose-runner.ts`, `jsonc.ts`, `runtime-env.ts`,
+`stack-apply-engine.ts`, `stack-generator.ts`, `stack-manager.ts`,
+`stack-spec.ts`
 
 ## Import Paths
 
@@ -98,8 +94,6 @@ import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 The admin service imports from the `admin` zone:
 
 ```ts
-import { SetupManager } from "@openpalm/lib/admin/setup-manager.ts";
-import { ensureCronDirs, syncAutomations } from "@openpalm/lib/admin/automations.ts";
 import { StackManager } from "@openpalm/lib/admin/stack-manager.ts";
 import { parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 ```
@@ -142,10 +136,6 @@ line. Currently:
 - `core/admin/Dockerfile`
 - `core/gateway/Dockerfile`
 - `channels/chat/Dockerfile`
-- `channels/discord/Dockerfile`
-- `channels/voice/Dockerfile`
-- `channels/telegram/Dockerfile`
-- `channels/webhook/Dockerfile`
 
 The `core/assistant/` service does not import from `@openpalm/lib` and does not need
 this line.

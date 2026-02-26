@@ -9,7 +9,6 @@ import {
 } from "@openpalm/lib/shared/admin-client.ts";
 
 const DEFAULT_ADMIN_TIMEOUT_MS = 15000;
-const DEFAULT_LOCAL_ADMIN_API_URL = "http://localhost:8100";
 const ASSISTANT_STATE_ENV_RELATIVE_PATH = "assistant/.env";
 
 async function mergedEnv(): Promise<Record<string, string | undefined>> {
@@ -61,27 +60,14 @@ export async function adminEnvContext(): Promise<{ env: Record<string, string | 
   };
 }
 
-export async function executeAdminCommand(
-  commandType: string,
-  payload: Record<string, unknown> = {},
-  options?: { localFallback?: boolean }
-): Promise<unknown> {
+export async function getAdminClient(): Promise<AdminApiClient> {
   const env = await mergedEnv();
-  let baseUrl = resolveAdminBaseUrl(env);
-  if (options?.localFallback && !hasExplicitAdminApiConfig(env)) {
-    baseUrl = DEFAULT_LOCAL_ADMIN_API_URL;
-  }
+  const baseUrl = resolveAdminBaseUrl(env);
   const token = resolveAdminToken(env);
   if (!token) {
     throw new Error("OPENPALM_ADMIN_TOKEN or ADMIN_TOKEN is required");
   }
   validateAdminBaseUrl(baseUrl, Bun.env.OPENPALM_ALLOW_INSECURE_ADMIN_HTTP === "1");
   const timeoutMs = parseTimeoutMs(Bun.env.OPENPALM_ADMIN_TIMEOUT_MS);
-
-  const client = new AdminApiClient({
-    baseUrl,
-    token,
-    timeoutMs,
-  });
-  return await client.command(commandType, payload);
+  return new AdminApiClient({ baseUrl, token, timeoutMs });
 }

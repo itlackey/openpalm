@@ -60,12 +60,8 @@ describe("applyStack dry-run", () => {
       accessScope: "lan",
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING}", CHANNEL_CHAT_SECRET: "" } },
-        discord: { enabled: true, exposure: "lan", config: { DISCORD_BOT_TOKEN: "", DISCORD_PUBLIC_KEY: "", CHANNEL_DISCORD_SECRET: "" } },
-        voice: { enabled: true, exposure: "lan", config: { CHANNEL_VOICE_SECRET: "" } },
-        telegram: { enabled: true, exposure: "lan", config: { TELEGRAM_BOT_TOKEN: "", TELEGRAM_WEBHOOK_SECRET: "", CHANNEL_TELEGRAM_SECRET: "" } },
       },
       services: {},
-      automations: [],
     }), "utf8");
 
     const manager = createManager(dir);

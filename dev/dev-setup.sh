@@ -24,7 +24,7 @@ fi
 
 mkdir -p "$DEV_DIR/data"/{postgres,qdrant,openmemory,assistant,admin}
 mkdir -p "$DEV_DIR/config"
-mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,channel-discord,channel-voice,channel-telegram,channel-api,caddy/config,caddy/data,logs,tmp,automations}
+mkdir -p "$DEV_DIR/state"/{gateway,openmemory,postgres,qdrant,assistant,channel-chat,caddy/config,caddy/data,logs,tmp}
 
 # Fix root-owned files from previous container runs (avoids needing sudo)
 if find "$DEV_DIR" -maxdepth 1 -not -user "$(id -u)" -print -quit 2>/dev/null | grep -q .; then
@@ -33,7 +33,7 @@ if find "$DEV_DIR" -maxdepth 1 -not -user "$(id -u)" -print -quit 2>/dev/null | 
 fi
 # Create empty env files so docker-compose doesn't error on missing env_file
 touch "$DEV_DIR/state/system.env"
-for svc in gateway openmemory postgres qdrant assistant channel-chat channel-discord channel-voice channel-telegram channel-api; do
+for svc in gateway openmemory postgres qdrant assistant channel-chat; do
 	touch "$DEV_DIR/state/$svc/.env"
 done
 mkdir -p "$HOME/openpalm"

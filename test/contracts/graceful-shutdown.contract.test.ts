@@ -4,13 +4,6 @@ import { readFileSync } from "node:fs";
 const SERVER_ENTRYPOINTS = [
   "core/gateway/src/server.ts",
   "channels/chat/server.ts",
-  "channels/voice/server.ts",
-  "channels/telegram/server.ts",
-  "channels/discord/server.ts",
-  "channels/webhook/server.ts",
-  "channels/api/server.ts",
-  "channels/mcp/server.ts",
-  "channels/a2a/server.ts",
 ];
 
 describe("graceful shutdown contract", () => {

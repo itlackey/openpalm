@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { error, info } from "@openpalm/lib/ui.ts";
-import { executeAdminCommand } from "./admin.ts";
+import { getAdminClient } from "./admin.ts";
 
 function getArg(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -14,7 +13,7 @@ function positionalArgs(args: string[]): string[] {
     const value = args[index];
     if (value.startsWith("--")) {
       const flag = value.slice(2);
-      if (flag === "yaml" || flag === "file" || flag === "exposure" || flag === "config") {
+      if (flag === "exposure" || flag === "config") {
         index += 2;
         continue;
       }
@@ -27,33 +26,7 @@ function positionalArgs(args: string[]): string[] {
   return positional;
 }
 
-async function readYaml(args: string[]): Promise<string> {
-  const positional = positionalArgs(args)[0];
-  if (positional) {
-    try {
-      return await readFile(positional, "utf8");
-    } catch {
-      return positional;
-    }
-  }
-  const yaml = getArg(args, "yaml");
-  if (yaml) return yaml;
-  const file = getArg(args, "file");
-  if (!file) throw new Error("Either --yaml or --file is required");
-  return await readFile(file, "utf8");
-}
-
 export async function channel(subcommand: string, args: string[]): Promise<void> {
-  if (subcommand === "add") {
-    const yaml = await readYaml(args);
-    const result = await executeAdminCommand(
-      "snippet.import",
-      { section: "channel", yaml },
-      { localFallback: true }
-    );
-    info(JSON.stringify(result, null, 2));
-    return;
-  }
   if (subcommand === "configure") {
     const channelName = positionalArgs(args)[0];
     const exposure = getArg(args, "exposure");
@@ -78,20 +51,20 @@ export async function channel(subcommand: string, args: string[]): Promise<void>
         throw new Error("channel config must be a valid JSON object");
       }
     }
-    const result = await executeAdminCommand(
-      "channel.configure",
-      {
-        channel: channelName,
-        ...(exposure ? { exposure } : {}),
-        ...(config ? { config } : {}),
-      },
-      { localFallback: true }
-    );
-    info(JSON.stringify(result, null, 2));
+    const client = await getAdminClient();
+    const specResult = await client.getStackSpec() as { spec: Record<string, any> };
+    const spec = specResult.spec;
+    if (!spec.channels || !spec.channels[channelName]) {
+      throw new Error(`Unknown channel: ${channelName}`);
+    }
+    if (exposure) spec.channels[channelName].exposure = exposure;
+    if (config) spec.channels[channelName].config = { ...spec.channels[channelName].config, ...config };
+    await client.setStackSpec(spec);
+    await client.applyStack();
+    info(`Channel ${channelName} configured successfully`);
     return;
   }
   error(`Unknown channel subcommand: ${subcommand}`);
-  info("Usage: openpalm channel add <yaml-or-file-path>");
-  info("   or: openpalm channel configure <channel> [--exposure <host|lan|public>] [--config '{\"k\":\"v\"}']");
+  info("Usage: openpalm channel configure <channel> [--exposure <host|lan|public>] [--config '{\"k\":\"v\"}']");
   process.exit(1);
 }

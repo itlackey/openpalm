@@ -24,14 +24,13 @@ bunx openpalm install
 | `status` | Show container status |
 | `service <up\|stop\|restart\|logs\|update\|status>` | Domain-based service operations |
 | `channel <add\|configure>` | Domain-based channel operations |
-| `automation <run\|trigger>` | Domain-based automation operations |
 | `extensions <install\|uninstall\|list>` | Manage extensions |
 | `dev preflight` | Validate development environment |
 | `dev create-channel` | Scaffold a new channel adapter |
 
 ## Install options
 
-- `--runtime <docker|podman|orbstack>` — Force container runtime
+- `--runtime <docker|podman>` — Force container runtime
 - `--no-open` — Don't auto-open browser after install
 - `--ref <branch|tag>` — Git ref for asset download
 
@@ -91,8 +90,7 @@ export OPENPALM_ADMIN_API_URL=http://admin:8100
 export OPENPALM_ADMIN_TOKEN=...
 openpalm service restart assistant
 
-# Domain commands for channels/automations
+# Domain commands for channels
 openpalm channel add /path/to/channel.yaml
-openpalm channel configure discord --exposure lan
-openpalm automation run example-job
+openpalm channel configure chat --exposure lan
 ```

@@ -8,7 +8,7 @@
     All installer logic lives in the CLI itself.
 
 .PARAMETER Runtime
-    Force a container runtime platform selection. Valid values: docker, podman, orbstack.
+    Force a container runtime platform selection. Valid values: docker, podman.
 
 .PARAMETER Port
     Use an alternative ingress port (default: 80). Useful when port 80
@@ -34,7 +34,7 @@
 #>
 
 param(
-  [ValidateSet("docker", "podman", "orbstack")]
+  [ValidateSet("docker", "podman")]
   [string]$Runtime,
   [ValidateRange(1, 65535)]
   [int]$Port,

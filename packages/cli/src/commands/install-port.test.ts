@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { checkPort, checkPortDetailed, runPreflightChecks, runPreflightChecksDetailed } from "@openpalm/lib/preflight.ts";
+import { checkPortDetailed, runPreflightChecksDetailed } from "@openpalm/lib/preflight.ts";
 import { createDefaultStackSpec, parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 import { generateStackArtifacts } from "@openpalm/lib/admin/stack-generator.ts";
 
@@ -38,17 +38,6 @@ describe("ISSUE-4 — Port 80 conflict resolution", () => {
     const content = await Bun.file(installFile).text();
     expect(content).toContain("ingressPort === 80");
     expect(content).toContain("`http://localhost:${ingressPort}`");
-  });
-
-  it("checkPort() accepts a port parameter (defaults to 80)", () => {
-    // The checkPort function signature accepts an optional port
-    expect(typeof checkPort).toBe("function");
-    // Verify it can be called with a custom port (won't actually find anything in test)
-    expect(checkPort(12345)).resolves.toBeNull();
-  });
-
-  it("runPreflightChecks() accepts a port parameter", () => {
-    expect(typeof runPreflightChecks).toBe("function");
   });
 
   it("checkPortDetailed() returns null for unused port", async () => {

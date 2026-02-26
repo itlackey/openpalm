@@ -141,7 +141,7 @@ describe("gateway HTTP pipeline", () => {
   const openCode = new OpenCodeClient(`http://localhost:${mockAssistant.port}`);
   const nonceCache = new NonceCache();
   const deps: GatewayDeps = {
-    channelSecrets: { chat: SECRET, discord: SECRET },
+    channelSecrets: { chat: SECRET },
     openCode,
     audit,
     nonceCache,

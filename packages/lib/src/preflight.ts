@@ -2,14 +2,6 @@ import { homedir } from "node:os";
 import type { HostOS, ContainerPlatform, PreflightIssue, PreflightResult } from "./types.ts";
 
 /**
- * @deprecated Use `PreflightIssue` from `@openpalm/lib/types.ts` instead.
- */
-export type PreflightWarning = {
-  message: string;
-  detail?: string;
-};
-
-/**
  * Check available disk space on the home directory.
  * Returns a typed issue if less than 3 GB is available.
  */
@@ -44,15 +36,6 @@ export async function checkDiskSpaceDetailed(): Promise<PreflightIssue | null> {
     // df not available (e.g. some Windows environments)
   }
   return null;
-}
-
-/**
- * Check available disk space on the home directory.
- * @deprecated Use `checkDiskSpaceDetailed()` for typed results.
- */
-export async function checkDiskSpace(): Promise<PreflightWarning | null> {
-  const issue = await checkDiskSpaceDetailed();
-  return issue ? { message: issue.message, detail: issue.detail } : null;
 }
 
 /**
@@ -104,15 +87,6 @@ export async function checkPortDetailed(port: number = 80): Promise<PreflightIss
 }
 
 /**
- * Check if a port is already in use.
- * @deprecated Use `checkPortDetailed()` for typed results.
- */
-export async function checkPort(port: number = 80): Promise<PreflightWarning | null> {
-  const issue = await checkPortDetailed(port);
-  return issue ? { message: issue.message, detail: issue.detail } : null;
-}
-
-/**
  * Check if the Docker/Podman daemon is actually running.
  * Returns a typed issue if the daemon is unreachable.
  */
@@ -122,7 +96,7 @@ export async function checkDaemonRunningDetailed(
 ): Promise<PreflightIssue | null> {
   if (platform === "podman") return null; // Podman is daemonless
 
-  const runtime = platform === "orbstack" ? "OrbStack" : "Docker";
+  const runtime = "Docker";
 
   try {
     const proc = Bun.spawn([bin, "info"], {
@@ -137,7 +111,7 @@ export async function checkDaemonRunningDetailed(
         message: `${runtime} is installed but the daemon is not running.`,
         detail:
           process.platform === "darwin"
-            ? "Open Docker Desktop (or OrbStack) and wait for it to start, then rerun."
+            ? "Open Docker Desktop and wait for it to start, then rerun."
             : "Start the Docker service:\n  sudo systemctl start docker",
         meta: { runtime: platform, command: `${bin} info` },
       };
@@ -151,18 +125,6 @@ export async function checkDaemonRunningDetailed(
     };
   }
   return null;
-}
-
-/**
- * Check if the Docker/Podman daemon is actually running.
- * @deprecated Use `checkDaemonRunningDetailed()` for typed results.
- */
-export async function checkDaemonRunning(
-  bin: string,
-  platform: ContainerPlatform
-): Promise<PreflightWarning | null> {
-  const issue = await checkDaemonRunningDetailed(bin, platform);
-  return issue ? { message: issue.message, detail: issue.detail } : null;
 }
 
 /**
@@ -185,22 +147,6 @@ export async function runPreflightChecksDetailed(
 }
 
 /**
- * Run all preflight checks and return any warnings.
- * @deprecated Use `runPreflightChecksDetailed()` for typed results with codes and severities.
- */
-export async function runPreflightChecks(
-  bin: string,
-  platform: ContainerPlatform,
-  port: number = 80
-): Promise<PreflightWarning[]> {
-  const result = await runPreflightChecksDetailed(bin, platform, port);
-  return result.issues.map((i) => ({
-    message: i.message,
-    detail: i.detail,
-  }));
-}
-
-/**
  * Return user-friendly install guidance when no container runtime is found.
  */
 export function noRuntimeGuidance(os: HostOS): string {
@@ -216,13 +162,10 @@ export function noRuntimeGuidance(os: HostOS): string {
   switch (os) {
     case "macos":
       lines.push(
-        "For macOS, install ONE of:",
+        "For macOS, install Docker Desktop:",
         "",
         "  Docker Desktop (free for personal use):",
         "    https://www.docker.com/products/docker-desktop/",
-        "",
-        "  OrbStack (lightweight, fast):",
-        "    https://orbstack.dev/download",
         "",
         "  Or via Homebrew:",
         "    brew install --cask docker",

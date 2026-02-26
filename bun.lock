@@ -9,44 +9,13 @@
         "typescript": "^5.9.3",
       },
     },
-    "channels/a2a": {
-      "name": "@openpalm/channel-a2a",
-      "version": "0.3.4",
-    },
-    "channels/api": {
-      "name": "@openpalm/channel-api",
-      "version": "0.4.0",
-    },
     "channels/chat": {
       "name": "@openpalm/channel-chat",
       "version": "0.4.0",
     },
-    "channels/discord": {
-      "name": "@openpalm/channel-discord",
-      "version": "0.4.0",
-    },
-    "channels/mcp": {
-      "name": "@openpalm/channel-mcp",
-      "version": "0.3.4",
-    },
-    "channels/telegram": {
-      "name": "@openpalm/channel-telegram",
-      "version": "0.4.0",
-    },
-    "channels/voice": {
-      "name": "@openpalm/channel-voice",
-      "version": "0.4.0",
-    },
-    "channels/webhook": {
-      "name": "@openpalm/channel-webhook",
-      "version": "0.3.0",
-    },
     "core/admin": {
       "name": "@openpalm/admin",
       "version": "0.4.0",
-      "devDependencies": {
-        "@playwright/test": "^1.58.1",
-      },
     },
     "core/gateway": {
       "name": "@openpalm/gateway",
@@ -199,21 +168,7 @@
 
     "@openpalm/admin": ["@openpalm/admin@workspace:core/admin"],
 
-    "@openpalm/channel-a2a": ["@openpalm/channel-a2a@workspace:channels/a2a"],
-
-    "@openpalm/channel-api": ["@openpalm/channel-api@workspace:channels/api"],
-
     "@openpalm/channel-chat": ["@openpalm/channel-chat@workspace:channels/chat"],
-
-    "@openpalm/channel-discord": ["@openpalm/channel-discord@workspace:channels/discord"],
-
-    "@openpalm/channel-mcp": ["@openpalm/channel-mcp@workspace:channels/mcp"],
-
-    "@openpalm/channel-telegram": ["@openpalm/channel-telegram@workspace:channels/telegram"],
-
-    "@openpalm/channel-voice": ["@openpalm/channel-voice@workspace:channels/voice"],
-
-    "@openpalm/channel-webhook": ["@openpalm/channel-webhook@workspace:channels/webhook"],
 
     "@openpalm/gateway": ["@openpalm/gateway@workspace:core/gateway"],
 

@@ -1,7 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { verifyAdminToken } from '$lib/server/auth';
-import { ensureInitialized } from '$lib/server/init';
-import { getSetupManager } from '$lib/server/init';
+import { ensureInitialized, getStackManager } from '$lib/server/init';
 
 function isPrivateOrigin(origin: string): boolean {
 	try {
@@ -43,8 +42,8 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	// Run one-time startup logic (no-op after first call, skipped during build)
 	await ensureInitialized();
 
-	const setupManager = await getSetupManager();
-	const { accessScope } = setupManager.getState();
+	const stackManager = await getStackManager();
+	const { accessScope } = stackManager.getSpec();
 	const requestOrigin = event.request.headers.get('origin') ?? '';
 	const allowedOrigin = computeAllowedOrigin(accessScope ?? 'host', requestOrigin);
 

@@ -40,33 +40,3 @@ services:
     build:
       context: .
       dockerfile: channels/chat/Dockerfile
-
-  channel-discord:
-    build:
-      context: .
-      dockerfile: channels/discord/Dockerfile
-
-  channel-voice:
-    build:
-      context: .
-      dockerfile: channels/voice/Dockerfile
-
-  channel-telegram:
-    build:
-      context: .
-      dockerfile: channels/telegram/Dockerfile
-
-  channel-api:
-    build:
-      context: .
-      dockerfile: channels/api/Dockerfile
-
-  channel-mcp:
-    build:
-      context: .
-      dockerfile: channels/mcp/Dockerfile
-
-  channel-a2a:
-    build:
-      context: .
-      dockerfile: channels/a2a/Dockerfile

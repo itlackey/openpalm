@@ -2,7 +2,7 @@
 
 ## What this is
 
-Self-hosted multi-channel AI assistant platform. Channels (Discord, Telegram, Voice, Chat, Webhook) send HMAC-signed messages → Caddy → Gateway → OpenCode agent → OpenMemory. All services are Docker containers orchestrated by Docker Compose.
+Self-hosted AI assistant platform. The chat channel sends HMAC-signed messages → Caddy → Gateway → OpenCode agent → OpenMemory. All services are Docker containers orchestrated by Docker Compose.
 
 **Core principle**: Simplicity above all. If a solution is complex, it's wrong.
 
@@ -21,7 +21,7 @@ Admin (control plane, not in request path) ────────────�
 
 ## Monorepo layout
 
-Bun workspaces: `core/gateway`, `core/admin`, `channels/{chat,discord,voice,telegram,webhook}`, `packages/lib`, `packages/cli`, `packages/ui` (SvelteKit, replacing `admin/ui/`).
+Bun workspaces: `core/gateway`, `core/admin`, `channels/chat`, `packages/lib`, `packages/cli`, `packages/ui` (SvelteKit, replacing `admin/ui/`).
 
 ```
 packages/lib/src/embedded/state/docker-compose.yml   — production compose base

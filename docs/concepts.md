@@ -1,6 +1,6 @@
 # OpenPalm User Guide — Core Concepts
 
-OpenPalm is built around six ideas: Extensions, Secrets, Channels, Services, Automations, and the Gateway. This guide explains what each one does and how you interact with it.
+OpenPalm is built around five ideas: Extensions, Secrets, Channels, Services, and the Gateway. This guide explains what each one does and how you interact with it.
 
 ---
 
@@ -8,7 +8,7 @@ OpenPalm is built around six ideas: Extensions, Secrets, Channels, Services, Aut
 
 Extensions give your assistant new abilities. An extension might teach the assistant a new behavior ("always check memory before answering"), give it a new tool ("search the web"), add a custom slash command, or change how it processes requests.
 
-The admin UI lets you manage **plugins** — npm packages that hook into the OpenCode runtime. To add a plugin, enter its npm package ID and click Install. To remove it, click Uninstall. Skills, agents, commands, and tools can be managed manually by advanced users in the OpenCode config directory.
+The Admin API lets you manage **plugins** -- npm packages that hook into the OpenCode runtime. You can install or uninstall plugins via CLI or API. Skills, agents, commands, and tools can be managed manually by advanced users in the OpenCode config directory.
 
 Each extension sub-type defines what it can and cannot do:
 
@@ -34,16 +34,11 @@ When you apply stack changes, OpenPalm validates that every `${SECRET_NAME}` ref
 
 ## Channels
 
-Channels are the ways you can talk to your assistant outside of the admin panel. You might enable:
+Channels are the ways you can talk to your assistant outside of the admin panel. The MVP includes:
 
-- A **Discord** channel so the assistant responds in your Discord server
-- A **Telegram** channel for mobile messaging
-- A **Voice** channel for speaking to it
 - A **Web Chat** channel for embedding in a website
-- An **MCP** channel so AI clients and IDE integrations can use the assistant as a tool server
-- An **A2A** channel so other AI agents can communicate with the assistant using the Agent-to-Agent protocol
 
-Each channel has its own setup flow — Discord asks for a bot token, Telegram asks for a bot token, voice asks for a speech-to-text endpoint — and once enabled, shows a status indicator.
+Each channel has its own setup flow and once enabled, shows a status indicator.
 
 ### Access control
 
@@ -52,7 +47,7 @@ Each channel has an access setting:
 - **Private** — Only accessible from your local network
 - **Public** — Accessible from the internet
 
-You control this per channel. For example, you might keep Discord public (so the bot is reachable from Discord's servers) while keeping web chat private (only accessible from your home network). Changing the access level is a single toggle.
+You control this per channel. Changing the access level is a single toggle.
 
 ### Security
 
@@ -74,44 +69,13 @@ Services have no access control setting. They are always private by design.
 
 ---
 
-## Automations
-
-Automations are recurring tasks you schedule for your assistant. Instead of sending a message yourself, you tell the assistant what to do and when to do it — and it happens automatically.
-
-### Examples
-
-- A **daily morning briefing** that summarizes the news at 9 AM
-- A **weekly report** generated every Monday
-- A **periodic health check** that runs every few hours
-
-### What you configure
-
-- **Name** — A label for the automation (e.g., "Daily Morning Briefing")
-- **Prompt** — What you want the assistant to do (e.g., "Summarize the top 5 tech headlines and post to the #news Discord channel")
-- **Schedule** — How often it runs, using a friendly frequency picker (daily, weekly, every N hours, etc.)
-
-### Managing automations
-
-- **Enable / Disable** — Turn an automation on or off without deleting it
-- **Edit** — Change the prompt, schedule, or name at any time
-- **Run Now** — Trigger the automation immediately, without waiting for the next scheduled time. Useful for testing.
-- **Delete** — Remove the automation entirely
-
-Each automation runs independently — it has its own conversation history that doesn't mix with your interactive sessions or other automations.
-
-### Automations vs. Channels
-
-Channels are **reactive**: the assistant responds when you (or someone) sends a message. Automations are **proactive**: the assistant acts on its own schedule without any user trigger.
-
----
-
 ## Gateway
 
 The Gateway works behind the scenes. You don't configure it, and you won't interact with it directly. If it appears in the admin panel at all, it's as a health indicator on the system status page.
 
 ### What it does
 
-The Gateway is the security layer that sits between every channel and the assistant. No matter how a message arrives — Discord, Telegram, voice, web chat — it passes through the Gateway first. The Gateway:
+The Gateway is the security layer that sits between every channel and the assistant. No matter how a message arrives — web chat or any future channel — it passes through the Gateway first. The Gateway:
 
 1. **Verifies the message is authentic** — rejects anything that wasn't sent by a legitimate channel
 2. **Rate-limits** — prevents any single user from overwhelming the assistant
@@ -121,7 +85,7 @@ The Gateway is the security layer that sits between every channel and the assist
 
 ### Why it matters to you
 
-The Gateway is what makes it safe to expose channels to the internet, install community extensions, and connect to external services. You don't need to think about it — but it's the reason you can enable public access on a channel and trust that the assistant won't receive raw, unfiltered input from the outside world.
+The Gateway is what makes it safe to expose channels to the internet and connect to external services. You don't need to think about it -- but it's the reason you can enable public access on a channel and trust that the assistant won't receive raw, unfiltered input from the outside world.
 
 ---
 
@@ -130,7 +94,7 @@ The Gateway is what makes it safe to expose channels to the internet, install co
 ```
   You (the user)
        |
-       |  Manage in the Admin UI:
+       |  Manage via CLI / Admin API:
        |
        +---> Extensions -----> Give the assistant new abilities
        |
@@ -138,11 +102,9 @@ The Gateway is what makes it safe to expose channels to the internet, install co
        |
        +---> Services ---------> Internal-only backend containers
        |
-       +---> Automations -----> Schedule recurring tasks
-       |
        |  Talk to the assistant via:
        |
-       +---> Channels ---------> Discord, Chat, Voice, Telegram
+       +---> Channels ---------> Chat
                   |
                   v
               Gateway  (security + filtering)
@@ -155,5 +117,4 @@ The Gateway is what makes it safe to expose channels to the internet, install co
 - **Secrets** provide the credentials that extensions and the assistant need to reach external services.
 - **Services** are internal containers the assistant can reach directly — never exposed externally.
 - **Channels** let you and others talk to the assistant from different platforms. Every channel message passes through the **Gateway** for security.
-- **Automations** let the assistant act on a schedule without anyone sending a message.
 - The **Gateway** protects the assistant behind every channel, ensuring all messages are authenticated, rate-limited, and screened.

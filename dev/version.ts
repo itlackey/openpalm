@@ -55,37 +55,6 @@ export const COMPONENTS: Record<string, ComponentMeta> = {
   gateway: { context: "core/gateway", packageJson: "core/gateway/package.json", image: true },
   admin: { context: "core/admin", packageJson: "core/admin/package.json", image: true },
   "channel-chat": { context: "channels/chat", packageJson: "channels/chat/package.json", image: true },
-  "channel-discord": {
-    context: "channels/discord",
-    packageJson: "channels/discord/package.json",
-    image: true,
-  },
-  "channel-voice": { context: "channels/voice", packageJson: "channels/voice/package.json", image: true },
-  "channel-telegram": {
-    context: "channels/telegram",
-    packageJson: "channels/telegram/package.json",
-    image: true,
-  },
-  "channel-api": {
-    context: "channels/api",
-    packageJson: "channels/api/package.json",
-    image: true,
-  },
-  "channel-a2a": {
-    context: "channels/a2a",
-    packageJson: "channels/a2a/package.json",
-    image: true,
-  },
-  "channel-mcp": {
-    context: "channels/mcp",
-    packageJson: "channels/mcp/package.json",
-    image: true,
-  },
-  "channel-webhook": {
-    context: "channels/webhook",
-    packageJson: "channels/webhook/package.json",
-    image: true,
-  },
   cli: {
     context: "packages/cli",
     packageJson: "packages/cli/package.json",

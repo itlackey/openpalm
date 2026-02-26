@@ -1,12 +1,11 @@
 # Admin Service
 
-The `admin` container is the control-plane executor for OpenPalm. It hosts the Admin UI, manages the Docker Compose lifecycle, runs the automation cron daemon, and exposes the Admin API for all management operations.
+The `admin` container is the control-plane executor for OpenPalm. It hosts the Admin UI, manages the Docker Compose lifecycle, and exposes the Admin API for all management operations.
 
 ## What it does
 
-- **Admin UI** — Web dashboard for managing services, extensions, secrets, channels, and automations
+- **Admin UI** — Web dashboard for managing services, extensions, secrets, and channels
 - **Compose lifecycle** — Executes allowlisted `docker compose` operations (start, stop, restart, pull)
-- **Automation cron host** — Runs user-defined scheduled prompts via a cron daemon (`cron && node /app/packages/ui/build/index.js`)
 - **System maintenance cron** — Runs built-in non-configurable maintenance jobs (image pulls, health checks, database maintenance, log rotation, etc.)
 - **Config editor** — Reads and writes `opencode.json` with schema validation, policy lint, and atomic backup
 
@@ -34,7 +33,7 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 | Service control | Start / stop / restart containers |
 | Plugin management | Install and uninstall npm plugins (`plugin[]` in `opencode.json`) |
 | Secrets management | Manage key/value credentials in `secrets.env` |
-| Automations | Create, edit, enable/disable, and trigger scheduled prompts |
+| Stack config | YAML-first stack configuration with template discovery |
 
 ### Safe config editing flow
 
@@ -47,20 +46,6 @@ The `admin` container is the control-plane executor for OpenPalm. It hosts the A
 ### Plugin management
 
 The admin UI manages OpenCode plugins (the `plugin[]` list in `opencode.json`). Skills, agents, commands, and tools are managed manually by advanced users in the OpenCode config directory.
-
-### Automations
-
-User-defined scheduled prompts are stored as JSON payload files under `STATE/automations/`. The cron daemon picks up changes automatically — no restart needed.
-
-| Operation | Description |
-|---|---|
-| Create | Name, prompt text, cron expression, UUID assigned |
-| Enable / Disable | Status toggle; disabled automations are not executed |
-| Run Now | Trigger immediately for testing |
-| Edit | Change name, prompt, or schedule at any time |
-| Delete | Removes automation and its payload file |
-
-Each automation run executes in its own session (`cron-<job-id>`) so runs do not bleed context into each other.
 
 ## System maintenance cron jobs
 
@@ -82,8 +67,8 @@ Logs are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPEN
 ## Installer flow
 
 1. Detect OS + admin privileges
-2. Resolve container runtime (`docker`, `podman`, or `orbstack`) and validate compose command
-3. If missing: guide to Docker Desktop / Podman Desktop / OrbStack install (Windows/macOS) or Docker Engine / Podman (Linux)
+2. Resolve container runtime (`docker` or `podman`) and validate compose command
+3. If missing: guide to Docker Desktop / Podman Desktop install (Windows/macOS) or Docker Engine / Podman (Linux)
 4. Resolve XDG Base Directory paths (data, config, state)
 5. Write resolved absolute paths into `.env`
 6. Persist runtime command/socket config in `.env`
@@ -99,7 +84,7 @@ Logs are written to `${OPENPALM_STATE_HOME}/observability/maintenance` (or `OPEN
 
 Admin is the control-plane executor and performs allowlisted compose operations directly using the mounted container socket.
 
-**Compose service allowlist:** `assistant`, `gateway`, `openmemory`, `admin`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `caddy`. Additional services can be allowed via `OPENPALM_EXTRA_SERVICES` (comma-separated).
+**Compose service allowlist:** `assistant`, `gateway`, `openmemory`, `admin`, `channel-chat`, `caddy`. Additional services can be allowed via `OPENPALM_EXTRA_SERVICES` (comma-separated).
 
 ## Related docs
 

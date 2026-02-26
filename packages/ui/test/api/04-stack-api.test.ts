@@ -3,17 +3,15 @@ import {
   startServer,
   stopServer,
   authedGet,
-  cmd,
-  runMinimalSetup,
+  authedPost,
   claimPort,
 } from "./helpers";
 
 claimPort(3);
 
-describe("stack spec operations (auth + setup complete required)", () => {
+describe("stack spec operations (auth required)", () => {
   beforeAll(async () => {
     await startServer();
-    await runMinimalSetup();
   });
 
   afterAll(() => {
@@ -36,11 +34,10 @@ describe("stack spec operations (auth + setup complete required)", () => {
     expect(body.ok).toBe(true);
     expect(body.data).toBeDefined();
     expect(body.data.spec).toBeDefined();
-    expect(body.data.setup).toBeDefined();
     expect(body.data.secrets).toBeDefined();
   });
 
-  it("POST command stack.spec.set saves spec", async () => {
+  it("POST /stack/spec saves spec", async () => {
     const specRes = await authedGet("/stack/spec");
     const specBody = await specRes.json();
     const spec = specBody.spec;
@@ -55,13 +52,13 @@ describe("stack spec operations (auth + setup complete required)", () => {
       );
     }
 
-    const res = await cmd("stack.spec.set", { spec });
+    const res = await authedPost("/stack/spec", { spec });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
   });
 
-  it("POST command stack.spec.set with invalid secret refs rejected", async () => {
+  it("POST /stack/spec with invalid secret refs rejected", async () => {
     const specRes = await authedGet("/stack/spec");
     const specBody = await specRes.json();
     const spec = structuredClone(specBody.spec);
@@ -74,8 +71,9 @@ describe("stack spec operations (auth + setup complete required)", () => {
       };
     }
 
-    const res = await cmd("stack.spec.set", { spec });
+    const res = await authedPost("/stack/spec", { spec });
+    expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.ok).toBe(false);
+    expect(body.error).toBe("secret_reference_validation_failed");
   });
 });

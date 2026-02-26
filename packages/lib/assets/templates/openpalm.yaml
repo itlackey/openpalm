@@ -27,4 +27,3 @@ channels:
       TELEGRAM_WEBHOOK_SECRET: ""
       CHANNEL_TELEGRAM_SECRET: ""
 services: {}
-automations: []

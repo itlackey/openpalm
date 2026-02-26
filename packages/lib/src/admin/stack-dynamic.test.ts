@@ -32,7 +32,6 @@ describe("dynamic stack and gateway behavior", () => {
           },
         },
       },
-      automations: [],
     });
 
     expect(spec.channels["Community Slack / v1"].enabled).toBe(true);

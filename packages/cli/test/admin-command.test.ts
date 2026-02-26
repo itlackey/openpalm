@@ -5,11 +5,6 @@ import { join } from "node:path";
 const source = readFileSync(join(import.meta.dir, "../src/commands/admin.ts"), "utf-8");
 
 describe("admin command source validation", () => {
-  it("supports shared admin API command execution through /command", () => {
-    expect(source).toContain("executeAdminCommand(");
-    expect(source).toContain("client.command(commandType, payload)");
-  });
-
   it("loads state env, assistant state env, then merges with Bun.env", () => {
     expect(source).toContain("join(stateRoot, \".env\")");
     expect(source).toContain("assistant/.env");

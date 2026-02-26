@@ -43,7 +43,6 @@ function createTempDir(): string {
   const dataDir = join(dir, "data", "admin");
   const configDir = join(dir, "config");
   const stateRoot = join(dir, "state");
-  const cronDir = join(dir, "cron");
   const opencodeDir = join(dir, "data", "assistant", ".config", "opencode");
   const gatewayDir = join(stateRoot, "gateway");
   const openmemoryDir = join(stateRoot, "openmemory");
@@ -55,7 +54,6 @@ function createTempDir(): string {
     dataDir,
     configDir,
     stateRoot,
-    cronDir,
     opencodeDir,
     gatewayDir,
     openmemoryDir,
@@ -117,8 +115,6 @@ function buildWebServerEnv(dir: string): Record<string, string> {
     COMPOSE_PROJECT_PATH: stateRoot,
     OPENPALM_COMPOSE_FILE: "docker-compose.yml",
     OPENPALM_COMPOSE_BIN: "/usr/bin/true",
-    CORE_READINESS_MAX_ATTEMPTS: "1",
-    CORE_READINESS_POLL_MS: "0",
   };
 }
 
@@ -206,38 +202,3 @@ export async function authedPost(
   });
 }
 
-/** POST to /command endpoint with type + payload */
-export async function cmd(
-  type: string,
-  payload: Record<string, unknown> = {}
-): Promise<Response> {
-  return authedPost("/command", { type, payload });
-}
-
-/**
- * Run the minimal setup sequence so subsequent tests that require
- * a completed setup state can work independently.
- */
-export async function runMinimalSetup(): Promise<void> {
-  await authedPost("/setup/step", { step: "welcome" });
-  await cmd("setup.profile", {
-    name: "Taylor Palm",
-    email: "taylor@example.com",
-  });
-  await authedPost("/setup/step", { step: "profile" });
-  await authedPost("/setup/service-instances", {
-    openmemory: "http://test:8765",
-    psql: "",
-    qdrant: "",
-  });
-  await authedPost("/setup/step", { step: "serviceInstances" });
-  await authedPost("/setup/step", { step: "security" });
-  await authedPost("/setup/channels", {
-    channels: ["channel-chat"],
-    channelConfigs: { "channel-chat": { CHAT_INBOUND_TOKEN: "test-token" } },
-  });
-  await authedPost("/setup/step", { step: "channels" });
-  await authedPost("/setup/access-scope", { scope: "host" });
-  await authedPost("/setup/step", { step: "healthCheck" });
-  await authedPost("/setup/complete", {});
-}

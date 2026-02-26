@@ -10,7 +10,7 @@ EXIT=0
 # --- api-reference.md must document key admin endpoints ---
 API_REF="$REPO_ROOT/dev/docs/api-reference.md"
 if [ -f "$API_REF" ]; then
-	for endpoint in "/setup/status" "/command" "/state" "/secrets" "/automations"; do
+	for endpoint in "/setup/status" "/containers" "/state" "/secrets" "/stack/spec" "/stack/apply" "/channels" "/health"; do
 		if ! grep -qF "$endpoint" "$API_REF"; then
 			echo "ERROR: $API_REF missing documentation for $endpoint"
 			EXIT=1

@@ -4,12 +4,7 @@ import {
   checkPortDetailed,
   checkDaemonRunningDetailed,
   runPreflightChecksDetailed,
-  runPreflightChecks,
-  checkDiskSpace,
-  checkPort,
-  checkDaemonRunning,
 } from "./preflight.ts";
-import * as preflightModule from "./preflight.ts";
 import type { PreflightIssue } from "./types.ts";
 
 describe("preflight typed issue contracts", () => {
@@ -165,67 +160,3 @@ describe("preflight typed issue contracts", () => {
   });
 });
 
-describe("preflight backward compatibility shim", () => {
-  it("does not export removed checkPort80 helper", () => {
-    expect("checkPort80" in preflightModule).toBe(false);
-  });
-
-  describe("runPreflightChecks returns PreflightWarning[] format", () => {
-    it("returns an array of warning objects with message and optional detail", async () => {
-      const warnings = await runPreflightChecks("nonexistent-binary-xyz", "docker", 59128);
-      expect(Array.isArray(warnings)).toBe(true);
-      for (const w of warnings) {
-        expect(w).toHaveProperty("message");
-        expect(typeof w.message).toBe("string");
-        if (w.detail !== undefined) {
-          expect(typeof w.detail).toBe("string");
-        }
-      }
-    });
-
-    it("does not include typed fields (code, severity, meta) in legacy output", async () => {
-      const warnings = await runPreflightChecks("nonexistent-binary-xyz", "docker", 59129);
-      for (const w of warnings) {
-        // Legacy PreflightWarning should only have message and detail
-        const keys = Object.keys(w);
-        for (const key of keys) {
-          expect(["message", "detail"]).toContain(key);
-        }
-      }
-    });
-  });
-
-  describe("checkDiskSpace returns legacy PreflightWarning format", () => {
-    it("returns null or a warning with message/detail only", async () => {
-      const result = await checkDiskSpace();
-      if (result !== null) {
-        expect(result).toHaveProperty("message");
-        expect(Object.keys(result).every((k) => ["message", "detail"].includes(k))).toBe(true);
-      }
-    });
-  });
-
-  describe("checkPort returns legacy PreflightWarning format", () => {
-    it("returns null for unused port", async () => {
-      const result = await checkPort(59130);
-      expect(result).toBeNull();
-    });
-  });
-
-  describe("checkDaemonRunning returns legacy PreflightWarning format", () => {
-    it("returns null for podman", async () => {
-      const result = await checkDaemonRunning("podman", "podman");
-      expect(result).toBeNull();
-    });
-
-    it("returns a warning for bad binary", async () => {
-      const result = await checkDaemonRunning("nonexistent-binary-xyz", "docker");
-      expect(result).not.toBeNull();
-      expect(result!).toHaveProperty("message");
-      const keys = Object.keys(result!);
-      for (const key of keys) {
-        expect(["message", "detail"]).toContain(key);
-      }
-    });
-  });
-});

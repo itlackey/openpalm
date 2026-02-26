@@ -27,13 +27,6 @@ on:
           - gateway
           - admin
           - channel-chat
-          - channel-discord
-          - channel-voice
-          - channel-telegram
-          - channel-api
-          - channel-a2a
-          - channel-mcp
-          - channel-webhook
           - cli
       bump:
         description: "Version bump type"
@@ -65,7 +58,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run lint:docs
       - name: Check for silent test guards
         run: |
           matches=$(grep -rn '^\s*if\s*(.*)\s*return\s*;' --include="*.test.ts" test/ packages/ core/ channels/ 2>/dev/null || true)
@@ -108,7 +100,7 @@ jobs:
           FAILED=0
           # Select Dockerfiles based on component
           if [ "${{ inputs.component }}" = "platform" ]; then
-            DOCKERFILES="core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile channels/api/Dockerfile channels/a2a/Dockerfile channels/mcp/Dockerfile"
+            DOCKERFILES="core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile"
           elif [ "${{ inputs.component }}" = "assistant" ]; then
             DOCKERFILES="core/assistant/Dockerfile"
           else
@@ -117,13 +109,6 @@ jobs:
               gateway)           DOCKERFILES="core/gateway/Dockerfile" ;;
               admin)             DOCKERFILES="core/admin/Dockerfile" ;;
               channel-chat)      DOCKERFILES="channels/chat/Dockerfile" ;;
-              channel-discord)   DOCKERFILES="channels/discord/Dockerfile" ;;
-              channel-voice)     DOCKERFILES="channels/voice/Dockerfile" ;;
-              channel-telegram)  DOCKERFILES="channels/telegram/Dockerfile" ;;
-              channel-api)       DOCKERFILES="channels/api/Dockerfile" ;;
-              channel-a2a)       DOCKERFILES="channels/a2a/Dockerfile" ;;
-              channel-mcp)       DOCKERFILES="channels/mcp/Dockerfile" ;;
-              channel-webhook)   DOCKERFILES="channels/webhook/Dockerfile" ;;
             esac
           fi
 
@@ -158,32 +143,11 @@ jobs:
             exit 1
           fi
 
-  setup-wizard-e2e:
-    if: inputs.component == 'platform' || inputs.component == 'admin'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - name: Run install E2E wizard test
-        env:
-          OPENPALM_RUN_DOCKER_STACK_TESTS: "1"
-        run: bun test ./test/install-e2e/happy-path.docker.ts
-      - name: Upload admin logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: install-e2e-admin-logs
-          path: /tmp/openpalm-install-e2e-*/
-          if-no-files-found: ignore
-          retention-days: 7
-
   # -----------------------------------------------------------------------
   # Release — only runs after all validation gates pass
   # -----------------------------------------------------------------------
   release:
-    needs: [unit-tests, contracts, security, ui, docker-build, setup-wizard-e2e]
+    needs: [unit-tests, contracts, security, ui, docker-build]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -13,7 +13,6 @@ describe("integration: admin auth rejection", () => {
   const protectedPaths = new Set([
     "/state",
     "/secrets",
-    "/automations",
     "/channels",
   ]);
 
@@ -55,7 +54,7 @@ describe("integration: admin auth rejection", () => {
     mockAdmin.stop(true);
   });
 
-  const protectedEndpoints = ["/state", "/secrets", "/automations", "/channels"];
+  const protectedEndpoints = ["/state", "/secrets", "/channels"];
 
   for (const path of protectedEndpoints) {
     it(`GET ${path} without token → 401`, async () => {

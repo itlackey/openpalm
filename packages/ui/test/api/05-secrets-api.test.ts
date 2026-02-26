@@ -3,10 +3,9 @@ import {
   startServer,
   stopServer,
   authedGet,
-  cmd,
+  authedPost,
   getBaseUrl,
   ADMIN_TOKEN,
-  runMinimalSetup,
   claimPort,
 } from "./helpers";
 
@@ -15,7 +14,6 @@ claimPort(4);
 describe("secrets operations", () => {
   beforeAll(async () => {
     await startServer();
-    await runMinimalSetup();
   });
 
   afterAll(() => {
@@ -29,8 +27,8 @@ describe("secrets operations", () => {
     expect(body.ok).toBe(true);
   });
 
-  it("POST command secret.upsert saves a secret", async () => {
-    const res = await cmd("secret.upsert", {
+  it("POST /secrets upserts a secret", async () => {
+    const res = await authedPost("/secrets", {
       name: "TEST_SECRET",
       value: "secret123",
     });
@@ -51,8 +49,8 @@ describe("secrets operations", () => {
     expect(text).toContain("TEST_SECRET");
   });
 
-  it("POST command secret.raw.set saves raw content", async () => {
-    const res = await cmd("secret.raw.set", {
+  it("POST /secrets/raw saves raw content", async () => {
+    const res = await authedPost("/secrets/raw", {
       content: "NEW_KEY=new_value\n",
     });
     expect(res.status).toBe(200);
@@ -72,11 +70,11 @@ describe("secrets operations", () => {
     expect(text).toContain("NEW_KEY=new_value");
   });
 
-  it("POST command secret.delete removes secret", async () => {
+  it("POST /secrets/delete removes secret", async () => {
     // First set a secret to delete
-    await cmd("secret.upsert", { name: "DELETE_ME", value: "temp" });
+    await authedPost("/secrets", { name: "DELETE_ME", value: "temp" });
 
-    const res = await cmd("secret.delete", { name: "DELETE_ME" });
+    const res = await authedPost("/secrets/delete", { name: "DELETE_ME" });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);

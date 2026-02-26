@@ -29,9 +29,6 @@ export CHANNEL_ENV_DIR="${CHANNEL_ENV_DIR:-$ROOT/.dev/config/channels}"
 
 # Channel shared secrets for gateway
 export CHANNEL_CHAT_SECRET="${CHANNEL_CHAT_SECRET:-dev-chat-secret}"
-export CHANNEL_DISCORD_SECRET="${CHANNEL_DISCORD_SECRET:-dev-discord-secret}"
-export CHANNEL_VOICE_SECRET="${CHANNEL_VOICE_SECRET:-dev-voice-secret}"
-export CHANNEL_TELEGRAM_SECRET="${CHANNEL_TELEGRAM_SECRET:-dev-telegram-secret}"
 
 mkdir -p "$DATA_DIR"
 

@@ -1,5 +1,5 @@
 /** Supported container runtime platforms. */
-export type ContainerPlatform = "docker" | "podman" | "orbstack";
+export type ContainerPlatform = "docker" | "podman";
 
 /** Supported host operating systems. */
 export type HostOS = "linux" | "macos" | "windows" | "unknown";
@@ -86,42 +86,6 @@ export type XDGPaths = {
   state: string;
 };
 
-/** Result from a provider detection probe. */
-export type DetectedProvider = {
-  name: string;
-  type: "local" | "api";
-  baseUrl?: string;
-  apiKeyEnvVar?: string;
-  apiKeyPresent: boolean;
-  models: DetectedModel[];
-};
-
-/** A model discovered during provider detection. */
-export type DetectedModel = {
-  id: string;
-  name: string;
-  provider: string;
-  isSmall: boolean;
-};
-
-export type CoreServiceReadinessState = "ready" | "not_ready";
-
-export type CoreServiceReadinessCheck = {
-  service: string;
-  state: CoreServiceReadinessState;
-  status: string;
-  health?: string | null;
-  reason?: "missing" | "not_running" | "unhealthy" | "http_probe_failed";
-  probeUrl?: string;
-  probeError?: string;
-};
-
-export type CoreReadinessDiagnostics = {
-  composePsStderr?: string;
-  failedServices: CoreServiceReadinessCheck[];
-  failedServiceLogs?: Record<string, string>;
-};
-
 /** Install lifecycle event recorded in metadata history. */
 export type InstallEvent = {
   action: "install" | "update" | "setup_complete";
@@ -141,32 +105,3 @@ export type InstallMetadata = {
   history: InstallEvent[];
 };
 
-export type EnsureCoreServicesReadyResult =
-  | {
-    ok: true;
-    code: "ready";
-    checks: CoreServiceReadinessCheck[];
-    diagnostics: CoreReadinessDiagnostics;
-  }
-  | {
-    ok: false;
-    code: "setup_not_ready" | "compose_ps_failed";
-    checks: CoreServiceReadinessCheck[];
-    diagnostics: CoreReadinessDiagnostics;
-  };
-
-/** Phase of the core readiness UX flow. */
-export type CoreReadinessPhase =
-  | "applying"
-  | "starting"
-  | "checking"
-  | "ready"
-  | "failed";
-
-/** Snapshot of core readiness state for API and UI consumption. */
-export type CoreReadinessSnapshot = {
-  phase: CoreReadinessPhase;
-  updatedAt: string;
-  checks: CoreServiceReadinessCheck[];
-  diagnostics: CoreReadinessDiagnostics;
-};

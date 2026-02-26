@@ -8,11 +8,6 @@
 | `assistant` | `/core/assistant/package.json` |
 | `gateway` | `/core/gateway/package.json` |
 | `channel-chat` | `/channels/chat/package.json` |
-| `channel-discord` | `/channels/discord/package.json` |
-| `channel-telegram` | `/channels/telegram/package.json` |
-| `channel-voice` | `/channels/voice/package.json` |
-| `channel-webhook` | `/channels/webhook/package.json` |
-| `channel-api` | `/channels/api/package.json` |
 | `lib` | `/packages/lib/package.json` |
 | `ui` | `/packages/ui/package.json` |
 | `cli` | `/packages/cli/package.json` |

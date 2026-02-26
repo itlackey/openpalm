@@ -10,7 +10,7 @@ For any issue, start by checking the logs of the relevant service:
 docker compose -f ~/.local/state/openpalm/docker-compose.yml logs <service-name> --tail=100
 ```
 
-Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`, `channel-discord`, `channel-voice`, `channel-telegram`, `channel-api`.
+Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemory`, `openmemory-ui`, `postgres`, `qdrant`, `caddy`, `channel-chat`.
 
 ## Service won't start
 
@@ -46,15 +46,13 @@ Replace `<service-name>` with one of: `assistant`, `gateway`, `admin`, `openmemo
 
 ## Channels not responding
 
-**Symptoms:** Messages sent via Discord, Telegram, or other channels get no response.
+**Symptoms:** Messages sent via the chat channel get no response.
 
 **Steps:**
-1. Verify the channel env file has correct credentials: check `~/.local/state/openpalm/channel-<name>/.env`
-2. Check channel container logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs channel-<name> --tail=50`
+1. Verify the channel env file has correct credentials: check `~/.local/state/openpalm/channel-chat/.env`
+2. Check channel container logs: `docker compose -f ~/.local/state/openpalm/docker-compose.yml logs channel-chat --tail=50`
 3. Verify the gateway is healthy: `docker compose -f ~/.local/state/openpalm/docker-compose.yml ps gateway`
-4. Check that the channel secret matches between the channel env and the gateway environment (e.g., `CHANNEL_DISCORD_SECRET`).
-5. For Discord: verify the bot token is valid and the bot has been invited to the server with correct permissions.
-6. For Telegram: verify the bot token via `https://api.telegram.org/bot<token>/getMe`.
+4. Check that the channel secret matches between the channel env and the gateway environment.
 
 ## Assistant not responding
 

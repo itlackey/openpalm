@@ -6,10 +6,6 @@ describe("resolveInContainerSocketPath", () => {
     expect(resolveInContainerSocketPath("docker")).toBe("/var/run/docker.sock");
   });
 
-  it("returns docker socket path for orbstack", () => {
-    expect(resolveInContainerSocketPath("orbstack")).toBe("/var/run/docker.sock");
-  });
-
   it("returns docker socket path for podman", () => {
     expect(resolveInContainerSocketPath("podman")).toBe("/var/run/docker.sock");
   });

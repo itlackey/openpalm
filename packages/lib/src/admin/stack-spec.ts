@@ -48,16 +48,6 @@ export type CaddyConfig = {
   email?: string;
 };
 
-export type StackAutomation = {
-  id: string;
-  name: string;
-  description?: string;
-  schedule: string;
-  script: string;
-  enabled: boolean;
-  core?: boolean;
-};
-
 export type StackSpec = {
   version: typeof StackSpecVersion;
   accessScope: StackAccessScope;
@@ -65,7 +55,6 @@ export type StackSpec = {
   caddy?: CaddyConfig;
   channels: Record<string, StackChannelConfig>;
   services: Record<string, StackServiceConfig>;
-  automations: StackAutomation[];
 };
 
 // --- Derive built-in channel data from YAML snippets ---
@@ -102,10 +91,6 @@ const IMAGE_PATTERN = /^[a-z0-9]+([._\/:@-][a-z0-9]+)*$/i;
 /** Email: basic validation — no whitespace, newlines, or Caddy metacharacters. */
 const EMAIL_PATTERN = /^[^\s{}"#]+@[^\s{}"#]+\.[^\s{}"#]+$/;
 
-function defaultAutomations(): StackAutomation[] {
-  return [];
-}
-
 function defaultChannelConfig(channel: BuiltInChannelName): Record<string, string> {
   const result: Record<string, string> = {};
   for (const key of BuiltInChannelConfigKeys[channel]) result[key] = "";
@@ -132,7 +117,6 @@ export function createDefaultStackSpec(): StackSpec {
     accessScope: "lan",
     channels: Object.fromEntries(BuiltInChannelNames.map((name) => [name, defaultChannelEntry(name)])),
     services: {},
-    automations: defaultAutomations(),
   };
 }
 
@@ -346,32 +330,9 @@ function parseCaddyConfig(raw: unknown): CaddyConfig | undefined {
   return caddy;
 }
 
-function parseAutomations(raw: unknown): StackAutomation[] {
-  if (raw === undefined) return defaultAutomations();
-  if (!Array.isArray(raw)) throw new Error("invalid_automations");
-  return raw.map((value, index) => {
-    const automation = assertRecord(value, `invalid_automation_${index}`);
-    const id = typeof automation.id === "string" ? automation.id.trim() : "";
-    const name = typeof automation.name === "string" ? automation.name.trim() : "";
-    const schedule = typeof automation.schedule === "string" ? automation.schedule.trim() : "";
-    const script = typeof automation.script === "string" ? automation.script.trim() : "";
-    const enabled = automation.enabled;
-    if (!id) throw new Error(`invalid_automation_id_${index}`);
-    if (!name) throw new Error(`invalid_automation_name_${index}`);
-    if (!schedule) throw new Error(`invalid_automation_schedule_${index}`);
-    if (!script) throw new Error(`invalid_automation_script_${index}`);
-    if (typeof enabled !== "boolean") throw new Error(`invalid_automation_enabled_${index}`);
-    const result: StackAutomation = { id, name, schedule, script, enabled };
-    const description = parseOptionalString(automation.description, `automation_description_${index}`);
-    if (description) result.description = description;
-    if (automation.core === true) result.core = true;
-    return result;
-  });
-}
-
 export function parseStackSpec(raw: unknown): StackSpec {
   const doc = assertRecord(raw, "invalid_stack_spec");
-  const allowedKeys = new Set(["version", "accessScope", "ingressPort", "caddy", "channels", "services", "automations"]);
+  const allowedKeys = new Set(["version", "accessScope", "ingressPort", "caddy", "channels", "services"]);
   for (const key of Object.keys(doc)) {
     if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
   }
@@ -398,14 +359,12 @@ export function parseStackSpec(raw: unknown): StackSpec {
   }
 
   const services = parseServices(doc.services);
-  const automations = parseAutomations(doc.automations);
 
   const result: StackSpec = {
     version: StackSpecVersion,
     accessScope: doc.accessScope,
     channels,
     services,
-    automations,
   };
   if (ingressPort !== undefined) result.ingressPort = ingressPort;
   if (caddy) result.caddy = caddy;

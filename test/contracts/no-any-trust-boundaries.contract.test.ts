@@ -3,9 +3,6 @@ import { readFileSync } from "node:fs";
 
 const TRUST_BOUNDARY_FILES = [
   "channels/chat/server.ts",
-  "channels/webhook/server.ts",
-  "channels/voice/server.ts",
-  "packages/ui/src/lib/api.ts",
 ];
 
 describe("trust-boundary typing contract", () => {

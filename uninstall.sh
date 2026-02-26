@@ -14,7 +14,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --runtime)
       if [ "$#" -lt 2 ]; then
-        echo "Missing value for --runtime. Expected: docker | podman | orbstack"
+        echo "Missing value for --runtime. Expected: docker | podman"
         exit 1
       fi
       RUNTIME_OVERRIDE="$2"
@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./uninstall.sh [--runtime docker|podman|orbstack] [--remove-all] [--remove-images] [--yes]
+Usage: ./uninstall.sh [--runtime docker|podman] [--remove-all] [--remove-images] [--yes]
 
 Options:
   --runtime        Force a container runtime platform selection.
@@ -107,9 +107,7 @@ OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/
 OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/openpalm}"
 
 if [ -z "$OPENPALM_CONTAINER_PLATFORM" ]; then
-  if [ "$OS_NAME" = "macos" ] && [ -S "$HOME/.orbstack/run/docker.sock" ] && command -v docker >/dev/null 2>&1; then
-    OPENPALM_CONTAINER_PLATFORM="orbstack"
-  elif command -v docker >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1; then
     OPENPALM_CONTAINER_PLATFORM="docker"
   elif command -v podman >/dev/null 2>&1; then
     OPENPALM_CONTAINER_PLATFORM="podman"
@@ -127,14 +125,10 @@ case "$OPENPALM_CONTAINER_PLATFORM" in
     OPENPALM_COMPOSE_BIN="podman"
     OPENPALM_COMPOSE_SUBCOMMAND="compose"
     ;;
-  orbstack)
-    OPENPALM_COMPOSE_BIN="docker"
-    OPENPALM_COMPOSE_SUBCOMMAND="compose"
-    ;;
   "")
     ;;
   *)
-    echo "Unsupported runtime '$OPENPALM_CONTAINER_PLATFORM'. Use docker, podman, or orbstack."
+    echo "Unsupported runtime '$OPENPALM_CONTAINER_PLATFORM'. Use docker or podman."
     exit 1
     ;;
 esac

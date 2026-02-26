@@ -31,15 +31,8 @@ describe("health + meta (no auth required)", () => {
     expect(body.requiredCoreSecrets).toBeDefined();
     expect(Array.isArray(body.requiredCoreSecrets)).toBe(true);
     expect(body.builtInChannels).toBeDefined();
-    expect(body.builtInChannels.discord).toBeDefined();
-    expect(body.builtInChannels.discord.env.length).toBeGreaterThan(0);
+    expect(body.builtInChannels.chat).toBeDefined();
+    expect(body.builtInChannels.chat.env.length).toBeGreaterThan(0);
   });
 
-  it("GET /setup/status returns first-boot state (no auth needed before setup)", async () => {
-    const res = await rawGet("/setup/status");
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.completed).toBe(false);
-    expect(body.firstBoot).toBe(true);
-  });
 });

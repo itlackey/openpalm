@@ -2,7 +2,7 @@
 
 ## Overview
 
-OpenPalm is a Bun-compiled command-line tool for managing the OpenPalm platform. The CLI provides commands for installation, service management, updates, and extension handling.
+OpenPalm is a Bun-compiled command-line tool for managing the OpenPalm platform. The CLI provides commands for installation, service management, updates, and stack rendering/apply.
 
 All installer logic is centralized in the CLI binary. The shell scripts (`install.sh` and `install.ps1`) are thin wrappers that download the pre-compiled CLI and delegate to `openpalm install`.
 
@@ -35,14 +35,14 @@ This downloads the `openpalm` CLI binary to `%LOCALAPPDATA%\OpenPalm\` (automati
 
 ### `install`
 
-Install and start OpenPalm with a 2-phase installation process.
+Install and start the OpenPalm stack.
 
 ```bash
 openpalm install [options]
 ```
 
 **Options:**
-- `--runtime <docker|podman|orbstack>` - Specify container runtime (auto-detected if not provided)
+- `--runtime <docker|podman>` - Specify container runtime (auto-detected if not provided)
 - `--port <number>` - Use an alternative ingress port (default: 80). Useful when port 80 is already in use
 - `--no-open` - Skip opening browser after installation
 - `--ref <branch|tag>` - Git ref for asset download
@@ -68,118 +68,19 @@ Before starting, the installer automatically checks for issues using typed prefl
 | Daemon not running | `daemon_unavailable` | `fatal` | Aborts with start guidance |
 | Daemon check failed | `daemon_check_failed` | `fatal` | Aborts with report link |
 
-**Installation Phases:**
+**Installation Steps:**
 
-1. **Phase 1: Setup**
-   - Run pre-flight checks
-   - Detect container runtime (with actionable guidance if missing)
-   - Generate `.env` file with secure tokens
-   - Display temporary admin token prominently
-   - Create XDG directory tree
-   - Seed configuration files (embedded templates — no network download)
-   - Reset setup wizard state
-   - Write minimal Caddy JSON config for setup-only mode
-
-2. **Phase 2: Early UI Access**
-   - Pull and start bootstrap services (Caddy, Admin)
-   - Wait for admin health check
-   - Open browser to setup wizard (unless `--no-open`)
-   - The setup wizard completion step applies the full stack and starts core runtime services (Assistant, Gateway, OpenMemory, Postgres, Qdrant, etc.)
-
-### Install + Setup End-to-End Sequence (Detailed)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant User
-    participant CLI as openpalm install (packages/cli/src/commands/install.ts)
-    participant FS as XDG Filesystem
-    participant Runtime as Docker/Podman/OrbStack
-    participant Caddy
-    participant Admin as Admin API/UI
-    participant Wizard as Setup Wizard UI
-    participant Cmd as /command API (packages/ui/src/routes/command/+server.ts)
-    participant Stack as applyStack (packages/lib/src/admin/stack-apply-engine.ts)
-
-    User->>CLI: openpalm install [--runtime] [--no-open]
-    CLI->>CLI: Detect OS/arch/runtime + preflight + compose validation
-    CLI->>FS: Create XDG dirs, write state .env, seed config files
-    CLI->>FS: Write setup-only caddy.json + minimal docker-compose.yml
-    CLI->>Runtime: Pull caddy/admin images
-    CLI->>Runtime: compose up -d caddy admin
-    CLI->>Admin: Poll /setup/status until healthy
-    CLI->>User: Print URL + temporary admin token and open browser
-
-    User->>Wizard: Complete wizard steps
-    Wizard->>Cmd: setup.profile / setup.service_instances / setup.channels / setup.access_scope
-    Cmd->>FS: Update runtime env, secrets env, setup state
-    Wizard->>Cmd: setup.complete
-    Cmd->>Stack: applyStack(stackManager)
-    Stack->>FS: Render caddy/compose/env artifacts for full stack
-    Stack->>Runtime: up/restart/reload services based on impact
-    Cmd->>Runtime: compose up for core runtime services
-    Cmd->>FS: sync automations + mark setup completed
-    Admin-->>User: System is fully configured and running
-```
-
-### Install + Setup Step Report (line-by-line flow)
-
-The steps below map directly to the execution order implemented in `packages/cli/src/commands/install.ts` and the setup API handlers used by the wizard.
-
-#### A) CLI install flow (`packages/cli/src/commands/install.ts`)
-
-| Step | Code area | Files touched | Actions taken |
-|---|---|---|---|
-| 1 | OS detection | none | Detect host OS; abort on unknown OS |
-| 2 | Arch detection | none | Detect CPU architecture (used for image tag suffix) |
-| 3 | Runtime detection | none | Resolve runtime from `--runtime` or auto-detect |
-| 4 | Compose command resolution | none | Resolve compose bin + subcommand |
-| 5 | Preflight checks | none | Check daemon reachability, disk space, port 80; print warnings |
-| 6 | Runtime validation | none | Verify compose command actually works; abort with guidance if not |
-| 7 | Environment summary | none | Print detected OS/arch/runtime details |
-| 8 | XDG path resolution | none | Resolve and print DATA/CONFIG/STATE paths |
-| 9 | Idempotency guard | `STATE/docker-compose.yml` (read) | If existing compose appears to be full stack, prompt before overwrite |
-| 10 | Directory tree creation | XDG tree under data/config/state | Create required XDG directory structure |
-| 11 | Canonical env initialization | `STATE/.env` (and optionally CWD `.env` read/copy source) | Generate secure tokens or reuse existing env, then write canonical env |
-| 12 | Admin token hardening | `STATE/.env` | Regenerate admin token if missing or insecure default |
-| 13 | Runtime/env upsert | `STATE/.env` | Persist XDG paths, runtime socket/config, image namespace/tag, UID/GID, enabled channels |
-| 14 | Convenience env copy | CWD `.env` | Copy canonical state env to working directory |
-| 15 | Seed config templates | `CONFIG/**` | Seed embedded configuration templates |
-| 16 | Reset setup state | `DATA/admin/setup-state.json` | Remove prior wizard completion state |
-| 17 | Uninstall helper script | `STATE/uninstall.sh` | Write uninstall wrapper script and chmod where supported |
-| 18 | system env bootstrap | `STATE/system.env` | Ensure admin `env_file` target exists before first full stack apply |
-| 19 | Setup-only Caddy config | `STATE/caddy.json` | Write reverse-proxy config routing setup traffic to Admin |
-| 20 | Minimal compose bootstrap | `STATE/docker-compose.yml` | Write bootstrap compose containing `caddy` + `admin` only |
-| 21 | Pull bootstrap images | none (runtime side effects) | Pull caddy/admin images with error guidance on failure |
-| 22 | Start bootstrap services | none (runtime side effects) | `compose up -d caddy admin` |
-| 23 | Health wait loop | none | Poll `http://localhost/setup/status` with timeout/backoff |
-| 24 | Browser open | none | Open setup URL unless `--no-open` |
-| 25 | Final UX output | none | Print next steps, troubleshooting, and operational commands |
-
-#### B) Wizard/API setup flow (`packages/ui/src/routes/command/+server.ts`)
-
-All setup commands enforce: unauthenticated setup access is allowed only while setup is incomplete **and** request is local/private.
-
-| Step | Command/API path | Files touched | Actions taken |
-|---|---|---|---|
-| 1 | `setup.profile` | Data env + setup state | Persist profile name/email and update setup state |
-| 2 | `setup.service_instances` | Runtime env + secrets env + setup state + OpenCode config | Persist OpenMemory URLs and provider keys; optionally apply small-model config |
-| 3 | `setup.channels` | Runtime env + stack spec + setup state | Persist enabled channels (`OPENPALM_ENABLED_CHANNELS`) and channel-specific config |
-| 4 | `setup.access_scope` | Runtime env + stack state | Set host/lan/public binding scope and persist setup state |
-| 5 | `setup.step` | setup state | Mark wizard step completion checkpoints (`welcome`, `profile`, `serviceInstances`, etc.) |
-| 6 | `setup.complete` | Stack artifacts + runtime services + setup state | Apply stack artifacts, start core runtime services, sync automations, and mark setup complete (single startup boundary) |
-
-#### C) Setup completion internals (`packages/lib/src/admin/stack-apply-engine.ts`)
-
-`setup.complete` delegates to `applyStack(...)`, which performs:
-
-1. Render desired artifacts from current stack spec.
-2. Validate referenced secrets.
-3. Validate compose configuration.
-4. Write artifacts to their live paths.
-5. The caller then runs `docker compose up` for the intended service set (for setup completion this is core runtime services), and errors are returned to the admin UI.
-
-This is the reliability boundary that turns wizard inputs into a running full stack.
+1. Run pre-flight checks
+2. Detect container runtime (with actionable guidance if missing)
+3. Generate `.env` file with secure tokens
+4. Display admin token prominently
+5. Create XDG directory tree
+6. Seed configuration files (embedded templates -- no network download)
+7. Render full stack artifacts (compose, caddy, env)
+8. Pull container images
+9. Start all services
+10. Wait for admin health check
+11. Print next steps and operational commands
 
 ### `uninstall`
 
@@ -190,7 +91,7 @@ openpalm uninstall [options]
 ```
 
 **Options:**
-- `--runtime <docker|podman|orbstack>` - Specify container runtime
+- `--runtime <docker|podman>` - Specify container runtime
 - `--remove-all` - Remove all data and configurations
 - `--remove-images` - Remove downloaded container images
 - `--yes` - Skip confirmation prompts
@@ -291,79 +192,28 @@ openpalm service status
 Domain-based channel management command.
 
 ```bash
-openpalm channel <add|configure> [options]
+openpalm channel configure <channel-name> [options]
 ```
 
 **Examples:**
 ```bash
-openpalm channel add /path/to/channel.yaml
-openpalm channel add "discord:\n  image: ghcr.io/example/channel:latest"
-openpalm channel configure discord --exposure lan
+openpalm channel configure chat --exposure lan
 ```
 
-### `automation`
+### `render`
 
-Domain-based automation execution command.
+Render stack artifacts (compose, caddy, env files) from the current stack spec without applying them. Useful for previewing what `apply` will write.
 
 ```bash
-openpalm automation <run|trigger> <automation-id>
+openpalm render
 ```
 
-### `extensions`
+### `apply`
 
-Manage OpenPalm extensions and plugins.
-
-```bash
-openpalm extensions <subcommand> [options]
-openpalm ext <subcommand> [options]  # Alias
-```
-
-**Subcommands:**
-
-#### `extensions install`
-
-Install an extension by plugin ID.
+Render and apply stack artifacts, then reconcile running services. This is the primary command for updating a running stack after configuration changes.
 
 ```bash
-openpalm extensions install --plugin <id>
-```
-
-#### `extensions uninstall`
-
-Uninstall an extension by plugin ID.
-
-```bash
-openpalm extensions uninstall --plugin <id>
-```
-
-#### `extensions list`
-
-List all installed extensions.
-
-```bash
-openpalm extensions list
-```
-
-### `dev preflight`
-
-Validate local development prerequisites (`.env` and `.dev/` directory tree).
-
-```bash
-openpalm dev preflight
-```
-
-### `dev create-channel`
-
-Scaffold a new channel adapter in `channels/<name>/`.
-
-```bash
-openpalm dev create-channel <channel-name> [--port <number>]
-```
-
-**Examples:**
-```bash
-openpalm dev create-channel slack
-openpalm dev create-channel matrix --port 8195
+openpalm apply
 ```
 
 ### `version`
@@ -414,16 +264,14 @@ CLI also reads `${OPENPALM_STATE_HOME}/assistant/.env` as a fallback for admin U
 
 ## Container Runtimes
 
-OpenPalm supports three container runtimes:
+OpenPalm supports two container runtimes:
 
 - **Docker** - Cross-platform container runtime
 - **Podman** - Daemonless container runtime
-- **OrbStack** - macOS-only lightweight container runtime
 
 **Auto-detection Order:**
-1. OrbStack (macOS only)
-2. Docker
-3. Podman
+1. Docker
+2. Podman
 
 The runtime can be explicitly specified using the `--runtime` flag on commands that support it.
 

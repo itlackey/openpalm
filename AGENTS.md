@@ -35,11 +35,7 @@
   - `core/gateway/README.md`
   - `core/assistant/README.md`
 - Channel docs:
-  - `channels/discord/README.md`
-  - `channels/telegram/README.md`
-  - `channels/voice/README.md`
   - `channels/chat/README.md`
-  - `channels/webhook/README.md`
 
 ## Scoped AGENTS index
 - Core:
@@ -56,11 +52,7 @@
   - `packages/ui/AGENTS.md`
 - Channels:
   - `channels/AGENTS.md`
-  - `channels/discord/AGENTS.md`
-  - `channels/telegram/AGENTS.md`
-  - `channels/voice/AGENTS.md`
   - `channels/chat/AGENTS.md`
-  - `channels/webhook/AGENTS.md`
 
 ## Release-coupled component checklist
 - When adding a new `core/<name>`, `channels/<name>`, or `packages/<name>` component, update:

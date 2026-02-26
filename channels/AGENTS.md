@@ -8,9 +8,5 @@
 - For new channels, update release/version workflow files listed in root `AGENTS.md`.
 
 ## Key links
-- `channels/discord/AGENTS.md`
-- `channels/telegram/AGENTS.md`
-- `channels/voice/AGENTS.md`
 - `channels/chat/AGENTS.md`
-- `channels/webhook/AGENTS.md`
 - `dev/docs/architecture.md`

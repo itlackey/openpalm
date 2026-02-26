@@ -15,7 +15,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_STATE } from "./setup-manager.ts";
 
 /**
  * Layout descriptor matching the directory conventions used by StackManager
@@ -60,7 +59,6 @@ const SERVICE_ENV_DIRS = [
 /**
  * Resets the server state directory to first-boot condition.
  *
- * - Writes a fresh `setup-state.json` with `completed: false` and all steps `false`
  * - Removes generated artifacts (docker-compose.yml, caddy.json, service .env files, etc.)
  * - Removes the stack spec (openpalm.yaml) and secrets.env
  * - Preserves the directory structure itself (directories are not removed)
@@ -76,29 +74,20 @@ export function resetServerState(
 ): void {
   const dirs = { ...DEFAULT_LAYOUT, ...layout };
 
-  const dataAdminDir = join(tmpDir, dirs.dataAdmin);
   const stateRootDir = join(tmpDir, dirs.stateRoot);
   const configDir = join(tmpDir, dirs.config);
 
-  // 1. Write fresh first-boot setup-state.json
-  mkdirSync(dataAdminDir, { recursive: true });
-  writeFileSync(
-    join(dataAdminDir, "setup-state.json"),
-    JSON.stringify(structuredClone(DEFAULT_STATE), null, 2),
-    "utf8"
-  );
-
-  // 2. Remove generated state artifacts
+  // 1. Remove generated state artifacts
   for (const artifact of STATE_ARTIFACTS) {
     rmSync(join(stateRootDir, artifact), { force: true });
   }
 
-  // 3. Remove known service .env files
+  // 2. Remove known service .env files
   for (const svcDir of SERVICE_ENV_DIRS) {
     rmSync(join(stateRootDir, svcDir, ".env"), { force: true });
   }
 
-  // 4. Remove dynamically-generated channel/service .env files
+  // 3. Remove dynamically-generated channel/service .env files
   if (existsSync(stateRootDir)) {
     for (const entry of readdirSync(stateRootDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -108,7 +97,7 @@ export function resetServerState(
     }
   }
 
-  // 5. Remove config artifacts (stack spec and secrets)
+  // 4. Remove config artifacts (stack spec and secrets)
   rmSync(join(configDir, "openpalm.yaml"), { force: true });
   rmSync(join(configDir, "secrets.env"), { force: true });
 }

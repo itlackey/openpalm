@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("docker", "podman", "orbstack")]
+  [ValidateSet("docker", "podman")]
   [string]$Runtime,
   [switch]$RemoveAll,
   [switch]$RemoveImages,
@@ -85,9 +85,8 @@ $OpenPalmComposeSubcommand = "compose"
 switch ($OpenPalmContainerPlatform) {
   "docker" { $OpenPalmComposeBin = "docker" }
   "podman" { $OpenPalmComposeBin = "podman" }
-  "orbstack" { $OpenPalmComposeBin = "docker" }
   "" { $OpenPalmComposeBin = $null }
-  default { throw "Unsupported runtime '$OpenPalmContainerPlatform'. Use docker, podman, or orbstack." }
+  default { throw "Unsupported runtime '$OpenPalmContainerPlatform'. Use docker or podman." }
 }
 
 $composeFilePath = "$OpenPalmStateHome/docker-compose.yml"
