@@ -10,12 +10,12 @@ import {
 } from '$lib/server/config';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = async ({ locals, request }) => {
 	const setupManager = await getSetupManager();
 	const state = setupManager.getState();
 
 	// SECURITY: During initial setup, restrict to local/private IPs only.
-	if (!state.completed && !isLocalRequest(request)) {
+	if (!state.completed && !isLocalRequest(request, locals.clientAddress)) {
 		return json(403, { error: 'setup endpoints are restricted to local network access' });
 	}
 

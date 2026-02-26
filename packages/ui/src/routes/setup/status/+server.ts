@@ -11,7 +11,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 		return unauthorizedJson();
 
 	// SECURITY: During initial setup, restrict to local/private IPs only.
-	if (!state.completed && !isLocalRequest(request)) {
+	if (!state.completed && !isLocalRequest(request, locals.clientAddress)) {
 		return json(403, { error: 'setup endpoints are restricted to local network access' });
 	}
 

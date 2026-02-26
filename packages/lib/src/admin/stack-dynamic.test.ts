@@ -48,6 +48,12 @@ describe("dynamic stack and gateway behavior", () => {
         },
       } as never,
       audit: { write() {} } as never,
+      nonceCache: {
+        checkAndStore() {
+          return true;
+        },
+        destroy() {},
+      },
     });
 
     const payload = {

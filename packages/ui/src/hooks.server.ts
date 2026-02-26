@@ -64,6 +64,11 @@ export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	// Parse auth token
 	const token = event.request.headers.get('x-admin-token') ?? '';
 	event.locals.authenticated = verifyAdminToken(token);
+	try {
+		event.locals.clientAddress = event.getClientAddress();
+	} catch {
+		event.locals.clientAddress = '';
+	}
 
 	// Resolve request
 	const response = await resolveEvent(event);

@@ -27,38 +27,34 @@ export function isAuthenticated(request: Request): boolean {
 	return verifyAdminToken(token);
 }
 
+function isLocalOrPrivateIp(ip: string): boolean {
+	const normalized = ip.trim().toLowerCase();
+	if (!normalized) return false;
+	if (normalized === '127.0.0.1' || normalized === '::1' || normalized === '[::1]') return true;
+	if (normalized.startsWith('::ffff:')) return isLocalOrPrivateIp(normalized.slice(7));
+	if (normalized.startsWith('10.') || normalized.startsWith('192.168.')) return true;
+	if (/^172\.(1[6-9]|2\d|3[01])\./.test(normalized)) return true;
+	return false;
+}
+
+function getForwardedClientIp(request: Request): string | null {
+	const forwarded = request.headers.get('x-forwarded-for');
+	if (!forwarded) return null;
+	const first = forwarded
+		.split(',')[0]
+		?.trim();
+	return first || null;
+}
+
 /**
  * Check if a request originates from a local/private IP address.
  * Used to restrict unauthenticated setup endpoints to local network access only.
- *
- * SECURITY NOTE: This relies on x-forwarded-for which can be spoofed if not
- * behind a trusted proxy. In the OpenPalm architecture, Caddy sets this header
- * and is the only ingress point.
  */
-export function isLocalRequest(request: Request): boolean {
-	const forwarded = request.headers.get('x-forwarded-for');
-	const ip = forwarded?.split(',')[0]?.trim() ?? '127.0.0.1';
-	const localPatterns = [
-		'127.0.0.1',
-		'::1',
-		'10.',
-		'172.16.',
-		'172.17.',
-		'172.18.',
-		'172.19.',
-		'172.20.',
-		'172.21.',
-		'172.22.',
-		'172.23.',
-		'172.24.',
-		'172.25.',
-		'172.26.',
-		'172.27.',
-		'172.28.',
-		'172.29.',
-		'172.30.',
-		'172.31.',
-		'192.168.'
-	];
-	return localPatterns.some((p) => ip.startsWith(p));
+export function isLocalRequest(request: Request, clientAddress = ''): boolean {
+	if (clientAddress && !isLocalOrPrivateIp(clientAddress)) return false;
+
+	const forwardedClientIp = getForwardedClientIp(request);
+	if (forwardedClientIp) return isLocalOrPrivateIp(forwardedClientIp);
+
+	return Boolean(clientAddress) && isLocalOrPrivateIp(clientAddress);
 }

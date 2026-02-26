@@ -9,6 +9,7 @@ import {
   checkPort,
   checkDaemonRunning,
 } from "./preflight.ts";
+import * as preflightModule from "./preflight.ts";
 import type { PreflightIssue } from "./types.ts";
 
 describe("preflight typed issue contracts", () => {
@@ -165,6 +166,10 @@ describe("preflight typed issue contracts", () => {
 });
 
 describe("preflight backward compatibility shim", () => {
+  it("does not export removed checkPort80 helper", () => {
+    expect("checkPort80" in preflightModule).toBe(false);
+  });
+
   describe("runPreflightChecks returns PreflightWarning[] format", () => {
     it("returns an array of warning objects with message and optional detail", async () => {
       const warnings = await runPreflightChecks("nonexistent-binary-xyz", "docker", 59128);

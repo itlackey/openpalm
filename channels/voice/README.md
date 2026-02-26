@@ -19,6 +19,7 @@ The `channel-voice` adapter accepts voice transcriptions (pre-converted to text)
 - `text` — required: the transcribed text
 - `audioRef` — optional: reference ID for the original audio file
 - `language` — optional: language code (default `en`)
+- when `VOICE_INBOUND_TOKEN` is configured, include header `x-voice-token: <token>`
 
 ## Caddy ingress
 
@@ -32,6 +33,7 @@ The `channel-voice` adapter accepts voice transcriptions (pre-converted to text)
 | `PORT` | `8183` | Port the server listens on |
 | `GATEWAY_URL` | `http://gateway:8080` | Gateway URL |
 | `CHANNEL_VOICE_SECRET` | (required) | HMAC shared secret for signing payloads |
+| `VOICE_INBOUND_TOKEN` | (optional) | Reject transcription requests unless `x-voice-token` matches |
 
 ## Setup
 

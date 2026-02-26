@@ -53,13 +53,3 @@ export class RateLimiter {
     for (const [key] of oldest) this.buckets.delete(key);
   }
 }
-
-const defaultRateLimiter = new RateLimiter();
-
-export function allowRequest(key: string, limit: number, windowMs: number): boolean {
-  return defaultRateLimiter.allow(key, limit, windowMs);
-}
-
-export function resetRateLimiter(): void {
-  defaultRateLimiter.reset();
-}

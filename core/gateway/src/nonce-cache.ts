@@ -128,6 +128,3 @@ export class NonceCache {
     this.persistToDisk();
   }
 }
-
-/** Singleton nonce cache instance for the gateway. */
-export const nonceCache = new NonceCache(Bun.env.GATEWAY_NONCE_CACHE_PATH ?? "/app/data/nonce-cache.json");

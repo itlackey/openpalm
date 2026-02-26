@@ -8,7 +8,7 @@ import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
 import { verifySignature } from "./channel-security.ts";
 import { RateLimiter } from "./rate-limit.ts";
-import { nonceCache } from "./nonce-cache.ts";
+import { NonceCache } from "./nonce-cache.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
 import type { ChannelMessage } from "@openpalm/lib/shared/channel-sdk.ts";
 import { safeRequestId, validatePayload } from "./server-utils.ts";
@@ -67,10 +67,11 @@ export type GatewayDeps = {
   channelSecrets: Record<string, string>;
   openCode: OpenCodeClient;
   audit: AuditLog;
+  nonceCache: Pick<NonceCache, "checkAndStore" | "destroy">;
 };
 
 export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise<Response> {
-  const { channelSecrets, openCode, audit } = deps;
+  const { channelSecrets, openCode, audit, nonceCache } = deps;
   const rateLimiter = new RateLimiter();
 
   async function processChannelInbound(payload: ChannelMessage, requestId: string) {
@@ -248,15 +249,17 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
 if (import.meta.main) {
   const PORT = Number(Bun.env.PORT ?? 8080);
   const OPENPALM_ASSISTANT_URL = Bun.env.OPENPALM_ASSISTANT_URL ?? "http://assistant:4096";
+  const nonceCachePath = Bun.env.GATEWAY_NONCE_CACHE_PATH ?? "/app/data/nonce-cache.json";
 
   const CHANNEL_SHARED_SECRETS = discoverChannelSecretsFromState("/state", Bun.env);
 
   const openCode = new OpenCodeClient(OPENPALM_ASSISTANT_URL);
   const audit = new AuditLog("/app/data/audit.log");
+  const nonceCache = new NonceCache(nonceCachePath);
 
   const server = Bun.serve({
     port: PORT,
-    fetch: createGatewayFetch({ channelSecrets: CHANNEL_SHARED_SECRETS, openCode, audit }),
+    fetch: createGatewayFetch({ channelSecrets: CHANNEL_SHARED_SECRETS, openCode, audit, nonceCache }),
   });
   installGracefulShutdown(server, {
     service: "gateway",

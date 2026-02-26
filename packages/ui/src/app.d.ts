@@ -5,6 +5,7 @@ declare global {
 		// interface Error {}
 		interface Locals {
 			authenticated: boolean;
+			clientAddress: string;
 		}
 		// interface PageData {}
 		// interface PageState {}

@@ -74,7 +74,7 @@ function printHelp(): void {
   log("  openpalm automation run daily-status");
 }
 
-function parseCliArgs(args: string[]) {
+export function parseCliArgs(args: string[]) {
   return parseArgs({
     args,
     strict: false,
@@ -111,7 +111,7 @@ function getPositionalArgs(args: string[]): string[] {
 
 const VALID_RUNTIMES: readonly ContainerPlatform[] = ["docker", "podman", "orbstack"] as const;
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -281,4 +281,6 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+if (import.meta.main) {
+  main();
+}

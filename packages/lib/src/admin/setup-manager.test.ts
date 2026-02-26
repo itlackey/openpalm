@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SetupManager } from "./setup-manager.ts";
+import { ensureStackSpec } from "./stack-spec.ts";
 
 // Helper: create a temp directory, run the test body, then clean up regardless
 // of success or failure.
@@ -313,6 +314,36 @@ describe("SetupManager.setEnabledChannels", () => {
       manager.setEnabledChannels(["discord", "telegram"]);
       manager.setEnabledChannels(["chat"]);
       expect(manager.getState().enabledChannels).toEqual(["chat"]);
+    });
+  });
+});
+
+describe("SetupManager stack-spec synchronization", () => {
+  it("mirrors accessScope changes into stack spec when stackSpecPath is configured", () => {
+    withTempDir((dir) => {
+      const stackSpecPath = join(dir, "openpalm.yaml");
+      const manager = new SetupManager(dir, { stackSpecPath });
+
+      manager.setAccessScope("public");
+
+      const spec = ensureStackSpec(stackSpecPath);
+      expect(spec.accessScope).toBe("public");
+      expect(manager.getState().accessScope).toBe("public");
+    });
+  });
+
+  it("keeps enabledChannels aligned with stack spec state", () => {
+    withTempDir((dir) => {
+      const stackSpecPath = join(dir, "openpalm.yaml");
+      const manager = new SetupManager(dir, { stackSpecPath });
+
+      manager.setEnabledChannels(["chat", "telegram"]);
+
+      const spec = ensureStackSpec(stackSpecPath);
+      expect(spec.channels.chat.enabled).toBe(true);
+      expect(spec.channels.telegram.enabled).toBe(true);
+      expect(spec.channels.discord.enabled).toBe(false);
+      expect(manager.getState().enabledChannels.sort()).toEqual(["chat", "telegram"]);
     });
   });
 });

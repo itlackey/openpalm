@@ -1,8 +1,8 @@
 import { createHttpAdapterFetch } from "@openpalm/lib/shared/channel-adapter-http-server.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
 import { readJsonObject, rejectPayloadTooLarge } from "@openpalm/lib/shared/channel-http.ts";
-import { json } from "@openpalm/lib/shared/http.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { sanitizeMetadataObject } from "@openpalm/lib/shared/metadata.ts";
 import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
 const log = createLogger("channel-voice");
@@ -10,9 +10,18 @@ const log = createLogger("channel-voice");
 const PORT = Number(Bun.env.PORT ?? 8183);
 const GATEWAY_URL = Bun.env.GATEWAY_URL ?? "http://gateway:8080";
 const SHARED_SECRET = Bun.env.CHANNEL_VOICE_SECRET ?? "";
+const INBOUND_TOKEN = Bun.env.VOICE_INBOUND_TOKEN ?? "";
 
-export function createVoiceFetch(gatewayUrl: string, sharedSecret: string, forwardFetch: typeof fetch = fetch) {
+export function createVoiceFetch(
+  gatewayUrl: string,
+  sharedSecret: string,
+  inboundToken: string,
+  forwardFetch: typeof fetch = fetch,
+) {
   const transcriptionHandler: ChannelAdapter["routes"][number]["handler"] = async (req: Request) => {
+    if (inboundToken && req.headers.get("x-voice-token") !== inboundToken) {
+      return { ok: false, status: 401, body: { error: "unauthorized" } };
+    }
     const tooLarge = rejectPayloadTooLarge(req);
     if (tooLarge) return { ok: false, status: 413, body: { error: "payload_too_large" } };
 
@@ -22,9 +31,7 @@ export function createVoiceFetch(gatewayUrl: string, sharedSecret: string, forwa
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) return { ok: false, status: 400, body: { error: "text_required" } };
 
-    const metadata = typeof body.metadata === "object" && body.metadata !== null && !Array.isArray(body.metadata)
-      ? { ...(body.metadata as Record<string, unknown>) }
-      : {};
+    const metadata = sanitizeMetadataObject(body.metadata) ?? {};
     metadata.audioRef = body.audioRef;
     metadata.language = typeof body.language === "string" && body.language.trim() ? body.language : "en";
 
@@ -67,7 +74,7 @@ if (import.meta.main) {
     log.error("CHANNEL_VOICE_SECRET is not set, exiting");
     process.exit(1);
   }
-  const server = Bun.serve({ port: PORT, fetch: createVoiceFetch(GATEWAY_URL, SHARED_SECRET) });
+  const server = Bun.serve({ port: PORT, fetch: createVoiceFetch(GATEWAY_URL, SHARED_SECRET, INBOUND_TOKEN) });
   installGracefulShutdown(server, { service: "channel-voice", logger: log });
   log.info("started", { port: PORT });
 }

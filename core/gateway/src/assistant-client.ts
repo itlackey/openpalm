@@ -23,6 +23,13 @@ const DEFAULT_TIMEOUT_MS = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 15_000);
 const MAX_RETRIES = Number(Bun.env.OPENCODE_RETRIES ?? 2);
 const RETRY_BASE_DELAY_MS = Number(Bun.env.OPENCODE_RETRY_BASE_DELAY_MS ?? 150);
 
+class OpenCodeHttpError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = "OpenCodeHttpError";
+  }
+}
+
 function shouldRetryStatus(status: number): boolean {
   return status === 429 || status === 502 || status === 503 || status === 504;
 }
@@ -65,12 +72,10 @@ export class OpenCodeClient {
 
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
-          const error = new Error(`opencode ${resp.status}: ${body}`);
-          if (attempt < retries && shouldRetryStatus(resp.status)) {
-            await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
-            continue;
-          }
-          throw error;
+          throw new OpenCodeHttpError(
+            `opencode ${resp.status}: ${body}`,
+            shouldRetryStatus(resp.status),
+          );
         }
 
         const data = (await resp.json()) as Record<string, unknown>;
@@ -87,7 +92,11 @@ export class OpenCodeClient {
           : error;
         lastError = normalizedError;
 
-        if (attempt < retries) {
+        const retryable = normalizedError instanceof OpenCodeHttpError
+          ? normalizedError.retryable
+          : true;
+
+        if (attempt < retries && retryable) {
           await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
           continue;
         }

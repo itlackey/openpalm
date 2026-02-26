@@ -97,10 +97,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const setupManager = await getSetupManager();
 	const setupState = setupManager.getState();
 	const setupCommand = type.startsWith('setup.');
-	const localSetupRequest = setupCommand && !setupState.completed && isLocalRequest(request);
+	const localSetupRequest =
+		setupCommand && !setupState.completed && isLocalRequest(request, locals.clientAddress);
 
 	if (!locals.authenticated && !localSetupRequest) return unauthorizedJson();
-	if (!locals.authenticated && setupCommand && !isLocalRequest(request)) {
+	if (!locals.authenticated && setupCommand && !isLocalRequest(request, locals.clientAddress)) {
 		return json(403, { ok: false, error: 'setup endpoints are restricted to local network access' });
 	}
 

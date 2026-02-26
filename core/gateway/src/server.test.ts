@@ -5,6 +5,7 @@ import { createGatewayFetch, discoverChannelSecretsFromState, type GatewayDeps }
 import { signPayload } from "@openpalm/lib/shared/crypto.ts";
 import { AuditLog } from "./audit.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
+import { NonceCache } from "./nonce-cache.ts";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -138,10 +139,12 @@ describe("gateway HTTP pipeline", () => {
   });
 
   const openCode = new OpenCodeClient(`http://localhost:${mockAssistant.port}`);
+  const nonceCache = new NonceCache();
   const deps: GatewayDeps = {
     channelSecrets: { chat: SECRET, discord: SECRET },
     openCode,
     audit,
+    nonceCache,
   };
 
   const gatewayFetch = createGatewayFetch(deps);
@@ -174,6 +177,7 @@ describe("gateway HTTP pipeline", () => {
 
   afterAll(() => {
     mockAssistant.stop(true);
+    nonceCache.destroy({ clear: true });
   });
 
   it("GET /health → 200 {ok:true, service:'gateway'}", async () => {

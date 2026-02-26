@@ -13,7 +13,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// SECURITY: During initial setup (completed=false), restrict to local/private IPs only.
 	// This mitigates the risk of unauthenticated network access to setup endpoints before
 	// an admin token has been configured.
-	if (!current.completed && !isLocalRequest(request)) {
+	if (!current.completed && !isLocalRequest(request, locals.clientAddress)) {
 		return json(403, { error: 'setup endpoints are restricted to local network access' });
 	}
 

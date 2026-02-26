@@ -6,14 +6,32 @@ import type { AuditEvent } from "./types.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
 
 const log = createLogger("gateway");
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-const ROTATED_FILES_TO_KEEP = Number(Bun.env.OPENPALM_AUDIT_RETENTION_COUNT ?? 5);
+const DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const DEFAULT_RETENTION_COUNT = 5;
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.floor(parsed);
+}
+
+type AuditLogOptions = {
+  maxFileSizeBytes?: number;
+  retentionCount?: number;
+};
 
 export class AuditLog {
   private writeQueue: Promise<void> = Promise.resolve();
+  private readonly maxFileSizeBytes: number;
+  private readonly retentionCount: number;
 
-  constructor(private readonly filePath: string) {
+  constructor(private readonly filePath: string, options: AuditLogOptions = {}) {
     mkdirSync(dirname(filePath), { recursive: true });
+    const envMaxFileSize = parsePositiveInt(Bun.env.OPENPALM_AUDIT_MAX_FILE_SIZE, DEFAULT_MAX_FILE_SIZE);
+    const envRetentionCount = parsePositiveInt(Bun.env.OPENPALM_AUDIT_RETENTION_COUNT, DEFAULT_RETENTION_COUNT);
+    this.maxFileSizeBytes = options.maxFileSizeBytes ?? envMaxFileSize;
+    this.retentionCount = options.retentionCount ?? envRetentionCount;
   }
 
   write(event: AuditEvent) {
@@ -25,7 +43,7 @@ export class AuditLog {
         // Check file size and rotate if needed
         try {
           const stats = statSync(this.filePath);
-          if (stats.size >= MAX_FILE_SIZE) {
+          if (stats.size >= this.maxFileSizeBytes) {
             this.rotate();
           }
         } catch {
@@ -46,7 +64,7 @@ export class AuditLog {
   }
 
   private rotate() {
-    const keepCount = Math.max(1, Number.isFinite(ROTATED_FILES_TO_KEEP) ? ROTATED_FILES_TO_KEEP : 5);
+    const keepCount = Math.max(1, this.retentionCount);
     const oldestPath = `${this.filePath}.${keepCount}.gz`;
     if (existsSync(oldestPath)) rmSync(oldestPath, { force: true });
 

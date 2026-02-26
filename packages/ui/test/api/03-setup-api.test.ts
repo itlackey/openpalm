@@ -8,6 +8,7 @@ import {
   authedPost,
   cmd,
   rawGet,
+  getBaseUrl,
   getTmpDir,
   claimPort,
 } from "./helpers";
@@ -36,6 +37,18 @@ describe("setup wizard API", () => {
   afterAll(() => {
     stopServer();
   });
+
+	it("enforces local-only setup access from trusted client address", async () => {
+		const localRes = await rawGet("/setup/status");
+		expect(localRes.status).toBe(200);
+
+		const proxiedPublicRes = await fetch(`${getBaseUrl()}/setup/status`, {
+			headers: {
+				"x-forwarded-for": "203.0.113.10"
+			}
+		});
+		expect(proxiedPublicRes.status).toBe(403);
+	});
 
   // ── Phase 1: Walk every wizard step to build up server state ──
   it("configures the setup wizard through all steps", async () => {

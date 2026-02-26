@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -41,6 +41,24 @@ function parseEnvFile(content: string): Record<string, string> {
 }
 
 describe("stack manager", () => {
+  it("caches parsed stack spec between getSpec calls", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-cache-"));
+    try {
+      const manager = createManager(dir);
+
+      const first = manager.getSpec();
+      const specPath = join(dir, "openpalm.yaml");
+      const mutated = { ...first, accessScope: "public" as const };
+      writeFileSync(specPath, yamlStringify(mutated), "utf8");
+
+      // getSpec should serve the cached in-memory copy until manager mutates state.
+      const second = manager.getSpec();
+      expect(second.accessScope).toBe(first.accessScope);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("writes all generated stack artifacts", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);

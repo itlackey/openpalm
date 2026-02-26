@@ -2,8 +2,8 @@
  * Standard channel adapter interface.
  *
  * These types define the shared adapter contract used by channel wrappers.
- * They are currently implemented by the MCP and A2A channels, and can be adopted
- * incrementally by other channels as they migrate away from ad-hoc handlers.
+ * They are implemented by the built-in channels and represent the canonical
+ * adapter boundary for ingress normalization before gateway forwarding.
  *
  * Every channel adapter must export a `createChannel()` function that returns
  * an object satisfying this interface. The scaffold script generates a

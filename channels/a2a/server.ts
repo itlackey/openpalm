@@ -1,6 +1,6 @@
 import { createA2aChannel } from "./channel.ts";
 import type { ChannelAdapter } from "@openpalm/lib/shared/channel.ts";
-import { createJsonRpcAdapterFetch } from "@openpalm/lib/shared/channel-adapter-server.ts";
+import { createChannelJsonRpcFetch } from "@openpalm/lib/shared/channel-jsonrpc-fetch.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
 import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 
@@ -16,7 +16,7 @@ export function createFetch(
   sharedSecret: string,
   forwardFetch: typeof fetch = fetch,
 ) {
-  return createJsonRpcAdapterFetch(
+  return createChannelJsonRpcFetch(
     adapter,
     gatewayUrl,
     sharedSecret,

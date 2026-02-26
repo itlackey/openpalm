@@ -97,4 +97,63 @@ describe("OpenCodeClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("retries transient upstream 503 responses and succeeds", async () => {
+    let attempts = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        attempts += 1;
+        if (attempts < 3) {
+          return new Response("retry later", { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            response: "ok after retry",
+            session_id: "sess-retry",
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+
+    try {
+      const client = new OpenCodeClient(`http://localhost:${server.port}`);
+      const result = await client.send({
+        message: "test",
+        userId: "u",
+        sessionId: "sess-retry",
+      });
+
+      expect(result.response).toBe("ok after retry");
+      expect(attempts).toBe(3);
+    } finally {
+      server.stop();
+    }
+  });
+
+  it("does not retry non-retryable upstream errors", async () => {
+    let attempts = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        attempts += 1;
+        return new Response("bad request", { status: 400 });
+      },
+    });
+
+    try {
+      const client = new OpenCodeClient(`http://localhost:${server.port}`);
+      await expect(
+        client.send({
+          message: "test",
+          userId: "u",
+          sessionId: "s",
+        }),
+      ).rejects.toThrow("opencode 400: bad request");
+      expect(attempts).toBe(1);
+    } finally {
+      server.stop();
+    }
+  });
 });
