@@ -10,9 +10,7 @@ import type { PreflightIssue } from "./types.ts";
 describe("preflight typed issue contracts", () => {
   describe("checkDiskSpaceDetailed", () => {
     it("returns null when disk space is sufficient", async () => {
-      // On a dev machine with adequate disk, this should pass
       const result = await checkDiskSpaceDetailed();
-      // We can't force low disk in test, so just validate the shape if non-null
       if (result !== null) {
         expect(result.code).toBe("disk_low");
         expect(result.severity).toBe("warning");
@@ -23,7 +21,6 @@ describe("preflight typed issue contracts", () => {
     });
 
     it("returns disk_low code with warning severity when triggered", () => {
-      // Contract: if a disk issue is returned, it must have the right shape
       const mockIssue: PreflightIssue = {
         code: "disk_low",
         severity: "warning",
@@ -39,7 +36,6 @@ describe("preflight typed issue contracts", () => {
 
   describe("checkPortDetailed", () => {
     it("returns null for a port that is not in use", async () => {
-      // Use an uncommon port that should be free
       const result = await checkPortDetailed(59123);
       expect(result).toBeNull();
     });
@@ -59,11 +55,6 @@ describe("preflight typed issue contracts", () => {
   });
 
   describe("checkDaemonRunningDetailed", () => {
-    it("returns null for podman (daemonless)", async () => {
-      const result = await checkDaemonRunningDetailed("podman", "podman");
-      expect(result).toBeNull();
-    });
-
     it("returns daemon_unavailable or daemon_check_failed for a bad binary", async () => {
       const result = await checkDaemonRunningDetailed("nonexistent-binary-xyz", "docker");
       expect(result).not.toBeNull();
@@ -76,12 +67,10 @@ describe("preflight typed issue contracts", () => {
 
   describe("runPreflightChecksDetailed", () => {
     it("returns a PreflightResult with ok and issues fields", async () => {
-      // Using a nonexistent binary guarantees at least one fatal issue
       const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", "docker", 59124);
       expect(result).toHaveProperty("ok");
       expect(result).toHaveProperty("issues");
       expect(Array.isArray(result.issues)).toBe(true);
-      // Should have at least the daemon issue
       expect(result.issues.length).toBeGreaterThanOrEqual(1);
       expect(result.ok).toBe(false);
     });
@@ -91,15 +80,6 @@ describe("preflight typed issue contracts", () => {
       expect(result.ok).toBe(false);
       const fatalIssues = result.issues.filter((i) => i.severity === "fatal");
       expect(fatalIssues.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("sets ok to true when no fatal issues exist", async () => {
-      // Podman skips daemon check; using an unused port should give ok=true (assuming disk is fine)
-      const result = await runPreflightChecksDetailed("podman", "podman", 59126);
-      const fatalIssues = result.issues.filter((i) => i.severity === "fatal");
-      if (fatalIssues.length === 0) {
-        expect(result.ok).toBe(true);
-      }
     });
 
     it("every issue has required fields", async () => {
@@ -159,4 +139,3 @@ describe("preflight typed issue contracts", () => {
     });
   });
 });
-

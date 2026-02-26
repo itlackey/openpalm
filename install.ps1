@@ -7,39 +7,26 @@
     installs it to %LOCALAPPDATA%\OpenPalm, and delegates to `openpalm install`.
     All installer logic lives in the CLI itself.
 
-.PARAMETER Runtime
-    Force a container runtime platform selection. Valid values: docker, podman.
-
 .PARAMETER Port
     Use an alternative ingress port (default: 80). Useful when port 80
     is already in use by another service (e.g. IIS, Apache).
 
-.PARAMETER Ref
-    Git ref (branch or tag) for release download (default: latest).
-
-.PARAMETER NoOpen
-    Do not auto-open the admin setup URL after services are healthy.
+.PARAMETER Force
+    Overwrite existing installation.
 
 .EXAMPLE
     & .\install.ps1
     Install with default settings.
 
 .EXAMPLE
-    & .\install.ps1 -Runtime docker -Port 8080
-    Install using Docker on port 8080.
-
-.EXAMPLE
-    & .\install.ps1 -Port 3000 -NoOpen
-    Install on port 3000 without opening the browser.
+    & .\install.ps1 -Port 8080
+    Install on port 8080.
 #>
 
 param(
-  [ValidateSet("docker", "podman")]
-  [string]$Runtime,
   [ValidateRange(1, 65535)]
   [int]$Port,
-  [string]$Ref,
-  [switch]$NoOpen
+  [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -135,23 +122,13 @@ Write-Host "Installed OpenPalm CLI to $TargetPath"
 
 $CliArgs = @("install")
 
-if ($Runtime) {
-  $CliArgs += "--runtime"
-  $CliArgs += $Runtime
-}
-
 if ($Port) {
   $CliArgs += "--port"
   $CliArgs += $Port.ToString()
 }
 
-if ($Ref) {
-  $CliArgs += "--ref"
-  $CliArgs += $Ref
-}
-
-if ($NoOpen) {
-  $CliArgs += "--no-open"
+if ($Force) {
+  $CliArgs += "--force"
 }
 
 Write-Host ""

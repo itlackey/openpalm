@@ -25,7 +25,7 @@ done
 
 # ── Docker socket access ──────────────────────────────────────────────────────
 # Detect the GID of the Docker socket and add openpalm to that group
-DOCKER_SOCK="${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}"
+DOCKER_SOCK="/var/run/docker.sock"
 if [ -S "$DOCKER_SOCK" ]; then
 	DOCKER_GID=$(stat -c '%g' "$DOCKER_SOCK")
 	# Create or reuse a group with that GID and add openpalm
@@ -35,9 +35,6 @@ if [ -S "$DOCKER_SOCK" ]; then
 	DOCKER_GROUP=$(getent group "$DOCKER_GID" | cut -d: -f1)
 	usermod -aG "$DOCKER_GROUP" openpalm
 fi
-
-# ── Start cron daemon (runs as root, reads user crontabs) ─────────────────────
-cron
 
 # ── Drop to non-root and start the admin server ──────────────────────────────
 exec gosu openpalm node /app/packages/ui/build/index.js

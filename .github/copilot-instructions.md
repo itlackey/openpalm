@@ -47,7 +47,7 @@ bun run test:ui         # Playwright E2E (admin UI)
 bun run test:workflows  # GitHub Actions workflows via act
 ```
 
-Reset the admin setup wizard: `rm .dev/data/admin/setup-state.json`
+Reset dev state: `bun run dev:setup:clean`
 
 ## Import conventions
 

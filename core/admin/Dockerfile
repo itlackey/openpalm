@@ -1,6 +1,6 @@
 FROM oven/bun:1.3.9
 RUN apt-get update \
-  && apt-get install -y cron curl ca-certificates gnupg gosu \
+  && apt-get install -y curl ca-certificates gnupg gosu \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && chmod a+r /etc/apt/keyrings/docker.gpg \

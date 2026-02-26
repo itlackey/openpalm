@@ -1,6 +1,4 @@
 param(
-  [ValidateSet("docker", "podman")]
-  [string]$Runtime,
   [switch]$RemoveAll,
   [switch]$RemoveImages,
   [switch]$RemoveBinary,
@@ -65,28 +63,15 @@ if (Test-Path $stateEnvPath) {
 $OpenPalmDataHome = if ($env:OPENPALM_DATA_HOME) { $env:OPENPALM_DATA_HOME } else { Get-EnvValueFromFile -Key "OPENPALM_DATA_HOME" -Path $envPath }
 $OpenPalmConfigHome = if ($env:OPENPALM_CONFIG_HOME) { $env:OPENPALM_CONFIG_HOME } else { Get-EnvValueFromFile -Key "OPENPALM_CONFIG_HOME" -Path $envPath }
 $OpenPalmStateHome = if ($env:OPENPALM_STATE_HOME) { $env:OPENPALM_STATE_HOME } else { Get-EnvValueFromFile -Key "OPENPALM_STATE_HOME" -Path $envPath }
-$OpenPalmContainerPlatform = if ($Runtime) { $Runtime } elseif ($env:OPENPALM_CONTAINER_PLATFORM) { $env:OPENPALM_CONTAINER_PLATFORM } else { Get-EnvValueFromFile -Key "OPENPALM_CONTAINER_PLATFORM" -Path $envPath }
 
 if (-not $OpenPalmDataHome) { $OpenPalmDataHome = Normalize-EnvPath (Join-Path $HOME ".local/share/openpalm") }
 if (-not $OpenPalmConfigHome) { $OpenPalmConfigHome = Normalize-EnvPath (Join-Path $HOME ".config/openpalm") }
 if (-not $OpenPalmStateHome) { $OpenPalmStateHome = Normalize-EnvPath (Join-Path $HOME ".local/state/openpalm") }
 
-if (-not $OpenPalmContainerPlatform) {
-  if (Get-Command docker -ErrorAction SilentlyContinue) {
-    $OpenPalmContainerPlatform = "docker"
-  }
-  elseif (Get-Command podman -ErrorAction SilentlyContinue) {
-    $OpenPalmContainerPlatform = "podman"
-  }
-}
-
 $OpenPalmComposeBin = $null
 $OpenPalmComposeSubcommand = "compose"
-switch ($OpenPalmContainerPlatform) {
-  "docker" { $OpenPalmComposeBin = "docker" }
-  "podman" { $OpenPalmComposeBin = "podman" }
-  "" { $OpenPalmComposeBin = $null }
-  default { throw "Unsupported runtime '$OpenPalmContainerPlatform'. Use docker or podman." }
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+  $OpenPalmComposeBin = "docker"
 }
 
 $composeFilePath = "$OpenPalmStateHome/docker-compose.yml"
@@ -96,7 +81,7 @@ if (-not (Test-Path $composeEnvPath) -and (Test-Path $envPath)) {
 }
 
 Write-Host "Planned uninstall actions:"
-Write-Host "  Runtime: $(if ($OpenPalmContainerPlatform) { $OpenPalmContainerPlatform } else { "auto-unavailable" })"
+Write-Host "  Runtime: $(if ($OpenPalmComposeBin) { $OpenPalmComposeBin } else { "not-found" })"
 Write-Host "  Stop/remove containers: yes"
 Write-Host "  Remove images: $(if ($RemoveImages) { "yes" } else { "no" })"
 Write-Host "  Remove all data/config/state: $(if ($RemoveAll) { "yes" } else { "no" })"

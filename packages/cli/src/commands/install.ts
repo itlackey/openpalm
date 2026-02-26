@@ -1,8 +1,9 @@
 import { join } from "node:path";
-import { chmod, writeFile, rm, stat } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import type { InstallOptions } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
-import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveSocketUri, resolveInContainerSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
+import { detectOS, detectArch, detectRuntime, resolveSocketPath, resolveComposeBin, validateRuntime } from "@openpalm/lib/runtime.ts";
 import { resolveXDGPaths, resolveWorkHome, createDirectoryTree } from "@openpalm/lib/paths.ts";
 import { readEnvFile, upsertEnvVar, upsertEnvVars } from "@openpalm/lib/env.ts";
 import { generateToken } from "@openpalm/lib/tokens.ts";
@@ -13,24 +14,25 @@ import { runPreflightChecksDetailed, noRuntimeGuidance, noComposeGuidance } from
 import { readInstallMetadata, writeInstallMetadata, createInstallMetadata } from "@openpalm/lib/install-metadata.ts";
 import { log, info, warn, error, bold, green, cyan, yellow, dim, spinner, confirm } from "@openpalm/lib/ui.ts";
 
-function reportIssueUrl(context: { os: string; arch: string; runtime: string; error: string }): string {
+function reportIssueUrl(context: { os: string; arch: string; error: string }): string {
   const title = encodeURIComponent(`Install failure: ${context.error.slice(0, 80)}`);
   const body = encodeURIComponent(
     `## Environment\n` +
     `- OS: ${context.os}\n` +
     `- Arch: ${context.arch}\n` +
-    `- Runtime: ${context.runtime}\n\n` +
+    `- Runtime: docker\n\n` +
     `## Error\n\`\`\`\n${context.error}\n\`\`\`\n\n` +
     `## Steps to Reproduce\n1. Ran \`openpalm install\`\n`
   );
   return `https://github.com/itlackey/openpalm/issues/new?title=${title}&body=${body}`;
 }
 
-export async function install(options: InstallOptions): Promise<void> {
-  // ============================================================================
-  // Phase 1: Setup infrastructure
-  // ============================================================================
+/** Path to the embedded full-stack docker-compose.yml */
+const EMBEDDED_COMPOSE_PATH = join(
+  import.meta.dir, "..", "..", "..", "lib", "src", "embedded", "state", "docker-compose.yml"
+);
 
+export async function install(options: InstallOptions): Promise<void> {
   log(bold("\nOpenPalm Installation\n"));
 
   // 1. Detect OS
@@ -43,13 +45,13 @@ export async function install(options: InstallOptions): Promise<void> {
   // 2. Detect arch
   const arch = detectArch();
 
-  // 3. Detect or use overridden container runtime
-  const platform = options.runtime ?? await detectRuntime(os);
+  // 3. Detect Docker
+  const platform = await detectRuntime(os);
   if (!platform) {
     error(noRuntimeGuidance(os));
     info("");
     info("  If this keeps happening, report the issue:");
-    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: "none", error: "No container runtime found" }))}`);
+    info(`    ${cyan(reportIssueUrl({ os, arch, error: "Docker not found" }))}`);
     process.exit(1);
   }
 
@@ -69,23 +71,18 @@ export async function install(options: InstallOptions): Promise<void> {
     log("");
   }
 
-  // Daemon not running is fatal — we can't proceed.
-  // Use typed preflight codes instead of message substring matching.
   const daemonIssue = preflightResult.issues.find((i) =>
     i.code === "daemon_unavailable" || i.code === "daemon_check_failed"
   );
   if (daemonIssue) {
-    error("Container runtime daemon is unavailable. Please start it and rerun install.");
+    error("Docker daemon is unavailable. Please start Docker and rerun install.");
     info("");
     info("  If this keeps happening, report the issue:");
-    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: daemonIssue.message }))}`);
+    info(`    ${cyan(reportIssueUrl({ os, arch, error: daemonIssue.message }))}`);
     process.exit(1);
   }
 
-  // Port conflict is fatal unless --port was used to pick an alternative
-  const portIssue = preflightResult.issues.find((i) =>
-    i.code === "port_conflict"
-  );
+  const portIssue = preflightResult.issues.find((i) => i.code === "port_conflict");
   if (portIssue) {
     if (!options.port) {
       error("Port 80 is required but already in use. Use --port to specify an alternative.");
@@ -104,23 +101,16 @@ export async function install(options: InstallOptions): Promise<void> {
   log(bold("Detected environment:"));
   info(`  OS: ${cyan(os)}`);
   info(`  Architecture: ${cyan(arch)}`);
-  info(`  Container runtime: ${cyan(platform)}${platform === "podman" ? yellow(" (experimental)") : ""}`);
   info(`  Compose command: ${cyan(`${bin} ${subcommand}`)}\n`);
 
-  if (platform === "podman") {
-    warn("Podman support is experimental. Some features may not work as expected.");
-    info("  For the most reliable experience, we recommend Docker Desktop or Docker Engine.");
-    log("");
-  }
-
-  // 8. Resolve XDG paths, print them
+  // 8. Resolve XDG paths
   const xdg = resolveXDGPaths();
-  log(bold("\nXDG paths:"));
+  log(bold("XDG paths:"));
   info(`  Data: ${dim(xdg.data)}`);
   info(`  Config: ${dim(xdg.config)}`);
   info(`  State: ${dim(xdg.state)}\n`);
 
-  // 9. Idempotency guard — check if OpenPalm is already installed
+  // 9. Idempotency guard
   const stateComposeFile = join(xdg.state, "docker-compose.yml");
   const stateEnvFile = join(xdg.state, ".env");
   const existingMetadata = readInstallMetadata(xdg.state);
@@ -129,7 +119,6 @@ export async function install(options: InstallOptions): Promise<void> {
     if (existingMetadata) {
       alreadyInstalled = true;
     } else {
-      // Heuristic fallback: check compose file content
       try {
         const existingCompose = await Bun.file(stateComposeFile).text();
         if (existingCompose.includes("gateway:") && existingCompose.includes("assistant:")) {
@@ -143,9 +132,7 @@ export async function install(options: InstallOptions): Promise<void> {
       warn("OpenPalm appears to already be installed.");
       if (existingMetadata) {
         info(`  Installed: ${dim(existingMetadata.installedAt)}`);
-        info(`  Runtime: ${dim(existingMetadata.runtime)}, port: ${dim(String(existingMetadata.port))}`);
-      } else {
-        info("  The existing compose file contains a full stack configuration.");
+        info(`  Port: ${dim(String(existingMetadata.port))}`);
       }
       info("");
       info("  To update to the latest version, run:");
@@ -162,23 +149,15 @@ export async function install(options: InstallOptions): Promise<void> {
     }
   }
 
-  // 10. Create XDG directory tree first (needed before writing state .env)
+  // 10. Create XDG directory tree
   const spin3 = spinner("Creating directory structure...");
   await createDirectoryTree(xdg);
   spin3.stop(green("Directory structure created"));
 
-  // 11. Generate secrets and write canonical .env to state home first
-  const cwdEnvPath = join(process.cwd(), ".env");
-  const cwdEnvExists = await Bun.file(cwdEnvPath).exists();
-  const stateEnvExists = await Bun.file(stateEnvFile).exists();
-
-  // Determine which .env to use as starting point
+  // 11. Generate secrets and write .env
   let generatedAdminToken = "";
-  if (stateEnvExists) {
+  if (await Bun.file(stateEnvFile).exists()) {
     info("Using existing state .env file");
-  } else if (cwdEnvExists) {
-    info("Using existing .env file from current directory");
-    await Bun.write(stateEnvFile, Bun.file(cwdEnvPath));
   } else {
     const spin2 = spinner("Generating .env file...");
     generatedAdminToken = generateToken();
@@ -196,7 +175,7 @@ export async function install(options: InstallOptions): Promise<void> {
     spin2.stop(green(".env file created"));
   }
 
-  // 12. Check for insecure default admin token and regenerate if needed
+  // 12. Regenerate insecure default admin token if needed
   if (!generatedAdminToken) {
     const existingEnv = await readEnvFile(stateEnvFile);
     if (!existingEnv.ADMIN_TOKEN || existingEnv.ADMIN_TOKEN === "change-me-admin-token") {
@@ -206,20 +185,14 @@ export async function install(options: InstallOptions): Promise<void> {
     }
   }
 
-  // Display admin token info if we generated one
   if (generatedAdminToken) {
     log("");
-    info("  A temporary admin token has been generated.");
-    info("  You will choose your own password in the setup wizard.");
-    info(`  Temporary token saved in: ${dim(stateEnvFile)}`);
+    info(`  Admin token saved in: ${dim(stateEnvFile)}`);
     log("");
   }
 
-  // 13. Upsert runtime config vars into canonical state .env (single read-write cycle)
+  // 13. Upsert runtime config vars into state .env
   const socketPath = resolveSocketPath(platform, os);
-  const socketUri = resolveSocketUri(platform, os);
-  const inContainerSocket = resolveInContainerSocketPath(platform);
-  // Normalize backslashes to forward slashes for Docker Compose compatibility on Windows
   const normPath = (p: string) => p.replace(/\\/g, "/");
   await upsertEnvVars(stateEnvFile, [
     ["OPENPALM_DATA_HOME", normPath(xdg.data)],
@@ -229,8 +202,6 @@ export async function install(options: InstallOptions): Promise<void> {
     ["OPENPALM_COMPOSE_BIN", bin],
     ["OPENPALM_COMPOSE_SUBCOMMAND", subcommand],
     ["OPENPALM_CONTAINER_SOCKET_PATH", socketPath],
-    ["OPENPALM_CONTAINER_SOCKET_IN_CONTAINER", inContainerSocket],
-    ["OPENPALM_CONTAINER_SOCKET_URI", socketUri],
     ["OPENPALM_IMAGE_NAMESPACE", "openpalm"],
     ["OPENPALM_IMAGE_TAG", `latest-${arch}`],
     ["OPENPALM_WORK_HOME", normPath(resolveWorkHome())],
@@ -239,35 +210,28 @@ export async function install(options: InstallOptions): Promise<void> {
     ["OPENPALM_INGRESS_PORT", String(ingressPort)],
   ]);
 
-  // 14. Copy canonical .env to CWD for user convenience
-  await Bun.write(cwdEnvPath, Bun.file(stateEnvFile));
+  // 14. Copy .env to CWD for convenience
+  await Bun.write(join(process.cwd(), ".env"), Bun.file(stateEnvFile));
 
-  // 15. Seed config files (embedded templates — no network needed)
+  // 15. Seed config files (embedded templates)
   const spin4 = spinner("Seeding configuration files...");
   await seedConfigFiles(xdg.config);
   spin4.stop(green("Configuration files seeded"));
 
-  // 16. Reset setup wizard state so every install/reinstall starts from first boot
-  await rm(join(xdg.data, "admin", "setup-state.json"), { force: true });
-
-  // 17. Write uninstall script to state home
-  const uninstallDst = join(xdg.state, "uninstall.sh");
-  await writeFile(uninstallDst, "#!/usr/bin/env bash\nopenpalm uninstall\n", "utf8");
-  try {
-    await chmod(uninstallDst, 0o755);
-  } catch {
-    // chmod may fail on Windows — non-critical
-  }
-
-  // 18. Write an empty system.env so the admin env_file reference resolves
+  // 16. Write system.env if it doesn't exist
   const systemEnvPath = join(xdg.state, "system.env");
-  const systemEnvExists = await Bun.file(systemEnvPath).exists();
-  if (!systemEnvExists) {
+  if (!(await Bun.file(systemEnvPath).exists())) {
     await writeFile(systemEnvPath, "# Generated system env — populated on first stack apply\n", "utf8");
   }
 
-  // 19. Write minimal setup-only Caddy JSON config
-  const minimalCaddyJson = JSON.stringify({
+  // 17. Copy embedded full-stack compose file to state directory
+  const spin5 = spinner("Writing compose configuration...");
+  const embeddedCompose = readFileSync(EMBEDDED_COMPOSE_PATH, "utf8");
+  await writeFile(stateComposeFile, embeddedCompose, "utf8");
+  spin5.stop(green("Compose configuration written"));
+
+  // 18. Write Caddy JSON config with full routing
+  const caddyJson = JSON.stringify({
     admin: { disabled: true },
     apps: {
       http: {
@@ -276,26 +240,17 @@ export async function install(options: InstallOptions): Promise<void> {
             listen: [`:${ingressPort}`],
             routes: [
               {
-                match: [{ path: ["/api*"] }],
-                handle: [{
-                  handler: "subroute",
-                  routes: [
-                    {
-                      handle: [
-                        { handler: "rewrite", strip_path_prefix: "/api" },
-                        { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
-                      ],
-                    },
-                  ],
-                }],
+                match: [{ path: ["/api*"], remote_ip: { ranges: ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fd00::/8"] } }],
+                handle: [{ handler: "subroute", routes: [{ handle: [{ handler: "rewrite", strip_path_prefix: "/api" }, { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }] }] }],
                 terminal: true,
               },
               {
-                handle: [{
-                  // Let admin own bootstrap UI rendering at root while stack is being generated.
-                  handler: "reverse_proxy",
-                  upstreams: [{ dial: "admin:8100" }],
-                }],
+                match: [{ path: ["/channels/*"] }],
+                handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "channel-chat:8181" }] }],
+                terminal: true,
+              },
+              {
+                handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }],
               },
             ],
           },
@@ -303,64 +258,10 @@ export async function install(options: InstallOptions): Promise<void> {
       },
     },
   }, null, 2) + "\n";
-  const caddyJsonPath = join(xdg.state, "caddy.json");
-  await writeFile(caddyJsonPath, minimalCaddyJson, "utf8");
+  await writeFile(join(xdg.state, "caddy.json"), caddyJson, "utf8");
 
-  // ============================================================================
-  // Phase 2: Early UI access
-  // ============================================================================
-
+  // 19. Pull and start the full stack
   log(bold("\nDownloading OpenPalm services (this may take a few minutes on first install)...\n"));
-
-  // Write a minimal compose file with just caddy + admin so we can pull/start
-  // before the admin wizard generates the full stack compose file.
-  const minimalCompose = `services:
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:\${OPENPALM_INGRESS_PORT:-80}:80"
-      - "\${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:443:443"
-    volumes:
-      - \${OPENPALM_STATE_HOME}/caddy.json:/etc/caddy/caddy.json:ro
-      - \${OPENPALM_STATE_HOME}/caddy/data:/data/caddy
-      - \${OPENPALM_STATE_HOME}/caddy/config:/config/caddy
-    command: caddy run --config /etc/caddy/caddy.json
-    networks: [assistant_net]
-
-  admin:
-    image: \${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:\${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8100:8100"
-    env_file:
-      - \${OPENPALM_STATE_HOME}/system.env
-    environment:
-      - PORT=8100
-      - ADMIN_TOKEN=\${ADMIN_TOKEN:-change-me-admin-token}
-      - GATEWAY_URL=http://gateway:8080
-      - OPENPALM_ASSISTANT_URL=http://assistant:4096
-      - OPENPALM_COMPOSE_BIN=\${OPENPALM_COMPOSE_BIN:-docker}
-      - OPENPALM_COMPOSE_SUBCOMMAND=\${OPENPALM_COMPOSE_SUBCOMMAND:-compose}
-      - OPENPALM_CONTAINER_SOCKET_URI=\${OPENPALM_CONTAINER_SOCKET_URI:-unix:///var/run/docker.sock}
-    volumes:
-      - \${OPENPALM_DATA_HOME}:/data
-      - \${OPENPALM_CONFIG_HOME}:/config
-      - \${OPENPALM_STATE_HOME}:/state
-      - \${OPENPALM_WORK_HOME:-\${HOME}/openpalm}:/work
-      - \${OPENPALM_CONTAINER_SOCKET_PATH:-/var/run/docker.sock}:\${OPENPALM_CONTAINER_SOCKET_IN_CONTAINER:-/var/run/docker.sock}
-    networks: [assistant_net]
-    healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:8100/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-networks:
-  assistant_net:
-`;
-  await writeFile(stateComposeFile, minimalCompose, "utf8");
 
   const composeConfig: ComposeConfig = {
     bin,
@@ -369,76 +270,63 @@ networks:
     envFile: stateEnvFile,
   };
 
-  const coreServices = ["caddy", "admin"];
-
-  // Pull with graceful error handling
-  const spin6 = spinner("Pulling core service images...");
+  const spin6 = spinner("Pulling service images...");
   try {
-    await composePull(composeConfig, coreServices);
-    spin6.stop(green("Core images pulled"));
+    await composePull(composeConfig);
+    spin6.stop(green("Images pulled"));
   } catch (pullErr) {
-    spin6.stop(yellow("Failed to pull core images"));
+    spin6.stop(yellow("Failed to pull images"));
     warn("Image pull failed. This can happen due to network issues or rate limits.");
     info("");
     info("  To retry, run:");
-    info(`    ${cyan("openpalm install")}`);
-    info("");
-    info("  Or manually pull and then start:");
-    info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} pull`)}`);
-    info(`    ${cyan(`${bin} ${subcommand} --env-file ${stateEnvFile} -f ${stateComposeFile} up -d`)}`);
+    info(`    ${cyan("openpalm install --force")}`);
     info("");
     info("  If this keeps happening, report the issue:");
-    info(`    ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: String(pullErr) }))}`);
+    info(`    ${cyan(reportIssueUrl({ os, arch, error: String(pullErr) }))}`);
     log("");
     process.exit(1);
   }
 
-  const spin7 = spinner("Starting core services...");
-  await composeUp(composeConfig, coreServices, { detach: true });
-  spin7.stop(green("Core services started"));
+  const spin7 = spinner("Starting services...");
+  await composeUp(composeConfig, undefined, { detach: true });
+  spin7.stop(green("Services started"));
 
-  // Wait for admin health check with exponential backoff
-  let adminUrl = ingressPort === 80 ? "http://localhost" : `http://localhost:${ingressPort}`;
+  // 20. Health check admin + gateway
+  const adminUrl = ingressPort === 80 ? "http://localhost" : `http://localhost:${ingressPort}`;
   const adminDirectUrl = "http://localhost:8100";
-  const healthUrl = `${adminUrl}/setup/status`;
-  const healthDirectUrl = `${adminDirectUrl}/setup/status`;
-  const spin8 = spinner("Waiting for admin interface...");
+  const spin8 = spinner("Waiting for services to become healthy...");
 
-  let healthy = false;
-  let delay = 1000; // Start at 1s
-  const maxDelay = 5000; // Cap at 5s
-  const deadline = Date.now() + 180_000; // 3 minutes total
+  let adminHealthy = false;
+  let gatewayHealthy = false;
+  let delay = 1000;
+  const maxDelay = 5000;
+  const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
-      if (response.ok) {
-        healthy = true;
-        break;
-      }
-    } catch {
-      // Caddy route not ready — try direct admin port as fallback
+    if (!adminHealthy) {
       try {
-        const directResponse = await fetch(healthDirectUrl, { signal: AbortSignal.timeout(3000) });
-        if (directResponse.ok) {
-          healthy = true;
-          adminUrl = adminDirectUrl;
-          break;
-        }
-      } catch {
-        // Neither route ready yet
-      }
+        const resp = await fetch(`${adminDirectUrl}/health`, { signal: AbortSignal.timeout(3000) });
+        if (resp.ok) adminHealthy = true;
+      } catch { /* not ready */ }
     }
+    if (!gatewayHealthy) {
+      try {
+        const resp = await fetch("http://localhost:8080/health", { signal: AbortSignal.timeout(3000) });
+        if (resp.ok) gatewayHealthy = true;
+      } catch { /* not ready */ }
+    }
+    if (adminHealthy && gatewayHealthy) break;
     await Bun.sleep(delay);
     delay = Math.min(delay * 1.5, maxDelay);
   }
 
+  const healthy = adminHealthy && gatewayHealthy;
   if (!healthy) {
-    spin8.stop(yellow("Admin interface did not become healthy in time"));
+    spin8.stop(yellow("Some services did not become healthy in time"));
   } else {
-    spin8.stop(green("Admin interface ready"));
+    spin8.stop(green("All services healthy"));
   }
 
-  // Write install metadata for idempotency tracking
+  // Write install metadata
   const installMode = existingMetadata ? "reinstall" : "fresh";
   const metadata = createInstallMetadata({
     mode: installMode,
@@ -447,75 +335,35 @@ networks:
   });
   writeInstallMetadata(xdg.state, metadata);
 
-  // Open browser
-  if (!options.noOpen && healthy) {
-    try {
-      if (os === "macos") {
-        Bun.spawn(["open", adminUrl]);
-      } else if (os === "linux") {
-        Bun.spawn(["xdg-open", adminUrl]);
-      } else {
-        // Windows — use cmd /c start
-        Bun.spawn(["cmd", "/c", "start", adminUrl]);
-      }
-    } catch {
-      // Ignore — we print the URL below
-    }
-  }
-
-  // ============================================================================
   // Final output
-  // ============================================================================
-
   if (healthy) {
     log("");
-    log(bold(green("  OpenPalm setup wizard is ready!")));
+    log(bold(green("  OpenPalm is running!")));
     log("");
-    info(`  Setup wizard: ${cyan(adminUrl)}`);
-    info(`  Direct admin: ${cyan("http://localhost:8100")} (if port 80 is blocked)`);
+    info(`  Admin API:  ${cyan(adminUrl + "/api")}`);
+    info(`  Admin API (direct):  ${cyan(adminDirectUrl)}`);
+    info(`  Gateway:    ${cyan("http://localhost:8080")}`);
     log("");
-    log(bold("  What happens next:"));
-    info("    1. The setup wizard opens in your browser");
-    info("    2. Create your admin password and profile");
-    info("    3. Enter your AI provider API key (e.g. from console.anthropic.com)");
-    info("    4. The wizard will download and start remaining services automatically");
-    info("    5. Pick which channels to enable (chat, Discord, etc.)");
-    info("    6. Done! Start chatting with your assistant");
-    log("");
-    if (!options.noOpen) {
-      info("  Opening setup wizard in your browser...");
-    } else {
-      info(`  Open this URL in your browser to continue: ${adminUrl}`);
-    }
   } else {
     log("");
-    log(bold(yellow("  Setup did not come online within 3 minutes")));
+    log(bold(yellow("  Some services did not come online within 3 minutes")));
     log("");
-    info("  This usually means containers are still starting. Try these steps:");
+    if (adminHealthy) info("  Admin: healthy");
+    else warn("  Admin: not responding");
+    if (gatewayHealthy) info("  Gateway: healthy");
+    else warn("  Gateway: not responding");
     log("");
-    info(`  1. Wait a minute, then open: ${adminUrl}`);
+    info("  Check status:  openpalm status");
+    info("  Check logs:    openpalm logs");
     log("");
-    info("  2. Check if containers are running:");
-    info("     openpalm status");
-    log("");
-    info("  3. Check logs for errors:");
-    info("     openpalm logs");
-    log("");
-    info("  4. Common fixes:");
-    info("     - Make sure port 80 is not used by another service");
-    info("     - Restart Docker/Podman and try again");
-    info("     - Check that you have internet access (images need to download)");
-    log("");
-    info("  5. If the browser doesn't open, try the direct admin URL:");
-    info(`     ${cyan("http://localhost:8100")}`);
-    log("");
-    info("  6. Still stuck? Report the issue:");
-    info(`     ${cyan(reportIssueUrl({ os, arch, runtime: platform, error: "Health check timeout after 3 minutes" }))}`);
+    info("  If this keeps happening, report the issue:");
+    info(`    ${cyan(reportIssueUrl({ os, arch, error: "Health check timeout after 3 minutes" }))}`);
   }
 
   log("");
   log(bold("  Useful commands:"));
   info("    View logs:  openpalm logs");
+  info("    Status:     openpalm status");
   info("    Stop:       openpalm stop");
   info("    Uninstall:  openpalm uninstall");
   log("");

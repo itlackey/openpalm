@@ -33,12 +33,6 @@ describe("runtime", () => {
       const path = resolveSocketPath("docker", "linux");
       expect(path).toBe("/var/run/docker.sock");
     });
-
-    it("returns a path containing podman.sock for podman on linux", () => {
-      const path = resolveSocketPath("podman", "linux");
-      expect(path).toContain("podman.sock");
-    });
-
   });
 
   describe("resolveComposeBin", () => {
@@ -46,18 +40,12 @@ describe("runtime", () => {
       const result = resolveComposeBin("docker");
       expect(result).toEqual({ bin: "docker", subcommand: "compose" });
     });
-
-    it("returns podman compose for podman platform", () => {
-      const result = resolveComposeBin("podman");
-      expect(result).toEqual({ bin: "podman", subcommand: "compose" });
-    });
   });
 
   describe("detectRuntime", () => {
-    it("returns one of the valid container platforms or null", async () => {
+    it("returns docker or null", async () => {
       const result = await detectRuntime("linux");
-      const validValues = ["docker", "podman", null];
-      expect(validValues).toContain(result);
+      expect(["docker", null]).toContain(result);
     });
   });
 

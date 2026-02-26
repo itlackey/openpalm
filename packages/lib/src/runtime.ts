@@ -27,45 +27,16 @@ export function detectArch(): HostArch {
 export async function detectRuntime(_os: HostOS): Promise<ContainerPlatform | null> {
   const dockerBin = await Bun.which("docker");
   if (dockerBin) return "docker";
-
-  const podmanBin = await Bun.which("podman");
-  if (podmanBin) return "podman";
-
   return null;
 }
 
-export function resolveSocketPath(platform: ContainerPlatform, os: HostOS): string {
-  switch (platform) {
-    case "docker":
-      if (os === "windows") return "//./pipe/docker_engine";
-      return "/var/run/docker.sock";
-    case "podman":
-      if (os === "linux") {
-        const uid = process.getuid?.() ?? 1000;
-        return `/run/user/${uid}/podman/podman.sock`;
-      }
-      if (os === "windows") return "//./pipe/podman-machine-default";
-      return "/var/run/docker.sock";
-  }
-}
-
-export function resolveComposeBin(platform: ContainerPlatform): { bin: string; subcommand: string } {
-  switch (platform) {
-    case "docker":
-      return { bin: "docker", subcommand: "compose" };
-    case "podman":
-      return { bin: "podman", subcommand: "compose" };
-  }
-}
-
-export function resolveSocketUri(platform: ContainerPlatform, os: HostOS): string {
-  const socketPath = resolveSocketPath(platform, os);
-  if (os === "windows") return `npipe://${socketPath}`;
-  return `unix://${socketPath}`;
-}
-
-export function resolveInContainerSocketPath(_platform: ContainerPlatform): string {
+export function resolveSocketPath(_platform: ContainerPlatform, os: HostOS): string {
+  if (os === "windows") return "//./pipe/docker_engine";
   return "/var/run/docker.sock";
+}
+
+export function resolveComposeBin(_platform: ContainerPlatform): { bin: string; subcommand: string } {
+  return { bin: "docker", subcommand: "compose" };
 }
 
 export async function validateRuntime(bin: string, subcommand: string): Promise<boolean> {

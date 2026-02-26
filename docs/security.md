@@ -7,10 +7,9 @@ OpenPalm uses defense in depth: multiple independent controls are applied so a s
 - Caddy fronts all inbound traffic.
 - `/services/opencode*` and `/services/openmemory*` are LAN-restricted.
 - Channel routes are LAN-only by default and can be explicitly toggled to public in admin.
-- Setup wizard can harden further with `host` scope (localhost-only matchers + localhost compose bindings).
 - Unknown routes are rejected at the edge.
 
-**Initial bootstrap config (first boot):** The initial Caddy config (`packages/lib/src/embedded/state/caddy/caddy.json`) serves HTTP only on port 80 with LAN-restricted IP ranges. This is acceptable because the bootstrap config is LAN-only and is replaced post-setup by the stack generator, which renders a full Caddy config with proper TLS settings once a domain is configured. If you need HTTPS during initial setup, configure a domain and run the setup wizard to generate the production Caddy config with automatic TLS.
+**Caddy config:** The installer writes a Caddy JSON config with LAN-restricted IP ranges for admin routes. Channel routes and the default route proxy to admin. HTTP is served on the configured ingress port (default 80).
 
 **Why:** keep management surfaces private by default and reduce internet-exposed attack surface.
 
@@ -72,8 +71,7 @@ See [core/assistant/README.md](../core/assistant/README.md#ssh-access-optional) 
 
 OpenPalm uses token-authenticated Admin API calls for assistant-initiated stack management.
 
-- Assistant uses domain CLI commands (`openpalm service ...`, `openpalm channel ...`).
-- CLI calls admin over internal network (`assistant_net`) with `x-admin-token`.
+- Assistant calls Admin API over internal network (`assistant_net`) with `x-admin-token`.
 - Assistant does **not** receive Docker socket mounts or elevated container privileges.
 - Admin remains the only component with compose/socket access and enforces service allowlists.
 

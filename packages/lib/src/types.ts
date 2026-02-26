@@ -1,5 +1,5 @@
 /** Supported container runtime platforms. */
-export type ContainerPlatform = "docker" | "podman";
+export type ContainerPlatform = "docker";
 
 /** Supported host operating systems. */
 export type HostOS = "linux" | "macos" | "windows" | "unknown";
@@ -88,7 +88,7 @@ export type XDGPaths = {
 
 /** Install lifecycle event recorded in metadata history. */
 export type InstallEvent = {
-  action: "install" | "update" | "setup_complete";
+  action: "install" | "update";
   timestamp: string;
   version?: string;
 };

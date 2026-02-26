@@ -11,9 +11,6 @@ set -euo pipefail
 #   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash
 #
 # Usage (with arguments — note the -s -- before flags):
-#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/install.sh | bash -s -- --runtime docker
-#   curl -fsSL ... | bash -s -- --runtime podman --no-open
-#   curl -fsSL ... | bash -s -- --ref v1.0.0
 #   curl -fsSL ... | bash -s -- --port 8080
 #
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,18 +21,9 @@ OPENPALM_REPO_NAME="${OPENPALM_REPO_NAME:-openpalm}"
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
 CLI_ARGS=()
-RELEASE_REF=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --runtime)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --runtime. Expected: docker | podman"
-        exit 1
-      fi
-      CLI_ARGS+=(--runtime "$2")
-      shift 2
-      ;;
     --port)
       if [ "$#" -lt 2 ]; then
         echo "Missing value for --port. Expected a port number (1-65535)."
@@ -48,36 +36,23 @@ while [ "$#" -gt 0 ]; do
       CLI_ARGS+=(--port "$2")
       shift 2
       ;;
-    --no-open)
-      CLI_ARGS+=(--no-open)
+    --force)
+      CLI_ARGS+=(--force)
       shift
-      ;;
-    --ref)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --ref."
-        exit 1
-      fi
-      RELEASE_REF="$2"
-      CLI_ARGS+=(--ref "$2")
-      shift 2
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: install.sh [--runtime docker|podman] [--port <number>] [--no-open] [--ref <branch|tag>]
+Usage: install.sh [--port <number>] [--force]
 
 Download the OpenPalm CLI and run `openpalm install`.
 
 When piping via curl, pass arguments with -s --:
-  curl -fsSL <url>/install.sh | bash -s -- --runtime docker
   curl -fsSL <url>/install.sh | bash -s -- --port 8080
-  curl -fsSL <url>/install.sh | bash -s -- --runtime docker --port 3000 --no-open
 
 Options:
-  --runtime   Force a container runtime platform selection.
   --port      Use an alternative ingress port (default: 80). Useful when port 80
               is already in use by another service (e.g. Apache, nginx).
-  --no-open   Do not auto-open the admin setup URL after services are healthy.
-  --ref       Git ref (branch or tag) for release download (default: latest).
+  --force     Overwrite existing installation.
   -h, --help  Show this help.
 
 Port conflict remediation:
@@ -153,11 +128,7 @@ esac
 # ── Download CLI binary ──────────────────────────────────────────────────────
 
 BINARY_NAME="openpalm-${OS_NAME}-${HOST_ARCH}"
-if [ -n "$RELEASE_REF" ]; then
-  DOWNLOAD_URL="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/download/${RELEASE_REF}/${BINARY_NAME}"
-else
-  DOWNLOAD_URL="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/latest/download/${BINARY_NAME}"
-fi
+DOWNLOAD_URL="https://github.com/${OPENPALM_REPO_OWNER}/${OPENPALM_REPO_NAME}/releases/latest/download/${BINARY_NAME}"
 TARGET_PATH="${INSTALL_DIR}/openpalm"
 BINARY_TMP="$(mktemp)"
 

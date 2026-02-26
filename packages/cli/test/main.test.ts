@@ -73,15 +73,11 @@ describe("CLI entry point", () => {
 
     expect(exitCode).toBe(0);
 
-    // Verify all command names are present
     const commands = [
-      "channel",
-      "dev",
       "help",
       "install",
       "logs",
       "restart",
-      "service",
       "start",
       "status",
       "stop",
@@ -100,9 +96,7 @@ describe("CLI entry point", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Install options:");
-    expect(stdout).toContain("--runtime");
-    expect(stdout).toContain("--no-open");
-    expect(stdout).toContain("--ref");
+    expect(stdout).toContain("--force");
     expect(stdout).toContain("--port");
   });
 
@@ -116,15 +110,6 @@ describe("CLI entry point", () => {
     expect(stdout).toContain("--yes");
   });
 
-  // ── Subcommand validation ──────────────────────────────────────────────
-  for (const cmd of ["dev", "service", "channel"]) {
-    it(`${cmd} without subcommand exits with error`, async () => {
-      const { stderr, exitCode } = await runCli(cmd);
-      expect(exitCode).not.toBe(0);
-      expect(stderr).toContain("Missing subcommand");
-    });
-  }
-
   it("does not expose admin command", async () => {
     const { stderr, exitCode } = await runCli("admin");
     expect(exitCode).not.toBe(0);
@@ -134,9 +119,6 @@ describe("CLI entry point", () => {
   it.skipIf(!openpalmInstalled)("supports ps as alias for status", async () => {
     const { stderr, exitCode } = await runCli("ps");
 
-    // docker compose ps returns 0 even when no services are running,
-    // but requires the compose file and env file to exist on disk.
-    // This test is skipped when OpenPalm is not installed (CI, fresh machines).
     expect(exitCode).toBe(0);
     expect(stderr).not.toContain("Unknown command");
   });

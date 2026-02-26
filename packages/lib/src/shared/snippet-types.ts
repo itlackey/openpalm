@@ -13,15 +13,3 @@ export type EnvVarDef = {
   /** Default value if none is provided. */
   default?: string;
 };
-
-/**
- * Return "password" for env var names that look like secrets, "text" otherwise.
- * Convention: names containing SECRET, TOKEN, KEY, or PASSWORD are masked.
- */
-export function inferInputType(envName: string): string {
-  const upper = envName.toUpperCase();
-  if (upper.includes("SECRET") || upper.includes("TOKEN") || upper.includes("KEY") || upper.includes("PASSWORD")) {
-    return "password";
-  }
-  return "text";
-}

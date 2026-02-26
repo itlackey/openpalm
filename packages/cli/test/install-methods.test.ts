@@ -13,7 +13,6 @@ describe("install methods verification", () => {
   const pkgJson = JSON.parse(readFileSync(join(ROOT, "packages/cli/package.json"), "utf-8"));
 
   describe("README documents install methods", () => {
-    // Verify each method is shown
     it("documents bash install method", () => {
       expect(readme).toContain("curl -fsSL");
       expect(readme).toContain("install.sh");
@@ -25,7 +24,6 @@ describe("install methods verification", () => {
       expect(readme).toContain("install.ps1");
     });
 
-    // npx/bunx removed from README per ISSUE-5 — untested path for v1
     it("does not document npx/bunx as install method", () => {
       expect(readme).not.toContain("npx openpalm install");
       expect(readme).not.toContain("bunx openpalm install");
@@ -43,7 +41,6 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("install.ps1");
     });
 
-    // npx/bunx removed from docs per ISSUE-5 — untested path for v1
     it("does not document npx/bunx as install method", () => {
       expect(cliDocs).not.toContain("npx openpalm install");
       expect(cliDocs).not.toContain("bunx openpalm install");
@@ -92,20 +89,11 @@ describe("install methods verification", () => {
 
     it("delegates to openpalm install", () => {
       expect(installSh).toContain("openpalm install");
-      // Runs CLI and captures exit code for remediation hints
       expect(installSh).toContain("CLI_EXIT");
     });
 
     it("installs binary to ~/.local/bin", () => {
       expect(installSh).toContain(".local/bin");
-    });
-
-    it("supports --runtime flag", () => {
-      expect(installSh).toContain("--runtime");
-    });
-
-    it("supports --no-open flag", () => {
-      expect(installSh).toContain("--no-open");
     });
 
     it("supports --port flag", () => {
@@ -117,7 +105,6 @@ describe("install methods verification", () => {
     });
 
     it("forwards --port to CLI args", () => {
-      // The parser adds --port to CLI_ARGS
       expect(installSh).toContain('CLI_ARGS+=(--port');
     });
 
@@ -129,10 +116,6 @@ describe("install methods verification", () => {
     it("includes port-conflict remediation hint", () => {
       expect(installSh).toContain("port 80 is already in use");
       expect(installSh).toContain("--port 8080");
-    });
-
-    it("supports --ref flag", () => {
-      expect(installSh).toContain("--ref");
     });
 
     it("has cleanup trap for temp files", () => {
@@ -154,6 +137,10 @@ describe("install methods verification", () => {
       expect(installSh).not.toContain("OPENPALM_DATA_HOME");
       expect(installSh).not.toContain("generate_token");
       expect(installSh).not.toContain("ADMIN_TOKEN");
+    });
+
+    it("does not reference podman", () => {
+      expect(installSh).not.toContain("podman");
     });
   });
 
@@ -180,18 +167,6 @@ describe("install methods verification", () => {
 
     it("adds install directory to user PATH", () => {
       expect(installPs1).toContain("SetEnvironmentVariable");
-    });
-
-    it("supports -Runtime parameter", () => {
-      expect(installPs1).toContain('[ValidateSet("docker", "podman")]');
-    });
-
-    it("supports -Ref parameter", () => {
-      expect(installPs1).toContain("[string]$Ref");
-    });
-
-    it("supports -NoOpen switch", () => {
-      expect(installPs1).toContain("[switch]$NoOpen");
     });
 
     it("supports -Port parameter with validation", () => {
@@ -223,12 +198,16 @@ describe("install methods verification", () => {
       expect(installPs1).not.toContain("New-Token");
       expect(installPs1).not.toContain("ADMIN_TOKEN");
     });
+
+    it("does not reference podman", () => {
+      expect(installPs1).not.toContain("podman");
+    });
   });
 
   describe("CLI docs covers all commands", () => {
     const requiredCommands = [
       "install", "uninstall", "update", "start", "stop",
-      "restart", "logs", "status", "service", "channel", "render", "apply", "version", "help"
+      "restart", "logs", "status", "version", "help"
     ];
 
     for (const cmd of requiredCommands) {
@@ -239,26 +218,13 @@ describe("install methods verification", () => {
   });
 
   describe("CLI docs covers all install options", () => {
-    it("documents --runtime flag", () => {
-      expect(cliDocs).toContain("--runtime");
-      expect(cliDocs).toContain("docker|podman");
-    });
-
     it("documents --port flag", () => {
       expect(cliDocs).toContain("--port");
       expect(cliDocs).toContain("alternative ingress port");
     });
 
-    it("documents --no-open flag", () => {
-      expect(cliDocs).toContain("--no-open");
-    });
-
     it("documents --force flag", () => {
       expect(cliDocs).toContain("--force");
-    });
-
-    it("documents --ref flag", () => {
-      expect(cliDocs).toContain("--ref");
     });
 
     it("documents wrapper --port pass-through examples", () => {
@@ -298,20 +264,9 @@ describe("install methods verification", () => {
     });
   });
 
-  describe("CLI docs covers container runtimes", () => {
+  describe("CLI docs covers container runtime", () => {
     it("documents Docker support", () => {
       expect(cliDocs).toContain("Docker");
-    });
-
-    it("documents Podman support", () => {
-      expect(cliDocs).toContain("Podman");
-    });
-
-    it("documents auto-detection order", () => {
-      const dockerIdx = cliDocs.indexOf("Docker", cliDocs.indexOf("Auto-detection"));
-      const podmanIdx = cliDocs.indexOf("Podman", dockerIdx);
-      expect(dockerIdx).toBeGreaterThan(-1);
-      expect(podmanIdx).toBeGreaterThan(dockerIdx);
     });
   });
 
@@ -320,7 +275,7 @@ describe("install methods verification", () => {
       expect(cliDocs).toContain("bun build packages/cli/src/main.ts --compile");
     });
 
-    it("documents all cross-platform targets including Windows", () => {
+    it("documents all cross-platform targets", () => {
       expect(cliDocs).toContain("bun-linux-x64");
       expect(cliDocs).toContain("bun-linux-arm64");
       expect(cliDocs).toContain("bun-darwin-x64");

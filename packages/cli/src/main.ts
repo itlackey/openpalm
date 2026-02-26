@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import type { ContainerPlatform, InstallOptions, UninstallOptions } from "./types.ts";
+import type { InstallOptions, UninstallOptions } from "./types.ts";
 import { install } from "./commands/install.ts";
 import { uninstall } from "./commands/uninstall.ts";
 import { update } from "./commands/update.ts";
@@ -9,9 +9,6 @@ import { stop } from "./commands/stop.ts";
 import { restart } from "./commands/restart.ts";
 import { logs } from "./commands/logs.ts";
 import { status } from "./commands/status.ts";
-import { preflight } from "./commands/preflight.ts";
-import { service } from "./commands/service.ts";
-import { channel } from "./commands/channel.ts";
 import { log, error, bold, dim } from "@openpalm/lib/ui.ts";
 import pkg from "../package.json";
 
@@ -32,21 +29,14 @@ function printHelp(): void {
   log("  restart        Restart services");
   log("  logs           View container logs");
   log("  status         Show container status");
-  log("  service        Service lifecycle operations (up, stop, restart, logs, update, status)");
-  log("  channel        Channel operations (configure)");
-  log("  dev            Development helpers (preflight)");
   log("  version        Print version");
   log("  help           Show this help");
   log("");
   log(bold("Install options:"));
-  log("  --runtime <docker|podman>  Force container runtime");
-  log("  --no-open                  Don't auto-open browser");
-  log("  --ref <branch|tag>         Git ref for asset download");
   log("  --force                    Overwrite existing installation");
   log("  --port <number>            Use alternative port (default: 80)");
   log("");
   log(bold("Uninstall options:"));
-  log("  --runtime <docker|podman>  Force container runtime");
   log("  --remove-all               Remove all data/config/state and CLI binary");
   log("  --remove-images            Remove container images");
   log("  --remove-binary            Remove the openpalm CLI binary");
@@ -65,10 +55,7 @@ export function parseCliArgs(args: string[]) {
     strict: false,
     allowPositionals: true,
     options: {
-      runtime: { type: "string" },
-      ref: { type: "string" },
       port: { type: "string" },
-      "no-open": { type: "boolean" },
       force: { type: "boolean" },
       "remove-all": { type: "boolean" },
       "remove-images": { type: "boolean" },
@@ -93,8 +80,6 @@ function getPositionalArgs(args: string[]): string[] {
   return parseCliArgs(args).positionals;
 }
 
-const VALID_RUNTIMES: readonly ContainerPlatform[] = ["docker", "podman"] as const;
-
 export async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
 
@@ -115,11 +100,6 @@ export async function main(): Promise<void> {
           printHelp();
           return;
         }
-        const runtimeArg = parseArg(args, "runtime");
-        if (runtimeArg && !VALID_RUNTIMES.includes(runtimeArg as ContainerPlatform)) {
-          error(`Invalid runtime "${runtimeArg}". Must be one of: ${VALID_RUNTIMES.join(", ")}`);
-          process.exit(1);
-        }
         const portArg = parseArg(args, "port");
         const port = portArg ? Number(portArg) : undefined;
         if (portArg && (!port || port < 1 || port > 65535)) {
@@ -127,9 +107,6 @@ export async function main(): Promise<void> {
           process.exit(1);
         }
         const options: InstallOptions = {
-          runtime: runtimeArg as ContainerPlatform | undefined,
-          noOpen: hasFlag(args, "no-open"),
-          ref: parseArg(args, "ref"),
           force: hasFlag(args, "force"),
           port,
         };
@@ -138,14 +115,8 @@ export async function main(): Promise<void> {
       }
 
       case "uninstall": {
-        const uninstallRuntimeArg = parseArg(args, "runtime");
-        if (uninstallRuntimeArg && !VALID_RUNTIMES.includes(uninstallRuntimeArg as ContainerPlatform)) {
-          error(`Invalid runtime "${uninstallRuntimeArg}". Must be one of: ${VALID_RUNTIMES.join(", ")}`);
-          process.exit(1);
-        }
         const removeAll = hasFlag(args, "remove-all");
         const options: UninstallOptions = {
-          runtime: uninstallRuntimeArg as ContainerPlatform | undefined,
           removeAll,
           removeImages: hasFlag(args, "remove-images"),
           removeBinary: removeAll || hasFlag(args, "remove-binary"),
@@ -188,40 +159,6 @@ export async function main(): Promise<void> {
       case "ps": {
         await status();
         break;
-      }
-
-      case "service": {
-        const [subcommand, ...serviceArgs] = args;
-        if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm service <up|stop|restart|logs|update|status>");
-          process.exit(1);
-        }
-        await service(subcommand, serviceArgs);
-        break;
-      }
-
-      case "channel": {
-        const [subcommand, ...channelArgs] = args;
-        if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm channel <configure>");
-          process.exit(1);
-        }
-        await channel(subcommand, channelArgs);
-        break;
-      }
-
-      case "dev": {
-        const [subcommand] = args;
-        if (!subcommand) {
-          error("Missing subcommand. Usage: openpalm dev <preflight>");
-          process.exit(1);
-        }
-        if (subcommand === "preflight") {
-          preflight();
-          break;
-        }
-        error(`Unknown dev subcommand: ${subcommand}`);
-        process.exit(1);
       }
 
       default: {

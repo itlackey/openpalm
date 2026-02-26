@@ -40,8 +40,6 @@ export {
   detectRuntime,
   resolveSocketPath,
   resolveComposeBin,
-  resolveSocketUri,
-  resolveInContainerSocketPath,
   validateRuntime,
 } from "./runtime.ts";
 

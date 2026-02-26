@@ -59,7 +59,7 @@ describe("ISSUE-4 — Port 80 conflict resolution", () => {
   });
 
   it("runPreflightChecksDetailed() accepts a port parameter and returns typed result", async () => {
-    const result = await runPreflightChecksDetailed("podman", "podman", 59132);
+    const result = await runPreflightChecksDetailed("docker", "docker", 59132);
     expect(result).toHaveProperty("ok");
     expect(result).toHaveProperty("issues");
     expect(Array.isArray(result.issues)).toBe(true);
@@ -103,8 +103,9 @@ describe("ISSUE-4 — Port 80 conflict resolution", () => {
     expect(caddy.apps.http.servers.main.listen).toContain(":80");
   });
 
-  it("minimal compose uses OPENPALM_INGRESS_PORT env var for Caddy port", async () => {
+  it("writes Caddy JSON with configurable port", async () => {
     const content = await Bun.file(installFile).text();
-    expect(content).toContain("OPENPALM_INGRESS_PORT:-80");
+    expect(content).toContain("OPENPALM_INGRESS_PORT");
+    expect(content).toContain("`:${ingressPort}`");
   });
 });

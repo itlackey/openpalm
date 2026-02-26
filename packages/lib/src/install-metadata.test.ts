@@ -79,11 +79,11 @@ describe("install-metadata", () => {
       port: 80,
     });
     const updated = appendMetadataEvent(meta, {
-      action: "setup_complete",
+      action: "update",
       timestamp: new Date().toISOString(),
     });
     expect(updated.history).toHaveLength(2);
-    expect(updated.history[1].action).toBe("setup_complete");
+    expect(updated.history[1].action).toBe("update");
     expect(updated.lastUpdatedAt).toBeDefined();
   });
 
@@ -91,13 +91,13 @@ describe("install-metadata", () => {
     const nested = join(tmp, "nested", "dir");
     const meta = createInstallMetadata({
       mode: "fresh",
-      runtime: "podman",
+      runtime: "docker",
       port: 80,
     });
     writeInstallMetadata(nested, meta);
     const read = readInstallMetadata(nested);
     expect(read).not.toBeNull();
-    expect(read!.runtime).toBe("podman");
+    expect(read!.runtime).toBe("docker");
   });
 
   it("overwrites existing metadata on write", () => {
@@ -110,14 +110,14 @@ describe("install-metadata", () => {
 
     const meta2 = createInstallMetadata({
       mode: "reinstall",
-      runtime: "podman",
+      runtime: "docker",
       port: 8080,
     });
     writeInstallMetadata(tmp, meta2);
 
     const read = readInstallMetadata(tmp);
     expect(read!.mode).toBe("reinstall");
-    expect(read!.runtime).toBe("podman");
+    expect(read!.runtime).toBe("docker");
     expect(read!.port).toBe(8080);
   });
 

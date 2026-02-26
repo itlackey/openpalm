@@ -114,13 +114,12 @@ export function createTestDirLayout(prefix = "openpalm-test-"): string {
   const dataAdmin = join(tmpDir, "data", "admin");
   const stateRoot = join(tmpDir, "state");
   const configDir = join(tmpDir, "config");
-  const cronDir = join(tmpDir, "cron");
   const opencodeDir = join(tmpDir, "data", "assistant", ".config", "opencode");
 
   for (const svc of SERVICE_ENV_DIRS) {
     mkdirSync(join(stateRoot, svc), { recursive: true });
   }
-  for (const d of [dataAdmin, configDir, cronDir, opencodeDir]) {
+  for (const d of [dataAdmin, configDir, opencodeDir]) {
     mkdirSync(d, { recursive: true });
   }
 

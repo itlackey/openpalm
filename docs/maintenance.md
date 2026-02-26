@@ -2,8 +2,6 @@
 
 Backup, restore, upgrade, and rollback procedures for OpenPalm.
 
-> The `admin` container also runs automatic maintenance jobs (image pulls, health checks, database maintenance, log rotation). See [Admin Service README](../core/admin/README.md#system-maintenance-cron-jobs) for details.
-
 ---
 
 ## Backup
@@ -15,7 +13,7 @@ Backup, restore, upgrade, and rollback procedures for OpenPalm.
 | PostgreSQL data | `~/.local/share/openpalm/postgres/` | Relational data used by OpenMemory |
 | Qdrant data | `~/.local/share/openpalm/qdrant/` | Vector embeddings for memory search |
 | OpenMemory data | `~/.local/share/openpalm/openmemory/` | OpenMemory application state |
-| Configuration | `~/.config/openpalm/` | Agent config, channel settings, cron jobs, Caddyfile |
+| Configuration | `~/.config/openpalm/` | Agent config, channel settings, Caddy config |
 | Secrets | `~/.config/openpalm/secrets.env` | API keys and credentials |
 
 ### Backup procedure
@@ -146,11 +144,6 @@ If something goes wrong after an upgrade:
 1. Stop the stack: `docker compose -f ~/.local/state/openpalm/docker-compose.yml down`
 2. Restore your backup using the restore procedure above.
 3. Start the stack: `docker compose -f ~/.local/state/openpalm/docker-compose.yml up -d`
-
-### Automatic updates
-
-The `admin` container includes a system cron job that periodically pulls image updates and restarts services. Check `~/.local/state/openpalm/observability/maintenance/` for update logs. See [Admin Service README](../core/admin/README.md#system-maintenance-cron-jobs) for the full cron schedule.
-
 
 ## Uninstall
 

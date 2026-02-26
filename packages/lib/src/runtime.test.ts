@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { resolveInContainerSocketPath } from "./runtime.ts";
+import { resolveSocketPath } from "./runtime.ts";
 
-describe("resolveInContainerSocketPath", () => {
-  it("returns docker socket path for docker", () => {
-    expect(resolveInContainerSocketPath("docker")).toBe("/var/run/docker.sock");
+describe("resolveSocketPath", () => {
+  it("returns docker socket path for linux", () => {
+    expect(resolveSocketPath("docker", "linux")).toBe("/var/run/docker.sock");
   });
 
-  it("returns docker socket path for podman", () => {
-    expect(resolveInContainerSocketPath("podman")).toBe("/var/run/docker.sock");
+  it("returns named pipe for windows", () => {
+    expect(resolveSocketPath("docker", "windows")).toBe("//./pipe/docker_engine");
   });
 });

@@ -377,7 +377,7 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("OPENPALM_ASSISTANT_URL=http://assistant:4096");
     expect(out.composeFile).toContain("OPENPALM_COMPOSE_BIN=");
     expect(out.composeFile).toContain("OPENPALM_COMPOSE_SUBCOMMAND=");
-    expect(out.composeFile).toContain("OPENPALM_CONTAINER_SOCKET_URI=");
+    expect(out.composeFile).toContain("/var/run/docker.sock");
   });
 
   it("includes healthchecks for core services", () => {

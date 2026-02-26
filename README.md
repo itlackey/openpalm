@@ -11,7 +11,7 @@
 
 Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your conversations, your memory, your rules — nothing leaves your network unless you want it to.
 
-- **One command to install** — works with Docker or Podman on Linux, macOS, or Windows.
+- **One command to install** — works with Docker on Linux, macOS, or Windows.
 - **Web chat built in** — talk to your assistant from a browser.
 - **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
 - **Admin dashboard** — manage everything from a browser: services, extensions, and agent config.
@@ -45,11 +45,11 @@ pwsh -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/itl
 
 ### What happens when you run the installer
 
-1. It checks your system and downloads the OpenPalm bootstrap services (admin and reverse proxy)
-2. It generates a temporary admin token and prints it to your screen
-3. It starts the bootstrap services and opens a setup wizard in your browser
-4. The wizard walks you through connecting your AI provider, configuring access, and choosing channels
-5. When you complete the wizard, the full runtime (assistant, gateway, memory, and all enabled channels) starts automatically
+1. It checks your system (Docker, disk space, port availability)
+2. It generates a secure admin token and prints it to your screen
+3. It creates the XDG directory structure and seeds configuration files
+4. It pulls all container images and starts the full stack
+5. It health-checks admin and gateway, then prints API URLs
 
 No config files to edit. See the [CLI documentation](docs/cli.md) for all available commands.
 
@@ -84,10 +84,6 @@ The admin UI and CLI manage npm plugins (the `plugin[]` list in `opencode.json`)
 
 Services are internal add-on containers that run on the private container network and are accessible only to the assistant and admin — never from the internet or your local network. Use them to add backend capabilities your assistant can call as a tool: search APIs, code execution sandboxes, custom databases, and so on. See [Admin Concepts](core/admin/docs/admin-concepts.md#services) for details.
 
-### System maintenance
-
-OpenPalm ships with non-configurable system maintenance cron jobs in the admin-managed stack by default. These jobs automatically pull image updates, restart services after updates, rotate maintenance logs, prune old images, run health checks with auto-restart, run best-effort security scans, perform Postgres maintenance, clean stale temporary files, and scrape runtime metrics.
-
 ## OpenPalm vs OpenClaw
 
 OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but takes a fundamentally different approach to security. Where OpenClaw runs as a local daemon with broad system access, OpenPalm isolates every component in its own container with explicit, layered controls.
@@ -100,7 +96,7 @@ OpenPalm was inspired by [OpenClaw](https://github.com/openclaw/openclaw) but ta
 | **Extensions** | Admin-authenticated install | Auto-discovery from registry |
 | **Admin** | Web dashboard with token auth (LAN only) | Chat commands in messaging channels |
 | **Memory** | Explicit-save-only with secret detection | Session-based with compression |
-| **Deployment** | Single compose command (docker/podman) | Daemon install with multiple modes |
+| **Deployment** | Single compose command (Docker) | Daemon install with multiple modes |
 
 For more context: [data exfiltration and prompt injection vulnerabilities found in OpenClaw's skill ecosystem](https://news.northeastern.edu/2026/02/10/open-claw-ai-assistant/).
 

@@ -11,26 +11,23 @@ describe("ISSUE-16 — Report issue URLs in install failures", () => {
 
   it("includes report link in runtime detection failure", async () => {
     const content = await Bun.file(installFile).text();
-    // After noRuntimeGuidance, the report URL is shown
-    expect(content).toContain("reportIssueUrl({ os, arch, runtime: \"none\"");
+    expect(content).toContain('reportIssueUrl({ os, arch, error: "Docker not found"');
   });
 
   it("includes report link in image pull failure", async () => {
     const content = await Bun.file(installFile).text();
-    expect(content).toContain("reportIssueUrl({ os, arch, runtime: platform, error: String(pullErr)");
+    expect(content).toContain("reportIssueUrl({ os, arch, error: String(pullErr)");
   });
 
   it("includes report link in health check timeout", async () => {
     const content = await Bun.file(installFile).text();
-    expect(content).toContain("reportIssueUrl({ os, arch, runtime: platform, error: \"Health check timeout");
+    expect(content).toContain('reportIssueUrl({ os, arch, error: "Health check timeout');
   });
 
-  it("report URL includes environment context (os, arch, runtime)", async () => {
+  it("report URL includes environment context (os, arch, error)", async () => {
     const content = await Bun.file(installFile).text();
-    // The helper constructs URL with environment info
     expect(content).toContain("context.os");
     expect(content).toContain("context.arch");
-    expect(content).toContain("context.runtime");
     expect(content).toContain("context.error");
   });
 });

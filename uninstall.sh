@@ -4,7 +4,6 @@ set -euo pipefail
 # Resolve .env from XDG state home or common locations
 # (does not assume the script runs from the repo root)
 
-RUNTIME_OVERRIDE=""
 REMOVE_ALL=0
 REMOVE_IMAGES=0
 REMOVE_BINARY=0
@@ -12,14 +11,6 @@ ASSUME_YES=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --runtime)
-      if [ "$#" -lt 2 ]; then
-        echo "Missing value for --runtime. Expected: docker | podman"
-        exit 1
-      fi
-      RUNTIME_OVERRIDE="$2"
-      shift 2
-      ;;
     --remove-all)
       REMOVE_ALL=1
       REMOVE_BINARY=1
@@ -39,10 +30,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     -h|--help)
       cat <<'HELP'
-Usage: ./uninstall.sh [--runtime docker|podman] [--remove-all] [--remove-images] [--yes]
+Usage: ./uninstall.sh [--remove-all] [--remove-images] [--yes]
 
 Options:
-  --runtime        Force a container runtime platform selection.
   --remove-all     Remove all OpenPalm config/state/data directories, local .env, and CLI binary.
   --remove-images  Remove container images used by OpenPalm.
   --remove-binary  Remove the openpalm CLI binary from ~/.local/bin.
@@ -97,41 +87,18 @@ if [ -n "$ENV_FILE" ]; then
   OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-$(read_env_var OPENPALM_DATA_HOME "$ENV_FILE")}"
   OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-$(read_env_var OPENPALM_CONFIG_HOME "$ENV_FILE")}"
   OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-$(read_env_var OPENPALM_STATE_HOME "$ENV_FILE")}"
-  OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-$(read_env_var OPENPALM_CONTAINER_PLATFORM "$ENV_FILE")}}"
-else
-  OPENPALM_CONTAINER_PLATFORM="${RUNTIME_OVERRIDE:-${OPENPALM_CONTAINER_PLATFORM:-}}"
 fi
 
 OPENPALM_DATA_HOME="${OPENPALM_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/openpalm}"
 OPENPALM_CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/openpalm}"
 OPENPALM_STATE_HOME="${OPENPALM_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/openpalm}"
 
-if [ -z "$OPENPALM_CONTAINER_PLATFORM" ]; then
-  if command -v docker >/dev/null 2>&1; then
-    OPENPALM_CONTAINER_PLATFORM="docker"
-  elif command -v podman >/dev/null 2>&1; then
-    OPENPALM_CONTAINER_PLATFORM="podman"
-  fi
-fi
-
 OPENPALM_COMPOSE_BIN=""
 OPENPALM_COMPOSE_SUBCOMMAND=""
-case "$OPENPALM_CONTAINER_PLATFORM" in
-  docker)
-    OPENPALM_COMPOSE_BIN="docker"
-    OPENPALM_COMPOSE_SUBCOMMAND="compose"
-    ;;
-  podman)
-    OPENPALM_COMPOSE_BIN="podman"
-    OPENPALM_COMPOSE_SUBCOMMAND="compose"
-    ;;
-  "")
-    ;;
-  *)
-    echo "Unsupported runtime '$OPENPALM_CONTAINER_PLATFORM'. Use docker or podman."
-    exit 1
-    ;;
-esac
+if command -v docker >/dev/null 2>&1; then
+  OPENPALM_COMPOSE_BIN="docker"
+  OPENPALM_COMPOSE_SUBCOMMAND="compose"
+fi
 
 COMPOSE_FILE_PATH="$OPENPALM_STATE_HOME/docker-compose.yml"
 COMPOSE_ENV_FILE="$OPENPALM_STATE_HOME/.env"
@@ -140,7 +107,7 @@ if [ ! -f "$COMPOSE_ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
 fi
 
 echo "Planned uninstall actions:"
-echo "  Runtime: ${OPENPALM_CONTAINER_PLATFORM:-auto-unavailable}"
+echo "  Runtime: ${OPENPALM_COMPOSE_BIN:-not-found}"
 echo "  Stop/remove containers: yes"
 echo "  Remove images: $([ "$REMOVE_IMAGES" -eq 1 ] && echo yes || echo no)"
 echo "  Remove all data/config/state: $([ "$REMOVE_ALL" -eq 1 ] && echo yes || echo no)"

@@ -162,7 +162,6 @@ describe("createTestDirLayout", () => {
       expect(existsSync(join(dir, "data", "admin"))).toBe(true);
       expect(existsSync(join(dir, "state"))).toBe(true);
       expect(existsSync(join(dir, "config"))).toBe(true);
-      expect(existsSync(join(dir, "cron"))).toBe(true);
       expect(
         existsSync(
           join(dir, "data", "assistant", ".config", "opencode")
