@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { signPayload, verifySignature } from "./channel-security.ts";
+import { signPayload, verifySignature } from "@openpalm/lib/shared/crypto.ts";
 
 describe("channel security", () => {
   it("re-exports working HMAC sign/verify from @openpalm/lib", () => {

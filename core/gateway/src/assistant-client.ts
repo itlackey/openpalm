@@ -3,7 +3,7 @@
  * The gateway delegates all reasoning, tool use, and memory access to OpenCode.
  */
 
-export type AgentRequest = {
+type AgentRequest = {
   message: string;
   userId: string;
   sessionId: string;
@@ -12,7 +12,7 @@ export type AgentRequest = {
   metadata?: Record<string, unknown>;
 };
 
-export type AgentResponse = {
+type AgentResponse = {
   response: string;
   sessionId: string;
   agent?: string;
@@ -32,11 +32,6 @@ class OpenCodeHttpError extends Error {
 
 function shouldRetryStatus(status: number): boolean {
   return status === 429 || status === 502 || status === 503 || status === 504;
-}
-
-async function delay(ms: number): Promise<void> {
-  if (ms <= 0) return;
-  await Bun.sleep(ms);
 }
 
 export class OpenCodeClient {
@@ -97,7 +92,7 @@ export class OpenCodeClient {
           : true;
 
         if (attempt < retries && retryable) {
-          await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
+          await Bun.sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
           continue;
         }
         throw normalizedError;

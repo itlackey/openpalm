@@ -6,10 +6,10 @@ import { parseYamlDocument, stringifyYamlDocument } from "../shared/yaml.ts";
 
 export const StackSpecVersion = 3;
 
-export type StackAccessScope = "host" | "lan" | "public";
+type StackAccessScope = "host" | "lan" | "public";
 export type ChannelExposure = "host" | "lan" | "public";
 
-export type BuiltInChannelName = string;
+type BuiltInChannelName = string;
 
 export type StackChannelConfig = {
   enabled: boolean;
@@ -44,7 +44,7 @@ export type StackServiceConfig = {
   config: Record<string, string>;
 };
 
-export type CaddyConfig = {
+type CaddyConfig = {
   email?: string;
 };
 
@@ -59,9 +59,9 @@ export type StackSpec = {
 
 // --- Derive built-in channel data from YAML snippets ---
 
-export const BuiltInChannelNames: BuiltInChannelName[] = Object.keys(BUILTIN_CHANNELS);
+const BuiltInChannelNames: BuiltInChannelName[] = Object.keys(BUILTIN_CHANNELS);
 
-export const BuiltInChannelConfigKeys: Record<BuiltInChannelName, string[]> = Object.fromEntries(
+const BuiltInChannelConfigKeys: Record<BuiltInChannelName, string[]> = Object.fromEntries(
   Object.entries(BUILTIN_CHANNELS).map(([name, def]) => [name, def.env.map((e) => e.name)]),
 ) as Record<BuiltInChannelName, string[]>;
 
@@ -120,6 +120,8 @@ export function createDefaultStackSpec(): StackSpec {
   };
 }
 
+const VALID_SCOPES = new Set<string>(["host", "lan", "public"]);
+
 function assertRecord(value: unknown, errorCode: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(errorCode);
   return value as Record<string, unknown>;
@@ -131,180 +133,146 @@ function parseOptionalString(value: unknown, fieldName: string): string | undefi
   return value.trim() || undefined;
 }
 
-function parseOptionalVolumes(value: unknown, errorCode: string): string[] | undefined {
+function parseOptionalStringArray(value: unknown, errorCode: string): string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new Error(errorCode);
   for (const v of value) {
-    if (typeof v !== "string" || !v.trim()) throw new Error(errorCode);
+    if (typeof v !== "string" || !v.trim()) throw new Error(`${errorCode}_entry`);
   }
   return value.map((v: string) => v.trim());
 }
 
-function parseChannelConfig(raw: unknown, channelName: string): Record<string, string> {
-  const config = assertRecord(raw ?? {}, `invalid_channel_config_${channelName}`);
+function parseOptionalBoolean(value: unknown, errorCode: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw new Error(errorCode);
+  return value;
+}
 
-  if (isBuiltInChannel(channelName)) {
-    const result = defaultChannelConfig(channelName);
-    for (const key of BuiltInChannelConfigKeys[channelName]) {
-      const value = config[key];
-      if (value !== undefined && typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
-      result[key] = typeof value === "string" ? value.replace(/[\r\n]+/g, "").trim() : "";
-    }
-    return result;
+function parsePort(value: unknown, errorCode: string, required: true): number;
+function parsePort(value: unknown, errorCode: string, required?: false): number | undefined;
+function parsePort(value: unknown, errorCode: string, required?: boolean): number | undefined {
+  if (value === undefined) { if (required) throw new Error(errorCode); return undefined; }
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 65535) throw new Error(errorCode);
+  return value;
+}
+
+function parseImage(value: unknown, errorCode: string, required: true): string;
+function parseImage(value: unknown, errorCode: string, required?: false): string | undefined;
+function parseImage(value: unknown, errorCode: string, required?: boolean): string | undefined {
+  if (value === undefined) { if (required) throw new Error(errorCode); return undefined; }
+  if (typeof value !== "string" || !value.trim()) throw new Error(errorCode);
+  if (!IMAGE_PATTERN.test(value.trim())) throw new Error(`${errorCode}_format`);
+  return value.trim();
+}
+
+function parseOptionalDomains(value: unknown, errorCode: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(errorCode);
+  for (const d of value) {
+    if (typeof d !== "string" || !d.trim()) throw new Error(`${errorCode}_entry`);
+    if (!DOMAIN_PATTERN.test(d.trim())) throw new Error(`${errorCode}_format`);
+    if (d.trim().length > 253) throw new Error(`${errorCode}_length`);
   }
+  return value.map((d: string) => d.trim());
+}
 
+function parseOptionalPathPrefixes(value: unknown, errorCode: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(errorCode);
+  for (const p of value) {
+    if (typeof p !== "string" || !p.trim()) throw new Error(`${errorCode}_entry`);
+    if (!PATH_PREFIX_PATTERN.test(p.trim())) throw new Error(`${errorCode}_format`);
+  }
+  return value.map((p: string) => p.trim());
+}
+
+
+function parseOptionalNonEmptyString(value: unknown, errorCode: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) throw new Error(errorCode);
+  return value.trim();
+}
+
+function parseOptionalRewritePath(value: unknown, errorCode: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) throw new Error(errorCode);
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) throw new Error(errorCode);
+  return trimmed;
+}
+
+/** Conditionally include a key in an object spread — returns {} when value is undefined. */
+function spread<K extends string, V>(key: K, value: V | undefined): Record<K, V> | {} {
+  return value !== undefined ? { [key]: value } as Record<K, V> : {};
+}
+
+function parseOpenConfig(raw: unknown, scope: string): Record<string, string> {
+  const config = assertRecord(raw ?? {}, `invalid_${scope}_config`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
-    if (!key.trim()) throw new Error(`invalid_channel_config_key_${channelName}_empty`);
-    if (typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
+    if (!key.trim()) throw new Error(`invalid_${scope}_config_key_empty`);
+    if (typeof value !== "string") throw new Error(`invalid_${scope}_config_value_${key}`);
     result[key] = value.replace(/[\r\n]+/g, "").trim();
+  }
+  return result;
+}
+
+function parseChannelConfig(raw: unknown, channelName: string): Record<string, string> {
+  if (!isBuiltInChannel(channelName)) return parseOpenConfig(raw, `channel_${channelName}`);
+  const config = assertRecord(raw ?? {}, `invalid_channel_config_${channelName}`);
+  const result = defaultChannelConfig(channelName);
+  for (const key of BuiltInChannelConfigKeys[channelName]) {
+    const value = config[key];
+    if (value !== undefined && typeof value !== "string") throw new Error(`invalid_channel_config_value_${channelName}_${key}`);
+    result[key] = typeof value === "string" ? value.replace(/[\r\n]+/g, "").trim() : "";
   }
   return result;
 }
 
 function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
-  const channel = assertRecord(raw, `invalid_channel_${channelName}`);
-  const enabled = channel.enabled;
-  const exposure = channel.exposure;
-  if (typeof enabled !== "boolean") throw new Error(`invalid_channel_enabled_${channelName}`);
-  if (exposure !== "host" && exposure !== "lan" && exposure !== "public") throw new Error(`invalid_channel_exposure_${channelName}`);
+  const ch = assertRecord(raw, `invalid_channel_${channelName}`);
+  if (typeof ch.enabled !== "boolean") throw new Error(`invalid_channel_enabled_${channelName}`);
+  if (!VALID_SCOPES.has(ch.exposure as string)) throw new Error(`invalid_channel_exposure_${channelName}`);
 
-  const result: StackChannelConfig = {
-    enabled,
-    exposure,
-    config: parseChannelConfig(channel.config, channelName),
+  const n = channelName; // short alias for error codes
+  return {
+    enabled: ch.enabled,
+    exposure: ch.exposure as ChannelExposure,
+    config: parseChannelConfig(ch.config, n),
+    ...spread("template", parseOptionalString(ch.template, `channel_template_${n}`)),
+    ...spread("supportsMultipleInstances", parseOptionalBoolean(ch.supportsMultipleInstances, `invalid_channel_supports_multiple_instances_${n}`)),
+    ...spread("name", parseOptionalString(ch.name, `channel_name_${n}`)),
+    ...spread("description", parseOptionalString(ch.description, `channel_description_${n}`)),
+    ...spread("image", parseImage(ch.image, `invalid_channel_image_${n}`)),
+    ...spread("containerPort", parsePort(ch.containerPort, `invalid_channel_container_port_${n}`)),
+    ...spread("hostPort", parsePort(ch.hostPort, `invalid_channel_host_port_${n}`)),
+    ...spread("domains", parseOptionalDomains(ch.domains, `invalid_channel_domain_${n}`)),
+    ...spread("pathPrefixes", parseOptionalPathPrefixes(ch.pathPrefixes, `invalid_channel_path_prefix_${n}`)),
+    ...spread("rewritePath", parseOptionalRewritePath(ch.rewritePath, `invalid_channel_rewrite_path_${n}`)),
+    ...spread("healthcheckPath", parseOptionalString(ch.healthcheckPath, `invalid_channel_healthcheck_path_${n}`)),
+    ...spread("sharedSecretEnv", parseOptionalNonEmptyString(ch.sharedSecretEnv, `invalid_channel_shared_secret_env_${n}`)),
+    ...spread("volumes", parseOptionalStringArray(ch.volumes, `invalid_channel_volumes_${n}`)),
   };
-
-  const template = parseOptionalString(channel.template, `channel_template_${channelName}`);
-  if (template) result.template = template;
-  if (channel.supportsMultipleInstances !== undefined) {
-    if (typeof channel.supportsMultipleInstances !== "boolean") throw new Error(`invalid_channel_supports_multiple_instances_${channelName}`);
-    result.supportsMultipleInstances = channel.supportsMultipleInstances;
-  }
-
-  const name = parseOptionalString(channel.name, `channel_name_${channelName}`);
-  if (name) result.name = name;
-
-  const description = parseOptionalString(channel.description, `channel_description_${channelName}`);
-  if (description) result.description = description;
-
-  if (channel.image !== undefined) {
-    if (typeof channel.image !== "string" || !channel.image.trim()) throw new Error(`invalid_channel_image_${channelName}`);
-    if (!IMAGE_PATTERN.test(channel.image.trim())) throw new Error(`invalid_channel_image_format_${channelName}`);
-    result.image = channel.image.trim();
-  }
-  if (channel.containerPort !== undefined) {
-    if (typeof channel.containerPort !== "number" || !Number.isInteger(channel.containerPort) || channel.containerPort < 1 || channel.containerPort > 65535) {
-      throw new Error(`invalid_channel_container_port_${channelName}`);
-    }
-    result.containerPort = channel.containerPort;
-  }
-  if (channel.hostPort !== undefined) {
-    if (typeof channel.hostPort !== "number" || !Number.isInteger(channel.hostPort) || channel.hostPort < 1 || channel.hostPort > 65535) {
-      throw new Error(`invalid_channel_host_port_${channelName}`);
-    }
-    result.hostPort = channel.hostPort;
-  }
-  if (channel.domains !== undefined) {
-    if (!Array.isArray(channel.domains)) throw new Error(`invalid_channel_domains_${channelName}`);
-    for (const d of channel.domains) {
-      if (typeof d !== "string" || !d.trim()) throw new Error(`invalid_channel_domain_entry_${channelName}`);
-      if (!DOMAIN_PATTERN.test(d.trim())) throw new Error(`invalid_channel_domain_format_${channelName}`);
-      if (d.trim().length > 253) throw new Error(`invalid_channel_domain_length_${channelName}`);
-    }
-    result.domains = channel.domains.map((d: string) => d.trim());
-  }
-  if (channel.pathPrefixes !== undefined) {
-    if (!Array.isArray(channel.pathPrefixes)) throw new Error(`invalid_channel_path_prefixes_${channelName}`);
-    for (const p of channel.pathPrefixes) {
-      if (typeof p !== "string" || !p.trim()) throw new Error(`invalid_channel_path_prefix_entry_${channelName}`);
-      if (!PATH_PREFIX_PATTERN.test(p.trim())) throw new Error(`invalid_channel_path_prefix_format_${channelName}`);
-    }
-    result.pathPrefixes = channel.pathPrefixes.map((p: string) => p.trim());
-  }
-
-  if (channel.rewritePath !== undefined) {
-    if (typeof channel.rewritePath !== "string" || !channel.rewritePath.trim()) throw new Error(`invalid_channel_rewrite_path_${channelName}`);
-    const rewritePath = channel.rewritePath.trim();
-    if (!rewritePath.startsWith("/")) throw new Error(`invalid_channel_rewrite_path_${channelName}`);
-    result.rewritePath = rewritePath;
-  }
-
-  const healthcheckPath = parseOptionalString(channel.healthcheckPath, `invalid_channel_healthcheck_path_${channelName}`);
-  if (healthcheckPath) result.healthcheckPath = healthcheckPath;
-
-  if (channel.sharedSecretEnv !== undefined) {
-    if (typeof channel.sharedSecretEnv !== "string" || !channel.sharedSecretEnv.trim()) throw new Error(`invalid_channel_shared_secret_env_${channelName}`);
-    result.sharedSecretEnv = channel.sharedSecretEnv.trim();
-  }
-
-  const volumes = parseOptionalVolumes(channel.volumes, `invalid_channel_volumes_${channelName}`);
-  if (volumes) result.volumes = volumes;
-
-  return result;
-}
-
-function parseServiceConfig(raw: unknown, serviceName: string): Record<string, string> {
-  const config = assertRecord(raw ?? {}, `invalid_service_config_${serviceName}`);
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(config)) {
-    if (!key.trim()) throw new Error(`invalid_service_config_key_${serviceName}_empty`);
-    if (typeof value !== "string") throw new Error(`invalid_service_config_value_${serviceName}_${key}`);
-    result[key] = value.replace(/[\r\n]+/g, "").trim();
-  }
-  return result;
 }
 
 function parseService(raw: unknown, serviceName: string): StackServiceConfig {
-  const service = assertRecord(raw, `invalid_service_${serviceName}`);
+  const svc = assertRecord(raw, `invalid_service_${serviceName}`);
+  if (typeof svc.enabled !== "boolean") throw new Error(`invalid_service_enabled_${serviceName}`);
 
-  const enabled = service.enabled;
-  if (typeof enabled !== "boolean") throw new Error(`invalid_service_enabled_${serviceName}`);
-
-  const image = service.image;
-  if (typeof image !== "string" || !image.trim()) throw new Error(`invalid_service_image_${serviceName}`);
-  if (!IMAGE_PATTERN.test(image.trim())) throw new Error(`invalid_service_image_format_${serviceName}`);
-
-  const containerPort = service.containerPort;
-  if (typeof containerPort !== "number" || !Number.isInteger(containerPort) || containerPort < 1 || containerPort > 65535) {
-    throw new Error(`invalid_service_container_port_${serviceName}`);
-  }
-
-  const result: StackServiceConfig = {
-    enabled,
-    image: image.trim(),
-    containerPort,
-    config: parseServiceConfig(service.config, serviceName),
+  const n = serviceName; // short alias for error codes
+  return {
+    enabled: svc.enabled,
+    image: parseImage(svc.image, `invalid_service_image_${n}`, true),
+    containerPort: parsePort(svc.containerPort, `invalid_service_container_port_${n}`, true),
+    config: parseOpenConfig(svc.config, `service_${n}`),
+    ...spread("template", parseOptionalString(svc.template, `service_template_${n}`)),
+    ...spread("supportsMultipleInstances", parseOptionalBoolean(svc.supportsMultipleInstances, `invalid_service_supports_multiple_instances_${n}`)),
+    ...spread("name", parseOptionalString(svc.name, `service_name_${n}`)),
+    ...spread("description", parseOptionalString(svc.description, `service_description_${n}`)),
+    ...spread("volumes", parseOptionalStringArray(svc.volumes, `invalid_service_volumes_${n}`)),
+    ...spread("healthcheckPath", parseOptionalString(svc.healthcheckPath, `invalid_service_healthcheck_path_${n}`)),
+    ...spread("dependsOn", parseOptionalStringArray(svc.dependsOn, `invalid_service_depends_on_${n}`)),
   };
-
-  const template = parseOptionalString(service.template, `service_template_${serviceName}`);
-  if (template) result.template = template;
-  if (service.supportsMultipleInstances !== undefined) {
-    if (typeof service.supportsMultipleInstances !== "boolean") throw new Error(`invalid_service_supports_multiple_instances_${serviceName}`);
-    result.supportsMultipleInstances = service.supportsMultipleInstances;
-  }
-
-  const name = parseOptionalString(service.name, `service_name_${serviceName}`);
-  if (name) result.name = name;
-
-  const description = parseOptionalString(service.description, `service_description_${serviceName}`);
-  if (description) result.description = description;
-
-  const volumes = parseOptionalVolumes(service.volumes, `invalid_service_volumes_${serviceName}`);
-  if (volumes) result.volumes = volumes;
-
-  const healthcheckPath = parseOptionalString(service.healthcheckPath, `invalid_service_healthcheck_path_${serviceName}`);
-  if (healthcheckPath) result.healthcheckPath = healthcheckPath;
-
-  if (service.dependsOn !== undefined) {
-    if (!Array.isArray(service.dependsOn)) throw new Error(`invalid_service_depends_on_${serviceName}`);
-    for (const dep of service.dependsOn) {
-      if (typeof dep !== "string" || !dep.trim()) throw new Error(`invalid_service_depends_on_entry_${serviceName}`);
-    }
-    result.dependsOn = service.dependsOn.map((d: string) => d.trim());
-  }
-
-  return result;
 }
 
 function parseServices(raw: unknown): Record<string, StackServiceConfig> {
@@ -338,37 +306,23 @@ export function parseStackSpec(raw: unknown): StackSpec {
   }
   const version = doc.version;
   if (version !== 3) throw new Error("invalid_stack_spec_version");
-  if (doc.accessScope !== "host" && doc.accessScope !== "lan" && doc.accessScope !== "public") throw new Error("invalid_access_scope");
-
-  let ingressPort: number | undefined;
-  if (doc.ingressPort !== undefined) {
-    if (typeof doc.ingressPort !== "number" || !Number.isInteger(doc.ingressPort) || doc.ingressPort < 1 || doc.ingressPort > 65535) {
-      throw new Error("invalid_ingress_port");
-    }
-    ingressPort = doc.ingressPort;
-  }
-
-  const caddy = parseCaddyConfig(doc.caddy);
+  if (!VALID_SCOPES.has(doc.accessScope as string)) throw new Error("invalid_access_scope");
 
   const channelsDoc = assertRecord(doc.channels, "missing_channels");
-
   const channels: Record<string, StackChannelConfig> = {};
   for (const [name, value] of Object.entries(channelsDoc)) {
     if (!name.trim()) throw new Error(`invalid_channel_name_${name}`);
     channels[name] = parseChannel(value, name);
   }
 
-  const services = parseServices(doc.services);
-
-  const result: StackSpec = {
+  return {
     version: StackSpecVersion,
-    accessScope: doc.accessScope,
+    accessScope: doc.accessScope as StackAccessScope,
     channels,
-    services,
+    services: parseServices(doc.services),
+    ...spread("ingressPort", parsePort(doc.ingressPort, "invalid_ingress_port")),
+    ...spread("caddy", parseCaddyConfig(doc.caddy)),
   };
-  if (ingressPort !== undefined) result.ingressPort = ingressPort;
-  if (caddy) result.caddy = caddy;
-  return result;
 }
 
 export function stringifyStackSpec(spec: StackSpec): string {
@@ -386,11 +340,6 @@ export function ensureStackSpec(path: string): StackSpec {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, stringifyStackSpec(initial), "utf8");
   return initial;
-}
-
-export function writeStackSpec(path: string, spec: StackSpec): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, stringifyStackSpec(spec), "utf8");
 }
 
 export function parseSecretReference(value: string): string | null {

@@ -1,7 +1,5 @@
 import type { ComposeErrorCode, ComposeRunOptions, ComposeRunResult, SpawnFn } from "./types.ts";
 
-export type { ComposeErrorCode, ComposeRunOptions, ComposeRunResult, SpawnFn };
-
 const transientErrorMatchers: Array<{ pattern: RegExp; code: ComposeErrorCode; retryable: boolean }> = [
   { pattern: /Cannot connect to the Docker daemon|error during connect|dial unix/i, code: "daemon_unreachable", retryable: true },
   { pattern: /pull access denied|manifest unknown|failed to fetch/i, code: "image_pull_failed", retryable: true },
@@ -24,54 +22,43 @@ function buildComposeArgs(options: ComposeRunOptions, args: string[]): string[] 
   return [...base, ...args];
 }
 
+async function readStream(stream: ReadableStream | number | null | undefined, isStreaming: boolean): Promise<string> {
+  if (isStreaming || typeof stream === "number" || !stream) return "";
+  return new Response(stream).text();
+}
+
 async function runComposeOnce(args: string[], options: ComposeRunOptions): Promise<ComposeRunResult> {
   const composeArgs = buildComposeArgs(options, args);
   const stream = options.stream ?? false;
   const timeoutMs = options.timeoutMs ?? (stream ? 0 : 30_000);
   const controller = timeoutMs > 0 ? new AbortController() : undefined;
   const spawn = options.spawn ?? Bun.spawn;
-  const spawnOptions: Parameters<SpawnFn>[1] = {
-    stdout: stream ? "inherit" : "pipe",
-    stderr: stream ? "inherit" : "pipe",
-    stdin: "inherit",
-    cwd: options.cwd,
-    env: options.env ? { ...process.env, ...options.env } : process.env,
-    signal: controller?.signal,
-  };
-
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  if (controller && timeoutMs > 0) {
-    timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
-  }
+  const timeoutId = controller ? setTimeout(() => controller.abort("timeout"), timeoutMs) : undefined;
 
   let proc: ReturnType<SpawnFn> | undefined;
   try {
-    proc = spawn([options.bin, ...composeArgs], spawnOptions);
+    proc = spawn([options.bin, ...composeArgs], {
+      stdout: stream ? "inherit" : "pipe",
+      stderr: stream ? "inherit" : "pipe",
+      stdin: "inherit",
+      cwd: options.cwd,
+      env: options.env ? { ...process.env, ...options.env } : process.env,
+      signal: controller?.signal,
+    });
     await proc.exited;
   } catch (error) {
     if (timeoutId) clearTimeout(timeoutId);
     const message = error instanceof Error ? error.message : String(error);
     const isTimeout = controller?.signal.aborted === true || message.includes("timeout");
-    const classified = classifyError(message);
-    const code: ComposeErrorCode = isTimeout ? "timeout" : classified.code;
-    return { ok: false, exitCode: 1, stdout: "", stderr: message, code };
+    return { ok: false, exitCode: 1, stdout: "", stderr: message, code: isTimeout ? "timeout" : classifyError(message).code };
   }
 
   if (timeoutId) clearTimeout(timeoutId);
-
   const exitCode = proc.exitCode ?? 1;
-  const stdoutStream = proc.stdout;
-  const stderrStream = proc.stderr;
-  const stdout = stream || typeof stdoutStream === "number" || !stdoutStream
-    ? ""
-    : await new Response(stdoutStream).text();
-  const stderr = stream || typeof stderrStream === "number" || !stderrStream
-    ? ""
-    : await new Response(stderrStream).text();
+  const stdout = await readStream(proc.stdout, stream);
+  const stderr = await readStream(proc.stderr, stream);
   if (exitCode === 0) return { ok: true, exitCode, stdout, stderr, code: "unknown" };
-
-  const classified = classifyError(stderr);
-  return { ok: false, exitCode, stdout, stderr, code: classified.code };
+  return { ok: false, exitCode, stdout, stderr, code: classifyError(stderr).code };
 }
 
 export async function runCompose(args: string[], options: ComposeRunOptions): Promise<ComposeRunResult> {
@@ -79,11 +66,9 @@ export async function runCompose(args: string[], options: ComposeRunOptions): Pr
   let attempt = 0;
   while (true) {
     const result = await runComposeOnce(args, options);
-    if (result.ok) return result;
-    if (result.code === "timeout") return result;
-    const classified = classifyError(result.stderr);
-    if (classified.code !== "unknown") result.code = classified.code;
-    if (!classified.retryable || attempt >= retries) return result;
+    if (result.ok || result.code === "timeout") return result;
+    const { retryable } = classifyError(result.stderr);
+    if (!retryable || attempt >= retries) return result;
     attempt += 1;
   }
 }

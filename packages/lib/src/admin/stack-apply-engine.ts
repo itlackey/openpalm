@@ -4,7 +4,7 @@ import { type ComposeRunner, createComposeRunner } from "./compose-runner.ts";
 import { StackManager } from "./stack-manager.ts";
 import { updateRuntimeEnvContent } from "./runtime-env.ts";
 
-export type StackApplyResult = {
+type StackApplyResult = {
   ok: boolean;
   generated: ReturnType<StackManager["renderPreview"]>;
   warnings: string[];

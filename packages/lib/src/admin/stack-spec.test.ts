@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "bun:test";
-import { createDefaultStackSpec, ensureStackSpec, parseStackSpec, parseSecretReference, writeStackSpec, StackSpecVersion } from "./stack-spec.ts";
+import { createDefaultStackSpec, ensureStackSpec, parseStackSpec, parseSecretReference, stringifyStackSpec, StackSpecVersion } from "./stack-spec.ts";
 import { parseYamlDocument, stringifyYamlDocument } from "../shared/yaml.ts";
 
 describe("stack spec", () => {
@@ -90,7 +90,7 @@ describe("stack spec", () => {
           },
         },
       },
-    })).toThrow("invalid_service_config_key_svc_empty");
+    })).toThrow("invalid_service_svc_config_key_empty");
   });
 
   it("parses explicit secret references", () => {
@@ -112,7 +112,7 @@ describe("stack spec", () => {
     const path = join(dir, "openpalm.yaml");
     const spec = createDefaultStackSpec();
     spec.channels.chat.exposure = "host";
-    writeStackSpec(path, spec);
+    writeFileSync(path, stringifyStackSpec(spec), "utf8");
     const saved = ensureStackSpec(path);
     expect(saved.channels.chat.exposure).toBe("host");
   });
@@ -121,7 +121,7 @@ describe("stack spec", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-spec-"));
     const yamlPath = join(dir, "openpalm.yaml");
     const spec = createDefaultStackSpec();
-    writeStackSpec(yamlPath, spec);
+    writeFileSync(yamlPath, stringifyStackSpec(spec), "utf8");
     const loaded = ensureStackSpec(yamlPath);
     expect(loaded.version).toBe(StackSpecVersion);
     expect(readFileSync(yamlPath, "utf8")).toContain("version:");

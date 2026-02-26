@@ -4,32 +4,15 @@ import { homedir } from "node:os";
 import type { UninstallOptions } from "../types.ts";
 import type { ComposeConfig } from "@openpalm/lib/types.ts";
 import { composeDown } from "@openpalm/lib/compose.ts";
-import { readEnvFile } from "@openpalm/lib/env.ts";
 import { resolveXDGPaths, resolveWorkHome } from "@openpalm/lib/paths.ts";
-import { resolveComposeBin, detectRuntime, detectOS } from "@openpalm/lib/runtime.ts";
-import { log, info, warn, error, bold, green, red, yellow, dim, confirm } from "@openpalm/lib/ui.ts";
+import { COMPOSE_BIN, detectRuntime, detectOS } from "@openpalm/lib/runtime.ts";
+import { log, info, warn, bold, green, dim, confirm } from "@openpalm/lib/ui.ts";
 
 export async function uninstall(options: UninstallOptions): Promise<void> {
   const xdg = resolveXDGPaths();
-
-  let env: Record<string, string> = {};
   const stateEnvPath = join(xdg.state, ".env");
-  try {
-    env = await readEnvFile(stateEnvPath);
-  } catch {
-    try {
-      env = await readEnvFile(resolve(process.cwd(), ".env"));
-    } catch {
-      // No env file found
-    }
-  }
-
-  // Detect Docker
-  const platform = await detectRuntime(detectOS());
-  let composeBin: { bin: string; subcommand: string } | null = null;
-  if (platform) {
-    composeBin = resolveComposeBin(platform);
-  }
+  const platform = await detectRuntime();
+  const composeBin = platform ? COMPOSE_BIN : null;
 
   log("");
   log(bold("Uninstall Summary:"));

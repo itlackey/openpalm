@@ -28,8 +28,6 @@
 - Developer docs:
   - `dev/docs/architecture.md`
   - `dev/docs/api-reference.md`
-  - `dev/docs/testing-plan.md`
-  - `dev/docs/release-quality-gates.md`
 - Service docs:
   - `core/admin/README.md`
   - `core/gateway/README.md`
@@ -56,7 +54,4 @@
 
 ## Release-coupled component checklist
 - When adding a new `core/<name>`, `channels/<name>`, or `packages/<name>` component, update:
-  - `dev/version.ts`
   - `.github/workflows/publish-images.yml` (image components)
-  - `.github/workflows/release.yml`
-  - `.github/workflows/version-bump-pr.yml`

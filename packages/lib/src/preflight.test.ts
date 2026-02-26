@@ -56,7 +56,7 @@ describe("preflight typed issue contracts", () => {
 
   describe("checkDaemonRunningDetailed", () => {
     it("returns daemon_unavailable or daemon_check_failed for a bad binary", async () => {
-      const result = await checkDaemonRunningDetailed("nonexistent-binary-xyz", "docker");
+      const result = await checkDaemonRunningDetailed("nonexistent-binary-xyz");
       expect(result).not.toBeNull();
       expect(["daemon_unavailable", "daemon_check_failed"]).toContain(result!.code);
       expect(result!.severity).toBe("fatal");
@@ -67,7 +67,7 @@ describe("preflight typed issue contracts", () => {
 
   describe("runPreflightChecksDetailed", () => {
     it("returns a PreflightResult with ok and issues fields", async () => {
-      const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", "docker", 59124);
+      const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", 59124);
       expect(result).toHaveProperty("ok");
       expect(result).toHaveProperty("issues");
       expect(Array.isArray(result.issues)).toBe(true);
@@ -76,14 +76,14 @@ describe("preflight typed issue contracts", () => {
     });
 
     it("sets ok to false when any issue has fatal severity", async () => {
-      const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", "docker", 59125);
+      const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", 59125);
       expect(result.ok).toBe(false);
       const fatalIssues = result.issues.filter((i) => i.severity === "fatal");
       expect(fatalIssues.length).toBeGreaterThanOrEqual(1);
     });
 
     it("every issue has required fields", async () => {
-      const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", "docker", 59127);
+      const result = await runPreflightChecksDetailed("nonexistent-binary-xyz", 59127);
       for (const issue of result.issues) {
         expect(issue.code).toBeDefined();
         expect(issue.severity).toBeDefined();

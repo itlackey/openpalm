@@ -10,6 +10,5 @@ Use this checklist before merging admin/gateway stack changes.
 - [ ] If reload/restart semantics change, update `/compose/capabilities` behavior and docs.
 - [ ] Run targeted tests for changed packages (`bun test <path>`), plus `bun run typecheck` when touching TS APIs.
 - [ ] If UI changes, run `bun run test:ui`.
-- [ ] If Dockerfiles/compose behavior change, run `bun run test:docker`.
 - [ ] Run `bun run test:ci` before pushing.
 - [ ] Remove stale TODOs/comments related to replaced architecture decisions.

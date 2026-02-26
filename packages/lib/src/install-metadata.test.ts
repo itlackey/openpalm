@@ -7,7 +7,6 @@ import {
   writeInstallMetadata,
   createInstallMetadata,
   appendMetadataEvent,
-  metadataPath,
 } from "./install-metadata.ts";
 import type { InstallMetadata } from "./types.ts";
 
@@ -27,13 +26,13 @@ describe("install-metadata", () => {
   });
 
   it("returns null for corrupt JSON", () => {
-    const path = metadataPath(tmp);
+    const path = join(tmp, "install-metadata.json");
     require("node:fs").writeFileSync(path, "not json", "utf8");
     expect(readInstallMetadata(tmp)).toBeNull();
   });
 
   it("returns null for invalid schema version", () => {
-    const path = metadataPath(tmp);
+    const path = join(tmp, "install-metadata.json");
     require("node:fs").writeFileSync(
       path,
       JSON.stringify({ schemaVersion: 99 }),
@@ -122,7 +121,7 @@ describe("install-metadata", () => {
   });
 
   it("rejects metadata missing required fields", () => {
-    const path = metadataPath(tmp);
+    const path = join(tmp, "install-metadata.json");
     require("node:fs").writeFileSync(
       path,
       JSON.stringify({ schemaVersion: 1, mode: "fresh" }),

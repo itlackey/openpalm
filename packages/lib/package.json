@@ -5,15 +5,10 @@
   "type": "module",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
     "./*.ts": "./src/*.ts",
     "./admin/*.ts": "./src/admin/*.ts",
     "./shared/*.ts": "./src/shared/*.ts",
     "./assets/*": "./assets/*"
-  },
-  "devDependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
   },
   "dependencies": {
     "yaml": "^2.8.2"

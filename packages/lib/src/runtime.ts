@@ -24,20 +24,18 @@ export function detectArch(): HostArch {
   }
 }
 
-export async function detectRuntime(_os: HostOS): Promise<ContainerPlatform | null> {
+export async function detectRuntime(): Promise<ContainerPlatform | null> {
   const dockerBin = await Bun.which("docker");
   if (dockerBin) return "docker";
   return null;
 }
 
-export function resolveSocketPath(_platform: ContainerPlatform, os: HostOS): string {
+export function resolveSocketPath(os: HostOS): string {
   if (os === "windows") return "//./pipe/docker_engine";
   return "/var/run/docker.sock";
 }
 
-export function resolveComposeBin(_platform: ContainerPlatform): { bin: string; subcommand: string } {
-  return { bin: "docker", subcommand: "compose" };
-}
+export const COMPOSE_BIN = { bin: "docker", subcommand: "compose" } as const;
 
 export async function validateRuntime(bin: string, subcommand: string): Promise<boolean> {
   try {

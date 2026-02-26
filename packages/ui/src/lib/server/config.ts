@@ -13,7 +13,6 @@ function devDefault(envVar: string, dockerDefault: string, devRelative: string):
 	return dockerDefault;
 }
 
-export const PORT = Number(env.PORT ?? 8100);
 export const ADMIN_TOKEN = env.ADMIN_TOKEN ?? 'change-me-admin-token';
 export const DEFAULT_INSECURE_TOKEN = 'change-me-admin-token';
 
@@ -21,20 +20,6 @@ export const DATA_ROOT = devDefault('OPENPALM_DATA_ROOT', '/data', '../../.dev/d
 export const CONFIG_ROOT = devDefault('OPENPALM_CONFIG_ROOT', '/config', '../../.dev/config');
 export const STATE_ROOT = devDefault('OPENPALM_STATE_ROOT', '/state', '../../.dev/state');
 
-export const OPENCODE_CONFIG_PATH =
-	env.OPENCODE_CONFIG_PATH ?? `${DATA_ROOT}/assistant/.config/opencode/opencode.json`;
-export const DATA_DIR = env.DATA_DIR ?? `${DATA_ROOT}/admin`;
-export const GATEWAY_URL = devDefault('GATEWAY_URL', 'http://gateway:8080', 'http://localhost:8080');
-export const OPENPALM_ASSISTANT_URL = devDefault(
-	'OPENPALM_ASSISTANT_URL',
-	'http://assistant:4096',
-	'http://localhost:4096'
-);
-export const OPENMEMORY_URL = devDefault(
-	'OPENMEMORY_URL',
-	'http://openmemory:8765',
-	'http://localhost:8765'
-);
 export const RUNTIME_ENV_PATH = `${STATE_ROOT}/.env`;
 export const SECRETS_ENV_PATH = `${CONFIG_ROOT}/secrets.env`;
 export const STACK_SPEC_PATH = `${CONFIG_ROOT}/openpalm.yaml`;

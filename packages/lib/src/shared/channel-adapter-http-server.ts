@@ -2,7 +2,7 @@ import type { ChannelAdapter } from "./channel.ts";
 import { buildChannelMessage, forwardChannelMessage } from "./channel-sdk.ts";
 import { json } from "./http.ts";
 
-export type HttpAdapterSuccessContext = {
+type HttpAdapterSuccessContext = {
   req: Request;
   adapter: ChannelAdapter;
   gatewayStatus: number;
@@ -10,21 +10,21 @@ export type HttpAdapterSuccessContext = {
   payloadMetadata?: Record<string, unknown>;
 };
 
-export type HttpAdapterGatewayErrorContext = {
+type HttpAdapterGatewayErrorContext = {
   req: Request;
   adapter: ChannelAdapter;
   gatewayStatus: number;
   payloadMetadata?: Record<string, unknown>;
 };
 
-export type HttpAdapterRouteErrorContext = {
+type HttpAdapterRouteErrorContext = {
   req: Request;
   adapter: ChannelAdapter;
   status: number;
   body: unknown;
 };
 
-export type HttpAdapterOptions = {
+type HttpAdapterOptions = {
   onSuccess?: (context: HttpAdapterSuccessContext) => Response | Promise<Response>;
   onGatewayError?: (context: HttpAdapterGatewayErrorContext) => Response | Promise<Response>;
   onRouteError?: (context: HttpAdapterRouteErrorContext) => Response | Promise<Response>;

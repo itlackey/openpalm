@@ -1,7 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { detectOS, detectArch, resolveSocketPath, resolveComposeBin, detectRuntime, validateRuntime } from "@openpalm/lib/runtime.ts";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { detectOS, detectArch, resolveSocketPath, COMPOSE_BIN, detectRuntime } from "@openpalm/lib/runtime.ts";
 
 describe("runtime", () => {
   describe("detectOS", () => {
@@ -30,37 +28,21 @@ describe("runtime", () => {
 
   describe("resolveSocketPath", () => {
     it("returns /var/run/docker.sock for docker on linux", () => {
-      const path = resolveSocketPath("docker", "linux");
+      const path = resolveSocketPath("linux");
       expect(path).toBe("/var/run/docker.sock");
     });
   });
 
-  describe("resolveComposeBin", () => {
-    it("returns docker compose for docker platform", () => {
-      const result = resolveComposeBin("docker");
-      expect(result).toEqual({ bin: "docker", subcommand: "compose" });
+  describe("COMPOSE_BIN", () => {
+    it("has docker compose values", () => {
+      expect(COMPOSE_BIN).toEqual({ bin: "docker", subcommand: "compose" });
     });
   });
 
   describe("detectRuntime", () => {
     it("returns docker or null", async () => {
-      const result = await detectRuntime("linux");
+      const result = await detectRuntime();
       expect(["docker", null]).toContain(result);
-    });
-  });
-
-  describe("validateRuntime", () => {
-    it("source code contains Bun.spawn and exitCode", () => {
-      const sourcePath = join(import.meta.dir, "..", "..", "lib", "src", "runtime.ts");
-      const source = readFileSync(sourcePath, "utf-8");
-      expect(source).toContain("Bun.spawn");
-      expect(source).toContain("exitCode");
-    });
-
-    it("exports validateRuntime function", () => {
-      const sourcePath = join(import.meta.dir, "..", "..", "lib", "src", "runtime.ts");
-      const source = readFileSync(sourcePath, "utf-8");
-      expect(source).toContain("export async function validateRuntime");
     });
   });
 });

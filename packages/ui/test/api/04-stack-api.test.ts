@@ -27,16 +27,6 @@ describe("stack spec operations (auth required)", () => {
     expect(body.spec.version).toBeDefined();
   });
 
-  it("GET /state with auth returns full state object", async () => {
-    const res = await authedGet("/state");
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.data).toBeDefined();
-    expect(body.data.spec).toBeDefined();
-    expect(body.data.secrets).toBeDefined();
-  });
-
   it("POST /stack/spec saves spec", async () => {
     const specRes = await authedGet("/stack/spec");
     const specBody = await specRes.json();

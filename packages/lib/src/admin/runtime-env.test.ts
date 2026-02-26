@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { parseRuntimeEnvContent, sanitizeEnvScalar, setRuntimeBindScopeContent, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { parseEnvContent } from "../shared/env-parser.ts";
 
 describe("runtime env content helpers", () => {
   it("parses key-value env lines while ignoring comments and blanks", () => {
-    const parsed = parseRuntimeEnvContent(["# note", "OPENMEMORY_URL=http://openmemory:3000", "", "A=B=C"].join("\n"));
+    const parsed = parseEnvContent(["# note", "OPENMEMORY_URL=http://openmemory:3000", "", "A=B=C"].join("\n"));
     expect(parsed).toEqual({
       OPENMEMORY_URL: "http://openmemory:3000",
       A: "B=C"
@@ -44,21 +45,6 @@ describe("runtime env content helpers", () => {
 
     expect(next).toContain("OPENAI_BASE_URL=https://new.example/v1");
     expect(next).toContain("OPENAI_API_KEY=sk-existing");
-  });
-
-  it("applies host bind scope and appends missing runtime bind keys", () => {
-    const current = [
-      "OPENPALM_INGRESS_BIND_ADDRESS=0.0.0.0",
-      "OTHER=keep"
-    ].join("\n");
-
-    const next = setRuntimeBindScopeContent(current, "host");
-    expect(next).toContain("OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OPENPALM_OPENMEMORY_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OPENPALM_ASSISTANT_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OPENPALM_ASSISTANT_SSH_BIND_ADDRESS=127.0.0.1");
-    expect(next).toContain("OTHER=keep");
   });
 
   it("removes newline/control injection from scalar values", () => {

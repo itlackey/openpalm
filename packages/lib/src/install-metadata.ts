@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 const METADATA_FILENAME = "install-metadata.json";
 const CURRENT_SCHEMA_VERSION = 1;
 
-export function metadataPath(stateDir: string): string {
+function metadataPath(stateDir: string): string {
   return join(stateDir, METADATA_FILENAME);
 }
 
@@ -16,7 +16,7 @@ export function readInstallMetadata(stateDir: string): InstallMetadata | null {
     const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!isValidMetadata(parsed)) return null;
-    return parsed as unknown as InstallMetadata;
+    return parsed as InstallMetadata;
   } catch {
     return null;
   }

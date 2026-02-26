@@ -44,7 +44,6 @@ bun run dev:logs        # Tail all logs (-- <service> to filter)
 bun run typecheck       # Type-check all workspaces
 bun test                # All tests (unit + integration + contract + security)
 bun run test:ui         # Playwright E2E (admin UI)
-bun run test:workflows  # GitHub Actions workflows via act
 ```
 
 Reset dev state: `bun run dev:setup:clean`
@@ -60,8 +59,8 @@ import { signPayload, verifySignature } from "@openpalm/lib/shared/crypto.ts";
 // Admin service — admin zone only
 import { StackGenerator } from "@openpalm/lib/admin/stack-generator.ts";
 
-// CLI — barrel or direct src/ imports
-import { resolveXDGPaths, composeUp } from "@openpalm/lib";
+// CLI — direct src/ imports
+import { resolveXDGPaths } from "@openpalm/lib/paths.ts";
 ```
 
 Always use `.ts` extension in relative imports.

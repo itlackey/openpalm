@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import type { HostOS, ContainerPlatform, PreflightIssue, PreflightResult } from "./types.ts";
+import type { HostOS, PreflightIssue, PreflightResult } from "./types.ts";
 
 /**
  * Check available disk space on the home directory.
@@ -36,48 +36,46 @@ export async function checkDiskSpaceDetailed(): Promise<PreflightIssue | null> {
   return null;
 }
 
+/** Run a command and return { exitCode, output } or null if the command is missing. */
+async function trySpawn(cmd: string[]): Promise<{ exitCode: number; output: string } | null> {
+  try {
+    const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
+    await proc.exited;
+    return { exitCode: proc.exitCode ?? 1, output: await new Response(proc.stdout).text() };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Check if a port is already in use.
  * Returns a typed issue if the port is occupied.
  */
 export async function checkPortDetailed(port: number = 80): Promise<PreflightIssue | null> {
-  try {
-    const lsof = Bun.spawn(["lsof", `-iTCP:${port}`, "-sTCP:LISTEN", "-P", "-n"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    await lsof.exited;
+  // Try lsof first
+  const lsof = await trySpawn(["lsof", `-iTCP:${port}`, "-sTCP:LISTEN", "-P", "-n"]);
+  if (lsof) {
     if (lsof.exitCode === 0) {
-      const output = await new Response(lsof.stdout).text();
-      const lines = output.trim().split("\n").slice(0, 3).join("\n");
+      const lines = lsof.output.trim().split("\n").slice(0, 3).join("\n");
       return {
-        code: "port_conflict",
-        severity: "fatal",
+        code: "port_conflict", severity: "fatal",
         message: `Port ${port} is already in use by another process.`,
         detail: `OpenPalm needs port ${port} for its web interface.\n${lines}`,
         meta: { port },
       };
     }
-  } catch {
-    try {
-      const ss = Bun.spawn(["ss", "-tln"], {
-        stdout: "pipe",
-        stderr: "ignore",
-      });
-      await ss.exited;
-      const output = await new Response(ss.stdout).text();
-      if (output.includes(`:${port} `)) {
-        return {
-          code: "port_conflict",
-          severity: "fatal",
-          message: `Port ${port} is already in use by another process.`,
-          detail: `OpenPalm needs port ${port} for its web interface.`,
-          meta: { port },
-        };
-      }
-    } catch {
-      // Neither lsof nor ss available — skip check
-    }
+    return null; // lsof ran — port is free
+  }
+
+  // Fallback to ss
+  const ss = await trySpawn(["ss", "-tln"]);
+  if (ss?.output.includes(`:${port} `)) {
+    return {
+      code: "port_conflict", severity: "fatal",
+      message: `Port ${port} is already in use by another process.`,
+      detail: `OpenPalm needs port ${port} for its web interface.`,
+      meta: { port },
+    };
   }
   return null;
 }
@@ -87,8 +85,7 @@ export async function checkPortDetailed(port: number = 80): Promise<PreflightIss
  * Returns a typed issue if the daemon is unreachable.
  */
 export async function checkDaemonRunningDetailed(
-  bin: string,
-  _platform: ContainerPlatform
+  bin: string
 ): Promise<PreflightIssue | null> {
   try {
     const proc = Bun.spawn([bin, "info"], {
@@ -124,13 +121,12 @@ export async function checkDaemonRunningDetailed(
  */
 export async function runPreflightChecksDetailed(
   bin: string,
-  platform: ContainerPlatform,
   port: number = 80
 ): Promise<PreflightResult> {
   const results = await Promise.all([
     checkDiskSpaceDetailed(),
     checkPortDetailed(port),
-    checkDaemonRunningDetailed(bin, platform),
+    checkDaemonRunningDetailed(bin),
   ]);
   const issues = results.filter((i): i is PreflightIssue => i !== null);
   const hasFatal = issues.some((i) => i.severity === "fatal");
@@ -140,60 +136,51 @@ export async function runPreflightChecksDetailed(
 /**
  * Return user-friendly install guidance when Docker is not found.
  */
+const runtimeGuidanceByOS: Record<HostOS, string[]> = {
+  macos: [
+    "For macOS, install Docker Desktop:",
+    "",
+    "  Docker Desktop (free for personal use):",
+    "    https://www.docker.com/products/docker-desktop/",
+    "",
+    "  Or via Homebrew:",
+    "    brew install --cask docker",
+  ],
+  linux: [
+    "For Linux, install Docker Engine + Compose plugin:",
+    "",
+    "  Quick install (official script):",
+    "    curl -fsSL https://get.docker.com | sh",
+    "",
+    "  Or follow the guide at:",
+    "    https://docs.docker.com/engine/install/",
+    "",
+    "  After installing, make sure Docker is running:",
+    "    sudo systemctl start docker",
+  ],
+  windows: [
+    "Download Docker Desktop (free for personal use):",
+    "  https://www.docker.com/products/docker-desktop/",
+    "",
+    "Or install via winget:",
+    "  winget install Docker.DockerDesktop",
+  ],
+  unknown: [
+    "Download Docker Desktop (free for personal use):",
+    "  https://www.docker.com/products/docker-desktop/",
+  ],
+};
+
 export function noRuntimeGuidance(os: HostOS): string {
-  const lines: string[] = [
-    "",
-    "Docker is not installed.",
-    "",
-    "OpenPalm runs inside containers and needs Docker installed first.",
-    "",
-  ];
-
-  switch (os) {
-    case "macos":
-      lines.push(
-        "For macOS, install Docker Desktop:",
-        "",
-        "  Docker Desktop (free for personal use):",
-        "    https://www.docker.com/products/docker-desktop/",
-        "",
-        "  Or via Homebrew:",
-        "    brew install --cask docker",
-      );
-      break;
-    case "linux":
-      lines.push(
-        "For Linux, install Docker Engine + Compose plugin:",
-        "",
-        "  Quick install (official script):",
-        "    curl -fsSL https://get.docker.com | sh",
-        "",
-        "  Or follow the guide at:",
-        "    https://docs.docker.com/engine/install/",
-        "",
-        "  After installing, make sure Docker is running:",
-        "    sudo systemctl start docker",
-      );
-      break;
-    default:
-      lines.push(
-        "Download Docker Desktop (free for personal use):",
-        "  https://www.docker.com/products/docker-desktop/",
-        "",
-        "Or install via winget:",
-        "  winget install Docker.DockerDesktop",
-      );
-      break;
-  }
-
-  lines.push("", "After installing, rerun this installer.", "");
-  return lines.join("\n");
+  const header = ["", "Docker is not installed.", "", "OpenPalm runs inside containers and needs Docker installed first.", ""];
+  const osLines = runtimeGuidanceByOS[os] ?? runtimeGuidanceByOS.unknown;
+  return [...header, ...osLines, "", "After installing, rerun this installer.", ""].join("\n");
 }
 
 /**
  * Return user-friendly compose-not-available guidance.
  */
-export function noComposeGuidance(_platform: ContainerPlatform): string {
+export function noComposeGuidance(): string {
   return [
     "Docker Compose is not available.",
     "",

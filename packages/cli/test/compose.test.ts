@@ -1,41 +1,8 @@
 import { describe, expect, it, mock } from "bun:test";
-import { buildComposeArgs, composeExec } from "@openpalm/lib/compose.ts";
+import { composeExec } from "@openpalm/lib/compose.ts";
 import type { ComposeConfig, SpawnFn } from "@openpalm/lib/types.ts";
 
 describe("compose", () => {
-  describe("buildComposeArgs", () => {
-    it("returns correct array structure", () => {
-      const config: ComposeConfig = {
-        bin: "docker",
-        subcommand: "compose",
-        envFile: "/path/to/.env",
-        composeFile: "/path/to/docker-compose.yml",
-      };
-
-      const args = buildComposeArgs(config);
-
-      expect(Array.isArray(args)).toBe(true);
-      expect(args).toHaveLength(5);
-    });
-
-    it("includes subcommand, --env-file, -f flags in correct order", () => {
-      const config: ComposeConfig = {
-        bin: "docker",
-        subcommand: "compose",
-        envFile: "/path/to/.env",
-        composeFile: "/path/to/docker-compose.yml",
-      };
-
-      const args = buildComposeArgs(config);
-
-      expect(args[0]).toBe("compose");
-      expect(args[1]).toBe("--env-file");
-      expect(args[2]).toBe("/path/to/.env");
-      expect(args[3]).toBe("-f");
-      expect(args[4]).toBe("/path/to/docker-compose.yml");
-    });
-  });
-
   describe("composeExec", () => {
     const config: ComposeConfig = {
       bin: "docker",

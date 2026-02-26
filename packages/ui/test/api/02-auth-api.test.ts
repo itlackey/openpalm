@@ -21,7 +21,6 @@ describe("auth rejection", () => {
   });
 
   const protectedPaths = [
-    "/state",
     "/stack/spec",
     "/secrets",
     "/channels",
@@ -34,8 +33,8 @@ describe("auth rejection", () => {
     });
   }
 
-  it("GET /state with wrong token returns 401", async () => {
-    const res = await fetch(`${getBaseUrl()}/state`, {
+  it("GET /stack/spec with wrong token returns 401", async () => {
+    const res = await fetch(`${getBaseUrl()}/stack/spec`, {
       headers: {
         "x-admin-token": "wrong-token",
         "content-type": "application/json",
@@ -44,8 +43,8 @@ describe("auth rejection", () => {
     expect(res.status).toBe(401);
   });
 
-  it("GET /state with correct token returns 200", async () => {
-    const res = await authedGet("/state");
+  it("GET /stack/spec with correct token returns 200", async () => {
+    const res = await authedGet("/stack/spec");
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);

@@ -1,9 +1,12 @@
 import { parseSecretReference, isBuiltInChannel, BuiltInChannelPorts, getBuiltInChannelDef } from "./stack-spec.ts";
-import type { BuiltInChannelName, StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
-import { composeServiceName } from "./service-name.ts";
+import type { StackChannelConfig, StackServiceConfig, StackSpec } from "./stack-spec.ts";
 import { renderCaddyComposeService, renderOpenMemoryComposeService, renderOpenMemoryUiComposeService, renderPostgresComposeService, renderQdrantComposeService } from "./core-services.ts";
+import YAML from "yaml";
 import type { ComposeService, ComposeSpec } from "./compose-spec.ts";
-import { stringifyComposeSpec } from "./compose-spec-serializer.ts";
+
+function composeServiceName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+}
 
 function resolveChannelPort(name: string, config: StackChannelConfig): number {
   if (config.containerPort) return config.containerPort;
@@ -34,7 +37,7 @@ function publishedChannelPort(name: string, config: StackChannelConfig): string 
   return `${hostPort}:${containerPort}`;
 }
 
-export type GeneratedStackArtifacts = {
+type GeneratedStackArtifacts = {
   caddyJson: string;
   composeFile: string;
   systemEnv: string;
@@ -98,23 +101,49 @@ function caddyGuardMatcher(ranges: string[], negate: boolean): Record<string, un
   return { remote_ip: { ranges } };
 }
 
+function guardRoute(ranges: string[]): CaddyRoute {
+  return { match: [caddyGuardMatcher(ranges, true)], handle: [caddyGuardHandler()], terminal: true };
+}
+
+/** If exposure is restricted, returns an IP guard route to prepend to subroute handlers. */
+function ipGuardRoute(cfg: { exposure: string }, guardRanges: string[]): CaddyRoute | null {
+  if (cfg.exposure !== "lan" && cfg.exposure !== "host") return null;
+  const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
+  return guardRoute(ranges);
+}
+
 function caddyHostRoute(hostname: string, upstream: string, guardRanges: string[]): CaddyRoute {
   return {
     match: [{ host: [hostname] }],
+    handle: [{
+      handler: "subroute",
+      routes: [
+        guardRoute(guardRanges),
+        { handle: [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }] },
+      ],
+    }],
+    terminal: true,
+  };
+}
+
+function caddyGuardedProxy(guardRanges: string[], upstream: string): CaddyRoute {
+  return {
+    handle: [{
+      handler: "subroute",
+      routes: [
+        guardRoute(guardRanges),
+        { handle: [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }] },
+      ],
+    }],
+  };
+}
+
+function caddyStripPrefixProxy(pathPrefix: string, upstream: string): CaddyRoute {
+  return {
+    match: [{ path: [`${pathPrefix}*`] }],
     handle: [
-      {
-        handler: "subroute",
-        routes: [
-          {
-            match: [caddyGuardMatcher(guardRanges, true)],
-            handle: [caddyGuardHandler()],
-            terminal: true,
-          },
-          {
-            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }],
-          },
-        ],
-      },
+      { handler: "rewrite", strip_path_prefix: pathPrefix },
+      { handler: "reverse_proxy", upstreams: [{ dial: upstream }] },
     ],
     terminal: true,
   };
@@ -123,46 +152,15 @@ function caddyHostRoute(hostname: string, upstream: string, guardRanges: string[
 function caddyAdminSubroute(guardRanges: string[]): CaddyRoute {
   return {
     match: [{ path: ["/api*", "/services/opencode*", "/services/openmemory*"] }],
-    handle: [
-      {
-        handler: "subroute",
-        routes: [
-          // Guard: block non-LAN
-          {
-            match: [caddyGuardMatcher(guardRanges, true)],
-            handle: [caddyGuardHandler()],
-            terminal: true,
-          },
-          // /api* → strip API prefix and proxy to admin:8100
-          {
-            match: [{ path: ["/api*"] }],
-            handle: [
-              { handler: "rewrite", strip_path_prefix: "/api" },
-              { handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] },
-            ],
-            terminal: true,
-          },
-          // /services/opencode* → strip prefix + proxy to assistant:4096
-          {
-            match: [{ path: ["/services/opencode*"] }],
-            handle: [
-              { handler: "rewrite", strip_path_prefix: "/services/opencode" },
-              { handler: "reverse_proxy", upstreams: [{ dial: "assistant:4096" }] },
-            ],
-            terminal: true,
-          },
-          // /services/openmemory* → strip prefix + proxy to openmemory-ui:3000
-          {
-            match: [{ path: ["/services/openmemory*"] }],
-            handle: [
-              { handler: "rewrite", strip_path_prefix: "/services/openmemory" },
-              { handler: "reverse_proxy", upstreams: [{ dial: "openmemory-ui:3000" }] },
-            ],
-            terminal: true,
-          },
-        ],
-      },
-    ],
+    handle: [{
+      handler: "subroute",
+      routes: [
+        guardRoute(guardRanges),
+        caddyStripPrefixProxy("/api", "admin:8100"),
+        caddyStripPrefixProxy("/services/opencode", "assistant:4096"),
+        caddyStripPrefixProxy("/services/openmemory", "openmemory-ui:3000"),
+      ],
+    }],
     terminal: true,
   };
 }
@@ -173,18 +171,9 @@ function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpe
 
   const containerPort = resolveChannelPort(name, cfg);
   const svcName = `channel-${composeServiceName(name)}`;
-  const guardRanges = renderLanRanges(spec.accessScope);
   const subrouteHandlers: CaddyRoute[] = [];
-
-  // Add IP guard for non-public channels
-  if (cfg.exposure === "lan" || cfg.exposure === "host") {
-    const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
-    subrouteHandlers.push({
-      match: [caddyGuardMatcher(ranges, true)],
-      handle: [caddyGuardHandler()],
-      terminal: true,
-    });
-  }
+  const guard = ipGuardRoute(cfg, renderLanRanges(spec.accessScope));
+  if (guard) subrouteHandlers.push(guard);
 
   const rewritePath = cfg.rewritePath ?? (isBuiltInChannel(name) ? getBuiltInChannelDef(name).rewritePath : undefined);
   if (rewritePath) {
@@ -211,20 +200,9 @@ function caddyChannelRoute(name: string, cfg: StackChannelConfig, spec: StackSpe
 }
 
 function caddyDomainRoute(domain: string, svcName: string, port: number, cfg: StackChannelConfig, spec: StackSpec): CaddyRoute[] {
-  const routes: CaddyRoute[] = [];
-  const guardRanges = renderLanRanges(spec.accessScope);
-
   const subrouteHandlers: CaddyRoute[] = [];
-
-  // Add IP guard for non-public channels
-  if (cfg.exposure === "lan" || cfg.exposure === "host") {
-    const ranges = cfg.exposure === "host" ? ["127.0.0.0/8", "::1"] : guardRanges;
-    subrouteHandlers.push({
-      match: [caddyGuardMatcher(ranges, true)],
-      handle: [caddyGuardHandler()],
-      terminal: true,
-    });
-  }
+  const guard = ipGuardRoute(cfg, renderLanRanges(spec.accessScope));
+  if (guard) subrouteHandlers.push(guard);
 
   const paths = cfg.pathPrefixes?.length ? cfg.pathPrefixes : ["/"];
   for (const p of paths) {
@@ -252,89 +230,50 @@ function caddyDomainRoute(domain: string, svcName: string, port: number, cfg: St
   }];
 }
 
-function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
-  const guardRanges = renderLanRanges(spec.accessScope);
+function buildChannelCaddyRoutes(spec: StackSpec): { mainRoutes: CaddyRoute[]; domainRoutes: CaddyRoute[] } {
   const mainRoutes: CaddyRoute[] = [];
   const domainRoutes: CaddyRoute[] = [];
-
-  // Hostname route for local entrypoint without DNS setup
-  mainRoutes.push(caddyHostRoute("localhost", "admin:8100", guardRanges));
-
-  // Admin subroute
-  mainRoutes.push(caddyAdminSubroute(guardRanges));
-
-  // Channel routes (path-based and domain-based)
   for (const [name, cfg] of Object.entries(spec.channels)) {
     if (!cfg.enabled) continue;
-
     if (cfg.domains && cfg.domains.length > 0) {
-      const containerPort = resolveChannelPort(name, cfg);
       const svcName = `channel-${composeServiceName(name)}`;
-      domainRoutes.push(...caddyDomainRoute(cfg.domains[0], svcName, containerPort, cfg, spec));
-      continue;
+      domainRoutes.push(...caddyDomainRoute(cfg.domains[0], svcName, resolveChannelPort(name, cfg), cfg, spec));
+    } else {
+      const route = caddyChannelRoute(name, cfg, spec);
+      if (route) mainRoutes.push(route);
     }
-
-    const route = caddyChannelRoute(name, cfg, spec);
-    if (route) mainRoutes.push(route);
   }
+  return { mainRoutes, domainRoutes };
+}
 
-  // Default catch-all → admin
-  // The SvelteKit admin UI is served at "/" through this catch-all route.
-  mainRoutes.push({
-    handle: [
-      {
-        handler: "subroute",
-        routes: [
-          {
-            match: [caddyGuardMatcher(guardRanges, true)],
-            handle: [caddyGuardHandler()],
-            terminal: true,
-          },
-          {
-            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "admin:8100" }] }],
-          },
-        ],
-      },
-    ],
-  });
+function buildTlsConfig(spec: StackSpec): Record<string, unknown> | undefined {
+  if (!spec.caddy?.email) return undefined;
+  return { automation: { policies: [{ issuers: [{ module: "acme", email: spec.caddy.email }] }] } };
+}
+
+function renderCaddyJsonConfig(spec: StackSpec): CaddyJsonConfig {
+  const guardRanges = renderLanRanges(spec.accessScope);
+  const channelRoutes = buildChannelCaddyRoutes(spec);
+
+  const mainRoutes: CaddyRoute[] = [
+    caddyHostRoute("localhost", "assistant:4096", guardRanges),
+    caddyAdminSubroute(guardRanges),
+    ...channelRoutes.mainRoutes,
+    caddyGuardedProxy(guardRanges, "assistant:4096"),
+  ];
 
   const servers: Record<string, CaddyServer> = {
-    main: {
-      listen: [`:${spec.ingressPort ?? 80}`],
-      routes: mainRoutes,
-    },
+    main: { listen: [`:${spec.ingressPort ?? 80}`], routes: mainRoutes },
   };
-
-  // Domain routes go into an HTTPS server if any domains are configured
-  if (domainRoutes.length > 0) {
-    servers.tls_domains = {
-      listen: [":443"],
-      routes: domainRoutes,
-    };
+  if (channelRoutes.domainRoutes.length > 0) {
+    servers.tls_domains = { listen: [":443"], routes: channelRoutes.domainRoutes };
   }
 
-  const config: CaddyJsonConfig = {
+  const tls = buildTlsConfig(spec);
+  return {
     admin: { disabled: true },
-    apps: {
-      http: { servers },
-    },
+    apps: { http: { servers }, ...(tls ? { tls } : {}) },
   };
-
-  // Add TLS config if email is set
-  if (spec.caddy?.email) {
-    config.apps.tls = {
-      automation: {
-        policies: [{
-          issuers: [{
-            module: "acme",
-            email: spec.caddy.email,
-          }],
-        }],
-      },
-    };
-  }
-
-  return config;
 }
 
 // ── Env helpers ──────────────────────────────────────────────────────
@@ -562,40 +501,23 @@ function renderFullComposeFile(spec: StackSpec): string {
     networks: { channel_net: {}, assistant_net: {} },
   };
 
-  return stringifyComposeSpec(specDoc);
+  return YAML.stringify(specDoc, { indent: 2, sortMapEntries: true });
 }
 
 // ── Main generator ───────────────────────────────────────────────────
 
-export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, string>): GeneratedStackArtifacts {
-  const caddyConfig = renderCaddyJsonConfig(spec);
-  const caddyJson = JSON.stringify(caddyConfig, null, 2) + "\n";
-
-  const channelEnvs: Record<string, string> = {};
+function generateChannelEnvs(spec: StackSpec, secrets: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
   for (const [name, cfg] of Object.entries(spec.channels)) {
     if (!cfg.enabled) continue;
     const svcName = `channel-${composeServiceName(name)}`;
-    channelEnvs[svcName] = envWithHeader(
-      `# Generated channel env (${name})`,
-      resolveChannelConfig(name, cfg, secrets),
-    );
+    result[svcName] = envWithHeader(`# Generated channel env (${name})`, resolveChannelConfig(name, cfg, secrets));
   }
+  return result;
+}
 
-  const enabledChannels = Object.keys(spec.channels)
-    .filter((name) => spec.channels[name].enabled)
-    .map((name) => `channel-${composeServiceName(name)}`)
-    .join(",");
-
-  const systemEnv = envWithHeader("# Generated system env — do not edit; regenerated on every stack apply", {
-    OPENPALM_ACCESS_SCOPE: spec.accessScope,
-    OPENPALM_ENABLED_CHANNELS: enabledChannels,
-  });
-
-  const gatewayEnv = envWithHeader("# Generated gateway env", {
-    ...pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
-  });
-
-  const serviceEnvs: Record<string, string> = {};
+function generateServiceEnvs(spec: StackSpec, secrets: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
   for (const [name, cfg] of Object.entries(spec.services)) {
     if (!cfg.enabled) continue;
     const svcName = `service-${composeServiceName(name)}`;
@@ -603,14 +525,27 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
     for (const [key, value] of Object.entries(cfg.config)) {
       resolved[key] = resolveScalar(value, secrets, `${name}_${key}`);
     }
-    serviceEnvs[svcName] = envWithHeader(`# Generated service env (${name})`, resolved);
+    result[svcName] = envWithHeader(`# Generated service env (${name})`, resolved);
   }
+  return result;
+}
 
+function enabledChannelList(spec: StackSpec): string {
+  return Object.keys(spec.channels)
+    .filter((name) => spec.channels[name].enabled)
+    .map((name) => `channel-${composeServiceName(name)}`)
+    .join(",");
+}
+
+export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, string>): GeneratedStackArtifacts {
   return {
-    caddyJson,
+    caddyJson: JSON.stringify(renderCaddyJsonConfig(spec), null, 2) + "\n",
     composeFile: renderFullComposeFile(spec),
-    systemEnv,
-    gatewayEnv,
+    systemEnv: envWithHeader("# Generated system env — do not edit; regenerated on every stack apply", {
+      OPENPALM_ACCESS_SCOPE: spec.accessScope,
+      OPENPALM_ENABLED_CHANNELS: enabledChannelList(spec),
+    }),
+    gatewayEnv: envWithHeader("# Generated gateway env", pickEnvByPrefixes(secrets, ["OPENPALM_GATEWAY_", "GATEWAY_", "OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"])),
     openmemoryEnv: envWithHeader("# Generated openmemory env", pickEnvByKeys(secrets, ["OPENAI_BASE_URL", "OPENAI_API_KEY"])),
     postgresEnv: envWithHeader("# Generated postgres env", pickEnvByKeys(secrets, ["POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"])),
     qdrantEnv: envWithHeader("# Generated qdrant env", {}),
@@ -618,13 +553,8 @@ export function generateStackArtifacts(spec: StackSpec, secrets: Record<string, 
       ...pickEnvByPrefixes(secrets, ["OPENPALM_SMALL_MODEL_API_KEY", "ANTHROPIC_API_KEY"]),
       ...pickEnvByKeys(secrets, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]),
     }),
-    channelEnvs,
-    serviceEnvs,
-    renderReport: {
-      applySafe: true,
-      warnings: [],
-      missingSecretReferences: [],
-      changedArtifacts: [],
-    },
+    channelEnvs: generateChannelEnvs(spec, secrets),
+    serviceEnvs: generateServiceEnvs(spec, secrets),
+    renderReport: { applySafe: true, warnings: [], missingSecretReferences: [], changedArtifacts: [] },
   };
 }

@@ -25,7 +25,7 @@ export type ComposeErrorCode =
   | "unknown";
 
 /** Stable typed codes for preflight check outcomes. */
-export type PreflightCode =
+type PreflightCode =
   | "daemon_unavailable"
   | "daemon_check_failed"
   | "port_conflict"
@@ -33,7 +33,7 @@ export type PreflightCode =
   | "unknown";
 
 /** Whether a preflight issue should block installation or just warn. */
-export type PreflightSeverity = "fatal" | "warning";
+type PreflightSeverity = "fatal" | "warning";
 
 /** A single typed preflight check outcome. */
 export type PreflightIssue = {

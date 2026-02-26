@@ -5,7 +5,7 @@ export const CoreServices = [
   "assistant", "gateway", "openmemory", "admin",
   "caddy", "openmemory-ui", "postgres", "qdrant"
 ] as const;
-export const UiManagedServiceExclusions = ["admin", "caddy"] as const;
+const UiManagedServiceExclusions = ["admin", "caddy"] as const;
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -144,7 +144,7 @@ async function ensureAllowedServices(run: RunFn, services: string[]): Promise<st
   return null;
 }
 
-export type ServiceHealthState = {
+type ServiceHealthState = {
   name: string;
   status: string;
   health?: string | null;
@@ -187,17 +187,14 @@ async function runLogs(run: RunFn, service: string, tail: number = 200): Promise
 
 async function runAction(run: RunFn, action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> {
   const services = Array.isArray(service) ? service : [service];
-  if (services.length === 0 && action !== "up") {
+  if (services.length === 0) {
+    if (action === "up") return run(["up", "-d", "--remove-orphans"], undefined, true);
     return { ok: false, stdout: "", stderr: "service_not_allowed" };
-  }
-  if (services.length === 0 && action === "up") {
-    return run(["up", "-d", "--remove-orphans"], undefined, true);
   }
   const invalid = await ensureAllowedServices(run, services);
   if (invalid) return { ok: false, stdout: "", stderr: "service_not_allowed" };
-  if (action === "up") return run(["up", "-d", ...services], undefined, true);
-  if (action === "stop") return run(["stop", ...services], undefined, true);
-  return run(["restart", ...services], undefined, true);
+  const cmd = action === "up" ? ["up", "-d", ...services] : [action, ...services];
+  return run(cmd, undefined, true);
 }
 
 async function runConfigServices(run: RunFn, composeFileOverride?: string): Promise<string[]> {
@@ -224,24 +221,8 @@ export async function allowedServiceSet(runner?: ComposeRunner): Promise<Set<str
   return new Set<string>(declared);
 }
 
-export async function composeConfigServices(composeFileOverride?: string): Promise<string[]> {
-  return createComposeRunner().configServices(composeFileOverride);
-}
-
-export async function composeConfigValidate(): Promise<ComposeResult> {
-  return createComposeRunner().configValidate();
-}
-
-export async function composeConfigValidateForFile(composeFile: string, envFileOverride?: string): Promise<ComposeResult> {
-  return createComposeRunner().configValidateForFile(composeFile, envFileOverride);
-}
-
 export async function composeList(): Promise<ComposeResult> {
   return createComposeRunner().list();
-}
-
-export async function composePs(): Promise<{ ok: boolean; services: ServiceHealthState[]; stderr: string }> {
-  return createComposeRunner().ps();
 }
 
 export async function composePull(service?: string): Promise<ComposeResult> {
@@ -256,10 +237,6 @@ export async function composeLogs(service: string, tail?: number): Promise<Compo
   return createComposeRunner().logs(service, tail);
 }
 
-export async function composeServiceNames(): Promise<string[]> {
-  return Array.from(await allowedServiceSet()).sort();
-}
-
 export function filterUiManagedServices(services: string[]): string[] {
   const excluded = new Set<string>(UiManagedServiceExclusions);
   return services.filter((service) => !excluded.has(service));
@@ -267,10 +244,6 @@ export function filterUiManagedServices(services: string[]): string[] {
 
 export async function composeAction(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> {
   return createComposeRunner().action(action, service);
-}
-
-export async function composeStackDown(): Promise<ComposeResult> {
-  return createComposeRunner().stackDown();
 }
 
 export async function composeExec(service: string, args: string[]): Promise<ComposeResult> {

@@ -32,7 +32,7 @@ export function getBaseUrl(): string {
   return `http://localhost:${port}`;
 }
 
-export function getTmpDir(): string {
+function getTmpDir(): string {
   if (!tmpDir) throw new Error("Server not started; call startServer() first");
   return tmpDir;
 }
@@ -89,29 +89,9 @@ function buildWebServerEnv(dir: string): Record<string, string> {
     PORT: String(port),
     ORIGIN: `http://localhost:${port}`,
     ADMIN_TOKEN,
-    DATA_DIR: join(dir, "data", "admin"),
     OPENPALM_DATA_ROOT: join(dir, "data"),
     OPENPALM_STATE_ROOT: stateRoot,
     OPENPALM_CONFIG_ROOT: configDir,
-    OPENCODE_CONFIG_PATH: join(
-      dir,
-      "data",
-      "assistant",
-      ".config",
-      "opencode",
-      "opencode.json"
-    ),
-    SECRETS_ENV_PATH: join(configDir, "secrets.env"),
-    STACK_SPEC_PATH: join(configDir, "openpalm.yaml"),
-    RUNTIME_ENV_PATH: join(stateRoot, ".env"),
-    SYSTEM_ENV_PATH: join(stateRoot, "system.env"),
-    COMPOSE_FILE_PATH: join(stateRoot, "docker-compose.yml"),
-    CADDY_JSON_PATH: join(stateRoot, "caddy.json"),
-    GATEWAY_ENV_PATH: join(stateRoot, "gateway", ".env"),
-    OPENMEMORY_ENV_PATH: join(stateRoot, "openmemory", ".env"),
-    POSTGRES_ENV_PATH: join(stateRoot, "postgres", ".env"),
-    QDRANT_ENV_PATH: join(stateRoot, "qdrant", ".env"),
-    ASSISTANT_ENV_PATH: join(stateRoot, "assistant", ".env"),
     COMPOSE_PROJECT_PATH: stateRoot,
     OPENPALM_COMPOSE_FILE: "docker-compose.yml",
     OPENPALM_COMPOSE_BIN: "/usr/bin/true",

@@ -65,11 +65,12 @@ describe("stack manager", () => {
 
     manager.upsertSecret("CHAT_TOKEN_SECRET", "abc");
     manager.upsertSecret("CHAT_SHARED_SECRET", "abc12345678901234567890123456789");
-    manager.setChannelConfig("chat", {
+    const spec = manager.getSpec();
+    spec.channels.chat.config = {
       CHAT_INBOUND_TOKEN: "${CHAT_TOKEN_SECRET}",
       CHANNEL_CHAT_SECRET: "${CHAT_SHARED_SECRET}",
-    });
-    manager.renderArtifacts();
+    };
+    manager.setSpec(spec);
 
     // Caddy JSON is written
     const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
@@ -229,7 +230,9 @@ describe("stack manager", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
 
-    manager.setAccessScope("host");
+    const spec = manager.getSpec();
+    spec.accessScope = "host";
+    manager.setSpec(spec);
 
     const systemEnv = readFileSync(join(dir, "system.env"), "utf8");
     expect(systemEnv).toContain("OPENPALM_ACCESS_SCOPE=host");
@@ -239,10 +242,12 @@ describe("stack manager", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
     manager.upsertSecret("CHAT_TOKEN_SECRET", "x");
-    manager.setChannelConfig("chat", {
+    const spec = manager.getSpec();
+    spec.channels.chat.config = {
       CHAT_INBOUND_TOKEN: "${CHAT_TOKEN_SECRET}",
       CHANNEL_CHAT_SECRET: "",
-    });
+    };
+    manager.setSpec(spec);
     expect(() => manager.deleteSecret("CHAT_TOKEN_SECRET")).toThrow("secret_in_use");
   });
 
@@ -284,7 +289,9 @@ describe("stack manager", () => {
   it("supports host exposure for channels", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
-    manager.setChannelAccess("chat", "host");
+    const spec = manager.getSpec();
+    spec.channels.chat.exposure = "host";
+    manager.setSpec(spec);
     expect(manager.getChannelAccess("chat")).toBe("host");
   });
 
@@ -321,7 +328,7 @@ describe("stack manager", () => {
     expect(channelsEnv).toContain("SLACK_SIGNING_SECRET=test-secret");
   });
 
-  it("manages config for custom channels independently from built-in channels", () => {
+  it("updates custom channel config via setSpec and produces correct env files", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
 
@@ -335,26 +342,23 @@ describe("stack manager", () => {
     };
     manager.setSpec(spec);
 
-    const config = manager.getChannelConfig("webhook-relay");
-    expect(config.RELAY_TARGET).toBe("https://target.example.com");
-    expect(config.AUTH_HEADER).toBe("Bearer xyz");
+    const channelsEnv = readFileSync(join(dir, "channel-webhook-relay", ".env"), "utf8");
+    expect(channelsEnv).toContain("RELAY_TARGET=https://target.example.com");
 
-    manager.setChannelConfig("webhook-relay", {
+    const updated = manager.getSpec();
+    updated.channels["webhook-relay"].config = {
       RELAY_TARGET: "https://new-target.example.com",
       AUTH_HEADER: "Bearer new-token",
       NEW_KEY: "added-value",
-    });
+    };
+    manager.setSpec(updated);
 
-    const updatedConfig = manager.getChannelConfig("webhook-relay");
-    expect(updatedConfig.RELAY_TARGET).toBe("https://new-target.example.com");
-    expect(updatedConfig.NEW_KEY).toBe("added-value");
-
-    const channelsEnv = readFileSync(join(dir, "channel-webhook-relay", ".env"), "utf8");
-    expect(channelsEnv).toContain("RELAY_TARGET=https://new-target.example.com");
-    expect(channelsEnv).toContain("NEW_KEY=added-value");
+    const updatedEnv = readFileSync(join(dir, "channel-webhook-relay", ".env"), "utf8");
+    expect(updatedEnv).toContain("RELAY_TARGET=https://new-target.example.com");
+    expect(updatedEnv).toContain("NEW_KEY=added-value");
   });
 
-  it("manages exposure levels for custom channels via setChannelAccess", () => {
+  it("manages exposure levels for custom channels via setSpec", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-"));
     const manager = createManager(dir);
 
@@ -371,7 +375,9 @@ describe("stack manager", () => {
     expect(manager.getChannelAccess("my-api")).toBe("lan");
 
     // Change to host
-    manager.setChannelAccess("my-api", "host");
+    const hostSpec = manager.getSpec();
+    hostSpec.channels["my-api"].exposure = "host";
+    manager.setSpec(hostSpec);
     expect(manager.getChannelAccess("my-api")).toBe("host");
 
     // Caddy JSON reflects the change (host guard should have 127.0.0.0/8)
@@ -383,7 +389,9 @@ describe("stack manager", () => {
     expect(compose).toContain("127.0.0.1:3000:3000");
 
     // Change to public (no guard)
-    manager.setChannelAccess("my-api", "public");
+    const publicSpec = manager.getSpec();
+    publicSpec.channels["my-api"].exposure = "public";
+    manager.setSpec(publicSpec);
     const publicJson = readFileSync(join(dir, "caddy.json"), "utf8");
     const config = JSON.parse(publicJson);
     const routes = config.apps.http.servers.main.routes;
@@ -420,11 +428,6 @@ describe("stack manager", () => {
     expect(names).toContain("chat");
     expect(names).toContain("slack");
     expect(names).toContain("matrix");
-
-    const enabled = manager.enabledChannelServiceNames();
-    expect(enabled).toContain("channel-chat");
-    expect(enabled).toContain("channel-slack");
-    expect(enabled).not.toContain("channel-matrix");
   });
 
   it("caddy.json updates when custom channel is disabled", () => {

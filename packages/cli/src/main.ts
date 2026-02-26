@@ -65,21 +65,6 @@ export function parseCliArgs(args: string[]) {
   });
 }
 
-function parseArg(args: string[], name: string): string | undefined {
-  const parsed = parseCliArgs(args);
-  const value = parsed.values[name];
-  return typeof value === "string" ? value : undefined;
-}
-
-function hasFlag(args: string[], name: string): boolean {
-  const parsed = parseCliArgs(args);
-  return parsed.values[name] === true;
-}
-
-function getPositionalArgs(args: string[]): string[] {
-  return parseCliArgs(args).positionals;
-}
-
 export async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
 
@@ -93,6 +78,10 @@ export async function main(): Promise<void> {
     return;
   }
 
+  const parsed = parseCliArgs(args);
+  const flag = (name: string) => parsed.values[name] === true;
+  const positionals = parsed.positionals;
+
   try {
     switch (command) {
       case "install": {
@@ -100,27 +89,24 @@ export async function main(): Promise<void> {
           printHelp();
           return;
         }
-        const portArg = parseArg(args, "port");
+        const portArg = typeof parsed.values.port === "string" ? parsed.values.port : undefined;
         const port = portArg ? Number(portArg) : undefined;
         if (portArg && (!port || port < 1 || port > 65535)) {
           error(`Invalid port "${portArg}". Must be a number between 1 and 65535.`);
           process.exit(1);
         }
-        const options: InstallOptions = {
-          force: hasFlag(args, "force"),
-          port,
-        };
+        const options: InstallOptions = { force: flag("force"), port };
         await install(options);
         break;
       }
 
       case "uninstall": {
-        const removeAll = hasFlag(args, "remove-all");
+        const removeAll = flag("remove-all");
         const options: UninstallOptions = {
           removeAll,
-          removeImages: hasFlag(args, "remove-images"),
-          removeBinary: removeAll || hasFlag(args, "remove-binary"),
-          yes: hasFlag(args, "yes"),
+          removeImages: flag("remove-images"),
+          removeBinary: removeAll || flag("remove-binary"),
+          yes: flag("yes"),
         };
         await uninstall(options);
         break;
@@ -132,26 +118,22 @@ export async function main(): Promise<void> {
       }
 
       case "start": {
-        const services = getPositionalArgs(args);
-        await start(services.length > 0 ? services : undefined);
+        await start(positionals.length > 0 ? positionals : undefined);
         break;
       }
 
       case "stop": {
-        const services = getPositionalArgs(args);
-        await stop(services.length > 0 ? services : undefined);
+        await stop(positionals.length > 0 ? positionals : undefined);
         break;
       }
 
       case "restart": {
-        const services = getPositionalArgs(args);
-        await restart(services.length > 0 ? services : undefined);
+        await restart(positionals.length > 0 ? positionals : undefined);
         break;
       }
 
       case "logs": {
-        const services = getPositionalArgs(args);
-        await logs(services.length > 0 ? services : undefined);
+        await logs(positionals.length > 0 ? positionals : undefined);
         break;
       }
 

@@ -1,6 +1,5 @@
 import devtoolsJson from 'vite-plugin-devtools-json';
-import { defineConfig, type Plugin } from 'vitest/config';
-import { playwright } from '@vitest/browser-playwright';
+import { defineConfig, type Plugin } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { resolve, dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -102,33 +101,5 @@ export default defineConfig({
 		fs: {
 			allow: [resolve('../../packages/lib')]
 		}
-	},
-	test: {
-		expect: { requireAssertions: true },
-		projects: [
-			{
-				extends: './vite.config.ts',
-				test: {
-					name: 'client',
-					browser: {
-						enabled: true,
-						provider: playwright(),
-						instances: [{ browser: 'chromium', headless: true }]
-					},
-					include: ['src/**/*.svelte.{test,spec,browser}.{js,ts}'],
-					exclude: ['src/lib/server/**']
-				}
-			},
-
-			{
-				extends: './vite.config.ts',
-				test: {
-					name: 'server',
-					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec,browser}.{js,ts}']
-				}
-			}
-		]
 	}
 });

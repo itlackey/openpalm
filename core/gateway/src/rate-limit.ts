@@ -31,10 +31,6 @@ export class RateLimiter {
     return true;
   }
 
-  reset(): void {
-    this.buckets.clear();
-  }
-
   private evictIfNeeded(now: number, windowMs: number): void {
     if (this.buckets.size <= MAX_BUCKETS) return;
     const staleCutoff = now - windowMs;

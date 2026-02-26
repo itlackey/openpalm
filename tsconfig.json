@@ -13,9 +13,6 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@openpalm/lib": [
-        "packages/lib/src/index.ts"
-      ],
       "@openpalm/lib/*": [
         "packages/lib/src/*"
       ],
@@ -32,7 +29,6 @@
     "channels/**/*.ts",
     "packages/cli/src/**/*.ts",
     "packages/lib/src/**/*.ts",
-    "dev/**/*.ts",
     "test/**/*.ts",
     "packages/lib/assets/**/*.ts"
   ],

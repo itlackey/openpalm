@@ -28,7 +28,7 @@ Contains the primitives that services running inside Docker need: HMAC
 cryptography, HTTP response helpers, channel message types, and the channel SDK
 for building and forwarding messages to the gateway.
 
-**Files**: `crypto.ts`, `http.ts`, `channel.ts`, `channel-sdk.ts`, `admin-client.ts`
+**Files**: `crypto.ts`, `http.ts`, `channel.ts`, `channel-sdk.ts`, `channel-simple-text.ts`, `channel-adapter-http-server.ts`, `channel-http.ts`, `metadata.ts`, `logger.ts`, `shutdown.ts`, `yaml.ts`
 
 ### 3. `admin/` — Admin service modules
 
@@ -38,7 +38,8 @@ Contains the admin control-plane logic: Docker Compose runner, stack spec
 parsing and generation, stack apply engine, runtime environment management,
 and JSONC parsing.
 
-**Files**: `compose-runner.ts`, `jsonc.ts`, `runtime-env.ts`,
+**Files**: `compose-runner.ts`, `compose-spec.ts`,
+`core-services.ts`, `runtime-env.ts`,
 `stack-apply-engine.ts`, `stack-generator.ts`, `stack-manager.ts`,
 `stack-spec.ts`
 
@@ -48,27 +49,13 @@ The `package.json` `exports` field defines four entry points:
 
 ```jsonc
 {
-  ".":              "./src/index.ts",        // barrel re-export of src/
   "./*.ts":         "./src/*.ts",            // direct file imports from src/
-  "./admin/*.ts":   "./src/admin/*.ts",          // admin zone
+  "./admin/*.ts":   "./src/admin/*.ts",      // admin zone
   "./shared/*.ts":  "./src/shared/*.ts"      // shared zone
 }
 ```
 
-### Pattern 1: Barrel import (CLI only)
-
-`src/index.ts` re-exports everything from the `src/` zone. This is a
-convenience for the CLI, which consumes many modules from `src/`.
-
-```ts
-// Only in packages/cli code:
-import { resolveXDGPaths, composeUp, log } from "@openpalm/lib";
-```
-
-**Do not use the barrel import in services.** Services should use direct imports
-to keep their dependency surface explicit and avoid pulling in host-only modules.
-
-### Pattern 2: Direct `src/` file import (CLI)
+### Pattern 1: Direct `src/` file import (CLI)
 
 When the CLI needs a single module, direct imports are also fine:
 
@@ -106,7 +93,7 @@ import { parseStackSpec } from "@openpalm/lib/admin/stack-spec.ts";
 | Shared between gateway and/or channels (runs in Docker)? | `src/shared/` |
 | Used only by the admin service? | `admin/` |
 | Used by both admin and another service? | `src/shared/` (move it there) |
-| Used by both CLI and a service? | `src/shared/` (and re-export from `src/index.ts` if CLI needs it via barrel) |
+| Used by both CLI and a service? | `src/shared/` |
 
 ## Docker Build
 

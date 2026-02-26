@@ -615,16 +615,16 @@ describe("stack generator", () => {
     expect(out.composeFile).not.toContain("snippets");
   });
 
-  it("generates default catch-all route to admin", () => {
+  it("generates default catch-all route to assistant", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
     const caddyConfig = JSON.parse(out.caddyJson);
     const routes = caddyConfig.apps.http.servers.main.routes;
     const lastRoute = routes[routes.length - 1];
-    // Last route should be catch-all (no match) proxying to admin:8100
+    // Last route should be catch-all (no match) proxying to assistant:4096
     expect(lastRoute.match).toBeUndefined();
     const json = JSON.stringify(lastRoute);
-    expect(json).toContain("admin:8100");
+    expect(json).toContain("assistant:4096");
   });
 
   // --- Gap coverage: admin subroute sub-handlers ---

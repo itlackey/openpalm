@@ -35,13 +35,6 @@ export function green(text: string): string {
 }
 
 /**
- * Wrap text in red ANSI codes
- */
-export function red(text: string): string {
-  return COLORS_ENABLED ? `${ANSI.RED}${text}${ANSI.RESET}` : text;
-}
-
-/**
  * Wrap text in yellow ANSI codes
  */
 export function yellow(text: string): string {
@@ -87,7 +80,7 @@ export function warn(msg: string): void {
  * Log an error message with red prefix
  */
 export function error(msg: string): void {
-  console.error(`${red("✖")} ${msg}`);
+  console.error(`${COLORS_ENABLED ? `${ANSI.RED}✖${ANSI.RESET}` : "✖"} ${msg}`);
 }
 
 /**

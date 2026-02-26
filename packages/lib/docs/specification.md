@@ -705,16 +705,16 @@ All validation happens in `parseStackSpec` and `parseChannel`. Error messages us
 | `enabled` | Not a boolean | `invalid_channel_enabled_<name>` |
 | `exposure` | Not host/lan/public | `invalid_channel_exposure_<name>` |
 | `image` | Present but not a non-empty string | `invalid_channel_image_<name>` |
-| `image` | Fails image pattern | `invalid_channel_image_format_<name>` |
+| `image` | Fails image pattern | `invalid_channel_image_<name>_format` |
 | `containerPort` | Not an integer in 1–65535 | `invalid_channel_container_port_<name>` |
 | `hostPort` | Not an integer in 1–65535 | `invalid_channel_host_port_<name>` |
-| `domains` | Not an array | `invalid_channel_domains_<name>` |
-| `domains` entry | Not a non-empty string | `invalid_channel_domain_entry_<name>` |
-| `domains` entry | Fails domain pattern | `invalid_channel_domain_format_<name>` |
-| `domains` entry | Length > 253 | `invalid_channel_domain_length_<name>` |
-| `pathPrefixes` | Not an array | `invalid_channel_path_prefixes_<name>` |
-| `pathPrefixes` entry | Not a non-empty string | `invalid_channel_path_prefix_entry_<name>` |
-| `pathPrefixes` entry | Fails path prefix pattern | `invalid_channel_path_prefix_format_<name>` |
+| `domains` | Not an array | `invalid_channel_domain_<name>` |
+| `domains` entry | Not a non-empty string | `invalid_channel_domain_<name>_entry` |
+| `domains` entry | Fails domain pattern | `invalid_channel_domain_<name>_format` |
+| `domains` entry | Length > 253 | `invalid_channel_domain_<name>_length` |
+| `pathPrefixes` | Not an array | `invalid_channel_path_prefix_<name>` |
+| `pathPrefixes` entry | Not a non-empty string | `invalid_channel_path_prefix_<name>_entry` |
+| `pathPrefixes` entry | Fails path prefix pattern | `invalid_channel_path_prefix_<name>_format` |
 | Channel config | Not an object | `invalid_channel_config_<name>` |
 | Config value | Not a string | `invalid_channel_config_value_<name>_<key>` |
 

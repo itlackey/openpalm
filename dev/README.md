@@ -1,19 +1,11 @@
-# Development Documentation
+# Development
 
-Technical references and developer guides for contributing to or extending OpenPalm.
+See [docs/](./docs/README.md) for developer guides.
 
-## Guides
+## Quick start
 
-| Guide | What's inside |
-|---|---|
-| [Architecture](docs/architecture.md) | Container inventory, data flow diagrams, URL routing, storage |
-| [API Reference](docs/api-reference.md) | All service endpoints: gateway, admin, channels |
-| [Testing Todos](docs/testing-todos.md) | Test tiers, action items, release gate policy, and CI fixes |
-| [Contributor Checklist](docs/contributor-checklist.md) | Architecture-safe change checklist |
-| [Versioning & Releases](docs/versioning.md) | Version sources, release workflows, required secrets |
-
-## Related
-
-- [Admin Docs](../core/admin/docs/README.md) — System administration and configuration guides
-- [Assistant README](../core/assistant/README.md) — Extension architecture and built-in extensions
-- [Gateway README](../core/gateway/README.md) — Gateway pipeline and security
+```bash
+bun install
+bun run dev:setup
+bun run dev:build
+```

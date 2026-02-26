@@ -117,7 +117,6 @@ describe("loadConfig", () => {
     delete process.env.RECALL_LIMIT;
     delete process.env.RECALL_MAX_CHARS;
     delete process.env.WRITEBACK_ENABLED;
-    delete process.env.TEMPORAL_ENABLED;
 
     try {
       const cfg = loadConfig();
@@ -127,7 +126,6 @@ describe("loadConfig", () => {
       expect(cfg.recallLimit).toBe(5);
       expect(cfg.recallMaxChars).toBe(2000);
       expect(cfg.writebackEnabled).toBe(true);
-      expect(cfg.temporalEnabled).toBe(false);
     } finally {
       // Restore original env: delete keys we added, restore original values
       for (const key of Object.keys(process.env)) {
@@ -143,7 +141,6 @@ describe("loadConfig", () => {
     process.env.RECALL_LIMIT = "10";
     process.env.RECALL_MAX_CHARS = "4000";
     process.env.WRITEBACK_ENABLED = "false";
-    process.env.TEMPORAL_ENABLED = "1";
 
     try {
       const cfg = loadConfig();
@@ -151,7 +148,6 @@ describe("loadConfig", () => {
       expect(cfg.recallLimit).toBe(10);
       expect(cfg.recallMaxChars).toBe(4000);
       expect(cfg.writebackEnabled).toBe(false);
-      expect(cfg.temporalEnabled).toBe(true);
     } finally {
       // Restore original env: delete keys we added, restore original values
       for (const key of Object.keys(process.env)) {
@@ -259,26 +255,6 @@ describe("OpenMemoryClient", () => {
     }
   });
 
-  it("sends temporal fact successfully", async () => {
-    let receivedBody = "";
-    const server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        receivedBody = await req.text();
-        return new Response(JSON.stringify({ id: "tf-1" }), {
-          headers: { "content-type": "application/json" },
-        });
-      },
-    });
-    try {
-      const client = new OpenMemoryClient(`http://localhost:${server.port}`);
-      const result = await client.addTemporalFact({ fact: "deadline is Friday" });
-      expect(result.id).toBe("tf-1");
-      expect(receivedBody).toContain("deadline is Friday");
-    } finally {
-      server.stop();
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------

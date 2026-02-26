@@ -7,5 +7,4 @@
 - Use progressive disclosure for setup and advanced configuration.
 
 ## Key links
-- `core/admin/docs/`
 - `dev/docs/api-reference.md`

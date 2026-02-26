@@ -8,12 +8,10 @@
 - Reuse shared compose runner; do not add a second compose execution path.
 - Do not add custom rollout/recovery/drift-detection systems.
 - Validate intent at parse boundary and generated compose with `docker compose config`.
-- Keep setup/installer flows resumable and stateful via setup manager.
-
 ## Key files to prefer
 - `packages/lib/src/admin/stack-spec.ts`
 - `packages/lib/src/admin/stack-generator.ts`
-- `packages/lib/src/admin/setup-manager.ts`
+- `packages/lib/src/admin/stack-manager.ts`
 - `packages/lib/src/compose.ts`
 
 ## Key links

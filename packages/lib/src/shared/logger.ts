@@ -20,9 +20,9 @@
  *   max-size / max-file).
  */
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
-export interface Logger {
+interface Logger {
   debug(msg: string, extra?: Record<string, unknown>): void;
   info(msg: string, extra?: Record<string, unknown>): void;
   warn(msg: string, extra?: Record<string, unknown>): void;

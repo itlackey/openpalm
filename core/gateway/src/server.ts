@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseRuntimeEnvContent } from "@openpalm/lib/admin/runtime-env.ts";
+import { parseEnvContent } from "@openpalm/lib/shared/env-parser.ts";
 import { json } from "@openpalm/lib/shared/http.ts";
 import { AuditLog } from "./audit.ts";
 import { installGracefulShutdown } from "@openpalm/lib/shared/shutdown.ts";
 import { buildIntakeCommand, parseIntakeDecision } from "./channel-intake.ts";
-import { verifySignature } from "./channel-security.ts";
+import { verifySignature } from "@openpalm/lib/shared/crypto.ts";
 import { RateLimiter } from "./rate-limit.ts";
 import { NonceCache } from "./nonce-cache.ts";
 import { OpenCodeClient } from "./assistant-client.ts";
@@ -30,6 +30,14 @@ function defaultSecretKeyForChannel(channelName: string): string {
   return `CHANNEL_${channelName.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_SECRET`;
 }
 
+function resolveChannelSecret(channelName: string, envValues: Record<string, string>, fallbackEnv: Record<string, string | undefined>): string | undefined {
+  const defaultKey = defaultSecretKeyForChannel(channelName);
+  if (envValues[defaultKey]) return envValues[defaultKey];
+  const explicit = Object.entries(envValues).find(([key, value]) => CHANNEL_SECRET_PATTERN.test(key) && value);
+  if (explicit?.[1]) return explicit[1];
+  return fallbackEnv[defaultKey] || undefined;
+}
+
 export function discoverChannelSecretsFromState(stateRoot: string, fallbackEnv: Record<string, string | undefined> = Bun.env): Record<string, string> {
   const secrets: Record<string, string> = {};
   if (!existsSync(stateRoot)) return secrets;
@@ -38,28 +46,12 @@ export function discoverChannelSecretsFromState(stateRoot: string, fallbackEnv: 
     if (!dirName.startsWith("channel-")) continue;
     const channelName = dirName.slice("channel-".length);
     if (!channelName) continue;
-
     const envPath = join(stateRoot, dirName, ".env");
     if (!existsSync(envPath)) continue;
 
-    const envValues = parseRuntimeEnvContent(readFileSync(envPath, "utf8"));
-    const defaultSecretKey = defaultSecretKeyForChannel(channelName);
-
-    if (envValues[defaultSecretKey]) {
-      secrets[channelName] = envValues[defaultSecretKey];
-      continue;
-    }
-
-    const explicitSecretEntry = Object.entries(envValues).find(([key, value]) => CHANNEL_SECRET_PATTERN.test(key) && value);
-    if (explicitSecretEntry?.[1]) {
-      secrets[channelName] = explicitSecretEntry[1];
-      continue;
-    }
-
-    const envFallback = fallbackEnv[defaultSecretKey];
-    if (envFallback) secrets[channelName] = envFallback;
+    const secret = resolveChannelSecret(channelName, parseEnvContent(readFileSync(envPath, "utf8")), fallbackEnv);
+    if (secret) secrets[channelName] = secret;
   }
-
   return secrets;
 }
 
@@ -76,118 +68,51 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
 
   async function processChannelInbound(payload: ChannelMessage, requestId: string) {
     const sessionId = randomUUID();
+    const auditEvent = (action: string, status: "ok" | "denied" | "error", details: Record<string, unknown>) =>
+      audit.write({ ts: new Date().toISOString(), requestId, sessionId, userId: payload.userId, action, status, details });
 
     const rlKey = payload.userId;
     if (!rateLimiter.allow(rlKey, 120, 60_000) || !rateLimiter.allow(`channel:${payload.channel}`, 200, 60_000)) {
-      audit.write({
-        ts: new Date().toISOString(),
-        requestId,
-        sessionId,
-        userId: payload.userId,
-        action: "channel_inbound",
-        status: "denied",
-        details: { channel: payload.channel, reason: "rate_limited" },
-      });
+      auditEvent("channel_inbound", "denied", { channel: payload.channel, reason: "rate_limited" });
       return json(429, { error: "rate_limited", requestId });
     }
 
-    audit.write({
-      ts: new Date().toISOString(),
-      requestId,
-      sessionId,
-      userId: payload.userId,
-      action: "channel_inbound",
-      status: "ok",
-      details: { channel: payload.channel },
-    });
+    auditEvent("channel_inbound", "ok", { channel: payload.channel });
 
     let intake;
     try {
       const intakeResult = await openCode.send({
         message: buildIntakeCommand(payload),
-        userId: payload.userId,
-        sessionId,
-        agent: "channel-intake",
-        channel: payload.channel,
-        metadata: payload.metadata,
+        userId: payload.userId, sessionId,
+        agent: "channel-intake", channel: payload.channel, metadata: payload.metadata,
       });
       intake = parseIntakeDecision(intakeResult.response);
-    } catch (error) {
-      audit.write({
-        ts: new Date().toISOString(),
-        requestId,
-        sessionId,
-        userId: payload.userId,
-        action: "channel_intake",
-        status: "error",
-        details: { channel: payload.channel, error: String(error) },
-      });
+    } catch (err) {
+      auditEvent("channel_intake", "error", { channel: payload.channel, error: String(err) });
       return json(502, { error: "channel_intake_unavailable", requestId });
     }
 
     if (!intake.valid) {
-      audit.write({
-        ts: new Date().toISOString(),
-        requestId,
-        sessionId,
-        userId: payload.userId,
-        action: "channel_intake",
-        status: "denied",
-        details: { channel: payload.channel, reason: intake.reason || "rejected" },
-      });
-      return json(422, {
-        error: "invalid_channel_request",
-        reason: intake.reason || "rejected",
-        requestId,
-      });
+      auditEvent("channel_intake", "denied", { channel: payload.channel, reason: intake.reason || "rejected" });
+      return json(422, { error: "invalid_channel_request", reason: intake.reason || "rejected", requestId });
     }
 
     const sanitizedSummary = sanitizeSummary(intake.summary);
-
     try {
       const coreResult = await openCode.send({
         message: sanitizedSummary,
-        userId: payload.userId,
-        sessionId,
-        channel: payload.channel,
-        metadata: {
-          ...payload.metadata,
-          intakeSummary: sanitizedSummary,
-          intakeValid: true,
-        },
+        userId: payload.userId, sessionId, channel: payload.channel,
+        metadata: { ...payload.metadata, intakeSummary: sanitizedSummary, intakeValid: true },
       });
-
-      audit.write({
-        ts: new Date().toISOString(),
-        requestId,
-        sessionId,
-        userId: payload.userId,
-        action: "channel_forward_to_core",
-        status: "ok",
-        details: { channel: payload.channel },
-      });
-
+      auditEvent("channel_forward_to_core", "ok", { channel: payload.channel });
       return json(200, {
-        requestId,
-        sessionId,
-        userId: payload.userId,
+        requestId, sessionId, userId: payload.userId,
         answer: coreResult.response,
-        intake: {
-          valid: true,
-          summary: sanitizedSummary,
-        },
+        intake: { valid: true, summary: sanitizedSummary },
         metadata: coreResult.metadata,
       });
-    } catch (error) {
-      audit.write({
-        ts: new Date().toISOString(),
-        requestId,
-        sessionId,
-        userId: payload.userId,
-        action: "channel_forward_to_core",
-        status: "error",
-        details: { channel: payload.channel, error: String(error) },
-      });
+    } catch (err) {
+      auditEvent("channel_forward_to_core", "error", { channel: payload.channel, error: String(err) });
       return json(502, { error: "core_runtime_unavailable", requestId });
     }
   }

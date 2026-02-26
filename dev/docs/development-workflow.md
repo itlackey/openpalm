@@ -34,12 +34,6 @@ If you touch the UI:
 bun run test:ui
 ```
 
-If you touch Dockerfiles or compose behavior:
-
-```bash
-bun run test:docker
-```
-
 For faster iteration, run workspace-targeted tests (for example `cd core/gateway && bun test`).
 
 ## 4) Keep changes safe

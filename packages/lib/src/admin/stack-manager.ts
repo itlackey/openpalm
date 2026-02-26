@@ -1,17 +1,40 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import { BUILTIN_CHANNELS } from "../../assets/channels/index.ts";
 import { generateStackArtifacts } from "./stack-generator.ts";
-import { composeServiceName } from "./service-name.ts";
 
-import { ensureStackSpec, isBuiltInChannel, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
-import { parseRuntimeEnvContent, sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { ensureStackSpec, parseSecretReference, parseStackSpec, stringifyStackSpec } from "./stack-spec.ts";
+import { sanitizeEnvScalar, updateRuntimeEnvContent } from "./runtime-env.ts";
+import { parseEnvContent } from "../shared/env-parser.ts";
 import type { ChannelExposure, StackSpec } from "./stack-spec.ts";
 
-export type ChannelName = string;
+function fileMtime(path: string): number {
+  return existsSync(path) ? statSync(path).mtimeMs : -1;
+}
 
-export type StackManagerPaths = {
+function readEnvIfExists(path: string): Record<string, string> {
+  return existsSync(path) ? parseEnvContent(readFileSync(path, "utf8")) : {};
+}
+
+/** Iterate all secret references across channels and services in a spec. */
+function forEachSecretRef(spec: StackSpec, fn: (scope: string, name: string, key: string, ref: string) => void): void {
+  for (const [name, cfg] of Object.entries(spec.channels)) {
+    for (const [key, value] of Object.entries(cfg.config)) {
+      const ref = parseSecretReference(value);
+      if (ref) fn("channel", name, key, ref);
+    }
+  }
+  for (const [name, cfg] of Object.entries(spec.services)) {
+    for (const [key, value] of Object.entries(cfg.config)) {
+      const ref = parseSecretReference(value);
+      if (ref) fn("service", name, key, ref);
+    }
+  }
+}
+
+type ChannelName = string;
+
+type StackManagerPaths = {
   stateRootPath: string;
   /** Host path mounted at /data inside the admin container. Written to runtimeEnvPath as OPENPALM_STATE_HOME for compose interpolation. */
   dataRootPath: string;
@@ -83,129 +106,21 @@ export class StackManager {
     return spec.channels[channel].exposure;
   }
 
-  getChannelConfig(channel: ChannelName): Record<string, string> {
-    const spec = this.getSpec();
-    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
-    return { ...spec.channels[channel].config };
-  }
-
-  setChannelAccess(channel: ChannelName, access: ChannelExposure) {
-    const spec = this.getSpec();
-    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
-    spec.channels[channel].enabled = true;
-    spec.channels[channel].exposure = access;
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.cachedSpec = spec;
-    return this.renderArtifacts();
-  }
-
-  setChannelConfig(channel: ChannelName, values: Record<string, string>) {
-    const spec = this.getSpec();
-    if (!spec.channels[channel]) throw new Error(`unknown_channel_${channel}`);
-    const current = spec.channels[channel].config;
-    if (isBuiltInChannel(channel)) {
-      const next: Record<string, string> = {};
-      for (const key of Object.keys(current)) {
-        next[key] = sanitizeEnvScalar(values[key] ?? "");
-      }
-      spec.channels[channel].config = next;
-    } else {
-      const next: Record<string, string> = {};
-      for (const key of Object.keys(values)) {
-        next[key] = sanitizeEnvScalar(values[key] ?? "");
-      }
-      spec.channels[channel].config = next;
-    }
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.cachedSpec = spec;
-    return this.renderArtifacts();
-  }
-
-  getServiceConfig(service: string): Record<string, string> {
-    const spec = this.getSpec();
-    if (!spec.services[service]) throw new Error(`unknown_service_${service}`);
-    return { ...spec.services[service].config };
-  }
-
-  setServiceConfig(service: string, values: Record<string, string>) {
-    const spec = this.getSpec();
-    if (!spec.services[service]) throw new Error(`unknown_service_${service}`);
-    const next: Record<string, string> = {};
-    for (const [key, value] of Object.entries(values)) {
-      if (!key.trim()) continue;
-      next[key] = sanitizeEnvScalar(value ?? "");
-    }
-    spec.services[service].enabled = true;
-    spec.services[service].config = next;
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.cachedSpec = spec;
-    return this.renderArtifacts();
-  }
-
-  setAccessScope(scope: "host" | "lan" | "public") {
-    const spec = this.getSpec();
-    spec.accessScope = scope;
-    this.writeStackSpecAtomically(stringifyStackSpec(spec));
-    this.cachedSpec = spec;
-    return this.renderArtifacts();
-  }
-
   renderPreview() {
     return generateStackArtifacts(this.getSpec(), this.readSecretsEnv());
   }
 
   renderArtifacts(precomputed?: ReturnType<StackManager["renderPreview"]>) {
     const generated = precomputed ?? this.renderPreview();
-    const changedArtifacts: string[] = [];
-    const write = (path: string, content: string) => this.writeArtifact(path, content, changedArtifacts);
+    const changedArtifacts = this.writeAllArtifacts(generated);
+    this.ensureRuntimeEnv();
 
-    write(this.paths.caddyJsonPath, generated.caddyJson);
-    write(this.paths.composeFilePath, generated.composeFile);
-    write(this.paths.systemEnvPath, generated.systemEnv);
-    write(this.paths.gatewayEnvPath, generated.gatewayEnv);
-    write(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
-    write(this.paths.postgresEnvPath, generated.postgresEnv);
-    write(this.paths.qdrantEnvPath, generated.qdrantEnv);
-    write(this.paths.assistantEnvPath, generated.assistantEnv);
-    for (const [serviceName, content] of Object.entries(generated.channelEnvs)) {
-      write(join(this.paths.stateRootPath, serviceName, ".env"), content);
-    }
-    for (const [serviceName, content] of Object.entries(generated.serviceEnvs)) {
-      write(join(this.paths.stateRootPath, serviceName, ".env"), content);
-    }
-
-    // Write host-side path vars and compose-interpolation secrets into runtimeEnvPath ($STATE/.env).
-    // These are needed by `docker compose --env-file` to interpolate ${OPENPALM_STATE_HOME},
-    // ${OPENPALM_DATA_HOME}, ${OPENPALM_CONFIG_HOME}, and ${POSTGRES_PASSWORD} in the generated
-    // docker-compose.yml. They are not available inside the admin container process environment.
-    const secrets = this.readSecretsEnv();
-    const runtimeEnvEntries: Record<string, string | undefined> = {
-      OPENPALM_STATE_HOME: this.paths.stateRootPath,
-      OPENPALM_DATA_HOME: this.paths.dataRootPath,
-      OPENPALM_CONFIG_HOME: this.paths.configRootPath,
-      POSTGRES_PASSWORD: secrets["POSTGRES_PASSWORD"],
-    };
-    if (this.runtimeEnvCache === null) {
-      this.runtimeEnvCache = existsSync(this.paths.runtimeEnvPath)
-        ? readFileSync(this.paths.runtimeEnvPath, "utf8")
-        : "";
-    }
-    const existingRuntime = this.runtimeEnvCache;
-    const updatedRuntime = updateRuntimeEnvContent(existingRuntime, runtimeEnvEntries);
-    mkdirSync(dirname(this.paths.runtimeEnvPath), { recursive: true });
-    writeFileSync(this.paths.runtimeEnvPath, updatedRuntime, "utf8");
-    this.runtimeEnvCache = updatedRuntime;
-
-    const renderReportPath = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
     const renderReport = {
       ...generated.renderReport,
       changedArtifacts,
       applySafe: generated.renderReport.missingSecretReferences.length === 0,
     };
-
-    mkdirSync(dirname(renderReportPath), { recursive: true });
-    writeFileSync(renderReportPath, `${JSON.stringify(renderReport, null, 2)}\n`, "utf8");
-
+    this.writeRenderReport(renderReport);
     return { ...generated, renderReport };
   }
 
@@ -213,22 +128,11 @@ export class StackManager {
     const spec = specOverride ?? this.getSpec();
     const availableSecrets = this.readSecretsEnv();
     const errors: string[] = [];
-    for (const [channel, cfg] of Object.entries(spec.channels)) {
-      if (!cfg.enabled) continue;
-      for (const [key, value] of Object.entries(cfg.config)) {
-        const ref = parseSecretReference(value);
-        if (!ref) continue;
-        if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${channel}_${key}_${ref}`);
-      }
-    }
-    for (const [service, cfg] of Object.entries(spec.services)) {
-      if (!cfg.enabled) continue;
-      for (const [key, value] of Object.entries(cfg.config)) {
-        const ref = parseSecretReference(value);
-        if (!ref) continue;
-        if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${service}_${key}_${ref}`);
-      }
-    }
+    forEachSecretRef(spec, (scope, name, key, ref) => {
+      const cfg = scope === "channel" ? spec.channels[name] : spec.services[name];
+      if (!cfg.enabled) return;
+      if (!availableSecrets[ref]) errors.push(`missing_secret_reference_${name}_${key}_${ref}`);
+    });
     return errors;
   }
 
@@ -237,35 +141,17 @@ export class StackManager {
     const secretValues = this.readSecretsEnv();
     const usedBy = new Map<string, string[]>();
 
-    for (const item of CoreSecretRequirements) {
-      const list = usedBy.get(item.key) ?? [];
-      list.push(`core:${item.service}`);
-      usedBy.set(item.key, list);
-    }
-
-    for (const [channel, cfg] of Object.entries(spec.channels)) {
-      for (const [key, value] of Object.entries(cfg.config)) {
-        const ref = parseSecretReference(value);
-        if (!ref) continue;
-        const list = usedBy.get(ref) ?? [];
-        list.push(`channel:${channel}:${key}`);
-        usedBy.set(ref, list);
-      }
-    }
-
-    for (const [service, cfg] of Object.entries(spec.services)) {
-      for (const [key, value] of Object.entries(cfg.config)) {
-        const ref = parseSecretReference(value);
-        if (!ref) continue;
-        const list = usedBy.get(ref) ?? [];
-        list.push(`service:${service}:${key}`);
-        usedBy.set(ref, list);
-      }
-    }
+    const addUsage = (ref: string, label: string) => {
+      const list = usedBy.get(ref) ?? [];
+      list.push(label);
+      usedBy.set(ref, list);
+    };
+    for (const item of CoreSecretRequirements) addUsage(item.key, `core:${item.service}`);
+    forEachSecretRef(spec, (scope, name, key, ref) => addUsage(ref, `${scope}:${name}:${key}`));
 
     const uniqueNames = Array.from(new Set([
       ...Object.keys(secretValues),
-      ...Array.from(usedBy.keys()),
+      ...usedBy.keys(),
       ...CoreSecretRequirements.map((item) => item.key),
     ])).sort();
 
@@ -304,25 +190,41 @@ export class StackManager {
     return Object.keys(this.getSpec().channels);
   }
 
-  /** Returns enabled channel service names (e.g., "channel-chat", "channel-my-custom"). */
-  enabledChannelServiceNames(): string[] {
-    const spec = this.getSpec();
-    return Object.keys(spec.channels)
-      .filter((name) => spec.channels[name].enabled)
-      .map((name) => `channel-${composeServiceName(name)}`);
-  }
-
   /** Returns all service names from the spec. */
   listServiceNames(): string[] {
     return Object.keys(this.getSpec().services);
   }
 
-  /** Returns enabled service names (e.g., "service-n8n"). */
-  enabledServiceNames(): string[] {
-    const spec = this.getSpec();
-    return Object.keys(spec.services)
-      .filter((name) => spec.services[name].enabled)
-      .map((name) => `service-${composeServiceName(name)}`);
+  private writeAllArtifacts(generated: ReturnType<StackManager["renderPreview"]>): string[] {
+    const changed: string[] = [];
+    const write = (path: string, content: string) => this.writeArtifact(path, content, changed);
+    write(this.paths.caddyJsonPath, generated.caddyJson);
+    write(this.paths.composeFilePath, generated.composeFile);
+    write(this.paths.systemEnvPath, generated.systemEnv);
+    write(this.paths.gatewayEnvPath, generated.gatewayEnv);
+    write(this.paths.openmemoryEnvPath, generated.openmemoryEnv);
+    write(this.paths.postgresEnvPath, generated.postgresEnv);
+    write(this.paths.qdrantEnvPath, generated.qdrantEnv);
+    write(this.paths.assistantEnvPath, generated.assistantEnv);
+    for (const [svc, content] of Object.entries(generated.channelEnvs)) write(join(this.paths.stateRootPath, svc, ".env"), content);
+    for (const [svc, content] of Object.entries(generated.serviceEnvs)) write(join(this.paths.stateRootPath, svc, ".env"), content);
+    return changed;
+  }
+
+  private ensureRuntimeEnv(): void {
+    if (this.runtimeEnvCache === null) {
+      this.runtimeEnvCache = existsSync(this.paths.runtimeEnvPath) ? readFileSync(this.paths.runtimeEnvPath, "utf8") : "";
+    }
+    const updated = updateRuntimeEnvContent(this.runtimeEnvCache, this.getRuntimeEnvEntries());
+    mkdirSync(dirname(this.paths.runtimeEnvPath), { recursive: true });
+    writeFileSync(this.paths.runtimeEnvPath, updated, "utf8");
+    this.runtimeEnvCache = updated;
+  }
+
+  private writeRenderReport(report: Record<string, unknown>): void {
+    const path = this.paths.renderReportPath ?? join(this.paths.stateRootPath, "render-report.json");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   }
 
   private writeArtifact(path: string, content: string, changedList: string[]): void {
@@ -345,37 +247,21 @@ export class StackManager {
   }
 
   private readSecretsEnv() {
-    const secretsMtime = existsSync(this.paths.secretsEnvPath)
-      ? statSync(this.paths.secretsEnvPath).mtimeMs
-      : -1;
-    const dataEnvPath = this.paths.dataEnvPath;
-    const dataMtime = dataEnvPath && existsSync(dataEnvPath)
-      ? statSync(dataEnvPath).mtimeMs
-      : -1;
+    const secretsMtime = fileMtime(this.paths.secretsEnvPath);
+    const dataMtime = this.paths.dataEnvPath ? fileMtime(this.paths.dataEnvPath) : -1;
 
-    if (
-      this.cachedSecrets
-      && this.secretsFileMtimeMs === secretsMtime
-      && this.dataEnvFileMtimeMs === dataMtime
-    ) {
+    if (this.cachedSecrets && this.secretsFileMtimeMs === secretsMtime && this.dataEnvFileMtimeMs === dataMtime) {
       return this.cachedSecrets;
     }
 
-    const secrets = existsSync(this.paths.secretsEnvPath)
-      ? parseRuntimeEnvContent(readFileSync(this.paths.secretsEnvPath, "utf8"))
-      : {};
-
-    let merged = secrets;
-    if (dataEnvPath && existsSync(dataEnvPath)) {
-      const dataEnv = parseRuntimeEnvContent(readFileSync(dataEnvPath, "utf8"));
-      const profileEnv = pickEnv(dataEnv, ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]);
-      merged = { ...secrets, ...profileEnv };
-    }
+    const secrets = readEnvIfExists(this.paths.secretsEnvPath);
+    const dataEnvPath = this.paths.dataEnvPath;
+    const profileEnv = dataEnvPath ? pickEnv(readEnvIfExists(dataEnvPath), ["OPENPALM_PROFILE_NAME", "OPENPALM_PROFILE_EMAIL"]) : {};
 
     this.secretsFileMtimeMs = secretsMtime;
     this.dataEnvFileMtimeMs = dataMtime;
-    this.cachedSecrets = merged;
-    return merged;
+    this.cachedSecrets = { ...secrets, ...profileEnv };
+    return this.cachedSecrets;
   }
 
   /** Returns the compose interpolation entries that must be present in runtimeEnvPath. */

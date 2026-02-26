@@ -1,5 +1,5 @@
 import { building } from '$app/environment';
-import { createLogger } from './logger';
+import { createLogger } from '@openpalm/lib/shared/logger.ts';
 import {
 	DATA_ROOT,
 	CONFIG_ROOT,
@@ -64,21 +64,11 @@ export async function ensureInitialized(): Promise<void> {
 	}
 }
 
-// Helper functions used by routes
-export async function allChannelServiceNames(): Promise<string[]> {
-	const sm = await getStackManager();
-	return sm.listChannelNames().map((name) => `channel-${name}`);
-}
-
-export async function allServiceNames(): Promise<string[]> {
-	const sm = await getStackManager();
-	return sm.listServiceNames().map((name) => `service-${name}`);
-}
-
 export async function knownServices(): Promise<Set<string>> {
 	const { allowedServiceSet, filterUiManagedServices } = await import('@openpalm/lib/admin/compose-runner');
+	const sm = await getStackManager();
 	const base = await allowedServiceSet();
-	for (const svc of await allChannelServiceNames()) base.add(svc);
-	for (const svc of await allServiceNames()) base.add(svc);
+	for (const name of sm.listChannelNames()) base.add(`channel-${name}`);
+	for (const name of sm.listServiceNames()) base.add(`service-${name}`);
 	return new Set(filterUiManagedServices(Array.from(base)));
 }

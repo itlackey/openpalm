@@ -1,14 +1,6 @@
 [test]
 timeout = 15000
 
-# Default discovery: run all self-contained tests.
-# Docker and live-stack tests are excluded and run via dedicated scripts
-# (test:docker, test:install:smoke).
-exclude = [
-  "test/docker/**",
-  "test/install-e2e/**",
-]
-
 [install]
 # Ensure reproducible installs
 frozen = true

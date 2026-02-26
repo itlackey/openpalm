@@ -19,11 +19,4 @@ export function verifyAdminToken(token: string): boolean {
 	return hmacCompare(token, ADMIN_TOKEN);
 }
 
-/**
- * Check if a request is authenticated via the x-admin-token header.
- */
-export function isAuthenticated(request: Request): boolean {
-	const token = request.headers.get('x-admin-token') ?? '';
-	return verifyAdminToken(token);
-}
 

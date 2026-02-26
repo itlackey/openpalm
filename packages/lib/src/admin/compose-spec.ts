@@ -19,7 +19,7 @@ export type ComposeService = {
   working_dir?: string;
 };
 
-export type ComposeHealthcheck = {
+type ComposeHealthcheck = {
   test: string[];
   interval?: string;
   timeout?: string;

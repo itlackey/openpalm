@@ -1,16 +1,6 @@
 import type { ComposeConfig, SpawnFn } from "./types.ts";
 import { runCompose } from "./compose-runner.ts";
 
-export function buildComposeArgs(config: ComposeConfig): string[] {
-  return [
-    config.subcommand,
-    "--env-file",
-    config.envFile,
-    "-f",
-    config.composeFile,
-  ];
-}
-
 export async function composeExec(
   config: ComposeConfig,
   args: string[],
@@ -29,57 +19,29 @@ export async function composeExec(
   return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, code: result.code };
 }
 
-export async function composePull(
-  config: ComposeConfig,
-  services?: string[]
-): Promise<void> {
-  const args = ["pull", ...(services ?? [])];
-  const result = await composeExec(config, args, { stream: true });
+async function execOrThrow(config: ComposeConfig, command: string, args: string[], stream = true): Promise<void> {
+  const result = await composeExec(config, args, { stream });
+  if (result.exitCode !== 0) throw new Error(`compose ${command} failed:${result.code}`);
+}
 
-  if (result.exitCode !== 0) {
-    throw new Error(`compose pull failed:${result.code}`);
-  }
+export async function composePull(config: ComposeConfig, services?: string[]): Promise<void> {
+  await execOrThrow(config, "pull", ["pull", ...(services ?? [])]);
 }
 
 export async function composeUp(
   config: ComposeConfig,
   services?: string[],
-  options?: {
-    detach?: boolean;
-    pull?: "always" | "missing" | "never";
-    profiles?: string[];
-  }
+  options?: { detach?: boolean; pull?: "always" | "missing" | "never"; profiles?: string[] }
 ): Promise<void> {
   const args: string[] = [];
-
-  // Add profiles before the up command
   if (options?.profiles) {
-    for (const profile of options.profiles) {
-      args.push("--profile", profile);
-    }
+    for (const profile of options.profiles) args.push("--profile", profile);
   }
-
   args.push("up");
-
-  // Add flags after the up command
-  const detach = options?.detach ?? true;
-  if (detach) {
-    args.push("-d");
-  }
-
-  if (options?.pull) {
-    args.push("--pull", options.pull);
-  }
-
-  if (services) {
-    args.push(...services);
-  }
-
-  const result = await composeExec(config, args, { stream: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(`compose up failed:${result.code}`);
-  }
+  if (options?.detach ?? true) args.push("-d");
+  if (options?.pull) args.push("--pull", options.pull);
+  if (services) args.push(...services);
+  await execOrThrow(config, "up", args);
 }
 
 export async function composeDown(
@@ -87,45 +49,17 @@ export async function composeDown(
   options?: { removeOrphans?: boolean; removeImages?: boolean }
 ): Promise<void> {
   const args = ["down"];
-
-  const removeOrphans = options?.removeOrphans ?? true;
-  if (removeOrphans) {
-    args.push("--remove-orphans");
-  }
-
-  if (options?.removeImages) {
-    args.push("--rmi", "all");
-  }
-
-  const result = await composeExec(config, args, { stream: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(`compose down failed:${result.code}`);
-  }
+  if (options?.removeOrphans ?? true) args.push("--remove-orphans");
+  if (options?.removeImages) args.push("--rmi", "all");
+  await execOrThrow(config, "down", args);
 }
 
-export async function composeRestart(
-  config: ComposeConfig,
-  services?: string[]
-): Promise<void> {
-  const args = ["restart", ...(services ?? [])];
-  const result = await composeExec(config, args, { stream: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(`compose restart failed:${result.code}`);
-  }
+export async function composeRestart(config: ComposeConfig, services?: string[]): Promise<void> {
+  await execOrThrow(config, "restart", ["restart", ...(services ?? [])]);
 }
 
-export async function composeStop(
-  config: ComposeConfig,
-  services?: string[]
-): Promise<void> {
-  const args = ["stop", ...(services ?? [])];
-  const result = await composeExec(config, args, { stream: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(`compose stop failed:${result.code}`);
-  }
+export async function composeStop(config: ComposeConfig, services?: string[]): Promise<void> {
+  await execOrThrow(config, "stop", ["stop", ...(services ?? [])]);
 }
 
 export async function composeLogs(
@@ -134,32 +68,14 @@ export async function composeLogs(
   options?: { follow?: boolean; tail?: number }
 ): Promise<void> {
   const args = ["logs"];
-
-  if (options?.follow) {
-    args.push("--follow");
-  }
-
-  if (options?.tail !== undefined) {
-    args.push("--tail", options.tail.toString());
-  }
-
-  if (services) {
-    args.push(...services);
-  }
-
-  const result = await composeExec(config, args, { stream: true });
-
-  if (result.exitCode !== 0) {
-    throw new Error(`compose logs failed:${result.code}`);
-  }
+  if (options?.follow) args.push("--follow");
+  if (options?.tail !== undefined) args.push("--tail", options.tail.toString());
+  if (services) args.push(...services);
+  await execOrThrow(config, "logs", args);
 }
 
 export async function composePs(config: ComposeConfig): Promise<string> {
   const result = await composeExec(config, ["ps", "-a"]);
-
-  if (result.exitCode !== 0) {
-    throw new Error(`compose ps failed:${result.code}`);
-  }
-
+  if (result.exitCode !== 0) throw new Error(`compose ps failed:${result.code}`);
   return result.stdout;
 }

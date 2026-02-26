@@ -1,6 +1,13 @@
 import { parseYamlDocument } from "../../src/shared/yaml.ts";
-import type { EnvVarDef } from "../../src/shared/snippet-types.ts";
 import chatYaml from "./chat.yaml" with { type: "text" };
+
+/** A single environment variable declaration for a channel. */
+export type EnvVarDef = {
+  name: string;
+  description?: string;
+  required: boolean;
+  default?: string;
+};
 
 export type BuiltInChannelDef = {
   name: string;
