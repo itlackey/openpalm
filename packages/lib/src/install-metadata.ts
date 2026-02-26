@@ -1,7 +1,6 @@
 import type { InstallMetadata, InstallEvent, ContainerPlatform } from "./types.ts";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 
 const METADATA_FILENAME = "install-metadata.json";
 const CURRENT_SCHEMA_VERSION = 1;

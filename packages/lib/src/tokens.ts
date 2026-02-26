@@ -1,4 +1,3 @@
-/** Generate a cryptographically secure URL-safe base64 token. */
 export function generateToken(length: number = 64): string {
   const bytesNeeded = Math.ceil((length * 3) / 4);
   const randomBytes = new Uint8Array(bytesNeeded);

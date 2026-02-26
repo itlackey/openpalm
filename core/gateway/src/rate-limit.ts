@@ -17,18 +17,12 @@ export class RateLimiter {
       bucket.timestamps.shift();
     }
 
-    if (bucket.timestamps.length >= limit) {
-      bucket.lastSeen = now;
-      this.buckets.set(key, bucket);
-      this.evictIfNeeded(now, windowMs);
-      return false;
-    }
-
-    bucket.timestamps.push(now);
+    const allowed = bucket.timestamps.length < limit;
+    if (allowed) bucket.timestamps.push(now);
     bucket.lastSeen = now;
     this.buckets.set(key, bucket);
     this.evictIfNeeded(now, windowMs);
-    return true;
+    return allowed;
   }
 
   private evictIfNeeded(now: number, windowMs: number): void {

@@ -20,7 +20,7 @@ describe("stack spec", () => {
     expect(() => parseStackSpec({ ...base, connections: [] })).toThrow("unknown_stack_spec_field_connections");
   });
 
-  it("accepts arbitrary community channel and service names", () => {
+  it("accepts arbitrary community channel names", () => {
     const base = createDefaultStackSpec();
     const parsed = parseStackSpec({
       ...base,
@@ -39,58 +39,14 @@ describe("stack spec", () => {
           },
         },
       },
-      services: {
-        "jobs worker@nightly": {
-          enabled: true,
-          image: "ghcr.io/community/jobs:latest",
-          containerPort: 9901,
-          config: {
-            "worker.mode": "nightly",
-          },
-        },
-      },
     });
 
     expect(parsed.channels["Community Slack / v1"].config["x.custom"]).toBe("on");
-    expect(parsed.services["jobs worker@nightly"].config["worker.mode"]).toBe("nightly");
   });
 
-  it("rejects empty channel and service names", () => {
+  it("rejects empty channel names", () => {
     const base = createDefaultStackSpec();
     expect(() => parseStackSpec({ ...base, channels: { ...base.channels, "": { enabled: true, exposure: "lan", config: {} } } })).toThrow("invalid_channel_name_");
-    expect(() => parseStackSpec({ ...base, services: { "": { enabled: true, image: "x:latest", containerPort: 9999, config: {} } } })).toThrow("invalid_service_name_");
-  });
-
-  it("rejects empty config keys but accepts arbitrary non-empty keys", () => {
-    const base = createDefaultStackSpec();
-    const parsed = parseStackSpec({
-      ...base,
-      services: {
-        svc: {
-          enabled: true,
-          image: "x:latest",
-          containerPort: 9999,
-          config: {
-            "key.with.symbols": "value",
-          },
-        },
-      },
-    });
-    expect(parsed.services.svc.config["key.with.symbols"]).toBe("value");
-
-    expect(() => parseStackSpec({
-      ...base,
-      services: {
-        svc: {
-          enabled: true,
-          image: "x:latest",
-          containerPort: 9999,
-          config: {
-            "": "value",
-          },
-        },
-      },
-    })).toThrow("invalid_service_svc_config_key_empty");
   });
 
   it("parses explicit secret references", () => {

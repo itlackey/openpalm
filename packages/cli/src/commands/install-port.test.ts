@@ -9,19 +9,6 @@ describe("ISSUE-4 — Port 80 conflict resolution", () => {
     expect(result).toBeNull();
   });
 
-  it("checkPortDetailed() returns port_conflict code with meta.port when port is in use", () => {
-    // Contract validation: if a port conflict issue were returned, it would have this shape
-    const mockIssue = {
-      code: "port_conflict" as const,
-      severity: "fatal" as const,
-      message: "Port 8080 is already in use by another process.",
-      meta: { port: 8080 },
-    };
-    expect(mockIssue.code).toBe("port_conflict");
-    expect(mockIssue.severity).toBe("fatal");
-    expect(mockIssue.meta.port).toBe(8080);
-  });
-
   it("runPreflightChecksDetailed() accepts a port parameter and returns typed result", async () => {
     const result = await runPreflightChecksDetailed("docker", 59132);
     expect(result).toHaveProperty("ok");

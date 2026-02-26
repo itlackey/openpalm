@@ -177,7 +177,7 @@ describe("gateway HTTP pipeline", () => {
 
   afterAll(() => {
     mockAssistant.stop(true);
-    nonceCache.destroy({ clear: true });
+    nonceCache.destroy();
   });
 
   it("GET /health → 200 {ok:true, service:'gateway'}", async () => {

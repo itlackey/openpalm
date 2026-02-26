@@ -34,25 +34,6 @@ describe("stack generator", () => {
     expect(caddyConfig.apps.http.servers.main.routes.length).toBeGreaterThan(0);
   });
 
-  it("generates hostname route for localhost in Caddy JSON", () => {
-    const spec = createDefaultStackSpec();
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    const routes = caddyConfig.apps.http.servers.main.routes;
-
-    // Find host-based routes
-    const hostRoutes = routes.filter((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) => Array.isArray(m.host))
-    );
-    const hostnames = hostRoutes.flatMap((r: Record<string, unknown>) =>
-      (r.match as Array<Record<string, unknown>>).flatMap((m: Record<string, unknown>) => m.host)
-    );
-    expect(hostnames).toContain("localhost");
-    expect(hostnames).not.toContain("assistant");
-    expect(hostnames).not.toContain("admin");
-    expect(hostnames).not.toContain("openmemory");
-  });
-
   it("generates admin subroute with expected sub-handlers", () => {
     const spec = createDefaultStackSpec();
     const out = generateStackArtifacts(spec, {});
@@ -175,125 +156,6 @@ describe("stack generator", () => {
     expect(out.composeFile).toContain("127.0.0.1:7000:7000");
   });
 
-  it("generates domain-based Caddy JSON routes for channels with domains", () => {
-    const spec = createDefaultStackSpec();
-    spec.channels["public-api"] = {
-      enabled: true,
-      exposure: "public",
-      image: "ghcr.io/acme/api:latest",
-      containerPort: 9000,
-      domains: ["api.example.com"],
-      pathPrefixes: ["/api", "/"],
-      config: {},
-    };
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    // Should have a tls_domains server for HTTPS
-    expect(caddyConfig.apps.http.servers.tls_domains).toBeDefined();
-    const domainRoutes = caddyConfig.apps.http.servers.tls_domains.routes;
-    expect(domainRoutes.length).toBeGreaterThan(0);
-    // Should have host matcher for api.example.com
-    const domainRoute = domainRoutes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.host) && (m.host as string[]).includes("api.example.com")
-      )
-    );
-    expect(domainRoute).toBeDefined();
-    // Domain-routed channels should not generate path-based route in main server
-    const mainRoutes = caddyConfig.apps.http.servers.main.routes;
-    const pathRoute = mainRoutes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).some((p: string) => p.includes("public-api"))
-      )
-    );
-    expect(pathRoute).toBeUndefined();
-  });
-
-  it("generates IP guard for lan domain channels", () => {
-    const spec = createDefaultStackSpec();
-    spec.channels["admin-panel"] = {
-      enabled: true,
-      exposure: "lan",
-      image: "admin:latest",
-      containerPort: 3000,
-      domains: ["admin.local"],
-      config: {},
-    };
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    expect(caddyConfig.apps.http.servers.tls_domains).toBeDefined();
-    const domainRoutes = caddyConfig.apps.http.servers.tls_domains.routes;
-    const adminRoute = domainRoutes[0];
-    // Subroute should have an IP guard
-    const subroute = adminRoute.handle[0];
-    expect(subroute.handler).toBe("subroute");
-    const guardRoute = subroute.routes[0];
-    expect(guardRoute.match[0].not).toBeDefined();
-    expect(guardRoute.handle[0].handler).toBe("static_response");
-  });
-
-  it("generates IP guard for host domain channels", () => {
-    const spec = createDefaultStackSpec();
-    spec.channels["debug-panel"] = {
-      enabled: true,
-      exposure: "host",
-      image: "debug:latest",
-      containerPort: 3000,
-      domains: ["debug.local"],
-      config: {},
-    };
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    expect(caddyConfig.apps.http.servers.tls_domains).toBeDefined();
-    const domainRoutes = caddyConfig.apps.http.servers.tls_domains.routes;
-    const debugRoute = domainRoutes[0];
-    const subroute = debugRoute.handle[0];
-    const guardRoute = subroute.routes[0];
-    // Host guard should only have 127.0.0.0/8 and ::1
-    const negatedRanges = guardRoute.match[0].not[0].remote_ip.ranges;
-    expect(negatedRanges).toContain("127.0.0.0/8");
-    expect(negatedRanges).toContain("::1");
-    expect(negatedRanges).not.toContain("10.0.0.0/8");
-  });
-
-  it("no IP guard for public domain channels", () => {
-    const spec = createDefaultStackSpec();
-    spec.channels["public-api"] = {
-      enabled: true,
-      exposure: "public",
-      image: "api:latest",
-      containerPort: 9000,
-      domains: ["api.example.com"],
-      config: {},
-    };
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    const domainRoutes = caddyConfig.apps.http.servers.tls_domains.routes;
-    const apiRoute = domainRoutes[0];
-    const subroute = apiRoute.handle[0];
-    // Public domain: should not have a guard route (no "not" matcher with static_response)
-    const hasGuard = subroute.routes.some((r: Record<string, unknown>) =>
-      Array.isArray(r.handle) && (r.handle as Array<Record<string, unknown>>).some((h: Record<string, unknown>) => h.handler === "static_response")
-    );
-    expect(hasGuard).toBe(false);
-  });
-
-  it("includes caddy TLS config when email is configured", () => {
-    const spec = createDefaultStackSpec();
-    spec.caddy = { email: "admin@example.com" };
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    expect(caddyConfig.apps.tls).toBeDefined();
-    expect(caddyConfig.apps.tls.automation.policies[0].issuers[0].email).toBe("admin@example.com");
-  });
-
-  it("does not include TLS config when caddy config is absent", () => {
-    const spec = createDefaultStackSpec();
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    expect(caddyConfig.apps.tls).toBeUndefined();
-  });
-
   it("uses LAN ranges in guard matchers for default scope", () => {
     const spec = createDefaultStackSpec();
     spec.accessScope = "public";
@@ -395,7 +257,7 @@ describe("stack generator", () => {
 
   // --- Multi-channel artifact generation with unique requirements ---
 
-  it("generates correct compose services for multiple custom channels with diverse configs", () => {
+  it("generates correct compose services for multiple custom channels", () => {
     const spec = createDefaultStackSpec();
 
     spec.channels["slack"] = {
@@ -404,15 +266,6 @@ describe("stack generator", () => {
       image: "openpalm/channel-slack:latest",
       containerPort: 8500,
       config: { SLACK_BOT_TOKEN: "${SLACK_TOKEN}", SLACK_SIGNING_SECRET: "inline-secret" },
-    };
-    spec.channels["whatsapp"] = {
-      enabled: true,
-      exposure: "public",
-      image: "ghcr.io/acme/wa-bridge:v2",
-      containerPort: 9200,
-      hostPort: 9201,
-      domains: ["wa.example.com"],
-      config: { WA_PHONE_ID: "12345" },
     };
     spec.channels["internal-api"] = {
       enabled: true,
@@ -427,80 +280,14 @@ describe("stack generator", () => {
 
     expect(out.composeFile).toContain("channel-slack:");
     expect(out.composeFile).toContain("image: openpalm/channel-slack:latest");
-    expect(out.composeFile).toContain("channel-whatsapp:");
-    expect(out.composeFile).toContain("image: ghcr.io/acme/wa-bridge:v2");
     expect(out.composeFile).toContain("channel-internal-api:");
     expect(out.composeFile).toContain("image: my-api:latest");
     expect(out.composeFile).toContain("127.0.0.1:3000:3000");
-    expect(out.composeFile).toContain("9201:9200");
     expect(out.composeFile).toContain("8500:8500");
     expect(out.composeFile).toContain("channel-chat:");
     expect(out.composeFile).toContain("depends_on:\n      gateway:\n        condition: service_healthy");
     expect(out.composeFile).toContain("curl -sf http://localhost:8500/health || exit 1");
     expect(out.composeFile).toContain("curl -sf http://localhost:3000/readyz || exit 1");
-  });
-
-  it("generates correct Caddy JSON routing for channels with different routing strategies", () => {
-    const spec = createDefaultStackSpec();
-
-    spec.channels["slack"] = {
-      enabled: true,
-      exposure: "lan",
-      image: "slack:latest",
-      containerPort: 8500,
-      config: {},
-    };
-    spec.channels["whatsapp"] = {
-      enabled: true,
-      exposure: "public",
-      image: "wa:latest",
-      containerPort: 9200,
-      domains: ["wa.example.com"],
-      pathPrefixes: ["/webhook"],
-      config: {},
-    };
-    spec.channels["debug-svc"] = {
-      enabled: true,
-      exposure: "host",
-      image: "debug:latest",
-      containerPort: 3000,
-      config: {},
-    };
-
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-
-    // Path-based slack channel should be in main routes
-    const mainRoutes = caddyConfig.apps.http.servers.main.routes;
-    const slackRoute = mainRoutes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/channels/slack*")
-      )
-    );
-    expect(slackRoute).toBeDefined();
-    const slackJson = JSON.stringify(slackRoute);
-    expect(slackJson).toContain("channel-slack:8500");
-    expect(slackJson).toContain("static_response"); // LAN guard
-
-    // Domain-based whatsapp should be in tls_domains server
-    expect(caddyConfig.apps.http.servers.tls_domains).toBeDefined();
-    const domainRoutes = caddyConfig.apps.http.servers.tls_domains.routes;
-    const waRoute = domainRoutes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.host) && (m.host as string[]).includes("wa.example.com")
-      )
-    );
-    expect(waRoute).toBeDefined();
-
-    // Host-only debug-svc should be in main routes with host guard
-    const debugRoute = mainRoutes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.path) && (m.path as string[]).includes("/channels/debug-svc*")
-      )
-    );
-    expect(debugRoute).toBeDefined();
-    const debugJson = JSON.stringify(debugRoute);
-    expect(debugJson).toContain("static_response"); // host guard
   });
 
   it("resolves config secrets independently per custom channel", () => {
@@ -713,52 +500,6 @@ describe("stack generator", () => {
     expect(negatedRanges).not.toContain("192.168.0.0/16");
   });
 
-  it("core hostname routes use host-only guard ranges when accessScope is host", () => {
-    const spec = createDefaultStackSpec();
-    spec.accessScope = "host";
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    const routes = caddyConfig.apps.http.servers.main.routes;
-    // Find the localhost hostname route
-    const localhostRoute = routes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.host) && (m.host as string[]).includes("localhost")
-      )
-    );
-    expect(localhostRoute).toBeDefined();
-    const subroute = localhostRoute.handle[0];
-    const guardRoute = subroute.routes[0];
-    const negatedRanges = guardRoute.match[0].not[0].remote_ip.ranges;
-    expect(negatedRanges).toEqual(["127.0.0.0/8", "::1"]);
-  });
-
-  // --- Gap coverage: multiple domains on a single channel ---
-
-  it("uses all domains from channel config in domain route matcher", () => {
-    const spec = createDefaultStackSpec();
-    spec.channels["multi-domain"] = {
-      enabled: true,
-      exposure: "public",
-      image: "multi:latest",
-      containerPort: 9000,
-      domains: ["api.example.com", "api2.example.com", "api3.example.com"],
-      config: {},
-    };
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson);
-    expect(caddyConfig.apps.http.servers.tls_domains).toBeDefined();
-    const domainRoutes = caddyConfig.apps.http.servers.tls_domains.routes;
-    const multiRoute = domainRoutes.find((r: Record<string, unknown>) =>
-      Array.isArray(r.match) && r.match.some((m: Record<string, unknown>) =>
-        Array.isArray(m.host) && (m.host as string[]).includes("api.example.com")
-      )
-    );
-    expect(multiRoute).toBeDefined();
-    const hosts = multiRoute.match[0].host;
-    expect(hosts).toContain("api.example.com");
-    expect(hosts).toContain("api2.example.com");
-    expect(hosts).toContain("api3.example.com");
-  });
 
   // --- Gap coverage: public channel has no IP guard in path route ---
 
@@ -812,16 +553,9 @@ describe("stack generator", () => {
     expect(json).toContain("/channels/my-hook");
   });
 
-  it("renders compose YAML with expected service wiring for core, channel, and custom service", () => {
+  it("renders compose YAML with expected service wiring for core and channel", () => {
     const spec = createDefaultStackSpec();
     spec.channels.chat.exposure = "host";
-    spec.services["jobs-worker"] = {
-      enabled: true,
-      image: "jobs:latest",
-      containerPort: 9200,
-      dependsOn: ["assistant", "openmemory"],
-      config: { JOBS_MODE: "nightly" },
-    };
 
     const out = generateStackArtifacts(spec, {});
     const compose = parseYamlDocument(out.composeFile) as {
@@ -841,13 +575,6 @@ describe("stack generator", () => {
     expect(compose.services["channel-chat"].ports).toEqual(["127.0.0.1:8181:8181"]);
     expect(compose.services["channel-chat"].env_file).toEqual(["${OPENPALM_STATE_HOME}/channel-chat/.env"]);
     expect(compose.services["channel-chat"].networks).toEqual(["channel_net"]);
-
-    expect(compose.services["service-jobs-worker"].env_file).toEqual(["${OPENPALM_STATE_HOME}/service-jobs-worker/.env"]);
-    expect(compose.services["service-jobs-worker"].networks).toEqual(["assistant_net"]);
-    expect(compose.services["service-jobs-worker"].depends_on).toEqual({
-      assistant: { condition: "service_healthy" },
-      openmemory: { condition: "service_healthy" },
-    });
   });
 
   it("renders caddy JSON with expected default routes and route guards", () => {
@@ -899,47 +626,5 @@ describe("stack generator", () => {
     expect(catchAllRanges).toEqual(["127.0.0.0/8", "::1"]);
   });
 
-  it("renders domain-based channel routes on tls_domains server and excludes them from main routes", () => {
-    const spec = createDefaultStackSpec();
-    spec.channels.chat.enabled = false;
-
-    spec.channels["api-gateway"] = {
-      enabled: true,
-      exposure: "public",
-      image: "api-gateway:latest",
-      containerPort: 9900,
-      domains: ["api.example.com", "api.internal.example.com"],
-      pathPrefixes: ["/v1", "/v2"],
-      config: {},
-    };
-
-    const out = generateStackArtifacts(spec, {});
-    const caddyConfig = JSON.parse(out.caddyJson) as {
-      apps: {
-        http: {
-          servers: {
-            main: { routes: Array<Record<string, unknown>> };
-            tls_domains: { routes: Array<Record<string, unknown>> };
-          };
-        };
-      };
-    };
-
-    const domainRoute = caddyConfig.apps.http.servers.tls_domains.routes.find((r) => Array.isArray(r.match)
-      && r.match.some((m) => Array.isArray((m as { host?: unknown[] }).host)
-        && ((m as { host: string[] }).host).includes("api.example.com")));
-    expect(domainRoute).toBeDefined();
-
-    const domainHostMatcher = ((domainRoute as { match: Array<{ host: string[] }> }).match[0].host).slice().sort();
-    expect(domainHostMatcher).toEqual(["api.example.com", "api.internal.example.com"]);
-
-    const domainJson = JSON.stringify(domainRoute);
-    expect(domainJson).toContain('"path":["/v1*"]');
-    expect(domainJson).toContain('"path":["/v2*"]');
-    expect(domainJson).toContain("channel-api-gateway:9900");
-
-    const mainJson = JSON.stringify(caddyConfig.apps.http.servers.main.routes);
-    expect(mainJson).not.toContain("/channels/api-gateway*");
-  });
 
 });

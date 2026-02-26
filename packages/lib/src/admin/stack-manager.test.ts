@@ -12,17 +12,11 @@ function createManager(dir: string) {
     stateRootPath: dir,
     dataRootPath: join(dir, "data"),
     configRootPath: join(dir, "config"),
-    caddyJsonPath: join(dir, "caddy.json"),
     composeFilePath: join(dir, "docker-compose.yml"),
     runtimeEnvPath: join(dir, ".env"),
     systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
     stackSpecPath: join(dir, "openpalm.yaml"),
-    gatewayEnvPath: join(dir, "gateway", ".env"),
-    openmemoryEnvPath: join(dir, "openmemory", ".env"),
-    postgresEnvPath: join(dir, "postgres", ".env"),
-    qdrantEnvPath: join(dir, "qdrant", ".env"),
-    assistantEnvPath: join(dir, "assistant", ".env"),
   });
 }
 
@@ -91,17 +85,11 @@ describe("stack manager", () => {
       stateRootPath: dir,
       dataRootPath: join(dir, "data"),
       configRootPath: join(dir, "config"),
-      caddyJsonPath: join(dir, "caddy.json"),
       composeFilePath: join(dir, "docker-compose.yml"),
       runtimeEnvPath: join(dir, ".env"),
       systemEnvPath: join(dir, "system.env"),
       secretsEnvPath: join(dir, "secrets.env"),
       stackSpecPath: join(dir, "openpalm.yaml"),
-      gatewayEnvPath: join(dir, "gateway", ".env"),
-      openmemoryEnvPath: join(dir, "openmemory", ".env"),
-      postgresEnvPath: join(dir, "postgres", ".env"),
-      qdrantEnvPath: join(dir, "qdrant", ".env"),
-      assistantEnvPath: join(dir, "assistant", ".env"),
     });
 
     expect(() => manager.renderArtifacts()).not.toThrow();
@@ -169,40 +157,24 @@ describe("stack manager", () => {
     expect(qdrantEnvRaw).toBe("# Generated qdrant env\n");
   });
 
-  it("writes channel and service .env files with resolved and literal values", () => {
-    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-channel-service-env-"));
+  it("writes channel .env files with resolved and literal values", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-channel-env-"));
     const manager = createManager(dir);
 
     manager.upsertSecret("CHAT_INBOUND_SECRET", "chat-token");
-    manager.upsertSecret("SVC_API_KEY_SECRET", "svc-key");
 
     const spec = manager.getSpec();
     spec.channels.chat.enabled = true;
     spec.channels.chat.config.CHAT_INBOUND_TOKEN = "${CHAT_INBOUND_SECRET}";
     spec.channels.chat.config.CHANNEL_CHAT_SECRET = "literal-chat-secret";
-    spec.services["worker"] = {
-      enabled: true,
-      image: "worker:latest",
-      containerPort: 9400,
-      config: {
-        WORKER_MODE: "nightly",
-        API_KEY: "${SVC_API_KEY_SECRET}",
-        OPTIONAL_FLAG: "",
-      },
-    };
     manager.setSpec(spec);
 
     const chatEnv = parseEnvFile(readFileSync(join(dir, "channel-chat", ".env"), "utf8"));
     expect(chatEnv.CHAT_INBOUND_TOKEN).toBe("chat-token");
     expect(chatEnv.CHANNEL_CHAT_SECRET).toBe("literal-chat-secret");
-
-    const workerEnv = parseEnvFile(readFileSync(join(dir, "service-worker", ".env"), "utf8"));
-    expect(workerEnv.WORKER_MODE).toBe("nightly");
-    expect(workerEnv.API_KEY).toBe("svc-key");
-    expect(workerEnv.OPTIONAL_FLAG).toBe("");
   });
 
-  it("does not write .env files for disabled channels or services even with unresolved secrets", () => {
+  it("does not write .env files for disabled channels", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-stack-manager-disabled-env-"));
     const manager = createManager(dir);
 
@@ -214,16 +186,9 @@ describe("stack manager", () => {
       containerPort: 7000,
       config: { HOOK_TOKEN: "${MISSING_HOOK_TOKEN}" },
     };
-    spec.services["disabled-worker"] = {
-      enabled: false,
-      image: "worker:latest",
-      containerPort: 7100,
-      config: { WORKER_TOKEN: "${MISSING_WORKER_TOKEN}" },
-    };
 
     expect(() => manager.setSpec(spec)).not.toThrow();
     expect(existsSync(join(dir, "channel-disabled-hook", ".env"))).toBeFalse();
-    expect(existsSync(join(dir, "service-disabled-worker", ".env"))).toBeFalse();
   });
 
   it("system.env updates when access scope changes", () => {
@@ -279,7 +244,6 @@ describe("stack manager", () => {
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING_CHAT_TOKEN}", CHANNEL_CHAT_SECRET: "" } },
       },
-      services: {},
     }), "utf8");
     const manager = createManager(dir);
 
@@ -489,7 +453,6 @@ describe("stack manager", () => {
           },
         },
       },
-      services: {},
     }), "utf8");
 
     const manager = createManager(dir);
@@ -555,7 +518,6 @@ describe("stack manager", () => {
       enabled: true, exposure: "public",
       image: "jira-hook:v3", containerPort: 9100,
       hostPort: 9101,
-      domains: ["jira.example.com"],
       config: {
         JIRA_API_KEY: "${JIRA_API_KEY}",
         JIRA_PROJECT: "PROJ",
@@ -572,10 +534,10 @@ describe("stack manager", () => {
     expect(compose).toContain("image: jira-hook:v3");
     expect(compose).toContain("9101:9100");
 
-    // Verify Caddy JSON: slack gets path-based route, jira gets domain-based route
+    // Verify Caddy JSON: both get path-based routes
     const caddyJson = readFileSync(join(dir, "caddy.json"), "utf8");
     expect(caddyJson).toContain("/channels/slack*");
-    expect(caddyJson).toContain("jira.example.com");
+    expect(caddyJson).toContain("/channels/jira-webhook*");
 
     // Verify channels env has resolved secrets
     const slackEnv = readFileSync(join(dir, "channel-slack", ".env"), "utf8");
@@ -586,7 +548,7 @@ describe("stack manager", () => {
     expect(jiraEnv).toContain("JIRA_PROJECT=PROJ");
   });
 
-  it("renders community channels and services from stack spec yaml into artifacts", () => {
+  it("renders community channels from stack spec yaml into artifacts", () => {
     const dir = mkdtempSync(join(tmpdir(), "openpalm-community-yaml-"));
     writeFileSync(join(dir, "secrets.env"), "COMMUNITY_SECRET=abc\n", "utf8");
     writeFileSync(join(dir, "openpalm.yaml"), yamlStringify({
@@ -606,24 +568,14 @@ describe("stack manager", () => {
           },
         },
       },
-      services: {
-        "jobs worker@nightly": {
-          enabled: true,
-          image: "ghcr.io/community/jobs:latest",
-          containerPort: 9010,
-          config: { "worker.mode": "nightly" },
-        },
-      },
     }), "utf8");
 
     const manager = createManager(dir);
     const rendered = manager.renderArtifacts();
 
     expect(rendered.composeFile).toContain("channel-community-slack-adapter:");
-    expect(rendered.composeFile).toContain("service-jobs-worker-nightly:");
     expect(rendered.caddyJson).toContain("/channels/community/slack adapter*");
     expect(readFileSync(join(dir, "channel-community-slack-adapter", ".env"), "utf8")).toContain("CHANNEL_COMMUNITY_SLACK_SECRET=abc");
-    expect(readFileSync(join(dir, "service-jobs-worker-nightly", ".env"), "utf8")).toContain("worker.mode=nightly");
   });
 
 });

@@ -15,11 +15,6 @@ export async function upsertEnvVar(path: string, key: string, value: string): Pr
   return upsertEnvVars(path, [[key, value]]);
 }
 
-/**
- * Upserts multiple key-value pairs into an env file in a single read-write cycle.
- * Prefer this over calling `upsertEnvVar` repeatedly when writing several keys
- * to the same file, as it avoids N redundant read-write operations.
- */
 export async function upsertEnvVars(filePath: string, entries: [key: string, value: string][]): Promise<void> {
   if (entries.length === 0) return;
 

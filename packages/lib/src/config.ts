@@ -3,10 +3,6 @@ import type { ComposeConfig } from "./types.ts";
 import { readEnvFile } from "./env.ts";
 import { resolveXDGPaths } from "./paths.ts";
 
-/**
- * Load compose configuration from the XDG state .env file.
- * Used by all management commands (update, start, stop, restart, logs, status).
- */
 export async function loadComposeConfig(): Promise<ComposeConfig> {
   const xdg = resolveXDGPaths();
   const envPath = join(xdg.state, ".env");

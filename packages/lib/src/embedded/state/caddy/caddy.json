@@ -1,0 +1,40 @@
+{
+  "admin": { "disabled": true },
+  "apps": {
+    "http": {
+      "servers": {
+        "main": {
+          "listen": [":80"],
+          "routes": [
+            {
+              "match": [{
+                "path": ["/api*"],
+                "remote_ip": {
+                  "ranges": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fd00::/8"]
+                }
+              }],
+              "handle": [{
+                "handler": "subroute",
+                "routes": [
+                  {
+                    "handle": [
+                      { "handler": "rewrite", "strip_path_prefix": "/api" },
+                      { "handler": "reverse_proxy", "upstreams": [{ "dial": "admin:8100" }] }
+                    ]
+                  }
+                ]
+              }],
+              "terminal": true
+            },
+            {
+              "handle": [{
+                "handler": "reverse_proxy",
+                "upstreams": [{ "dial": "assistant:4096" }]
+              }]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -14,17 +14,11 @@ function createManager(dir: string) {
     stateRootPath: dir,
     dataRootPath: join(dir, "data"),
     configRootPath: join(dir, "config"),
-    caddyJsonPath: join(dir, "caddy.json"),
     composeFilePath: join(dir, "docker-compose.yml"),
     runtimeEnvPath: join(dir, ".env"),
     systemEnvPath: join(dir, "system.env"),
     secretsEnvPath: join(dir, "secrets.env"),
     stackSpecPath: join(dir, "openpalm.yaml"),
-    gatewayEnvPath: join(dir, "gateway", ".env"),
-    openmemoryEnvPath: join(dir, "openmemory", ".env"),
-    postgresEnvPath: join(dir, "postgres", ".env"),
-    qdrantEnvPath: join(dir, "qdrant", ".env"),
-    assistantEnvPath: join(dir, "assistant", ".env"),
   });
 }
 
@@ -61,7 +55,6 @@ describe("applyStack dry-run", () => {
       channels: {
         chat: { enabled: true, exposure: "lan", config: { CHAT_INBOUND_TOKEN: "${MISSING}", CHANNEL_CHAT_SECRET: "" } },
       },
-      services: {},
     }), "utf8");
 
     const manager = createManager(dir);

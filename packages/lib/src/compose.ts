@@ -31,13 +31,9 @@ export async function composePull(config: ComposeConfig, services?: string[]): P
 export async function composeUp(
   config: ComposeConfig,
   services?: string[],
-  options?: { detach?: boolean; pull?: "always" | "missing" | "never"; profiles?: string[] }
+  options?: { detach?: boolean; pull?: "always" | "missing" | "never" }
 ): Promise<void> {
-  const args: string[] = [];
-  if (options?.profiles) {
-    for (const profile of options.profiles) args.push("--profile", profile);
-  }
-  args.push("up");
+  const args = ["up"];
   if (options?.detach ?? true) args.push("-d");
   if (options?.pull) args.push("--pull", options.pull);
   if (services) args.push(...services);

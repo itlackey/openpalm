@@ -27,12 +27,10 @@ function reportIssueUrl(context: { os: string; arch: string; error: string }): s
   return `https://github.com/itlackey/openpalm/issues/new?title=${title}&body=${body}`;
 }
 
-/** Path to the embedded full-stack docker-compose.yml */
 const EMBEDDED_COMPOSE_PATH = join(
   import.meta.dir, "..", "..", "..", "lib", "src", "embedded", "state", "docker-compose.yml"
 );
 
-/** Check if OpenPalm is already installed. Returns true if user wants to abort. */
 async function checkExistingInstall(
   stateComposeFile: string,
   stateEnvFile: string,
@@ -68,7 +66,6 @@ async function checkExistingInstall(
   return !(await confirm("Continue anyway and overwrite the existing installation?"));
 }
 
-/** Generate initial secrets .env or fix insecure defaults. Returns generated admin token (if any). */
 async function ensureSecrets(stateEnvFile: string): Promise<string> {
   let generatedAdminToken = "";
   if (await Bun.file(stateEnvFile).exists()) {
@@ -108,7 +105,6 @@ async function ensureSecrets(stateEnvFile: string): Promise<string> {
   return generatedAdminToken;
 }
 
-/** Build Caddy JSON config for the default install routes. */
 function buildCaddyConfig(ingressPort: number): string {
   return JSON.stringify({
     admin: { disabled: true },
@@ -139,34 +135,17 @@ function buildCaddyConfig(ingressPort: number): string {
   }, null, 2) + "\n";
 }
 
-/** Poll health endpoints with exponential backoff. */
 async function waitForHealthy(adminDirectUrl: string): Promise<{ admin: boolean; gateway: boolean }> {
-  let admin = false;
-  let gateway = false;
-  let delay = 1000;
-  const maxDelay = 5000;
+  let admin = false, gateway = false;
   const deadline = Date.now() + 180_000;
-  while (Date.now() < deadline) {
-    if (!admin) {
-      try {
-        const resp = await fetch(`${adminDirectUrl}/health`, { signal: AbortSignal.timeout(3000) });
-        if (resp.ok) admin = true;
-      } catch { /* not ready */ }
-    }
-    if (!gateway) {
-      try {
-        const resp = await fetch("http://localhost:8080/health", { signal: AbortSignal.timeout(3000) });
-        if (resp.ok) gateway = true;
-      } catch { /* not ready */ }
-    }
-    if (admin && gateway) break;
-    await Bun.sleep(delay);
-    delay = Math.min(delay * 1.5, maxDelay);
+  while (Date.now() < deadline && !(admin && gateway)) {
+    if (!admin) { try { admin = (await fetch(`${adminDirectUrl}/health`, { signal: AbortSignal.timeout(3000) })).ok; } catch {} }
+    if (!gateway) { try { gateway = (await fetch("http://localhost:8080/health", { signal: AbortSignal.timeout(3000) })).ok; } catch {} }
+    if (!(admin && gateway)) await Bun.sleep(3000);
   }
   return { admin, gateway };
 }
 
-/** Detect OS, arch, runtime, compose — exits on failure. */
 async function detectEnvironment(ingressPort: number) {
   const os = detectOS();
   if (os === "unknown") {
@@ -209,7 +188,6 @@ async function detectEnvironment(ingressPort: number) {
   return { os, arch, platform, bin, subcommand };
 }
 
-/** Pull images and start the compose stack — exits on pull failure. */
 async function pullAndStart(config: ComposeConfig, ctx: { os: string; arch: string }) {
   const { os, arch } = ctx;
   const spin1 = spinner("Pulling service images...");
@@ -228,7 +206,6 @@ async function pullAndStart(config: ComposeConfig, ctx: { os: string; arch: stri
   spin2.stop(green("Services started"));
 }
 
-/** Print healthy/unhealthy final status + useful commands. */
 function printInstallSummary(
   healthy: boolean,
   health: { admin: boolean; gateway: boolean },

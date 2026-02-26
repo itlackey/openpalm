@@ -174,13 +174,12 @@ export function createGatewayFetch(deps: GatewayDeps): (req: Request) => Promise
 if (import.meta.main) {
   const PORT = Number(Bun.env.PORT ?? 8080);
   const OPENPALM_ASSISTANT_URL = Bun.env.OPENPALM_ASSISTANT_URL ?? "http://assistant:4096";
-  const nonceCachePath = Bun.env.GATEWAY_NONCE_CACHE_PATH ?? "/app/data/nonce-cache.json";
 
   const CHANNEL_SHARED_SECRETS = discoverChannelSecretsFromState("/state", Bun.env);
 
   const openCode = new OpenCodeClient(OPENPALM_ASSISTANT_URL);
   const audit = new AuditLog("/app/data/audit.log");
-  const nonceCache = new NonceCache(nonceCachePath);
+  const nonceCache = new NonceCache();
 
   const server = Bun.serve({
     port: PORT,

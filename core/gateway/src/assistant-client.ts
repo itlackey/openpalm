@@ -1,8 +1,3 @@
-/**
- * Thin HTTP client for forwarding requests to the OpenCode agent runtime.
- * The gateway delegates all reasoning, tool use, and memory access to OpenCode.
- */
-
 type AgentRequest = {
   message: string;
   userId: string;
@@ -22,17 +17,7 @@ type AgentResponse = {
 const DEFAULT_TIMEOUT_MS = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 15_000);
 const MAX_RETRIES = Number(Bun.env.OPENCODE_RETRIES ?? 2);
 const RETRY_BASE_DELAY_MS = Number(Bun.env.OPENCODE_RETRY_BASE_DELAY_MS ?? 150);
-
-class OpenCodeHttpError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
-    super(message);
-    this.name = "OpenCodeHttpError";
-  }
-}
-
-function shouldRetryStatus(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504;
-}
+const RETRY_STATUS = new Set([429, 502, 503, 504]);
 
 export class OpenCodeClient {
   constructor(private readonly baseUrl: string) {}
@@ -48,29 +33,23 @@ export class OpenCodeClient {
       try {
         const resp = await fetch(`${this.baseUrl}/chat`, {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-client": "openpalm-gateway",
-          },
+          headers: { "content-type": "application/json", "x-client": "openpalm-gateway" },
           signal: aborter.signal,
           body: JSON.stringify({
-            message: req.message,
-            session_id: req.sessionId,
-            user_id: req.userId,
-            agent: req.agent,
-            metadata: {
-              ...req.metadata,
-              channel: req.channel,
-            },
+            message: req.message, session_id: req.sessionId, user_id: req.userId,
+            agent: req.agent, metadata: { ...req.metadata, channel: req.channel },
           }),
         });
 
         if (!resp.ok) {
           const body = await resp.text().catch(() => "");
-          throw new OpenCodeHttpError(
-            `opencode ${resp.status}: ${body}`,
-            shouldRetryStatus(resp.status),
-          );
+          const err = new Error(`opencode ${resp.status}: ${body}`);
+          if (attempt < retries && RETRY_STATUS.has(resp.status)) {
+            lastError = err;
+            await Bun.sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
+            continue;
+          }
+          throw err;
         }
 
         const data = (await resp.json()) as Record<string, unknown>;
@@ -81,21 +60,16 @@ export class OpenCodeClient {
           metadata: (data.metadata as Record<string, unknown>) ?? {},
         };
       } catch (error) {
-        const isAbort = error instanceof DOMException && error.name === "AbortError";
-        const normalizedError = isAbort
-          ? new Error(`opencode timeout after ${DEFAULT_TIMEOUT_MS}ms`)
-          : error;
-        lastError = normalizedError;
-
-        const retryable = normalizedError instanceof OpenCodeHttpError
-          ? normalizedError.retryable
-          : true;
-
-        if (attempt < retries && retryable) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          lastError = new Error(`opencode timeout after ${DEFAULT_TIMEOUT_MS}ms`);
+        } else {
+          lastError = error;
+        }
+        if (attempt < retries && !(error instanceof Error && error.message.startsWith("opencode "))) {
           await Bun.sleep(RETRY_BASE_DELAY_MS * 2 ** attempt);
           continue;
         }
-        throw normalizedError;
+        throw lastError;
       } finally {
         clearTimeout(timeout);
       }

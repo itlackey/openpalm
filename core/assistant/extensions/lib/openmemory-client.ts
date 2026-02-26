@@ -1,9 +1,3 @@
-/**
- * OpenMemory HTTP API client for memory recall and write-back.
- *
- * Disabled by setting OPENPALM_MEMORY_MODE to anything other than "api".
- */
-
 export interface MemoryHit {
   id: string;
   text: string;

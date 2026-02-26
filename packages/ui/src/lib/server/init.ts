@@ -16,12 +16,7 @@ import {
 
 export const log = createLogger('admin');
 
-// Re-export type for route convenience (this import is type-only so safe at build time)
 export { CoreSecretRequirements } from '@openpalm/lib/admin/stack-manager';
-
-// --- Lazy singletons: avoid side-effects during SvelteKit build analysis ---
-// All heavy @openpalm/lib imports are deferred via dynamic import() to prevent
-// module-level Bun.env reads and filesystem operations during build.
 
 type StackManager = import('@openpalm/lib/admin/stack-manager').StackManager;
 
@@ -35,16 +30,10 @@ export async function getStackManager(): Promise<StackManager> {
 			stateRootPath: STATE_ROOT,
 			dataRootPath: DATA_ROOT,
 			configRootPath: CONFIG_ROOT,
-			caddyJsonPath: `${STATE_ROOT}/caddy.json`,
 			secretsEnvPath: SECRETS_ENV_PATH,
 			stackSpecPath: STACK_SPEC_PATH,
 			runtimeEnvPath: RUNTIME_ENV_PATH,
 			systemEnvPath: SYSTEM_ENV_PATH,
-			gatewayEnvPath: `${STATE_ROOT}/gateway/.env`,
-			openmemoryEnvPath: `${STATE_ROOT}/openmemory/.env`,
-			postgresEnvPath: `${STATE_ROOT}/postgres/.env`,
-			qdrantEnvPath: `${STATE_ROOT}/qdrant/.env`,
-			assistantEnvPath: `${STATE_ROOT}/assistant/.env`,
 			dataEnvPath: DATA_ENV_PATH,
 			composeFilePath: COMPOSE_FILE_PATH,
 		});
@@ -52,7 +41,6 @@ export async function getStackManager(): Promise<StackManager> {
 	return _stackManager;
 }
 
-/** Run one-time startup logic. Safe to call multiple times. No-op during build. */
 export async function ensureInitialized(): Promise<void> {
 	if (_initialized || building) return;
 	_initialized = true;
@@ -69,6 +57,5 @@ export async function knownServices(): Promise<Set<string>> {
 	const sm = await getStackManager();
 	const base = await allowedServiceSet();
 	for (const name of sm.listChannelNames()) base.add(`channel-${name}`);
-	for (const name of sm.listServiceNames()) base.add(`service-${name}`);
 	return new Set(filterUiManagedServices(Array.from(base)));
 }

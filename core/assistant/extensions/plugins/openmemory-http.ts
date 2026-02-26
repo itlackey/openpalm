@@ -1,12 +1,3 @@
-/**
- * OpenMemory HTTP pipeline plugin for OpenCode.
- *
- * Implements a memory pipeline that uses OpenMemory's REST API:
- *   A) Pre-turn  — recall injection into system prompt
- *   B) Post-turn — write-back of save-worthy items on session idle
- *   C) Compaction — preserve critical state
- */
-
 import {
   loadConfig,
   containsSecret,

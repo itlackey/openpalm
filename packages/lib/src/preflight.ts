@@ -1,10 +1,6 @@
 import { homedir } from "node:os";
 import type { HostOS, PreflightIssue, PreflightResult } from "./types.ts";
 
-/**
- * Check available disk space on the home directory.
- * Returns a typed issue if less than 3 GB is available.
- */
 export async function checkDiskSpaceDetailed(): Promise<PreflightIssue | null> {
   try {
     const proc = Bun.spawn(["df", "-Pk", homedir()], {
@@ -36,7 +32,6 @@ export async function checkDiskSpaceDetailed(): Promise<PreflightIssue | null> {
   return null;
 }
 
-/** Run a command and return { exitCode, output } or null if the command is missing. */
 async function trySpawn(cmd: string[]): Promise<{ exitCode: number; output: string } | null> {
   try {
     const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
@@ -47,10 +42,6 @@ async function trySpawn(cmd: string[]): Promise<{ exitCode: number; output: stri
   }
 }
 
-/**
- * Check if a port is already in use.
- * Returns a typed issue if the port is occupied.
- */
 export async function checkPortDetailed(port: number = 80): Promise<PreflightIssue | null> {
   // Try lsof first
   const lsof = await trySpawn(["lsof", `-iTCP:${port}`, "-sTCP:LISTEN", "-P", "-n"]);
@@ -80,10 +71,6 @@ export async function checkPortDetailed(port: number = 80): Promise<PreflightIss
   return null;
 }
 
-/**
- * Check if the Docker daemon is running.
- * Returns a typed issue if the daemon is unreachable.
- */
 export async function checkDaemonRunningDetailed(
   bin: string
 ): Promise<PreflightIssue | null> {
@@ -116,9 +103,6 @@ export async function checkDaemonRunningDetailed(
   return null;
 }
 
-/**
- * Run all preflight checks and return a structured result with typed issues.
- */
 export async function runPreflightChecksDetailed(
   bin: string,
   port: number = 80
@@ -133,60 +117,17 @@ export async function runPreflightChecksDetailed(
   return { ok: !hasFatal, issues };
 }
 
-/**
- * Return user-friendly install guidance when Docker is not found.
- */
-const runtimeGuidanceByOS: Record<HostOS, string[]> = {
-  macos: [
-    "For macOS, install Docker Desktop:",
-    "",
-    "  Docker Desktop (free for personal use):",
-    "    https://www.docker.com/products/docker-desktop/",
-    "",
-    "  Or via Homebrew:",
-    "    brew install --cask docker",
-  ],
-  linux: [
-    "For Linux, install Docker Engine + Compose plugin:",
-    "",
-    "  Quick install (official script):",
-    "    curl -fsSL https://get.docker.com | sh",
-    "",
-    "  Or follow the guide at:",
-    "    https://docs.docker.com/engine/install/",
-    "",
-    "  After installing, make sure Docker is running:",
-    "    sudo systemctl start docker",
-  ],
-  windows: [
-    "Download Docker Desktop (free for personal use):",
-    "  https://www.docker.com/products/docker-desktop/",
-    "",
-    "Or install via winget:",
-    "  winget install Docker.DockerDesktop",
-  ],
-  unknown: [
-    "Download Docker Desktop (free for personal use):",
-    "  https://www.docker.com/products/docker-desktop/",
-  ],
+const GUIDANCE: Record<HostOS, string> = {
+  macos: "Install Docker Desktop:\n  https://www.docker.com/products/docker-desktop/\n  Or: brew install --cask docker",
+  linux: "Install Docker Engine:\n  curl -fsSL https://get.docker.com | sh\n  Then: sudo systemctl start docker",
+  windows: "Install Docker Desktop:\n  https://www.docker.com/products/docker-desktop/\n  Or: winget install Docker.DockerDesktop",
+  unknown: "Install Docker Desktop:\n  https://www.docker.com/products/docker-desktop/",
 };
 
 export function noRuntimeGuidance(os: HostOS): string {
-  const header = ["", "Docker is not installed.", "", "OpenPalm runs inside containers and needs Docker installed first.", ""];
-  const osLines = runtimeGuidanceByOS[os] ?? runtimeGuidanceByOS.unknown;
-  return [...header, ...osLines, "", "After installing, rerun this installer.", ""].join("\n");
+  return `\nDocker is not installed.\nOpenPalm runs inside containers and needs Docker installed first.\n\n${GUIDANCE[os] ?? GUIDANCE.unknown}\n\nAfter installing, rerun this installer.\n`;
 }
 
-/**
- * Return user-friendly compose-not-available guidance.
- */
 export function noComposeGuidance(): string {
-  return [
-    "Docker Compose is not available.",
-    "",
-    "Docker Compose is included in Docker Desktop.",
-    "For Docker Engine on Linux, install the Compose plugin:",
-    "  sudo apt-get install docker-compose-plugin",
-    "Or: https://docs.docker.com/compose/install/",
-  ].join("\n");
+  return "Docker Compose is not available.\nIncluded in Docker Desktop. For Linux:\n  sudo apt-get install docker-compose-plugin\n  Or: https://docs.docker.com/compose/install/";
 }

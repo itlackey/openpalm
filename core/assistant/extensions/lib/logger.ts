@@ -1,13 +1,3 @@
-/**
- * Structured JSON logger for assistant plugins.
- *
- * Mirrors the API and output format of @openpalm/lib/shared/logger.ts so that
- * all services produce identical log lines for aggregation tooling.
- *
- * The assistant runtime does not have @openpalm/lib available, so this module
- * provides a local copy of the same contract.
- */
-
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface Logger {
@@ -58,17 +48,9 @@ function emit(level: LogLevel, service: string, msg: string, extra?: Record<stri
 
 export function createLogger(service: string): Logger {
   return {
-    debug(msg: string, extra?: Record<string, unknown>): void {
-      emit("debug", service, msg, extra);
-    },
-    info(msg: string, extra?: Record<string, unknown>): void {
-      emit("info", service, msg, extra);
-    },
-    warn(msg: string, extra?: Record<string, unknown>): void {
-      emit("warn", service, msg, extra);
-    },
-    error(msg: string, extra?: Record<string, unknown>): void {
-      emit("error", service, msg, extra);
-    },
+    debug: (msg, extra) => emit("debug", service, msg, extra),
+    info: (msg, extra) => emit("info", service, msg, extra),
+    warn: (msg, extra) => emit("warn", service, msg, extra),
+    error: (msg, extra) => emit("error", service, msg, extra),
   };
 }

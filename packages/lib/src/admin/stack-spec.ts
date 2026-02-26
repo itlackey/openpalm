@@ -15,14 +15,11 @@ export type StackChannelConfig = {
   enabled: boolean;
   exposure: ChannelExposure;
   template?: string;
-  supportsMultipleInstances?: boolean;
   name?: string;
   description?: string;
   image?: string;
   containerPort?: number;
   hostPort?: number;
-  domains?: string[];
-  pathPrefixes?: string[];
   rewritePath?: string;
   healthcheckPath?: string;
   sharedSecretEnv?: string;
@@ -30,34 +27,12 @@ export type StackChannelConfig = {
   config: Record<string, string>;
 };
 
-export type StackServiceConfig = {
-  enabled: boolean;
-  template?: string;
-  supportsMultipleInstances?: boolean;
-  name?: string;
-  description?: string;
-  image: string;
-  containerPort: number;
-  healthcheckPath?: string;
-  volumes?: string[];
-  dependsOn?: string[];
-  config: Record<string, string>;
-};
-
-type CaddyConfig = {
-  email?: string;
-};
-
 export type StackSpec = {
   version: typeof StackSpecVersion;
   accessScope: StackAccessScope;
   ingressPort?: number;
-  caddy?: CaddyConfig;
   channels: Record<string, StackChannelConfig>;
-  services: Record<string, StackServiceConfig>;
 };
-
-// --- Derive built-in channel data from YAML snippets ---
 
 const BuiltInChannelNames: BuiltInChannelName[] = Object.keys(BUILTIN_CHANNELS);
 
@@ -77,19 +52,7 @@ export function isBuiltInChannel(name: string): name is BuiltInChannelName {
   return BuiltInChannelNames.includes(name as BuiltInChannelName);
 }
 
-// --- Validation patterns for user-provided values that flow into generated configs ---
-
-/** Domain: alphanumeric labels separated by dots, optional wildcard prefix, 2+ char TLD. Max 253 chars per RFC 1035. */
-const DOMAIN_PATTERN = /^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i;
-
-/** Path prefix: must start with /, only alphanumeric plus / _ - allowed. No whitespace, no Caddy metacharacters. */
-const PATH_PREFIX_PATTERN = /^\/[a-z0-9\/_-]*$/i;
-
-/** Docker image name: registry/namespace/name:tag or @sha256 digest. No whitespace or YAML metacharacters. */
 const IMAGE_PATTERN = /^[a-z0-9]+([._\/:@-][a-z0-9]+)*$/i;
-
-/** Email: basic validation — no whitespace, newlines, or Caddy metacharacters. */
-const EMAIL_PATTERN = /^[^\s{}"#]+@[^\s{}"#]+\.[^\s{}"#]+$/;
 
 function defaultChannelConfig(channel: BuiltInChannelName): Record<string, string> {
   const result: Record<string, string> = {};
@@ -116,7 +79,6 @@ export function createDefaultStackSpec(): StackSpec {
     version: StackSpecVersion,
     accessScope: "lan",
     channels: Object.fromEntries(BuiltInChannelNames.map((name) => [name, defaultChannelEntry(name)])),
-    services: {},
   };
 }
 
@@ -142,66 +104,27 @@ function parseOptionalStringArray(value: unknown, errorCode: string): string[] |
   return value.map((v: string) => v.trim());
 }
 
-function parseOptionalBoolean(value: unknown, errorCode: string): boolean | undefined {
+function parsePort(value: unknown, errorCode: string): number | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "boolean") throw new Error(errorCode);
-  return value;
-}
-
-function parsePort(value: unknown, errorCode: string, required: true): number;
-function parsePort(value: unknown, errorCode: string, required?: false): number | undefined;
-function parsePort(value: unknown, errorCode: string, required?: boolean): number | undefined {
-  if (value === undefined) { if (required) throw new Error(errorCode); return undefined; }
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 65535) throw new Error(errorCode);
   return value;
 }
 
-function parseImage(value: unknown, errorCode: string, required: true): string;
-function parseImage(value: unknown, errorCode: string, required?: false): string | undefined;
-function parseImage(value: unknown, errorCode: string, required?: boolean): string | undefined {
-  if (value === undefined) { if (required) throw new Error(errorCode); return undefined; }
+function parseImage(value: unknown, errorCode: string): string | undefined {
+  if (value === undefined) return undefined;
   if (typeof value !== "string" || !value.trim()) throw new Error(errorCode);
   if (!IMAGE_PATTERN.test(value.trim())) throw new Error(`${errorCode}_format`);
   return value.trim();
 }
 
-function parseOptionalDomains(value: unknown, errorCode: string): string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw new Error(errorCode);
-  for (const d of value) {
-    if (typeof d !== "string" || !d.trim()) throw new Error(`${errorCode}_entry`);
-    if (!DOMAIN_PATTERN.test(d.trim())) throw new Error(`${errorCode}_format`);
-    if (d.trim().length > 253) throw new Error(`${errorCode}_length`);
-  }
-  return value.map((d: string) => d.trim());
-}
-
-function parseOptionalPathPrefixes(value: unknown, errorCode: string): string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw new Error(errorCode);
-  for (const p of value) {
-    if (typeof p !== "string" || !p.trim()) throw new Error(`${errorCode}_entry`);
-    if (!PATH_PREFIX_PATTERN.test(p.trim())) throw new Error(`${errorCode}_format`);
-  }
-  return value.map((p: string) => p.trim());
-}
-
-
-function parseOptionalNonEmptyString(value: unknown, errorCode: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value.trim()) throw new Error(errorCode);
-  return value.trim();
-}
-
-function parseOptionalRewritePath(value: unknown, errorCode: string): string | undefined {
+function parseOptionalNonEmptyString(value: unknown, errorCode: string, validator?: (v: string) => boolean): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !value.trim()) throw new Error(errorCode);
   const trimmed = value.trim();
-  if (!trimmed.startsWith("/")) throw new Error(errorCode);
+  if (validator && !validator(trimmed)) throw new Error(errorCode);
   return trimmed;
 }
 
-/** Conditionally include a key in an object spread — returns {} when value is undefined. */
 function spread<K extends string, V>(key: K, value: V | undefined): Record<K, V> | {} {
   return value !== undefined ? { [key]: value } as Record<K, V> : {};
 }
@@ -240,67 +163,21 @@ function parseChannel(raw: unknown, channelName: string): StackChannelConfig {
     exposure: ch.exposure as ChannelExposure,
     config: parseChannelConfig(ch.config, n),
     ...spread("template", parseOptionalString(ch.template, `channel_template_${n}`)),
-    ...spread("supportsMultipleInstances", parseOptionalBoolean(ch.supportsMultipleInstances, `invalid_channel_supports_multiple_instances_${n}`)),
     ...spread("name", parseOptionalString(ch.name, `channel_name_${n}`)),
     ...spread("description", parseOptionalString(ch.description, `channel_description_${n}`)),
     ...spread("image", parseImage(ch.image, `invalid_channel_image_${n}`)),
     ...spread("containerPort", parsePort(ch.containerPort, `invalid_channel_container_port_${n}`)),
     ...spread("hostPort", parsePort(ch.hostPort, `invalid_channel_host_port_${n}`)),
-    ...spread("domains", parseOptionalDomains(ch.domains, `invalid_channel_domain_${n}`)),
-    ...spread("pathPrefixes", parseOptionalPathPrefixes(ch.pathPrefixes, `invalid_channel_path_prefix_${n}`)),
-    ...spread("rewritePath", parseOptionalRewritePath(ch.rewritePath, `invalid_channel_rewrite_path_${n}`)),
+    ...spread("rewritePath", parseOptionalNonEmptyString(ch.rewritePath, `invalid_channel_rewrite_path_${n}`, (v) => v.startsWith("/"))),
     ...spread("healthcheckPath", parseOptionalString(ch.healthcheckPath, `invalid_channel_healthcheck_path_${n}`)),
     ...spread("sharedSecretEnv", parseOptionalNonEmptyString(ch.sharedSecretEnv, `invalid_channel_shared_secret_env_${n}`)),
     ...spread("volumes", parseOptionalStringArray(ch.volumes, `invalid_channel_volumes_${n}`)),
   };
 }
 
-function parseService(raw: unknown, serviceName: string): StackServiceConfig {
-  const svc = assertRecord(raw, `invalid_service_${serviceName}`);
-  if (typeof svc.enabled !== "boolean") throw new Error(`invalid_service_enabled_${serviceName}`);
-
-  const n = serviceName; // short alias for error codes
-  return {
-    enabled: svc.enabled,
-    image: parseImage(svc.image, `invalid_service_image_${n}`, true),
-    containerPort: parsePort(svc.containerPort, `invalid_service_container_port_${n}`, true),
-    config: parseOpenConfig(svc.config, `service_${n}`),
-    ...spread("template", parseOptionalString(svc.template, `service_template_${n}`)),
-    ...spread("supportsMultipleInstances", parseOptionalBoolean(svc.supportsMultipleInstances, `invalid_service_supports_multiple_instances_${n}`)),
-    ...spread("name", parseOptionalString(svc.name, `service_name_${n}`)),
-    ...spread("description", parseOptionalString(svc.description, `service_description_${n}`)),
-    ...spread("volumes", parseOptionalStringArray(svc.volumes, `invalid_service_volumes_${n}`)),
-    ...spread("healthcheckPath", parseOptionalString(svc.healthcheckPath, `invalid_service_healthcheck_path_${n}`)),
-    ...spread("dependsOn", parseOptionalStringArray(svc.dependsOn, `invalid_service_depends_on_${n}`)),
-  };
-}
-
-function parseServices(raw: unknown): Record<string, StackServiceConfig> {
-  if (raw === undefined) return {};
-  const doc = assertRecord(raw, "invalid_services");
-  const services: Record<string, StackServiceConfig> = {};
-  for (const [name, value] of Object.entries(doc)) {
-    if (!name.trim()) throw new Error(`invalid_service_name_${name}`);
-    services[name] = parseService(value, name);
-  }
-  return services;
-}
-
-function parseCaddyConfig(raw: unknown): CaddyConfig | undefined {
-  if (raw === undefined) return undefined;
-  const doc = assertRecord(raw, "invalid_caddy_config");
-  const caddy: CaddyConfig = {};
-  if (doc.email !== undefined) {
-    if (typeof doc.email !== "string") throw new Error("invalid_caddy_email");
-    if (!EMAIL_PATTERN.test(doc.email.trim())) throw new Error("invalid_caddy_email_format");
-    caddy.email = doc.email.trim();
-  }
-  return caddy;
-}
-
 export function parseStackSpec(raw: unknown): StackSpec {
   const doc = assertRecord(raw, "invalid_stack_spec");
-  const allowedKeys = new Set(["version", "accessScope", "ingressPort", "caddy", "channels", "services"]);
+  const allowedKeys = new Set(["version", "accessScope", "ingressPort", "channels"]);
   for (const key of Object.keys(doc)) {
     if (!allowedKeys.has(key)) throw new Error(`unknown_stack_spec_field_${key}`);
   }
@@ -319,9 +196,7 @@ export function parseStackSpec(raw: unknown): StackSpec {
     version: StackSpecVersion,
     accessScope: doc.accessScope as StackAccessScope,
     channels,
-    services: parseServices(doc.services),
     ...spread("ingressPort", parsePort(doc.ingressPort, "invalid_ingress_port")),
-    ...spread("caddy", parseCaddyConfig(doc.caddy)),
   };
 }
 

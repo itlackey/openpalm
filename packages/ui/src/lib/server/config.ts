@@ -2,10 +2,6 @@ import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { resolve } from 'node:path';
 
-/**
- * Resolve a config value: explicit env var > dev-mode .dev/ path > Docker default.
- * In dev mode (vite dev), paths resolve relative to packages/ui/ into ../../.dev/.
- */
 function devDefault(envVar: string, dockerDefault: string, devRelative: string): string {
 	const value = env[envVar];
 	if (value) return value;

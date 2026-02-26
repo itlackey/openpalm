@@ -3,10 +3,6 @@ import { ADMIN_TOKEN, DEFAULT_INSECURE_TOKEN } from './config.ts';
 
 const TOKEN_HMAC_KEY = 'openpalm-token-compare';
 
-/**
- * Constant-time token comparison using HMAC to avoid timing side-channels.
- * Unlike length-check-then-compare, HMAC comparison does not leak token length.
- */
 function hmacCompare(a: string, b: string): boolean {
 	const hmacA = createHmac('sha256', TOKEN_HMAC_KEY).update(a).digest();
 	const hmacB = createHmac('sha256', TOKEN_HMAC_KEY).update(b).digest();

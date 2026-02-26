@@ -56,21 +56,8 @@ export interface ComposeRunner {
   stackDown(): Promise<ComposeResult>;
 }
 
-/** Internal runner function type: env file is already baked in. */
 type RunFn = (args: string[], composeFileOverride?: string, stream?: boolean) => Promise<ComposeResult>;
 
-/**
- * Create a compose runner with an explicit env file baked in.
- *
- * Pass `envFile` as the path to the runtime env file (e.g. `$STATE/.env`).
- * This file is passed as `--env-file` to every `docker compose` invocation so
- * that compose can interpolate variables like `${OPENPALM_STATE_HOME}` and
- * `${POSTGRES_PASSWORD}` that live on the host but are not available inside the
- * admin container's own process environment.
- *
- * When omitted, defaults to `$COMPOSE_PROJECT_PATH/.env` (i.e. `/state/.env`
- * in Docker) — the known location written by the installer.
- */
 export function createComposeRunner(envFile?: string, spawn?: SpawnFn): ComposeRunner {
   const resolvedEnvFile = envFile ?? `${composeProjectPath()}/.env`;
   const run: RunFn = (args, composeFileOverride, stream) =>
@@ -212,40 +199,26 @@ async function runExec(run: RunFn, service: string, args: string[]): Promise<Com
   return run(["exec", "-T", service, ...args], undefined, true);
 }
 
-// ── Standalone convenience exports (use default env file) ───────────────────
+let defaultRunner: ComposeRunner | undefined;
+function getRunner(): ComposeRunner { return defaultRunner ??= createComposeRunner(); }
 
 export async function allowedServiceSet(runner?: ComposeRunner): Promise<Set<string>> {
-  const r = runner ?? createComposeRunner();
+  const r = runner ?? getRunner();
   const fromCompose = await r.configServices();
-  const declared = [...CoreServices, ...extraServicesFromEnv(), ...fromCompose];
-  return new Set<string>(declared);
+  return new Set<string>([...CoreServices, ...extraServicesFromEnv(), ...fromCompose]);
 }
 
-export async function composeList(): Promise<ComposeResult> {
-  return createComposeRunner().list();
-}
-
-export async function composePull(service?: string): Promise<ComposeResult> {
-  return createComposeRunner().pull(service);
-}
+export function composeList(): Promise<ComposeResult> { return getRunner().list(); }
+export function composePull(service?: string): Promise<ComposeResult> { return getRunner().pull(service); }
+export function composeLogs(service: string, tail?: number): Promise<ComposeResult> { return getRunner().logs(service, tail); }
+export function composeAction(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> { return getRunner().action(action, service); }
+export function composeExec(service: string, args: string[]): Promise<ComposeResult> { return getRunner().exec(service, args); }
 
 export function composeLogsValidateTail(tail: number): boolean {
   return Number.isInteger(tail) && tail >= 1 && tail <= 5000;
 }
 
-export async function composeLogs(service: string, tail?: number): Promise<ComposeResult> {
-  return createComposeRunner().logs(service, tail);
-}
-
 export function filterUiManagedServices(services: string[]): string[] {
   const excluded = new Set<string>(UiManagedServiceExclusions);
   return services.filter((service) => !excluded.has(service));
-}
-
-export async function composeAction(action: "up" | "stop" | "restart", service: string | string[]): Promise<ComposeResult> {
-  return createComposeRunner().action(action, service);
-}
-
-export async function composeExec(service: string, args: string[]): Promise<ComposeResult> {
-  return createComposeRunner().exec(service, args);
 }

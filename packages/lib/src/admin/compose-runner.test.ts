@@ -7,10 +7,6 @@ import {
 import { runCompose } from "../compose-runner.ts";
 import type { SpawnFn } from "../types.ts";
 
-/**
- * Create a mock SpawnFn that returns configurable stdout content.
- * The mock captures all invocation args for assertion.
- */
 function createTestSpawn(output: (args: string[]) => string): SpawnFn {
   return ((args: string[]) => ({
     exited: Promise.resolve(0),
