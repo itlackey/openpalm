@@ -7,7 +7,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { appendAudit, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
 import { composePull, composeUp, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
@@ -35,7 +35,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(502, "pull_failed", "Failed to pull images", { stderr: pullResult.stderr }, requestId);
   }
 
-  const upResult = await composeUp(state.stateDir, { files, envFiles });
+  const upResult = await composeUp(state.stateDir, { files, envFiles, services: buildManagedServices(state) });
   if (!upResult.ok) {
     appendAudit(state, actor, "containers.pull", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);
     return errorResponse(502, "up_failed", "Images pulled but failed to recreate containers", { stderr: upResult.stderr }, requestId);
