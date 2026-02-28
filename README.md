@@ -31,43 +31,25 @@ After installing, open the app and wait for it to finish starting (you'll see a 
 
 ## Get Started
 
-### Admin-Managed (recommended)
+Copy-paste **one** command into your terminal and the installer does the rest:
 
-With the admin service running, the Admin API handles the full stack lifecycle:
-
+**Mac or Linux** — open Terminal and paste:
 ```bash
-# Install and bring up the stack
-curl -X POST http://localhost:8100/admin/install -H "x-admin-token: $ADMIN_TOKEN"
-
-# Check status
-curl http://localhost:8100/admin/containers/list -H "x-admin-token: $ADMIN_TOKEN"
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-### Standalone (no admin service)
+### What happens when you run the installer
 
-Run the stack directly with Docker Compose:
+1. It checks your system for Docker, Docker Compose, curl, and openssl
+2. It creates the XDG directory tree and downloads the core compose and Caddyfile assets
+3. It generates an admin token (or lets you set your own) and seeds `secrets.env`
+4. It pulls and starts the admin service, then opens the setup wizard in your browser
+5. The wizard walks you through connecting your AI provider and choosing channels
+6. When you finish the wizard, the full stack (assistant, guardian, memory, and all enabled channels) starts automatically
 
-```bash
-mkdir my-openpalm && cd my-openpalm
+No config files to edit. Re-run the same command to update — your secrets are never overwritten.
 
-# Copy configuration files
-cp /path/to/assets/docker-compose.yml .
-cp /path/to/assets/Caddyfile .
-cp /path/to/assets/secrets.env secrets.env
-
-# Edit secrets.env — fill in ADMIN_TOKEN and API keys
-$EDITOR secrets.env
-
-# Copy channel files you want to enable
-mkdir registry
-cp /path/to/registry/chat.yml registry/
-cp /path/to/registry/chat.caddy registry/
-
-# Start the stack
-docker compose -f docker-compose.yml -f registry/chat.yml --env-file secrets.env up -d
-```
-
-Add more channels by copying their `.yml` and `.caddy` files from the registry and adding `-f registry/<name>.yml` to the compose command.
+See `scripts/setup.sh --help` for all options, including `--no-start`, `--no-open`, `--force`, and custom XDG path overrides.
 
 ## What You Get
 
