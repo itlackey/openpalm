@@ -131,7 +131,7 @@
   <main class="setup-page" aria-label="Setup wizard">
     <section class="wizard-card">
       <div class="wizard-header">
-        <h1>OpenPalm Setup</h1>
+        <h1>OpenPalm Setup Wizard</h1>
         <p class="wizard-subtitle">Configure your OpenPalm stack in a few steps.</p>
       </div>
 
@@ -310,14 +310,23 @@
     max-width: none;
     margin: 0;
     display: grid;
-    place-items: center;
     padding: var(--space-6);
     background: var(--color-bg-secondary);
+    align-content: start;
+
+    background-image: url('/wizard.png');
+    background-size: contain;
+    background-position: bottom left;
+    background-repeat: no-repeat;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
   }
 
   .wizard-card {
-    width: 100%;
+    width: stretch;
     max-width: 560px;
+    height: min-content;
+    place-self: center;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 16px;

@@ -12,11 +12,7 @@
   <div class="navbar-inner">
     <div class="navbar-brand">
       <span class="brand-icon">
-        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-          <path d="M2 17l10 5 10-5" />
-          <path d="M2 12l10 5 10-5" />
-        </svg>
+        <img src="/logo-128.png" alt="OpenPalm Logo">
       </span>
       <span class="brand-text">OpenPalm</span>
       <span class="brand-badge">Console</span>
@@ -64,9 +60,10 @@
     justify-content: center;
     width: 34px;
     height: 34px;
-    background: var(--color-primary);
-    color: var(--color-text-inverse);
-    border-radius: var(--radius-md);
+    img{
+      max-width: 100%;
+      max-height: 100%;
+    }
   }
 
   .brand-text {
