@@ -180,12 +180,21 @@ detect_platform() {
 			DOCKER_GID="$HOST_GID"
 		fi
 	else
-		# macOS: Docker Desktop handles socket perms, fall back to user GID
+		# macOS: Try to detect actual socket GID (OrbStack, Colima, etc.)
+		# Fall back to common docker group GIDs if stat fails
 		if [[ -S "$DOCKER_SOCK" ]]; then
-			DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
-		else
-			DOCKER_GID="$HOST_GID"
+			DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null)" || true
 		fi
+		if [[ -z "$DOCKER_GID" ]]; then
+			# Check common docker group GIDs on macOS
+			for gid in 999 1000 1001 20; do
+				if dscl . -read /Groups/docker 2>/dev/null | grep -q "PrimaryGID.*$gid"; then
+					DOCKER_GID="$gid"
+					break
+				fi
+			done
+		fi
+		DOCKER_GID="${DOCKER_GID:-999}"
 	fi
 	ok "Docker GID: $DOCKER_GID"
 
