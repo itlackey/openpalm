@@ -65,10 +65,10 @@ All admin operations require an admin token (`x-admin-token` header). The admin 
 
 Adding a channel requires no code changes — just drop a Docker Compose overlay (`.yml`) and an optional Caddy route (`.caddy`) into the registry. The admin stages these into the runtime automatically. Built-in channels include web chat and Discord, with community channels documented in [`docs/community-channels.md`](docs/community-channels.md).
 
+<div>
 ## How It Works
 
-<div>
-<img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: left; shape-margin: 0.25rem;" />
+<img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
 <p>OpenPalm has defense built into it's core. It has many layers working together to protect your system and your secrets for malicious activity, destructive actions, and other common disasters than can occur with unattended AI assistants.</p>
 </div>
 
