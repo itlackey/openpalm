@@ -922,7 +922,9 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("# Edit this file to update admin token and LLM keys.");
   secretLines.push("# System-managed secrets (database + channel HMAC) do not belong here.");
   secretLines.push("");
-  secretLines.push(`ADMIN_TOKEN=${state.adminToken}`);
+  // ADMIN_TOKEN is intentionally blank on first-run.
+  // It is set by the setup wizard's final step.
+  secretLines.push("ADMIN_TOKEN=");
   secretLines.push("");
   secretLines.push("# LLM provider keys");
   secretLines.push(`OPENAI_API_KEY=${process.env.OPENAI_API_KEY ?? ""}`);
