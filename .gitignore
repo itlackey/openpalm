@@ -11,3 +11,4 @@ core/admin/build/
 core/admin/.env
 core/admin/.env.local
 core/admin/test-results/.last-run.json
+core/admin/coverage/
