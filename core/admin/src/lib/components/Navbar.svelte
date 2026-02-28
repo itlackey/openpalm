@@ -61,8 +61,7 @@
     width: 34px;
     height: 34px;
     img{
-      max-width: 100%;
-      max-height: 100%;
+      max-width: 34px;
     }
   }
 

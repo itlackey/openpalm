@@ -11,6 +11,7 @@ WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 COPY packages/lib /app/node_modules/@openpalm/lib
+RUN cd /app/node_modules/@openpalm/lib && bun install --production
 COPY channels/chat/package.json ./
 COPY channels/chat/server.ts ./server.ts
 # Strip workspace:* dep (pre-installed via COPY above) so bun install succeeds

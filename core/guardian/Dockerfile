@@ -12,6 +12,9 @@ WORKDIR /app
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 COPY packages/lib /app/node_modules/@openpalm/lib
 COPY core/guardian/ .
+# Install lib's own declared dependencies (e.g. dotenv) so transitive
+# imports from lib source resolve correctly at runtime.
+RUN cd /app/node_modules/@openpalm/lib && bun install --production
 # Strip workspace:* dep (pre-installed via COPY above) and remove the workspace
 # lockfile so bun install resolves remaining deps without CI frozen-lockfile enforcement.
 RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))" \

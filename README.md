@@ -23,7 +23,6 @@ You need **one thing** installed before starting: a container runtime.
 
 | Your computer | What to install | Link |
 |---|---|---|
-| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Mac** | Docker Desktop _or_ OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com \| sh` |
 
@@ -38,18 +37,9 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-### What happens when you run the installer
-
-1. It checks your system for Docker, Docker Compose, curl, and openssl
-2. It creates the XDG directory tree and downloads the core compose and Caddyfile assets
-3. It generates an admin token (or lets you set your own) and seeds `secrets.env`
-4. It pulls and starts the admin service, then opens the setup wizard in your browser
-5. The wizard walks you through connecting your AI provider and choosing channels
-6. When you finish the wizard, the full stack (assistant, guardian, memory, and all enabled channels) starts automatically
-
 No config files to edit. Re-run the same command to update — your secrets are never overwritten.
 
-See `scripts/setup.sh --help` for all options, including `--no-start`, `--no-open`, `--force`, and custom XDG path overrides.
+See the [setup guide](docs/setup-guide.md) for details.
 
 ## What You Get
 
@@ -76,22 +66,9 @@ All admin operations require an admin token (`x-admin-token` header). The admin 
 Adding a channel requires no code changes — just drop a Docker Compose overlay (`.yml`) and an optional Caddy route (`.caddy`) into the registry. The admin stages these into the runtime automatically. Built-in channels include web chat and Discord, with community channels documented in [`docs/community-channels.md`](docs/community-channels.md).
 
 ## How It Works
+<img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: left; shape-margin: 0.25rem;" />
 
-```
-You (browser / chat client)
-        |
-        v
-   Caddy :80              <-- only ingress point
-   |         |
-   v         v
-Admin      Channel adapter (e.g. channel-chat)
-:8100            |
-                 v
-            Guardian :8080 (internal)   <-- validates every channel message
-                 |
-                 v
-            Assistant :4096             <-- OpenCode runtime
-```
+OpenPalm has defense built into it's core. It has many layers working together to protect your system and your secrets for malicious activity, destructive actions, and other common disasters than can occur with unattended AI assistants.
 
 - **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
@@ -107,34 +84,11 @@ Admin      Channel adapter (e.g. channel-chat)
 
 See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture walkthrough and [`docs/core-principles.md`](docs/core-principles.md) for security invariants.
 
-## User Configuration
-
-All user-editable files live under `CONFIG_HOME` (default `~/.config/openpalm`):
-
-| Path | Purpose |
-|---|---|
-| `CONFIG_HOME/secrets.env` | Secrets and environment variables (API keys, tokens, passwords) |
-| `CONFIG_HOME/channels/` | Channel compose overlays (`.yml`) and Caddy routes (`.caddy`) |
-| `CONFIG_HOME/opencode/` | OpenCode extensions — tools, plugins, skills, and config |
-
-XDG defaults (used when env vars are unset):
-
-| Variable | Default |
-|---|---|
-| `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` |
-| `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` |
-
-See [`docs/directory-structure.md`](docs/directory-structure.md) for the complete layout and [`assets/secrets.env`](assets/secrets.env) as a starting template.
-
-## Debian 13 Kiosk ISO
-
-For plug-and-play appliance installs (Raspberry Pi `arm64` and standard `amd64` systems) that boot directly to an OpenPalm kiosk session, see [`docs/debian13-kiosk-iso.md`](docs/debian13-kiosk-iso.md).
-
 ## Documentation
 
 | Guide | What's inside |
 |---|---|
+| [Setup Guide](docs/setup-guide.md) | Installation, updating, troubleshooting, and first steps |
 | [How It Works](docs/how-it-works.md) | Architecture overview and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Configuration, channels, secrets, access control |
 | [Core Principles](docs/core-principles.md) | Security invariants and architectural rules |

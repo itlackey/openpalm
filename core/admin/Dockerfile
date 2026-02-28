@@ -1,19 +1,26 @@
 # ── Admin Service ──────────────────────────────────────────────────────────────
 # SvelteKit app serving the Operator Console UI + Admin API + Control Plane.
-# Built with adapter-node, runs on Node.js.
+# Built with npm + Vite, runs on Node.js (adapter-node).
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM node:22-slim AS build
-WORKDIR /app
-COPY core/admin/package.json core/admin/bun.lock* ./
+WORKDIR /workspace
+
+# Install admin deps at workspace root so node_modules lands at /workspace/.
+# Standard Node module resolution from both core/admin/ and packages/lib/
+# walks up to /workspace/node_modules/ — no symlinks, no workspace protocol.
+COPY core/admin/package.json .
 RUN npm install
-COPY core/admin/ .
-COPY assets/ ../assets/
-COPY registry/ ../registry/
-# @openpalm/lib is resolved via vite alias: ../../packages/lib/src → /packages/lib/src
-# Its dependencies (e.g. dotenv) must be available at build time — install them.
-COPY packages/lib /packages/lib
-RUN cd /packages/lib && npm install --omit=dev
+
+# Copy source into monorepo layout matching Vite alias paths
+COPY core/admin/ core/admin/
+COPY packages/lib/ packages/lib/
+COPY assets/ assets/
+COPY registry/ registry/
+
+# Build SvelteKit (adapter-node produces self-contained build/)
+WORKDIR /workspace/core/admin
+ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
@@ -28,8 +35,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=build /app/build ./build
-COPY --from=build /app/package.json ./
+COPY --from=build /workspace/core/admin/build ./build
+COPY --from=build /workspace/core/admin/package.json ./
 
 RUN mkdir -p /state /data
 

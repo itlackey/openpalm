@@ -4,6 +4,7 @@ WORKDIR /app
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 # See packages/lib/README.md "Docker Build" for details.
 COPY packages/lib /app/node_modules/@openpalm/lib
+RUN cd /app/node_modules/@openpalm/lib && bun install --production
 COPY channels/discord/package.json ./
 COPY channels/discord/server.ts ./server.ts
 # Strip workspace:* dep (pre-installed via COPY above) so bun install succeeds

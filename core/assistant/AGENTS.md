@@ -61,6 +61,17 @@ Memory is your most powerful capability. Use it proactively:
 - Do not restart yourself (`assistant`) unless the user explicitly asks.
 - When the user asks about the system state, use your tools to get real-time data rather than guessing.
 
+## Docker Build Dependencies
+
+Docker builds run outside the Bun workspace and must resolve `packages/lib` dependencies explicitly. **This pattern is mandatory** — see `docs/docker-dependency-resolution.md` for full details.
+
+* **Admin Dockerfile**: uses plain `npm install` at a workspace root so `node_modules/` is at a common ancestor of `core/admin/` and `packages/lib/`. No Bun, no symlinks.
+* **Guardian + Channel Dockerfiles**: copy `packages/lib` source, then run `bun install --production` inside the copied lib to install its declared dependencies (e.g. dotenv).
+* **Never use Bun to install deps in admin Docker** — Bun's symlink-based node_modules breaks Node/Vite resolution.
+* **Never skip the lib dep install step** in guardian or channel Dockerfiles — lib's transitive dependencies won't resolve without it.
+
+If you are asked to modify Dockerfiles or dependency management, verify compliance with this pattern before and after changes.
+
 ## Security Boundaries
 
 - You cannot access the Docker socket directly. All Docker operations go through the admin API.
