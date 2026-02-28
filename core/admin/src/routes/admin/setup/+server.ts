@@ -2,6 +2,7 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
+  requireAdmin,
   getCallerType,
   parseJsonBody
 } from "$lib/server/helpers.js";
@@ -23,12 +24,15 @@ import { readFileSync, existsSync } from "node:fs";
 import type { RequestHandler } from "./$types";
 
 /**
- * Read secrets.env and return only which keys are set (non-empty),
- * never returning actual values.
+ * Read secrets.env directly (without getState()) and return which keys
+ * have non-empty values. Uses resolveConfigHome() logic inline so this
+ * works even before state is fully initialized.
  */
-function readConfiguredKeys(): Record<string, boolean> {
-  const state = getState();
-  const secretsPath = `${state.configDir}/secrets.env`;
+function readSecretsKeys(): Record<string, boolean> {
+  const configDir =
+    process.env.OPENPALM_CONFIG_HOME ??
+    `${process.env.HOME ?? "/tmp"}/.config/openpalm`;
+  const secretsPath = `${configDir}/secrets.env`;
   const result: Record<string, boolean> = {};
 
   if (existsSync(secretsPath)) {
@@ -48,6 +52,15 @@ function readConfiguredKeys(): Record<string, boolean> {
 }
 
 /**
+ * Check whether the admin token has been set (non-empty) in secrets.env.
+ * When true, setup is complete and the POST endpoint requires auth.
+ */
+function isSetupComplete(): boolean {
+  const keys = readSecretsKeys();
+  return keys.ADMIN_TOKEN === true;
+}
+
+/**
  * GET /admin/setup — no auth required.
  *
  * Returns which config keys are set (booleans only, never values)
@@ -55,13 +68,12 @@ function readConfiguredKeys(): Record<string, boolean> {
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const state = getState();
-  const keys = readConfiguredKeys();
+  const keys = readSecretsKeys();
 
-  // Setup is complete when ADMIN_TOKEN has a value in secrets.env
   const setupComplete = keys.ADMIN_TOKEN === true;
 
   // Installed = any non-admin service is running
+  const state = getState();
   const installed = Object.entries(state.services).some(
     ([name, status]) => name !== "admin" && status === "running"
   );
@@ -85,13 +97,21 @@ export const GET: RequestHandler = async (event) => {
 };
 
 /**
- * POST /admin/setup — no auth required.
+ * POST /admin/setup
  *
- * Saves configuration to secrets.env (including admin token) and
- * triggers the full-stack install.
+ * Unauthenticated during first-run (ADMIN_TOKEN is empty).
+ * Once a token has been set, requires normal admin auth — prevents
+ * callers from rotating the token or re-running install without auth.
  */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+
+  // One-time guard: if setup is already complete, require admin auth
+  if (isSetupComplete()) {
+    const authError = requireAdmin(event, requestId);
+    if (authError) return authError;
+  }
+
   const state = getState();
   const callerType = getCallerType(event);
   const body = await parseJsonBody(event.request);
@@ -153,43 +173,60 @@ export const POST: RequestHandler = async (event) => {
 
   // Check Docker and run compose up
   const dockerCheck = await checkDocker();
-  let dockerResult = null;
-  if (dockerCheck.ok) {
-    dockerResult = await composeUp(state.stateDir, {
-      files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state)
-    });
+  if (!dockerCheck.ok) {
+    appendAudit(
+      state, "setup", "setup.install",
+      { dockerAvailable: false, composeResult: null, channels: channelNames },
+      false, requestId, callerType
+    );
+    return errorResponse(
+      503,
+      "docker_unavailable",
+      "Docker is not available. Install or start Docker and retry.",
+      {},
+      requestId
+    );
   }
 
-  // Audit log
-  appendAudit(
-    state,
-    "setup",
-    "setup.install",
-    {
-      dockerAvailable: dockerCheck.ok,
-      composeResult: dockerResult?.ok ?? null,
-      channels: channelNames
-    },
-    true,
-    requestId,
-    callerType
-  );
+  const dockerResult = await composeUp(state.stateDir, {
+    files: buildComposeFileList(state),
+    envFiles: buildEnvFiles(state)
+  });
 
   const started = [
     ...CORE_SERVICES,
     ...channelNames.map((name) => `channel-${name}`)
   ];
 
+  appendAudit(
+    state, "setup", "setup.install",
+    {
+      dockerAvailable: true,
+      composeResult: dockerResult.ok,
+      channels: channelNames
+    },
+    dockerResult.ok,
+    requestId,
+    callerType
+  );
+
+  if (!dockerResult.ok) {
+    return errorResponse(
+      502,
+      "compose_failed",
+      `Docker Compose failed to start services: ${dockerResult.stderr}`,
+      { stderr: dockerResult.stderr },
+      requestId
+    );
+  }
+
   return jsonResponse(
     200,
     {
       ok: true,
       started,
-      dockerAvailable: dockerCheck.ok,
-      composeResult: dockerResult
-        ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
-        : null
+      dockerAvailable: true,
+      composeResult: { ok: true, stderr: dockerResult.stderr }
     },
     requestId
   );

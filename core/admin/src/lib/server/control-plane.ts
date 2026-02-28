@@ -245,10 +245,7 @@ export function createState(
   const configDir = resolveConfigHome();
   const fileEnv = loadSecretsEnvFile(configDir);
   const resolvedAdminToken =
-    adminToken ?? fileEnv.ADMIN_TOKEN ?? process.env.ADMIN_TOKEN;
-  if (!resolvedAdminToken) {
-    throw new Error("ADMIN_TOKEN must be set via environment variable or secrets.env");
-  }
+    adminToken ?? fileEnv.ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
 
   // Initialize core services as stopped
   const services: Record<string, "running" | "stopped"> = {};

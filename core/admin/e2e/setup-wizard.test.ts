@@ -235,7 +235,7 @@ test.describe('Setup Wizard', () => {
 
 		await page.goto('/setup');
 
-		// Should show done state directly — no wizard, no auth gate
+		// Should show done state directly — no wizard
 		await expect(page.locator('h2')).toHaveText('Stack Installed');
 		await expect(page.getByRole('link', { name: 'Go to Console' })).toBeVisible();
 	});
@@ -270,11 +270,10 @@ test.describe('Setup Wizard', () => {
 		const parsed = JSON.parse(getResponseBody);
 		expect(parsed.configured.OPENAI_API_KEY).toBe(true);
 		expect(parsed.configured.OPENAI_BASE_URL).toBe(false);
-		// Must not have any string values for secrets
 		for (const val of Object.values(parsed.configured)) {
 			expect(typeof val).toBe('boolean');
 		}
-		// Must not have openaiApiKey/openaiBaseUrl string fields
+		// Must not have string value fields for secrets
 		expect(parsed).not.toHaveProperty('openaiApiKey');
 		expect(parsed).not.toHaveProperty('openaiBaseUrl');
 		expect(parsed).not.toHaveProperty('openmemoryUserId');
@@ -334,7 +333,105 @@ test.describe('Setup Wizard', () => {
 		await expect(page.locator('h2')).toHaveText('Stack Installed');
 	});
 
-	test('setup endpoint does not require authentication', async ({ page }) => {
+	test('Docker unavailable returns error to UI', async ({ page }) => {
+		await page.route('**/admin/setup', (route) => {
+			if (route.request().method() === 'GET') {
+				return route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({ setupComplete: false, installed: false, configured: {} })
+				});
+			}
+			if (route.request().method() === 'POST') {
+				return route.fulfill({
+					status: 503,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						error: 'docker_unavailable',
+						message: 'Docker is not available. Install or start Docker and retry.'
+					})
+				});
+			}
+			return route.continue();
+		});
+
+		await page.goto('/setup');
+
+		// Navigate to review and install
+		await page.locator('#admin-token').fill('token');
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Install Stack' }).click();
+
+		// Should show Docker error
+		await expect(page.locator('[role="alert"]')).toContainText('Docker is not available');
+	});
+
+	test('Docker Compose failure returns error to UI', async ({ page }) => {
+		await page.route('**/admin/setup', (route) => {
+			if (route.request().method() === 'GET') {
+				return route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					body: JSON.stringify({ setupComplete: false, installed: false, configured: {} })
+				});
+			}
+			if (route.request().method() === 'POST') {
+				return route.fulfill({
+					status: 502,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						error: 'compose_failed',
+						message: 'Docker Compose failed to start services: port 5432 already in use'
+					})
+				});
+			}
+			return route.continue();
+		});
+
+		await page.goto('/setup');
+
+		await page.locator('#admin-token').fill('token');
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Install Stack' }).click();
+
+		await expect(page.locator('[role="alert"]')).toContainText('Docker Compose failed');
+	});
+
+	test('POST requires auth after setup is complete', async ({ page }) => {
+		await page.route('**/admin/setup', (route) => {
+			if (route.request().method() === 'GET') {
+				return route.fulfill({
+					status: 200,
+					contentType: 'application/json',
+					// setupComplete = true means token is already set
+					body: JSON.stringify({ setupComplete: true, installed: true, configured: {} })
+				});
+			}
+			if (route.request().method() === 'POST') {
+				// After setup is complete, POST without auth returns 401
+				return route.fulfill({
+					status: 401,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						error: 'unauthorized',
+						message: 'Missing or invalid x-admin-token'
+					})
+				});
+			}
+			return route.continue();
+		});
+
+		await page.goto('/setup');
+
+		// Should show done state — the one-time guard protects the POST
+		await expect(page.locator('h2')).toHaveText('Stack Installed');
+	});
+
+	test('setup endpoint does not require authentication on first run', async ({ page }) => {
 		let getHeaders: Record<string, string> = {};
 
 		await page.route('**/admin/setup', (route) => {
