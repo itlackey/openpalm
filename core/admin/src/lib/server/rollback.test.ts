@@ -202,22 +202,22 @@ describe("Config-Protect: Channel Uninstall", () => {
 });
 
 describe("Config-Protect: Startup cleanup", () => {
-  test("cleanupStaleConfigBackups detects and rolls back stale uninstall", () => {
+  test("cleanupStaleConfigBackups clears stale backup and logs audit entry", () => {
     seedConfigDir(configDir);
     const state = mockState(stateDir, configDir) as any;
 
     backupChannelConfig("uninstall", "chat", configDir, stateDir);
 
-    // Simulate the files being deleted (incomplete uninstall)
-    rmSync(join(configDir, "channels", "chat.yml"), { force: true });
-    rmSync(join(configDir, "channels", "chat.caddy"), { force: true });
+    // Stale backup exists
+    expect(existsSync(join(stateDir, "config-backups", "chat", "intent.json"))).toBe(true);
 
-    // Startup cleanup should restore them
+    // Startup cleanup should clear the backup and log, NOT rollback
     cleanupStaleConfigBackups(stateDir, configDir, state);
 
-    expect(existsSync(join(configDir, "channels", "chat.yml"))).toBe(true);
-    expect(existsSync(join(configDir, "channels", "chat.caddy"))).toBe(true);
+    // Backup should be gone
+    expect(existsSync(join(stateDir, "config-backups", "chat"))).toBe(false);
 
+    // Audit entry logged
     expect(state.audit.length).toBe(1);
     expect(state.audit[0].action).toBe("startup.stale_backup");
   });
