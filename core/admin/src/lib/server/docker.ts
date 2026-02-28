@@ -53,10 +53,16 @@ export async function checkDocker(): Promise<DockerResult> {
       "docker",
       ["info", "--format", "{{.ServerVersion}}"],
       (error, stdout, stderr) => {
+        const stdoutStr = stdout?.toString().trim() ?? "";
+        const stderrStr = stderr?.toString() ?? "";
+        // docker info may exit non-zero when the daemon reports warnings
+        // (e.g. "No swap limit support") even though it is fully functional.
+        // Treat Docker as available when stdout contains a version string.
+        const available = stdoutStr.length > 0 || !error;
         resolve({
-          ok: !error,
-          stdout: stdout?.toString() ?? "",
-          stderr: stderr?.toString() ?? "",
+          ok: available,
+          stdout: stdoutStr,
+          stderr: stderrStr,
           code: error?.code ? Number(error.code) : 0
         });
       }
