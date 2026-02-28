@@ -105,16 +105,22 @@ admin and never appear in user-editable files.
 | `$CONFIG_HOME` | `$CONFIG_HOME` (same path) | rw | Channel source files, secrets, extensions |
 | `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Pre-create DATA_HOME subdirs, ensure ownership |
 | `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs |
-| `/var/run/docker.sock` | `/var/run/docker.sock` | rw | Docker daemon socket for orchestration |
+| `$OPENPALM_DOCKER_SOCK` | `/var/run/docker.sock` | rw | Docker daemon socket for orchestration |
 
 The admin is the **only** container with Docker socket access. It mounts
 CONFIG_HOME, DATA_HOME, and STATE_HOME. The DATA_HOME mount allows the admin
 to pre-create subdirectories with correct ownership before other services start.
 
-**`OPENPALM_DOCKER_GID`** is auto-detected by the admin at startup via
-`statSync('/var/run/docker.sock').gid` and written to `STATE_HOME/artifacts/stack.env`.
-You do not need to set it manually. For a fresh install (before the admin has run),
-`scripts/dev-setup.sh --seed-env` seeds the stack.env with the detected value.
+**`OPENPALM_DOCKER_SOCK`** is auto-detected by the setup scripts via
+`docker context inspect` and written to `STATE_HOME/artifacts/stack.env`.
+This supports Docker runtimes whose socket is not at the default
+`/var/run/docker.sock` (e.g. OrbStack, Colima, Rancher Desktop).
+If not set, it defaults to `/var/run/docker.sock`.
+
+**`OPENPALM_DOCKER_GID`** is auto-detected by the admin at startup by
+stat-ing the Docker socket inside the container and written to `STATE_HOME/artifacts/stack.env`.
+You do not need to set either of these manually. For a fresh install (before the admin has run),
+`scripts/dev-setup.sh --seed-env` seeds the stack.env with the detected values.
 
 ---
 

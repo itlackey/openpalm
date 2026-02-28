@@ -82,8 +82,23 @@ if [[ $seed_env -eq 1 ]]; then
 
 		# Auto-detect Docker socket GID
 		docker_gid=$gid
-		if [[ -S /var/run/docker.sock ]]; then
-			detected=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)
+		docker_sock="/var/run/docker.sock"
+
+		# Detect socket path from the active docker context (supports
+		# OrbStack, Colima, Rancher Desktop, etc.)
+		if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"; then
+			case "$host_url" in
+			unix://*)
+				detected_sock="${host_url#unix://}"
+				if [[ -S "$detected_sock" ]]; then
+					docker_sock=$detected_sock
+				fi
+				;;
+			esac
+		fi
+
+		if [[ -S "$docker_sock" ]]; then
+			detected=$(stat -c '%g' "$docker_sock" 2>/dev/null || true)
 			if [[ -n "$detected" && "$detected" != "0" ]]; then
 				docker_gid=$detected
 			fi
@@ -106,6 +121,9 @@ OPENPALM_WORK_DIR=$HOME/openpalm
 OPENPALM_UID=$uid
 OPENPALM_GID=$gid
 OPENPALM_DOCKER_GID=$docker_gid
+
+# ── Docker Socket ───────────────────────────────────────────────────
+OPENPALM_DOCKER_SOCK=$docker_sock
 
 # ── Images ──────────────────────────────────────────────────────────
 OPENPALM_IMAGE_NAMESPACE=openpalm

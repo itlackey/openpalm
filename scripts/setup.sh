@@ -140,6 +140,7 @@ OPEN_CMD=""
 HOST_UID=""
 HOST_GID=""
 DOCKER_GID=""
+DOCKER_SOCK=""
 
 detect_platform() {
 	header "Detecting platform"
@@ -155,17 +156,33 @@ detect_platform() {
 	HOST_GID="$(id -g)"
 	ok "User: UID=$HOST_UID GID=$HOST_GID"
 
+	# Docker socket path — detect from the active docker context (supports
+	# OrbStack, Colima, Rancher Desktop, etc. whose socket is not at the
+	# default /var/run/docker.sock).
+	DOCKER_SOCK="/var/run/docker.sock"
+	if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"; then
+		case "$host_url" in
+		unix://*)
+			detected_sock="${host_url#unix://}"
+			if [[ -S "$detected_sock" ]]; then
+				DOCKER_SOCK="$detected_sock"
+			fi
+			;;
+		esac
+	fi
+	ok "Docker socket: $DOCKER_SOCK"
+
 	# Docker socket GID (needed for admin container)
 	if [[ "$PLATFORM" == "linux" ]]; then
-		if [[ -S /var/run/docker.sock ]]; then
-			DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "$HOST_GID")"
+		if [[ -S "$DOCKER_SOCK" ]]; then
+			DOCKER_GID="$(stat -c '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
 		else
 			DOCKER_GID="$HOST_GID"
 		fi
 	else
 		# macOS: Docker Desktop handles socket perms, fall back to user GID
-		if [[ -S /var/run/docker.sock ]]; then
-			DOCKER_GID="$(stat -f '%g' /var/run/docker.sock 2>/dev/null || echo "$HOST_GID")"
+		if [[ -S "$DOCKER_SOCK" ]]; then
+			DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
 		else
 			DOCKER_GID="$HOST_GID"
 		fi
@@ -457,6 +474,9 @@ OPENPALM_UID=${HOST_UID}
 OPENPALM_GID=${HOST_GID}
 OPENPALM_DOCKER_GID=${DOCKER_GID}
 
+# ── Docker Socket ───────────────────────────────────────────────────
+OPENPALM_DOCKER_SOCK=${DOCKER_SOCK}
+
 # ── Images ──────────────────────────────────────────────────────────
 OPENPALM_IMAGE_NAMESPACE=${OPENPALM_IMAGE_NAMESPACE:-openpalm}
 OPENPALM_IMAGE_TAG=${OPENPALM_IMAGE_TAG:-latest}
@@ -465,7 +485,7 @@ OPENPALM_IMAGE_TAG=${OPENPALM_IMAGE_TAG:-latest}
 POSTGRES_PASSWORD=${pg_password}
 EOF
 
-	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_GID=${DOCKER_GID})"
+	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_GID=${DOCKER_GID} DOCKER_SOCK=${DOCKER_SOCK})"
 }
 
 # ── OpenCode config seeding ──────────────────────────────────────────

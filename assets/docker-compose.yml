@@ -183,11 +183,12 @@ services:
       OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
+      OPENPALM_DOCKER_SOCK: ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}
     volumes:
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     group_add:
       - "${OPENPALM_DOCKER_GID:-${OPENPALM_GID:-1000}}"
