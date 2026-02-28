@@ -2,12 +2,12 @@
  * Tests for updateSecretsEnv — the setup wizard's secrets file updater.
  *
  * Verifies:
- * 1. Allowlisted keys are written correctly
- * 2. Non-allowlisted keys (e.g. ADMIN_TOKEN) are rejected
- * 3. Existing lines are updated in-place
- * 4. Commented-out lines are uncommented and updated
- * 5. New keys are appended when not present in file
- * 6. Throws when secrets.env does not exist
+ * 1. All provided keys are written
+ * 2. Existing lines are updated in-place
+ * 3. Commented-out lines are uncommented and updated
+ * 4. New keys are appended when not present in file
+ * 5. Throws when secrets.env does not exist
+ * 6. Comments and blank lines are preserved
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import {
@@ -24,15 +24,6 @@ import { join } from "node:path";
 // ── Inline implementation (mirrors control-plane.ts) ────────────────────
 // We replicate the logic to test without Vite import.meta.glob dependencies.
 
-const SETUP_WRITABLE_KEYS = new Set([
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENMEMORY_USER_ID",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY"
-]);
-
 type TestState = { configDir: string };
 
 function updateSecretsEnv(
@@ -46,13 +37,7 @@ function updateSecretsEnv(
 
   const raw = readFileSync(secretsPath, "utf-8");
   const lines = raw.split("\n");
-  const remaining = new Map<string, string>();
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (SETUP_WRITABLE_KEYS.has(key)) {
-      remaining.set(key, value);
-    }
-  }
+  const remaining = new Map(Object.entries(updates));
 
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].replace(/^#\s*/, "").trim();
@@ -125,7 +110,6 @@ describe("updateSecretsEnv", () => {
     const result = readSecrets(configDir);
     expect(result).toContain("OPENAI_API_KEY=sk-new-key");
     expect(result).not.toContain("old-key");
-    // ADMIN_TOKEN must remain unchanged
     expect(result).toContain("ADMIN_TOKEN=my-admin-token");
   });
 
@@ -156,28 +140,24 @@ describe("updateSecretsEnv", () => {
 
     const result = readSecrets(configDir);
     expect(result).toContain("OPENAI_BASE_URL=http://localhost:11434/v1");
-    // Original keys preserved
     expect(result).toContain("ADMIN_TOKEN=token");
     expect(result).toContain("OPENAI_API_KEY=existing");
   });
 
-  test("rejects non-allowlisted keys (ADMIN_TOKEN)", () => {
+  test("writes any key including ADMIN_TOKEN", () => {
     seedSecrets(configDir, [
-      "ADMIN_TOKEN=original-token",
+      "ADMIN_TOKEN=",
       ""
     ].join("\n"));
 
     const state: TestState = { configDir };
     updateSecretsEnv(state, {
-      ADMIN_TOKEN: "hacked-token",
+      ADMIN_TOKEN: "new-secure-token",
       OPENAI_API_KEY: "sk-legit"
     });
 
     const result = readSecrets(configDir);
-    // ADMIN_TOKEN must NOT be changed
-    expect(result).toContain("ADMIN_TOKEN=original-token");
-    expect(result).not.toContain("hacked-token");
-    // Allowlisted key should be written
+    expect(result).toContain("ADMIN_TOKEN=new-secure-token");
     expect(result).toContain("OPENAI_API_KEY=sk-legit");
   });
 
@@ -226,37 +206,26 @@ describe("updateSecretsEnv", () => {
     expect(result).toContain("OPENAI_API_KEY=sk-updated");
   });
 
-  test("ignores completely unknown keys", () => {
+  test("appends keys that don't exist in the file at all", () => {
     seedSecrets(configDir, "ADMIN_TOKEN=token\n");
 
     const state: TestState = { configDir };
-    updateSecretsEnv(state, { RANDOM_KEY: "value", ANOTHER: "val2" });
+    updateSecretsEnv(state, { CUSTOM_KEY: "value1", ANOTHER: "val2" });
 
     const result = readSecrets(configDir);
-    expect(result).not.toContain("RANDOM_KEY");
-    expect(result).not.toContain("ANOTHER");
+    expect(result).toContain("CUSTOM_KEY=value1");
+    expect(result).toContain("ANOTHER=val2");
     expect(result).toContain("ADMIN_TOKEN=token");
   });
 
-  test("all six allowlisted keys can be written", () => {
-    seedSecrets(configDir, "ADMIN_TOKEN=token\n");
+  test("empty updates leave file unchanged", () => {
+    const original = "ADMIN_TOKEN=token\nOPENAI_API_KEY=sk-key\n";
+    seedSecrets(configDir, original);
 
     const state: TestState = { configDir };
-    updateSecretsEnv(state, {
-      OPENAI_API_KEY: "k1",
-      OPENAI_BASE_URL: "k2",
-      OPENMEMORY_USER_ID: "k3",
-      GROQ_API_KEY: "k4",
-      MISTRAL_API_KEY: "k5",
-      GOOGLE_API_KEY: "k6"
-    });
+    updateSecretsEnv(state, {});
 
     const result = readSecrets(configDir);
-    expect(result).toContain("OPENAI_API_KEY=k1");
-    expect(result).toContain("OPENAI_BASE_URL=k2");
-    expect(result).toContain("OPENMEMORY_USER_ID=k3");
-    expect(result).toContain("GROQ_API_KEY=k4");
-    expect(result).toContain("MISTRAL_API_KEY=k5");
-    expect(result).toContain("GOOGLE_API_KEY=k6");
+    expect(result).toBe(original);
   });
 });

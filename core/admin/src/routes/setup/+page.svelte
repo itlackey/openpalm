@@ -1,18 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
-
-  // ── Auth state ──────────────────────────────────────────────────────────
-  let authLocked = $state(true);
-  let authLoading = $state(false);
-  let authError = $state('');
 
   // ── Wizard state ────────────────────────────────────────────────────────
-  type WizardStep = 'llm' | 'openmemory' | 'review';
-  let step: WizardStep = $state('llm');
-  let installed = $state(false);
+  type WizardStep = 'token' | 'llm' | 'openmemory' | 'review';
+  let step: WizardStep = $state('token');
+  let setupComplete = $state(false);
+  let loading = $state(true);
 
   // ── Form fields ─────────────────────────────────────────────────────────
+  let adminToken = $state('');
   let openaiApiKey = $state('');
   let openaiBaseUrl = $state('');
   let openmemoryUserId = $state('default_user');
@@ -22,62 +18,25 @@
   let installError = $state('');
   let startedServices: string[] = $state([]);
 
+  // ── Validation ──────────────────────────────────────────────────────────
+  let tokenError = $state('');
+
   // ── API helpers ─────────────────────────────────────────────────────────
 
   function buildHeaders(): HeadersInit {
-    const token = getAdminToken();
     return {
-      'x-admin-token': token ?? '',
       'x-requested-by': 'ui',
       'x-request-id': crypto.randomUUID()
     };
   }
 
-  async function loadSetupConfig(): Promise<void> {
-    try {
-      const res = await fetch('/admin/setup', { headers: buildHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
-      openaiApiKey = data.openaiApiKey ?? '';
-      openaiBaseUrl = data.openaiBaseUrl ?? '';
-      openmemoryUserId = data.openmemoryUserId ?? 'default_user';
-      installed = data.installed === true;
-    } catch {
-      // best-effort — wizard starts with defaults
-    }
-  }
-
-  // ── Masked display value ────────────────────────────────────────────────
+  // ── Review display values (from local state only, never from server) ──
 
   let maskedApiKey = $derived(
     openaiApiKey
-      ? '*'.repeat(Math.max(0, openaiApiKey.length - 4)) + openaiApiKey.slice(-4)
+      ? openaiApiKey.slice(0, 3) + '...' + openaiApiKey.slice(-4)
       : '(not set)'
   );
-
-  // ── Auth handler ────────────────────────────────────────────────────────
-
-  async function handleAuthSubmit(e: Event): Promise<void> {
-    e.preventDefault();
-    const input = (document.getElementById('setup-admin-token') as HTMLInputElement)?.value?.trim();
-    if (!input || authLoading) return;
-    authLoading = true;
-    authError = '';
-    try {
-      const result = await validateToken(input);
-      if (!result.allowed) {
-        authError = 'Invalid admin token.';
-        return;
-      }
-      storeToken(input);
-      authLocked = false;
-      await loadSetupConfig();
-    } catch {
-      authError = 'Unable to reach admin API.';
-    } finally {
-      authLoading = false;
-    }
-  }
 
   // ── Install handler ─────────────────────────────────────────────────────
 
@@ -92,7 +51,12 @@
           'content-type': 'application/json',
           ...buildHeaders()
         },
-        body: JSON.stringify({ openaiApiKey, openaiBaseUrl, openmemoryUserId })
+        body: JSON.stringify({
+          adminToken,
+          openaiApiKey,
+          openaiBaseUrl,
+          openmemoryUserId
+        })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -101,7 +65,7 @@
       }
       const data = await res.json();
       startedServices = data.started ?? [];
-      installed = true;
+      setupComplete = true;
     } catch {
       installError = 'Network error — unable to reach admin API.';
     } finally {
@@ -109,31 +73,22 @@
     }
   }
 
-  // ── Mount ───────────────────────────────────────────────────────────────
+  // ── Mount — check if setup already done ─────────────────────────────────
 
   onMount(() => {
     void (async () => {
-      const token = getAdminToken();
-      if (!token) {
-        authLocked = true;
-        return;
-      }
-      authLoading = true;
       try {
-        const result = await validateToken(token);
-        if (!result.allowed) {
-          clearToken();
-          authLocked = true;
-          authError = 'Stored token is invalid.';
-          return;
+        const res = await fetch('/admin/setup', { headers: buildHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.setupComplete) {
+            setupComplete = true;
+          }
         }
-        authLocked = false;
-        await loadSetupConfig();
       } catch {
-        authLocked = true;
-        authError = 'Unable to reach admin API.';
+        // best-effort — wizard starts fresh
       } finally {
-        authLoading = false;
+        loading = false;
       }
     })();
   });
@@ -143,47 +98,16 @@
   <title>OpenPalm Setup</title>
 </svelte:head>
 
-{#if authLocked}
-  <!-- Auth Gate -->
-  <main class="auth-gate" aria-label="Setup login gate">
-    <section class="auth-card">
-      <div class="auth-brand">
-        <span class="brand-icon">
-          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
-        </span>
-        <div>
-          <h1>OpenPalm Setup</h1>
-          <p>Enter your admin token to begin setup.</p>
-        </div>
+{#if loading}
+  <main class="setup-page" aria-label="Loading">
+    <section class="wizard-card">
+      <div class="loading-state">
+        <span class="spinner"></span>
       </div>
-
-      <form class="auth-form" onsubmit={handleAuthSubmit}>
-        <label for="setup-admin-token">Admin Token</label>
-        <input
-          id="setup-admin-token"
-          name="admin-token"
-          type="password"
-          placeholder="Enter admin token"
-          autocomplete="current-password"
-        />
-        {#if authError}
-          <p class="auth-error" role="alert">{authError}</p>
-        {/if}
-        <button class="btn btn-primary" type="submit" disabled={authLoading}>
-          {#if authLoading}
-            <span class="spinner"></span>
-          {/if}
-          Continue
-        </button>
-      </form>
     </section>
   </main>
 
-{:else if installed}
+{:else if setupComplete}
   <!-- Done state -->
   <main class="setup-page" aria-label="Setup complete">
     <section class="wizard-card">
@@ -215,7 +139,7 @@
   <main class="setup-page" aria-label="Setup wizard">
     <section class="wizard-card">
       <div class="wizard-header">
-        <h1>Setup Wizard</h1>
+        <h1>OpenPalm Setup</h1>
         <p class="wizard-subtitle">Configure your OpenPalm stack in a few steps.</p>
       </div>
 
@@ -223,32 +147,71 @@
       <nav class="step-indicators" aria-label="Wizard steps">
         <button
           class="step-dot"
+          class:active={step === 'token'}
+          class:completed={step !== 'token'}
+          onclick={() => { step = 'token'; }}
+          aria-label="Step 1: Admin Token"
+          aria-current={step === 'token' ? 'step' : undefined}
+        >1</button>
+        <span class="step-line" class:active={step !== 'token'}></span>
+        <button
+          class="step-dot"
           class:active={step === 'llm'}
           class:completed={step === 'openmemory' || step === 'review'}
-          onclick={() => { if (step !== 'llm') step = 'llm'; }}
-          aria-label="Step 1: LLM Provider"
+          onclick={() => { if (step === 'openmemory' || step === 'review') step = 'llm'; }}
+          aria-label="Step 2: LLM Provider"
           aria-current={step === 'llm' ? 'step' : undefined}
-        >1</button>
+        >2</button>
         <span class="step-line" class:active={step === 'openmemory' || step === 'review'}></span>
         <button
           class="step-dot"
           class:active={step === 'openmemory'}
           class:completed={step === 'review'}
           onclick={() => { if (step === 'review') step = 'openmemory'; }}
-          aria-label="Step 2: OpenMemory"
+          aria-label="Step 3: OpenMemory"
           aria-current={step === 'openmemory' ? 'step' : undefined}
-        >2</button>
+        >3</button>
         <span class="step-line" class:active={step === 'review'}></span>
         <button
           class="step-dot"
           class:active={step === 'review'}
-          aria-label="Step 3: Review & Install"
+          aria-label="Step 4: Review & Install"
           aria-current={step === 'review' ? 'step' : undefined}
           disabled
-        >3</button>
+        >4</button>
       </nav>
 
-      <!-- Step 1: LLM Provider -->
+      <!-- Step 1: Admin Token -->
+      {#if step === 'token'}
+        <div class="step-content" data-testid="step-token">
+          <h2>Admin Token</h2>
+          <div class="field-group">
+            <label for="admin-token">Choose an admin token</label>
+            <input
+              id="admin-token"
+              type="password"
+              bind:value={adminToken}
+              placeholder="Enter a secure admin token"
+            />
+            <p class="field-hint">This token protects your admin console. Keep it safe — you'll need it to log in.</p>
+          </div>
+          {#if tokenError}
+            <p class="field-error" role="alert">{tokenError}</p>
+          {/if}
+          <div class="step-actions">
+            <button class="btn btn-primary" onclick={() => {
+              if (!adminToken.trim()) {
+                tokenError = 'Admin token is required.';
+                return;
+              }
+              tokenError = '';
+              step = 'llm';
+            }}>Next</button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Step 2: LLM Provider -->
       {#if step === 'llm'}
         <div class="step-content" data-testid="step-llm">
           <h2>LLM Provider</h2>
@@ -273,12 +236,13 @@
             <p class="field-hint">For Ollama: <code>http://host.docker.internal:11434/v1</code></p>
           </div>
           <div class="step-actions">
+            <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
             <button class="btn btn-primary" onclick={() => (step = 'openmemory')}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: OpenMemory -->
+      <!-- Step 3: OpenMemory -->
       {#if step === 'openmemory'}
         <div class="step-content" data-testid="step-openmemory">
           <h2>OpenMemory</h2>
@@ -299,11 +263,15 @@
         </div>
       {/if}
 
-      <!-- Step 3: Review & Install -->
+      <!-- Step 4: Review & Install -->
       {#if step === 'review'}
         <div class="step-content" data-testid="step-review">
           <h2>Review & Install</h2>
           <div class="review-grid">
+            <div class="review-item">
+              <span class="review-label">Admin Token</span>
+              <span class="review-value mono">Set</span>
+            </div>
             <div class="review-item">
               <span class="review-label">OpenAI API Key</span>
               <span class="review-value mono">{maskedApiKey}</span>
@@ -344,94 +312,6 @@
 {/if}
 
 <style>
-  /* ── Auth Gate ────────────────────────────────────────────────────────── */
-  .auth-gate {
-    min-height: 100vh;
-    max-width: none;
-    margin: 0;
-    display: grid;
-    place-items: center;
-    padding: var(--space-6);
-    background: radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.12), transparent 38%),
-      radial-gradient(circle at 85% 0%, rgba(59, 130, 246, 0.12), transparent 32%),
-      var(--color-bg-secondary);
-  }
-
-  .auth-card {
-    width: 100%;
-    max-width: 460px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-    padding: var(--space-6);
-  }
-
-  .auth-brand {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-5);
-  }
-
-  .auth-brand h1 {
-    font-size: 1.25rem;
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-  }
-
-  .auth-brand p {
-    margin-top: 4px;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-  }
-
-  .brand-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    background: var(--color-primary);
-    color: var(--color-text-inverse);
-    border-radius: var(--radius-md);
-    flex-shrink: 0;
-  }
-
-  .auth-form {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .auth-form label {
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text-secondary);
-  }
-
-  .auth-form input {
-    width: 100%;
-    height: 40px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 0 12px;
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-  }
-
-  .auth-form input:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-subtle);
-  }
-
-  .auth-error {
-    margin: 0;
-    color: var(--color-danger);
-    font-size: var(--text-sm);
-  }
-
   /* ── Setup Page ──────────────────────────────────────────────────────── */
   .setup-page {
     min-height: 100vh;
@@ -467,6 +347,13 @@
     margin-top: var(--space-1);
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
+  }
+
+  /* ── Loading ─────────────────────────────────────────────────────────── */
+  .loading-state {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-8);
   }
 
   /* ── Step Indicators ─────────────────────────────────────────────────── */
@@ -508,7 +395,7 @@
   }
 
   .step-line {
-    width: 48px;
+    width: 36px;
     height: 2px;
     background: var(--color-border);
     transition: background var(--transition-fast);
@@ -567,6 +454,12 @@
     background: var(--color-bg-tertiary);
     padding: 1px 4px;
     border-radius: 3px;
+  }
+
+  .field-error {
+    margin: 0 0 var(--space-2);
+    color: var(--color-danger);
+    font-size: var(--text-sm);
   }
 
   /* ── Step Actions ────────────────────────────────────────────────────── */

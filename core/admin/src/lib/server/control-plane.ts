@@ -854,22 +854,11 @@ export function uninstallChannel(
   return { ok: true };
 }
 
-// ── Setup Wizard Writable Keys ──────────────────────────────────────────
-
-export const SETUP_WRITABLE_KEYS = new Set([
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENMEMORY_USER_ID",
-  "GROQ_API_KEY",
-  "MISTRAL_API_KEY",
-  "GOOGLE_API_KEY"
-]);
-
 /**
  * Merge key-value pairs into CONFIG_HOME/secrets.env.
  *
- * Only keys in SETUP_WRITABLE_KEYS are written — ADMIN_TOKEN and other
- * sensitive keys cannot be changed through the setup wizard.
+ * The caller controls which keys are passed — this function writes them
+ * all without filtering.
  *
  * Algorithm:
  * 1. Read the existing secrets.env (must exist — throws if missing).
@@ -888,13 +877,7 @@ export function updateSecretsEnv(
 
   const raw = readFileSync(secretsPath, "utf-8");
   const lines = raw.split("\n");
-  const remaining = new Map<string, string>();
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (SETUP_WRITABLE_KEYS.has(key)) {
-      remaining.set(key, value);
-    }
-  }
+  const remaining = new Map(Object.entries(updates));
 
   // Pass 1: replace existing lines (including commented-out)
   for (let i = 0; i < lines.length; i++) {

@@ -2,8 +2,6 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAdmin,
-  getActor,
   getCallerType,
   parseJsonBody
 } from "$lib/server/helpers.js";
@@ -24,15 +22,14 @@ import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { readFileSync, existsSync } from "node:fs";
 import type { RequestHandler } from "./$types";
 
-/** Read current config values from secrets.env for the setup wizard. */
-function readCurrentConfig(): {
-  openaiApiKey: string;
-  openaiBaseUrl: string;
-  openmemoryUserId: string;
-} {
+/**
+ * Read secrets.env and return only which keys are set (non-empty),
+ * never returning actual values.
+ */
+function readConfiguredKeys(): Record<string, boolean> {
   const state = getState();
   const secretsPath = `${state.configDir}/secrets.env`;
-  const values: Record<string, string> = {};
+  const result: Record<string, boolean> = {};
 
   if (existsSync(secretsPath)) {
     const content = readFileSync(secretsPath, "utf-8");
@@ -42,45 +39,68 @@ function readCurrentConfig(): {
       const eq = trimmed.indexOf("=");
       if (eq <= 0) continue;
       const key = trimmed.slice(0, eq).trim();
-      values[key] = trimmed.slice(eq + 1).trim();
+      const value = trimmed.slice(eq + 1).trim();
+      result[key] = value.length > 0;
     }
   }
 
-  return {
-    openaiApiKey: values.OPENAI_API_KEY ?? "",
-    openaiBaseUrl: values.OPENAI_BASE_URL ?? "",
-    openmemoryUserId: values.OPENMEMORY_USER_ID ?? "default_user"
-  };
+  return result;
 }
 
+/**
+ * GET /admin/setup — no auth required.
+ *
+ * Returns which config keys are set (booleans only, never values)
+ * and whether setup is complete (admin token exists).
+ */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
-  if (authError) return authError;
-
   const state = getState();
-  const config = readCurrentConfig();
+  const keys = readConfiguredKeys();
+
+  // Setup is complete when ADMIN_TOKEN has a value in secrets.env
+  const setupComplete = keys.ADMIN_TOKEN === true;
 
   // Installed = any non-admin service is running
   const installed = Object.entries(state.services).some(
     ([name, status]) => name !== "admin" && status === "running"
   );
 
-  return jsonResponse(200, { ...config, installed }, requestId);
+  return jsonResponse(
+    200,
+    {
+      setupComplete,
+      installed,
+      configured: {
+        OPENAI_API_KEY: keys.OPENAI_API_KEY === true,
+        OPENAI_BASE_URL: keys.OPENAI_BASE_URL === true,
+        OPENMEMORY_USER_ID: keys.OPENMEMORY_USER_ID === true,
+        GROQ_API_KEY: keys.GROQ_API_KEY === true,
+        MISTRAL_API_KEY: keys.MISTRAL_API_KEY === true,
+        GOOGLE_API_KEY: keys.GOOGLE_API_KEY === true
+      }
+    },
+    requestId
+  );
 };
 
+/**
+ * POST /admin/setup — no auth required.
+ *
+ * Saves configuration to secrets.env (including admin token) and
+ * triggers the full-stack install.
+ */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
-  if (authError) return authError;
-
   const state = getState();
-  const actor = getActor(event);
   const callerType = getCallerType(event);
   const body = await parseJsonBody(event.request);
 
-  // 1. Build update map from request body
+  // Build update map from request body
   const updates: Record<string, string> = {};
+  if (typeof body.adminToken === "string" && body.adminToken) {
+    updates.ADMIN_TOKEN = body.adminToken;
+  }
   if (typeof body.openaiApiKey === "string") {
     updates.OPENAI_API_KEY = body.openaiApiKey;
   }
@@ -91,7 +111,7 @@ export const POST: RequestHandler = async (event) => {
     updates.OPENMEMORY_USER_ID = body.openmemoryUserId;
   }
 
-  // 2. Save configuration to secrets.env
+  // Ensure directories and secrets.env exist before updating
   try {
     ensureXdgDirs();
     ensureSecrets(state);
@@ -106,11 +126,17 @@ export const POST: RequestHandler = async (event) => {
     );
   }
 
-  // 3. Run install sequence
+  // If admin token was set, update in-memory state so subsequent
+  // authenticated endpoints work immediately
+  if (updates.ADMIN_TOKEN) {
+    state.adminToken = updates.ADMIN_TOKEN;
+  }
+
+  // Run install sequence
   ensureOpenCodeConfig();
   applyInstall(state);
 
-  // 4. Discover staged channels and register them
+  // Discover staged channels and register them
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   const channelNames = stagedYmls
     .map((p) => {
@@ -125,7 +151,7 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  // 5. Check Docker and run compose up
+  // Check Docker and run compose up
   const dockerCheck = await checkDocker();
   let dockerResult = null;
   if (dockerCheck.ok) {
@@ -135,10 +161,10 @@ export const POST: RequestHandler = async (event) => {
     });
   }
 
-  // 6. Audit log
+  // Audit log
   appendAudit(
     state,
-    actor,
+    "setup",
     "setup.install",
     {
       dockerAvailable: dockerCheck.ok,
