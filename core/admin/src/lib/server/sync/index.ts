@@ -8,6 +8,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { gitProvider } from "./git-provider.js";
+import { tarProvider } from "./tar-provider.js";
 import type { ConfigSyncProvider, SyncConfig } from "./types.js";
 
 // Re-export types for convenience
@@ -21,16 +22,17 @@ export type {
   HistoryResult
 } from "./types.js";
 
-/** Default sync configuration. */
+/** Default sync configuration — syncing is off by default. */
 const DEFAULT_CONFIG: SyncConfig = {
   provider: "git",
-  autoSnapshot: true,
+  autoSnapshot: false,
   autoPush: false
 };
 
 /** Registry of available providers. New providers register here. */
 const PROVIDERS: Record<string, ConfigSyncProvider> = {
-  git: gitProvider
+  git: gitProvider,
+  tar: tarProvider
 };
 
 /** Resolve the path to sync.json within CONFIG_HOME. */
@@ -47,7 +49,8 @@ export function readSyncConfig(configDir: string): SyncConfig {
       return {
         provider: typeof raw.provider === "string" ? raw.provider : DEFAULT_CONFIG.provider,
         autoSnapshot: typeof raw.autoSnapshot === "boolean" ? raw.autoSnapshot : DEFAULT_CONFIG.autoSnapshot,
-        autoPush: typeof raw.autoPush === "boolean" ? raw.autoPush : DEFAULT_CONFIG.autoPush
+        autoPush: typeof raw.autoPush === "boolean" ? raw.autoPush : DEFAULT_CONFIG.autoPush,
+        snapshotDir: typeof raw.snapshotDir === "string" && raw.snapshotDir ? raw.snapshotDir : undefined
       };
     }
   } catch {

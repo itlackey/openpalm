@@ -28,6 +28,8 @@ const GITIGNORE_CONTENT = [
   "# OpenPalm — auto-managed by config sync",
   "# secrets.env contains API keys and tokens — never commit.",
   "secrets.env",
+  "# Tar provider snapshot store",
+  ".tar-sync/",
   ""
 ].join("\n");
 

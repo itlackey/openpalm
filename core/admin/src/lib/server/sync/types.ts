@@ -38,6 +38,12 @@ export type SyncConfig = {
   autoSnapshot: boolean;
   /** Auto-push to remote after every snapshot */
   autoPush: boolean;
+  /**
+   * Directory where the tar provider stores snapshot archives on push.
+   * Defaults to DATA_HOME/snapshots/config when empty/unset.
+   * Providers that don't use this field ignore it.
+   */
+  snapshotDir?: string;
 };
 
 /** Standard result envelope for provider operations. */
