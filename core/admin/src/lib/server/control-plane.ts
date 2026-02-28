@@ -746,96 +746,6 @@ export function buildArtifactMeta(artifacts: {
   }));
 }
 
-// ── Snapshot-Before-Write ───────────────────────────────────────────────
-
-const MAX_SNAPSHOTS = 3;
-
-/**
- * Take a snapshot of current STATE_HOME artifacts and channels before applying.
- * Snapshots are whole-directory copies stored under STATE_HOME/snapshots/<timestamp>/.
- * Returns the snapshot directory path, or null if there was nothing to snapshot.
- */
-export function snapshotCurrentState(stateDir: string): string | null {
-  const artifactDir = `${stateDir}/artifacts`;
-  const channelsDir = `${stateDir}/channels`;
-  const caddyfilePath = `${stateDir}/Caddyfile`;
-
-  // Nothing to snapshot if artifacts don't exist yet (first-ever apply)
-  if (!existsSync(artifactDir) || !existsSync(`${artifactDir}/manifest.json`)) {
-    return null;
-  }
-
-  const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const snapshotDir = `${stateDir}/snapshots/${ts}`;
-  mkdirSync(`${stateDir}/snapshots`, { recursive: true });
-
-  cpSync(artifactDir, `${snapshotDir}/artifacts`, { recursive: true });
-  if (existsSync(channelsDir)) {
-    cpSync(channelsDir, `${snapshotDir}/channels`, { recursive: true });
-  }
-  if (existsSync(caddyfilePath)) {
-    cpSync(caddyfilePath, `${snapshotDir}/Caddyfile`);
-  }
-
-  pruneSnapshots(stateDir);
-  return snapshotDir;
-}
-
-/**
- * Restore STATE_HOME from the most recent snapshot.
- * Overwrites artifacts/, channels/, and Caddyfile from the snapshot.
- */
-export function restoreSnapshot(stateDir: string, snapshotDir: string): void {
-  const artifactDir = `${stateDir}/artifacts`;
-  const channelsDir = `${stateDir}/channels`;
-
-  if (existsSync(`${snapshotDir}/artifacts`)) {
-    rmSync(artifactDir, { recursive: true, force: true });
-    cpSync(`${snapshotDir}/artifacts`, artifactDir, { recursive: true });
-  }
-  if (existsSync(`${snapshotDir}/channels`)) {
-    rmSync(channelsDir, { recursive: true, force: true });
-    cpSync(`${snapshotDir}/channels`, channelsDir, { recursive: true });
-  }
-  if (existsSync(`${snapshotDir}/Caddyfile`)) {
-    cpSync(`${snapshotDir}/Caddyfile`, `${stateDir}/Caddyfile`);
-  }
-}
-
-/**
- * Keep only the N most recent snapshots, removing older ones.
- */
-export function pruneSnapshots(stateDir: string): void {
-  const snapshotsDir = `${stateDir}/snapshots`;
-  if (!existsSync(snapshotsDir)) return;
-
-  const entries = readdirSync(snapshotsDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-
-  while (entries.length > MAX_SNAPSHOTS) {
-    const oldest = entries.shift()!;
-    rmSync(`${snapshotsDir}/${oldest}`, { recursive: true, force: true });
-  }
-}
-
-/**
- * Find the most recent snapshot directory, or null if none exist.
- */
-export function latestSnapshot(stateDir: string): string | null {
-  const snapshotsDir = `${stateDir}/snapshots`;
-  if (!existsSync(snapshotsDir)) return null;
-
-  const entries = readdirSync(snapshotsDir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-
-  if (entries.length === 0) return null;
-  return `${snapshotsDir}/${entries[entries.length - 1]}`;
-}
-
 // ── Atomic Directory Swap (Stage-to-Pending-Then-Rename) ───────────────
 
 /**
@@ -1018,11 +928,13 @@ export function cleanupStaleConfigBackups(
 /**
  * Persist core artifacts to STATE_HOME.
  *
- * Uses snapshot-before-write and stage-to-pending-then-rename for reliability:
- * 1. Snapshot current state for rollback
- * 2. Write all files into .pending directories
- * 3. Atomically rename .pending → live
- * 4. On failure: remove .pending dirs, restore from snapshot
+ * Uses stage-to-pending-then-rename for reliability:
+ * 1. Write all files into .pending directories (live state untouched)
+ * 2. Atomically rename .pending → live
+ * 3. On failure: remove .pending dirs — live state was never modified
+ *
+ * STATE_HOME is always regenerable from CONFIG_HOME via startup auto-apply,
+ * so atomic swap is sufficient protection — no snapshots needed.
  *
  * Directory responsibilities:
  *   STATE_HOME/artifacts/  — generated compose, manifest (not user-edited)
@@ -1033,10 +945,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   const channelsDir = `${state.configDir}/channels`;
   mkdirSync(channelsDir, { recursive: true });
 
-  // 1. Snapshot current state for rollback
-  const snapshot = snapshotCurrentState(state.stateDir);
-
-  // 2. Write all files into .pending directories
+  // Write all files into .pending directories (live state untouched)
   const pendingArtifacts = `${state.stateDir}/artifacts.pending`;
   const pendingChannels = `${state.stateDir}/channels.pending`;
   const pendingCaddyfile = `${state.stateDir}/Caddyfile.pending`;
@@ -1074,20 +983,15 @@ export function persistArtifacts(state: ControlPlaneState): void {
       JSON.stringify(state.artifactMeta, null, 2)
     );
 
-    // 3. Atomically swap .pending → live
+    // Atomically swap .pending → live
     atomicSwap(`${state.stateDir}/artifacts`, true);
     atomicSwap(`${state.stateDir}/channels`, true);
     atomicSwap(`${state.stateDir}/Caddyfile`, false);
   } catch (err) {
-    // Clean up .pending directories on failure
+    // Clean up .pending directories — live state was never modified
     rmSync(pendingArtifacts, { recursive: true, force: true });
     rmSync(pendingChannels, { recursive: true, force: true });
     rmSync(pendingCaddyfile, { force: true });
-
-    // 4. Restore from snapshot if available
-    if (snapshot) {
-      restoreSnapshot(state.stateDir, snapshot);
-    }
 
     throw err;
   }
