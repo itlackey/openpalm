@@ -29,7 +29,7 @@ Core services:
 - `admin`
 
 Channel services are added via compose overlays and staged into
-`STATE_HOME/channels/*.yml`.
+`STATE_HOME/artifacts/channels/*.yml`.
 
 ## Filesystem model
 

@@ -19,8 +19,8 @@ services:
     ports:
       - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-8080}:80"
     volumes:
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/channels:/etc/caddy/channels:ro
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/channels:/etc/caddy/channels:ro
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/data:/data/caddy
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/config:/config/caddy
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

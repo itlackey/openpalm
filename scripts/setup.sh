@@ -277,7 +277,7 @@ create_directories() {
 		"$STATE_HOME"
 		"$STATE_HOME/artifacts"
 		"$STATE_HOME/audit"
-		"$STATE_HOME/channels"
+		"$STATE_HOME/artifacts/channels"
 
 		# WORK_DIR — assistant working directory
 		"$WORK_DIR"
@@ -314,7 +314,7 @@ download_assets() {
 
 	# STATE artifacts — always overwritten
 	download_asset "docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
-	download_asset "Caddyfile" "${STATE_HOME}/Caddyfile"
+	download_asset "Caddyfile" "${STATE_HOME}/artifacts/Caddyfile"
 }
 
 # ── Background admin image pull ──────────────────────────────────────

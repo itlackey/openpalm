@@ -47,8 +47,8 @@ STATE_HOME (~/.local/state/openpalm/)
 │   ├── stack.env            # Staged stack config (merged from DATA_HOME/stack.env + admin-managed values)
 │   ├── secrets.env          # Staged copy of CONFIG_HOME/secrets.env
 │   └── manifest.json        # Artifact checksums & timestamps
-├── Caddyfile                # Staged Caddy config (copied from DATA_HOME/caddy/Caddyfile)
-├── channels/                # Staged channel overlays/snippets used at runtime
+│   ├── Caddyfile            # Staged Caddy config (copied from DATA_HOME/caddy/Caddyfile)
+│   └── channels/            # Staged channel overlays/snippets used at runtime
 └── audit/
     ├── admin-audit.jsonl    # Admin audit log
     └── guardian-audit.log    # Guardian audit log
@@ -77,8 +77,8 @@ mount in the stack.
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `$STATE_HOME/Caddyfile` | `/etc/caddy/Caddyfile` | ro | Staged Caddy config |
-| `$STATE_HOME/channels` | `/etc/caddy/channels` | ro | Staged channel `.caddy` route files |
+| `$STATE_HOME/artifacts/Caddyfile` | `/etc/caddy/Caddyfile` | ro | Staged Caddy config |
+| `$STATE_HOME/artifacts/channels` | `/etc/caddy/channels` | ro | Staged channel `.caddy` route files |
 | `$DATA_HOME/caddy/data` | `/data/caddy` | rw | TLS certificates and state |
 | `$DATA_HOME/caddy/config` | `/config/caddy` | rw | Caddy runtime config |
 
@@ -86,7 +86,7 @@ The staged Caddyfile includes `import channels/public/*.caddy` and
 `import channels/lan/*.caddy` — Caddy loads staged route files from
 `/etc/caddy/channels/` at startup. Adding or removing a `.caddy` file in
 CONFIG_HOME/channels/ requires an apply action that re-stages channel files
-into STATE_HOME/channels before Caddy reload.
+into STATE_HOME/artifacts/channels before Caddy reload.
 
 The source-of-truth core Caddyfile is `DATA_HOME/caddy/Caddyfile` and is
 system-managed by admin logic.
@@ -223,7 +223,7 @@ The guardian reads channel secrets from the bind-mounted `stack.env`.
 ## Channel Discovery
 
 Channels are discovered from `CONFIG_HOME/channels/` at apply time, then staged
-into `STATE_HOME/channels/` for runtime use.
+into `STATE_HOME/artifacts/channels/` for runtime use.
 
 Channel definitions are cataloged in the `registry/` directory and bundled into
 the admin image at build time. Channels are installed from the registry via the

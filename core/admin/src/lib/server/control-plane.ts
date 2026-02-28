@@ -343,7 +343,7 @@ function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
 /**
  * Check if a service name is allowed. Core services are always allowed.
  * Channel services (channel-*) are allowed if a corresponding staged .yml exists
- * in STATE_HOME/channels/.
+ * in STATE_HOME/artifacts/channels/.
  */
 export function isAllowedService(value: string, stateDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
@@ -352,7 +352,7 @@ export function isAllowedService(value: string, stateDir?: string): boolean {
     const ch = value.slice("channel-".length);
     if (!isValidChannelName(ch)) return false;
     if (stateDir) {
-      return existsSync(`${stateDir}/channels/${ch}.yml`);
+      return existsSync(`${stateDir}/artifacts/channels/${ch}.yml`);
     }
   }
   return false;
@@ -364,13 +364,13 @@ export function isAllowedAction(action: string): boolean {
 
 /**
  * Check if a channel name is valid. Accepts any channel with a staged
- * .yml file in STATE_HOME/channels/.
+ * .yml file in STATE_HOME/artifacts/channels/.
  */
 export function isValidChannel(value: string, stateDir?: string): boolean {
   if (!value || !value.trim()) return false;
   if (!isValidChannelName(value)) return false;
   if (stateDir) {
-    return existsSync(`${stateDir}/channels/${value}.yml`);
+    return existsSync(`${stateDir}/artifacts/channels/${value}.yml`);
   }
   return false;
 }
@@ -430,7 +430,7 @@ export function applyUninstall(state: ControlPlaneState): { stopped: string[] } 
 
 /**
  * Build the full list of compose files: core compose + all staged channel overlays.
- * Uses staged .yml files from STATE_HOME/channels/ — never reads from CONFIG_HOME at runtime.
+ * Uses staged .yml files from STATE_HOME/artifacts/channels/ — never reads from CONFIG_HOME at runtime.
  */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
   const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
@@ -532,7 +532,7 @@ function withDefaultLanOnly(rawCaddy: string): string | null {
 }
 
 function stageChannelCaddyfiles(state: ControlPlaneState): void {
-  const stagedChannelsDir = `${state.stateDir}/channels`;
+  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
   const stagedPublicDir = `${stagedChannelsDir}/public`;
   const stagedLanDir = `${stagedChannelsDir}/lan`;
   // Only clean the caddy subdirectories, not the whole channels/ dir
@@ -738,7 +738,7 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
 }
 
 function stageChannelYmlFiles(state: ControlPlaneState): void {
-  const stagedChannelsDir = `${state.stateDir}/channels`;
+  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
   mkdirSync(stagedChannelsDir, { recursive: true });
 
   // Clean stale staged .yml files before re-staging
@@ -756,12 +756,12 @@ function stageChannelYmlFiles(state: ControlPlaneState): void {
 }
 
 /**
- * Discover staged channel .yml overlays from STATE_HOME/channels/.
+ * Discover staged channel .yml overlays from STATE_HOME/artifacts/channels/.
  * Returns absolute paths to staged .yml files. Used by buildComposeFileList()
  * so that Docker Compose reads from staged runtime artifacts, not from CONFIG_HOME.
  */
 export function discoverStagedChannelYmls(stateDir: string): string[] {
-  const channelsDir = `${stateDir}/channels`;
+  const channelsDir = `${stateDir}/artifacts/channels`;
   if (!existsSync(channelsDir)) return [];
 
   return readdirSync(channelsDir, { withFileTypes: true })
@@ -790,8 +790,8 @@ export function buildArtifactMeta(artifacts: {
  * Persist core artifacts to STATE_HOME.
  *
  * Directory responsibilities:
- *   STATE_HOME/artifacts/  — generated compose, manifest (not user-edited)
- *   STATE_HOME/Caddyfile   — generated Caddyfile (not user-edited)
+ *   STATE_HOME/artifacts/  — generated compose, Caddyfile, manifest (not user-edited)
+ *   STATE_HOME/artifacts/channels/ — staged channel .yml and .caddy files
  *   CONFIG_HOME/channels/  — channel .yml and .caddy files (user-installed)
  */
 export function persistArtifacts(state: ControlPlaneState): void {
@@ -802,7 +802,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
 
   // Core artifacts → STATE_HOME
   writeFileSync(`${artifactDir}/docker-compose.yml`, state.artifacts.compose);
-  writeFileSync(`${state.stateDir}/Caddyfile`, state.artifacts.caddyfile);
+  writeFileSync(`${artifactDir}/Caddyfile`, state.artifacts.caddyfile);
 
   // Ensure every discovered channel has a secret before staging stack.env
   const allChannels = discoverChannels(state.configDir);
@@ -997,7 +997,7 @@ export function ensureXdgDirs(): void {
     stateHome,
     `${stateHome}/artifacts`,
     `${stateHome}/audit`,
-    `${stateHome}/channels`
+    `${stateHome}/artifacts/channels`
   ]) {
     mkdirSync(dir, { recursive: true });
   }

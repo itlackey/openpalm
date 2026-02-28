@@ -44,7 +44,7 @@ DATA_DIR="$DEV_ROOT/data"
 
 CADDY_SRC="$ROOT_DIR/assets/Caddyfile"
 CADDY_CORE_DEST="$DATA_DIR/caddy/Caddyfile"
-CADDY_STAGE_DEST="$STATE_DIR/Caddyfile"
+CADDY_STAGE_DEST="$STATE_DIR/artifacts/Caddyfile"
 ENV_SRC="$ROOT_DIR/assets/secrets.env"
 ENV_DEST="$DEV_ROOT/config/secrets.env"
 STACK_ENV_DATA="$DATA_DIR/stack.env"

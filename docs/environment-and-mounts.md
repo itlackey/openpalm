@@ -39,8 +39,8 @@ Docker volumes or tmpfs mounts in the stack.
 
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
-| `$STATE_HOME/Caddyfile` | `/etc/caddy/Caddyfile` | **ro** | Staged Caddy config |
-| `$STATE_HOME/channels` | `/etc/caddy/channels` | **ro** | Staged channel `.caddy` route files |
+| `$STATE_HOME/artifacts/Caddyfile` | `/etc/caddy/Caddyfile` | **ro** | Staged Caddy config |
+| `$STATE_HOME/artifacts/channels` | `/etc/caddy/channels` | **ro** | Staged channel `.caddy` route files |
 | `$DATA_HOME/caddy/data` | `/data/caddy` | rw | Caddy TLS certificates and state |
 | `$DATA_HOME/caddy/config` | `/config/caddy` | rw | Caddy runtime config |
 
@@ -49,7 +49,7 @@ The Caddyfile includes `import channels/public/*.caddy` and
 STATE_HOME.
 
 The source-of-truth core Caddyfile is system-managed at
-`$DATA_HOME/caddy/Caddyfile` and staged to `$STATE_HOME/Caddyfile` during apply.
+`$DATA_HOME/caddy/Caddyfile` and staged to `$STATE_HOME/artifacts/Caddyfile` during apply.
 
 ### 2.2 PostgreSQL
 

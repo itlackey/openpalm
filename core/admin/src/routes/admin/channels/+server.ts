@@ -34,7 +34,7 @@ export const GET: RequestHandler = async (event) => {
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
 
   // Check which channels have staged caddy routes (in public/ or lan/ subdirs)
-  const stagedChannelsDir = `${state.stateDir}/channels`;
+  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
   const routedChannels = new Set<string>();
   for (const sub of ["public", "lan"]) {
     const dir = `${stagedChannelsDir}/${sub}`;

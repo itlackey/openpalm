@@ -44,7 +44,7 @@ import channels/lan/*.caddy
 Caddy loads staged `.caddy` files from the `channels/public/` and `channels/lan/` directories at startup. No changes to the core Caddyfile are needed when adding or removing channels.
 
 In admin-managed mode, this file is seeded to and managed from
-`DATA_HOME/caddy/Caddyfile`, then staged to `STATE_HOME/Caddyfile` during apply.
+`DATA_HOME/caddy/Caddyfile`, then staged to `STATE_HOME/artifacts/Caddyfile` during apply.
 
 **Caddy files are optional.** If a channel has no `.caddy` file, it gets no HTTP route through Caddy and is only accessible on the Docker network (host and other containers). This is the default for channels that don't need public or LAN access.
 
