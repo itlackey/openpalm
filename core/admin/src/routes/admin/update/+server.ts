@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureSecrets, ensureXdgDirs, ensureOpenCodeConfig, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
+import { applyUpdate, appendAudit, ensureSecrets, ensureXdgDirs, ensureOpenCodeConfig, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
@@ -30,7 +30,8 @@ export const POST: RequestHandler = async (event) => {
   if (dockerCheck.ok) {
     dockerResult = await composeUp(state.stateDir, {
       files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state)
+      envFiles: buildEnvFiles(state),
+      services: buildManagedServices(state)
     });
   }
 
