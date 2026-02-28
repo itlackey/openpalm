@@ -91,7 +91,9 @@ export function mergeEnvContent(
   }
 
   if (remaining.size > 0) {
-    lines.push("");
+    if (lines.length === 0 || lines[lines.length - 1] !== "") {
+      lines.push("");
+    }
     if (options.sectionHeader) {
       lines.push(options.sectionHeader);
     }
