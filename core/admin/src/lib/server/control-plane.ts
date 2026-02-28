@@ -245,10 +245,7 @@ export function createState(
   const configDir = resolveConfigHome();
   const fileEnv = loadSecretsEnvFile(configDir);
   const resolvedAdminToken =
-    adminToken ?? fileEnv.ADMIN_TOKEN ?? process.env.ADMIN_TOKEN;
-  if (!resolvedAdminToken) {
-    throw new Error("ADMIN_TOKEN must be set via environment variable or secrets.env");
-  }
+    adminToken ?? fileEnv.ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
 
   // Initialize core services as stopped
   const services: Record<string, "running" | "stopped"> = {};
@@ -852,6 +849,54 @@ export function uninstallChannel(
   rmSync(ymlPath, { force: true });
   rmSync(`${channelsDir}/${name}.caddy`, { force: true });
   return { ok: true };
+}
+
+/**
+ * Merge key-value pairs into CONFIG_HOME/secrets.env.
+ *
+ * The caller controls which keys are passed — this function writes them
+ * all without filtering.
+ *
+ * Algorithm:
+ * 1. Read the existing secrets.env (must exist — throws if missing).
+ * 2. Pass 1: For each line, strip leading `# ` and check if the key matches.
+ *    If so, replace the entire line with `KEY=value` (uncomments if needed).
+ * 3. Pass 2: Append any remaining keys not found in the file.
+ */
+export function updateSecretsEnv(
+  state: ControlPlaneState,
+  updates: Record<string, string>
+): void {
+  const secretsPath = `${state.configDir}/secrets.env`;
+  if (!existsSync(secretsPath)) {
+    throw new Error("secrets.env does not exist — run setup first");
+  }
+
+  const raw = readFileSync(secretsPath, "utf-8");
+  const lines = raw.split("\n");
+  const remaining = new Map(Object.entries(updates));
+
+  // Pass 1: replace existing lines (including commented-out)
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].replace(/^#\s*/, "").trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (remaining.has(key)) {
+      lines[i] = `${key}=${remaining.get(key)}`;
+      remaining.delete(key);
+    }
+  }
+
+  // Pass 2: append keys not found in existing file
+  if (remaining.size > 0) {
+    lines.push("");
+    for (const [key, value] of remaining) {
+      lines.push(`${key}=${value}`);
+    }
+  }
+
+  writeFileSync(secretsPath, lines.join("\n"));
 }
 
 // ── Secrets ─────────────────────────────────────────────────────────────
