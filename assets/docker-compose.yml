@@ -65,6 +65,7 @@ services:
     restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       QDRANT_URL: http://qdrant:6333
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
@@ -108,6 +109,7 @@ services:
       OPENMEMORY_API_URL: http://openmemory:8765
       OPENMEMORY_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}

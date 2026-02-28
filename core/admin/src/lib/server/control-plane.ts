@@ -926,9 +926,13 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("");
   secretLines.push("# LLM provider keys");
   secretLines.push(`OPENAI_API_KEY=${process.env.OPENAI_API_KEY ?? ""}`);
+  secretLines.push(`OPENAI_BASE_URL=${process.env.OPENAI_BASE_URL ?? ""}`);
   secretLines.push(`GROQ_API_KEY=${process.env.GROQ_API_KEY ?? ""}`);
   secretLines.push(`MISTRAL_API_KEY=${process.env.MISTRAL_API_KEY ?? ""}`);
   secretLines.push(`GOOGLE_API_KEY=${process.env.GOOGLE_API_KEY ?? ""}`);
+  secretLines.push("");
+  secretLines.push("# OpenMemory");
+  secretLines.push(`OPENMEMORY_USER_ID=${process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
   writeFileSync(secretsPath, secretLines.join("\n") + "\n");
 }
 
@@ -967,7 +971,8 @@ export function ensureXdgDirs(): void {
     stateHome,
     `${stateHome}/artifacts`,
     `${stateHome}/audit`,
-    `${stateHome}/secrets`
+    `${stateHome}/secrets`,
+    `${stateHome}/channels`
   ]) {
     mkdirSync(dir, { recursive: true });
   }

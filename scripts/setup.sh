@@ -260,6 +260,8 @@ create_directories() {
 		"$STATE_HOME"
 		"$STATE_HOME/artifacts"
 		"$STATE_HOME/audit"
+		"$STATE_HOME/secrets"
+		"$STATE_HOME/channels"
 
 		# WORK_DIR — assistant working directory
 		"$WORK_DIR"
