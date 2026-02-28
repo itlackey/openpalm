@@ -14,7 +14,9 @@ import {
   ensureOpenCodeConfig,
   stageArtifacts,
   persistArtifacts,
-  appendAudit
+  appendAudit,
+  cleanupStalePending,
+  cleanupStaleConfigBackups
 } from "$lib/server/control-plane.js";
 
 const logger = createLogger("admin");
@@ -23,15 +25,18 @@ let startupApplyDone = false;
 
 function runStartupApply(): void {
   if (startupApplyDone) return;
-  startupApplyDone = true;
 
   try {
     ensureXdgDirs();
     const state = getState();
+
     ensureSecrets(state);
     ensureOpenCodeConfig();
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
+
+    // Mark done only after successful apply — allows retry on next request if failed
+    startupApplyDone = true;
 
     appendAudit(
       state,

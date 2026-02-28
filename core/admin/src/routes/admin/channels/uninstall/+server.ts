@@ -21,7 +21,10 @@ import {
   persistArtifacts,
   stageArtifacts,
   buildComposeFileList,
-  buildEnvFiles
+  buildEnvFiles,
+  backupChannelConfig,
+  rollbackChannelConfig,
+  clearChannelConfigBackup
 } from "$lib/server/control-plane.js";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
 
@@ -42,20 +45,40 @@ export const POST: RequestHandler = async (event) => {
 
   const serviceName = `channel-${channel}`;
 
+  // Backup channel files before deletion (enables rollback on staging failure)
+  backupChannelConfig("uninstall", channel, state.configDir, state.stateDir);
+
   // Remove channel files from CONFIG_HOME
   const result = uninstallChannel(channel, state.configDir);
   if (!result.ok) {
+    clearChannelConfigBackup(channel, state.stateDir);
     appendAudit(state, actor, "channels.uninstall", { channel, error: result.error }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
+
+  // Save previous state for rollback
+  const prevSecret = state.channelSecrets[channel];
+  const prevServiceStatus = state.services[serviceName];
 
   // Remove channel secret and service from state
   delete state.channelSecrets[channel];
   delete state.services[serviceName];
 
-  // Re-stage artifacts
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  // Re-stage artifacts — rollback CONFIG_HOME on failure
+  try {
+    state.artifacts = stageArtifacts(state);
+    persistArtifacts(state);
+  } catch (err) {
+    // Rollback: restore deleted channel files to CONFIG_HOME
+    rollbackChannelConfig(channel, state.configDir, state.stateDir);
+    if (prevSecret) state.channelSecrets[channel] = prevSecret;
+    if (prevServiceStatus) state.services[serviceName] = prevServiceStatus;
+    appendAudit(state, actor, "channels.uninstall", { channel, error: String(err) }, false, requestId, callerType);
+    return errorResponse(500, "internal_error", "Failed to stage artifacts after uninstall", {}, requestId);
+  }
+
+  // Clear the config backup — staging succeeded
+  clearChannelConfigBackup(channel, state.stateDir);
 
   // Stop the channel service
   const dockerCheck = await checkDocker();

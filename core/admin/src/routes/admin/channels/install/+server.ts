@@ -23,7 +23,10 @@ import {
   stageArtifacts,
   buildComposeFileList,
   buildEnvFiles,
-  randomHex
+  randomHex,
+  backupChannelConfig,
+  rollbackChannelConfig,
+  clearChannelConfigBackup
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 
@@ -42,9 +45,13 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "channel is required", {}, requestId);
   }
 
+  // Record intent before modifying CONFIG_HOME (enables rollback on failure)
+  backupChannelConfig("install", channel, state.configDir, state.stateDir);
+
   // Install channel files from registry to CONFIG_HOME
   const result = installChannelFromRegistry(channel, state.configDir);
   if (!result.ok) {
+    clearChannelConfigBackup(channel, state.stateDir);
     appendAudit(state, actor, "channels.install", { channel, error: result.error }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", result.error, {}, requestId);
   }
@@ -54,10 +61,22 @@ export const POST: RequestHandler = async (event) => {
     state.channelSecrets[channel] = randomHex(16);
   }
 
-  // Re-stage artifacts and update state
-  state.services[`channel-${channel}`] = "running";
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
+  // Re-stage artifacts and update state — rollback CONFIG_HOME on failure
+  try {
+    state.services[`channel-${channel}`] = "running";
+    state.artifacts = stageArtifacts(state);
+    persistArtifacts(state);
+  } catch (err) {
+    // Rollback: remove newly installed channel files from CONFIG_HOME
+    rollbackChannelConfig(channel, state.configDir, state.stateDir);
+    delete state.channelSecrets[channel];
+    delete state.services[`channel-${channel}`];
+    appendAudit(state, actor, "channels.install", { channel, error: String(err) }, false, requestId, callerType);
+    return errorResponse(500, "internal_error", "Failed to stage artifacts after install", {}, requestId);
+  }
+
+  // Clear the config backup — staging succeeded
+  clearChannelConfigBackup(channel, state.stateDir);
 
   // Run docker compose up
   const dockerCheck = await checkDocker();
