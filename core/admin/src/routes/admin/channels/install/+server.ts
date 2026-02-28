@@ -23,6 +23,7 @@ import {
   stageArtifacts,
   buildComposeFileList,
   buildEnvFiles,
+  buildManagedServices,
   randomHex
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
@@ -65,7 +66,8 @@ export const POST: RequestHandler = async (event) => {
   if (dockerCheck.ok) {
     dockerResult = await composeUp(state.stateDir, {
       files: buildComposeFileList(state),
-      envFiles: buildEnvFiles(state)
+      envFiles: buildEnvFiles(state),
+      services: buildManagedServices(state)
     });
   }
 
