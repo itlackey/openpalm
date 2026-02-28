@@ -106,10 +106,19 @@ describe("Atomic Directory Swap (cleanupStalePending)", () => {
     expect(existsSync(pendingCaddyfile)).toBe(false);
   });
 
-  test("cleanupStalePending removes .old directories", () => {
+  test("cleanupStalePending removes .old directories when live state exists", () => {
+    const liveArtifacts = join(stateDir, "artifacts");
+    const liveChannels = join(stateDir, "channels");
+    const liveCaddyfile = join(stateDir, "Caddyfile");
+
     const oldArtifacts = join(stateDir, "artifacts.old");
     const oldChannels = join(stateDir, "channels.old");
     const oldCaddyfile = join(stateDir, "Caddyfile.old");
+
+    // Simulate a successful commit where live state exists and .old is just stale backup
+    mkdirSync(liveArtifacts, { recursive: true });
+    mkdirSync(liveChannels, { recursive: true });
+    writeFileSync(liveCaddyfile, "live");
 
     mkdirSync(oldArtifacts, { recursive: true });
     mkdirSync(oldChannels, { recursive: true });
@@ -117,11 +126,56 @@ describe("Atomic Directory Swap (cleanupStalePending)", () => {
 
     cleanupStalePending(stateDir);
 
+    // Stale .old state should be removed
     expect(existsSync(oldArtifacts)).toBe(false);
     expect(existsSync(oldChannels)).toBe(false);
     expect(existsSync(oldCaddyfile)).toBe(false);
+
+    // Live state must remain intact
+    expect(existsSync(liveArtifacts)).toBe(true);
+    expect(existsSync(liveChannels)).toBe(true);
+    expect(existsSync(liveCaddyfile)).toBe(true);
   });
 
+  test("cleanupStalePending restores .old when live state is missing", () => {
+    const liveArtifacts = join(stateDir, "artifacts");
+    const liveChannels = join(stateDir, "channels");
+    const liveCaddyfile = join(stateDir, "Caddyfile");
+
+    const oldArtifacts = join(stateDir, "artifacts.old");
+    const oldChannels = join(stateDir, "channels.old");
+    const oldCaddyfile = join(stateDir, "Caddyfile.old");
+
+    // Simulate crash after live → .old but before .pending → live:
+    // only .old state is present, no live directories/files.
+    mkdirSync(oldArtifacts, { recursive: true });
+    mkdirSync(oldChannels, { recursive: true });
+    writeFileSync(join(oldArtifacts, "docker-compose.yml"), "old-artifacts");
+    writeFileSync(oldCaddyfile, "old-caddyfile");
+
+    // Sanity: live state should not exist before recovery
+    expect(existsSync(liveArtifacts)).toBe(false);
+    expect(existsSync(liveChannels)).toBe(false);
+    expect(existsSync(liveCaddyfile)).toBe(false);
+
+    cleanupStalePending(stateDir);
+
+    // The .old state should be restored back to live paths
+    expect(existsSync(liveArtifacts)).toBe(true);
+    expect(existsSync(liveChannels)).toBe(true);
+    expect(existsSync(liveCaddyfile)).toBe(true);
+
+    // And .old should no longer exist
+    expect(existsSync(oldArtifacts)).toBe(false);
+    expect(existsSync(oldChannels)).toBe(false);
+    expect(existsSync(oldCaddyfile)).toBe(false);
+
+    // Verify contents were carried over for at least one representative file
+    expect(
+      readFileSync(join(liveArtifacts, "docker-compose.yml"), "utf-8")
+    ).toBe("old-artifacts");
+    expect(readFileSync(liveCaddyfile, "utf-8")).toBe("old-caddyfile");
+  });
   test("cleanupStalePending is safe when no stale state exists", () => {
     cleanupStalePending(stateDir);
     expect(existsSync(stateDir)).toBe(true);
