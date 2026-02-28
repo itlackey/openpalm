@@ -21,6 +21,7 @@ import {
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { readFileSync, existsSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import { userInfo } from "node:os";
 import type { RequestHandler } from "./$types";
 
@@ -72,8 +73,30 @@ function detectUserId(): string {
  * When true, setup is complete and the POST endpoint requires auth.
  */
 function isSetupComplete(): boolean {
+  const state = getState();
+  const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
+  if (existsSync(stackEnvPath)) {
+    const stackEnv = readFileSync(stackEnvPath, "utf-8");
+    for (const line of stackEnv.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      if (key !== "OPENPALM_SETUP_COMPLETE") continue;
+      const value = trimmed.slice(eq + 1).trim().toLowerCase();
+      return value === "true";
+    }
+  }
   const keys = readSecretsKeys();
   return keys.ADMIN_TOKEN === true;
+}
+
+function safeTokenCompare(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 /**
@@ -99,6 +122,7 @@ export const GET: RequestHandler = async (event) => {
     {
       setupComplete,
       installed,
+      setupToken: setupComplete ? null : state.setupToken,
       detectedUserId: detectUserId(),
       configured: {
         OPENAI_API_KEY: keys.OPENAI_API_KEY === true,
@@ -122,14 +146,27 @@ export const GET: RequestHandler = async (event) => {
  */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  const state = getState();
+  const setupComplete = isSetupComplete();
 
-  // One-time guard: if setup is already complete, require admin auth
-  if (isSetupComplete()) {
+  if (setupComplete) {
+    // Setup already completed — require normal admin auth
     const authError = requireAdmin(event, requestId);
     if (authError) return authError;
+  } else {
+    // First-run setup requires the ephemeral setup token from GET /admin/setup
+    const bootstrapToken = event.request.headers.get("x-admin-token") ?? "";
+    if (!safeTokenCompare(bootstrapToken, state.setupToken)) {
+      return errorResponse(
+        401,
+        "unauthorized",
+        "Missing or invalid x-admin-token",
+        {},
+        requestId
+      );
+    }
   }
 
-  const state = getState();
   const callerType = getCallerType(event);
   const body = await parseJsonBody(event.request);
 

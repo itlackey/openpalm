@@ -111,6 +111,7 @@ export type ArtifactMeta = {
 
 export type ControlPlaneState = {
   adminToken: string;
+  setupToken: string;
   postgresPassword: string;
   stateDir: string;
   configDir: string;
@@ -267,6 +268,7 @@ export function createState(
 
   return {
     adminToken: resolvedAdminToken,
+    setupToken: randomHex(16),
     postgresPassword,
     stateDir,
     configDir,
@@ -692,6 +694,7 @@ function stageStackEnv(state: ControlPlaneState): void {
     "# ── Networking ──────────────────────────────────────────────────────",
     `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
     `OPENPALM_INGRESS_PORT=${process.env.OPENPALM_INGRESS_PORT ?? "8080"}`,
+    `OPENPALM_SETUP_COMPLETE=${state.adminToken ? "true" : "false"}`,
     "",
     "# ── OpenMemory ──────────────────────────────────────────────────────",
     `OPENMEMORY_DASHBOARD_API_URL=${process.env.OPENMEMORY_DASHBOARD_API_URL ?? "http://localhost:8765"}`,
