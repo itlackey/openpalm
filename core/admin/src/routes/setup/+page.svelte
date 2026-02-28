@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { untrack } from 'svelte';
   import type { PageData } from './$types';
 
@@ -74,7 +75,7 @@
       }
       const data = await res.json();
       startedServices = data.started ?? [];
-      window.location.href = '/';
+      await goto('/');
     } catch {
       installError = 'Network error — unable to reach admin API.';
     } finally {

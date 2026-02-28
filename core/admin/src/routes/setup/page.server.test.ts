@@ -36,15 +36,17 @@ afterEach(() => {
 });
 
 describe("/setup page server load", () => {
+  function makeLoadEvent(): Parameters<typeof load>[0] {
+    return {} as Parameters<typeof load>[0];
+  }
+
   test("returns bootstrap setup token for server-rendered page", async () => {
     resetState();
-    const result = await load({} as never);
-    if (!result) {
-      throw new Error("Expected setup page load to return data");
-    }
+    const result = await load(makeLoadEvent()) as { setupToken: string };
 
     expect(typeof result.setupToken).toBe("string");
     expect(result.setupToken.length).toBeGreaterThan(0);
+    expect(result.setupToken).toMatch(/^[a-f0-9]{32}$/);
   });
 
   test("redirects to home when OPENPALM_SETUP_COMPLETE=true in stack.env", async () => {
@@ -57,7 +59,7 @@ describe("/setup page server load", () => {
       "OPENPALM_SETUP_COMPLETE=true\n"
     );
 
-    await expect(load({} as never)).rejects.toMatchObject({
+    await expect(load(makeLoadEvent())).rejects.toMatchObject({
       status: 307,
       location: "/"
     });
