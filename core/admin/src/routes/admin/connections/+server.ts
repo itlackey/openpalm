@@ -24,6 +24,7 @@ import {
   ALLOWED_CONNECTION_KEYS,
   maskConnectionValue
 } from "$lib/server/control-plane.js";
+import { afterMutation } from "$lib/server/sync/index.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -88,6 +89,10 @@ export const POST: RequestHandler = async (event) => {
       requestId
     );
   }
+
+  // Config sync — snapshot after mutation (best-effort, never blocks)
+  // Note: secrets.env is gitignored, so this is typically a no-op.
+  await afterMutation(state.configDir, `Update connections: ${Object.keys(patches).join(", ")}`);
 
   appendAudit(
     state,

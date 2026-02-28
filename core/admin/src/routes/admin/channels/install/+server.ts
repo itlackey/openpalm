@@ -26,6 +26,7 @@ import {
   randomHex
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
+import { afterMutation } from "$lib/server/sync/index.js";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -68,6 +69,9 @@ export const POST: RequestHandler = async (event) => {
       envFiles: buildEnvFiles(state)
     });
   }
+
+  // Config sync — snapshot after mutation (best-effort, never blocks)
+  await afterMutation(state.configDir, `Install channel: ${channel}`);
 
   appendAudit(
     state,

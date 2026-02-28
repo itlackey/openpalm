@@ -24,6 +24,7 @@ import {
   buildEnvFiles
 } from "$lib/server/control-plane.js";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
+import { afterMutation } from "$lib/server/sync/index.js";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -66,6 +67,9 @@ export const POST: RequestHandler = async (event) => {
       envFiles: buildEnvFiles(state)
     });
   }
+
+  // Config sync — snapshot after mutation (best-effort, never blocks)
+  await afterMutation(state.configDir, `Uninstall channel: ${channel}`);
 
   appendAudit(
     state,
