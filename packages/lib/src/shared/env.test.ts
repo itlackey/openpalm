@@ -139,4 +139,60 @@ describe("mergeEnvContent", () => {
     const result = mergeEnvContent(input, {});
     expect(result).toBe(input);
   });
+
+  it("quotes values containing # so they round-trip through dotenv", () => {
+    const result = mergeEnvContent("", { API_KEY: "sk_live#abc" });
+    const parsed = parseEnvContent(result);
+    expect(parsed.API_KEY).toBe("sk_live#abc");
+  });
+
+  it("quotes values containing double quotes", () => {
+    const result = mergeEnvContent("", { MSG: 'say "hello"' });
+    const parsed = parseEnvContent(result);
+    expect(parsed.MSG).toBe('say "hello"');
+  });
+
+  it("quotes values containing newlines via double quotes", () => {
+    const result = mergeEnvContent("", { CERT: "line1\nline2" });
+    const parsed = parseEnvContent(result);
+    expect(parsed.CERT).toBe("line1\nline2");
+  });
+
+  it("quotes values with leading/trailing spaces", () => {
+    const result = mergeEnvContent("", { KEY: " spaced " });
+    const parsed = parseEnvContent(result);
+    expect(parsed.KEY).toBe(" spaced ");
+  });
+
+  it("does not quote simple values", () => {
+    const result = mergeEnvContent("", { SIMPLE: "hello123" });
+    expect(result).toContain("SIMPLE=hello123");
+    expect(result).not.toContain('"');
+    expect(result).not.toContain("'");
+  });
+
+  it("round-trips complex values when updating existing keys", () => {
+    const input = "SECRET=old_value\n";
+    const result = mergeEnvContent(input, { SECRET: "new#value" });
+    const parsed = parseEnvContent(result);
+    expect(parsed.SECRET).toBe("new#value");
+  });
+
+  it("handles values with backslashes", () => {
+    const result = mergeEnvContent("", { WINPATH: "C:\\Users\\test" });
+    const parsed = parseEnvContent(result);
+    expect(parsed.WINPATH).toBe("C:\\Users\\test");
+  });
+
+  it("uses single quotes for # values (preferred, fully literal)", () => {
+    const result = mergeEnvContent("", { KEY: "val#ue" });
+    expect(result).toContain("KEY='val#ue'");
+  });
+
+  it("falls back to double quotes when value contains single quotes", () => {
+    const result = mergeEnvContent("", { KEY: "it's#here" });
+    expect(result).toContain('KEY="it\'s#here"');
+    const parsed = parseEnvContent(result);
+    expect(parsed.KEY).toBe("it's#here");
+  });
 });

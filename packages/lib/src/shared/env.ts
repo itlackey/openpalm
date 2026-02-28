@@ -30,12 +30,41 @@ export function parseEnvFile(filePath: string): Record<string, string> {
 // ── WRITE helpers ───────────────────────────────────────────────────
 
 /**
+ * Serialize a value for a .env file so it round-trips through dotenv.parse().
+ *
+ * dotenv behaviour:
+ *  - Unquoted values treat `#` as an inline-comment delimiter.
+ *  - Single-quoted values are fully literal (no escape processing).
+ *  - Double-quoted values interpret `\n` and `\r` as newline/carriage-return
+ *    but do NOT unescape `\"` or `\\`.
+ *
+ * Strategy: prefer single quotes (fully literal). Fall back to double
+ * quotes only when the value contains a single quote (and needs quoting).
+ */
+function quoteEnvValue(value: string): string {
+  if (value.length === 0) return "";
+  const needsQuoting = /[#"'\\\n\r]/.test(value) || value !== value.trim();
+  if (!needsQuoting) return value;
+
+  // Single quotes: fully literal, safe for #, ", \, spaces
+  if (!value.includes("'")) return `'${value}'`;
+
+  // Double quotes: only \n and \r are interpreted as escape sequences.
+  // Escape real newlines/carriage-returns so they survive the round-trip.
+  const escaped = value.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+  return `"${escaped}"`;
+}
+
+/**
  * Merge key-value updates into .env content while preserving structure
  * (comments, blank lines, ordering).
  *
  * 1. For each line containing a key in `updates`, replace the line.
  *    If `uncomment` is true, commented-out keys (`# KEY=`) are also matched.
  * 2. Append any remaining keys not found in the file.
+ *
+ * Values are quoted when necessary so they round-trip safely through
+ * dotenv.parse().
  *
  * Returns the updated content string (does NOT write to disk).
  */
@@ -56,7 +85,7 @@ export function mergeEnvContent(
     if (eq <= 0) continue;
     const key = testLine.slice(0, eq).trim();
     if (remaining.has(key)) {
-      lines[i] = `${key}=${remaining.get(key)}`;
+      lines[i] = `${key}=${quoteEnvValue(remaining.get(key)!)}`;
       remaining.delete(key);
     }
   }
@@ -67,7 +96,7 @@ export function mergeEnvContent(
       lines.push(options.sectionHeader);
     }
     for (const [key, value] of remaining) {
-      lines.push(`${key}=${value}`);
+      lines.push(`${key}=${quoteEnvValue(value)}`);
     }
   }
 
