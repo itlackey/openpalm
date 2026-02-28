@@ -12,9 +12,11 @@ WORKDIR /app
 # raw TypeScript source of @openpalm/lib directly into node_modules.
 COPY packages/lib /app/node_modules/@openpalm/lib
 COPY core/guardian/ .
-# Strip workspace:* dep (pre-installed via COPY above) so bun install resolves remaining deps
-RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))"
-RUN bun install --production --no-frozen-lockfile
+# Strip workspace:* dep (pre-installed via COPY above) and remove the workspace
+# lockfile so bun install resolves remaining deps without CI frozen-lockfile enforcement.
+RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
+    && rm -f bun.lock bun.lockb \
+    && bun install --production
 
 RUN mkdir -p /app/data && chown -R bun:bun /app
 USER bun
