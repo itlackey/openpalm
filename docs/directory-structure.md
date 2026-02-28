@@ -122,18 +122,11 @@ system-managed by admin logic.
 | `$DATA_HOME/assistant` | `/home/opencode` | rw | User home (dotfiles, caches) |
 | `$CONFIG_HOME/opencode` | `/home/opencode/.config/opencode` | rw | OpenCode extensions overlay |
 | `$OPENPALM_WORK_DIR` | `/work` | rw | Working directory for projects |
-| `$STATE_HOME/cron` | `/opt/cron.d` | ro | Staged cron files for crond |
 
 The OpenCode extensions mount overlays onto the assistant's home directory.
 Users drop tools, plugins, or skills into `CONFIG_HOME/opencode/` and they
 appear inside the container at the standard OpenCode user config path. This
 complements the built-in config at `/opt/opencode/` without requiring a rebuild.
-
-The cron mount provides staged cron files from STATE_HOME. The entrypoint
-copies these to `/etc/cron.d/` with correct ownership and starts crond.
-Users add cron jobs by placing `.cron` files in `CONFIG_HOME/cron/`; system
-cron jobs live in `DATA_HOME/cron/`. Both are staged to `STATE_HOME/cron/`
-during apply. See the cron file format section below.
 
 ### Guardian
 
@@ -155,14 +148,18 @@ environment variables directly (useful for dev/test without a secrets file).
 |-----------|---------------|------|---------|
 | `$CONFIG_HOME` | `$CONFIG_HOME` (same path) | rw | Channel files, secrets, extensions |
 | `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Pre-create DATA_HOME subdirs, ensure ownership |
-| `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs |
-| `/var/run/docker.sock` | `/var/run/docker.sock` | rw | Docker daemon for orchestration |
+| `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs, staged cron files |
 
-The admin is the only container with Docker socket access. It mounts
-CONFIG_HOME, DATA_HOME, and STATE_HOME using identical host-to-container paths,
-and uses `process.env.OPENPALM_*` to resolve paths at runtime. The DATA_HOME
-mount allows the admin to pre-create subdirectories with correct ownership
-before other services start.
+The admin accesses Docker via the socket proxy (HTTP over `admin_docker_net`).
+It mounts CONFIG_HOME, DATA_HOME, and STATE_HOME using identical
+host-to-container paths, and uses `process.env.OPENPALM_*` to resolve paths
+at runtime. The DATA_HOME mount allows the admin to pre-create subdirectories
+with correct ownership before other services start.
+
+Cron jobs run on the admin container via crond. The entrypoint copies staged
+cron files from `STATE_HOME/cron/` to `/etc/cron.d/` with correct ownership
+and starts crond before dropping privileges for the main SvelteKit process.
+See the Cron Jobs section below for file format and configuration.
 
 ---
 
@@ -273,10 +270,11 @@ A channel needs:
 
 ## Cron Jobs
 
-OpenPalm supports scheduled jobs on the assistant container via crond.
+OpenPalm supports scheduled jobs on the admin container via crond.
 Cron files follow the same staging pattern as channels: user files in
 CONFIG_HOME, system files in DATA_HOME, both staged to STATE_HOME for
-runtime consumption.
+runtime consumption. Jobs run on the admin container, which has access
+to Docker (via the socket proxy), CONFIG_HOME, DATA_HOME, and STATE_HOME.
 
 ### Adding a cron job
 
@@ -286,11 +284,11 @@ Drop a `.cron` file into `CONFIG_HOME/cron/`. The file uses standard
 ```
 # Daily backup at 2am
 SHELL=/bin/bash
-0 2 * * * node /work/scripts/backup.sh
+0 2 * * * node /path/to/script.sh
 ```
 
-The `node` user field is required — this is the user that runs the job
-inside the assistant container.
+The `node` user field is required — this is the non-root user that runs
+the job inside the admin container.
 
 ### File naming
 
@@ -311,9 +309,10 @@ On every apply, the admin stages cron files into `STATE_HOME/cron/`:
 2. Copy all `.cron` files from `CONFIG_HOME/cron/` (user jobs)
 
 User files with the same name as a system file override the system version.
-The assistant container mounts `STATE_HOME/cron/` read-only at `/opt/cron.d/`.
-The entrypoint copies staged files to `/etc/cron.d/` with correct ownership
-and starts crond. Changes require a container restart (triggered by apply).
+The admin container already mounts the full STATE_HOME, so `STATE_HOME/cron/`
+is accessible without an additional bind mount. The entrypoint copies staged
+files to `/etc/cron.d/` with correct ownership and starts crond. Changes
+require a container restart (triggered by apply).
 
 ---
 

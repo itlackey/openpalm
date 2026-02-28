@@ -96,10 +96,6 @@ services:
         condition: service_healthy
 
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
-  # Container starts as root for crond/sshd setup, then drops to target
-  # user via gosu in the entrypoint. This is the standard Docker pattern
-  # (used by official postgres, redis images) and enables both crond and
-  # sshd which require root to start.
   assistant:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -119,9 +115,6 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       HOME: /home/opencode
-      # Entrypoint drops privileges from root to this UID/GID via gosu
-      OPENPALM_UID: "${OPENPALM_UID:-1000}"
-      OPENPALM_GID: "${OPENPALM_GID:-1000}"
     ports:
       - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:4096:4096"
       - "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22"
@@ -129,8 +122,8 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/assistant:/home/opencode
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/opencode:/home/opencode/.config/opencode
       - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/cron:/opt/cron.d:ro
     working_dir: /work
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [assistant_net]
     depends_on:
       openmemory:
@@ -205,9 +198,14 @@ services:
       start_period: 5s
 
   # ── Admin ──────────────────────────────────────────────────────────
+  # Container starts as root for crond setup, then drops to target
+  # user via gosu before running the SvelteKit app. Cron files are
+  # staged to STATE_HOME/cron/ by the control plane and loaded by
+  # the entrypoint on startup.
   admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
     ports:
       - "127.0.0.1:8100:8100"
     environment:
@@ -220,6 +218,9 @@ services:
       OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
       # Docker API via socket proxy — no direct socket mount needed
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # Entrypoint drops privileges from root to this UID/GID via gosu
+      OPENPALM_UID: "${OPENPALM_UID:-1000}"
+      OPENPALM_GID: "${OPENPALM_GID:-1000}"
     # env_file loads stack.env into the container so OPENPALM_* vars are available
     # to child docker compose invocations. secrets.env provides ADMIN_TOKEN + LLM keys.
     env_file:
@@ -231,7 +232,6 @@ services:
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [assistant_net, admin_docker_net]
     depends_on:
       docker-socket-proxy:

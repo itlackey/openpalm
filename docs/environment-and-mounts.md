@@ -76,22 +76,13 @@ The source-of-truth core Caddyfile is system-managed at
 | `$DATA_HOME/assistant` | `/home/opencode` | rw | OpenCode user home (dotfiles, caches) |
 | `$CONFIG_HOME/opencode` | `/home/opencode/.config/opencode` | rw | OpenCode user extensions overlay |
 | `$OPENPALM_WORK_DIR` | `/work` | rw | Working directory for user projects |
-| `$STATE_HOME/cron` | `/opt/cron.d` | **ro** | Staged cron files for crond |
 
 The OpenCode overlay mount lets users add tools, plugins, or skills to
 `CONFIG_HOME/opencode/` without rebuilding the image. OpenCode merges config
 from `/opt/opencode/` (built-in) and `~/.config/opencode/` (user).
 
-The container starts as root for crond and sshd setup, then drops
-privileges to `node` (UID/GID matching `$OPENPALM_UID:$OPENPALM_GID`,
-default `1000:1000`) via gosu before exec'ing the main opencode process.
-The `working_dir` is `/work`. It has **no Docker socket access**.
-
-The cron mount provides staged cron files from `STATE_HOME/cron/`. The
-entrypoint copies them to `/etc/cron.d/` with correct ownership (root:root)
-and starts crond before dropping privileges. User cron files live in
-`CONFIG_HOME/cron/`; system cron files live in `DATA_HOME/cron/`. See
-[directory-structure.md](./directory-structure.md) for cron file format.
+The assistant runs as `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`)
+with `working_dir: /work`. It has **no Docker socket access**.
 
 ### 2.6 Guardian
 
@@ -141,6 +132,13 @@ The admin is the sole orchestrator. It connects to Docker via the socket proxy
 (HTTP over the internal network) and mounts CONFIG_HOME, DATA_HOME, and
 STATE_HOME. The DATA_HOME mount allows the admin to pre-create subdirectories
 with correct ownership before other services start.
+
+The admin container starts as root for crond setup, then drops privileges
+to `node` (UID/GID matching `$OPENPALM_UID:$OPENPALM_GID`, default
+`1000:1000`) via gosu before running the SvelteKit app. Staged cron files
+from `STATE_HOME/cron/` are copied to `/etc/cron.d/` with correct ownership
+on startup. See [directory-structure.md](./directory-structure.md) for cron
+file format and configuration.
 
 ---
 
@@ -200,6 +198,8 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `OPENPALM_CONFIG_HOME` | Same as host path | In-container path to CONFIG_HOME (same-path mount) |
 | `OPENPALM_DATA_HOME` | Same as host path | In-container path to DATA_HOME (same-path mount) |
 | `OPENPALM_STATE_HOME` | Same as host path | In-container path to STATE_HOME (same-path mount) |
+| `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target UID for privilege drop (gosu) |
+| `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target GID for privilege drop (gosu) |
 
 ### 4.2 Guardian Service
 
@@ -222,8 +222,6 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `OPENCODE_AUTH` | `false` | Auth handled externally — disabled in OpenCode |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server toggle |
 | `HOME` | `/home/opencode` | User home directory |
-| `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target UID for privilege drop (gosu) |
-| `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target GID for privilege drop (gosu) |
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |
 | `OPENPALM_ADMIN_TOKEN` | from secrets.env | Bearer token for Admin API |
 | `OPENMEMORY_API_URL` | `http://openmemory:8765` | OpenMemory service URL |

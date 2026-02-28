@@ -6,7 +6,7 @@
 FROM node:22-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server cron gosu \
+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server \
     && rm -rf /var/lib/apt/lists/*
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
