@@ -10,6 +10,7 @@ You need **one thing** installed before starting: a container runtime.
 
 | Your computer | What to install | Link |
 |---|---|---|
+| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Mac** | Docker Desktop _or_ OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com \| sh` |
 
@@ -21,6 +22,12 @@ After installing, open the app and wait for it to finish starting (you'll see a 
 
 Copy-paste **one** command into your terminal and the installer does the rest:
 
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+```
+
+**Mac or Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
@@ -38,7 +45,7 @@ No config files to edit. No code to clone. Your secrets are never overwritten on
 
 ### Installer options
 
-Run `scripts/setup.sh --help` for all flags:
+Run `scripts/setup.ps1 --help` (Windows) or `scripts/setup.sh --help` (Mac/Linux) for all flags:
 
 | Flag | Effect |
 |---|---|
@@ -62,6 +69,10 @@ OPENPALM_STATE_HOME=/opt/openpalm/state \
 
 Re-run the same install command to update:
 
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+```
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
@@ -79,6 +90,10 @@ Or use `--force` for non-interactive updates:
 
 ```bash
 setup.sh --force
+```
+
+```powershell
+.\scripts\setup.ps1 --force
 ```
 
 ---
@@ -215,6 +230,17 @@ rm -rf ~/.config/openpalm ~/.local/share/openpalm ~/.local/state/openpalm
 
 # Re-run the installer
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+```
+
+```powershell
+# Stop everything
+docker compose down -v
+
+# Remove all OpenPalm data (DESTRUCTIVE — removes your config, data, and state)
+Remove-Item -Recurse -Force "$env:USERPROFILE\\.config\\openpalm", "$env:USERPROFILE\\.local\\share\\openpalm", "$env:USERPROFILE\\.local\\state\\openpalm"
+
+# Re-run the installer
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```
 
 ---

@@ -23,6 +23,7 @@ You need **one thing** installed before starting: a container runtime.
 
 | Your computer | What to install | Link |
 |---|---|---|
+| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **Mac** | Docker Desktop _or_ OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com \| sh` |
 
@@ -35,6 +36,11 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 **Mac or Linux** — open Terminal and paste:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+```
+
+**Windows (PowerShell)** — open PowerShell and paste:
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```
 
 No config files to edit. Re-run the same command to update — your secrets are never overwritten.
