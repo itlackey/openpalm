@@ -169,7 +169,7 @@ export const POST: RequestHandler = async (event) => {
       503,
       "docker_unavailable",
       "Docker is not available. Install or start Docker and retry.",
-      {},
+      { stderr: dockerCheck.stderr },
       requestId
     );
   }
