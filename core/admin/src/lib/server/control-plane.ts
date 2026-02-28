@@ -20,7 +20,7 @@
  * CONFIG_HOME/channels/. Caddy files are optional: if present, the channel
  * gets HTTP routing through Caddy; if absent, it's Docker-network only.
  */
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, rmSync, statSync, cpSync, renameSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -563,14 +563,9 @@ function withDefaultLanOnly(rawCaddy: string): string | null {
   return null;
 }
 
-function stageChannelCaddyfiles(state: ControlPlaneState): void {
-  const stagedChannelsDir = `${state.stateDir}/channels`;
-  const stagedPublicDir = `${stagedChannelsDir}/public`;
-  const stagedLanDir = `${stagedChannelsDir}/lan`;
-  // Only clean the caddy subdirectories, not the whole channels/ dir
-  // (which also contains staged .yml files)
-  rmSync(stagedPublicDir, { recursive: true, force: true });
-  rmSync(stagedLanDir, { recursive: true, force: true });
+function stageChannelCaddyfilesTo(state: ControlPlaneState, targetChannelsDir: string): void {
+  const stagedPublicDir = `${targetChannelsDir}/public`;
+  const stagedLanDir = `${targetChannelsDir}/lan`;
   mkdirSync(stagedPublicDir, { recursive: true });
   mkdirSync(stagedLanDir, { recursive: true });
 
@@ -613,13 +608,12 @@ function stageChannelCaddyfiles(state: ControlPlaneState): void {
  * LLM provider keys — system-managed values live in stack.env — but this is
  * not enforced. Users may add extra vars here if needed.
  */
-function stageSecretsEnv(state: ControlPlaneState): void {
-  const artifactDir = `${state.stateDir}/artifacts`;
-  mkdirSync(artifactDir, { recursive: true });
+function stageSecretsEnvTo(state: ControlPlaneState, targetArtifactDir: string): void {
+  mkdirSync(targetArtifactDir, { recursive: true });
 
   const source = `${state.configDir}/secrets.env`;
   const content = existsSync(source) ? readFileSync(source, "utf-8") : "";
-  writeFileSync(`${artifactDir}/secrets.env`, content);
+  writeFileSync(`${targetArtifactDir}/secrets.env`, content);
 }
 
 /** Return the path to the staged secrets.env in STATE_HOME. */
@@ -654,9 +648,8 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  *   - guardian env_file + bind mount (CHANNEL_*_SECRET read at request time)
  *   - postgres service (POSTGRES_PASSWORD via compose substitution)
  */
-function stageStackEnv(state: ControlPlaneState): void {
-  const artifactDir = `${state.stateDir}/artifacts`;
-  mkdirSync(artifactDir, { recursive: true });
+function stageStackEnvTo(state: ControlPlaneState, targetArtifactDir: string): void {
+  mkdirSync(targetArtifactDir, { recursive: true });
 
   const uid = typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000;
   const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
@@ -710,24 +703,17 @@ function stageStackEnv(state: ControlPlaneState): void {
     ""
   ];
 
-  writeFileSync(`${artifactDir}/stack.env`, lines.join("\n"));
+  writeFileSync(`${targetArtifactDir}/stack.env`, lines.join("\n"));
 }
 
-function stageChannelYmlFiles(state: ControlPlaneState): void {
-  const stagedChannelsDir = `${state.stateDir}/channels`;
-  mkdirSync(stagedChannelsDir, { recursive: true });
+function stageChannelYmlFilesTo(state: ControlPlaneState, targetChannelsDir: string): void {
+  mkdirSync(targetChannelsDir, { recursive: true });
 
-  // Clean stale staged .yml files before re-staging
-  for (const f of readdirSync(stagedChannelsDir)) {
-    if (f.endsWith(".yml")) {
-      rmSync(`${stagedChannelsDir}/${f}`, { force: true });
-    }
-  }
-
+  // No need to clean stale files — writing into a fresh .pending directory
   const channels = discoverChannels(state.configDir);
   for (const ch of channels) {
     const content = readFileSync(ch.ymlPath, "utf-8");
-    writeFileSync(`${stagedChannelsDir}/${ch.name}.yml`, content);
+    writeFileSync(`${targetChannelsDir}/${ch.name}.yml`, content);
   }
 }
 
@@ -760,10 +746,283 @@ export function buildArtifactMeta(artifacts: {
   }));
 }
 
+// ── Snapshot-Before-Write ───────────────────────────────────────────────
+
+const MAX_SNAPSHOTS = 3;
+
+/**
+ * Take a snapshot of current STATE_HOME artifacts and channels before applying.
+ * Snapshots are whole-directory copies stored under STATE_HOME/snapshots/<timestamp>/.
+ * Returns the snapshot directory path, or null if there was nothing to snapshot.
+ */
+export function snapshotCurrentState(stateDir: string): string | null {
+  const artifactDir = `${stateDir}/artifacts`;
+  const channelsDir = `${stateDir}/channels`;
+  const caddyfilePath = `${stateDir}/Caddyfile`;
+
+  // Nothing to snapshot if artifacts don't exist yet (first-ever apply)
+  if (!existsSync(artifactDir) || !existsSync(`${artifactDir}/manifest.json`)) {
+    return null;
+  }
+
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const snapshotDir = `${stateDir}/snapshots/${ts}`;
+  mkdirSync(`${stateDir}/snapshots`, { recursive: true });
+
+  cpSync(artifactDir, `${snapshotDir}/artifacts`, { recursive: true });
+  if (existsSync(channelsDir)) {
+    cpSync(channelsDir, `${snapshotDir}/channels`, { recursive: true });
+  }
+  if (existsSync(caddyfilePath)) {
+    cpSync(caddyfilePath, `${snapshotDir}/Caddyfile`);
+  }
+
+  pruneSnapshots(stateDir);
+  return snapshotDir;
+}
+
+/**
+ * Restore STATE_HOME from the most recent snapshot.
+ * Overwrites artifacts/, channels/, and Caddyfile from the snapshot.
+ */
+export function restoreSnapshot(stateDir: string, snapshotDir: string): void {
+  const artifactDir = `${stateDir}/artifacts`;
+  const channelsDir = `${stateDir}/channels`;
+
+  if (existsSync(`${snapshotDir}/artifacts`)) {
+    rmSync(artifactDir, { recursive: true, force: true });
+    cpSync(`${snapshotDir}/artifacts`, artifactDir, { recursive: true });
+  }
+  if (existsSync(`${snapshotDir}/channels`)) {
+    rmSync(channelsDir, { recursive: true, force: true });
+    cpSync(`${snapshotDir}/channels`, channelsDir, { recursive: true });
+  }
+  if (existsSync(`${snapshotDir}/Caddyfile`)) {
+    cpSync(`${snapshotDir}/Caddyfile`, `${stateDir}/Caddyfile`);
+  }
+}
+
+/**
+ * Keep only the N most recent snapshots, removing older ones.
+ */
+export function pruneSnapshots(stateDir: string): void {
+  const snapshotsDir = `${stateDir}/snapshots`;
+  if (!existsSync(snapshotsDir)) return;
+
+  const entries = readdirSync(snapshotsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
+  while (entries.length > MAX_SNAPSHOTS) {
+    const oldest = entries.shift()!;
+    rmSync(`${snapshotsDir}/${oldest}`, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Find the most recent snapshot directory, or null if none exist.
+ */
+export function latestSnapshot(stateDir: string): string | null {
+  const snapshotsDir = `${stateDir}/snapshots`;
+  if (!existsSync(snapshotsDir)) return null;
+
+  const entries = readdirSync(snapshotsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+
+  if (entries.length === 0) return null;
+  return `${snapshotsDir}/${entries[entries.length - 1]}`;
+}
+
+// ── Atomic Directory Swap (Stage-to-Pending-Then-Rename) ───────────────
+
+/**
+ * Clean up stale .pending and .old directories left by a previous failed apply.
+ * Called on startup before the first apply to resolve incomplete swaps.
+ *
+ * Recovery logic:
+ * - .pending dirs exist → previous apply never committed; remove them (stale)
+ * - .old dirs exist → rename succeeded but cleanup didn't; remove them (safe)
+ */
+export function cleanupStalePending(stateDir: string): void {
+  for (const name of ["artifacts", "channels"]) {
+    const pending = `${stateDir}/${name}.pending`;
+    const old = `${stateDir}/${name}.old`;
+    if (existsSync(pending)) rmSync(pending, { recursive: true, force: true });
+    if (existsSync(old)) rmSync(old, { recursive: true, force: true });
+  }
+  const pendingCaddy = `${stateDir}/Caddyfile.pending`;
+  const oldCaddy = `${stateDir}/Caddyfile.old`;
+  if (existsSync(pendingCaddy)) rmSync(pendingCaddy, { force: true });
+  if (existsSync(oldCaddy)) rmSync(oldCaddy, { force: true });
+}
+
+/**
+ * Atomically swap .pending directories/files into place.
+ * The rename() syscall is atomic on Linux for same-filesystem operations.
+ *
+ * Sequence: live → .old, .pending → live, remove .old
+ */
+function atomicSwap(livePath: string, isDirectory: boolean): void {
+  const pending = `${livePath}.pending`;
+  const old = `${livePath}.old`;
+
+  if (!existsSync(pending)) return;
+
+  // Move current live out of the way (if it exists)
+  if (existsSync(livePath)) {
+    renameSync(livePath, old);
+  }
+
+  // Promote pending to live — this is the commit point
+  renameSync(pending, livePath);
+
+  // Cleanup the old version
+  if (existsSync(old)) {
+    if (isDirectory) {
+      rmSync(old, { recursive: true, force: true });
+    } else {
+      rmSync(old, { force: true });
+    }
+  }
+}
+
+// ── Config-Protect (Channel Install/Uninstall Backup) ──────────────────
+
+type ConfigBackupIntent = {
+  action: "install" | "uninstall";
+  channel: string;
+  at: string;
+};
+
+/**
+ * Backup channel config files from CONFIG_HOME before modifying them.
+ * For uninstall: copies .yml and .caddy to STATE_HOME/config-backups/<channel>/
+ * For install: records intent so rollback can remove newly created files
+ */
+export function backupChannelConfig(
+  action: "install" | "uninstall",
+  channel: string,
+  configDir: string,
+  stateDir: string
+): void {
+  const backupDir = `${stateDir}/config-backups/${channel}`;
+  mkdirSync(backupDir, { recursive: true });
+
+  const intent: ConfigBackupIntent = { action, channel, at: new Date().toISOString() };
+  writeFileSync(`${backupDir}/intent.json`, JSON.stringify(intent, null, 2));
+
+  if (action === "uninstall") {
+    // Copy existing channel files before they get deleted
+    const ymlPath = `${configDir}/channels/${channel}.yml`;
+    const caddyPath = `${configDir}/channels/${channel}.caddy`;
+    if (existsSync(ymlPath)) cpSync(ymlPath, `${backupDir}/${channel}.yml`);
+    if (existsSync(caddyPath)) cpSync(caddyPath, `${backupDir}/${channel}.caddy`);
+  }
+}
+
+/**
+ * Rollback a channel config modification using the backup.
+ * For uninstall: restores .yml and .caddy from backup to CONFIG_HOME
+ * For install: removes newly installed .yml and .caddy from CONFIG_HOME
+ */
+export function rollbackChannelConfig(
+  channel: string,
+  configDir: string,
+  stateDir: string
+): void {
+  const backupDir = `${stateDir}/config-backups/${channel}`;
+  const intentPath = `${backupDir}/intent.json`;
+  if (!existsSync(intentPath)) return;
+
+  const intent: ConfigBackupIntent = JSON.parse(readFileSync(intentPath, "utf-8"));
+  const channelsDir = `${configDir}/channels`;
+
+  if (intent.action === "uninstall") {
+    // Restore backed-up files to CONFIG_HOME
+    const ymlBackup = `${backupDir}/${channel}.yml`;
+    const caddyBackup = `${backupDir}/${channel}.caddy`;
+    if (existsSync(ymlBackup)) cpSync(ymlBackup, `${channelsDir}/${channel}.yml`);
+    if (existsSync(caddyBackup)) cpSync(caddyBackup, `${channelsDir}/${channel}.caddy`);
+  } else if (intent.action === "install") {
+    // Remove files that were just installed
+    rmSync(`${channelsDir}/${channel}.yml`, { force: true });
+    rmSync(`${channelsDir}/${channel}.caddy`, { force: true });
+  }
+
+  // Clean up the backup
+  rmSync(backupDir, { recursive: true, force: true });
+}
+
+/**
+ * Clear the config backup for a channel after a successful operation.
+ */
+export function clearChannelConfigBackup(channel: string, stateDir: string): void {
+  const backupDir = `${stateDir}/config-backups/${channel}`;
+  if (existsSync(backupDir)) {
+    rmSync(backupDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Clean up any stale config backups from previous failed operations.
+ * Called on startup. Logs warnings for any found backups then removes them.
+ */
+export function cleanupStaleConfigBackups(
+  stateDir: string,
+  configDir: string,
+  state: ControlPlaneState
+): void {
+  const backupsDir = `${stateDir}/config-backups`;
+  if (!existsSync(backupsDir)) return;
+
+  const entries = readdirSync(backupsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory());
+
+  for (const entry of entries) {
+    const intentPath = `${backupsDir}/${entry.name}/intent.json`;
+    if (existsSync(intentPath)) {
+      try {
+        const intent: ConfigBackupIntent = JSON.parse(readFileSync(intentPath, "utf-8"));
+        appendAudit(
+          state,
+          "system",
+          "startup.stale_backup",
+          { channel: intent.channel, action: intent.action, originalAt: intent.at },
+          false,
+          "",
+          "system"
+        );
+        // Attempt rollback for uninstall (restore deleted files); for install, remove stale files
+        rollbackChannelConfig(entry.name, configDir, stateDir);
+      } catch {
+        // If intent is unreadable, just clean up
+        rmSync(`${backupsDir}/${entry.name}`, { recursive: true, force: true });
+      }
+    } else {
+      rmSync(`${backupsDir}/${entry.name}`, { recursive: true, force: true });
+    }
+  }
+
+  // Remove the backups dir if now empty
+  try {
+    const remaining = readdirSync(backupsDir);
+    if (remaining.length === 0) rmSync(backupsDir, { recursive: true, force: true });
+  } catch { /* ignore */ }
+}
+
 // ── Persistence ────────────────────────────────────────────────────────
 
 /**
  * Persist core artifacts to STATE_HOME.
+ *
+ * Uses snapshot-before-write and stage-to-pending-then-rename for reliability:
+ * 1. Snapshot current state for rollback
+ * 2. Write all files into .pending directories
+ * 3. Atomically rename .pending → live
+ * 4. On failure: remove .pending dirs, restore from snapshot
  *
  * Directory responsibilities:
  *   STATE_HOME/artifacts/  — generated compose, manifest (not user-edited)
@@ -771,34 +1030,67 @@ export function buildArtifactMeta(artifacts: {
  *   CONFIG_HOME/channels/  — channel .yml and .caddy files (user-installed)
  */
 export function persistArtifacts(state: ControlPlaneState): void {
-  const artifactDir = `${state.stateDir}/artifacts`;
   const channelsDir = `${state.configDir}/channels`;
-  mkdirSync(artifactDir, { recursive: true });
   mkdirSync(channelsDir, { recursive: true });
 
-  // Core artifacts → STATE_HOME
-  writeFileSync(`${artifactDir}/docker-compose.yml`, state.artifacts.compose);
-  writeFileSync(`${state.stateDir}/Caddyfile`, state.artifacts.caddyfile);
+  // 1. Snapshot current state for rollback
+  const snapshot = snapshotCurrentState(state.stateDir);
 
-  persistSystemSecrets(state);
-  // Ensure every discovered channel has a secret, then persist before staging
-  const allChannels = discoverChannels(state.configDir);
-  for (const ch of allChannels) {
-    if (!state.channelSecrets[ch.name]) {
-      state.channelSecrets[ch.name] = randomHex(16);
+  // 2. Write all files into .pending directories
+  const pendingArtifacts = `${state.stateDir}/artifacts.pending`;
+  const pendingChannels = `${state.stateDir}/channels.pending`;
+  const pendingCaddyfile = `${state.stateDir}/Caddyfile.pending`;
+
+  try {
+    mkdirSync(pendingArtifacts, { recursive: true });
+    mkdirSync(pendingChannels, { recursive: true });
+
+    // Core artifacts → pending
+    writeFileSync(`${pendingArtifacts}/docker-compose.yml`, state.artifacts.compose);
+    writeFileSync(pendingCaddyfile, state.artifacts.caddyfile);
+
+    persistSystemSecrets(state);
+    // Ensure every discovered channel has a secret, then persist before staging
+    const allChannels = discoverChannels(state.configDir);
+    for (const ch of allChannels) {
+      if (!state.channelSecrets[ch.name]) {
+        state.channelSecrets[ch.name] = randomHex(16);
+      }
     }
-  }
-  persistChannelSecrets(state);
-  stageStackEnv(state);
-  stageSecretsEnv(state);
-  stageChannelYmlFiles(state);
-  stageChannelCaddyfiles(state);
+    persistChannelSecrets(state);
 
-  state.artifactMeta = buildArtifactMeta(state.artifacts);
-  writeFileSync(
-    `${artifactDir}/manifest.json`,
-    JSON.stringify(state.artifactMeta, null, 2)
-  );
+    // Stage env files into pending artifacts dir
+    stageStackEnvTo(state, pendingArtifacts);
+    stageSecretsEnvTo(state, pendingArtifacts);
+
+    // Stage channel files into pending channels dir
+    stageChannelYmlFilesTo(state, pendingChannels);
+    stageChannelCaddyfilesTo(state, pendingChannels);
+
+    // Write manifest
+    state.artifactMeta = buildArtifactMeta(state.artifacts);
+    writeFileSync(
+      `${pendingArtifacts}/manifest.json`,
+      JSON.stringify(state.artifactMeta, null, 2)
+    );
+
+    // 3. Atomically swap .pending → live
+    atomicSwap(`${state.stateDir}/artifacts`, true);
+    atomicSwap(`${state.stateDir}/channels`, true);
+    atomicSwap(`${state.stateDir}/Caddyfile`, false);
+  } catch (err) {
+    // Clean up .pending directories on failure
+    rmSync(pendingArtifacts, { recursive: true, force: true });
+    rmSync(pendingChannels, { recursive: true, force: true });
+    rmSync(pendingCaddyfile, { force: true });
+
+    // 4. Restore from snapshot if available
+    if (snapshot) {
+      restoreSnapshot(state.stateDir, snapshot);
+    }
+
+    throw err;
+  }
 }
 
 // ── Channel Install / Uninstall ─────────────────────────────────────────
