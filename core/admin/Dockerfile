@@ -11,7 +11,9 @@ COPY core/admin/ .
 COPY assets/ ../assets/
 COPY registry/ ../registry/
 # @openpalm/lib is resolved via vite alias: ../../packages/lib/src → /packages/lib/src
+# Its dependencies (e.g. dotenv) must be available at build time — install them.
 COPY packages/lib /packages/lib
+RUN cd /packages/lib && npm install --omit=dev
 RUN npm run build
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
