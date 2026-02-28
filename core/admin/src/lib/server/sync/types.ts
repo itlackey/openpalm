@@ -30,20 +30,14 @@ export type SyncStatus = {
   dirty: boolean;
 };
 
-/** Persistent sync configuration stored alongside CONFIG_HOME. */
+/** Persistent sync configuration stored in CONFIG_HOME/config.json under the "sync" key. */
 export type SyncConfig = {
   /** Which provider to use (default: "git") */
   provider: string;
-  /** Auto-snapshot after every config mutation */
-  autoSnapshot: boolean;
-  /** Auto-push to remote after every snapshot */
-  autoPush: boolean;
-  /**
-   * Directory where the tar provider stores snapshot archives on push.
-   * Defaults to DATA_HOME/snapshots/config when empty/unset.
-   * Providers that don't use this field ignore it.
-   */
-  snapshotDir?: string;
+  /** Whether sync is enabled. When false, afterMutation() is a no-op. */
+  enabled: boolean;
+  /** Remote target — URL for git, directory path for tar, etc. */
+  remoteUrl: string;
 };
 
 /** Standard result envelope for provider operations. */

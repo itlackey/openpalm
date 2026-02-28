@@ -4,6 +4,9 @@
  * Loads the configured sync provider and exposes `afterMutation()` —
  * the single hook called by admin API routes after every config change.
  * Failures in sync operations are logged but never block the caller.
+ *
+ * Configuration lives in CONFIG_HOME/config.json under the "sync" key:
+ *   { "sync": { "provider": "tar", "enabled": true, "remoteUrl": "/some/path" } }
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -25,8 +28,8 @@ export type {
 /** Default sync configuration — syncing is off by default. */
 const DEFAULT_CONFIG: SyncConfig = {
   provider: "git",
-  autoSnapshot: false,
-  autoPush: false
+  enabled: false,
+  remoteUrl: ""
 };
 
 /** Registry of available providers. New providers register here. */
@@ -35,35 +38,53 @@ const PROVIDERS: Record<string, ConfigSyncProvider> = {
   tar: tarProvider
 };
 
-/** Resolve the path to sync.json within CONFIG_HOME. */
-function syncConfigPath(configDir: string): string {
-  return `${configDir}/sync.json`;
+/** Resolve the path to config.json within CONFIG_HOME. */
+function configFilePath(configDir: string): string {
+  return `${configDir}/config.json`;
 }
 
-/** Read sync configuration from CONFIG_HOME/sync.json. */
-export function readSyncConfig(configDir: string): SyncConfig {
-  const path = syncConfigPath(configDir);
+/**
+ * Read the full CONFIG_HOME/config.json, returning an empty object if missing.
+ * This is the root config file — sync settings live under the "sync" key.
+ */
+function readConfigFile(configDir: string): Record<string, unknown> {
+  const path = configFilePath(configDir);
   try {
     if (existsSync(path)) {
-      const raw = JSON.parse(readFileSync(path, "utf-8"));
-      return {
-        provider: typeof raw.provider === "string" ? raw.provider : DEFAULT_CONFIG.provider,
-        autoSnapshot: typeof raw.autoSnapshot === "boolean" ? raw.autoSnapshot : DEFAULT_CONFIG.autoSnapshot,
-        autoPush: typeof raw.autoPush === "boolean" ? raw.autoPush : DEFAULT_CONFIG.autoPush,
-        snapshotDir: typeof raw.snapshotDir === "string" && raw.snapshotDir ? raw.snapshotDir : undefined
-      };
+      return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
     }
   } catch {
-    // Corrupt or unreadable — fall back to defaults
+    // Corrupt or unreadable
   }
-  return { ...DEFAULT_CONFIG };
+  return {};
 }
 
-/** Write sync configuration to CONFIG_HOME/sync.json. */
-export function writeSyncConfig(configDir: string, config: SyncConfig): void {
-  const path = syncConfigPath(configDir);
+/** Write the full CONFIG_HOME/config.json, preserving non-sync keys. */
+function writeConfigFile(configDir: string, data: Record<string, unknown>): void {
+  const path = configFilePath(configDir);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
+  writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
+}
+
+/** Read sync configuration from CONFIG_HOME/config.json → .sync */
+export function readSyncConfig(configDir: string): SyncConfig {
+  const root = readConfigFile(configDir);
+  const raw = root.sync as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_CONFIG };
+  }
+  return {
+    provider: typeof raw.provider === "string" ? raw.provider : DEFAULT_CONFIG.provider,
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : DEFAULT_CONFIG.enabled,
+    remoteUrl: typeof raw.remoteUrl === "string" ? raw.remoteUrl : DEFAULT_CONFIG.remoteUrl
+  };
+}
+
+/** Write sync configuration to CONFIG_HOME/config.json → .sync, preserving other keys. */
+export function writeSyncConfig(configDir: string, config: SyncConfig): void {
+  const root = readConfigFile(configDir);
+  root.sync = config;
+  writeConfigFile(configDir, root);
 }
 
 /** Get the configured provider instance. Falls back to git if unknown. */
@@ -75,8 +96,8 @@ export function getProvider(configDir: string): ConfigSyncProvider {
 /**
  * afterMutation — call after any config-changing operation.
  *
- * If autoSnapshot is enabled, creates a snapshot with the given message.
- * If autoPush is also enabled, pushes to remote after the snapshot.
+ * If sync is enabled, creates a snapshot with the given message.
+ * If a remoteUrl is configured, also pushes to remote after the snapshot.
  *
  * Failures are returned (for audit logging) but never throw.
  */
@@ -85,7 +106,7 @@ export async function afterMutation(
   message: string
 ): Promise<{ snapshotOk: boolean; pushOk: boolean; error?: string }> {
   const config = readSyncConfig(configDir);
-  if (!config.autoSnapshot) {
+  if (!config.enabled) {
     return { snapshotOk: true, pushOk: true };
   }
 
@@ -101,8 +122,8 @@ export async function afterMutation(
     return { snapshotOk: false, pushOk: false, error: snapResult.error };
   }
 
-  // Auto-push if enabled and a remote is configured
-  if (config.autoPush && status.remote) {
+  // Auto-push if a remote is configured
+  if (config.remoteUrl) {
     const pushResult = await provider.push(configDir);
     if (!pushResult.ok) {
       return { snapshotOk: true, pushOk: false, error: pushResult.error };
