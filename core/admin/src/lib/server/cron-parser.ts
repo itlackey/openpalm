@@ -21,6 +21,8 @@ const FIELD_RANGES: [number, number][] = [
   [1, 12],  // month
   [0, 7],   // day of week (0 and 7 both = Sunday)
 ];
+const DOM_WILDCARD_SIZE = 31;
+const DOW_WILDCARD_SIZE = 7;
 
 const FIELD_NAMES = ["minute", "hour", "day-of-month", "month", "day-of-week"];
 
@@ -96,6 +98,18 @@ function normalizeDow(dow: Set<number>): Set<number> {
   return dow;
 }
 
+function dayMatches(fields: CronFields, date: Date): boolean {
+  const domMatches = fields.daysOfMonth.has(date.getDate());
+  const dowMatches = fields.daysOfWeek.has(date.getDay());
+  const domWildcard = fields.daysOfMonth.size === DOM_WILDCARD_SIZE;
+  const dowWildcard = fields.daysOfWeek.size === DOW_WILDCARD_SIZE;
+
+  if (domWildcard && dowWildcard) return true;
+  if (domWildcard) return dowMatches;
+  if (dowWildcard) return domMatches;
+  return domMatches || dowMatches;
+}
+
 /** Parse a 5-field cron expression. Throws on invalid input. */
 export function parseCron(expression: string): CronFields {
   const parts = expression.trim().split(/\s+/);
@@ -117,9 +131,8 @@ export function cronMatches(fields: CronFields, date: Date): boolean {
   return (
     fields.minutes.has(date.getMinutes()) &&
     fields.hours.has(date.getHours()) &&
-    fields.daysOfMonth.has(date.getDate()) &&
-    fields.months.has(date.getMonth() + 1) &&
-    fields.daysOfWeek.has(date.getDay())
+    dayMatches(fields, date) &&
+    fields.months.has(date.getMonth() + 1)
   );
 }
 
@@ -158,8 +171,8 @@ export function nextCronMatch(fields: CronFields, after: Date): Date | null {
       continue;
     }
 
-    // If day doesn't match (either dom or dow), jump to next day
-    if (!fields.daysOfMonth.has(candidate.getDate()) || !fields.daysOfWeek.has(candidate.getDay())) {
+    // If day doesn't match cron semantics, jump to next day
+    if (!dayMatches(fields, candidate)) {
       candidate.setDate(candidate.getDate() + 1);
       candidate.setHours(0, 0, 0, 0);
       continue;

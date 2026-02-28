@@ -113,6 +113,7 @@ function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlane
       jobs: [],
       history: [],
       schedulerActive: false,
+      inFlightJobIds: new Set<string>(),
     },
     ...overrides
   };

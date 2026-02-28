@@ -157,6 +157,14 @@ describe("cronMatches", () => {
     expect(cronMatches(fields, new Date("2026-03-15T10:45:00"))).toBe(true);
     expect(cronMatches(fields, new Date("2026-03-15T10:07:00"))).toBe(false);
   });
+
+  test("uses OR semantics when both day-of-month and day-of-week are restricted", () => {
+    const fields = parseCron("0 9 1 * 1");
+    // Monday, but not day 1
+    expect(cronMatches(fields, new Date("2026-03-02T09:00:00"))).toBe(true);
+    // Day 1, but not Monday
+    expect(cronMatches(fields, new Date("2026-03-01T09:00:00"))).toBe(true);
+  });
 });
 
 // ── validateCronExpression ─────────────────────────────────────────────
@@ -224,5 +232,14 @@ describe("nextCronMatch", () => {
     const after = new Date("2026-01-01T00:00:00");
     const next = nextCronMatch(fields, after);
     expect(next).toBeNull();
+  });
+
+  test("applies OR day matching when finding the next run", () => {
+    const fields = parseCron("0 9 1 * 1");
+    const after = new Date("2026-03-01T09:00:00");
+    const next = nextCronMatch(fields, after);
+    expect(next).not.toBeNull();
+    // Next Monday after Mar 1, 2026
+    expect(next!.toISOString().startsWith("2026-03-02T09:00:00")).toBe(true);
   });
 });
