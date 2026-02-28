@@ -20,60 +20,16 @@ import {
   CORE_SERVICES
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
-import { readFileSync, existsSync } from "node:fs";
-import { userInfo } from "node:os";
+import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
+import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "./$types";
 
-/**
- * Read secrets.env directly (without getState()) and return which keys
- * have non-empty values. Uses resolveConfigHome() logic inline so this
- * works even before state is fully initialized.
- */
-function readSecretsKeys(): Record<string, boolean> {
-  const configDir =
-    process.env.OPENPALM_CONFIG_HOME ??
-    `${process.env.HOME ?? "/tmp"}/.config/openpalm`;
-  const secretsPath = `${configDir}/secrets.env`;
-  const result: Record<string, boolean> = {};
-
-  if (existsSync(secretsPath)) {
-    const content = readFileSync(secretsPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      const value = trimmed.slice(eq + 1).trim();
-      result[key] = value.length > 0;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Detect the current system user login name for use as default OpenMemory user ID.
- * Tries environment variables first, then falls back to os.userInfo().
- * Note: This mirrors the detection logic in scripts/setup.sh generate_secrets().
- */
-function detectUserId(): string {
-  const envUser = process.env.USER ?? process.env.LOGNAME ?? "";
-  if (envUser) return envUser;
-  try {
-    return userInfo().username || "default_user";
-  } catch {
-    return "default_user";
-  }
-}
-
-/**
- * Check whether the admin token has been set (non-empty) in secrets.env.
- * When true, setup is complete and the POST endpoint requires auth.
- */
-function isSetupComplete(): boolean {
-  const keys = readSecretsKeys();
-  return keys.ADMIN_TOKEN === true;
+function safeTokenCompare(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 /**
@@ -84,12 +40,11 @@ function isSetupComplete(): boolean {
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const keys = readSecretsKeys();
-
-  const setupComplete = keys.ADMIN_TOKEN === true;
+  const state = getState();
+  const keys = readSecretsKeys(state.configDir);
 
   // Installed = any non-admin service is running
-  const state = getState();
+  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
   const installed = Object.entries(state.services).some(
     ([name, status]) => name !== "admin" && status === "running"
   );
@@ -99,6 +54,7 @@ export const GET: RequestHandler = async (event) => {
     {
       setupComplete,
       installed,
+      ...(setupComplete ? {} : { setupToken: state.setupToken }),
       detectedUserId: detectUserId(),
       configured: {
         OPENAI_API_KEY: keys.OPENAI_API_KEY === true,
@@ -122,14 +78,27 @@ export const GET: RequestHandler = async (event) => {
  */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  const state = getState();
+  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
 
-  // One-time guard: if setup is already complete, require admin auth
-  if (isSetupComplete()) {
+  if (setupComplete) {
+    // Setup already completed — require normal admin auth
     const authError = requireAdmin(event, requestId);
     if (authError) return authError;
+  } else {
+    // First-run setup requires the ephemeral setup token from GET /admin/setup
+    const bootstrapToken = event.request.headers.get("x-admin-token") ?? "";
+    if (!safeTokenCompare(bootstrapToken, state.setupToken)) {
+      return errorResponse(
+        401,
+        "unauthorized",
+        "Missing or invalid x-admin-token",
+        {},
+        requestId
+      );
+    }
   }
 
-  const state = getState();
   const callerType = getCallerType(event);
   const body = await parseJsonBody(event.request);
 

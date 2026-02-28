@@ -111,6 +111,7 @@ export type ArtifactMeta = {
 
 export type ControlPlaneState = {
   adminToken: string;
+  setupToken: string;
   postgresPassword: string;
   stateDir: string;
   configDir: string;
@@ -267,6 +268,7 @@ export function createState(
 
   return {
     adminToken: resolvedAdminToken,
+    setupToken: randomHex(16),
     postgresPassword,
     stateDir,
     configDir,
@@ -692,6 +694,7 @@ function stageStackEnv(state: ControlPlaneState): void {
     "# ── Networking ──────────────────────────────────────────────────────",
     `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
     `OPENPALM_INGRESS_PORT=${process.env.OPENPALM_INGRESS_PORT ?? "8080"}`,
+    `OPENPALM_SETUP_COMPLETE=${state.adminToken ? "true" : "false"}`,
     "",
     "# ── OpenMemory ──────────────────────────────────────────────────────",
     `OPENMEMORY_DASHBOARD_API_URL=${process.env.OPENMEMORY_DASHBOARD_API_URL ?? "http://localhost:8765"}`,
@@ -922,7 +925,9 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("# Edit this file to update admin token and LLM keys.");
   secretLines.push("# System-managed secrets (database + channel HMAC) do not belong here.");
   secretLines.push("");
-  secretLines.push(`ADMIN_TOKEN=${state.adminToken}`);
+  // ADMIN_TOKEN is intentionally blank on first-run.
+  // It is set by the setup wizard's final step.
+  secretLines.push("ADMIN_TOKEN=");
   secretLines.push("");
   secretLines.push("# LLM provider keys");
   secretLines.push(`OPENAI_API_KEY=${process.env.OPENAI_API_KEY ?? ""}`);

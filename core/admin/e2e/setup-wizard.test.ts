@@ -129,7 +129,7 @@ test.describe('Setup Wizard', () => {
 		await expect(page.getByTestId('step-token')).toBeVisible();
 	});
 
-	test('install triggers POST and shows success state', async ({ page }) => {
+	test('install triggers POST and redirects to home', async ({ page }) => {
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'GET') {
 				return route.fulfill({
@@ -165,27 +165,30 @@ test.describe('Setup Wizard', () => {
 		// Install
 		await page.getByRole('button', { name: 'Install Stack' }).click();
 
-		// Success state
-		await expect(page.locator('h2')).toHaveText('Stack Installed');
-		await expect(page.getByText('All services are up and running.')).toBeVisible();
-		await expect(page.getByRole('link', { name: 'Go to Console' })).toHaveAttribute('href', '/');
-		await expect(page.getByText('caddy')).toBeVisible();
-		await expect(page.getByText('postgres')).toBeVisible();
+		// Success redirects to admin home
+		await expect(page).toHaveURL('/');
 	});
 
 	test('POST sends adminToken in request body', async ({ page }) => {
 		let postedBody: Record<string, unknown> = {};
+		let postHeaders: Record<string, string> = {};
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'GET') {
 				return route.fulfill({
 					status: 200,
 					contentType: 'application/json',
-					body: JSON.stringify({ setupComplete: false, installed: false, configured: {} })
+					body: JSON.stringify({
+						setupComplete: false,
+						setupToken: 'bootstrap-token-123',
+						installed: false,
+						configured: {}
+					})
 				});
 			}
 			if (route.request().method() === 'POST') {
 				postedBody = JSON.parse(route.request().postData() ?? '{}');
+				postHeaders = route.request().headers();
 				return route.fulfill({
 					status: 200,
 					contentType: 'application/json',
@@ -207,13 +210,14 @@ test.describe('Setup Wizard', () => {
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Install Stack' }).click();
-		await expect(page.locator('h2')).toHaveText('Stack Installed');
+		await expect(page).toHaveURL('/');
 
 		expect(postedBody.adminToken).toBe('secret-token-abc');
 		expect(postedBody.openaiApiKey).toBe('sk-test');
+		expect(postHeaders['x-admin-token']).toBeTruthy();
 	});
 
-	test('already-complete setup shows done state on load', async ({ page }) => {
+	test('already-complete setup redirects to home on load', async ({ page }) => {
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'GET') {
 				return route.fulfill({
@@ -235,9 +239,7 @@ test.describe('Setup Wizard', () => {
 
 		await page.goto('/setup');
 
-		// Should show done state directly — no wizard
-		await expect(page.locator('h2')).toHaveText('Stack Installed');
-		await expect(page.getByRole('link', { name: 'Go to Console' })).toBeVisible();
+		await expect(page).toHaveURL('/');
 	});
 
 	test('GET /admin/setup never returns env values', async ({ page }) => {
@@ -328,9 +330,9 @@ test.describe('Setup Wizard', () => {
 		await page.getByRole('button', { name: 'Install Stack' }).click();
 		await expect(page.locator('[role="alert"]')).toContainText('Failed to update secrets.env');
 
-		// Retry — should succeed
+		// Retry — should succeed and redirect
 		await page.getByRole('button', { name: 'Install Stack' }).click();
-		await expect(page.locator('h2')).toHaveText('Stack Installed');
+		await expect(page).toHaveURL('/');
 	});
 
 	test('Docker unavailable returns error to UI', async ({ page }) => {
@@ -401,7 +403,7 @@ test.describe('Setup Wizard', () => {
 		await expect(page.locator('[role="alert"]')).toContainText('Docker Compose failed');
 	});
 
-	test('POST requires auth after setup is complete', async ({ page }) => {
+	test('setup route redirects to home after setup is complete', async ({ page }) => {
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'GET') {
 				return route.fulfill({
@@ -427,8 +429,7 @@ test.describe('Setup Wizard', () => {
 
 		await page.goto('/setup');
 
-		// Should show done state — the one-time guard protects the POST
-		await expect(page.locator('h2')).toHaveText('Stack Installed');
+		await expect(page).toHaveURL('/');
 	});
 
 	test('setup endpoint does not require authentication on first run', async ({ page }) => {

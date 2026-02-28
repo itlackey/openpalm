@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { untrack } from 'svelte';
+  import type { PageData } from './$types';
+
+  interface Props {
+    data: PageData;
+  }
+
+  let { data }: Props = $props();
 
   // ── Wizard state ────────────────────────────────────────────────────────
   type WizardStep = 'token' | 'llm' | 'openmemory' | 'review';
@@ -11,7 +19,8 @@
   let adminToken = $state('');
   let openaiApiKey = $state('');
   let openaiBaseUrl = $state('');
-  let openmemoryUserId = $state('');
+  let openmemoryUserId = $state(untrack(() => data.detectedUserId ?? 'default_user'));
+  let setupSessionToken = $state(untrack(() => data.setupToken ?? ''));
 
   // ── Install state ───────────────────────────────────────────────────────
   let installing = $state(false);
@@ -23,10 +32,11 @@
 
   // ── API helpers ─────────────────────────────────────────────────────────
 
-  function buildHeaders(): HeadersInit {
+  function buildHeaders(token = ''): HeadersInit {
     return {
       'x-requested-by': 'ui',
-      'x-request-id': crypto.randomUUID()
+      'x-request-id': crypto.randomUUID(),
+      ...(token ? { 'x-admin-token': token } : {})
     };
   }
 
@@ -49,7 +59,7 @@
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...buildHeaders()
+          ...buildHeaders(setupSessionToken)
         },
         body: JSON.stringify({
           adminToken,
@@ -65,7 +75,7 @@
       }
       const data = await res.json();
       startedServices = data.started ?? [];
-      setupComplete = true;
+      await goto('/');
     } catch {
       installError = 'Network error — unable to reach admin API.';
     } finally {
@@ -73,31 +83,7 @@
     }
   }
 
-  // ── Mount — check if setup already done ─────────────────────────────────
-
-  onMount(() => {
-    void (async () => {
-      try {
-        const res = await fetch('/admin/setup', { headers: buildHeaders() });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.setupComplete) {
-            setupComplete = true;
-          }
-          if (data.detectedUserId && !openmemoryUserId) {
-            openmemoryUserId = data.detectedUserId;
-          }
-        }
-      } catch {
-        // best-effort — wizard starts fresh
-      } finally {
-        if (!openmemoryUserId) {
-          openmemoryUserId = 'default_user';
-        }
-        loading = false;
-      }
-    })();
-  });
+  loading = false;
 </script>
 
 <svelte:head>
