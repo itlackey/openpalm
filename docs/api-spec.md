@@ -122,7 +122,7 @@ Rules:
 - Allowed core services:
   `assistant`, `guardian`, `openmemory`, `openmemory-ui`, `admin`, `caddy`, `postgres`, `qdrant`
 - Allowed channel services: `channel-*` only if a matching staged
-  `STATE_HOME/channels/<name>.yml` exists.
+  `STATE_HOME/artifacts/channels/<name>.yml` exists.
 
 Success response:
 
@@ -149,8 +149,8 @@ Returns staged-installed and registry-available channels:
 
 Notes:
 
-- `installed` is derived from staged `STATE_HOME/channels/*.yml`.
-- `hasRoute` is derived from staged `STATE_HOME/channels/public|lan/*.caddy`.
+- `installed` is derived from staged `STATE_HOME/artifacts/channels/*.yml`.
+- `hasRoute` is derived from staged `STATE_HOME/artifacts/channels/public|lan/*.caddy`.
 
 ### `POST /admin/channels/install`
 
@@ -210,7 +210,7 @@ Behavior:
 
 - Updates the `@denied not remote_ip ...` line in
   `DATA_HOME/caddy/Caddyfile`.
-- Re-stages `STATE_HOME/Caddyfile` and channel snippets.
+- Re-stages `STATE_HOME/artifacts/Caddyfile` and channel snippets.
 - Attempts Caddy reload.
 
 **Warning:** If the current scope is `"custom"` (user-edited IP ranges),

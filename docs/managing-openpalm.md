@@ -158,7 +158,7 @@ The source of truth is the system-managed core Caddyfile at:
 `~/.local/share/openpalm/caddy/Caddyfile`
 
 `POST /admin/access-scope` updates that file and restages
-`~/.local/state/openpalm/Caddyfile`.
+`~/.local/state/openpalm/artifacts/Caddyfile`.
 
 ---
 
@@ -193,9 +193,9 @@ Apply runs automatically on admin startup. You can also trigger it manually.
 **When apply runs:**
 1. Assembles `STATE_HOME/artifacts/secrets.env` from user secrets + system-managed secrets
 2. Copies core compose → `STATE_HOME/artifacts/docker-compose.yml`
-3. Copies core Caddyfile (`DATA_HOME/caddy/Caddyfile`) → `STATE_HOME/Caddyfile`
-4. Stages channel `.yml` files → `STATE_HOME/channels/`
-5. Stages channel `.caddy` snippets → `STATE_HOME/channels/lan/` or `channels/public/`
+3. Copies core Caddyfile (`DATA_HOME/caddy/Caddyfile`) → `STATE_HOME/artifacts/Caddyfile`
+4. Stages channel `.yml` files → `STATE_HOME/artifacts/channels/`
+5. Stages channel `.caddy` snippets → `STATE_HOME/artifacts/channels/lan/` or `channels/public/`
 6. Runs `docker compose up`
 
 **To trigger apply without a full reinstall:**

@@ -277,8 +277,7 @@ create_directories() {
 		"$STATE_HOME"
 		"$STATE_HOME/artifacts"
 		"$STATE_HOME/audit"
-		"$STATE_HOME/secrets"
-		"$STATE_HOME/channels"
+		"$STATE_HOME/artifacts/channels"
 
 		# WORK_DIR — assistant working directory
 		"$WORK_DIR"
@@ -315,7 +314,7 @@ download_assets() {
 
 	# STATE artifacts — always overwritten
 	download_asset "docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
-	download_asset "Caddyfile" "${STATE_HOME}/Caddyfile"
+	download_asset "Caddyfile" "${STATE_HOME}/artifacts/Caddyfile"
 }
 
 # ── Background admin image pull ──────────────────────────────────────
@@ -441,25 +440,20 @@ EOF
 generate_stack_env() {
 	header "Configuring stack environment"
 
-	local stack_env_path="${STATE_HOME}/artifacts/stack.env"
-	local system_secrets="${STATE_HOME}/secrets/system-secrets.env"
+	local data_stack_env="${DATA_HOME}/stack.env"
+	local staged_stack_env="${STATE_HOME}/artifacts/stack.env"
 
-	# Preserve existing POSTGRES_PASSWORD or generate a new one
-	local pg_password=""
-	if [[ -f "$system_secrets" ]]; then
-		pg_password="$(grep -m1 '^POSTGRES_PASSWORD=' "$system_secrets" 2>/dev/null | cut -d= -f2- || true)"
-	fi
-	if [[ -z "$pg_password" ]]; then
-		pg_password="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 32)"
-		# Persist to system-secrets.env so it survives re-runs
-		mkdir -p "${STATE_HOME}/secrets"
-		cat >"$system_secrets" <<EOF
-# OpenPalm System Secrets — system-managed, do not edit
-POSTGRES_PASSWORD=${pg_password}
-EOF
+	if [[ -f "$data_stack_env" ]]; then
+		ok "stack.env exists — not overwriting"
+		# Always stage to STATE_HOME/artifacts/ for compose consumption
+		cp "$data_stack_env" "$staged_stack_env"
+		return 0
 	fi
 
-	cat >"$stack_env_path" <<EOF
+	local pg_password
+	pg_password="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 32)"
+
+	cat >"$data_stack_env" <<EOF
 # OpenPalm Stack Bootstrap — system-managed, do not edit
 # Written by setup.sh for initial admin startup. Overwritten by admin on each apply.
 
@@ -484,6 +478,9 @@ OPENPALM_IMAGE_TAG=${OPENPALM_IMAGE_TAG:-latest}
 # ── Database ────────────────────────────────────────────────────────
 POSTGRES_PASSWORD=${pg_password}
 EOF
+
+	# Stage to STATE_HOME/artifacts/ for compose consumption
+	cp "$data_stack_env" "$staged_stack_env"
 
 	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_GID=${DOCKER_GID} DOCKER_SOCK=${DOCKER_SOCK})"
 }

@@ -29,13 +29,13 @@ Core services:
 - `admin`
 
 Channel services are added via compose overlays and staged into
-`STATE_HOME/channels/*.yml`.
+`STATE_HOME/artifacts/channels/*.yml`.
 
 ## Filesystem model
 
 - `CONFIG_HOME`: user-editable sources (`secrets.env`, `channels/`, `opencode/`).
-- `DATA_HOME`: persistent service data only.
-- `STATE_HOME`: assembled runtime (`artifacts/`, staged channels, audit, system secrets).
+- `DATA_HOME`: persistent service data and source-of-truth `stack.env`.
+- `STATE_HOME`: assembled runtime (`artifacts/`, staged channels, audit).
 
 Admin startup runs an idempotent auto-apply that stages artifacts from CONFIG +
 bundled assets into STATE.
@@ -43,10 +43,10 @@ bundled assets into STATE.
 ## Secrets model
 
 - User-managed: `CONFIG_HOME/secrets.env` (`ADMIN_TOKEN`, LLM provider keys).
-- System-managed: `STATE_HOME/secrets/system-secrets.env` (`POSTGRES_PASSWORD`),
-  `STATE_HOME/secrets/channel-secrets.env` (`CHANNEL_<NAME>_SECRET`).
+- System-managed: `DATA_HOME/stack.env` (host-detected infrastructure config,
+  `POSTGRES_PASSWORD`, `CHANNEL_<NAME>_SECRET` — seeded by setup.sh, updated by admin).
 - System-managed Caddy policy source: `DATA_HOME/caddy/Caddyfile`.
-- Runtime env source: `STATE_HOME/artifacts/secrets.env` assembled by admin.
+- Staged runtime env: `STATE_HOME/artifacts/stack.env` and `STATE_HOME/artifacts/secrets.env`.
 
 ## API scope (implemented)
 

@@ -4,7 +4,7 @@
  * Verifies that:
  * 1. Channel .caddy files are staged split into public/ and lan/ dirs
  * 2. Malformed .caddy files are skipped with audit entry
- * 3. Channel .yml files are staged to STATE_HOME/channels/
+ * 3. Channel .yml files are staged to STATE_HOME/artifacts/channels/
  * 4. Compose file list uses staged STATE_HOME paths
  * 5. Secrets.env is staged to STATE_HOME/artifacts/
  * 6. Runtime validation checks staged files, not CONFIG_HOME
@@ -108,7 +108,7 @@ function stageChannelCaddyfiles(
   stateDir: string
 ): AuditEntry[] {
   const auditEntries: AuditEntry[] = [];
-  const stagedChannelsDir = join(stateDir, "channels");
+  const stagedChannelsDir = join(stateDir, "artifacts", "channels");
   const stagedPublicDir = join(stagedChannelsDir, "public");
   const stagedLanDir = join(stagedChannelsDir, "lan");
   // Only clean caddy subdirs, not the whole channels/ dir (preserves staged .yml files)
@@ -140,7 +140,7 @@ function stageChannelCaddyfiles(
 }
 
 function stageChannelYmlFiles(configDir: string, stateDir: string): void {
-  const stagedChannelsDir = join(stateDir, "channels");
+  const stagedChannelsDir = join(stateDir, "artifacts", "channels");
   mkdirSync(stagedChannelsDir, { recursive: true });
 
   // Clean stale staged .yml files before re-staging
@@ -166,7 +166,7 @@ function stageSecretsEnvFn(configDir: string, stateDir: string): void {
 }
 
 function discoverStagedChannelYmls(stateDir: string): string[] {
-  const channelsDir = join(stateDir, "channels");
+  const channelsDir = join(stateDir, "artifacts", "channels");
   if (!existsSync(channelsDir)) return [];
   return readdirSync(channelsDir)
     .filter((f) => f.endsWith(".yml"))
@@ -177,7 +177,7 @@ function isValidChannel(value: string, stateDir?: string): boolean {
   if (!value || !value.trim()) return false;
   if (!CHANNEL_NAME_RE.test(value)) return false;
   if (stateDir) {
-    return existsSync(join(stateDir, "channels", `${value}.yml`));
+    return existsSync(join(stateDir, "artifacts", "channels", `${value}.yml`));
   }
   return false;
 }
@@ -209,7 +209,7 @@ describe("Caddy staging split", () => {
 
     stageChannelCaddyfiles(configDir, stateDir);
 
-    const lanDir = join(stateDir, "channels", "lan");
+    const lanDir = join(stateDir, "artifacts", "channels", "lan");
     expect(existsSync(join(lanDir, "chat.caddy"))).toBe(true);
     const content = readFileSync(join(lanDir, "chat.caddy"), "utf-8");
     expect(content).toContain("import lan_only");
@@ -226,7 +226,7 @@ describe("Caddy staging split", () => {
 
     stageChannelCaddyfiles(configDir, stateDir);
 
-    const publicDir = join(stateDir, "channels", "public");
+    const publicDir = join(stateDir, "artifacts", "channels", "public");
     expect(existsSync(join(publicDir, "web.caddy"))).toBe(true);
   });
 
@@ -242,7 +242,7 @@ describe("Caddy staging split", () => {
 
     stageChannelCaddyfiles(configDir, stateDir);
 
-    const lanDir = join(stateDir, "channels", "lan");
+    const lanDir = join(stateDir, "artifacts", "channels", "lan");
     expect(existsSync(join(lanDir, "api.caddy"))).toBe(true);
     const content = readFileSync(join(lanDir, "api.caddy"), "utf-8");
     expect(content).toBe(caddyContent);
@@ -267,19 +267,19 @@ describe("Malformed .caddy skip", () => {
     expect(audit[0].ok).toBe(false);
 
     // File should NOT be staged
-    expect(existsSync(join(stateDir, "channels", "lan", "broken.caddy"))).toBe(false);
-    expect(existsSync(join(stateDir, "channels", "public", "broken.caddy"))).toBe(false);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "lan", "broken.caddy"))).toBe(false);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "public", "broken.caddy"))).toBe(false);
   });
 });
 
 describe("Channel .yml staging", () => {
-  test("yml files are staged to STATE_HOME/channels/", () => {
+  test("yml files are staged to STATE_HOME/artifacts/channels/", () => {
     const ymlContent = "services:\n  channel-chat:\n    image: chat:latest\n";
     seedConfigChannels(configDir, [{ name: "chat", yml: ymlContent }]);
 
     stageChannelYmlFiles(configDir, stateDir);
 
-    const stagedPath = join(stateDir, "channels", "chat.yml");
+    const stagedPath = join(stateDir, "artifacts", "channels", "chat.yml");
     expect(existsSync(stagedPath)).toBe(true);
     expect(readFileSync(stagedPath, "utf-8")).toBe(ymlContent);
   });
@@ -292,8 +292,8 @@ describe("Channel .yml staging", () => {
 
     stageChannelYmlFiles(configDir, stateDir);
 
-    expect(existsSync(join(stateDir, "channels", "chat.yml"))).toBe(true);
-    expect(existsSync(join(stateDir, "channels", "discord.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "chat.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "discord.yml"))).toBe(true);
   });
 });
 
@@ -305,8 +305,8 @@ describe("Stale .yml cleanup", () => {
       { name: "discord", yml: "services:\n  channel-discord:\n    image: discord:latest\n" }
     ]);
     stageChannelYmlFiles(configDir, stateDir);
-    expect(existsSync(join(stateDir, "channels", "chat.yml"))).toBe(true);
-    expect(existsSync(join(stateDir, "channels", "discord.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "chat.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "discord.yml"))).toBe(true);
 
     // Remove discord from config
     rmSync(join(configDir, "channels", "discord.yml"));
@@ -315,8 +315,8 @@ describe("Stale .yml cleanup", () => {
     stageChannelYmlFiles(configDir, stateDir);
 
     // chat should still exist, discord should be gone
-    expect(existsSync(join(stateDir, "channels", "chat.yml"))).toBe(true);
-    expect(existsSync(join(stateDir, "channels", "discord.yml"))).toBe(false);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "chat.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "artifacts", "channels", "discord.yml"))).toBe(false);
   });
 });
 
@@ -396,15 +396,15 @@ describe("Staging idempotence", () => {
     // First apply
     applyAll();
 
-    const yml1 = readFileSync(join(stateDir, "channels", "chat.yml"), "utf-8");
-    const caddy1 = readFileSync(join(stateDir, "channels", "lan", "chat.caddy"), "utf-8");
+    const yml1 = readFileSync(join(stateDir, "artifacts", "channels", "chat.yml"), "utf-8");
+    const caddy1 = readFileSync(join(stateDir, "artifacts", "channels", "lan", "chat.caddy"), "utf-8");
     const secrets1 = readFileSync(join(stateDir, "artifacts", "secrets.env"), "utf-8");
 
     // Second apply (idempotent)
     applyAll();
 
-    const yml2 = readFileSync(join(stateDir, "channels", "chat.yml"), "utf-8");
-    const caddy2 = readFileSync(join(stateDir, "channels", "lan", "chat.caddy"), "utf-8");
+    const yml2 = readFileSync(join(stateDir, "artifacts", "channels", "chat.yml"), "utf-8");
+    const caddy2 = readFileSync(join(stateDir, "artifacts", "channels", "lan", "chat.caddy"), "utf-8");
     const secrets2 = readFileSync(join(stateDir, "artifacts", "secrets.env"), "utf-8");
 
     expect(yml1).toBe(yml2);
