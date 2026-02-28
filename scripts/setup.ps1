@@ -137,7 +137,15 @@ $DockerSock = '/var/run/docker.sock'
 function Detect-Platform {
   Header 'Detecting platform'
 
-  if (-not $IsWindows) {
+  $isWindowsPlatform = $false
+  if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+    $isWindowsPlatform = [bool]$IsWindows
+  }
+  else {
+    $isWindowsPlatform = ($PSVersionTable.PSEdition -eq 'Desktop' -or $env:OS -eq 'Windows_NT')
+  }
+
+  if (-not $isWindowsPlatform) {
     Warn 'This script is intended for Windows PowerShell usage. Continuing anyway.'
   }
 
@@ -236,7 +244,7 @@ function Check-Existing {
     }
 
     $answer = Read-Host 'Update existing installation? [y/N]'
-    if ($answer -notmatch '^(?i)y(es)?$') {
+    if ($answer -notmatch '^y(es)?$') {
       Info 'Exiting. No changes made.'
       exit 0
     }

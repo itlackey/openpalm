@@ -237,7 +237,7 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 docker compose down -v
 
 # Remove all OpenPalm data (DESTRUCTIVE — removes your config, data, and state)
-Remove-Item -Recurse -Force "$env:USERPROFILE\\.config\\openpalm", "$env:USERPROFILE\\.local\\share\\openpalm", "$env:USERPROFILE\\.local\\state\\openpalm"
+Remove-Item -Recurse -Force "$env:USERPROFILE\.config\openpalm", "$env:USERPROFILE\.local\share\openpalm", "$env:USERPROFILE\.local\state\openpalm"
 
 # Re-run the installer
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
