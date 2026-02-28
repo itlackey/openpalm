@@ -249,6 +249,23 @@ describe("Config-Protect: Channel Uninstall", () => {
     expect(readFileSync(join(configDir, "channels", "chat.yml"), "utf-8")).toContain("channel-chat");
   });
 
+  test("rollbackChannelConfig for uninstall creates channelsDir if missing", () => {
+    seedConfigDir(configDir);
+
+    backupChannelConfig("uninstall", "chat", configDir, stateDir);
+
+    // Simulate channelsDir being removed entirely
+    rmSync(join(configDir, "channels"), { recursive: true, force: true });
+    expect(existsSync(join(configDir, "channels"))).toBe(false);
+
+    // Rollback should recreate the directory and restore files
+    rollbackChannelConfig("chat", configDir, stateDir);
+
+    expect(existsSync(join(configDir, "channels", "chat.yml"))).toBe(true);
+    expect(existsSync(join(configDir, "channels", "chat.caddy"))).toBe(true);
+    expect(readFileSync(join(configDir, "channels", "chat.yml"), "utf-8")).toContain("channel-chat");
+  });
+
   test("rollbackChannelConfig is a no-op if no backup exists", () => {
     rollbackChannelConfig("nonexistent", configDir, stateDir);
     expect(existsSync(join(stateDir, "config-backups", "nonexistent"))).toBe(false);

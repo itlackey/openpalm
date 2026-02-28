@@ -912,6 +912,7 @@ export function rollbackChannelConfig(
     // Restore backed-up files to CONFIG_HOME
     const ymlBackup = `${backupDir}/${channel}.yml`;
     const caddyBackup = `${backupDir}/${channel}.caddy`;
+    mkdirSync(channelsDir, { recursive: true });
     if (existsSync(ymlBackup)) cpSync(ymlBackup, `${channelsDir}/${channel}.yml`);
     if (existsSync(caddyBackup)) cpSync(caddyBackup, `${channelsDir}/${channel}.caddy`);
   } else if (intent.action === "install") {
