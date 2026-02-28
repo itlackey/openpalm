@@ -28,5 +28,8 @@
     "dev:stack": "docker compose -f .dev/state/artifacts/docker-compose.yml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up -d",
     "test": "bun test packages/ channels/ core/guardian/",
     "check": "bun run admin:check && bun run lib:test"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18"
   }
 }
