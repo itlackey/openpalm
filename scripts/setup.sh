@@ -244,6 +244,7 @@ create_directories() {
 		"$CONFIG_HOME"
 		"$CONFIG_HOME/channels"
 		"$CONFIG_HOME/opencode"
+		"$CONFIG_HOME/cron"
 
 		# DATA_HOME — persistent service data
 		"$DATA_HOME"
@@ -255,12 +256,14 @@ create_directories() {
 		"$DATA_HOME/caddy"
 		"$DATA_HOME/caddy/data"
 		"$DATA_HOME/caddy/config"
+		"$DATA_HOME/cron"
 
 		# STATE_HOME — assembled runtime
 		"$STATE_HOME"
 		"$STATE_HOME/artifacts"
 		"$STATE_HOME/audit"
 		"$STATE_HOME/artifacts/channels"
+		"$STATE_HOME/cron"
 
 		# WORK_DIR — assistant working directory
 		"$WORK_DIR"

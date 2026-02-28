@@ -732,6 +732,58 @@ export function discoverStagedChannelYmls(stateDir: string): string[] {
     .map((entry) => `${channelsDir}/${entry.name}`);
 }
 
+// ── Cron Staging ─────────────────────────────────────────────────────
+
+/** Strict cron filename: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
+const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+/**
+ * Discover .cron files in a directory.
+ * Returns filenames (without extension) and their full paths.
+ * Only files matching the naming convention are returned.
+ */
+function discoverCronFiles(dir: string): { name: string; path: string }[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".cron"))
+    .map((f) => ({ name: f.replace(/\.cron$/, ""), path: `${dir}/${f}` }))
+    .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
+}
+
+/**
+ * Stage cron files from DATA_HOME/cron/ (system) and CONFIG_HOME/cron/ (user)
+ * into STATE_HOME/cron/.
+ *
+ * System files are copied first; user files with the same name override them.
+ * This follows the same staging pattern as channels: whole-file copy from
+ * source tiers into STATE_HOME for runtime consumption.
+ */
+function stageCronFiles(state: ControlPlaneState): void {
+  const stagedCronDir = `${state.stateDir}/cron`;
+  mkdirSync(stagedCronDir, { recursive: true });
+
+  // Clean stale staged cron files before re-staging
+  for (const f of readdirSync(stagedCronDir)) {
+    if (f.endsWith(".cron")) {
+      rmSync(`${stagedCronDir}/${f}`, { force: true });
+    }
+  }
+
+  // Stage system-managed cron files from DATA_HOME/cron/ first
+  const systemCronDir = `${state.dataDir}/cron`;
+  for (const entry of discoverCronFiles(systemCronDir)) {
+    const content = readFileSync(entry.path, "utf-8");
+    writeFileSync(`${stagedCronDir}/${entry.name}.cron`, content);
+  }
+
+  // Stage user cron files from CONFIG_HOME/cron/ (overrides system files)
+  const userCronDir = `${state.configDir}/cron`;
+  for (const entry of discoverCronFiles(userCronDir)) {
+    const content = readFileSync(entry.path, "utf-8");
+    writeFileSync(`${stagedCronDir}/${entry.name}.cron`, content);
+  }
+}
+
 // ── Artifact Metadata ──────────────────────────────────────────────────
 
 export function buildArtifactMeta(artifacts: {
@@ -778,6 +830,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   stageSecretsEnv(state);
   stageChannelYmlFiles(state);
   stageChannelCaddyfiles(state);
+  stageCronFiles(state);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
   writeFileSync(
@@ -921,6 +974,7 @@ export function ensureXdgDirs(): void {
     configHome,
     `${configHome}/channels`,
     `${configHome}/opencode`,
+    `${configHome}/cron`,
 
     // DATA_HOME — persistent service data (pre-created to avoid root-owned dirs)
     dataHome,
@@ -932,12 +986,14 @@ export function ensureXdgDirs(): void {
     `${dataHome}/caddy`,
     `${dataHome}/caddy/data`,
     `${dataHome}/caddy/config`,
+    `${dataHome}/cron`,
 
     // STATE_HOME — assembled runtime
     stateHome,
     `${stateHome}/artifacts`,
     `${stateHome}/audit`,
-    `${stateHome}/artifacts/channels`
+    `${stateHome}/artifacts/channels`,
+    `${stateHome}/cron`
   ]) {
     mkdirSync(dir, { recursive: true });
   }

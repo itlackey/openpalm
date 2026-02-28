@@ -412,3 +412,175 @@ describe("Staging idempotence", () => {
     expect(secrets1).toBe(secrets2);
   });
 });
+
+// ── Cron staging ───────────────────────────────────────────────────────
+
+const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+function discoverCronFiles(dir: string): { name: string; path: string }[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".cron"))
+    .map((f) => ({ name: f.replace(/\.cron$/, ""), path: join(dir, f) }))
+    .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
+}
+
+function stageCronFilesFn(
+  configDir: string,
+  dataDir: string,
+  stateDir: string
+): void {
+  const stagedCronDir = join(stateDir, "cron");
+  mkdirSync(stagedCronDir, { recursive: true });
+
+  // Clean stale staged cron files
+  for (const f of readdirSync(stagedCronDir)) {
+    if (f.endsWith(".cron")) {
+      rmSync(join(stagedCronDir, f), { force: true });
+    }
+  }
+
+  // System cron files from DATA_HOME/cron/ first
+  const systemCronDir = join(dataDir, "cron");
+  for (const entry of discoverCronFiles(systemCronDir)) {
+    const content = readFileSync(entry.path, "utf-8");
+    writeFileSync(join(stagedCronDir, `${entry.name}.cron`), content);
+  }
+
+  // User cron files from CONFIG_HOME/cron/ (overrides system)
+  const userCronDir = join(configDir, "cron");
+  for (const entry of discoverCronFiles(userCronDir)) {
+    const content = readFileSync(entry.path, "utf-8");
+    writeFileSync(join(stagedCronDir, `${entry.name}.cron`), content);
+  }
+}
+
+function seedCronFiles(
+  dir: string,
+  files: { name: string; content: string }[]
+): void {
+  const cronDir = join(dir, "cron");
+  mkdirSync(cronDir, { recursive: true });
+  for (const f of files) {
+    writeFileSync(join(cronDir, `${f.name}.cron`), f.content);
+  }
+}
+
+let dataDir: string;
+
+describe("Cron file staging", () => {
+  beforeEach(() => {
+    dataDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("user cron files are staged to STATE_HOME/cron/", () => {
+    const cronContent = "0 2 * * * node /work/scripts/backup.sh\n";
+    seedCronFiles(configDir, [{ name: "backup", content: cronContent }]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    const stagedPath = join(stateDir, "cron", "backup.cron");
+    expect(existsSync(stagedPath)).toBe(true);
+    expect(readFileSync(stagedPath, "utf-8")).toBe(cronContent);
+  });
+
+  test("system cron files are staged from DATA_HOME/cron/", () => {
+    const cronContent = "*/5 * * * * node /work/scripts/healthcheck.sh\n";
+    seedCronFiles(dataDir, [{ name: "healthcheck", content: cronContent }]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    const stagedPath = join(stateDir, "cron", "healthcheck.cron");
+    expect(existsSync(stagedPath)).toBe(true);
+    expect(readFileSync(stagedPath, "utf-8")).toBe(cronContent);
+  });
+
+  test("user cron files override system files with the same name", () => {
+    const systemContent = "0 3 * * * node /work/scripts/old-backup.sh\n";
+    const userContent = "0 2 * * * node /work/scripts/my-backup.sh\n";
+
+    seedCronFiles(dataDir, [{ name: "backup", content: systemContent }]);
+    seedCronFiles(configDir, [{ name: "backup", content: userContent }]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    const stagedPath = join(stateDir, "cron", "backup.cron");
+    expect(readFileSync(stagedPath, "utf-8")).toBe(userContent);
+  });
+
+  test("both system and user cron files are staged together", () => {
+    seedCronFiles(dataDir, [
+      { name: "healthcheck", content: "*/5 * * * * node /work/scripts/hc.sh\n" }
+    ]);
+    seedCronFiles(configDir, [
+      { name: "backup", content: "0 2 * * * node /work/scripts/backup.sh\n" }
+    ]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "healthcheck.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "cron", "backup.cron"))).toBe(true);
+  });
+
+  test("invalid cron filenames are ignored", () => {
+    const cronDir = join(configDir, "cron");
+    mkdirSync(cronDir, { recursive: true });
+    // Invalid: starts with hyphen
+    writeFileSync(join(cronDir, "-bad.cron"), "* * * * * node /work/bad.sh\n");
+    // Valid
+    writeFileSync(join(cronDir, "good.cron"), "* * * * * node /work/good.sh\n");
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "good.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "cron", "-bad.cron"))).toBe(false);
+  });
+
+  test("stale cron files are cleaned on re-apply", () => {
+    seedCronFiles(configDir, [
+      { name: "backup", content: "0 2 * * * node /work/backup.sh\n" },
+      { name: "cleanup", content: "0 4 * * 0 node /work/cleanup.sh\n" }
+    ]);
+    stageCronFilesFn(configDir, dataDir, stateDir);
+    expect(existsSync(join(stateDir, "cron", "backup.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "cron", "cleanup.cron"))).toBe(true);
+
+    // Remove cleanup from config
+    rmSync(join(configDir, "cron", "cleanup.cron"));
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "backup.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "cron", "cleanup.cron"))).toBe(false);
+  });
+
+  test("empty cron directories produce no staged files", () => {
+    mkdirSync(join(configDir, "cron"), { recursive: true });
+    mkdirSync(join(dataDir, "cron"), { recursive: true });
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    const cronDir = join(stateDir, "cron");
+    const files = existsSync(cronDir)
+      ? readdirSync(cronDir).filter((f) => f.endsWith(".cron"))
+      : [];
+    expect(files.length).toBe(0);
+  });
+
+  test("staging is idempotent", () => {
+    seedCronFiles(configDir, [
+      { name: "backup", content: "0 2 * * * node /work/backup.sh\n" }
+    ]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+    const first = readFileSync(join(stateDir, "cron", "backup.cron"), "utf-8");
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+    const second = readFileSync(join(stateDir, "cron", "backup.cron"), "utf-8");
+
+    expect(first).toBe(second);
+  });
+});
