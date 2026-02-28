@@ -109,6 +109,11 @@ function makeTestState(overrides: Partial<ControlPlaneState> = {}): ControlPlane
     artifactMeta: [],
     audit: [],
     channelSecrets: {},
+    automations: {
+      jobs: [],
+      history: [],
+      schedulerActive: false,
+    },
     ...overrides
   };
 }

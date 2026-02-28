@@ -32,6 +32,7 @@ runtime artifacts in STATE_HOME.
 ```
 CONFIG_HOME (~/.config/openpalm/)
 ├── secrets.env              # User secrets only: ADMIN_TOKEN and LLM provider keys
+├── automations.json         # User-defined automation jobs (cron schedule + prompt)
 ├── channels/                # Installed channel definitions (populated via admin API or manually)
 │   ├── <name>.yml           # Compose overlay for channel-<name> (installed from registry or manually added)
 │   └── <name>.caddy         # Caddy route (optional — installed alongside .yml)
@@ -46,15 +47,18 @@ STATE_HOME (~/.local/state/openpalm/)
 │   ├── docker-compose.yml   # Staged core compose file
 │   ├── stack.env            # Staged stack config (merged from DATA_HOME/stack.env + admin-managed values)
 │   ├── secrets.env          # Staged copy of CONFIG_HOME/secrets.env
-│   └── manifest.json        # Artifact checksums & timestamps
+│   ├── manifest.json        # Artifact checksums & timestamps
+│   ├── automations.json     # Merged automations (user + system defaults)
 │   ├── Caddyfile            # Staged Caddy config (copied from DATA_HOME/caddy/Caddyfile)
 │   └── channels/            # Staged channel overlays/snippets used at runtime
 └── audit/
     ├── admin-audit.jsonl    # Admin audit log
-    └── guardian-audit.log    # Guardian audit log
+    ├── guardian-audit.log   # Guardian audit log
+    └── automation-runs.jsonl # Automation execution history
 
 DATA_HOME (~/.local/share/openpalm/)
 ├── stack.env                # Source of truth for host-detected infrastructure config
+├── automations.json         # System default automation jobs (seeded once, never overwritten)
 ├── postgres/                # PostgreSQL data files
 ├── qdrant/                  # Qdrant vector-store data
 ├── openmemory/              # OpenMemory persistent data

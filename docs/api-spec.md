@@ -357,10 +357,178 @@ Implemented under `core/admin/src/routes/admin/gallery/**`:
 - `POST /admin/gallery/install`
 - `POST /admin/gallery/uninstall`
 
+## Automations (Cron Jobs)
+
+Manage scheduled automation jobs. User-defined jobs live in
+`CONFIG_HOME/automations.json`; system defaults live in
+`DATA_HOME/automations.json`. Both are merged at staging time into
+`STATE_HOME/artifacts/automations.json`.
+
+### `GET /admin/automations`
+
+Returns merged jobs, scheduler status, and next run times for enabled jobs.
+
+```json
+{
+  "jobs": [
+    {
+      "id": "daily-summary",
+      "name": "Daily Summary",
+      "schedule": "0 9 * * *",
+      "prompt": "Give me a summary of system events...",
+      "enabled": true,
+      "source": "user"
+    },
+    {
+      "id": "system-health-check",
+      "name": "System Health Check",
+      "schedule": "0 */6 * * *",
+      "prompt": "Run a health check...",
+      "enabled": true,
+      "source": "system",
+      "description": "Periodic health monitoring"
+    }
+  ],
+  "schedulerActive": true,
+  "nextRuns": {
+    "daily-summary": "2026-03-01T09:00:00.000Z",
+    "system-health-check": "2026-02-28T18:00:00.000Z"
+  }
+}
+```
+
+### `POST /admin/automations`
+
+Create a new user-defined automation job.
+
+Body:
+
+```json
+{
+  "id": "weekly-cleanup",
+  "name": "Weekly Cleanup",
+  "schedule": "0 2 * * 0",
+  "prompt": "Review and clean up outdated memories.",
+  "enabled": true,
+  "description": "Optional description",
+  "timeoutMs": 300000
+}
+```
+
+Rules:
+- `id`: lowercase alphanumeric + hyphens, 1-63 chars, must start with alnum.
+- `schedule`: standard 5-field cron expression (minute hour dom month dow).
+- `timeoutMs`: optional, minimum 1000ms, default 120000ms.
+- Duplicate IDs are rejected.
+
+Response:
+
+```json
+{ "ok": true, "job": { ... } }
+```
+
+### `GET /admin/automations/:id`
+
+Returns a single job and its most recent execution.
+
+```json
+{
+  "job": { "id": "daily-summary", ... },
+  "lastRun": { "at": "...", "jobId": "daily-summary", "ok": true, ... },
+  "nextRun": "2026-03-01T09:00:00.000Z"
+}
+```
+
+### `PATCH /admin/automations/:id`
+
+Update a job. For user-source jobs, any field except `id` can be updated.
+For system-source jobs, an override entry is created in
+`CONFIG_HOME/automations.json` — the merge logic applies user overrides
+without modifying `DATA_HOME/automations.json`.
+
+Body (all fields optional):
+
+```json
+{
+  "name": "New Name",
+  "schedule": "0 10 * * *",
+  "prompt": "Updated prompt",
+  "enabled": false,
+  "description": "Updated description",
+  "timeoutMs": 60000
+}
+```
+
+Response:
+
+```json
+{ "ok": true, "job": { ... } }
+```
+
+### `DELETE /admin/automations/:id`
+
+Delete a user-defined job. System-managed jobs cannot be deleted — use
+PATCH to disable them instead.
+
+Response:
+
+```json
+{ "ok": true, "deleted": "job-id" }
+```
+
+Error: `400` if the job is system-managed.
+
+### `POST /admin/automations/:id/run`
+
+Manually trigger a job immediately, regardless of its schedule or
+enabled state.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "run": {
+    "at": "2026-02-28T15:30:00.000Z",
+    "jobId": "daily-summary",
+    "jobName": "Daily Summary",
+    "trigger": "manual",
+    "sessionId": "abc123",
+    "durationMs": 5432,
+    "ok": true,
+    "responsePreview": "All services are running..."
+  }
+}
+```
+
+### `GET /admin/automations/history`
+
+Returns recent execution history from the in-memory ring buffer.
+
+Query params:
+- `limit` — max entries (default 50, max 200)
+- `jobId` — filter to a specific job ID
+
+```json
+{
+  "history": [
+    {
+      "at": "2026-02-28T12:00:00.000Z",
+      "jobId": "system-health-check",
+      "jobName": "System Health Check",
+      "trigger": "scheduled",
+      "sessionId": "sess-456",
+      "durationMs": 8200,
+      "ok": true,
+      "responsePreview": "All 8 services healthy..."
+    }
+  ]
+}
+```
+
 ## Not Implemented
 
 The following endpoints are not present in current route code:
 
 - `/admin/setup/*`
-- `/admin/automations/*`
 - `/admin/gallery/npm-search`

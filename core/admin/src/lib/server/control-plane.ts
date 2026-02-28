@@ -24,6 +24,7 @@ import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, rea
 import { dirname, resolve as resolvePath } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "@openpalm/lib/shared/env";
+import { stageAutomations, ensureDefaultAutomations, type AutomationRuntimeState } from "./automations.js";
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import coreComposeAsset from "$assets/docker-compose.yml?raw";
@@ -126,6 +127,7 @@ export type ControlPlaneState = {
   artifactMeta: ArtifactMeta[];
   audit: AuditEntry[];
   channelSecrets: Record<string, string>;
+  automations: AutomationRuntimeState;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -166,7 +168,15 @@ const ALLOWED_ACTIONS = new Set([
   "accessScope.set",
   "connections.get",
   "connections.patch",
-  "connections.status"
+  "connections.status",
+
+  "automations.list",
+  "automations.create",
+  "automations.get",
+  "automations.update",
+  "automations.delete",
+  "automations.run",
+  "automations.history"
 ]);
 
 const MAX_AUDIT_MEMORY = 1000;
@@ -278,7 +288,12 @@ export function createState(
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets
+    channelSecrets,
+    automations: {
+      jobs: [],
+      history: [],
+      schedulerActive: false,
+    },
   };
 }
 
@@ -787,6 +802,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   stageSecretsEnv(state);
   stageChannelYmlFiles(state);
   stageChannelCaddyfiles(state);
+  stageAutomations(state);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
   writeFileSync(

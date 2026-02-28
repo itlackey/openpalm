@@ -16,6 +16,7 @@ import {
   persistArtifacts,
   appendAudit
 } from "$lib/server/control-plane.js";
+import { ensureDefaultAutomations, startScheduler } from "$lib/server/automations.js";
 
 const logger = createLogger("admin");
 
@@ -30,6 +31,7 @@ function runStartupApply(): void {
     const state = getState();
     ensureSecrets(state);
     ensureOpenCodeConfig();
+    ensureDefaultAutomations(state.dataDir);
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
 
@@ -67,3 +69,12 @@ function runStartupApply(): void {
 
 // Run immediately on module load (server startup)
 runStartupApply();
+
+// Start the automation scheduler after apply
+try {
+  const state = getState();
+  startScheduler(state);
+  logger.info("automation scheduler initialized");
+} catch (err) {
+  logger.error("automation scheduler failed to start", { error: String(err) });
+}

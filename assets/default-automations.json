@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "id": "system-health-check",
+      "name": "System Health Check",
+      "schedule": "0 */6 * * *",
+      "prompt": "Run a health check on all OpenPalm services. Report any services that are down or unhealthy.",
+      "enabled": true,
+      "description": "Periodic health monitoring of all platform services"
+    }
+  ]
+}
