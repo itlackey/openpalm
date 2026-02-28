@@ -20,9 +20,11 @@ import {
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { mergeEnvContent } from "@openpalm/lib/shared/env";
 
 // ── Inline implementation (mirrors control-plane.ts) ────────────────────
-// We replicate the logic to test without Vite import.meta.glob dependencies.
+// Uses mergeEnvContent from the shared env utility. We keep the file I/O
+// inline to avoid importing control-plane.ts (which has Vite-specific deps).
 
 type TestState = { configDir: string };
 
@@ -36,28 +38,7 @@ function updateSecretsEnv(
   }
 
   const raw = readFileSync(secretsPath, "utf-8");
-  const lines = raw.split("\n");
-  const remaining = new Map(Object.entries(updates));
-
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].replace(/^#\s*/, "").trim();
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    if (remaining.has(key)) {
-      lines[i] = `${key}=${remaining.get(key)}`;
-      remaining.delete(key);
-    }
-  }
-
-  if (remaining.size > 0) {
-    lines.push("");
-    for (const [key, value] of remaining) {
-      lines.push(`${key}=${value}`);
-    }
-  }
-
-  writeFileSync(secretsPath, lines.join("\n"));
+  writeFileSync(secretsPath, mergeEnvContent(raw, updates, { uncomment: true }));
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────
