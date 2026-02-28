@@ -18,6 +18,7 @@ import {
   CORE_SERVICES
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
+import { afterMutation } from "$lib/server/sync/index.js";
 import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async (event) => {
@@ -63,6 +64,9 @@ export const POST: RequestHandler = async (event) => {
       envFiles: buildEnvFiles(state)
     });
   }
+
+  // Config sync — snapshot after apply cycle (best-effort, never blocks)
+  await afterMutation(state.configDir, "Apply config");
 
   appendAudit(
     state,

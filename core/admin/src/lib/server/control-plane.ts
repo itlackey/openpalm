@@ -164,7 +164,16 @@ const ALLOWED_ACTIONS = new Set([
   "accessScope.set",
   "connections.get",
   "connections.patch",
-  "connections.status"
+  "connections.status",
+
+  "config.sync.status",
+  "config.sync.init",
+  "config.sync.snapshot",
+  "config.sync.push",
+  "config.sync.pull",
+  "config.sync.history",
+  "config.sync.restore",
+  "config.sync.remote"
 ]);
 
 const MAX_AUDIT_MEMORY = 1000;
