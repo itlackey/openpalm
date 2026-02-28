@@ -69,10 +69,9 @@ Adding a channel requires no code changes — just drop a Docker Compose overlay
 
 <div>
 <img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: left; shape-margin: 0.25rem;" />
-<p>
-OpenPalm has defense built into it's core. It has many layers working together to protect your system and your secrets for malicious activity, destructive actions, and other common disasters than can occur with unattended AI assistants.
-</p>
+<p>OpenPalm has defense built into it's core. It has many layers working together to protect your system and your secrets for malicious activity, destructive actions, and other common disasters than can occur with unattended AI assistants.</p>
 </div>
+
 - **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
 - **Assistant** (`core/assistant/`) — OpenCode runtime. No Docker socket. Calls Admin API for stack operations.
