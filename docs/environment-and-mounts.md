@@ -117,8 +117,8 @@ This supports Docker runtimes whose socket is not at the default
 `/var/run/docker.sock` (e.g. OrbStack, Colima, Rancher Desktop).
 If not set, it defaults to `/var/run/docker.sock`.
 
-**`OPENPALM_DOCKER_GID`** is auto-detected by the admin at startup via
-`statSync('/var/run/docker.sock').gid` and written to `STATE_HOME/artifacts/stack.env`.
+**`OPENPALM_DOCKER_GID`** is auto-detected by the admin at startup by
+stat-ing the Docker socket inside the container and written to `STATE_HOME/artifacts/stack.env`.
 You do not need to set either of these manually. For a fresh install (before the admin has run),
 `scripts/dev-setup.sh --seed-env` seeds the stack.env with the detected values.
 
