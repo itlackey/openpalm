@@ -25,6 +25,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "./$types";
 
 function safeTokenCompare(a: string, b: string): boolean {
+  if (!a || !b) return false;
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
   if (aBuf.length !== bBuf.length) return false;
