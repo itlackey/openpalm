@@ -55,6 +55,7 @@ function readSecretsKeys(): Record<string, boolean> {
 /**
  * Detect the current system user login name for use as default OpenMemory user ID.
  * Tries environment variables first, then falls back to os.userInfo().
+ * Note: This mirrors the detection logic in scripts/setup.sh generate_secrets().
  */
 function detectUserId(): string {
   const envUser = process.env.USER ?? process.env.LOGNAME ?? "";
