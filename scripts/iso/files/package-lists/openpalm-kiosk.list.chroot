@@ -1,0 +1,13 @@
+lightdm
+xserver-xorg-core
+xinit
+openbox
+chromium
+x11-xserver-utils
+docker.io
+docker-compose-v2
+ca-certificates
+curl
+git
+unattended-upgrades
+apt-listchanges

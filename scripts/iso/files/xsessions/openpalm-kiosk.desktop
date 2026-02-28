@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=OpenPalm Kiosk
+Comment=OpenPalm admin kiosk session
+Exec=/usr/local/bin/openpalm-kiosk-session.sh
+Type=Application
+DesktopNames=OpenPalmKiosk

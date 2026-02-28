@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic OpenPalm stack reconciliation
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=openpalm-stack.service
+
+[Install]
+WantedBy=timers.target

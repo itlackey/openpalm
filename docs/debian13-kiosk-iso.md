@@ -12,7 +12,7 @@ This guide creates a Debian 13 (trixie) kiosk ISO for Raspberry Pi class hardwar
 
 ## What this produces
 
-The build script `scripts/build-debian13-kiosk-iso.sh` composes a live-build tree and outputs:
+The build script `scripts/iso/build-debian13-kiosk-iso.sh` composes a live-build tree and outputs:
 
 - `.build/out/openpalm-debian13-kiosk-<arch>.iso`
 
@@ -49,13 +49,13 @@ KIOSK_USER=operator \
 KIOSK_PASSWORD='ChangeMeNow123!' \
 OPENPALM_ADMIN_URL='http://127.0.0.1:8100' \
 DEBIAN_ARCH=arm64 \
-./scripts/build-debian13-kiosk-iso.sh
+./scripts/iso/build-debian13-kiosk-iso.sh
 ```
 
 For standard x86_64 systems:
 
 ```bash
-DEBIAN_ARCH=amd64 ./scripts/build-debian13-kiosk-iso.sh
+DEBIAN_ARCH=amd64 ./scripts/iso/build-debian13-kiosk-iso.sh
 ```
 
 ### Optional overrides
