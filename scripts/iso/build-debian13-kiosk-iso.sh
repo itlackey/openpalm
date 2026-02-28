@@ -4,9 +4,14 @@ set -euo pipefail
 # Build a Debian 13 (trixie) ISO that boots into a lightweight kiosk login.
 # After first successful login, the user is forced to change password and then
 # sees Chromium in kiosk mode pointing at the OpenPalm admin URL.
+#
+# Template files live alongside this script in files/ and are copied into the
+# live-build tree at build time.  Placeholders such as __KIOSK_USER__ are
+# replaced with the values of the corresponding environment variables.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+FILES_DIR="$SCRIPT_DIR/files"
 BUILD_ROOT="${BUILD_ROOT:-$REPO_ROOT/.build/debian13-kiosk}"
 ISO_OUT_DIR="${ISO_OUT_DIR:-$REPO_ROOT/.build/out}"
 
@@ -47,6 +52,16 @@ normalize_arch() {
   esac
 }
 
+# Replace placeholder tokens in a file with runtime values.
+render_template() {
+  local src="$1" dst="$2"
+  sed \
+    -e "s|__KIOSK_USER__|$KIOSK_USER|g" \
+    -e "s|__KIOSK_PASSWORD__|$KIOSK_PASSWORD|g" \
+    -e "s|__OPENPALM_ADMIN_URL__|$OPENPALM_ADMIN_URL|g" \
+    "$src" > "$dst"
+}
+
 render_livebuild_tree() {
   rm -rf "$BUILD_ROOT"
   mkdir -p "$BUILD_ROOT/config/package-lists" \
@@ -57,146 +72,44 @@ render_livebuild_tree() {
     "$BUILD_ROOT/config/hooks/live" \
     "$BUILD_ROOT/config/includes.chroot/opt/openpalm"
 
-  cat > "$BUILD_ROOT/config/package-lists/openpalm-kiosk.list.chroot" <<'PKGEOF'
-lightdm
-xserver-xorg-core
-xinit
-openbox
-chromium
-x11-xserver-utils
-docker.io
-docker-compose-v2
-ca-certificates
-curl
-git
-unattended-upgrades
-apt-listchanges
-PKGEOF
+  # --- Package list (no templating needed) ---
+  cp "$FILES_DIR/package-lists/openpalm-kiosk.list.chroot" \
+    "$BUILD_ROOT/config/package-lists/openpalm-kiosk.list.chroot"
 
-  cat > "$BUILD_ROOT/config/includes.chroot/usr/share/xsessions/openpalm-kiosk.desktop" <<'XSEOF'
-[Desktop Entry]
-Name=OpenPalm Kiosk
-Comment=OpenPalm admin kiosk session
-Exec=/usr/local/bin/openpalm-kiosk-session.sh
-Type=Application
-DesktopNames=OpenPalmKiosk
-XSEOF
+  # --- X session desktop entry (no templating needed) ---
+  cp "$FILES_DIR/xsessions/openpalm-kiosk.desktop" \
+    "$BUILD_ROOT/config/includes.chroot/usr/share/xsessions/openpalm-kiosk.desktop"
 
-  cat > "$BUILD_ROOT/config/includes.chroot/usr/local/bin/openpalm-kiosk-session.sh" <<SESSOF
-#!/usr/bin/env bash
-set -euo pipefail
+  # --- Kiosk session launcher (templated: OPENPALM_ADMIN_URL) ---
+  render_template "$FILES_DIR/bin/openpalm-kiosk-session.sh" \
+    "$BUILD_ROOT/config/includes.chroot/usr/local/bin/openpalm-kiosk-session.sh"
 
-xset -dpms
-xset s off
-xset s noblank
+  # --- LightDM seat configuration (no templating needed) ---
+  cp "$FILES_DIR/lightdm/50-openpalm.conf" \
+    "$BUILD_ROOT/config/includes.chroot/etc/lightdm/lightdm.conf.d/50-openpalm.conf"
 
-exec chromium --kiosk --noerrdialogs --disable-infobars "$OPENPALM_ADMIN_URL"
-SESSOF
+  # --- Bootstrap script (no templating needed) ---
+  cp "$FILES_DIR/bin/openpalm-bootstrap.sh" \
+    "$BUILD_ROOT/config/includes.chroot/usr/local/bin/openpalm-bootstrap.sh"
 
-  cat > "$BUILD_ROOT/config/includes.chroot/etc/lightdm/lightdm.conf.d/50-openpalm.conf" <<'LDMEOF'
-[Seat:*]
-user-session=openpalm-kiosk
-greeter-hide-users=false
-allow-guest=false
-LDMEOF
+  # --- Systemd units (no templating needed) ---
+  cp "$FILES_DIR/systemd/openpalm-stack.service" \
+    "$BUILD_ROOT/config/includes.chroot/etc/systemd/system/openpalm-stack.service"
+  cp "$FILES_DIR/systemd/openpalm-stack.timer" \
+    "$BUILD_ROOT/config/includes.chroot/etc/systemd/system/openpalm-stack.timer"
 
-  cat > "$BUILD_ROOT/config/includes.chroot/usr/local/bin/openpalm-bootstrap.sh" <<'BOOTSHEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-OPENPALM_HOME='/opt/openpalm'
-export OPENPALM_CONFIG_HOME='/var/lib/openpalm/config'
-export OPENPALM_STATE_HOME='/var/lib/openpalm/state'
-export OPENPALM_DATA_HOME='/var/lib/openpalm/data'
-export OPENPALM_WORK_DIR='/var/lib/openpalm/work'
-
-mkdir -p "$OPENPALM_CONFIG_HOME" "$OPENPALM_STATE_HOME" "$OPENPALM_DATA_HOME" "$OPENPALM_WORK_DIR"
-
-if [[ ! -f "$OPENPALM_CONFIG_HOME/secrets.env" ]]; then
-  cp "$OPENPALM_HOME/assets/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"
-  chmod 600 "$OPENPALM_CONFIG_HOME/secrets.env"
-fi
-
-if [[ ! -f "$OPENPALM_CONFIG_HOME/Caddyfile" ]]; then
-  cp "$OPENPALM_HOME/assets/Caddyfile" "$OPENPALM_CONFIG_HOME/Caddyfile"
-fi
-
-if [[ ! -f "$OPENPALM_STATE_HOME/docker-compose.yml" ]]; then
-  cp "$OPENPALM_HOME/assets/docker-compose.yml" "$OPENPALM_STATE_HOME/docker-compose.yml"
-fi
-
-if [[ ! -d "$OPENPALM_CONFIG_HOME/channels" ]]; then
-  mkdir -p "$OPENPALM_CONFIG_HOME/channels"
-fi
-
-if [[ -f "$OPENPALM_HOME/image-cache/openpalm-images.tar.zst" && ! -f /var/lib/openpalm/.images-loaded ]]; then
-  zstd -dc "$OPENPALM_HOME/image-cache/openpalm-images.tar.zst" | docker load
-  touch /var/lib/openpalm/.images-loaded
-fi
-
-cd "$OPENPALM_STATE_HOME"
-docker compose --env-file "$OPENPALM_CONFIG_HOME/secrets.env" -f "$OPENPALM_STATE_HOME/docker-compose.yml" up -d
-BOOTSHEOF
-
-  cat > "$BUILD_ROOT/config/includes.chroot/etc/systemd/system/openpalm-stack.service" <<'SVCEOF'
-[Unit]
-Description=Ensure OpenPalm stack is running
-After=network-online.target docker.service
-Wants=network-online.target docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/bin/openpalm-bootstrap.sh
-
-[Install]
-WantedBy=multi-user.target
-SVCEOF
-
-  cat > "$BUILD_ROOT/config/includes.chroot/etc/systemd/system/openpalm-stack.timer" <<'TIMEREOF'
-[Unit]
-Description=Periodic OpenPalm stack reconciliation
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-Unit=openpalm-stack.service
-
-[Install]
-WantedBy=timers.target
-TIMEREOF
-
+  # --- Repository assets ---
   rsync -a "$REPO_ROOT/assets/" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/assets/"
 
+  # --- Pre-built Docker image cache (optional) ---
   if [[ -f "$OPENPALM_IMAGES_TAR" ]]; then
     mkdir -p "$BUILD_ROOT/config/includes.chroot/opt/openpalm/image-cache"
     cp "$OPENPALM_IMAGES_TAR" "$BUILD_ROOT/config/includes.chroot/opt/openpalm/image-cache/openpalm-images.tar.zst"
   fi
 
-  cat > "$BUILD_ROOT/config/hooks/live/0100-openpalm-configure.chroot" <<HOOKEOF
-#!/usr/bin/env bash
-set -euo pipefail
-
-useradd -m -s /bin/bash '$KIOSK_USER'
-echo '$KIOSK_USER:$KIOSK_PASSWORD' | chpasswd
-chage -d 0 '$KIOSK_USER'
-usermod -aG docker '$KIOSK_USER'
-
-chmod +x /usr/local/bin/openpalm-kiosk-session.sh /usr/local/bin/openpalm-bootstrap.sh
-systemctl enable lightdm.service
-systemctl enable docker.service
-systemctl enable openpalm-stack.service
-systemctl enable openpalm-stack.timer
-
-cat > /etc/apt/apt.conf.d/52openpalm-auto-upgrades <<'APTCONF'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT::Periodic::AutocleanInterval "7";
-Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "03:30";
-APTCONF
-HOOKEOF
-
+  # --- Chroot configuration hook (templated: KIOSK_USER, KIOSK_PASSWORD) ---
+  render_template "$FILES_DIR/hooks/0100-openpalm-configure.chroot" \
+    "$BUILD_ROOT/config/hooks/live/0100-openpalm-configure.chroot"
   chmod +x "$BUILD_ROOT/config/hooks/live/0100-openpalm-configure.chroot"
 }
 

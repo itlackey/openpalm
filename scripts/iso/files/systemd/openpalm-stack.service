@@ -1,0 +1,12 @@
+[Unit]
+Description=Ensure OpenPalm stack is running
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/openpalm-bootstrap.sh
+
+[Install]
+WantedBy=multi-user.target

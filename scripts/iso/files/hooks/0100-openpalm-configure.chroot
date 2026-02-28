@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+useradd -m -s /bin/bash '__KIOSK_USER__'
+echo '__KIOSK_USER__:__KIOSK_PASSWORD__' | chpasswd
+chage -d 0 '__KIOSK_USER__'
+usermod -aG docker '__KIOSK_USER__'
+
+chmod +x /usr/local/bin/openpalm-kiosk-session.sh /usr/local/bin/openpalm-bootstrap.sh
+systemctl enable lightdm.service
+systemctl enable docker.service
+systemctl enable openpalm-stack.service
+systemctl enable openpalm-stack.timer
+
+cat > /etc/apt/apt.conf.d/52openpalm-auto-upgrades <<'APTCONF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+APTCONF
