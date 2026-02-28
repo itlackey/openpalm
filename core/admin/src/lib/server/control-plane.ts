@@ -821,21 +821,37 @@ function atomicSwap(livePath: string, isDirectory: boolean): void {
 
   if (!existsSync(pending)) return;
 
-  // Move current live out of the way (if it exists)
-  if (existsSync(livePath)) {
-    renameSync(livePath, old);
+  // Ensure no stale .old from a previous run interferes with rename()
+  if (existsSync(old)) {
+    rmSync(old, { recursive: true, force: true });
   }
 
-  // Promote pending to live — this is the commit point
-  renameSync(pending, livePath);
+  let oldRenamed = false;
+
+  try {
+    // Move current live out of the way (if it exists)
+    if (existsSync(livePath)) {
+      renameSync(livePath, old);
+      oldRenamed = true;
+    }
+
+    // Promote pending to live — this is the commit point
+    renameSync(pending, livePath);
+  } catch (error) {
+    // Best-effort rollback: restore live from .old if promotion failed
+    try {
+      if (oldRenamed && existsSync(old) && !existsSync(livePath)) {
+        renameSync(old, livePath);
+      }
+    } catch {
+      // Ignore rollback failures; preserve original error
+    }
+    throw error;
+  }
 
   // Cleanup the old version
   if (existsSync(old)) {
-    if (isDirectory) {
-      rmSync(old, { recursive: true, force: true });
-    } else {
-      rmSync(old, { force: true });
-    }
+    rmSync(old, { recursive: true, force: true });
   }
 }
 
