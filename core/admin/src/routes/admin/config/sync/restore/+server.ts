@@ -34,8 +34,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "snapshotId is required", {}, requestId);
   }
 
-  // Validate: only allow hex SHAs or short SHAs (git), or alphanumeric IDs
-  if (!/^[a-f0-9]{7,40}$/.test(snapshotId)) {
+  // Basic safety check — reject obviously dangerous input while staying
+  // provider-agnostic. Format validation is delegated to the provider.
+  if (snapshotId.length > 256 || /[^a-zA-Z0-9._\-\/]/.test(snapshotId)) {
     return errorResponse(400, "invalid_input", "Invalid snapshot ID format", {}, requestId);
   }
 

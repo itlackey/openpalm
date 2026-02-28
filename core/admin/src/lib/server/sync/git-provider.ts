@@ -9,7 +9,8 @@
  * are never committed. On restore(), secrets.env is explicitly excluded.
  */
 import { execFile } from "node:child_process";
-import { existsSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
 import type {
   ConfigSyncProvider,
   SyncResult,
@@ -281,8 +282,39 @@ export const gitProvider: ConfigSyncProvider = {
       return { ok: false, error: `Invalid snapshot ID: ${snapshotId}` };
     }
 
-    // Checkout files from the target snapshot, excluding secrets.env
-    // Use checkout to restore files without moving HEAD
+    // Full tree restore: remove files that exist now but not in the target
+    // snapshot, then checkout the snapshot's files. Plain `git checkout <id> -- .`
+    // is overlay-only and leaves newer files on disk.
+    const currentBranch = (await git(["rev-parse", "--abbrev-ref", "HEAD"], configDir)).stdout.trim() || "HEAD";
+
+    // Find files tracked in HEAD but absent in the target snapshot
+    const diffResult = await git(
+      ["diff", "--name-only", "--diff-filter=A", snapshotId, currentBranch],
+      configDir
+    );
+    if (diffResult.ok && diffResult.stdout.trim()) {
+      for (const file of diffResult.stdout.trim().split("\n").filter(Boolean)) {
+        // Never delete secrets.env
+        if (file === "secrets.env") continue;
+        const fullPath = `${configDir}/${file}`;
+        if (existsSync(fullPath)) {
+          rmSync(fullPath, { force: true });
+          // Clean up empty parent directories up to configDir
+          let parent = dirname(fullPath);
+          while (parent !== configDir && existsSync(parent)) {
+            try {
+              // rmSync on a non-empty dir throws — exactly what we want
+              rmSync(parent);
+              parent = dirname(parent);
+            } catch {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Checkout files from the target snapshot
     const checkoutResult = await git(
       ["checkout", snapshotId, "--", "."],
       configDir
@@ -292,7 +324,7 @@ export const gitProvider: ConfigSyncProvider = {
     }
 
     // Restore secrets.env to current version (don't overwrite live credentials)
-    await git(["checkout", "HEAD", "--", "secrets.env"], configDir);
+    await git(["checkout", currentBranch, "--", "secrets.env"], configDir);
 
     // Ensure .gitignore is still correct after restore
     ensureGitignore(configDir);
