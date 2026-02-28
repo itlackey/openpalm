@@ -82,6 +82,9 @@ export const PATCH: RequestHandler = async (event) => {
 
   // Validate partial updates
   if (body.schedule !== undefined) {
+    if (typeof body.schedule !== "string" || !body.schedule.trim()) {
+      return errorResponse(400, "invalid_input", "Job schedule must be a non-empty string", {}, requestId);
+    }
     const cronErr = validateCronExpression(body.schedule as string);
     if (cronErr) {
       appendAudit(state, actor, "automations.update", { jobId: id, error: cronErr }, false, requestId, callerType);
@@ -100,13 +103,16 @@ export const PATCH: RequestHandler = async (event) => {
   if (body.timeoutMs !== undefined && (typeof body.timeoutMs !== "number" || (body.timeoutMs as number) < 1000)) {
     return errorResponse(400, "invalid_input", "timeoutMs must be a number >= 1000", {}, requestId);
   }
+  if (body.description !== undefined && typeof body.description !== "string") {
+    return errorResponse(400, "invalid_input", "Job description must be a string", {}, requestId);
+  }
 
   const updates: Partial<AutomationJob> = {};
   if (body.name !== undefined) updates.name = (body.name as string).trim();
-  if (body.schedule !== undefined) updates.schedule = body.schedule as string;
-  if (body.prompt !== undefined) updates.prompt = body.prompt as string;
+  if (body.schedule !== undefined) updates.schedule = (body.schedule as string).trim();
+  if (body.prompt !== undefined) updates.prompt = (body.prompt as string).trim();
   if (body.enabled !== undefined) updates.enabled = body.enabled as boolean;
-  if (body.description !== undefined) updates.description = body.description as string;
+  if (body.description !== undefined) updates.description = (body.description as string).trim();
   if (body.timeoutMs !== undefined) updates.timeoutMs = body.timeoutMs as number;
 
   let updateErr: string | null;

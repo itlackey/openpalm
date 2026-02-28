@@ -70,6 +70,8 @@ export type AutomationRuntimeState = {
   history: AutomationRunEntry[];
   /** Whether the scheduler loop is running */
   schedulerActive: boolean;
+  /** Job IDs currently executing to prevent overlapping runs */
+  inFlightJobIds: Set<string>;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -410,7 +412,13 @@ export function startScheduler(state: ControlPlaneState): { stop: () => void } {
 
   // Align to the next minute boundary
   const now = new Date();
-  const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+  const seconds = now.getSeconds();
+  const millis = now.getMilliseconds();
+  const msUntilNextMinute =
+    // If already exactly on a minute boundary, tick immediately.
+    seconds === 0 && millis === 0
+      ? 0
+      : (60 - seconds) * 1000 - millis;
 
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -440,20 +448,35 @@ export function startScheduler(state: ControlPlaneState): { stop: () => void } {
       }
     }
 
-    if (matchingJobs.length === 0) return;
+    const runnableJobs = matchingJobs.filter((job) => {
+      if (state.automations.inFlightJobIds.has(job.id)) {
+        logger.warn(`Skipping overlapping automation run for "${job.id}"`);
+        return false;
+      }
+      return true;
+    });
 
-    logger.info(`Executing ${matchingJobs.length} scheduled automation(s)`, {
-      jobs: matchingJobs.map((j) => j.id),
+    if (runnableJobs.length === 0) return;
+
+    logger.info(`Executing ${runnableJobs.length} scheduled automation(s)`, {
+      jobs: runnableJobs.map((j) => j.id),
     });
 
     // Execute matching jobs concurrently
     const results = await Promise.allSettled(
-      matchingJobs.map((job) => executeJob(state, job, "scheduled"))
+      runnableJobs.map(async (job) => {
+        state.automations.inFlightJobIds.add(job.id);
+        try {
+          return await executeJob(state, job, "scheduled");
+        } finally {
+          state.automations.inFlightJobIds.delete(job.id);
+        }
+      })
     );
 
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
-      const job = matchingJobs[i];
+      const job = runnableJobs[i];
       if (result.status === "rejected") {
         logger.error(`Automation "${job.id}" failed unexpectedly`, {
           error: String(result.reason),

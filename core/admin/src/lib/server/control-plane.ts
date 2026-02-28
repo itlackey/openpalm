@@ -24,7 +24,7 @@ import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, rea
 import { dirname, resolve as resolvePath } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "@openpalm/lib/shared/env";
-import { stageAutomations, ensureDefaultAutomations, type AutomationRuntimeState } from "./automations.js";
+import { stageAutomations, type AutomationRuntimeState } from "./automations.js";
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import coreComposeAsset from "$assets/docker-compose.yml?raw";
@@ -293,6 +293,7 @@ export function createState(
       jobs: [],
       history: [],
       schedulerActive: false,
+      inFlightJobIds: new Set<string>(),
     },
   };
 }
