@@ -30,10 +30,6 @@ function runStartupApply(): void {
     ensureXdgDirs();
     const state = getState();
 
-    // Clean up any stale pending/backup state from a previous failed apply
-    cleanupStalePending(state.stateDir);
-    cleanupStaleConfigBackups(state.stateDir, state.configDir, state);
-
     ensureSecrets(state);
     ensureOpenCodeConfig();
     state.artifacts = stageArtifacts(state);
