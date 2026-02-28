@@ -37,13 +37,13 @@ docker-socket-proxy:
   image: tecnativa/docker-socket-proxy:latest
   restart: unless-stopped
   environment:
-    # Allowlist only the endpoints the admin needs.
-    # Containers, networks, and compose operations:
+    # Static allowlist — covers all compose operations for any channel.
+    # These are API endpoint categories, not per-container rules, so
+    # adding/removing channels never requires changes here.
     CONTAINERS: 1
     NETWORKS: 1
     SERVICES: 1
     TASKS: 1
-    # Read-only info endpoints:
     INFO: 1
     VERSION: 1
     # Everything else denied by default (exec, volumes, images, etc.)
@@ -133,6 +133,35 @@ override the environment variable.
 
 ---
 
+## Why the allowlist is static (no file-based config needed)
+
+A common concern is whether adding or removing channels at runtime requires
+updating the proxy's allowlist. It does not.
+
+The Tecnativa proxy filters by **Docker API endpoint category** — broad groups
+like "containers", "networks", "images". It does _not_ filter by individual
+container name, service name, or compose project. Every channel operation
+(`docker compose -f ... up -d`, `docker compose ... down`) hits the same
+API categories regardless of which channel is being installed or removed.
+
+```
+Channel install (discord):  POST /containers/create  ──┐
+Channel install (slack):    POST /containers/create  ──┤  Same API category: CONTAINERS=1
+Channel remove  (discord):  DELETE /containers/{id}  ──┘
+```
+
+This means:
+- The allowlist is **set once** and never changes.
+- No config file, no runtime reload, no proxy restart when channels change.
+- The proxy is configured entirely via static environment variables in compose.
+
+The Tecnativa proxy is HAProxy-based and only supports environment variables
+(no file-based configuration). This is not a limitation for OpenPalm because
+the allowlist never needs to change — it covers the fixed set of Docker API
+categories that `docker compose` uses.
+
+---
+
 ## What the proxy endpoint allowlist controls
 
 The Tecnativa proxy uses environment variables to toggle Docker API endpoint
@@ -165,8 +194,9 @@ not explicitly enabled.
 **Disadvantages:**
 - One additional container in the stack (lightweight — ~10 MB, minimal CPU)
 - Slight latency on Docker API calls (HTTP proxy hop vs direct socket)
-- Requires careful endpoint allowlisting (too restrictive breaks compose ops)
 - The proxy itself still needs direct socket access (runs as root internally)
+- Initial allowlist must be validated against the full set of compose operations
+  (but it is static — once correct, it never changes)
 
 ---
 
