@@ -413,6 +413,30 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   return files;
 }
 
+/**
+ * Build the list of services that `docker compose up` should manage.
+ *
+ * Excludes:
+ *  - **admin** — the admin cannot safely recreate its own container.
+ *  - **docker-socket-proxy** — recreating it severs the `DOCKER_HOST`
+ *    TCP connection the admin uses to talk to Docker, causing all
+ *    subsequent container operations in the same compose run to fail
+ *    ("Cannot connect to the Docker daemon at tcp://docker-socket-proxy:2375").
+ *
+ * Both services are started by the host-side bootstrap (setup.sh) and
+ * must remain running throughout admin-initiated compose operations.
+ */
+export function buildManagedServices(state: ControlPlaneState): string[] {
+  const services: string[] = CORE_SERVICES.filter((s) => s !== "admin");
+  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
+  for (const p of stagedYmls) {
+    const filename = p.split("/").pop() ?? "";
+    const name = filename.replace(/\.yml$/, "");
+    if (name) services.push(`channel-${name}`);
+  }
+  return services;
+}
+
 // ── Artifact Staging ────────────────────────────────────────────────────
 
 export function sha256(content: string): string {
