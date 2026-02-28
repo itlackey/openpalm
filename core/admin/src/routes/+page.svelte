@@ -312,6 +312,22 @@
 
   onMount(() => {
     void (async () => {
+      // Check if setup is complete — redirect to wizard if not
+      try {
+        const setupRes = await fetch('/admin/setup', {
+          headers: { 'x-requested-by': 'ui', 'x-request-id': crypto.randomUUID() }
+        });
+        if (setupRes.ok) {
+          const setupData = await setupRes.json();
+          if (!setupData.setupComplete) {
+            window.location.href = '/setup';
+            return;
+          }
+        }
+      } catch {
+        // best-effort — continue to auth gate
+      }
+
       const token = getAdminToken();
       tokenStored = Boolean(token);
       if (!token) {

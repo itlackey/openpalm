@@ -388,6 +388,12 @@ generate_secrets() {
 		return 0
 	fi
 
+	# Detect the current user's login name for OpenMemory user ID
+	local detected_user="${USER:-${LOGNAME:-}}"
+	if [[ -z "$detected_user" ]]; then
+		detected_user="$(whoami 2>/dev/null || echo "default_user")"
+	fi
+
 	# ADMIN_TOKEN is intentionally empty — the setup wizard sets it.
 	# The admin container starts without auth and serves /setup.
 	cat >"$secrets_path" <<EOF
@@ -405,7 +411,7 @@ OPENAI_BASE_URL=
 # GOOGLE_API_KEY=
 
 # OpenMemory
-OPENMEMORY_USER_ID=default_user
+OPENMEMORY_USER_ID=${detected_user}
 EOF
 
 	ok "Generated secrets.env (admin token will be set by setup wizard)"
@@ -417,13 +423,44 @@ generate_stack_env() {
 	header "Configuring stack environment"
 
 	local stack_env_path="${STATE_HOME}/artifacts/stack.env"
+	local system_secrets="${STATE_HOME}/secrets/system-secrets.env"
+
+	# Preserve existing POSTGRES_PASSWORD or generate a new one
+	local pg_password=""
+	if [[ -f "$system_secrets" ]]; then
+		pg_password="$(grep -m1 '^POSTGRES_PASSWORD=' "$system_secrets" 2>/dev/null | cut -d= -f2- || true)"
+	fi
+	if [[ -z "$pg_password" ]]; then
+		pg_password="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 32)"
+		# Persist to system-secrets.env so it survives re-runs
+		mkdir -p "${STATE_HOME}/secrets"
+		cat >"$system_secrets" <<EOF
+# OpenPalm System Secrets — system-managed, do not edit
+POSTGRES_PASSWORD=${pg_password}
+EOF
+	fi
 
 	cat >"$stack_env_path" <<EOF
 # OpenPalm Stack Bootstrap — system-managed, do not edit
 # Written by setup.sh for initial admin startup. Overwritten by admin on each apply.
+
+# ── XDG Paths ──────────────────────────────────────────────────────
+OPENPALM_CONFIG_HOME=${CONFIG_HOME}
+OPENPALM_DATA_HOME=${DATA_HOME}
+OPENPALM_STATE_HOME=${STATE_HOME}
+OPENPALM_WORK_DIR=${WORK_DIR}
+
+# ── User/Group ──────────────────────────────────────────────────────
 OPENPALM_UID=${HOST_UID}
 OPENPALM_GID=${HOST_GID}
 OPENPALM_DOCKER_GID=${DOCKER_GID}
+
+# ── Images ──────────────────────────────────────────────────────────
+OPENPALM_IMAGE_NAMESPACE=${OPENPALM_IMAGE_NAMESPACE:-openpalm}
+OPENPALM_IMAGE_TAG=${OPENPALM_IMAGE_TAG:-latest}
+
+# ── Database ────────────────────────────────────────────────────────
+POSTGRES_PASSWORD=${pg_password}
 EOF
 
 	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_GID=${DOCKER_GID})"
