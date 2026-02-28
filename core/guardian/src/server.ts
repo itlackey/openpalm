@@ -17,6 +17,7 @@
 import { ERROR_CODES, validatePayload } from "@openpalm/lib/shared/channel.ts";
 import { verifySignature } from "@openpalm/lib/shared/crypto.ts";
 import { createLogger } from "@openpalm/lib/shared/logger.ts";
+import { parseEnvContent } from "@openpalm/lib/shared/env.ts";
 
 const logger = createLogger("guardian");
 
@@ -32,14 +33,9 @@ const SECRETS_PATH = Bun.env.GUARDIAN_SECRETS_PATH;
 const CHANNEL_SECRET_RE = /^CHANNEL_[A-Z0-9_]+_SECRET$/;
 
 function parseChannelSecrets(content: string): Record<string, string> {
+  const parsed = parseEnvContent(content);
   const secrets: Record<string, string> = {};
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim();
+  for (const [key, val] of Object.entries(parsed)) {
     if (CHANNEL_SECRET_RE.test(key) && val) {
       const ch = key.replace(/^CHANNEL_/, "").replace(/_SECRET$/, "").toLowerCase();
       secrets[ch] = val;

@@ -14,7 +14,6 @@
  * 10. All commands use execFile (no shell injection — core security invariant)
  */
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { existsSync } from "node:fs";
 import type { DockerResult } from "./docker.js";
 
 const execFileMock = vi.fn();
@@ -25,9 +24,9 @@ vi.mock("node:child_process", () => ({
 
 // docker.ts also imports existsSync; provide a passthrough so other
 // exports keep working without pulling in the real fs module.
-const existsSyncMock = vi.fn(() => false);
+const existsSyncMock = vi.fn((_path: string) => false);
 vi.mock("node:fs", () => ({
-  existsSync: (...args: unknown[]) => existsSyncMock(...args)
+  existsSync: (path: string) => existsSyncMock(path)
 }));
 
 // Helper: make execFile resolve successfully

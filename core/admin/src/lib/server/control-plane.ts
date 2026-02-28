@@ -23,6 +23,7 @@
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+import { parseEnvContent, parseEnvFile, mergeEnvContent } from "@openpalm/lib/shared/env";
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import coreComposeAsset from "$assets/docker-compose.yml?raw";
@@ -290,23 +291,8 @@ export function randomHex(bytes: number): string {
  * stack.env is the single source of truth for all system-managed values.
  */
 function loadPersistedPostgresPassword(dataDir: string): string | null {
-  const stackEnvPath = `${dataDir}/stack.env`;
-  try {
-    if (!existsSync(stackEnvPath)) return null;
-    const content = readFileSync(stackEnvPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      if (key !== "POSTGRES_PASSWORD") continue;
-      return trimmed.slice(eq + 1).trim();
-    }
-  } catch {
-    // fallback to generated value
-  }
-  return null;
+  const parsed = parseEnvFile(`${dataDir}/stack.env`);
+  return parsed.POSTGRES_PASSWORD ?? null;
 }
 
 /**
@@ -314,23 +300,11 @@ function loadPersistedPostgresPassword(dataDir: string): string | null {
  * Returns a map of channel name → secret. Returns empty object if the file doesn't exist.
  */
 function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
-  const stackEnvPath = `${dataDir}/stack.env`;
+  const parsed = parseEnvFile(`${dataDir}/stack.env`);
   const result: Record<string, string> = {};
-  try {
-    if (!existsSync(stackEnvPath)) return result;
-    const content = readFileSync(stackEnvPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
-      if (!match?.[1]) continue;
-      result[match[1].toLowerCase()] = trimmed.slice(eq + 1).trim();
-    }
-  } catch {
-    // fallback to empty — new secrets will be generated
+  for (const [key, value] of Object.entries(parsed)) {
+    const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
+    if (match?.[1] && value) result[match[1].toLowerCase()] = value;
   }
   return result;
 }
@@ -644,33 +618,9 @@ function stageStackEnv(state: ControlPlaneState): void {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
   }
 
-  // Update existing lines in-place for admin-managed keys
-  const baseLines = base.split("\n");
-  const updatedLines = baseLines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) return line;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) return line;
-    const key = trimmed.slice(0, eq).trim();
-    if (key in adminManaged) {
-      const value = adminManaged[key];
-      delete adminManaged[key];
-      return `${key}=${value}`;
-    }
-    return line;
+  const content = mergeEnvContent(base, adminManaged, {
+    sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });
-
-  // Append any admin-managed keys not already in the base file
-  const remainingKeys = Object.entries(adminManaged);
-  if (remainingKeys.length > 0) {
-    updatedLines.push("");
-    updatedLines.push("# ── Admin-managed ──────────────────────────────────────────────────");
-    for (const [key, value] of remainingKeys) {
-      updatedLines.push(`${key}=${value}`);
-    }
-  }
-
-  const content = updatedLines.join("\n");
 
   // Update DATA_HOME/stack.env with merged content so persisted values
   // (POSTGRES_PASSWORD, channel secrets) survive admin restarts.
@@ -898,30 +848,7 @@ export function updateSecretsEnv(
   }
 
   const raw = readFileSync(secretsPath, "utf-8");
-  const lines = raw.split("\n");
-  const remaining = new Map(Object.entries(updates));
-
-  // Pass 1: replace existing lines (including commented-out)
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].replace(/^#\s*/, "").trim();
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    if (remaining.has(key)) {
-      lines[i] = `${key}=${remaining.get(key)}`;
-      remaining.delete(key);
-    }
-  }
-
-  // Pass 2: append keys not found in existing file
-  if (remaining.size > 0) {
-    lines.push("");
-    for (const [key, value] of remaining) {
-      lines.push(`${key}=${value}`);
-    }
-  }
-
-  writeFileSync(secretsPath, lines.join("\n"));
+  writeFileSync(secretsPath, mergeEnvContent(raw, updates, { uncomment: true }));
 }
 
 // ── Secrets ─────────────────────────────────────────────────────────────
@@ -1100,31 +1027,10 @@ export const REQUIRED_LLM_PROVIDER_KEYS = [
  * Only returns keys in ALLOWED_CONNECTION_KEYS.
  */
 export function readSecretsEnvFile(configDir: string): Record<string, string> {
-  const secretsPath = `${configDir}/secrets.env`;
+  const parsed = parseEnvFile(`${configDir}/secrets.env`);
   const result: Record<string, string> = {};
-  try {
-    if (!existsSync(secretsPath)) return result;
-    const content = readFileSync(secretsPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      if (!ALLOWED_CONNECTION_KEYS.has(key)) continue;
-      let value = trimmed.slice(eq + 1).trim();
-      const comment = value.search(/\s+#/);
-      if (comment >= 0) value = value.slice(0, comment).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      result[key] = value;
-    }
-  } catch {
-    // return partial result
+  for (const [key, value] of Object.entries(parsed)) {
+    if (ALLOWED_CONNECTION_KEYS.has(key)) result[key] = value;
   }
   return result;
 }
@@ -1164,37 +1070,8 @@ export function patchSecretsEnvFile(
     // start fresh
   }
 
-  const lines = existingContent.split("\n");
-  const patched = new Set<string>();
-
-  // Update existing lines for keys in patches
-  const updatedLines = lines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) return line;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) return line;
-    const key = trimmed.slice(0, eq).trim();
-    if (key in allowed) {
-      patched.add(key);
-      return `${key}=${allowed[key]}`;
-    }
-    return line;
-  });
-
-  // Append any keys that weren't found in the existing file
-  const toAppend: string[] = [];
-  for (const [key, value] of Object.entries(allowed)) {
-    if (!patched.has(key)) {
-      toAppend.push(`${key}=${value}`);
-    }
-  }
-
-  let result = updatedLines.join("\n");
-  if (toAppend.length > 0) {
-    if (!result.endsWith("\n")) result += "\n";
-    result += toAppend.join("\n") + "\n";
-  }
-
+  let result = mergeEnvContent(existingContent, allowed);
+  if (!result.endsWith("\n")) result += "\n";
   writeFileSync(secretsPath, result);
 }
 
@@ -1218,34 +1095,10 @@ export function maskConnectionValue(key: string, value: string): string {
 
 function loadSecretsEnvFile(configDir?: string): Record<string, string> {
   const base = configDir ?? resolveConfigHome();
-  const secretsPath = `${base}/secrets.env`;
+  const parsed = parseEnvFile(`${base}/secrets.env`);
   const result: Record<string, string> = {};
-
-  try {
-    if (!existsSync(secretsPath)) return result;
-    const content = readFileSync(secretsPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq <= 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      if (!/^[A-Z0-9_]+$/.test(key)) continue;
-
-      let value = trimmed.slice(eq + 1).trim();
-      const comment = value.search(/\s+#/);
-      if (comment >= 0) value = value.slice(0, comment).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      result[key] = value;
-    }
-  } catch {
-    // fallback to env/defaults
+  for (const [key, value] of Object.entries(parsed)) {
+    if (/^[A-Z0-9_]+$/.test(key)) result[key] = value;
   }
-
   return result;
 }

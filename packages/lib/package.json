@@ -3,12 +3,16 @@
   "version": "0.5.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
   "exports": {
     "./shared/channel.ts": "./src/shared/channel.ts",
     "./shared/crypto.ts": "./src/shared/crypto.ts",
     "./shared/channel-sdk.ts": "./src/shared/channel-sdk.ts",
     "./shared/logger.ts": "./src/shared/logger.ts",
     "./shared/channel-base.ts": "./src/shared/channel-base.ts",
-    "./shared/channel-entrypoint.ts": "./src/shared/channel-entrypoint.ts"
+    "./shared/channel-entrypoint.ts": "./src/shared/channel-entrypoint.ts",
+    "./shared/env.ts": "./src/shared/env.ts"
   }
 }
