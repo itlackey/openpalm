@@ -663,7 +663,7 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
   let dockerGid = gid;
   try {
     const st = statSync("/var/run/docker.sock");
-    if (st.gid > 0) dockerGid = st.gid;
+    dockerGid = st.gid;
   } catch {
     // socket not present
   }

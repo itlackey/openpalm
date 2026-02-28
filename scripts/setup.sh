@@ -172,29 +172,28 @@ detect_platform() {
 	fi
 	ok "Docker socket: $DOCKER_SOCK"
 
-	# Docker socket GID (needed for admin container)
-	if [[ "$PLATFORM" == "linux" ]]; then
-		if [[ -S "$DOCKER_SOCK" ]]; then
-			DOCKER_GID="$(stat -c '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
+	# Docker socket GID — probe from inside a container for accuracy.
+	# Runtimes like OrbStack remap socket ownership (e.g. host staff → container
+	# root:root), so the host-side GID may differ from the in-container GID.
+	# The in-container GID is what compose and the admin entrypoint actually need.
+	if [[ -S "$DOCKER_SOCK" ]]; then
+		DOCKER_GID=$(docker run --rm -v "$DOCKER_SOCK:/var/run/docker.sock" \
+			busybox stat -c '%g' /var/run/docker.sock 2>/dev/null) || true
+	fi
+	# Fallback: host-side detection
+	if [[ -z "$DOCKER_GID" ]]; then
+		if [[ "$PLATFORM" == "linux" ]]; then
+			if [[ -S "$DOCKER_SOCK" ]]; then
+				DOCKER_GID="$(stat -c '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
+			else
+				DOCKER_GID="$HOST_GID"
+			fi
 		else
-			DOCKER_GID="$HOST_GID"
+			if [[ -S "$DOCKER_SOCK" ]]; then
+				DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null)" || true
+			fi
+			DOCKER_GID="${DOCKER_GID:-$HOST_GID}"
 		fi
-	else
-		# macOS: Try to detect actual socket GID (OrbStack, Colima, etc.)
-		# Fall back to common docker group GIDs if stat fails
-		if [[ -S "$DOCKER_SOCK" ]]; then
-			DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null)" || true
-		fi
-		if [[ -z "$DOCKER_GID" ]]; then
-			# Check common docker group GIDs on macOS
-			for gid in 999 1000 1001 20; do
-				if dscl . -read /Groups/docker 2>/dev/null | grep -q "PrimaryGID.*$gid"; then
-					DOCKER_GID="$gid"
-					break
-				fi
-			done
-		fi
-		DOCKER_GID="${DOCKER_GID:-999}"
 	fi
 	ok "Docker GID: $DOCKER_GID"
 

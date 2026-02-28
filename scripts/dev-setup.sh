@@ -105,7 +105,7 @@ if [[ $seed_env -eq 1 ]]; then
 
 		if [[ -S "$docker_sock" ]]; then
 			detected=$(stat -c '%g' "$docker_sock" 2>/dev/null || true)
-			if [[ -n "$detected" && "$detected" != "0" ]]; then
+			if [[ -n "$detected" ]]; then
 				docker_gid=$detected
 			fi
 		fi

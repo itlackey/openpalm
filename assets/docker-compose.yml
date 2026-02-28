@@ -196,9 +196,10 @@ services:
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
       - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
-    group_add:
-      - "${OPENPALM_DOCKER_GID:-${OPENPALM_GID:-1000}}"
+    # Privilege dropping: the entrypoint starts as root, creates an openpalm
+    # user matching OPENPALM_UID/GID, grants Docker socket access via the
+    # socket's actual in-container group, then drops privileges via gosu.
+    # This handles runtimes (OrbStack, etc.) that remap socket ownership.
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1"]

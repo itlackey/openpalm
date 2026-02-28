@@ -122,6 +122,13 @@ stat-ing the Docker socket inside the container and written to `STATE_HOME/artif
 You do not need to set either of these manually. For a fresh install (before the admin has run),
 `scripts/dev-setup.sh --seed-env` seeds the stack.env with the detected values.
 
+**Docker socket privilege handling:** The admin image uses an entrypoint
+(`docker-entrypoint.sh`) that starts as root, creates an `openpalm` user
+matching `OPENPALM_UID`/`OPENPALM_GID`, grants that user Docker socket
+access via the socket's actual in-container group, then drops privileges
+via `gosu`. This handles Docker runtimes (OrbStack, Colima, etc.) that
+remap socket ownership to `root:root` inside containers.
+
 ---
 
 ## 3. Secrets
@@ -320,7 +327,10 @@ Never generated or defaulted by OpenPalm.
 - **POSTGRES_PASSWORD** — Required by compose, but generated and staged by the admin.
 - **Bind addresses** — All service ports default to `127.0.0.1` (localhost only).
 - **UID/GID mapping** — The assistant and guardian run with the host user's
-  UID/GID for correct file ownership on bind-mounted volumes.
+  UID/GID for correct file ownership on bind-mounted volumes. The admin
+  container starts as root and drops to `OPENPALM_UID`/`OPENPALM_GID` via
+  its entrypoint, ensuring correct file ownership on volumes regardless of
+  Docker runtime.
 - **Secrets isolation** — Most containers receive only the secrets they
   explicitly declare in their `environment:` block. The guardian loads the
   staged `stack.env` via `env_file` and reads all `CHANNEL_*_SECRET`
