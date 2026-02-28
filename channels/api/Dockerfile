@@ -6,5 +6,13 @@ WORKDIR /app
 COPY packages/lib /app/node_modules/@openpalm/lib
 COPY channels/api/package.json ./
 COPY channels/api/server.ts ./server.ts
+# Strip workspace:* dep (pre-installed via COPY above) so bun install succeeds
+RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))"
 RUN bun install --production
+
+USER bun
+
+ENV PORT=8186
+EXPOSE 8186
+
 CMD ["bun", "run", "server.ts"]

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check admin UI
+        run: cd core/admin && bun run check
+
+      - name: Test (lib + guardian + channels)
+        run: bun run test
+
+      - name: Validate Docker Compose manifests
+        env:
+          ADMIN_TOKEN: ci-placeholder
+          POSTGRES_PASSWORD: ci-placeholder
+        run: docker compose -f assets/docker-compose.yml -f docker-compose.override.yml config -q

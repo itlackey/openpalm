@@ -6,10 +6,13 @@ WORKDIR /app
 COPY packages/lib /app/node_modules/@openpalm/lib
 COPY channels/discord/package.json ./
 COPY channels/discord/server.ts ./server.ts
-COPY channels/discord/types.ts ./types.ts
-COPY channels/discord/permissions.ts ./permissions.ts
-COPY channels/discord/discord-api.ts ./discord-api.ts
-COPY channels/discord/commands.ts ./commands.ts
-COPY channels/discord/interactions.ts ./interactions.ts
+# Strip workspace:* dep (pre-installed via COPY above) so bun install succeeds
+RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))"
 RUN bun install --production
+
+USER bun
+
+ENV PORT=8184
+EXPOSE 8184
+
 CMD ["bun", "run", "server.ts"]

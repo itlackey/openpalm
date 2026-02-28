@@ -1,0 +1,22 @@
+# Channel: Chat — OpenAI/Anthropic-compatible API adapter
+#
+# Merge with core: docker compose -f docker-compose.yml -f registry/chat.yml up -d
+# Network selects Docker segment; Caddy access is controlled by the route .caddy file.
+
+services:
+  channel-chat:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-chat:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8181"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_CHAT_SECRET: ${CHANNEL_CHAT_SECRET}
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8181' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

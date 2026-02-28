@@ -1,0 +1,79 @@
+{
+	"compilerOptions": {
+		"paths": {
+			"@openpalm/lib/admin": [
+				"../../lib/src/admin"
+			],
+			"@openpalm/lib/admin/*": [
+				"../../lib/src/admin/*"
+			],
+			"@openpalm/lib/shared": [
+				"../../lib/src/shared"
+			],
+			"@openpalm/lib/shared/*": [
+				"../../lib/src/shared/*"
+			],
+			"@openpalm/lib/assets": [
+				"../../lib/assets"
+			],
+			"@openpalm/lib/assets/*": [
+				"../../lib/assets/*"
+			],
+			"@openpalm/lib": [
+				"../../lib/src"
+			],
+			"@openpalm/lib/*": [
+				"../../lib/src/*"
+			],
+			"$lib": [
+				"../src/lib"
+			],
+			"$lib/*": [
+				"../src/lib/*"
+			],
+			"$app/types": [
+				"./types/index.d.ts"
+			]
+		},
+		"rootDirs": [
+			"..",
+			"./types"
+		],
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"lib": [
+			"esnext",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"moduleResolution": "bundler",
+		"module": "esnext",
+		"noEmit": true,
+		"target": "esnext"
+	},
+	"include": [
+		"ambient.d.ts",
+		"non-ambient.d.ts",
+		"./types/**/$types.d.ts",
+		"../vite.config.js",
+		"../vite.config.ts",
+		"../src/**/*.js",
+		"../src/**/*.ts",
+		"../src/**/*.svelte",
+		"../test/**/*.js",
+		"../test/**/*.ts",
+		"../test/**/*.svelte",
+		"../tests/**/*.js",
+		"../tests/**/*.ts",
+		"../tests/**/*.svelte"
+	],
+	"exclude": [
+		"../node_modules/**",
+		"../src/service-worker.js",
+		"../src/service-worker/**/*.js",
+		"../src/service-worker.ts",
+		"../src/service-worker/**/*.ts",
+		"../src/service-worker.d.ts",
+		"../src/service-worker/**/*.d.ts"
+	]
+}

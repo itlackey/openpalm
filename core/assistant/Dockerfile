@@ -1,35 +1,36 @@
-FROM oven/bun:1.3.9
+# ── Assistant Service ──────────────────────────────────────────────────────────
+# OpenCode AI runtime with OpenPalm extensions for memory, policy, and tools.
+# Installs opencode via official installer and loads extensions from /opt/opencode.
+# ──────────────────────────────────────────────────────────────────────────────
 
-ARG OPENCODE_VERSION=1.2.10
-RUN bun add -g opencode-ai@${OPENCODE_VERSION} \
-  && chmod o+x /root \
-  && chmod -R o+rX /root/.bun
-RUN apt-get update && apt-get install -y tini curl openssh-server nodejs git && rm -rf /var/lib/apt/lists/*
+FROM node:22-slim
 
-# Core OpenPalm-managed OpenCode extensions (immutable).
-COPY extensions/ /opt/opencode/
-# Remove test files — OpenCode loads all .ts files in plugins/ as plugins.
-# Pre-install plugin dependencies and give UID 1000 write access.
-RUN find /opt/opencode -name "*.test.ts" -delete \
-  && cd /opt/opencode && bun install \
-  && chown -R 1000:1000 /opt/opencode
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for runtime (UID/GID match compose OPENPALM_UID/GID defaults).
-# The oven/bun base image ships a "bun" user at 1000:1000 — rename it to openpalm
-# so the user name is consistent across all OpenPalm containers.
-RUN groupmod -n openpalm bun && \
-    usermod -l openpalm -d /home/openpalm -m bun
+# Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
+RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path
+ENV PATH="/usr/local/.opencode/bin:$PATH"
 
-# Stable HOME mountpoint for user-global state.
-RUN mkdir -p /home/opencode /work \
-  && chown openpalm:openpalm /home/opencode /work \
-  && chmod 755 /home/opencode /work
+RUN mkdir -p /home/opencode /work /opt/opencode \
+    && chown node:node /home/opencode /work /opt/opencode \
+    && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
+    && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
+    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
 
-WORKDIR /work
+# Copy extensions (zod is provided by OpenCode's runtime, no install needed)
+COPY --chown=node:node core/assistant/ /opt/opencode/
 
-COPY entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
+COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
-USER openpalm
+USER root
+WORKDIR /work
+
+EXPOSE 4096 22
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096}' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]

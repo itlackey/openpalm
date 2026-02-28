@@ -1,9 +1,0 @@
-name: Voice
-description: Talk to your assistant using voice
-containerPort: 8183
-rewritePath: /voice/transcription
-sharedSecretEnv: CHANNEL_VOICE_SECRET
-env:
-  - name: CHANNEL_VOICE_SECRET
-    description: HMAC signing key for gateway communication. Auto-generated if left blank.
-    required: false

@@ -1,0 +1,43 @@
+# Local development override — builds images from source instead of pulling
+#
+# Usage (from project root):
+#   docker compose --project-directory . \
+#     -f assets/docker-compose.yml \
+#     -f docker-compose.override.yml \
+#     --env-file .dev/config/secrets.env up --build -d
+#
+# The --project-directory . flag is REQUIRED when the core compose file lives
+# in a different directory (assets/ or .dev/state/artifacts/). Without it,
+# Docker Compose resolves build contexts relative to the first -f file's
+# directory, which breaks builds.
+
+services:
+  admin:
+    build:
+      context: .
+      dockerfile: core/admin/Dockerfile
+    image: openpalm/admin:latest
+
+  guardian:
+    build:
+      context: .
+      dockerfile: core/guardian/Dockerfile
+    image: openpalm/guardian:latest
+
+  channel-chat:
+    build:
+      context: .
+      dockerfile: channels/chat/Dockerfile
+    image: openpalm/channel-chat:latest
+
+  assistant:
+    build:
+      context: .
+      dockerfile: core/assistant/Dockerfile
+    image: openpalm/assistant:latest
+
+  channel-base:
+    build:
+      context: .
+      dockerfile: channels/base/Dockerfile
+    image: openpalm/channel-base:latest

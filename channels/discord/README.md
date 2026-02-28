@@ -93,7 +93,7 @@ DISCORD_BLOCKED_USERS=999999999
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8184` | Port the server listens on |
-| `GATEWAY_URL` | `http://gateway:8080` | Gateway URL |
+| `GUARDIAN_URL` | `http://guardian:8080` | Guardian URL |
 | `CHANNEL_DISCORD_SECRET` | (required) | HMAC shared secret for signing payloads |
 | `DISCORD_BOT_TOKEN` | (required) | Discord bot token |
 | `DISCORD_PUBLIC_KEY` | (required) | Discord application public key (for signature verification) |
@@ -122,15 +122,9 @@ Manage credentials via `POST /channels/config` with `service: "channel-discord"`
 
 | File | Purpose |
 |---|---|
-| `server.ts` | Main entry point, HTTP routing, startup |
-| `types.ts` | Discord API type definitions |
-| `logger.ts` | Structured JSON logging |
-| `permissions.ts` | Guild/role/user permission checks |
-| `discord-api.ts` | Discord REST API client (command registration, follow-ups) |
-| `commands.ts` | Built-in and custom command definitions |
-| `interactions.ts` | Interaction handling (slash commands, buttons, autocomplete) |
+| `server.ts` | Main entry point, HTTP routing, Discord interaction handling, permission checks, startup |
 
 ## Related
 
-- [API Reference](../../dev/docs/api-reference.md#discord-channel-discord-8184) — Full endpoint and payload details
-- [Gateway README](../../core/gateway/README.md) — How signed payloads are processed
+- [API Reference](../../docs/api-spec.md) — Full endpoint and payload details
+- [Guardian README](../../core/guardian/README.md) — How signed payloads are processed

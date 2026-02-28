@@ -1,15 +1,28 @@
-import { createHmac, timingSafeEqual } from "crypto";
+/**
+ * OpenPalm shared HMAC utilities.
+ *
+ * Uses Bun.CryptoHasher (Bun built-in, synchronous) for HMAC-SHA256.
+ * verifySignature uses a constant-time XOR comparison to prevent timing attacks.
+ */
 
+/**
+ * Produces an HMAC-SHA256 hex digest of body using secret as the key.
+ */
 export function signPayload(secret: string, body: string): string {
-  if (!secret) throw new Error("HMAC secret must not be empty");
-  return createHmac("sha256", secret).update(body).digest("hex");
+  return new Bun.CryptoHasher("sha256", secret).update(body).digest("hex");
 }
 
-export function verifySignature(secret: string, body: string, incomingSig: string): boolean {
-  if (!secret || !incomingSig) return false;
+/**
+ * Constant-time comparison of the expected HMAC against the provided signature.
+ * Returns true only when both the length and every byte match.
+ */
+export function verifySignature(secret: string, body: string, sig: string): boolean {
+  if (!secret || !sig) return false;
   const expected = signPayload(secret, body);
-  const a = Buffer.from(expected, "hex");
-  const b = Buffer.from(incomingSig, "hex");
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  if (expected.length !== sig.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
+  }
+  return diff === 0;
 }

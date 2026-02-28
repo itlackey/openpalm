@@ -1,21 +1,14 @@
 {
   "name": "@openpalm/lib",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./*.ts": "./src/*.ts",
-    "./admin/*.ts": "./src/admin/*.ts",
-    "./shared/*.ts": "./src/shared/*.ts",
-    "./assets/*": "./assets/*"
-  },
-  "devDependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
-  },
-  "dependencies": {
-    "yaml": "^2.8.2"
+    "./shared/channel.ts": "./src/shared/channel.ts",
+    "./shared/crypto.ts": "./src/shared/crypto.ts",
+    "./shared/channel-sdk.ts": "./src/shared/channel-sdk.ts",
+    "./shared/logger.ts": "./src/shared/logger.ts",
+    "./shared/channel-base.ts": "./src/shared/channel-base.ts",
+    "./shared/channel-entrypoint.ts": "./src/shared/channel-entrypoint.ts"
   }
 }

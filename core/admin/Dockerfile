@@ -1,36 +1,40 @@
-FROM oven/bun:1.3.9
+# ── Admin Service ──────────────────────────────────────────────────────────────
+# SvelteKit app serving the Operator Console UI + Admin API + Control Plane.
+# Built with adapter-node, runs on Node.js.
+# ──────────────────────────────────────────────────────────────────────────────
+
+FROM node:22-slim AS build
+WORKDIR /app
+COPY core/admin/package.json core/admin/bun.lock* ./
+RUN npm install
+COPY core/admin/ .
+COPY assets/ ../assets/
+COPY registry/ ../registry/
+# @openpalm/lib is resolved via vite alias: ../../packages/lib/src → /packages/lib/src
+COPY packages/lib /packages/lib
+RUN npm run build
+
+# ── Runtime ───────────────────────────────────────────────────────────────────
+FROM node:22-slim
 RUN apt-get update \
-  && apt-get install -y cron curl ca-certificates gnupg gosu \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-  && chmod a+r /etc/apt/keyrings/docker.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
   && apt-get update \
-  && apt-get install -y docker-ce-cli \
+  && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
   && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for runtime (UID/GID match compose OPENPALM_UID/GID defaults).
-# The oven/bun base image ships a "bun" user at 1000:1000 — rename it to openpalm
-# so the user name is consistent across all OpenPalm containers.
-RUN groupmod -n openpalm bun && \
-    usermod -l openpalm -d /home/openpalm -m bun
-
 WORKDIR /app
-COPY --chown=openpalm:openpalm packages/lib ./packages/lib
-COPY --chown=openpalm:openpalm packages/ui ./packages/ui
-# @openpalm/lib is resolved by SvelteKit alias (svelte.config.js) pointing to
-# ../../packages/lib — no workspace:* dependency needed in package.json.
-# The built output is a bundled Node.js server; no runtime resolution required.
-USER openpalm
-RUN cd /app/packages/lib \
-  && rm -f bun.lock \
-  && bun install
-RUN cd /app/packages/ui \
-  && rm -f bun.lock \
-  && bun install \
-  && bun run build
-USER root
+COPY --from=build /app/build ./build
+COPY --from=build /app/package.json ./
+
+RUN mkdir -p /state /data
+
+ENV PORT=8100
 EXPOSE 8100
-COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
-RUN chmod +x /usr/local/bin/admin-entrypoint.sh
-CMD ["/usr/local/bin/admin-entrypoint.sh"]
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
+  CMD curl -sf http://localhost:8100/health || exit 1
+
+CMD ["node", "build/index.js"]

@@ -1,14 +1,5 @@
 [test]
-timeout = 15000
-
-# Default discovery: run all self-contained tests.
-# Docker and live-stack tests are excluded and run via dedicated scripts
-# (test:docker, test:install:smoke).
-exclude = [
-  "test/docker/**",
-  "test/install-e2e/**",
-]
-
-[install]
-# Ensure reproducible installs
-frozen = true
+# Admin uses vitest (unit/browser) and playwright (e2e) — not bun test.
+# Run admin tests via: bun run admin:test
+# Note: Bun has no test exclude option. Use `bun run test` (which scans
+# only packages/, channels/, and core/guardian/) instead of bare `bun test`.
