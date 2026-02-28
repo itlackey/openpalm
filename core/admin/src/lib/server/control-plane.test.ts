@@ -278,7 +278,7 @@ describe("isAllowedService", () => {
 
   test("allows channel-* when staged yml exists", () => {
     const stateDir = trackDir(makeTempDir());
-    const channelsDir = join(stateDir, "channels");
+    const channelsDir = join(stateDir, "artifacts", "channels");
     mkdirSync(channelsDir, { recursive: true });
     writeFileSync(join(channelsDir, "chat.yml"), "services: {}");
 
@@ -332,7 +332,7 @@ describe("isAllowedAction", () => {
 describe("isValidChannel", () => {
   test("validates channel name format (lowercase alnum + hyphens)", () => {
     const stateDir = trackDir(makeTempDir());
-    const channelsDir = join(stateDir, "channels");
+    const channelsDir = join(stateDir, "artifacts", "channels");
     mkdirSync(channelsDir, { recursive: true });
     writeFileSync(join(channelsDir, "my-channel.yml"), "services: {}");
 
@@ -357,7 +357,7 @@ describe("isValidChannel", () => {
 
   test("rejects valid-format name if not staged", () => {
     const stateDir = trackDir(makeTempDir());
-    mkdirSync(join(stateDir, "channels"), { recursive: true });
+    mkdirSync(join(stateDir, "artifacts", "channels"), { recursive: true });
     expect(isValidChannel("unstaged", stateDir)).toBe(false);
   });
 });
@@ -480,7 +480,7 @@ describe("discoverStagedChannelYmls", () => {
   });
 
   test("discovers staged .yml files", () => {
-    const channelsDir = join(stateDir, "channels");
+    const channelsDir = join(stateDir, "artifacts", "channels");
     mkdirSync(channelsDir, { recursive: true });
     writeFileSync(join(channelsDir, "chat.yml"), "services: {}");
     writeFileSync(join(channelsDir, "discord.yml"), "services: {}");
@@ -491,7 +491,7 @@ describe("discoverStagedChannelYmls", () => {
   });
 
   test("ignores non-.yml files", () => {
-    const channelsDir = join(stateDir, "channels");
+    const channelsDir = join(stateDir, "artifacts", "channels");
     mkdirSync(channelsDir, { recursive: true });
     writeFileSync(join(channelsDir, "chat.yml"), "services: {}");
     writeFileSync(join(channelsDir, "chat.caddy"), "handle /chat {}");
@@ -502,7 +502,7 @@ describe("discoverStagedChannelYmls", () => {
   });
 
   test("ignores subdirectories (only files)", () => {
-    const channelsDir = join(stateDir, "channels");
+    const channelsDir = join(stateDir, "artifacts", "channels");
     mkdirSync(channelsDir, { recursive: true });
     mkdirSync(join(channelsDir, "public"), { recursive: true });
     mkdirSync(join(channelsDir, "lan"), { recursive: true });
@@ -532,7 +532,7 @@ describe("buildComposeFileList", () => {
     trackDir(state.configDir);
     trackDir(state.dataDir);
 
-    const channelsDir = join(state.stateDir, "channels");
+    const channelsDir = join(state.stateDir, "artifacts", "channels");
     mkdirSync(channelsDir, { recursive: true });
     writeFileSync(join(channelsDir, "chat.yml"), "services: {}");
 
@@ -1147,8 +1147,7 @@ describe("ensureXdgDirs", () => {
     expect(existsSync(stateHome)).toBe(true);
     expect(existsSync(join(stateHome, "artifacts"))).toBe(true);
     expect(existsSync(join(stateHome, "audit"))).toBe(true);
-    expect(existsSync(join(stateHome, "secrets"))).toBe(true);
-    expect(existsSync(join(stateHome, "channels"))).toBe(true);
+    expect(existsSync(join(stateHome, "artifacts", "channels"))).toBe(true);
 
     // DATA subtrees
     expect(existsSync(dataHome)).toBe(true);
@@ -1229,37 +1228,37 @@ describe("createState", () => {
     process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
   });
 
-  test("loads persisted postgres password from system-secrets.env", () => {
+  test("loads persisted postgres password from stack.env", () => {
     const base = trackDir(makeTempDir());
     process.env.OPENPALM_CONFIG_HOME = join(base, "config");
     process.env.OPENPALM_STATE_HOME = join(base, "state");
     process.env.OPENPALM_DATA_HOME = join(base, "data");
     delete process.env.ADMIN_TOKEN;
 
-    // Seed the system-secrets.env with a known password
-    const secretsDir = join(base, "state", "secrets");
-    mkdirSync(secretsDir, { recursive: true });
+    // Seed DATA_HOME/stack.env with a known password
+    const dataDir = join(base, "data");
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(
-      join(secretsDir, "system-secrets.env"),
-      "# System secrets\nPOSTGRES_PASSWORD=persisted-pg-pass\n"
+      join(dataDir, "stack.env"),
+      "# Stack config\nPOSTGRES_PASSWORD=persisted-pg-pass\n"
     );
 
     const state = createState();
     expect(state.postgresPassword).toBe("persisted-pg-pass");
   });
 
-  test("loads persisted channel secrets from channel-secrets.env", () => {
+  test("loads persisted channel secrets from stack.env", () => {
     const base = trackDir(makeTempDir());
     process.env.OPENPALM_CONFIG_HOME = join(base, "config");
     process.env.OPENPALM_STATE_HOME = join(base, "state");
     process.env.OPENPALM_DATA_HOME = join(base, "data");
     delete process.env.ADMIN_TOKEN;
 
-    const secretsDir = join(base, "state", "secrets");
-    mkdirSync(secretsDir, { recursive: true });
+    const dataDir = join(base, "data");
+    mkdirSync(dataDir, { recursive: true });
     writeFileSync(
-      join(secretsDir, "channel-secrets.env"),
-      "# Channel secrets\nCHANNEL_CHAT_SECRET=abc123\nCHANNEL_DISCORD_SECRET=def456\n"
+      join(dataDir, "stack.env"),
+      "# Stack config\nCHANNEL_CHAT_SECRET=abc123\nCHANNEL_DISCORD_SECRET=def456\n"
     );
 
     const state = createState();
@@ -1357,8 +1356,7 @@ describe("persistArtifacts", () => {
     };
     // Create required base dirs
     mkdirSync(join(state.configDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "channels"), { recursive: true });
-    mkdirSync(join(state.stateDir, "secrets"), { recursive: true });
+    mkdirSync(join(state.stateDir, "artifacts", "channels"), { recursive: true });
     mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
   });
 
@@ -1366,7 +1364,7 @@ describe("persistArtifacts", () => {
     persistArtifacts(state);
 
     const composePath = join(state.stateDir, "artifacts", "docker-compose.yml");
-    const caddyPath = join(state.stateDir, "Caddyfile");
+    const caddyPath = join(state.stateDir, "artifacts", "Caddyfile");
     expect(existsSync(composePath)).toBe(true);
     expect(readFileSync(composePath, "utf-8")).toBe(state.artifacts.compose);
     expect(readFileSync(caddyPath, "utf-8")).toBe(state.artifacts.caddyfile);
@@ -1383,12 +1381,12 @@ describe("persistArtifacts", () => {
     expect(manifest[1].name).toBe("caddyfile");
   });
 
-  test("persists system secrets (postgres password)", () => {
+  test("persists system secrets (postgres password) in stack.env", () => {
     persistArtifacts(state);
 
-    const secretsPath = join(state.stateDir, "secrets", "system-secrets.env");
-    expect(existsSync(secretsPath)).toBe(true);
-    const content = readFileSync(secretsPath, "utf-8");
+    const stackEnvPath = join(state.stateDir, "artifacts", "stack.env");
+    expect(existsSync(stackEnvPath)).toBe(true);
+    const content = readFileSync(stackEnvPath, "utf-8");
     expect(content).toContain(`POSTGRES_PASSWORD=${state.postgresPassword}`);
   });
 
@@ -1402,8 +1400,8 @@ describe("persistArtifacts", () => {
     expect(state.channelSecrets.chat).toBeDefined();
     expect(state.channelSecrets.chat.length).toBeGreaterThan(0);
 
-    const channelSecretsPath = join(state.stateDir, "secrets", "channel-secrets.env");
-    const content = readFileSync(channelSecretsPath, "utf-8");
+    const stackEnvPath = join(state.stateDir, "artifacts", "stack.env");
+    const content = readFileSync(stackEnvPath, "utf-8");
     expect(content).toContain("CHANNEL_CHAT_SECRET=");
   });
 
@@ -1426,7 +1424,7 @@ describe("persistArtifacts", () => {
 
     persistArtifacts(state);
 
-    const stagedYml = join(state.stateDir, "channels", "chat.yml");
+    const stagedYml = join(state.stateDir, "artifacts", "channels", "chat.yml");
     expect(existsSync(stagedYml)).toBe(true);
   });
 });

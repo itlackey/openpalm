@@ -22,7 +22,9 @@ export function detectUserId(): string {
 
 export function isSetupComplete(stateDir: string, configDir: string): boolean {
   const parsed = parseEnvFile(`${stateDir}/artifacts/stack.env`);
-  if (parsed.OPENPALM_SETUP_COMPLETE?.toLowerCase() === "true") return true;
+  if ("OPENPALM_SETUP_COMPLETE" in parsed) {
+    return parsed.OPENPALM_SETUP_COMPLETE.toLowerCase() === "true";
+  }
 
   const keys = readSecretsKeys(configDir);
   return keys.ADMIN_TOKEN === true;
