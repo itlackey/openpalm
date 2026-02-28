@@ -21,6 +21,7 @@ import {
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { readFileSync, existsSync } from "node:fs";
+import { userInfo } from "node:os";
 import type { RequestHandler } from "./$types";
 
 /**
@@ -49,6 +50,21 @@ function readSecretsKeys(): Record<string, boolean> {
   }
 
   return result;
+}
+
+/**
+ * Detect the current system user login name for use as default OpenMemory user ID.
+ * Tries environment variables first, then falls back to os.userInfo().
+ * Note: This mirrors the detection logic in scripts/setup.sh generate_secrets().
+ */
+function detectUserId(): string {
+  const envUser = process.env.USER ?? process.env.LOGNAME ?? "";
+  if (envUser) return envUser;
+  try {
+    return userInfo().username || "default_user";
+  } catch {
+    return "default_user";
+  }
 }
 
 /**
@@ -83,6 +99,7 @@ export const GET: RequestHandler = async (event) => {
     {
       setupComplete,
       installed,
+      detectedUserId: detectUserId(),
       configured: {
         OPENAI_API_KEY: keys.OPENAI_API_KEY === true,
         OPENAI_BASE_URL: keys.OPENAI_BASE_URL === true,

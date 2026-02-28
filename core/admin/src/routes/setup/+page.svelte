@@ -11,7 +11,7 @@
   let adminToken = $state('');
   let openaiApiKey = $state('');
   let openaiBaseUrl = $state('');
-  let openmemoryUserId = $state('default_user');
+  let openmemoryUserId = $state('');
 
   // ── Install state ───────────────────────────────────────────────────────
   let installing = $state(false);
@@ -84,10 +84,16 @@
           if (data.setupComplete) {
             setupComplete = true;
           }
+          if (data.detectedUserId && !openmemoryUserId) {
+            openmemoryUserId = data.detectedUserId;
+          }
         }
       } catch {
         // best-effort — wizard starts fresh
       } finally {
+        if (!openmemoryUserId) {
+          openmemoryUserId = 'default_user';
+        }
         loading = false;
       }
     })();
