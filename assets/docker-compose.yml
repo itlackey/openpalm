@@ -175,7 +175,7 @@ services:
   # network. This eliminates socket permission/GID issues across Docker
   # runtimes (Docker Desktop, OrbStack, Colima, Podman, etc.).
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
     restart: unless-stopped
     environment:
       # Static allowlist — covers all compose operations for any channel.
@@ -189,7 +189,7 @@ services:
       INFO: 1
     volumes:
       - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
-    networks: [assistant_net]
+    networks: [admin_docker_net]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
       interval: 10s
@@ -225,7 +225,7 @@ services:
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
-    networks: [assistant_net]
+    networks: [assistant_net, admin_docker_net]
     depends_on:
       docker-socket-proxy:
         condition: service_healthy
@@ -242,3 +242,4 @@ networks:
   channel_lan:
   channel_public:
   assistant_net:
+  admin_docker_net:   # Isolated: only admin + docker-socket-proxy

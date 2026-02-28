@@ -521,9 +521,9 @@ compose_up_admin() {
 	fi
 
 	info "Starting admin container..."
-	# Start only the admin service; do not start or validate dependent services (e.g. postgres).
-	# This avoids needing a placeholder POSTGRES_PASSWORD value at this stage.
-	compose_cmd up -d --no-deps admin
+	# Start only the admin and its Docker socket proxy; skip other services (e.g. postgres)
+	# to avoid needing a placeholder POSTGRES_PASSWORD at this stage.
+	compose_cmd up -d docker-socket-proxy admin
 
 	ok "Admin service started"
 }

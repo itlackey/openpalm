@@ -29,7 +29,9 @@ A socket proxy eliminates this entire class of problems:
 
 The `docker-socket-proxy` service is the **only** container that mounts the
 Docker socket (read-only). It exposes a filtered HTTP API on port 2375 within
-the internal `assistant_net` network.
+the isolated `admin_docker_net` network — a dedicated network shared only with
+the admin service. No other service (assistant, guardian, channels) can reach
+the proxy.
 
 The admin container sets `DOCKER_HOST=tcp://docker-socket-proxy:2375`. The
 Docker CLI and `docker compose` read this variable automatically — no code

@@ -106,7 +106,9 @@ admin and never appear in user-editable files.
 
 The `docker-socket-proxy` (Tecnativa) is the **only** container that mounts
 the Docker socket. It exposes a filtered HTTP API on port 2375 within the
-internal network. The admin connects via `DOCKER_HOST=tcp://docker-socket-proxy:2375`.
+isolated `admin_docker_net` network — a dedicated network shared only with the
+admin service. No other service can reach the proxy. The admin connects via
+`DOCKER_HOST=tcp://docker-socket-proxy:2375`.
 
 This eliminates Docker socket permission/GID issues across runtimes (Docker
 Desktop, OrbStack, Colima, Podman). The admin never mounts the socket directly
@@ -321,9 +323,9 @@ Never generated or defaulted by OpenPalm.
 ## 9. Security Notes
 
 - **Docker socket** — Only the `docker-socket-proxy` container mounts the
-  Docker socket (read-only). The admin connects via HTTP through the proxy,
-  which allowlists only the Docker API categories needed for compose operations.
-  The assistant is explicitly denied Docker access.
+  Docker socket (read-only). The proxy lives on an isolated `admin_docker_net`
+  network shared only with the admin — no other service can reach it. The
+  proxy allowlists only the Docker API categories needed for compose operations.
 - **Caddy config** — Caddyfile and channel routes mounted read-only (`:ro`).
 - **ADMIN_TOKEN** — Required at startup (`${ADMIN_TOKEN:?...}`). The compose
   file will fail if unset in `secrets.env`.
