@@ -20,7 +20,7 @@
  * CONFIG_HOME/channels/. Caddy files are optional: if present, the channel
  * gets HTTP routing through Caddy; if absent, it's Docker-network only.
  */
-import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "@openpalm/lib/shared/env";
@@ -660,14 +660,6 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
   const uid = typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000;
   const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
 
-  let dockerGid = gid;
-  try {
-    const st = statSync("/var/run/docker.sock");
-    dockerGid = st.gid;
-  } catch {
-    // socket not present
-  }
-
   const home = process.env.HOME ?? "/tmp";
   const workDir = process.env.OPENPALM_WORK_DIR ?? `${home}/openpalm`;
 
@@ -684,7 +676,6 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
     "# ── User/Group ──────────────────────────────────────────────────────",
     `OPENPALM_UID=${uid}`,
     `OPENPALM_GID=${gid}`,
-    `OPENPALM_DOCKER_GID=${dockerGid}`,
     "",
     "# ── Docker Socket ───────────────────────────────────────────────────",
     `OPENPALM_DOCKER_SOCK=${process.env.OPENPALM_DOCKER_SOCK ?? "/var/run/docker.sock"}`,

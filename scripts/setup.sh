@@ -172,31 +172,6 @@ detect_platform() {
 	fi
 	ok "Docker socket: $DOCKER_SOCK"
 
-	# Docker socket GID — probe from inside a container for accuracy.
-	# Runtimes like OrbStack remap socket ownership (e.g. host staff → container
-	# root:root), so the host-side GID may differ from the in-container GID.
-	# The in-container GID is what compose and the admin entrypoint actually need.
-	if [[ -S "$DOCKER_SOCK" ]]; then
-		DOCKER_GID=$(docker run --rm -v "$DOCKER_SOCK:/var/run/docker.sock" \
-			busybox stat -c '%g' /var/run/docker.sock 2>/dev/null) || true
-	fi
-	# Fallback: host-side detection
-	if [[ -z "$DOCKER_GID" ]]; then
-		if [[ "$PLATFORM" == "linux" ]]; then
-			if [[ -S "$DOCKER_SOCK" ]]; then
-				DOCKER_GID="$(stat -c '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
-			else
-				DOCKER_GID="$HOST_GID"
-			fi
-		else
-			if [[ -S "$DOCKER_SOCK" ]]; then
-				DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null)" || true
-			fi
-			DOCKER_GID="${DOCKER_GID:-$HOST_GID}"
-		fi
-	fi
-	ok "Docker GID: $DOCKER_GID"
-
 	# Browser command (best-effort)
 	if [[ "$PLATFORM" == "darwin" ]]; then
 		OPEN_CMD="open"
@@ -478,7 +453,6 @@ OPENPALM_WORK_DIR=${WORK_DIR}
 # ── User/Group ──────────────────────────────────────────────────────
 OPENPALM_UID=${HOST_UID}
 OPENPALM_GID=${HOST_GID}
-OPENPALM_DOCKER_GID=${DOCKER_GID}
 
 # ── Docker Socket ───────────────────────────────────────────────────
 OPENPALM_DOCKER_SOCK=${DOCKER_SOCK}
@@ -494,7 +468,7 @@ EOF
 	# Stage to STATE_HOME/artifacts/ for compose consumption
 	cp "$data_stack_env" "$staged_stack_env"
 
-	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_GID=${DOCKER_GID} DOCKER_SOCK=${DOCKER_SOCK})"
+	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_SOCK=${DOCKER_SOCK})"
 }
 
 # ── OpenCode config seeding ──────────────────────────────────────────

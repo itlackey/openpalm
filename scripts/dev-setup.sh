@@ -86,12 +86,9 @@ if [[ $seed_env -eq 1 ]]; then
 		uid=$(id -u)
 		gid=$(id -g)
 
-		# Auto-detect Docker socket GID
-		docker_gid=$gid
-		docker_sock="/var/run/docker.sock"
-
-		# Detect socket path from the active docker context (supports
+		# Detect Docker socket path from the active docker context (supports
 		# OrbStack, Colima, Rancher Desktop, etc.)
+		docker_sock="/var/run/docker.sock"
 		if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"; then
 			case "$host_url" in
 			unix://*)
@@ -101,13 +98,6 @@ if [[ $seed_env -eq 1 ]]; then
 				fi
 				;;
 			esac
-		fi
-
-		if [[ -S "$docker_sock" ]]; then
-			detected=$(stat -c '%g' "$docker_sock" 2>/dev/null || true)
-			if [[ -n "$detected" ]]; then
-				docker_gid=$detected
-			fi
 		fi
 
 		# Generate a random POSTGRES_PASSWORD — required by compose before admin runs
@@ -126,7 +116,6 @@ OPENPALM_WORK_DIR=$HOME/openpalm
 # ── User/Group ──────────────────────────────────────────────────────
 OPENPALM_UID=$uid
 OPENPALM_GID=$gid
-OPENPALM_DOCKER_GID=$docker_gid
 
 # ── Docker Socket ───────────────────────────────────────────────────
 OPENPALM_DOCKER_SOCK=$docker_sock
