@@ -430,7 +430,7 @@ export function stageArtifacts(state: ControlPlaneState): {
 }
 
 function stageCompose(_state: ControlPlaneState): string {
-  return coreComposeAsset;
+  return readCoreCompose();
 }
 
 /** IP ranges for each access scope mode */
@@ -440,6 +440,10 @@ const REMOTE_IP_LINE_RE = /@denied not remote_ip [^\n]+/;
 
 function coreCaddyfilePath(): string {
   return `${resolveDataHome()}/caddy/Caddyfile`;
+}
+
+function coreComposePath(): string {
+  return `${resolveDataHome()}/docker-compose.yml`;
 }
 
 /**
@@ -457,6 +461,24 @@ export function ensureCoreCaddyfile(): string {
 
 export function readCoreCaddyfile(): string {
   const path = ensureCoreCaddyfile();
+  return readFileSync(path, "utf-8");
+}
+
+/**
+ * Ensure the system-managed core docker-compose.yml exists in DATA_HOME.
+ * This file is the source of truth for the base compose definition.
+ */
+export function ensureCoreCompose(): string {
+  const path = coreComposePath();
+  mkdirSync(dirname(path), { recursive: true });
+  if (!existsSync(path)) {
+    writeFileSync(path, coreComposeAsset);
+  }
+  return path;
+}
+
+export function readCoreCompose(): string {
+  const path = ensureCoreCompose();
   return readFileSync(path, "utf-8");
 }
 

@@ -52,6 +52,8 @@ import {
   ensureXdgDirs,
   ensureOpenCodeConfig,
   ensureCoreCaddyfile,
+  ensureCoreCompose,
+  readCoreCompose,
   setCoreCaddyAccessScope,
   CORE_SERVICES,
   ALLOWED_CONNECTION_KEYS,
@@ -1466,5 +1468,50 @@ describe("ensureCoreCaddyfile / setCoreCaddyAccessScope", () => {
     const result = setCoreCaddyAccessScope("host");
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("@denied not remote_ip");
+  });
+});
+
+// ── Core Compose (DATA_HOME source of truth) ────────────────────────────
+
+describe("ensureCoreCompose / readCoreCompose", () => {
+  const origEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+  });
+
+  afterEach(() => {
+    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+  });
+
+  test("ensureCoreCompose creates docker-compose.yml if missing", () => {
+    const path = ensureCoreCompose();
+    expect(existsSync(path)).toBe(true);
+    expect(path).toContain("docker-compose.yml");
+  });
+
+  test("ensureCoreCompose is idempotent", () => {
+    const path1 = ensureCoreCompose();
+    const content1 = readFileSync(path1, "utf-8");
+    const path2 = ensureCoreCompose();
+    const content2 = readFileSync(path2, "utf-8");
+    expect(content1).toBe(content2);
+  });
+
+  test("ensureCoreCompose does not overwrite existing file", () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    mkdirSync(dataHome, { recursive: true });
+    const customContent = "# custom compose\nservices: {}";
+    writeFileSync(join(dataHome, "docker-compose.yml"), customContent);
+
+    const path = ensureCoreCompose();
+    expect(readFileSync(path, "utf-8")).toBe(customContent);
+  });
+
+  test("readCoreCompose returns file content", () => {
+    const content = readCoreCompose();
+    expect(content).toBeTruthy();
+    expect(typeof content).toBe("string");
   });
 });

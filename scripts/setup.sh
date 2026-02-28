@@ -312,9 +312,13 @@ download_asset() {
 download_assets() {
 	header "Downloading assets"
 
-	# STATE artifacts — always overwritten
-	download_asset "docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
-	download_asset "Caddyfile" "${STATE_HOME}/artifacts/Caddyfile"
+	# DATA_HOME — seed core assets (source of truth for admin staging)
+	download_asset "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
+	download_asset "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
+
+	# Bootstrap staging: copy to STATE so compose can start admin before first apply
+	cp "${DATA_HOME}/docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
+	cp "${DATA_HOME}/caddy/Caddyfile" "${STATE_HOME}/artifacts/Caddyfile"
 }
 
 # ── Background admin image pull ──────────────────────────────────────

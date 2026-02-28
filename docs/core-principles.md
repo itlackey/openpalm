@@ -51,9 +51,10 @@ Minimum required subtrees:
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-**Exception (system-managed policy):** `DATA_HOME/caddy/Caddyfile` is treated as
-system-owned policy state (source of truth for base Caddy access rules). Admin
-may seed/update this file.
+**Exception (system-managed policy):** `DATA_HOME/caddy/Caddyfile` and
+`DATA_HOME/docker-compose.yml` are treated as system-owned policy state (source
+of truth for base Caddy access rules and core compose definition, respectively).
+Admin seeds these files from bundled assets if missing.
 
 ### 3) State (assembled runtime)
 
@@ -90,7 +91,7 @@ To guarantee the stack never overwrites user-modified files:
 
 * **CONFIG_HOME is write-protected by contract.** The admin seeds default files once (on first install) and never overwrites user-edited files. Runtime assembly writes go to STATE_HOME. Channel install/uninstall actions may add/remove files in `CONFIG_HOME/channels/`.
 * **STATE_HOME is system-writable.** The admin freely overwrites files here when assembling the runtime (install, update, access-scope changes).
-* **DATA_HOME is mostly service-writable.** Containers own durable data; the admin only manages `DATA_HOME/caddy/Caddyfile` as system policy state. ([Freedesktop Specifications][2])
+* **DATA_HOME is mostly service-writable.** Containers own durable data; the admin manages `DATA_HOME/caddy/Caddyfile` and `DATA_HOME/docker-compose.yml` as system policy state. ([Freedesktop Specifications][2])
 
 ### E) Host authority rule for mounts
 

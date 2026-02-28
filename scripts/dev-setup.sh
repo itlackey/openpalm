@@ -44,7 +44,8 @@ DATA_DIR="$DEV_ROOT/data"
 
 CADDY_SRC="$ROOT_DIR/assets/Caddyfile"
 CADDY_CORE_DEST="$DATA_DIR/caddy/Caddyfile"
-CADDY_STAGE_DEST="$STATE_DIR/artifacts/Caddyfile"
+COMPOSE_SRC="$ROOT_DIR/assets/docker-compose.yml"
+COMPOSE_CORE_DEST="$DATA_DIR/docker-compose.yml"
 ENV_SRC="$ROOT_DIR/assets/secrets.env"
 ENV_DEST="$DEV_ROOT/config/secrets.env"
 STACK_ENV_DATA="$DATA_DIR/stack.env"
@@ -57,13 +58,17 @@ mkdir -p "$CONFIG_DIR" "$CHANNELS_DIR" \
 	"$DATA_DIR/assistant" "$DATA_DIR/guardian" \
 	"$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config"
 
+# Seed core assets to DATA_HOME (source of truth) — write-once unless --force
 if [[ ! -f "$CADDY_CORE_DEST" || $force -eq 1 ]]; then
 	cp "$CADDY_SRC" "$CADDY_CORE_DEST"
 fi
-
-if [[ ! -f "$CADDY_STAGE_DEST" || $force -eq 1 ]]; then
-	cp "$CADDY_CORE_DEST" "$CADDY_STAGE_DEST"
+if [[ ! -f "$COMPOSE_CORE_DEST" || $force -eq 1 ]]; then
+	cp "$COMPOSE_SRC" "$COMPOSE_CORE_DEST"
 fi
+
+# Bootstrap staging: always copy to STATE so compose works before admin's first apply
+cp "$COMPOSE_CORE_DEST" "$STATE_DIR/artifacts/docker-compose.yml"
+cp "$CADDY_CORE_DEST" "$STATE_DIR/artifacts/Caddyfile"
 
 if [[ $seed_env -eq 1 ]]; then
 	# ── User secrets (CONFIG_HOME) ─────────────────────────────────────
