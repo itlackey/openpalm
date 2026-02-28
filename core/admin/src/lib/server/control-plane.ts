@@ -288,39 +288,20 @@ export function randomHex(bytes: number): string {
 /**
  * Load persisted postgres password from DATA_HOME/stack.env.
  * stack.env is the single source of truth for all system-managed values.
- *
- * Migration: if DATA_HOME/stack.env doesn't exist yet (upgrade from older
- * installs), falls back to the legacy STATE_HOME/secrets/system-secrets.env.
  */
 function loadPersistedPostgresPassword(dataDir: string): string | null {
   const stackEnvPath = `${dataDir}/stack.env`;
   try {
-    if (existsSync(stackEnvPath)) {
-      const content = readFileSync(stackEnvPath, "utf-8");
-      for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const eq = trimmed.indexOf("=");
-        if (eq <= 0) continue;
-        const key = trimmed.slice(0, eq).trim();
-        if (key !== "POSTGRES_PASSWORD") continue;
-        return trimmed.slice(eq + 1).trim();
-      }
-    }
-    // Migration fallback: read from legacy STATE_HOME/secrets/system-secrets.env
-    const stateDir = resolveStateHome();
-    const legacyPath = `${stateDir}/secrets/system-secrets.env`;
-    if (existsSync(legacyPath)) {
-      const content = readFileSync(legacyPath, "utf-8");
-      for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const eq = trimmed.indexOf("=");
-        if (eq <= 0) continue;
-        const key = trimmed.slice(0, eq).trim();
-        if (key !== "POSTGRES_PASSWORD") continue;
-        return trimmed.slice(eq + 1).trim();
-      }
+    if (!existsSync(stackEnvPath)) return null;
+    const content = readFileSync(stackEnvPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      if (key !== "POSTGRES_PASSWORD") continue;
+      return trimmed.slice(eq + 1).trim();
     }
   } catch {
     // fallback to generated value
@@ -331,25 +312,13 @@ function loadPersistedPostgresPassword(dataDir: string): string | null {
 /**
  * Load persisted channel secrets from DATA_HOME/stack.env.
  * Returns a map of channel name → secret. Returns empty object if the file doesn't exist.
- *
- * Migration: if DATA_HOME/stack.env doesn't exist yet, falls back to the
- * legacy STATE_HOME/secrets/channel-secrets.env.
  */
 function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
   const stackEnvPath = `${dataDir}/stack.env`;
   const result: Record<string, string> = {};
   try {
-    let content = "";
-    if (existsSync(stackEnvPath)) {
-      content = readFileSync(stackEnvPath, "utf-8");
-    } else {
-      // Migration fallback: read from legacy STATE_HOME/secrets/channel-secrets.env
-      const stateDir = resolveStateHome();
-      const legacyPath = `${stateDir}/secrets/channel-secrets.env`;
-      if (existsSync(legacyPath)) {
-        content = readFileSync(legacyPath, "utf-8");
-      }
-    }
+    if (!existsSync(stackEnvPath)) return result;
+    const content = readFileSync(stackEnvPath, "utf-8");
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;

@@ -443,16 +443,15 @@ generate_stack_env() {
 	local data_stack_env="${DATA_HOME}/stack.env"
 	local staged_stack_env="${STATE_HOME}/artifacts/stack.env"
 
-	# Preserve existing admin-managed values from DATA_HOME/stack.env
-	local pg_password="" existing_admin_keys=""
 	if [[ -f "$data_stack_env" ]]; then
-		pg_password="$(grep -m1 '^POSTGRES_PASSWORD=' "$data_stack_env" 2>/dev/null | cut -d= -f2- || true)"
-		# Preserve channel secrets and setup-complete flag (admin-managed keys)
-		existing_admin_keys="$(grep -E '^(CHANNEL_[A-Z0-9_]+_SECRET|OPENPALM_SETUP_COMPLETE)=' "$data_stack_env" 2>/dev/null || true)"
+		ok "stack.env exists — not overwriting"
+		# Always stage to STATE_HOME/artifacts/ for compose consumption
+		cp "$data_stack_env" "$staged_stack_env"
+		return 0
 	fi
-	if [[ -z "$pg_password" ]]; then
-		pg_password="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 32)"
-	fi
+
+	local pg_password
+	pg_password="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 32)"
 
 	cat >"$data_stack_env" <<EOF
 # OpenPalm Stack Bootstrap — system-managed, do not edit
@@ -479,12 +478,6 @@ OPENPALM_IMAGE_TAG=${OPENPALM_IMAGE_TAG:-latest}
 # ── Database ────────────────────────────────────────────────────────
 POSTGRES_PASSWORD=${pg_password}
 EOF
-
-	# Re-append admin-managed keys that were in the previous file
-	if [[ -n "$existing_admin_keys" ]]; then
-		printf '\n# ── Admin-managed (preserved across setup) ──────────────────────\n%s\n' \
-			"$existing_admin_keys" >> "$data_stack_env"
-	fi
 
 	# Stage to STATE_HOME/artifacts/ for compose consumption
 	cp "$data_stack_env" "$staged_stack_env"
