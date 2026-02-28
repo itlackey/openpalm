@@ -752,19 +752,61 @@ export function buildArtifactMeta(artifacts: {
  *
  * Recovery logic:
  * - .pending dirs exist → previous apply never committed; remove them (stale)
- * - .old dirs exist → rename succeeded but cleanup didn't; remove them (safe)
+ * - .old dirs exist and live exists → previous apply committed; remove .old (cleanup)
+ * - .old exists and live is missing (and no .pending) → previous apply crashed
+ *   after live → .old but before .pending → live; restore .old back to live
  */
 export function cleanupStalePending(stateDir: string): void {
   for (const name of ["artifacts", "channels", "secrets"]) {
+    const live = `${stateDir}/${name}`;
     const pending = `${stateDir}/${name}.pending`;
     const old = `${stateDir}/${name}.old`;
-    if (existsSync(pending)) rmSync(pending, { recursive: true, force: true });
-    if (existsSync(old)) rmSync(old, { recursive: true, force: true });
+
+    const pendingExists = existsSync(pending);
+    const liveExists = existsSync(live);
+    const oldExists = existsSync(old);
+
+    // Always remove stale pending dirs if present
+    if (pendingExists) {
+      rmSync(pending, { recursive: true, force: true });
+    }
+
+    if (oldExists) {
+      // Crash recovery: old is the only copy; restore it
+      if (!liveExists && !pendingExists) {
+        renameSync(old, live);
+      } else if (liveExists) {
+        // Normal cleanup-after-success: live already in place, old is safe to delete
+        rmSync(old, { recursive: true, force: true });
+      }
+      // If pendingExists and !liveExists, be conservative and keep .old;
+      // a later apply can resolve the inconsistency.
+    }
   }
+
+  const liveCaddy = `${stateDir}/Caddyfile`;
   const pendingCaddy = `${stateDir}/Caddyfile.pending`;
   const oldCaddy = `${stateDir}/Caddyfile.old`;
-  if (existsSync(pendingCaddy)) rmSync(pendingCaddy, { force: true });
-  if (existsSync(oldCaddy)) rmSync(oldCaddy, { force: true });
+
+  const pendingCaddyExists = existsSync(pendingCaddy);
+  const liveCaddyExists = existsSync(liveCaddy);
+  const oldCaddyExists = existsSync(oldCaddy);
+
+  // Always remove stale pending Caddyfile if present
+  if (pendingCaddyExists) {
+    rmSync(pendingCaddy, { force: true });
+  }
+
+  if (oldCaddyExists) {
+    // Crash recovery for Caddyfile: old is the only copy; restore it
+    if (!liveCaddyExists && !pendingCaddyExists) {
+      renameSync(oldCaddy, liveCaddy);
+    } else if (liveCaddyExists) {
+      // Normal cleanup-after-success
+      rmSync(oldCaddy, { force: true });
+    }
+    // If pendingCaddyExists and !liveCaddyExists, keep .old conservatively.
+  }
 }
 
 /**
