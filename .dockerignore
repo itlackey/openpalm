@@ -1,0 +1,24 @@
+node_modules
+.git
+.worktrees
+.plans
+.opencode
+.state
+# core/ layout (post-refactor)
+core/admin/node_modules
+core/admin/.svelte-kit
+core/admin/build
+core/guardian/node_modules
+# channels
+channels/chat/node_modules
+channels/api/node_modules
+channels/discord/node_modules
+channels/telegram/node_modules
+channels/voice/node_modules
+# legacy paths (pre-refactor)
+api/node_modules
+admin/node_modules
+guardian/node_modules
+admin/.svelte-kit
+admin/build
+*.md

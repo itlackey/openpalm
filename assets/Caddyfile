@@ -1,0 +1,44 @@
+# OpenPalm — Reverse Proxy Configuration
+#
+# Core admin routes are defined here. Channel routes are imported from
+# the channels/ directory — add or remove .caddy files to enable/disable.
+#
+# Access control: the (lan_only) snippet restricts access to private networks.
+# For host-only access, replace the IP ranges with: 127.0.0.1 ::1
+
+(lan_only) {
+	@denied not remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1 fc00::/7 fe80::/10
+	abort @denied
+}
+
+(public_access) {
+}
+
+:80 {
+	# ── OpenCode UI (specific — must precede /admin/* catch-all) ──────
+	handle_path /admin/opencode/* {
+		import lan_only
+		reverse_proxy assistant:4096
+	}
+
+	# ── OpenMemory UI (specific — must precede /admin/* catch-all) ────
+	handle_path /admin/openmemory/* {
+		import lan_only
+		reverse_proxy openmemory-ui:3000
+	}
+
+	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────
+	handle /admin/* {
+		import lan_only
+		reverse_proxy admin:8100
+	}
+
+	# ── Channel routes (auto-imported from staged state) ─────────────
+	import channels/public/*.caddy
+	import channels/lan/*.caddy
+
+	# ── Guardian ─────────────────────────────────────────────────────
+	handle_path /guardian/* {
+		reverse_proxy guardian:8080
+	}
+}

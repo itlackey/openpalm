@@ -1,276 +1,203 @@
 name: Release
 
-# Automated release workflow.
-# Runs full validation (tests, Docker builds, UI e2e) then bumps the version,
-# commits, creates a git tag, and pushes. The tag push triggers the existing
-# publish-images and/or publish-cli workflows.
-#
-# IMPORTANT: This workflow requires the RELEASE_TOKEN secret (a PAT or GitHub
-# App token with "contents: write" scope). Tags pushed by the default
-# GITHUB_TOKEN do NOT trigger downstream workflows (publish-images,
-# publish-cli), so a separate token is required for the push step.
-#
-# Supports two modes:
-#   "platform" — bumps every component + the platform version, creates a v* tag
-#   "<component>" — bumps only that component, creates a <component>/v* tag
-
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
-      component:
-        description: "What to release"
+      version:
+        description: 'Release version (e.g. 0.2.0). Used to create and push tag v<version> from current branch.'
         required: true
-        type: choice
-        options:
-          - platform
-          - assistant
-          - gateway
-          - admin
-          - channel-chat
-          - channel-discord
-          - channel-voice
-          - channel-telegram
-          - channel-api
-          - channel-a2a
-          - channel-mcp
-          - channel-webhook
-          - cli
-      bump:
-        description: "Version bump type"
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+        type: string
 
-# Minimal top-level permissions; the job uses RELEASE_TOKEN for push.
 permissions:
-  contents: read
+  contents: write
+  packages: write
+  id-token: write
 
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # -----------------------------------------------------------------------
-  # Validation gates — all must pass before the release job runs
-  # -----------------------------------------------------------------------
-
-  unit-tests:
+  prepare-tag:
+    name: Prepare release tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun run lint:docs
-      - name: Check for silent test guards
-        run: |
-          matches=$(grep -rn '^\s*if\s*(.*)\s*return\s*;' --include="*.test.ts" test/ packages/ core/ channels/ 2>/dev/null || true)
-          if [ -n "$matches" ]; then
-            echo "::error::Found silent test guards (if/return pattern in test files):"
-            echo "$matches"
-            exit 1
-          fi
-      - run: bun test
-
-  contracts:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter contract
-
-  security:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --filter security
-
-  ui:
-    uses: ./.github/workflows/test-ui.yml
-
-  docker-build:
-    if: inputs.component != 'cli'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate Docker builds
-        run: |
-          FAILED=0
-          # Select Dockerfiles based on component
-          if [ "${{ inputs.component }}" = "platform" ]; then
-            DOCKERFILES="core/gateway/Dockerfile core/admin/Dockerfile channels/chat/Dockerfile channels/discord/Dockerfile channels/voice/Dockerfile channels/telegram/Dockerfile channels/webhook/Dockerfile channels/api/Dockerfile channels/a2a/Dockerfile channels/mcp/Dockerfile"
-          elif [ "${{ inputs.component }}" = "assistant" ]; then
-            DOCKERFILES="core/assistant/Dockerfile"
-          else
-            # Map component name to Dockerfile path
-            case "${{ inputs.component }}" in
-              gateway)           DOCKERFILES="core/gateway/Dockerfile" ;;
-              admin)             DOCKERFILES="core/admin/Dockerfile" ;;
-              channel-chat)      DOCKERFILES="channels/chat/Dockerfile" ;;
-              channel-discord)   DOCKERFILES="channels/discord/Dockerfile" ;;
-              channel-voice)     DOCKERFILES="channels/voice/Dockerfile" ;;
-              channel-telegram)  DOCKERFILES="channels/telegram/Dockerfile" ;;
-              channel-api)       DOCKERFILES="channels/api/Dockerfile" ;;
-              channel-a2a)       DOCKERFILES="channels/a2a/Dockerfile" ;;
-              channel-mcp)       DOCKERFILES="channels/mcp/Dockerfile" ;;
-              channel-webhook)   DOCKERFILES="channels/webhook/Dockerfile" ;;
-            esac
-          fi
-
-          for df in $DOCKERFILES; do
-            echo "::group::Building $df"
-            if [ -f "$df" ]; then
-              if grep -q "packages/lib" "$df"; then
-                CTX="."
-              else
-                CTX="$(dirname "$df")"
-              fi
-              if ! docker build -f "$df" "$CTX" --no-cache --progress=plain -t "validate-$(basename $(dirname $df)):ci" 2>&1; then
-                echo "::error::Docker build failed for $df"
-                FAILED=$((FAILED + 1))
-              fi
-            fi
-            echo "::endgroup::"
-          done
-
-          # Assistant uses its own context
-          if [ "${{ inputs.component }}" = "platform" ] || [ "${{ inputs.component }}" = "assistant" ]; then
-            echo "::group::Building core/assistant/Dockerfile"
-            if ! docker build -f core/assistant/Dockerfile ./core/assistant --no-cache --progress=plain -t "validate-assistant:ci" 2>&1; then
-              echo "::error::Docker build failed for core/assistant/Dockerfile"
-              FAILED=$((FAILED + 1))
-            fi
-            echo "::endgroup::"
-          fi
-
-          if [ "$FAILED" -gt 0 ]; then
-            echo "$FAILED Docker build(s) failed"
-            exit 1
-          fi
-
-  setup-wizard-e2e:
-    if: inputs.component == 'platform' || inputs.component == 'admin'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - name: Run install E2E wizard test
-        env:
-          OPENPALM_RUN_DOCKER_STACK_TESTS: "1"
-        run: bun test ./test/install-e2e/happy-path.docker.ts
-      - name: Upload admin logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: install-e2e-admin-logs
-          path: /tmp/openpalm-install-e2e-*/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  # -----------------------------------------------------------------------
-  # Release — only runs after all validation gates pass
-  # -----------------------------------------------------------------------
-  release:
-    needs: [unit-tests, contracts, security, ui, docker-build, setup-wizard-e2e]
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Validate token
-        run: |
-          if [ -z "${{ secrets.RELEASE_TOKEN }}" ]; then
-            echo "::error::RELEASE_TOKEN secret is not configured. Tags pushed by GITHUB_TOKEN do not trigger downstream workflows. See docs/VERSIONING.md for setup instructions."
-            exit 1
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use RELEASE_TOKEN so the subsequent push triggers downstream workflows.
-          token: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Set up Bun
+      - name: Resolve release tag
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "${EVENT_NAME}" = 'push' ]; then
+            TAG="${REF_NAME}"
+          else
+            VERSION="${INPUT_VERSION}"
+            if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo 'Invalid version. Must be semver like 1.2.3.'
+              exit 1
+            fi
+
+            TAG="v${VERSION}"
+
+            if git rev-parse "${TAG}" >/dev/null 2>&1; then
+              echo "Tag ${TAG} already exists."
+            else
+              git config user.name 'github-actions[bot]'
+              git config user.email 'github-actions[bot]@users.noreply.github.com'
+              git tag -a "${TAG}" -m "Release ${TAG}"
+              git push origin "${TAG}"
+            fi
+          fi
+
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  quality-gates:
+    name: Release quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: prepare-tag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
 
-      - name: Configure git
+      - name: Type check admin UI
+        run: cd core/admin && bun run check
+
+      - name: Test (lib + guardian + channels)
+        run: bun run test
+
+      - name: Validate Docker Compose manifests
+        env:
+          ADMIN_TOKEN: ci-placeholder
+          POSTGRES_PASSWORD: ci-placeholder
+        run: docker compose -f assets/docker-compose.yml -f docker-compose.override.yml config -q
+
+  publish-images:
+    name: Publish Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs:
+      - prepare-tag
+      - quality-gates
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: core/admin/Dockerfile
+            image: openpalm/admin
+          - dockerfile: core/guardian/Dockerfile
+            image: openpalm/guardian
+          - dockerfile: channels/chat/Dockerfile
+            image: openpalm/channel-chat
+          - dockerfile: channels/api/Dockerfile
+            image: openpalm/channel-api
+          - dockerfile: channels/discord/Dockerfile
+            image: openpalm/channel-discord
+          - dockerfile: channels/base/Dockerfile
+            image: openpalm/channel-base
+          - dockerfile: core/assistant/Dockerfile
+            image: openpalm/assistant
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=v${{ needs.prepare-tag.outputs.version }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - prepare-tag
+      - publish-images
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Build release artifact bundle
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p dist
+          tar -czf dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz \
+            assets \
+            channels \
+            core \
+            packages \
+            scripts \
+            docker-compose.override.yml \
+            README.md
 
-      - name: Bump version
-        run: bun run dev/version.ts bump ${{ inputs.component }} ${{ inputs.bump }}
-
-      - name: Read new version
-        id: version
+      - name: Generate checksums
         run: |
-          VER=$(bun run dev/version.ts current ${{ inputs.component }})
-          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          cd dist
+          sha256sum * > checksums-sha256.txt
 
-          if [ "${{ inputs.component }}" = "platform" ]; then
-            echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ inputs.component }}/v${VER}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Commit version bump
-        run: |
-          git add -A
-          if [ "${{ inputs.component }}" = "platform" ]; then
-            git commit -m "release: bump platform to v${{ steps.version.outputs.version }}"
-          else
-            git commit -m "release(${{ inputs.component }}): bump to v${{ steps.version.outputs.version }}"
-          fi
-
-      - name: Create tag
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          git tag -a "${TAG}" -m "Release ${TAG}"
-
-      - name: Push commit and tag
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          # Push commit and tag together with retry logic
-          for attempt in 1 2 3 4; do
-            if git push origin HEAD && git push origin "${TAG}"; then
-              echo "Push succeeded on attempt $attempt"
-              exit 0
-            fi
-            WAIT=$((2 ** attempt))
-            echo "::warning::Push failed on attempt $attempt, retrying in ${WAIT}s..."
-            sleep "$WAIT"
-          done
-          echo "::error::Push failed after 4 attempts"
-          exit 1
-
-      - name: Summary
-        run: |
-          echo "## Release created" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Component:** ${{ inputs.component }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Bump:** ${{ inputs.bump }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Version:** ${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Tag:** \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ inputs.component }}" = "platform" ]; then
-            echo "The \`v*\` tag will trigger **publish-images** and **publish-cli** workflows." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ inputs.component }}" = "cli" ]; then
-            echo "The \`cli/v*\` tag will trigger the **publish-cli** workflow." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "The \`${{ inputs.component }}/v*\` tag will trigger the **publish-images** workflow for this component." >> "$GITHUB_STEP_SUMMARY"
-          fi
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-tag.outputs.tag }}
+          name: OpenPalm ${{ needs.prepare-tag.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz
+            dist/checksums-sha256.txt

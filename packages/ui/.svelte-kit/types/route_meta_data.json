@@ -1,0 +1,108 @@
+{
+	"/": [],
+	"/automations": [
+		"src/routes/automations/+server.ts"
+	],
+	"/automations/delete": [
+		"src/routes/automations/delete/+server.ts"
+	],
+	"/automations/history": [
+		"src/routes/automations/history/+server.ts"
+	],
+	"/automations/trigger": [
+		"src/routes/automations/trigger/+server.ts"
+	],
+	"/automations/update": [
+		"src/routes/automations/update/+server.ts"
+	],
+	"/channels": [
+		"src/routes/channels/+server.ts"
+	],
+	"/command": [
+		"src/routes/command/+server.ts"
+	],
+	"/containers": [
+		"src/routes/containers/+server.ts"
+	],
+	"/containers/restart": [
+		"src/routes/containers/restart/+server.ts"
+	],
+	"/containers/service-logs": [
+		"src/routes/containers/service-logs/+server.ts"
+	],
+	"/containers/stop": [
+		"src/routes/containers/stop/+server.ts"
+	],
+	"/containers/update": [
+		"src/routes/containers/update/+server.ts"
+	],
+	"/containers/up": [
+		"src/routes/containers/up/+server.ts"
+	],
+	"/events": [
+		"src/routes/events/+server.ts"
+	],
+	"/health": [
+		"src/routes/health/+server.ts"
+	],
+	"/installed": [
+		"src/routes/installed/+server.ts"
+	],
+	"/meta": [
+		"src/routes/meta/+server.ts"
+	],
+	"/opencode/[...path]": [
+		"src/routes/opencode/[...path]/+server.ts"
+	],
+	"/secrets": [
+		"src/routes/secrets/+server.ts"
+	],
+	"/secrets/delete": [
+		"src/routes/secrets/delete/+server.ts"
+	],
+	"/secrets/raw": [
+		"src/routes/secrets/raw/+server.ts"
+	],
+	"/setup/access-scope": [
+		"src/routes/setup/access-scope/+server.ts"
+	],
+	"/setup/channels": [
+		"src/routes/setup/channels/+server.ts"
+	],
+	"/setup/complete": [
+		"src/routes/setup/complete/+server.ts"
+	],
+	"/setup/core-readiness": [
+		"src/routes/setup/core-readiness/+server.ts"
+	],
+	"/setup/core-readiness/retry": [
+		"src/routes/setup/core-readiness/retry/+server.ts"
+	],
+	"/setup/health-check": [
+		"src/routes/setup/health-check/+server.ts"
+	],
+	"/setup/service-instances": [
+		"src/routes/setup/service-instances/+server.ts"
+	],
+	"/setup/status": [
+		"src/routes/setup/status/+server.ts"
+	],
+	"/setup/step": [
+		"src/routes/setup/step/+server.ts"
+	],
+	"/snippets": [
+		"src/routes/snippets/+server.ts"
+	],
+	"/stack/apply": [
+		"src/routes/stack/apply/+server.ts"
+	],
+	"/stack/drift": [
+		"src/routes/stack/drift/+server.ts"
+	],
+	"/stack/spec": [
+		"src/routes/stack/spec/+server.ts"
+	],
+	"/state": [
+		"src/routes/state/+server.ts"
+	]
+}

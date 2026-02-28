@@ -1,63 +1,77 @@
 /**
- * Standard channel adapter interface.
+ * OpenPalm shared channel protocol types and payload validation.
  *
- * These types define the shared adapter contract used by channel wrappers.
- * They are implemented by the built-in channels and represent the canonical
- * adapter boundary for ingress normalization before gateway forwarding.
- *
- * Every channel adapter must export a `createChannel()` function that returns
- * an object satisfying this interface. The scaffold script generates a
- * conforming implementation automatically.
- *
- * The adapter is responsible for:
- * 1. Accepting inbound requests from its platform (Slack, Matrix, SMS, etc.)
- * 2. Optionally authenticating the caller (inbound token, webhook secret, etc.)
- * 3. Normalizing the request into a ChannelPayload
- * 4. Returning the payload so the harness can HMAC-sign and forward to the gateway
- *
- * The adapter does NOT sign or forward payloads itself — the standard
- * server harness (see template server.ts) handles HMAC signing and gateway
- * communication so that channel authors only focus on platform integration.
+ * Used by the guardian to validate inbound requests and by channel adapters
+ * to build correctly-shaped payloads before signing and forwarding.
  */
 
-/** Normalized message payload sent to the gateway. */
+// ── Error codes ──────────────────────────────────────────────────────────
+
+export const ERROR_CODES = {
+  INVALID_JSON: "invalid_json",
+  INVALID_PAYLOAD: "invalid_payload",
+  CHANNEL_NOT_CONFIGURED: "channel_not_configured",
+  INVALID_SIGNATURE: "invalid_signature",
+  REPLAY_DETECTED: "replay_detected",
+  RATE_LIMITED: "rate_limited",
+  ASSISTANT_UNAVAILABLE: "assistant_unavailable",
+  NOT_FOUND: "not_found",
+} as const;
+
+export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+
+// ── Wire types ───────────────────────────────────────────────────────────
+
+/** Signed wire format sent to the guardian. */
 export type ChannelPayload = {
   userId: string;
   channel: string;
   text: string;
+  nonce: string;
+  timestamp: number;
   metadata?: Record<string, unknown>;
 };
 
-/** Result of processing an inbound request. */
-export type InboundResult =
+/** Input before nonce/timestamp are auto-generated. */
+export type ChannelMessageInput = Omit<ChannelPayload, "nonce" | "timestamp">;
+
+// ── Response types ───────────────────────────────────────────────────────
+
+export type GuardianSuccessResponse = {
+  requestId: string;
+  sessionId: string;
+  answer: string;
+  userId: string;
+};
+
+export type GuardianErrorResponse = {
+  error: ErrorCode;
+  requestId?: string;
+};
+
+// ── Validation ───────────────────────────────────────────────────────────
+
+export type ValidationResult =
   | { ok: true; payload: ChannelPayload }
-  | { ok: false; status: number; body: unknown };
+  | { ok: false; error: ErrorCode };
 
-/** Health check response. */
-export type HealthStatus = {
-  ok: boolean;
-  service: string;
-  detail?: string;
-};
-
-/** Route definition for the channel adapter. */
-export type ChannelRoute = {
-  /** HTTP method (e.g. "POST", "GET"). */
-  method: string;
-  /** URL path (e.g. "/my-channel/webhook"). */
-  path: string;
-  /** Handler that processes the inbound request and returns a normalized result. */
-  handler: (req: Request) => Promise<InboundResult>;
-};
-
-/** The standard interface every channel adapter must implement. */
-export type ChannelAdapter = {
-  /** Unique channel name — must match the gateway's ALLOWED_CHANNELS entry. */
-  name: string;
-
-  /** One or more routes this adapter handles. */
-  routes: ChannelRoute[];
-
-  /** Health check for this adapter. */
-  health: () => HealthStatus;
-};
+/**
+ * Validates that an unknown value conforms to the ChannelPayload shape.
+ * Used by the guardian to validate inbound requests before processing.
+ */
+export function validatePayload(body: unknown): ValidationResult {
+  if (!body || typeof body !== "object") {
+    return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
+  }
+  const o = body as Record<string, unknown>;
+  const valid =
+    typeof o.userId === "string" && !!o.userId.trim() &&
+    typeof o.channel === "string" && !!o.channel.trim() &&
+    typeof o.text === "string" && !!o.text.trim() && o.text.length <= 10_000 &&
+    typeof o.nonce === "string" && !!o.nonce.trim() &&
+    typeof o.timestamp === "number";
+  if (!valid) {
+    return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
+  }
+  return { ok: true, payload: o as unknown as ChannelPayload };
+}

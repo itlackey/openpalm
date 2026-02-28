@@ -1,0 +1,738 @@
+{
+  "../../node_modules/.bun/@sveltejs+kit@2.53.0+cd3faa15a3a3c358/node_modules/@sveltejs/kit/src/runtime/app/server/remote/index.js": {
+    "file": "remote-entry.js",
+    "name": "remote-entry",
+    "src": "../../node_modules/.bun/@sveltejs+kit@2.53.0+cd3faa15a3a3c358/node_modules/@sveltejs/kit/src/runtime/app/server/remote/index.js",
+    "isEntry": true,
+    "imports": [
+      "_shared.js",
+      "_false.js",
+      "_server.js",
+      "_environment.js"
+    ]
+  },
+  "../../node_modules/.bun/@sveltejs+kit@2.53.0+cd3faa15a3a3c358/node_modules/@sveltejs/kit/src/runtime/components/svelte-5/error.svelte": {
+    "file": "entries/fallbacks/error.svelte.js",
+    "name": "entries/fallbacks/error.svelte",
+    "src": "../../node_modules/.bun/@sveltejs+kit@2.53.0+cd3faa15a3a3c358/node_modules/@sveltejs/kit/src/runtime/components/svelte-5/error.svelte",
+    "isEntry": true,
+    "imports": [
+      "_root.js",
+      "_url.js",
+      "_utils.js",
+      "_exports.js"
+    ]
+  },
+  "../../node_modules/.bun/@sveltejs+kit@2.53.0+cd3faa15a3a3c358/node_modules/@sveltejs/kit/src/runtime/server/index.js": {
+    "file": "index.js",
+    "name": "index",
+    "src": "../../node_modules/.bun/@sveltejs+kit@2.53.0+cd3faa15a3a3c358/node_modules/@sveltejs/kit/src/runtime/server/index.js",
+    "isEntry": true,
+    "imports": [
+      "_false.js",
+      "_server.js",
+      "_shared.js",
+      "_url.js",
+      "_utils.js",
+      "_exports.js",
+      "_shared-server.js",
+      "_internal.js"
+    ]
+  },
+  "../lib/assets/automations/index.ts": {
+    "file": "chunks/index2.js",
+    "name": "index",
+    "src": "../lib/assets/automations/index.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index.js"
+    ]
+  },
+  "../lib/src/admin/automation-history.ts": {
+    "file": "chunks/automation-history.js",
+    "name": "automation-history",
+    "src": "../lib/src/admin/automation-history.ts",
+    "isDynamicEntry": true
+  },
+  "../lib/src/admin/automations.ts": {
+    "file": "chunks/automations.js",
+    "name": "automations",
+    "src": "../lib/src/admin/automations.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_cron.js",
+      "_stack-spec.js"
+    ]
+  },
+  "../lib/src/admin/compose-runner.ts": {
+    "file": "chunks/compose-runner.js",
+    "name": "compose-runner",
+    "src": "../lib/src/admin/compose-runner.ts",
+    "isDynamicEntry": true
+  },
+  "../lib/src/admin/core-readiness.ts": {
+    "file": "chunks/core-readiness.js",
+    "name": "core-readiness",
+    "src": "../lib/src/admin/core-readiness.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "../lib/src/admin/setup-manager.ts": {
+    "file": "chunks/setup-manager.js",
+    "name": "setup-manager",
+    "src": "../lib/src/admin/setup-manager.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_stack-spec.js"
+    ]
+  },
+  "../lib/src/admin/stack-manager.ts": {
+    "file": "chunks/stack-manager.js",
+    "name": "stack-manager",
+    "src": "../lib/src/admin/stack-manager.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index.js",
+      "_stack-spec.js",
+      "_runtime-env.js",
+      "_cron.js"
+    ]
+  },
+  ".svelte-kit/generated/server/internal.js": {
+    "file": "internal.js",
+    "name": "internal",
+    "src": ".svelte-kit/generated/server/internal.js",
+    "isEntry": true,
+    "imports": [
+      "_root.js",
+      "_environment.js",
+      "_server.js",
+      "_internal.js",
+      "_shared-server.js"
+    ]
+  },
+  "_auth.js": {
+    "file": "chunks/auth.js",
+    "name": "auth",
+    "imports": [
+      "_config.js"
+    ]
+  },
+  "_config.js": {
+    "file": "chunks/config.js",
+    "name": "config",
+    "imports": [
+      "_shared-server.js"
+    ]
+  },
+  "_cron.js": {
+    "file": "chunks/cron.js",
+    "name": "cron"
+  },
+  "_env-helpers.js": {
+    "file": "chunks/env-helpers.js",
+    "name": "env-helpers",
+    "imports": [
+      "_runtime-env.js",
+      "_config.js"
+    ]
+  },
+  "_environment.js": {
+    "file": "chunks/environment.js",
+    "name": "environment"
+  },
+  "_exports.js": {
+    "file": "chunks/exports.js",
+    "name": "exports",
+    "imports": [
+      "_root.js"
+    ]
+  },
+  "_false.js": {
+    "file": "chunks/false.js",
+    "name": "false"
+  },
+  "_index.js": {
+    "file": "chunks/index.js",
+    "name": "index"
+  },
+  "_init.js": {
+    "file": "chunks/init.js",
+    "name": "init",
+    "imports": [
+      "_environment.js",
+      "_stack-spec.js",
+      "_config.js",
+      "_index.js"
+    ],
+    "dynamicImports": [
+      "../lib/src/admin/setup-manager.ts",
+      "../lib/src/admin/stack-manager.ts",
+      "../lib/assets/automations/index.ts",
+      "../lib/src/admin/automations.ts",
+      "../lib/src/admin/automation-history.ts",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "_internal.js": {
+    "file": "chunks/internal.js",
+    "name": "internal",
+    "imports": [
+      "_root.js",
+      "_environment.js",
+      "_server.js",
+      "_shared-server.js"
+    ],
+    "dynamicImports": [
+      "src/hooks.server.ts"
+    ]
+  },
+  "_json.js": {
+    "file": "chunks/json.js",
+    "name": "json"
+  },
+  "_opencode-config.js": {
+    "file": "chunks/opencode-config.js",
+    "name": "opencode-config",
+    "imports": [
+      "_config.js"
+    ]
+  },
+  "_root.js": {
+    "file": "chunks/root.js",
+    "name": "root",
+    "imports": [
+      "_false.js"
+    ]
+  },
+  "_runtime-env.js": {
+    "file": "chunks/runtime-env.js",
+    "name": "runtime-env"
+  },
+  "_server.js": {
+    "file": "chunks/server.js",
+    "name": "server"
+  },
+  "_setup-completion-response.js": {
+    "file": "chunks/setup-completion-response.js",
+    "name": "setup-completion-response",
+    "imports": [
+      "_stack-apply-engine.js",
+      "../lib/src/admin/compose-runner.ts",
+      "../lib/src/admin/core-readiness.ts",
+      "../lib/src/admin/automations.ts",
+      "_runtime-env.js",
+      "src/lib/server/core-readiness-state.ts"
+    ]
+  },
+  "_shared-server.js": {
+    "file": "chunks/shared-server.js",
+    "name": "shared-server"
+  },
+  "_shared.js": {
+    "file": "chunks/shared.js",
+    "name": "shared",
+    "imports": [
+      "_utils.js"
+    ]
+  },
+  "_snippet-discovery.js": {
+    "file": "chunks/snippet-discovery.js",
+    "name": "snippet-discovery",
+    "imports": [
+      "_snippet-types.js",
+      "_index.js"
+    ]
+  },
+  "_snippet-types.js": {
+    "file": "chunks/snippet-types.js",
+    "name": "snippet-types"
+  },
+  "_stack-apply-engine.js": {
+    "file": "chunks/stack-apply-engine.js",
+    "name": "stack-apply-engine",
+    "imports": [
+      "../lib/src/admin/compose-runner.ts",
+      "_runtime-env.js"
+    ]
+  },
+  "_stack-spec.js": {
+    "file": "chunks/stack-spec.js",
+    "name": "stack-spec",
+    "imports": [
+      "_index.js"
+    ]
+  },
+  "_url.js": {
+    "file": "chunks/url.js",
+    "name": "url"
+  },
+  "_utils.js": {
+    "file": "chunks/utils.js",
+    "name": "utils"
+  },
+  "src/hooks.server.ts": {
+    "file": "entries/hooks.server.js",
+    "name": "entries/hooks.server",
+    "src": "src/hooks.server.ts",
+    "isEntry": true,
+    "isDynamicEntry": true,
+    "imports": [
+      "_auth.js",
+      "_init.js"
+    ]
+  },
+  "src/lib/server/core-readiness-state.ts": {
+    "file": "chunks/core-readiness-state.js",
+    "name": "core-readiness-state",
+    "src": "src/lib/server/core-readiness-state.ts",
+    "isDynamicEntry": true
+  },
+  "src/routes/+layout.svelte": {
+    "file": "entries/pages/_layout.svelte.js",
+    "name": "entries/pages/_layout.svelte",
+    "src": "src/routes/+layout.svelte",
+    "isEntry": true,
+    "imports": [
+      "_root.js",
+      "_server.js",
+      "_url.js",
+      "_environment.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_layout.PNkYycMp.css"
+    ]
+  },
+  "src/routes/+page.svelte": {
+    "file": "entries/pages/_page.svelte.js",
+    "name": "entries/pages/_page.svelte",
+    "src": "src/routes/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_root.js",
+      "_url.js",
+      "_environment.js",
+      "_index.js",
+      "_snippet-types.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.RuoM9giG.css"
+    ]
+  },
+  "src/routes/automations/+server.ts": {
+    "file": "entries/endpoints/automations/_server.ts.js",
+    "name": "entries/endpoints/automations/_server.ts",
+    "src": "src/routes/automations/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/automation-history.ts",
+      "_cron.js",
+      "../lib/src/admin/automations.ts"
+    ]
+  },
+  "src/routes/automations/delete/+server.ts": {
+    "file": "entries/endpoints/automations/delete/_server.ts.js",
+    "name": "entries/endpoints/automations/delete/_server.ts",
+    "src": "src/routes/automations/delete/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/automations.ts"
+    ]
+  },
+  "src/routes/automations/history/+server.ts": {
+    "file": "entries/endpoints/automations/history/_server.ts.js",
+    "name": "entries/endpoints/automations/history/_server.ts",
+    "src": "src/routes/automations/history/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/automation-history.ts"
+    ]
+  },
+  "src/routes/automations/trigger/+server.ts": {
+    "file": "entries/endpoints/automations/trigger/_server.ts.js",
+    "name": "entries/endpoints/automations/trigger/_server.ts",
+    "src": "src/routes/automations/trigger/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/automations.ts"
+    ]
+  },
+  "src/routes/automations/update/+server.ts": {
+    "file": "entries/endpoints/automations/update/_server.ts.js",
+    "name": "entries/endpoints/automations/update/_server.ts",
+    "src": "src/routes/automations/update/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_cron.js",
+      "../lib/src/admin/automations.ts"
+    ]
+  },
+  "src/routes/channels/+server.ts": {
+    "file": "entries/endpoints/channels/_server.ts.js",
+    "name": "entries/endpoints/channels/_server.ts",
+    "src": "src/routes/channels/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_stack-spec.js"
+    ]
+  },
+  "src/routes/command/+server.ts": {
+    "file": "entries/endpoints/command/_server.ts.js",
+    "name": "entries/endpoints/command/_server.ts",
+    "src": "src/routes/command/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_auth.js",
+      "_env-helpers.js",
+      "_opencode-config.js",
+      "_setup-completion-response.js",
+      "_stack-spec.js",
+      "_runtime-env.js",
+      "_stack-apply-engine.js",
+      "../lib/src/admin/compose-runner.ts",
+      "../lib/src/admin/automations.ts",
+      "_index.js",
+      "_config.js"
+    ],
+    "dynamicImports": [
+      "src/lib/server/core-readiness-state.ts",
+      "../lib/src/admin/core-readiness.ts",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/containers/+server.ts": {
+    "file": "entries/endpoints/containers/_server.ts.js",
+    "name": "entries/endpoints/containers/_server.ts",
+    "src": "src/routes/containers/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/containers/restart/+server.ts": {
+    "file": "entries/endpoints/containers/restart/_server.ts.js",
+    "name": "entries/endpoints/containers/restart/_server.ts",
+    "src": "src/routes/containers/restart/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/containers/service-logs/+server.ts": {
+    "file": "entries/endpoints/containers/service-logs/_server.ts.js",
+    "name": "entries/endpoints/containers/service-logs/_server.ts",
+    "src": "src/routes/containers/service-logs/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/containers/stop/+server.ts": {
+    "file": "entries/endpoints/containers/stop/_server.ts.js",
+    "name": "entries/endpoints/containers/stop/_server.ts",
+    "src": "src/routes/containers/stop/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/containers/up/+server.ts": {
+    "file": "entries/endpoints/containers/up/_server.ts.js",
+    "name": "entries/endpoints/containers/up/_server.ts",
+    "src": "src/routes/containers/up/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/containers/update/+server.ts": {
+    "file": "entries/endpoints/containers/update/_server.ts.js",
+    "name": "entries/endpoints/containers/update/_server.ts",
+    "src": "src/routes/containers/update/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/events/+server.ts": {
+    "file": "entries/endpoints/events/_server.ts.js",
+    "name": "entries/endpoints/events/_server.ts",
+    "src": "src/routes/events/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js"
+    ]
+  },
+  "src/routes/health/+server.ts": {
+    "file": "entries/endpoints/health/_server.ts.js",
+    "name": "entries/endpoints/health/_server.ts",
+    "src": "src/routes/health/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js"
+    ]
+  },
+  "src/routes/installed/+server.ts": {
+    "file": "entries/endpoints/installed/_server.ts.js",
+    "name": "entries/endpoints/installed/_server.ts",
+    "src": "src/routes/installed/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_opencode-config.js"
+    ]
+  },
+  "src/routes/meta/+server.ts": {
+    "file": "entries/endpoints/meta/_server.ts.js",
+    "name": "entries/endpoints/meta/_server.ts",
+    "src": "src/routes/meta/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_index.js",
+      "_stack-spec.js",
+      "_config.js",
+      "../lib/src/admin/stack-manager.ts"
+    ]
+  },
+  "src/routes/opencode/[...path]/+server.ts": {
+    "file": "entries/endpoints/opencode/_...path_/_server.ts.js",
+    "name": "entries/endpoints/opencode/_...path_/_server.ts",
+    "src": "src/routes/opencode/[...path]/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_config.js"
+    ]
+  },
+  "src/routes/secrets/+server.ts": {
+    "file": "entries/endpoints/secrets/_server.ts.js",
+    "name": "entries/endpoints/secrets/_server.ts",
+    "src": "src/routes/secrets/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js"
+    ]
+  },
+  "src/routes/secrets/delete/+server.ts": {
+    "file": "entries/endpoints/secrets/delete/_server.ts.js",
+    "name": "entries/endpoints/secrets/delete/_server.ts",
+    "src": "src/routes/secrets/delete/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js"
+    ]
+  },
+  "src/routes/secrets/raw/+server.ts": {
+    "file": "entries/endpoints/secrets/raw/_server.ts.js",
+    "name": "entries/endpoints/secrets/raw/_server.ts",
+    "src": "src/routes/secrets/raw/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_env-helpers.js"
+    ]
+  },
+  "src/routes/setup/access-scope/+server.ts": {
+    "file": "entries/endpoints/setup/access-scope/_server.ts.js",
+    "name": "entries/endpoints/setup/access-scope/_server.ts",
+    "src": "src/routes/setup/access-scope/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_env-helpers.js",
+      "_auth.js"
+    ]
+  },
+  "src/routes/setup/channels/+server.ts": {
+    "file": "entries/endpoints/setup/channels/_server.ts.js",
+    "name": "entries/endpoints/setup/channels/_server.ts",
+    "src": "src/routes/setup/channels/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_env-helpers.js",
+      "_auth.js"
+    ]
+  },
+  "src/routes/setup/complete/+server.ts": {
+    "file": "entries/endpoints/setup/complete/_server.ts.js",
+    "name": "entries/endpoints/setup/complete/_server.ts",
+    "src": "src/routes/setup/complete/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_auth.js",
+      "_setup-completion-response.js",
+      "_config.js"
+    ]
+  },
+  "src/routes/setup/core-readiness/+server.ts": {
+    "file": "entries/endpoints/setup/core-readiness/_server.ts.js",
+    "name": "entries/endpoints/setup/core-readiness/_server.ts",
+    "src": "src/routes/setup/core-readiness/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_auth.js",
+      "src/lib/server/core-readiness-state.ts"
+    ]
+  },
+  "src/routes/setup/core-readiness/retry/+server.ts": {
+    "file": "entries/endpoints/setup/core-readiness/retry/_server.ts.js",
+    "name": "entries/endpoints/setup/core-readiness/retry/_server.ts",
+    "src": "src/routes/setup/core-readiness/retry/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_auth.js",
+      "src/lib/server/core-readiness-state.ts",
+      "../lib/src/admin/core-readiness.ts",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/setup/health-check/+server.ts": {
+    "file": "entries/endpoints/setup/health-check/_server.ts.js",
+    "name": "entries/endpoints/setup/health-check/_server.ts",
+    "src": "src/routes/setup/health-check/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_env-helpers.js",
+      "_auth.js",
+      "_config.js"
+    ]
+  },
+  "src/routes/setup/service-instances/+server.ts": {
+    "file": "entries/endpoints/setup/service-instances/_server.ts.js",
+    "name": "entries/endpoints/setup/service-instances/_server.ts",
+    "src": "src/routes/setup/service-instances/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_runtime-env.js",
+      "_env-helpers.js",
+      "_auth.js",
+      "_opencode-config.js"
+    ]
+  },
+  "src/routes/setup/status/+server.ts": {
+    "file": "entries/endpoints/setup/status/_server.ts.js",
+    "name": "entries/endpoints/setup/status/_server.ts",
+    "src": "src/routes/setup/status/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_env-helpers.js",
+      "_auth.js"
+    ]
+  },
+  "src/routes/setup/step/+server.ts": {
+    "file": "entries/endpoints/setup/step/_server.ts.js",
+    "name": "entries/endpoints/setup/step/_server.ts",
+    "src": "src/routes/setup/step/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_auth.js"
+    ]
+  },
+  "src/routes/snippets/+server.ts": {
+    "file": "entries/endpoints/snippets/_server.ts.js",
+    "name": "entries/endpoints/snippets/_server.ts",
+    "src": "src/routes/snippets/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_index.js",
+      "../lib/assets/automations/index.ts",
+      "_snippet-discovery.js",
+      "_init.js"
+    ]
+  },
+  "src/routes/stack/apply/+server.ts": {
+    "file": "entries/endpoints/stack/apply/_server.ts.js",
+    "name": "entries/endpoints/stack/apply/_server.ts",
+    "src": "src/routes/stack/apply/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_stack-apply-engine.js",
+      "../lib/src/admin/compose-runner.ts",
+      "../lib/src/admin/automations.ts"
+    ]
+  },
+  "src/routes/stack/drift/+server.ts": {
+    "file": "entries/endpoints/stack/drift/_server.ts.js",
+    "name": "entries/endpoints/stack/drift/_server.ts",
+    "src": "src/routes/stack/drift/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "../lib/src/admin/compose-runner.ts"
+    ]
+  },
+  "src/routes/stack/spec/+server.ts": {
+    "file": "entries/endpoints/stack/spec/_server.ts.js",
+    "name": "entries/endpoints/stack/spec/_server.ts",
+    "src": "src/routes/stack/spec/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_stack-spec.js"
+    ]
+  },
+  "src/routes/state/+server.ts": {
+    "file": "entries/endpoints/state/_server.ts.js",
+    "name": "entries/endpoints/state/_server.ts",
+    "src": "src/routes/state/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_json.js",
+      "_init.js",
+      "_snippet-discovery.js"
+    ]
+  }
+}

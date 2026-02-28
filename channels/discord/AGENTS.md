@@ -9,11 +9,7 @@
 - Keep handlers idempotent for redeliveries and deadline-safe for platform limits.
 
 ## Key files
-- `channels/discord/src/server.ts`
-- `channels/discord/src/interactions.ts`
-- `channels/discord/src/commands.ts`
-- `channels/discord/src/permissions.ts`
-- `channels/discord/src/discord-api.ts`
+- `channels/discord/server.ts`
 
 ## Key links
 - `channels/discord/README.md`

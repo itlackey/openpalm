@@ -1,0 +1,2 @@
+- add e2e tests and move .dev into tests/fixtures/fresh-install and a new tests/fixtures/existing-install that can be used for testing various e2e scenarios and/or manual local testing. update the dev-setup and docs accordingly
+- add playwright tests

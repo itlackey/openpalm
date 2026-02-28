@@ -1,0 +1,139 @@
+/* ── OpenPalm Design Tokens ─────────────────────────────────────────────
+ * Modern design system inspired by HuggingFace's clean, professional UI.
+ * Uses CSS custom properties for consistent theming.
+ * ────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Brand Colors ─────────────────────────────────────────────────── */
+  --color-primary: #ff9d00;
+  --color-primary-hover: #e68a00;
+  --color-primary-subtle: rgba(255, 157, 0, 0.08);
+
+  /* ── Semantic Colors ──────────────────────────────────────────────── */
+  --color-success: #40c057;
+  --color-success-bg: rgba(64, 192, 87, 0.1);
+  --color-success-border: rgba(64, 192, 87, 0.25);
+  --color-danger: #fa5252;
+  --color-danger-bg: rgba(250, 82, 82, 0.1);
+  --color-warning: #fd7e14;
+  --color-warning-bg: rgba(253, 126, 20, 0.1);
+  --color-info: #339af0;
+  --color-info-bg: rgba(51, 154, 240, 0.08);
+
+  /* ── Surface Colors ───────────────────────────────────────────────── */
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f9fafb;
+
+  /* ── Border Colors ────────────────────────────────────────────────── */
+  --color-border: #e5e7eb;
+  --color-border-hover: #d1d5db;
+  --color-border-focus: var(--color-primary);
+
+  /* ── Text Colors ──────────────────────────────────────────────────── */
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --color-text-inverse: #ffffff;
+
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans: "Source Sans 3", "Inter", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", "Fira Code", "Consolas",
+    monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-2xl: 1.375rem;
+  --text-3xl: 1.75rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ── Spacing ──────────────────────────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ── Radius ───────────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ──────────────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* ── Transitions ──────────────────────────────────────────────────── */
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+
+  /* ── Layout ───────────────────────────────────────────────────────── */
+  --max-width: 1200px;
+  --nav-height: 56px;
+}
+
+/* ── Reset & Base ──────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background: var(--color-bg-secondary);
+  min-height: 100vh;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}

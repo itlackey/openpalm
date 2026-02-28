@@ -1,0 +1,205 @@
+# OpenPalm — Core Services
+#
+# This file defines the core infrastructure. Channel services are added
+# via compose overlays: docker compose -f docker-compose.yml -f channels/chat.yml up -d
+#
+# Docker Compose reads variable values from .env (standalone) or via --env-file (admin-managed).
+# Copy .env.example to .env and fill in the required values.
+#
+# Directory model:
+#   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, opencode/
+#   DATA_HOME   (~/.local/share/openpalm) — opaque service data (postgres, qdrant, etc.)
+#   STATE_HOME  (~/.local/state/openpalm) — generated artifacts, audit logs
+
+services:
+  # ── Caddy (reverse proxy) ──────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-8080}:80"
+    volumes:
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/channels:/etc/caddy/channels:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/data:/data/caddy
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/config:/config/caddy
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    networks: [assistant_net, channel_lan, channel_public]
+
+  # ── Postgres ───────────────────────────────────────────────────────
+  postgres:
+    image: postgres:18.2-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openpalm}
+      POSTGRES_USER: ${POSTGRES_USER:-openpalm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/postgres:/var/lib/postgresql/data
+    networks: [assistant_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openpalm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Qdrant ─────────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.17
+    restart: unless-stopped
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/qdrant:/qdrant/storage
+    networks:
+      assistant_net:
+        aliases:
+          - mem0_store
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── OpenMemory MCP ─────────────────────────────────────────────────
+  openmemory:
+    image: mem0/openmemory-mcp:latest@sha256:b665d382a94fdc18c7bb84a647d4bebdc98d9e7fc1146fc5e559ca7f5f7f9211
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
+    networks: [assistant_net]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── OpenMemory UI ──────────────────────────────────────────────────
+  openmemory-ui:
+    image: mem0/openmemory-ui:latest@sha256:c4b9578335a5cad2866f69d836476dde8ab30cdc6c181702c91a4c094cd29a2b
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}
+      NEXT_PUBLIC_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
+    ports:
+      - "${OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS:-127.0.0.1}:3001:3000"
+    networks: [assistant_net]
+    depends_on:
+      openmemory:
+        condition: service_healthy
+
+  # ── Assistant (opencode runtime — NO docker socket) ────────────────
+  assistant:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      OPENCODE_CONFIG_DIR: /opt/opencode
+      OPENCODE_PORT: "4096"
+      OPENCODE_AUTH: "false"
+      OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
+      OPENPALM_ADMIN_API_URL: http://admin:8100
+      OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN must be set}
+      OPENMEMORY_API_URL: http://openmemory:8765
+      OPENMEMORY_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      HOME: /home/opencode
+    ports:
+      - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:4096:4096"
+      - "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22"
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/assistant:/home/opencode
+      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/opencode:/home/opencode/.config/opencode
+      - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
+    working_dir: /work
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    networks: [assistant_net]
+    depends_on:
+      openmemory:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/4096' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── Guardian ────────────────────────────────────────────────────────
+  guardian:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      OPENPALM_ASSISTANT_URL: http://assistant:4096
+      OPENCODE_TIMEOUT_MS: "120000"
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN must be set}
+      GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
+      # Guardian reads CHANNEL_*_SECRET from this file on every inbound request,
+      # so channel secrets take effect without a container restart or recreation.
+      GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
+    # env_file loads stack.env at container startup so CHANNEL_*_SECRET are available
+    # immediately. The bind-mount + GUARDIAN_SECRETS_PATH allows re-reading at runtime.
+    env_file:
+      - path: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/stack.env
+        required: false
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/guardian:/app/data
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/audit:/app/audit
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/stack.env:/app/secrets/stack.env:ro
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    networks: [channel_lan, channel_public, assistant_net]
+    depends_on:
+      assistant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"await fetch('http://localhost:8080/health')\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Admin ──────────────────────────────────────────────────────────
+  admin:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8100:8100"
+    environment:
+      PORT: "8100"
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN must be set}
+      GUARDIAN_URL: http://guardian:8080
+      OPENPALM_ASSISTANT_URL: http://assistant:4096
+      OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
+      OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
+      OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
+    volumes:
+      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    group_add:
+      - "${OPENPALM_DOCKER_GID:-${OPENPALM_GID:-1000}}"
+    networks: [assistant_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+# Channel networks: services join channel_lan (LAN-restricted) or
+# channel_public (publicly accessible) to control Caddy access.
+networks:
+  channel_lan:
+  channel_public:
+  assistant_net:

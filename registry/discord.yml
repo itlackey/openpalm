@@ -1,0 +1,22 @@
+# Channel: Discord — Discord bot adapter
+#
+# Merge with core: docker compose -f docker-compose.yml -f registry/discord.yml up -d
+# Network selects Docker segment; Caddy access is controlled by the route .caddy file.
+
+services:
+  channel-discord:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-discord:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8184"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_DISCORD_SECRET: ${CHANNEL_DISCORD_SECRET}
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8184' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
