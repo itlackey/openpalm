@@ -184,6 +184,13 @@ services:
       OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
       OPENPALM_DOCKER_SOCK: ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}
+    # env_file loads stack.env into the container so OPENPALM_* vars are available
+    # to child docker compose invocations. secrets.env provides ADMIN_TOKEN + LLM keys.
+    env_file:
+      - path: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/stack.env
+        required: false
+      - path: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/secrets.env
+        required: false
     volumes:
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
