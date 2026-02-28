@@ -169,6 +169,34 @@ services:
       retries: 3
       start_period: 10s
 
+  # ── Docker Socket Proxy ───────────────────────────────────────────
+  # Filtered proxy for the Docker daemon socket. Only the proxy mounts
+  # the socket; the admin talks to Docker via HTTP over the internal
+  # network. This eliminates socket permission/GID issues across Docker
+  # runtimes (Docker Desktop, OrbStack, Colima, Podman, etc.).
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
+    restart: unless-stopped
+    environment:
+      # Static allowlist — covers all compose operations for any channel.
+      # These are API endpoint categories, not per-container rules, so
+      # adding/removing channels never requires changes here.
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      EXEC: 1
+      POST: 1
+      INFO: 1
+    volumes:
+      - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    networks: [admin_docker_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
   # ── Admin ──────────────────────────────────────────────────────────
   admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
@@ -183,7 +211,8 @@ services:
       OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-      #OPENPALM_DOCKER_SOCK: ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}
+      # Docker API via socket proxy — no direct socket mount needed
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
     # env_file loads stack.env into the container so OPENPALM_* vars are available
     # to child docker compose invocations. secrets.env provides ADMIN_TOKEN + LLM keys.
     env_file:
@@ -195,11 +224,11 @@ services:
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-      - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
-    group_add:
-      - "${OPENPALM_DOCKER_GID:-${OPENPALM_GID:-1000}}"
-    networks: [assistant_net]
+    networks: [assistant_net, admin_docker_net]
+    depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1"]
       interval: 30s
@@ -213,3 +242,4 @@ networks:
   channel_lan:
   channel_public:
   assistant_net:
+  admin_docker_net:   # Isolated: only admin + docker-socket-proxy

@@ -172,32 +172,6 @@ detect_platform() {
 	fi
 	ok "Docker socket: $DOCKER_SOCK"
 
-	# Docker socket GID (needed for admin container)
-	if [[ "$PLATFORM" == "linux" ]]; then
-		if [[ -S "$DOCKER_SOCK" ]]; then
-			DOCKER_GID="$(stat -c '%g' "$DOCKER_SOCK" 2>/dev/null || echo "$HOST_GID")"
-		else
-			DOCKER_GID="$HOST_GID"
-		fi
-	else
-		# macOS: Try to detect actual socket GID (OrbStack, Colima, etc.)
-		# Fall back to common docker group GIDs if stat fails
-		if [[ -S "$DOCKER_SOCK" ]]; then
-			DOCKER_GID="$(stat -f '%g' "$DOCKER_SOCK" 2>/dev/null)" || true
-		fi
-		if [[ -z "$DOCKER_GID" ]]; then
-			# Check common docker group GIDs on macOS
-			for gid in 999 1000 1001 20; do
-				if dscl . -read /Groups/docker 2>/dev/null | grep -q "PrimaryGID.*$gid"; then
-					DOCKER_GID="$gid"
-					break
-				fi
-			done
-		fi
-		DOCKER_GID="${DOCKER_GID:-999}"
-	fi
-	ok "Docker GID: $DOCKER_GID"
-
 	# Browser command (best-effort)
 	if [[ "$PLATFORM" == "darwin" ]]; then
 		OPEN_CMD="open"
@@ -479,7 +453,6 @@ OPENPALM_WORK_DIR=${WORK_DIR}
 # ── User/Group ──────────────────────────────────────────────────────
 OPENPALM_UID=${HOST_UID}
 OPENPALM_GID=${HOST_GID}
-OPENPALM_DOCKER_GID=${DOCKER_GID}
 
 # ── Docker Socket ───────────────────────────────────────────────────
 OPENPALM_DOCKER_SOCK=${DOCKER_SOCK}
@@ -495,7 +468,7 @@ EOF
 	# Stage to STATE_HOME/artifacts/ for compose consumption
 	cp "$data_stack_env" "$staged_stack_env"
 
-	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_GID=${DOCKER_GID} DOCKER_SOCK=${DOCKER_SOCK})"
+	ok "Generated stack.env (UID=${HOST_UID} GID=${HOST_GID} DOCKER_SOCK=${DOCKER_SOCK})"
 }
 
 # ── OpenCode config seeding ──────────────────────────────────────────
@@ -548,9 +521,9 @@ compose_up_admin() {
 	fi
 
 	info "Starting admin container..."
-	# Start only the admin service; do not start or validate dependent services (e.g. postgres).
-	# This avoids needing a placeholder POSTGRES_PASSWORD value at this stage.
-	compose_cmd up -d --no-deps admin
+	# Start only the admin and its Docker socket proxy; skip other services (e.g. postgres)
+	# to avoid needing a placeholder POSTGRES_PASSWORD at this stage.
+	compose_cmd up -d docker-socket-proxy admin
 
 	ok "Admin service started"
 }

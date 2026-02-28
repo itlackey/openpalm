@@ -180,7 +180,7 @@ The source of truth is `DATA_HOME/stack.env`, seeded by `setup.sh` (or
 config that the admin never overwrites:
 
 - **XDG paths:** `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_WORK_DIR`
-- **User/Group:** `OPENPALM_UID`, `OPENPALM_GID`, `OPENPALM_DOCKER_GID` (auto-detected from host)
+- **User/Group:** `OPENPALM_UID`, `OPENPALM_GID` (auto-detected from host)
 - **Docker Socket:** `OPENPALM_DOCKER_SOCK` (auto-detected, supports OrbStack/Colima)
 - **Images:** `OPENPALM_IMAGE_NAMESPACE`, `OPENPALM_IMAGE_TAG`
 - **Networking:** `OPENPALM_INGRESS_BIND_ADDRESS`, `OPENPALM_INGRESS_PORT`

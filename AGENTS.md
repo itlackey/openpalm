@@ -168,7 +168,7 @@ No Prettier or ESLint configured. Match the existing file style:
 
 - **File assembly, not rendering.** Copy whole files between tiers; no string interpolation or template generation.
 - **Never overwrite CONFIG_HOME.** Seed defaults once; all subsequent writes go to STATE_HOME.
-- **Admin is sole orchestrator.** Only the admin container has Docker socket access.
+- **Admin is sole orchestrator.** Docker access is mediated by a socket proxy; only the proxy mounts the socket.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket; it calls the admin API only.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
