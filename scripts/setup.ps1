@@ -129,9 +129,9 @@ function Preflight-Checks {
 }
 
 $Platform = 'windows'
-$HostUid = '1000'
-$HostGid = '1000'
-$DockerGid = '1000'
+$HostUid = if ($env:OPENPALM_UID) { $env:OPENPALM_UID } else { '1000' }
+$HostGid = if ($env:OPENPALM_GID) { $env:OPENPALM_GID } else { '1000' }
+$DockerGid = if ($env:OPENPALM_DOCKER_GID) { $env:OPENPALM_DOCKER_GID } else { $HostGid }
 $DockerSock = '/var/run/docker.sock'
 
 function Detect-Platform {
@@ -156,13 +156,36 @@ function Detect-Platform {
     $hostUrl = (docker context inspect --format '{{.Endpoints.docker.Host}}' 2>$null | Select-Object -First 1).Trim()
     if ($hostUrl -like 'unix://*') {
       $detected = $hostUrl.Substring(7)
-      if (-not [string]::IsNullOrWhiteSpace($detected)) {
+      if (-not [string]::IsNullOrWhiteSpace($detected) -and (Test-Path -LiteralPath $detected)) {
         $script:DockerSock = $detected
       }
     }
   }
   catch {
     # Best-effort only
+  }
+
+  if (-not $env:OPENPALM_DOCKER_GID) {
+    $detectedDockerGid = ''
+    if (Get-Command stat -ErrorAction SilentlyContinue) {
+      try {
+        $detectedDockerGid = (& stat -c '%g' $DockerSock 2>$null | Select-Object -First 1).Trim()
+      }
+      catch {
+        $detectedDockerGid = ''
+      }
+      if ($detectedDockerGid -notmatch '^\d+$') {
+        try {
+          $detectedDockerGid = (& stat -f '%g' $DockerSock 2>$null | Select-Object -First 1).Trim()
+        }
+        catch {
+          $detectedDockerGid = ''
+        }
+      }
+    }
+    if ($detectedDockerGid -match '^\d+$') {
+      $script:DockerGid = $detectedDockerGid
+    }
   }
 
   Ok "Docker socket: $DockerSock"
