@@ -882,19 +882,14 @@ export function clearChannelConfigBackup(channel: string, stateDir: string): voi
  * Called on startup. A stale backup means the process crashed between
  * backupChannelConfig() and clearChannelConfigBackup().
  *
- * To determine whether the operation completed or failed, we check
- * the current CONFIG_HOME state against the intent:
- * - "install" intent + channel .yml exists  → install completed, just clear backup
- * - "install" intent + channel .yml missing → install failed mid-way, nothing to undo
- * - "uninstall" intent + channel .yml missing → uninstall completed, just clear backup
- * - "uninstall" intent + channel .yml exists → uninstall was never performed, just clear backup
- *
- * In all cases the safe action is to clear the stale backup and let the
- * startup re-apply regenerate STATE_HOME from whatever CONFIG_HOME contains.
+ * If an intent file is present, it is logged for audit purposes, and the
+ * corresponding backup directory is then removed. Startup logic will
+ * subsequently regenerate STATE_HOME from whatever CONFIG_HOME currently
+ * contains.
  */
 export function cleanupStaleConfigBackups(
   stateDir: string,
-  configDir: string,
+  _configDir: string,
   state: ControlPlaneState
 ): void {
   const backupsDir = `${stateDir}/config-backups`;
