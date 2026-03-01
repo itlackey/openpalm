@@ -35,7 +35,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-openpalm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/postgres:/var/lib/postgresql/data
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/postgres:/var/lib/postgresql
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openpalm}"]
