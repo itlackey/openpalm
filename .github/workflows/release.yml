@@ -35,6 +35,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Resolve release tag
         id: resolve
         env:
@@ -53,11 +59,23 @@ jobs:
 
             TAG="v${VERSION}"
 
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+            # Bump all workspace package.json versions
+            ./scripts/bump-versions.sh "${VERSION}"
+
+            if git diff --quiet; then
+              echo "Versions already at ${VERSION}, no changes needed."
+            else
+              git add -A '*.json'
+              git commit -m "chore: bump versions to ${VERSION}"
+              git push origin HEAD:"${GITHUB_REF_NAME}"
+            fi
+
             if git rev-parse "${TAG}" >/dev/null 2>&1; then
               echo "Tag ${TAG} already exists."
             else
-              git config user.name 'github-actions[bot]'
-              git config user.email 'github-actions[bot]@users.noreply.github.com'
               git tag -a "${TAG}" -m "Release ${TAG}"
               git push origin "${TAG}"
             fi
