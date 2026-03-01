@@ -198,9 +198,14 @@ services:
       start_period: 5s
 
   # ── Admin ──────────────────────────────────────────────────────────
+  # Container starts as root for crond setup, then drops to target
+  # user via gosu before running the SvelteKit app. Cron files are
+  # staged to STATE_HOME/cron/ by the control plane and loaded by
+  # the entrypoint on startup.
   admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
+    init: true
     ports:
       - "127.0.0.1:8100:8100"
     environment:
@@ -213,6 +218,9 @@ services:
       OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
       # Docker API via socket proxy — no direct socket mount needed
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # Entrypoint drops privileges from root to this UID/GID via gosu
+      OPENPALM_UID: "${OPENPALM_UID:-1000}"
+      OPENPALM_GID: "${OPENPALM_GID:-1000}"
     # env_file loads stack.env into the container so OPENPALM_* vars are available
     # to child docker compose invocations. secrets.env provides ADMIN_TOKEN + LLM keys.
     env_file:
@@ -224,7 +232,6 @@ services:
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [assistant_net, admin_docker_net]
     depends_on:
       docker-socket-proxy:

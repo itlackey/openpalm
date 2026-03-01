@@ -133,6 +133,13 @@ The admin is the sole orchestrator. It connects to Docker via the socket proxy
 STATE_HOME. The DATA_HOME mount allows the admin to pre-create subdirectories
 with correct ownership before other services start.
 
+The admin container starts as root for crond setup, then drops privileges
+to the target UID/GID (`$OPENPALM_UID:$OPENPALM_GID`, default `1000:1000`)
+via gosu before running the SvelteKit app. Staged cron files from
+`STATE_HOME/cron/` are copied to `/etc/cron.d/` with correct ownership
+on startup. See [directory-structure.md](./directory-structure.md) for cron
+file format and configuration.
+
 ---
 
 ## 3. Secrets
@@ -191,6 +198,8 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `OPENPALM_CONFIG_HOME` | Same as host path | In-container path to CONFIG_HOME (same-path mount) |
 | `OPENPALM_DATA_HOME` | Same as host path | In-container path to DATA_HOME (same-path mount) |
 | `OPENPALM_STATE_HOME` | Same as host path | In-container path to STATE_HOME (same-path mount) |
+| `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target UID for privilege drop (gosu) |
+| `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target GID for privilege drop (gosu) |
 
 ### 4.2 Guardian Service
 
