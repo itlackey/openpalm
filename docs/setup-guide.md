@@ -121,6 +121,7 @@ All user-editable files live under `CONFIG_HOME` (default `~/.config/openpalm`):
 |---|---|
 | `secrets.env` | Admin token and LLM provider API keys |
 | `channels/` | Channel compose overlays (`.yml`) and Caddy routes (`.caddy`) |
+| `automations/` | Scheduled automations — see [Managing OpenPalm](managing-openpalm.md#automations) |
 | `opencode/` | OpenCode extensions — tools, plugins, skills, and config |
 
 You never need to touch the other two directories (`DATA_HOME` for service data, `STATE_HOME` for assembled runtime). See [directory-structure.md](directory-structure.md) for the complete layout.

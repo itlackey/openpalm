@@ -15,6 +15,7 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 - **Connect your channels** — web chat and Discord are built in. Add more by dropping files — no code changes.
 - **Long-term memory** — your assistant remembers context across conversations via OpenMemory. Secrets are never stored.
 - **Admin dashboard** — manage everything from a browser: services, channels, access control.
+- **Automations** — schedule recurring tasks like updates, health checks, and assistant prompts by dropping a file.
 - **Built for safety** — defense-in-depth security: HMAC-signed messages, guardian validation, assistant isolation, LAN-first by default.
 
 ## Prerequisites
@@ -70,6 +71,10 @@ All admin operations require an admin token (`x-admin-token` header). The admin 
 ### Add channels by file-drop
 
 Adding a channel requires no code changes — just drop a Docker Compose overlay (`.yml`) and an optional Caddy route (`.caddy`) into the registry. The admin stages these into the runtime automatically. Built-in channels include web chat and Discord, with community channels documented in [`docs/community-channels.md`](docs/community-channels.md).
+
+### Automations
+
+Schedule recurring tasks by dropping a file into `~/.config/openpalm/automations/`. OpenPalm ships ready-to-use examples for auto-updating containers, health checks, sending prompts to the assistant, and log cleanup. Copy any example from `assets/automations/` to get started. See [`docs/managing-openpalm.md`](docs/managing-openpalm.md#automations) for details.
 
 <div>
 

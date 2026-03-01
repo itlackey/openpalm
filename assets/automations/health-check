@@ -1,0 +1,11 @@
+# health-check — Monitor that all services are running
+#
+# Runs every 5 minutes. Checks the admin health endpoint and logs
+# any failures to the audit directory for review.
+#
+# To use: copy this file to ~/.config/openpalm/automations/health-check
+# then restart admin:  docker compose restart admin
+
+SHELL=/bin/bash
+
+*/5 * * * * node bash -c '. /etc/openpalm-env && STATUS=$(curl -sf http://localhost:8100/health) || echo "{\"ts\":\"$(date -Iseconds)\",\"automation\":\"health-check\",\"error\":\"admin health check failed\"}" >> "$OPENPALM_STATE_HOME/audit/automation.log"'

@@ -65,6 +65,7 @@ Responsibilities:
 - Runs `docker compose` for all lifecycle operations (install, update, up, down,
   restart)
 - Exposes an authenticated API used by the CLI, the browser UI, and the assistant
+- Runs scheduled automations — user-defined files from CONFIG_HOME/automations/
 - Writes the audit log
 - Discovers installed channels by scanning `CONFIG_HOME/channels/`, then stages
   overlays/snippets into `STATE_HOME/artifacts/channels/` for runtime
