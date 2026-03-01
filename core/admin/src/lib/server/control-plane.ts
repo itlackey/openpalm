@@ -21,7 +21,7 @@
  * gets HTTP routing through Caddy; if absent, it's Docker-network only.
  */
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
-import { dirname, resolve as resolvePath } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { parseEnvContent, parseEnvFile, mergeEnvContent } from "@openpalm/lib/shared/env";
 
@@ -737,16 +737,39 @@ export function discoverStagedChannelYmls(stateDir: string): string[] {
 /** Strict cron filename: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
 const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
+/** Only this user may be specified in cron job lines */
+const ALLOWED_CRON_USER = "node";
+
+/**
+ * Validate cron file content.
+ * Every job line (non-comment, non-env-var) must specify 'node' as the user
+ * field (the 6th whitespace-delimited field). Returns false if any job line
+ * specifies a different user, so the file is not staged.
+ */
+function validateCronContent(content: string): boolean {
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    // Env-var lines: VARNAME=value
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(trimmed)) continue;
+    // Job line: min hour dom mon dow user command (at least 7 fields)
+    const fields = trimmed.split(/\s+/);
+    if (fields.length < 7) continue;
+    if (fields[5] !== ALLOWED_CRON_USER) return false;
+  }
+  return true;
+}
+
 /**
  * Discover .cron files in a directory.
  * Returns filenames (without extension) and their full paths.
- * Only files matching the naming convention are returned.
+ * Only regular files matching the naming convention are returned.
  */
 function discoverCronFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".cron"))
-    .map((f) => ({ name: f.replace(/\.cron$/, ""), path: `${dir}/${f}` }))
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".cron"))
+    .map((entry) => ({ name: entry.name.replace(/\.cron$/, ""), path: join(dir, entry.name) }))
     .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
 }
 
@@ -773,6 +796,7 @@ function stageCronFiles(state: ControlPlaneState): void {
   const systemCronDir = `${state.dataDir}/cron`;
   for (const entry of discoverCronFiles(systemCronDir)) {
     const content = readFileSync(entry.path, "utf-8");
+    if (!validateCronContent(content)) continue;
     writeFileSync(`${stagedCronDir}/${entry.name}.cron`, content);
   }
 
@@ -780,6 +804,7 @@ function stageCronFiles(state: ControlPlaneState): void {
   const userCronDir = `${state.configDir}/cron`;
   for (const entry of discoverCronFiles(userCronDir)) {
     const content = readFileSync(entry.path, "utf-8");
+    if (!validateCronContent(content)) continue;
     writeFileSync(`${stagedCronDir}/${entry.name}.cron`, content);
   }
 }

@@ -416,12 +416,25 @@ describe("Staging idempotence", () => {
 // ── Cron staging ───────────────────────────────────────────────────────
 
 const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const ALLOWED_CRON_USER = "node";
+
+function validateCronContent(content: string): boolean {
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(trimmed)) continue;
+    const fields = trimmed.split(/\s+/);
+    if (fields.length < 7) continue;
+    if (fields[5] !== ALLOWED_CRON_USER) return false;
+  }
+  return true;
+}
 
 function discoverCronFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".cron"))
-    .map((f) => ({ name: f.replace(/\.cron$/, ""), path: join(dir, f) }))
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".cron"))
+    .map((entry) => ({ name: entry.name.replace(/\.cron$/, ""), path: join(dir, entry.name) }))
     .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
 }
 
@@ -444,6 +457,7 @@ function stageCronFilesFn(
   const systemCronDir = join(dataDir, "cron");
   for (const entry of discoverCronFiles(systemCronDir)) {
     const content = readFileSync(entry.path, "utf-8");
+    if (!validateCronContent(content)) continue;
     writeFileSync(join(stagedCronDir, `${entry.name}.cron`), content);
   }
 
@@ -451,6 +465,7 @@ function stageCronFilesFn(
   const userCronDir = join(configDir, "cron");
   for (const entry of discoverCronFiles(userCronDir)) {
     const content = readFileSync(entry.path, "utf-8");
+    if (!validateCronContent(content)) continue;
     writeFileSync(join(stagedCronDir, `${entry.name}.cron`), content);
   }
 }
@@ -582,5 +597,52 @@ describe("Cron file staging", () => {
     const second = readFileSync(join(stateDir, "cron", "backup.cron"), "utf-8");
 
     expect(first).toBe(second);
+  });
+
+  test("cron files with non-node user field are not staged", () => {
+    seedCronFiles(configDir, [
+      { name: "bad-user", content: "0 2 * * * root /work/scripts/root-task.sh\n" }
+    ]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "bad-user.cron"))).toBe(false);
+  });
+
+  test("cron files with node user field are staged", () => {
+    seedCronFiles(configDir, [
+      { name: "good-user", content: "0 2 * * * node /work/scripts/task.sh\n" }
+    ]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "good-user.cron"))).toBe(true);
+  });
+
+  test("cron files with mixed users are not staged", () => {
+    seedCronFiles(configDir, [
+      {
+        name: "mixed-users",
+        content:
+          "0 2 * * * node /work/scripts/ok.sh\n0 3 * * * root /work/scripts/bad.sh\n"
+      }
+    ]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "mixed-users.cron"))).toBe(false);
+  });
+
+  test("comment and env-var lines are not treated as job lines", () => {
+    seedCronFiles(configDir, [
+      {
+        name: "with-env",
+        content: "SHELL=/bin/bash\n# daily backup\n0 2 * * * node /work/scripts/backup.sh\n"
+      }
+    ]);
+
+    stageCronFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "cron", "with-env.cron"))).toBe(true);
   });
 });
