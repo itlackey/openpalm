@@ -413,77 +413,77 @@ describe("Staging idempotence", () => {
   });
 });
 
-// ── Cron staging ───────────────────────────────────────────────────────
+// ── Automation staging ─────────────────────────────────────────────────
 
-const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const ALLOWED_CRON_USER = "node";
+const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const ALLOWED_AUTOMATION_USER = "node";
 
-function validateCronContent(content: string): boolean {
+function validateAutomationContent(content: string): boolean {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(trimmed)) continue;
     const fields = trimmed.split(/\s+/);
     if (fields.length < 7) continue;
-    if (fields[5] !== ALLOWED_CRON_USER) return false;
+    if (fields[5] !== ALLOWED_AUTOMATION_USER) return false;
   }
   return true;
 }
 
-function discoverCronFiles(dir: string): { name: string; path: string }[] {
+function discoverAutomationFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".cron"))
-    .map((entry) => ({ name: entry.name.replace(/\.cron$/, ""), path: join(dir, entry.name) }))
-    .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
+    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
+    .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }))
+    .filter((entry) => AUTOMATION_FILE_NAME_RE.test(entry.name));
 }
 
-function stageCronFilesFn(
+function stageAutomationFilesFn(
   configDir: string,
   dataDir: string,
   stateDir: string
 ): void {
-  const stagedCronDir = join(stateDir, "cron");
-  mkdirSync(stagedCronDir, { recursive: true });
+  const stagedDir = join(stateDir, "automations");
+  mkdirSync(stagedDir, { recursive: true });
 
-  // Clean stale staged cron files
-  for (const f of readdirSync(stagedCronDir)) {
-    if (f.endsWith(".cron")) {
-      rmSync(join(stagedCronDir, f), { force: true });
+  // Clean stale staged automation files
+  for (const f of readdirSync(stagedDir)) {
+    if (!f.startsWith(".")) {
+      rmSync(join(stagedDir, f), { force: true });
     }
   }
 
-  // System cron files from DATA_HOME/cron/ first
-  const systemCronDir = join(dataDir, "cron");
-  for (const entry of discoverCronFiles(systemCronDir)) {
+  // System automation files from DATA_HOME/automations/ first
+  const systemDir = join(dataDir, "automations");
+  for (const entry of discoverAutomationFiles(systemDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateCronContent(content)) continue;
-    writeFileSync(join(stagedCronDir, `${entry.name}.cron`), content);
+    if (!validateAutomationContent(content)) continue;
+    writeFileSync(join(stagedDir, entry.name), content);
   }
 
-  // User cron files from CONFIG_HOME/cron/ (overrides system)
-  const userCronDir = join(configDir, "cron");
-  for (const entry of discoverCronFiles(userCronDir)) {
+  // User automation files from CONFIG_HOME/automations/ (overrides system)
+  const userDir = join(configDir, "automations");
+  for (const entry of discoverAutomationFiles(userDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateCronContent(content)) continue;
-    writeFileSync(join(stagedCronDir, `${entry.name}.cron`), content);
+    if (!validateAutomationContent(content)) continue;
+    writeFileSync(join(stagedDir, entry.name), content);
   }
 }
 
-function seedCronFiles(
+function seedAutomationFiles(
   dir: string,
   files: { name: string; content: string }[]
 ): void {
-  const cronDir = join(dir, "cron");
-  mkdirSync(cronDir, { recursive: true });
+  const automationsDir = join(dir, "automations");
+  mkdirSync(automationsDir, { recursive: true });
   for (const f of files) {
-    writeFileSync(join(cronDir, `${f.name}.cron`), f.content);
+    writeFileSync(join(automationsDir, f.name), f.content);
   }
 }
 
 let dataDir: string;
 
-describe("Cron file staging", () => {
+describe("Automation file staging", () => {
   beforeEach(() => {
     dataDir = makeTempDir();
   });
@@ -492,135 +492,135 @@ describe("Cron file staging", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("user cron files are staged to STATE_HOME/cron/", () => {
-    const cronContent = "0 2 * * * node /work/scripts/backup.sh\n";
-    seedCronFiles(configDir, [{ name: "backup", content: cronContent }]);
+  test("user automation files are staged to STATE_HOME/automations/", () => {
+    const content = "0 2 * * * node /work/scripts/backup.sh\n";
+    seedAutomationFiles(configDir, [{ name: "backup", content }]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const stagedPath = join(stateDir, "cron", "backup.cron");
+    const stagedPath = join(stateDir, "automations", "backup");
     expect(existsSync(stagedPath)).toBe(true);
-    expect(readFileSync(stagedPath, "utf-8")).toBe(cronContent);
+    expect(readFileSync(stagedPath, "utf-8")).toBe(content);
   });
 
-  test("system cron files are staged from DATA_HOME/cron/", () => {
-    const cronContent = "*/5 * * * * node /work/scripts/healthcheck.sh\n";
-    seedCronFiles(dataDir, [{ name: "healthcheck", content: cronContent }]);
+  test("system automation files are staged from DATA_HOME/automations/", () => {
+    const content = "*/5 * * * * node /work/scripts/healthcheck.sh\n";
+    seedAutomationFiles(dataDir, [{ name: "healthcheck", content }]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const stagedPath = join(stateDir, "cron", "healthcheck.cron");
+    const stagedPath = join(stateDir, "automations", "healthcheck");
     expect(existsSync(stagedPath)).toBe(true);
-    expect(readFileSync(stagedPath, "utf-8")).toBe(cronContent);
+    expect(readFileSync(stagedPath, "utf-8")).toBe(content);
   });
 
-  test("user cron files override system files with the same name", () => {
+  test("user automation files override system files with the same name", () => {
     const systemContent = "0 3 * * * node /work/scripts/old-backup.sh\n";
     const userContent = "0 2 * * * node /work/scripts/my-backup.sh\n";
 
-    seedCronFiles(dataDir, [{ name: "backup", content: systemContent }]);
-    seedCronFiles(configDir, [{ name: "backup", content: userContent }]);
+    seedAutomationFiles(dataDir, [{ name: "backup", content: systemContent }]);
+    seedAutomationFiles(configDir, [{ name: "backup", content: userContent }]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const stagedPath = join(stateDir, "cron", "backup.cron");
+    const stagedPath = join(stateDir, "automations", "backup");
     expect(readFileSync(stagedPath, "utf-8")).toBe(userContent);
   });
 
-  test("both system and user cron files are staged together", () => {
-    seedCronFiles(dataDir, [
+  test("both system and user automation files are staged together", () => {
+    seedAutomationFiles(dataDir, [
       { name: "healthcheck", content: "*/5 * * * * node /work/scripts/hc.sh\n" }
     ]);
-    seedCronFiles(configDir, [
+    seedAutomationFiles(configDir, [
       { name: "backup", content: "0 2 * * * node /work/scripts/backup.sh\n" }
     ]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "healthcheck.cron"))).toBe(true);
-    expect(existsSync(join(stateDir, "cron", "backup.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "healthcheck"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "backup"))).toBe(true);
   });
 
-  test("invalid cron filenames are ignored", () => {
-    const cronDir = join(configDir, "cron");
-    mkdirSync(cronDir, { recursive: true });
+  test("invalid automation filenames are ignored", () => {
+    const automationsDir = join(configDir, "automations");
+    mkdirSync(automationsDir, { recursive: true });
     // Invalid: starts with hyphen
-    writeFileSync(join(cronDir, "-bad.cron"), "* * * * * node /work/bad.sh\n");
+    writeFileSync(join(automationsDir, "-bad"), "* * * * * node /work/bad.sh\n");
     // Valid
-    writeFileSync(join(cronDir, "good.cron"), "* * * * * node /work/good.sh\n");
+    writeFileSync(join(automationsDir, "good"), "* * * * * node /work/good.sh\n");
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "good.cron"))).toBe(true);
-    expect(existsSync(join(stateDir, "cron", "-bad.cron"))).toBe(false);
+    expect(existsSync(join(stateDir, "automations", "good"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "-bad"))).toBe(false);
   });
 
-  test("stale cron files are cleaned on re-apply", () => {
-    seedCronFiles(configDir, [
+  test("stale automation files are cleaned on re-apply", () => {
+    seedAutomationFiles(configDir, [
       { name: "backup", content: "0 2 * * * node /work/backup.sh\n" },
       { name: "cleanup", content: "0 4 * * 0 node /work/cleanup.sh\n" }
     ]);
-    stageCronFilesFn(configDir, dataDir, stateDir);
-    expect(existsSync(join(stateDir, "cron", "backup.cron"))).toBe(true);
-    expect(existsSync(join(stateDir, "cron", "cleanup.cron"))).toBe(true);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    expect(existsSync(join(stateDir, "automations", "backup"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "cleanup"))).toBe(true);
 
     // Remove cleanup from config
-    rmSync(join(configDir, "cron", "cleanup.cron"));
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    rmSync(join(configDir, "automations", "cleanup"));
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "backup.cron"))).toBe(true);
-    expect(existsSync(join(stateDir, "cron", "cleanup.cron"))).toBe(false);
+    expect(existsSync(join(stateDir, "automations", "backup"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "cleanup"))).toBe(false);
   });
 
-  test("empty cron directories produce no staged files", () => {
-    mkdirSync(join(configDir, "cron"), { recursive: true });
-    mkdirSync(join(dataDir, "cron"), { recursive: true });
+  test("empty automation directories produce no staged files", () => {
+    mkdirSync(join(configDir, "automations"), { recursive: true });
+    mkdirSync(join(dataDir, "automations"), { recursive: true });
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const cronDir = join(stateDir, "cron");
-    const files = existsSync(cronDir)
-      ? readdirSync(cronDir).filter((f) => f.endsWith(".cron"))
+    const automationsDir = join(stateDir, "automations");
+    const files = existsSync(automationsDir)
+      ? readdirSync(automationsDir).filter((f) => !f.startsWith("."))
       : [];
     expect(files.length).toBe(0);
   });
 
   test("staging is idempotent", () => {
-    seedCronFiles(configDir, [
+    seedAutomationFiles(configDir, [
       { name: "backup", content: "0 2 * * * node /work/backup.sh\n" }
     ]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
-    const first = readFileSync(join(stateDir, "cron", "backup.cron"), "utf-8");
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const first = readFileSync(join(stateDir, "automations", "backup"), "utf-8");
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
-    const second = readFileSync(join(stateDir, "cron", "backup.cron"), "utf-8");
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const second = readFileSync(join(stateDir, "automations", "backup"), "utf-8");
 
     expect(first).toBe(second);
   });
 
-  test("cron files with non-node user field are not staged", () => {
-    seedCronFiles(configDir, [
+  test("automation files with non-node user field are not staged", () => {
+    seedAutomationFiles(configDir, [
       { name: "bad-user", content: "0 2 * * * root /work/scripts/root-task.sh\n" }
     ]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "bad-user.cron"))).toBe(false);
+    expect(existsSync(join(stateDir, "automations", "bad-user"))).toBe(false);
   });
 
-  test("cron files with node user field are staged", () => {
-    seedCronFiles(configDir, [
+  test("automation files with node user field are staged", () => {
+    seedAutomationFiles(configDir, [
       { name: "good-user", content: "0 2 * * * node /work/scripts/task.sh\n" }
     ]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "good-user.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "good-user"))).toBe(true);
   });
 
-  test("cron files with mixed users are not staged", () => {
-    seedCronFiles(configDir, [
+  test("automation files with mixed users are not staged", () => {
+    seedAutomationFiles(configDir, [
       {
         name: "mixed-users",
         content:
@@ -628,21 +628,21 @@ describe("Cron file staging", () => {
       }
     ]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "mixed-users.cron"))).toBe(false);
+    expect(existsSync(join(stateDir, "automations", "mixed-users"))).toBe(false);
   });
 
   test("comment and env-var lines are not treated as job lines", () => {
-    seedCronFiles(configDir, [
+    seedAutomationFiles(configDir, [
       {
         name: "with-env",
         content: "SHELL=/bin/bash\n# daily backup\n0 2 * * * node /work/scripts/backup.sh\n"
       }
     ]);
 
-    stageCronFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "cron", "with-env.cron"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "with-env"))).toBe(true);
   });
 });

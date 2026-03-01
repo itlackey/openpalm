@@ -756,21 +756,21 @@ export function discoverStagedChannelYmls(stateDir: string): string[] {
     .map((entry) => `${channelsDir}/${entry.name}`);
 }
 
-// ── Cron Staging ─────────────────────────────────────────────────────
+// ── Automation Staging ───────────────────────────────────────────────
 
-/** Strict cron filename: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
-const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+/** Strict automation filename: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
+const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-/** Only this user may be specified in cron job lines */
-const ALLOWED_CRON_USER = "node";
+/** Only this user may be specified in automation job lines */
+const ALLOWED_AUTOMATION_USER = "node";
 
 /**
- * Validate cron file content.
+ * Validate automation file content.
  * Every job line (non-comment, non-env-var) must specify 'node' as the user
  * field (the 6th whitespace-delimited field). Returns false if any job line
  * specifies a different user, so the file is not staged.
  */
-function validateCronContent(content: string): boolean {
+function validateAutomationContent(content: string): boolean {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -779,57 +779,58 @@ function validateCronContent(content: string): boolean {
     // Job line: min hour dom mon dow user command (at least 7 fields)
     const fields = trimmed.split(/\s+/);
     if (fields.length < 7) continue;
-    if (fields[5] !== ALLOWED_CRON_USER) return false;
+    if (fields[5] !== ALLOWED_AUTOMATION_USER) return false;
   }
   return true;
 }
 
 /**
- * Discover .cron files in a directory.
- * Returns filenames (without extension) and their full paths.
- * Only regular files matching the naming convention are returned.
+ * Discover automation files in a directory.
+ * Returns filenames and their full paths.
+ * Only regular non-hidden files matching the naming convention are returned.
  */
-function discoverCronFiles(dir: string): { name: string; path: string }[] {
+function discoverAutomationFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".cron"))
-    .map((entry) => ({ name: entry.name.replace(/\.cron$/, ""), path: join(dir, entry.name) }))
-    .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
+    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
+    .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }))
+    .filter((entry) => AUTOMATION_FILE_NAME_RE.test(entry.name));
 }
 
 /**
- * Stage cron files from DATA_HOME/cron/ (system) and CONFIG_HOME/cron/ (user)
- * into STATE_HOME/cron/.
+ * Stage automation files from DATA_HOME/automations/ (system) and
+ * CONFIG_HOME/automations/ (user) into STATE_HOME/automations/.
  *
  * System files are copied first; user files with the same name override them.
  * This follows the same staging pattern as channels: whole-file copy from
  * source tiers into STATE_HOME for runtime consumption.
  */
-function stageCronFiles(state: ControlPlaneState): void {
-  const stagedCronDir = `${state.stateDir}/cron`;
-  mkdirSync(stagedCronDir, { recursive: true });
+function stageAutomationFiles(state: ControlPlaneState): void {
+  const stagedDir = `${state.stateDir}/automations`;
+  mkdirSync(stagedDir, { recursive: true });
 
-  // Clean stale staged cron files before re-staging
-  for (const f of readdirSync(stagedCronDir)) {
-    if (f.endsWith(".cron")) {
-      rmSync(`${stagedCronDir}/${f}`, { force: true });
+  // Clean stale staged automation files before re-staging
+  for (const f of readdirSync(stagedDir)) {
+    const fullPath = `${stagedDir}/${f}`;
+    if (!f.startsWith(".")) {
+      rmSync(fullPath, { force: true });
     }
   }
 
-  // Stage system-managed cron files from DATA_HOME/cron/ first
-  const systemCronDir = `${state.dataDir}/cron`;
-  for (const entry of discoverCronFiles(systemCronDir)) {
+  // Stage system-managed automation files from DATA_HOME/automations/ first
+  const systemDir = `${state.dataDir}/automations`;
+  for (const entry of discoverAutomationFiles(systemDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateCronContent(content)) continue;
-    writeFileSync(`${stagedCronDir}/${entry.name}.cron`, content);
+    if (!validateAutomationContent(content)) continue;
+    writeFileSync(`${stagedDir}/${entry.name}`, content);
   }
 
-  // Stage user cron files from CONFIG_HOME/cron/ (overrides system files)
-  const userCronDir = `${state.configDir}/cron`;
-  for (const entry of discoverCronFiles(userCronDir)) {
+  // Stage user automation files from CONFIG_HOME/automations/ (overrides system)
+  const userDir = `${state.configDir}/automations`;
+  for (const entry of discoverAutomationFiles(userDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateCronContent(content)) continue;
-    writeFileSync(`${stagedCronDir}/${entry.name}.cron`, content);
+    if (!validateAutomationContent(content)) continue;
+    writeFileSync(`${stagedDir}/${entry.name}`, content);
   }
 }
 
@@ -879,7 +880,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   stageSecretsEnv(state);
   stageChannelYmlFiles(state);
   stageChannelCaddyfiles(state);
-  stageCronFiles(state);
+  stageAutomationFiles(state);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
   writeFileSync(
@@ -1023,7 +1024,7 @@ export function ensureXdgDirs(): void {
     configHome,
     `${configHome}/channels`,
     `${configHome}/opencode`,
-    `${configHome}/cron`,
+    `${configHome}/automations`,
 
     // DATA_HOME — persistent service data (pre-created to avoid root-owned dirs)
     dataHome,
@@ -1035,14 +1036,14 @@ export function ensureXdgDirs(): void {
     `${dataHome}/caddy`,
     `${dataHome}/caddy/data`,
     `${dataHome}/caddy/config`,
-    `${dataHome}/cron`,
+    `${dataHome}/automations`,
 
     // STATE_HOME — assembled runtime
     stateHome,
     `${stateHome}/artifacts`,
     `${stateHome}/audit`,
     `${stateHome}/artifacts/channels`,
-    `${stateHome}/cron`
+    `${stateHome}/automations`
   ]) {
     mkdirSync(dir, { recursive: true });
   }

@@ -28,6 +28,9 @@ edit STATE_HOME or DATA_HOME directly.
 │   ├── telegram.yml
 │   └── telegram.caddy
 │
+├── automations/             # Scheduled automations (drop files here)
+│   └── backup
+│
 └── opencode/
     ├── opencode.json        # OpenCode config (LLM provider, settings)
     ├── tools/               # Drop custom tools here
@@ -144,6 +147,92 @@ Or manually: remove (or rename) its `.yml` from `channels/` and apply.
 
 ---
 
+## Automations
+
+You can schedule recurring tasks — like backups, cleanup scripts, or health checks —
+by dropping a file into `~/.config/openpalm/automations/`.
+
+### How to add an automation
+
+1. Create a file in `~/.config/openpalm/automations/` (no file extension needed)
+2. Write one or more schedule lines
+3. Restart admin to activate: `docker compose restart admin`
+
+**Example** — pull the latest container images every Sunday at 3 AM:
+
+```
+# ~/.config/openpalm/automations/update-containers
+SHELL=/bin/bash
+0 3 * * 0 node bash -c '. /etc/openpalm-env && curl -sf -X POST http://localhost:8100/admin/containers/pull -H "x-admin-token: $ADMIN_TOKEN" -H "x-requested-by: automation" -o /dev/null'
+```
+
+OpenPalm ships several ready-to-use examples in `assets/automations/` — copy any
+of them into `~/.config/openpalm/automations/` to activate:
+
+| File | What it does |
+|---|---|
+| `update-containers` | Weekly pull latest images and recreate containers |
+| `health-check` | Check admin health every 5 minutes, log failures |
+| `prompt-assistant` | Send a daily prompt to the assistant via the chat channel |
+| `cleanup-logs` | Weekly trim audit logs to prevent unbounded disk growth |
+
+### Schedule format
+
+Each schedule line has five time fields followed by the user (`node`) and the command:
+
+```
+┌───────── minute (0–59)
+│ ┌─────── hour (0–23)
+│ │ ┌───── day of month (1–31)
+│ │ │ ┌─── month (1–12)
+│ │ │ │ ┌─ day of week (0–7, 0 and 7 are Sunday)
+│ │ │ │ │
+* * * * * node /path/to/command
+```
+
+Common examples:
+
+| Schedule | Meaning |
+|---|---|
+| `0 * * * *` | Every hour |
+| `0 2 * * *` | Daily at 2 AM |
+| `0 0 * * 0` | Weekly on Sunday at midnight |
+| `*/5 * * * *` | Every 5 minutes |
+
+### Using the admin API from automations
+
+Automations can call the admin API (e.g., to pull images, restart services, or check
+status). The container environment is available via `. /etc/openpalm-env` at the
+start of your command, which gives you `$ADMIN_TOKEN` and path variables.
+
+```
+0 2 * * * node bash -c '. /etc/openpalm-env && curl -sf -X POST http://localhost:8100/admin/containers/restart -H "x-admin-token: $ADMIN_TOKEN" -H "Content-Type: application/json" -d "{\"service\":\"assistant\"}" -o /dev/null'
+```
+
+### Rules
+
+- **Filenames** must be lowercase letters, numbers, and hyphens only — no file extension (e.g., `backup`, `weekly-cleanup`)
+- **User field** must be `node` — automations using any other user are silently skipped
+- Automations run on the **admin container**, which has access to Docker (via socket proxy), your config, and data directories
+- Lines starting with `#` are comments; you can also set environment variables like `SHELL=/bin/bash`
+
+### When do changes take effect?
+
+Automation files are picked up during **apply** (admin startup). After adding or
+editing a file, restart admin to activate:
+
+```bash
+docker compose restart admin
+```
+
+### Overriding system automations
+
+OpenPalm may ship system-managed automations in `~/.local/share/openpalm/automations/`.
+If you create a user file with the **same name**, your version takes priority.
+You don't need to edit system files directly.
+
+---
+
 ## Access Scope
 
 Controls which IPs the admin UI and LAN channels accept.
@@ -254,6 +343,10 @@ All ports are `127.0.0.1`-bound by default. Caddy at `:8080` is the main ingress
 **Rotate the admin token:**
 1. Update `ADMIN_TOKEN` in `secrets.env`
 2. Restart all services: `docker compose restart`
+
+**Add an automation:**
+1. Create `~/.config/openpalm/automations/my-job` with your schedule
+2. Restart admin: `docker compose restart admin`
 
 **View audit logs:**
 ```bash

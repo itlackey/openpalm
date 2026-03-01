@@ -35,8 +35,8 @@ CONFIG_HOME (~/.config/openpalm/)
 ├── channels/                # Installed channel definitions (populated via admin API or manually)
 │   ├── <name>.yml           # Compose overlay for channel-<name> (installed from registry or manually added)
 │   └── <name>.caddy         # Caddy route (optional — installed alongside .yml)
-├── cron/                    # User cron jobs (executed on admin container)
-│   └── <name>.cron          # Cron file in /etc/cron.d/ format (schedule + user + command)
+├── automations/             # Scheduled automations (executed on admin container)
+│   └── <name>               # Automation file: schedule + user + command (one per line)
 └── opencode/                # OpenCode user extensions (tools, plugins, skills)
     ├── opencode.json        # User OpenCode config (schema ref only; never overwritten)
     ├── tools/               # Custom tool definitions
@@ -51,8 +51,8 @@ STATE_HOME (~/.local/state/openpalm/)
 │   ├── manifest.json        # Artifact checksums & timestamps
 │   ├── Caddyfile            # Staged Caddy config (copied from DATA_HOME/caddy/Caddyfile)
 │   └── channels/            # Staged channel overlays/snippets used at runtime
-├── cron/                    # Staged cron files (assembled from DATA_HOME/cron + CONFIG_HOME/cron)
-│   └── <name>.cron          # Staged cron file copied to /etc/cron.d/ on admin container startup
+├── automations/             # Staged automation files (assembled from DATA_HOME + CONFIG_HOME)
+│   └── <name>               # Staged automation file loaded on admin container startup
 └── audit/
     ├── admin-audit.jsonl    # Admin audit log
     └── guardian-audit.log    # Guardian audit log
@@ -64,8 +64,8 @@ DATA_HOME (~/.local/share/openpalm/)
 ├── openmemory/              # OpenMemory persistent data
 ├── assistant/               # Assistant /home/opencode (dotfiles, caches)
 ├── guardian/                 # Guardian runtime data
-├── cron/                    # System-managed cron files (pre-installed, survive updates)
-│   └── <name>.cron          # System cron file in /etc/cron.d/ format
+├── automations/             # System-managed automations (pre-installed, survive updates)
+│   └── <name>               # System automation file
 └── caddy/
     ├── Caddyfile            # System-managed core Caddy policy source
     ├── data/                # Caddy TLS certificates
@@ -148,7 +148,7 @@ environment variables directly (useful for dev/test without a secrets file).
 |-----------|---------------|------|---------|
 | `$CONFIG_HOME` | `$CONFIG_HOME` (same path) | rw | Channel files, secrets, extensions |
 | `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Pre-create DATA_HOME subdirs, ensure ownership |
-| `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs, staged cron files |
+| `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs, staged automations |
 
 The admin accesses Docker via the socket proxy (HTTP over `admin_docker_net`).
 It mounts CONFIG_HOME, DATA_HOME, and STATE_HOME using identical
@@ -156,10 +156,10 @@ host-to-container paths, and uses `process.env.OPENPALM_*` to resolve paths
 at runtime. The DATA_HOME mount allows the admin to pre-create subdirectories
 with correct ownership before other services start.
 
-Cron jobs run on the admin container via crond. The entrypoint copies staged
-cron files from `STATE_HOME/cron/` to `/etc/cron.d/` with correct ownership
-and starts crond before dropping privileges for the main SvelteKit process.
-See the Cron Jobs section below for file format and configuration.
+Scheduled automations run on the admin container. The entrypoint installs
+staged automation files from `STATE_HOME/automations/` before dropping
+privileges for the main SvelteKit process. See the Automations section
+below for file format and configuration.
 
 ---
 
@@ -268,18 +268,18 @@ A channel needs:
 
 ---
 
-## Cron Jobs
+## Automations
 
-OpenPalm supports scheduled jobs on the admin container via crond.
-Cron files follow the same staging pattern as channels: user files in
+OpenPalm supports scheduled automations on the admin container.
+Automation files follow the same staging pattern as channels: user files in
 CONFIG_HOME, system files in DATA_HOME, both staged to STATE_HOME for
 runtime consumption. Jobs run on the admin container, which has access
 to Docker (via the socket proxy), CONFIG_HOME, DATA_HOME, and STATE_HOME.
 
-### Adding a cron job
+### Adding an automation
 
-Drop a `.cron` file into `CONFIG_HOME/cron/`. The file uses standard
-`/etc/cron.d/` format (schedule + user field + command):
+Drop a file into `CONFIG_HOME/automations/`. Each file contains one or more
+schedule lines (schedule + user field + command):
 
 ```
 # Daily backup at 2am
@@ -287,33 +287,33 @@ SHELL=/bin/bash
 0 2 * * * node /path/to/script.sh
 ```
 
-The user field must be `node` — this is enforced at staging time; any cron
-file containing a job line with a different user is silently skipped and will
-not be installed.
+The user field must be `node` — this is enforced at staging time; any
+automation file containing a job line with a different user is silently
+skipped and will not be installed.
 
 ### File naming
 
 Filenames must be lowercase alphanumeric with hyphens (`[a-z0-9][a-z0-9-]*`),
-plus the `.cron` extension. Examples: `backup.cron`, `weekly-cleanup.cron`.
+with no file extension. Examples: `backup`, `weekly-cleanup`.
 
-### System cron jobs
+### System automations
 
-System-managed cron files live in `DATA_HOME/cron/`. These are seeded
-during install and survive updates. They follow the same format as user
-cron files.
+System-managed automation files live in `DATA_HOME/automations/`. These are
+seeded during install and survive updates. They follow the same format as
+user automations.
 
 ### Staging and precedence
 
-On every apply, the admin stages cron files into `STATE_HOME/cron/`:
+On every apply, the admin stages automation files into `STATE_HOME/automations/`:
 
-1. Copy all `.cron` files from `DATA_HOME/cron/` (system jobs)
-2. Copy all `.cron` files from `CONFIG_HOME/cron/` (user jobs)
+1. Copy all files from `DATA_HOME/automations/` (system automations)
+2. Copy all files from `CONFIG_HOME/automations/` (user automations)
 
 User files with the same name as a system file override the system version.
-The admin container already mounts the full STATE_HOME, so `STATE_HOME/cron/`
-is accessible without an additional bind mount. The entrypoint copies staged
-files to `/etc/cron.d/` with correct ownership and starts crond. Changes
-require a container restart (triggered by apply).
+The admin container already mounts the full STATE_HOME, so
+`STATE_HOME/automations/` is accessible without an additional bind mount.
+The entrypoint installs staged files and starts the scheduler on container
+startup. Changes require a container restart (triggered by apply).
 
 ---
 
