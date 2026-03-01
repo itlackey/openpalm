@@ -35,7 +35,7 @@ CONFIG_HOME (~/.config/openpalm/)
 ├── channels/                # Installed channel definitions (populated via admin API or manually)
 │   ├── <name>.yml           # Compose overlay for channel-<name> (installed from registry or manually added)
 │   └── <name>.caddy         # Caddy route (optional — installed alongside .yml)
-├── cron/                    # User cron jobs (executed on assistant container)
+├── cron/                    # User cron jobs (executed on admin container via crond)
 │   └── <name>.cron          # Cron file in /etc/cron.d/ format (schedule + user + command)
 └── opencode/                # OpenCode user extensions (tools, plugins, skills)
     ├── opencode.json        # User OpenCode config (schema ref only; never overwritten)
@@ -52,7 +52,7 @@ STATE_HOME (~/.local/state/openpalm/)
 │   ├── Caddyfile            # Staged Caddy config (copied from DATA_HOME/caddy/Caddyfile)
 │   └── channels/            # Staged channel overlays/snippets used at runtime
 ├── cron/                    # Staged cron files (assembled from DATA_HOME/cron + CONFIG_HOME/cron)
-│   └── <name>.cron          # Staged cron file mounted into assistant at /opt/cron.d/
+│   └── <name>.cron          # Staged cron file copied to /etc/cron.d/ on admin container startup
 └── audit/
     ├── admin-audit.jsonl    # Admin audit log
     └── guardian-audit.log    # Guardian audit log
@@ -287,8 +287,9 @@ SHELL=/bin/bash
 0 2 * * * node /path/to/script.sh
 ```
 
-The `node` user field is required — this is the non-root user that runs
-the job inside the admin container.
+The user field specifies which user runs the job inside the admin
+container. Use the target UID's username (e.g. `node`) or `root` if
+elevated privileges are needed. Exercise caution with elevated users.
 
 ### File naming
 

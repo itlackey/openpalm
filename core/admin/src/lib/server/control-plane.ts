@@ -744,9 +744,9 @@ const CRON_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
  */
 function discoverCronFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".cron"))
-    .map((f) => ({ name: f.replace(/\.cron$/, ""), path: `${dir}/${f}` }))
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".cron"))
+    .map((entry) => ({ name: entry.name.replace(/\.cron$/, ""), path: `${dir}/${entry.name}` }))
     .filter((entry) => CRON_FILE_NAME_RE.test(entry.name));
 }
 

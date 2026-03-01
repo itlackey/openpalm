@@ -134,8 +134,8 @@ STATE_HOME. The DATA_HOME mount allows the admin to pre-create subdirectories
 with correct ownership before other services start.
 
 The admin container starts as root for crond setup, then drops privileges
-to `node` (UID/GID matching `$OPENPALM_UID:$OPENPALM_GID`, default
-`1000:1000`) via gosu before running the SvelteKit app. Staged cron files
+to the target `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`) via
+gosu before running the SvelteKit app. Staged cron files
 from `STATE_HOME/cron/` are copied to `/etc/cron.d/` with correct ownership
 on startup. See [directory-structure.md](./directory-structure.md) for cron
 file format and configuration.
