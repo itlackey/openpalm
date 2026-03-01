@@ -20,10 +20,65 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
 
 These are hard constraints that must never be violated during development:
 
-1. **Admin is the sole orchestrator.** Only the admin container has Docker socket access. No other container may mount or access the Docker socket.
+1. **Admin is the sole orchestrator.** Only the admin container has Docker socket access (via the proxy). No other container may mount or access the Docker socket.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant.
 3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/opencode`, `WORK_DIR`), and interacts with the stack exclusively through the admin API.
 4. **LAN-first by default.** Admin interfaces, dashboards, and channels are LAN-restricted by default. Nothing is publicly exposed without explicit user opt-in.
+
+## Security principles
+
+These principles govern all security-relevant decisions and must be followed by all contributors.
+
+### Authentication and authorization
+
+5. **No endpoint may be unauthenticated unless explicitly designed as public.** Every API endpoint that performs state changes or returns sensitive data must validate the admin token via `requireAdmin`. Exceptions (health checks, initial setup) must be explicitly documented and minimized in surface area.
+6. **Empty credentials must always be rejected.** Token comparison functions must reject empty strings before performing constant-time comparison. `safeTokenCompare("", "")` must return `false`. All auth functions must include an explicit `if (!a || !b) return false;` guard.
+7. **Admin tokens must meet minimum strength requirements.** Enforce a minimum length of 16 characters for admin tokens set via the setup wizard or API. Consider auto-generating strong tokens.
+8. **Session tokens must not be exposed via unauthenticated endpoints.** Setup tokens, bootstrap tokens, and other ephemeral credentials must never be returned in API responses accessible without authentication. Use out-of-band delivery (terminal output, QR code) instead.
+9. **All secret comparisons must use constant-time algorithms.** Use `timingSafeEqual` or the project's `safeTokenCompare` for all secret comparisons — admin tokens, API keys, HMAC signatures, setup tokens. Never use `===` or `!==` for secrets.
+10. **Rate limiting is mandatory on authentication endpoints.** Implement per-IP rate limiting with progressive backoff on all endpoints that accept authentication credentials.
+
+### Secrets management
+
+11. **Secrets must never be committed to version control.** Template files containing secret placeholders must use a `.example` or `.template` suffix and be listed in `.gitignore`. Actual secrets files must always be gitignored.
+12. **Secrets must be stored with restrictive filesystem permissions.** All files containing secrets (`secrets.env`, `stack.env`) must be created with `0600` permissions. Directory permissions must be `0700`.
+13. **Secrets must not appear in process arguments.** Never pass tokens or keys via command-line arguments (visible in `/proc/*/cmdline`). Use environment variables, stdin, or temp files with restricted permissions instead.
+14. **Error responses must not leak internal details.** Return generic error messages to API clients. Log detailed errors (stack traces, filesystem paths, Docker stderr) server-side only. Never return `err.message` or `String(err)` to the client.
+
+### Supply chain and dependencies
+
+15. **Docker base images must be pinned by SHA256 digest.** Never use floating tags (`latest`, `1-slim`, `22-slim`) for base images in production Dockerfiles. Pin every base image by its `@sha256:` digest.
+16. **Lock files must never be deleted in Dockerfiles.** Use `--frozen-lockfile` to ensure reproducible builds. If a lock file is incompatible with the build environment, fix the lock file — do not delete it.
+17. **Remote scripts must never be piped to bash without integrity verification.** Any `curl | bash` pattern must include checksum verification or be replaced with a pinned binary download with signature validation.
+18. **Dependencies must be audited regularly.** Run `npm audit` / `bun audit` as part of CI. New dependencies must be reviewed for known vulnerabilities before merging.
+19. **Only one package manager lock file should exist.** Remove stale lock files from other package managers to prevent accidental use.
+
+### Container and infrastructure security
+
+20. **Docker socket proxy must use minimum required permissions.** Only enable the API categories strictly needed. `EXEC` must not be enabled unless there is no alternative. Document the justification for each enabled API category.
+21. **Containers must not run as root unless absolutely necessary.** Use `USER` directives in Dockerfiles. If root is needed at startup (e.g., for cron), drop privileges immediately and document why root was needed.
+22. **All containers must define resource limits.** Set `mem_limit`, `cpus`, and `pids_limit` for every service to prevent resource exhaustion DoS.
+23. **Container root filesystems should be read-only where feasible.** Use `read_only: true` with explicit `tmpfs` mounts for writable paths.
+24. **All containers must use `no-new-privileges: true`.** Prevent privilege escalation via setuid/setgid binaries.
+
+### Network and transport security
+
+25. **TLS must be enforced for any deployment beyond localhost.** Document the requirement for HTTPS. Provide Caddy auto-TLS configuration for production. Add HSTS headers.
+26. **Security headers must be configured on the reverse proxy.** At minimum: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy`, `Referrer-Policy: strict-origin-when-cross-origin`.
+27. **All reverse-proxy routes must have explicit access control.** Every `handle` / `handle_path` block in the Caddyfile must include either `import lan_only` or `import public_access`. Never leave a route without an explicit access policy.
+28. **CORS must be explicitly configured.** Add a CORS policy that restricts allowed origins. Never rely on implicit browser behavior.
+
+### Input validation and injection prevention
+
+29. **All user input must be validated at API boundaries.** Validate type, format, length, and allowed values for every request parameter. Reject unknown keys. Enforce maximum body sizes.
+30. **Request body size must be limited.** Enforce a maximum JSON body size (e.g., 1MB) on all endpoints to prevent memory exhaustion.
+31. **Channel user identity must be derived from authentication, not from request bodies.** Never trust a client-supplied `user` or `userId` field for identity — derive it from the authenticated credential.
+32. **Prompt injection defenses must be implemented for LLM interactions.** Treat all user-supplied text as untrusted. Memory content injected into LLM context must be sandboxed with clear delimiters. Document the risk of prompt injection in channel AGENTS.md files.
+
+### Audit and observability
+
+33. **Audit logs must be bounded.** Implement log rotation with a maximum size (e.g., 10MB) and retention policy (e.g., 3 rotated files). Never allow unbounded log growth on disk.
+34. **Client-supplied metadata (request IDs, caller types) must be sanitized.** Validate format and length before including in audit logs or response headers.
 
 ---
 
