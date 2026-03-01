@@ -74,7 +74,7 @@ Adding a channel requires no code changes — just drop a Docker Compose overlay
 
 ### Automations
 
-Schedule recurring tasks by dropping a file into `~/.config/openpalm/automations/`. OpenPalm ships ready-to-use examples for auto-updating containers, health checks, sending prompts to the assistant, and log cleanup. Copy any example from `assets/automations/` to get started. See [`docs/managing-openpalm.md`](docs/managing-openpalm.md#automations) for details.
+Schedule recurring tasks by dropping a `.yaml` file into `~/.config/openpalm/automations/`. OpenPalm ships ready-to-use examples for auto-updating containers, health checks, sending prompts to the assistant, and log cleanup. Copy any example from `assets/automations/` to get started. See [`docs/managing-openpalm.md`](docs/managing-openpalm.md#automations) for details.
 
 <div>
 

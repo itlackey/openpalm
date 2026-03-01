@@ -27,6 +27,7 @@ import {
   randomHex
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
+import { reloadScheduler } from "$lib/server/scheduler.js";
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -59,6 +60,7 @@ export const POST: RequestHandler = async (event) => {
   state.services[`channel-${channel}`] = "running";
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
+  reloadScheduler(state.stateDir, state.adminToken);
 
   // Run docker compose up
   const dockerCheck = await checkDocker();

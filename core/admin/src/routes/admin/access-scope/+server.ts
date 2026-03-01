@@ -24,6 +24,7 @@ import {
   buildEnvFiles
 } from "$lib/server/control-plane.js";
 import { caddyReload, checkDocker } from "$lib/server/docker.js";
+import { reloadScheduler } from "$lib/server/scheduler.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -64,6 +65,7 @@ export const POST: RequestHandler = async (event) => {
 
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
+  reloadScheduler(state.stateDir, state.adminToken);
 
   // Reload Caddy to apply new access scope
   const dockerCheck = await checkDocker();

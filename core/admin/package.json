@@ -14,6 +14,10 @@
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write ."
   },
+  "dependencies": {
+    "croner": "^9.0.0",
+    "yaml": "^2.8.0"
+  },
   "devDependencies": {
     "@eslint/compat": "^2.0.2",
     "@eslint/js": "^9.39.2",

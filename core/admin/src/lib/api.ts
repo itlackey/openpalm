@@ -1,4 +1,4 @@
-import type { HealthPayload, ContainerListResponse } from './types.js';
+import type { HealthPayload, ContainerListResponse, AutomationsResponse } from './types.js';
 
 const apiBase = '';
 
@@ -130,6 +130,18 @@ export async function containerAction(
     const text = await res.text();
     throw new Error(text);
   }
+}
+
+export async function fetchAutomations(token: string): Promise<AutomationsResponse> {
+  const res = await get('/admin/automations', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+  return (await res.json()) as AutomationsResponse;
 }
 
 export async function fetchConnectionStatus(

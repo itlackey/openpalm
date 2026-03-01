@@ -16,6 +16,7 @@ import {
   persistArtifacts,
   appendAudit
 } from "$lib/server/control-plane.js";
+import { startScheduler, stopScheduler } from "$lib/server/scheduler.js";
 
 const logger = createLogger("admin");
 
@@ -32,6 +33,8 @@ function runStartupApply(): void {
     ensureOpenCodeConfig();
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
+
+    startScheduler(state.stateDir, state.adminToken);
 
     appendAudit(
       state,
@@ -67,3 +70,7 @@ function runStartupApply(): void {
 
 // Run immediately on module load (server startup)
 runStartupApply();
+
+// Graceful shutdown — stop scheduled jobs
+process.on("SIGTERM", () => { stopScheduler(); });
+process.on("SIGINT", () => { stopScheduler(); });

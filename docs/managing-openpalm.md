@@ -150,20 +150,31 @@ Or manually: remove (or rename) its `.yml` from `channels/` and apply.
 ## Automations
 
 You can schedule recurring tasks — like backups, cleanup scripts, or health checks —
-by dropping a file into `~/.config/openpalm/automations/`.
+by dropping a `.yml` file into `~/.config/openpalm/automations/`.
+
+Automations run in-process using the Croner scheduler (no system cron required).
+The admin container does not need root privileges.
 
 ### How to add an automation
 
-1. Create a file in `~/.config/openpalm/automations/` (no file extension needed)
-2. Write one or more schedule lines
+1. Create a `.yml` file in `~/.config/openpalm/automations/`
+2. Define a schedule and action (see format below)
 3. Restart admin to activate: `docker compose restart admin`
 
 **Example** — pull the latest container images every Sunday at 3 AM:
 
-```
-# ~/.config/openpalm/automations/update-containers
-SHELL=/bin/bash
-0 3 * * 0 node bash -c '. /etc/openpalm-env && curl -sf -X POST http://localhost:8100/admin/containers/pull -H "x-admin-token: $ADMIN_TOKEN" -H "x-requested-by: automation" -o /dev/null'
+```yaml
+# ~/.config/openpalm/automations/update-containers.yml
+name: Update Containers
+description: Pull latest images and recreate containers weekly
+schedule: weekly-sunday-3am
+enabled: true
+
+action:
+  type: api
+  method: POST
+  path: /admin/containers/pull
+  timeout: 300000
 ```
 
 OpenPalm ships several ready-to-use examples in `assets/automations/` — copy any
@@ -171,55 +182,67 @@ of them into `~/.config/openpalm/automations/` to activate:
 
 | File | What it does |
 |---|---|
-| `update-containers` | Weekly pull latest images and recreate containers |
-| `health-check` | Check admin health every 5 minutes, log failures |
-| `prompt-assistant` | Send a daily prompt to the assistant via the chat channel |
-| `cleanup-logs` | Weekly trim audit logs to prevent unbounded disk growth |
+| `health-check.yml` | Check admin health every 5 minutes |
+| `prompt-assistant.yml` | Send a daily prompt to the assistant via the chat channel |
+| `cleanup-logs.yml` | Weekly trim audit logs to prevent unbounded disk growth |
+| `update-containers.yml` | Weekly pull latest images and recreate containers |
 
-### Schedule format
+### Automation YAML format
 
-Each schedule line has five time fields followed by the user (`node`) and the command:
+```yaml
+name: My Automation          # optional display name
+description: What it does    # optional
+schedule: every-5-minutes    # cron expression or preset name
+timezone: UTC                # optional, default UTC
+enabled: true                # optional, default true
 
+action:
+  type: api                  # "api" | "http" | "shell"
+  method: GET
+  path: /health
+  timeout: 30000             # optional, ms
+
+on_failure: log              # "log" (default) | "audit"
 ```
-┌───────── minute (0–59)
-│ ┌─────── hour (0–23)
-│ │ ┌───── day of month (1–31)
-│ │ │ ┌─── month (1–12)
-│ │ │ │ ┌─ day of week (0–7, 0 and 7 are Sunday)
-│ │ │ │ │
-* * * * * node /path/to/command
-```
 
-Common examples:
+### Action types
 
-| Schedule | Meaning |
+| Type | Purpose | Key fields |
+|---|---|---|
+| `api` | Admin API call — auto-injects admin token and `x-requested-by: automation` | `method`, `path`, `body?`, `headers?` |
+| `http` | Any HTTP endpoint — no auto-auth | `method`, `url`, `body?`, `headers?` |
+| `shell` | Run a command via `execFile` (argument array, no shell interpolation) | `command` (string array) |
+
+### Schedule presets
+
+You can use a human-readable preset name instead of a cron expression:
+
+| Preset | Cron |
 |---|---|
-| `0 * * * *` | Every hour |
-| `0 2 * * *` | Daily at 2 AM |
-| `0 0 * * 0` | Weekly on Sunday at midnight |
-| `*/5 * * * *` | Every 5 minutes |
+| `every-minute` | `* * * * *` |
+| `every-5-minutes` | `*/5 * * * *` |
+| `every-15-minutes` | `*/15 * * * *` |
+| `every-hour` | `0 * * * *` |
+| `daily` | `0 0 * * *` |
+| `daily-8am` | `0 8 * * *` |
+| `weekly` | `0 0 * * 0` |
+| `weekly-sunday-3am` | `0 3 * * 0` |
+| `weekly-sunday-4am` | `0 4 * * 0` |
 
-### Using the admin API from automations
-
-Automations can call the admin API (e.g., to pull images, restart services, or check
-status). The container environment is available via `. /etc/openpalm-env` at the
-start of your command, which gives you `$ADMIN_TOKEN` and path variables.
-
-```
-0 2 * * * node bash -c '. /etc/openpalm-env && curl -sf -X POST http://localhost:8100/admin/containers/restart -H "x-admin-token: $ADMIN_TOKEN" -H "Content-Type: application/json" -d "{\"service\":\"assistant\"}" -o /dev/null'
-```
+Or use standard cron syntax directly (e.g., `"0 2 * * *"` for daily at 2 AM).
 
 ### Rules
 
-- **Filenames** must be lowercase letters, numbers, and hyphens only — no file extension (e.g., `backup`, `weekly-cleanup`)
-- **User field** must be `node` — automations using any other user are silently skipped
-- Automations run on the **admin container**, which has access to Docker (via socket proxy), your config, and data directories
-- Lines starting with `#` are comments; you can also set environment variables like `SHELL=/bin/bash`
+- **Filenames** must use `.yml` extension (e.g., `backup.yml`, `weekly-cleanup.yml`)
+- Filenames must be lowercase letters, numbers, and hyphens only (before the `.yml` extension)
+- Automations run in-process on the **admin container**, which has access to Docker (via socket proxy), your config, and data directories
+- Shell actions use `execFile` with an argument array — no shell interpolation for security
 
 ### When do changes take effect?
 
-Automation files are picked up during **apply** (admin startup). After adding or
-editing a file, restart admin to activate:
+Automation files are picked up during **apply** (admin startup) and whenever
+channels are installed or uninstalled. After adding or editing a file, restart
+admin to activate:
 
 ```bash
 docker compose restart admin

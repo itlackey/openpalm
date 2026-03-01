@@ -8,6 +8,7 @@
   import OverviewTab from '$lib/components/OverviewTab.svelte';
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
+  import AutomationsTab from '$lib/components/AutomationsTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
@@ -15,13 +16,14 @@
     fetchAccessScope,
     fetchContainers,
     fetchArtifacts,
+    fetchAutomations,
     installStack,
     applyChanges,
     pullContainers,
     containerAction,
     fetchConnectionStatus
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -43,16 +45,19 @@
   let pullLoading = $state(false);
   let artifactsLoading = $state(false);
   let containersLoading = $state(false);
+  let automationsLoading = $state(false);
 
   // ── Content state ───────────────────────────────────────────────────────────
   let installResult = $state('');
   let artifacts = $state('');
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
+  let automationsData: AutomationsResponse | null = $state(null);
+  let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'containers' | 'artifacts' = $state('overview');
+  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' = $state('overview');
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   let services = $derived([
@@ -203,6 +208,34 @@
     artifactsLoading = false;
   }
 
+  async function loadAutomations(): Promise<void> {
+    const token = getAdminToken();
+    tokenStored = Boolean(token);
+    if (!token) {
+      authLocked = true;
+      authError = 'Admin token required.';
+      adminStatus = '';
+      automationsError = 'Admin token required for protected actions.';
+      automationsData = null;
+      return;
+    }
+    automationsLoading = true;
+    automationsError = '';
+    try {
+      automationsData = await fetchAutomations(token);
+    } catch (e) {
+      automationsData = null;
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        automationsError = 'Invalid admin token.';
+        applyInvalidTokenState();
+      } else {
+        automationsError = `Failed to load automations: ${err.message ?? e}`;
+      }
+    }
+    automationsLoading = false;
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function handleInstall(): Promise<void> {
@@ -301,10 +334,13 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts'): void {
+  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
+    }
+    if (tab === 'automations' && !automationsData) {
+      void loadAutomations();
     }
   }
 
@@ -413,6 +449,14 @@
         onInspectCompose={() => loadArtifacts('compose')}
         onInspectCaddy={() => loadArtifacts('caddyfile')}
         onDismiss={() => (artifacts = '')}
+      />
+    {:else if activeTab === 'automations'}
+      <AutomationsTab
+        data={automationsData}
+        loading={automationsLoading}
+        error={automationsError}
+        {tokenStored}
+        onRefresh={loadAutomations}
       />
     {/if}
   </main>

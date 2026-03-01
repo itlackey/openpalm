@@ -413,22 +413,11 @@ describe("Staging idempotence", () => {
   });
 });
 
-// ── Automation staging ─────────────────────────────────────────────────
+// ── Automation staging (YAML format) ──────────────────────────────────
 
-const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const ALLOWED_AUTOMATION_USER = "node";
+import { parseAutomationYaml } from "./scheduler.js";
 
-function validateAutomationContent(content: string): boolean {
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(trimmed)) continue;
-    const fields = trimmed.split(/\s+/);
-    if (fields.length < 7) continue;
-    if (fields[5] !== ALLOWED_AUTOMATION_USER) return false;
-  }
-  return true;
-}
+const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}\.yml$/;
 
 function discoverAutomationFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
@@ -457,7 +446,7 @@ function stageAutomationFilesFn(
   const systemDir = join(dataDir, "automations");
   for (const entry of discoverAutomationFiles(systemDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateAutomationContent(content)) continue;
+    if (!parseAutomationYaml(content, entry.name)) continue;
     writeFileSync(join(stagedDir, entry.name), content);
   }
 
@@ -465,7 +454,7 @@ function stageAutomationFilesFn(
   const userDir = join(configDir, "automations");
   for (const entry of discoverAutomationFiles(userDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateAutomationContent(content)) continue;
+    if (!parseAutomationYaml(content, entry.name)) continue;
     writeFileSync(join(stagedDir, entry.name), content);
   }
 }
@@ -481,6 +470,11 @@ function seedAutomationFiles(
   }
 }
 
+// Valid YAML automation content for tests
+const VALID_API_YAML = 'schedule: daily\naction:\n  type: api\n  path: /health\n';
+const VALID_HTTP_YAML = 'schedule: daily\naction:\n  type: http\n  method: POST\n  url: http://example.com/hook\n';
+const VALID_SHELL_YAML = 'schedule: weekly\naction:\n  type: shell\n  command:\n    - /bin/echo\n    - hello\n';
+
 let dataDir: string;
 
 describe("Automation file staging", () => {
@@ -493,83 +487,139 @@ describe("Automation file staging", () => {
   });
 
   test("user automation files are staged to STATE_HOME/automations/", () => {
-    const content = "0 2 * * * node /work/scripts/backup.sh\n";
-    seedAutomationFiles(configDir, [{ name: "backup", content }]);
+    seedAutomationFiles(configDir, [{ name: "backup.yml", content: VALID_API_YAML }]);
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const stagedPath = join(stateDir, "automations", "backup");
+    const stagedPath = join(stateDir, "automations", "backup.yml");
     expect(existsSync(stagedPath)).toBe(true);
-    expect(readFileSync(stagedPath, "utf-8")).toBe(content);
+    expect(readFileSync(stagedPath, "utf-8")).toBe(VALID_API_YAML);
   });
 
   test("system automation files are staged from DATA_HOME/automations/", () => {
-    const content = "*/5 * * * * node /work/scripts/healthcheck.sh\n";
-    seedAutomationFiles(dataDir, [{ name: "healthcheck", content }]);
+    seedAutomationFiles(dataDir, [{ name: "healthcheck.yml", content: VALID_API_YAML }]);
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const stagedPath = join(stateDir, "automations", "healthcheck");
+    const stagedPath = join(stateDir, "automations", "healthcheck.yml");
     expect(existsSync(stagedPath)).toBe(true);
-    expect(readFileSync(stagedPath, "utf-8")).toBe(content);
   });
 
   test("user automation files override system files with the same name", () => {
-    const systemContent = "0 3 * * * node /work/scripts/old-backup.sh\n";
-    const userContent = "0 2 * * * node /work/scripts/my-backup.sh\n";
+    const systemContent = 'schedule: daily\naction:\n  type: api\n  path: /old\n';
+    const userContent = 'schedule: daily\naction:\n  type: api\n  path: /new\n';
 
-    seedAutomationFiles(dataDir, [{ name: "backup", content: systemContent }]);
-    seedAutomationFiles(configDir, [{ name: "backup", content: userContent }]);
+    seedAutomationFiles(dataDir, [{ name: "backup.yml", content: systemContent }]);
+    seedAutomationFiles(configDir, [{ name: "backup.yml", content: userContent }]);
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    const stagedPath = join(stateDir, "automations", "backup");
+    const stagedPath = join(stateDir, "automations", "backup.yml");
     expect(readFileSync(stagedPath, "utf-8")).toBe(userContent);
   });
 
   test("both system and user automation files are staged together", () => {
     seedAutomationFiles(dataDir, [
-      { name: "healthcheck", content: "*/5 * * * * node /work/scripts/hc.sh\n" }
+      { name: "healthcheck.yml", content: VALID_API_YAML }
     ]);
     seedAutomationFiles(configDir, [
-      { name: "backup", content: "0 2 * * * node /work/scripts/backup.sh\n" }
+      { name: "backup.yml", content: VALID_HTTP_YAML }
     ]);
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "automations", "healthcheck"))).toBe(true);
-    expect(existsSync(join(stateDir, "automations", "backup"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "healthcheck.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "backup.yml"))).toBe(true);
+  });
+
+  test("all three action types can be staged", () => {
+    seedAutomationFiles(configDir, [
+      { name: "api-job.yml", content: VALID_API_YAML },
+      { name: "http-job.yml", content: VALID_HTTP_YAML },
+      { name: "shell-job.yml", content: VALID_SHELL_YAML }
+    ]);
+
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "automations", "api-job.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "http-job.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "shell-job.yml"))).toBe(true);
   });
 
   test("invalid automation filenames are ignored", () => {
     const automationsDir = join(configDir, "automations");
     mkdirSync(automationsDir, { recursive: true });
     // Invalid: starts with hyphen
-    writeFileSync(join(automationsDir, "-bad"), "* * * * * node /work/bad.sh\n");
+    writeFileSync(join(automationsDir, "-bad.yml"), VALID_API_YAML);
     // Valid
-    writeFileSync(join(automationsDir, "good"), "* * * * * node /work/good.sh\n");
+    writeFileSync(join(automationsDir, "good.yml"), VALID_API_YAML);
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "automations", "good"))).toBe(true);
-    expect(existsSync(join(stateDir, "automations", "-bad"))).toBe(false);
+    expect(existsSync(join(stateDir, "automations", "good.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "-bad.yml"))).toBe(false);
+  });
+
+  test("non-.yml files are ignored", () => {
+    const automationsDir = join(configDir, "automations");
+    mkdirSync(automationsDir, { recursive: true });
+    // Old crontab-style file without .yml extension
+    writeFileSync(join(automationsDir, "old-crontab"), "0 2 * * * node /work/task.sh\n");
+    // Valid YAML automation
+    writeFileSync(join(automationsDir, "good.yml"), VALID_API_YAML);
+
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "automations", "good.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "old-crontab"))).toBe(false);
+  });
+
+  test("invalid YAML content is not staged", () => {
+    seedAutomationFiles(configDir, [
+      { name: "bad-yaml.yml", content: "schedule: [invalid: yaml: :::" }
+    ]);
+
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "automations", "bad-yaml.yml"))).toBe(false);
+  });
+
+  test("YAML missing required fields is not staged", () => {
+    // Missing action
+    seedAutomationFiles(configDir, [
+      { name: "no-action.yml", content: "schedule: daily\n" }
+    ]);
+
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "automations", "no-action.yml"))).toBe(false);
+  });
+
+  test("YAML with invalid action type is not staged", () => {
+    seedAutomationFiles(configDir, [
+      { name: "bad-type.yml", content: 'schedule: daily\naction:\n  type: webhook\n  url: http://example.com\n' }
+    ]);
+
+    stageAutomationFilesFn(configDir, dataDir, stateDir);
+
+    expect(existsSync(join(stateDir, "automations", "bad-type.yml"))).toBe(false);
   });
 
   test("stale automation files are cleaned on re-apply", () => {
     seedAutomationFiles(configDir, [
-      { name: "backup", content: "0 2 * * * node /work/backup.sh\n" },
-      { name: "cleanup", content: "0 4 * * 0 node /work/cleanup.sh\n" }
+      { name: "backup.yml", content: VALID_API_YAML },
+      { name: "cleanup.yml", content: VALID_SHELL_YAML }
     ]);
     stageAutomationFilesFn(configDir, dataDir, stateDir);
-    expect(existsSync(join(stateDir, "automations", "backup"))).toBe(true);
-    expect(existsSync(join(stateDir, "automations", "cleanup"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "backup.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "cleanup.yml"))).toBe(true);
 
     // Remove cleanup from config
-    rmSync(join(configDir, "automations", "cleanup"));
+    rmSync(join(configDir, "automations", "cleanup.yml"));
     stageAutomationFilesFn(configDir, dataDir, stateDir);
 
-    expect(existsSync(join(stateDir, "automations", "backup"))).toBe(true);
-    expect(existsSync(join(stateDir, "automations", "cleanup"))).toBe(false);
+    expect(existsSync(join(stateDir, "automations", "backup.yml"))).toBe(true);
+    expect(existsSync(join(stateDir, "automations", "cleanup.yml"))).toBe(false);
   });
 
   test("empty automation directories produce no staged files", () => {
@@ -587,62 +637,15 @@ describe("Automation file staging", () => {
 
   test("staging is idempotent", () => {
     seedAutomationFiles(configDir, [
-      { name: "backup", content: "0 2 * * * node /work/backup.sh\n" }
+      { name: "backup.yml", content: VALID_API_YAML }
     ]);
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
-    const first = readFileSync(join(stateDir, "automations", "backup"), "utf-8");
+    const first = readFileSync(join(stateDir, "automations", "backup.yml"), "utf-8");
 
     stageAutomationFilesFn(configDir, dataDir, stateDir);
-    const second = readFileSync(join(stateDir, "automations", "backup"), "utf-8");
+    const second = readFileSync(join(stateDir, "automations", "backup.yml"), "utf-8");
 
     expect(first).toBe(second);
-  });
-
-  test("automation files with non-node user field are not staged", () => {
-    seedAutomationFiles(configDir, [
-      { name: "bad-user", content: "0 2 * * * root /work/scripts/root-task.sh\n" }
-    ]);
-
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
-
-    expect(existsSync(join(stateDir, "automations", "bad-user"))).toBe(false);
-  });
-
-  test("automation files with node user field are staged", () => {
-    seedAutomationFiles(configDir, [
-      { name: "good-user", content: "0 2 * * * node /work/scripts/task.sh\n" }
-    ]);
-
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
-
-    expect(existsSync(join(stateDir, "automations", "good-user"))).toBe(true);
-  });
-
-  test("automation files with mixed users are not staged", () => {
-    seedAutomationFiles(configDir, [
-      {
-        name: "mixed-users",
-        content:
-          "0 2 * * * node /work/scripts/ok.sh\n0 3 * * * root /work/scripts/bad.sh\n"
-      }
-    ]);
-
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
-
-    expect(existsSync(join(stateDir, "automations", "mixed-users"))).toBe(false);
-  });
-
-  test("comment and env-var lines are not treated as job lines", () => {
-    seedAutomationFiles(configDir, [
-      {
-        name: "with-env",
-        content: "SHELL=/bin/bash\n# daily backup\n0 2 * * * node /work/scripts/backup.sh\n"
-      }
-    ]);
-
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
-
-    expect(existsSync(join(stateDir, "automations", "with-env"))).toBe(true);
   });
 });

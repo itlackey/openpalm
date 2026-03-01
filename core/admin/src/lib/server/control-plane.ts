@@ -758,36 +758,15 @@ export function discoverStagedChannelYmls(stateDir: string): string[] {
 
 // ── Automation Staging ───────────────────────────────────────────────
 
-/** Strict automation filename: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
-const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+import { parseAutomationYaml } from "./scheduler.js";
 
-/** Only this user may be specified in automation job lines */
-const ALLOWED_AUTOMATION_USER = "node";
-
-/**
- * Validate automation file content.
- * Every job line (non-comment, non-env-var) must specify 'node' as the user
- * field (the 6th whitespace-delimited field). Returns false if any job line
- * specifies a different user, so the file is not staged.
- */
-function validateAutomationContent(content: string): boolean {
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    // Env-var lines: VARNAME=value
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(trimmed)) continue;
-    // Job line: min hour dom mon dow user command (at least 7 fields)
-    const fields = trimmed.split(/\s+/);
-    if (fields.length < 7) continue;
-    if (fields[5] !== ALLOWED_AUTOMATION_USER) return false;
-  }
-  return true;
-}
+/** Strict automation filename: lowercase alphanumeric + hyphens, .yml extension, 1–63 chars base */
+const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}\.yml$/;
 
 /**
  * Discover automation files in a directory.
  * Returns filenames and their full paths.
- * Only regular non-hidden files matching the naming convention are returned.
+ * Only regular non-hidden .yml files matching the naming convention are returned.
  */
 function discoverAutomationFiles(dir: string): { name: string; path: string }[] {
   if (!existsSync(dir)) return [];
@@ -798,12 +777,22 @@ function discoverAutomationFiles(dir: string): { name: string; path: string }[] 
 }
 
 /**
+ * Validate automation YAML content by attempting to parse it.
+ * Returns true if the content parses into a valid AutomationConfig.
+ */
+function validateAutomationContent(content: string, fileName: string): boolean {
+  return parseAutomationYaml(content, fileName) !== null;
+}
+
+/**
  * Stage automation files from DATA_HOME/automations/ (system) and
  * CONFIG_HOME/automations/ (user) into STATE_HOME/automations/.
  *
  * System files are copied first; user files with the same name override them.
  * This follows the same staging pattern as channels: whole-file copy from
  * source tiers into STATE_HOME for runtime consumption.
+ *
+ * Only .yml files with valid automation YAML content are staged.
  */
 function stageAutomationFiles(state: ControlPlaneState): void {
   const stagedDir = `${state.stateDir}/automations`;
@@ -821,7 +810,7 @@ function stageAutomationFiles(state: ControlPlaneState): void {
   const systemDir = `${state.dataDir}/automations`;
   for (const entry of discoverAutomationFiles(systemDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateAutomationContent(content)) continue;
+    if (!validateAutomationContent(content, entry.name)) continue;
     writeFileSync(`${stagedDir}/${entry.name}`, content);
   }
 
@@ -829,7 +818,7 @@ function stageAutomationFiles(state: ControlPlaneState): void {
   const userDir = `${state.configDir}/automations`;
   for (const entry of discoverAutomationFiles(userDir)) {
     const content = readFileSync(entry.path, "utf-8");
-    if (!validateAutomationContent(content)) continue;
+    if (!validateAutomationContent(content, entry.name)) continue;
     writeFileSync(`${stagedDir}/${entry.name}`, content);
   }
 }

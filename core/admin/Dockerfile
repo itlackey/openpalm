@@ -26,7 +26,7 @@ RUN npm run build
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM node:22-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl ca-certificates gnupg cron gosu \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
@@ -37,10 +37,10 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /workspace/core/admin/build ./build
 COPY --from=build /workspace/core/admin/package.json ./
-COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
-RUN chmod +x /usr/local/bin/admin-entrypoint.sh
 
-RUN mkdir -p /state /data
+RUN mkdir -p /state /data && chown node:node /state /data
+
+USER node
 
 ENV PORT=8100
 EXPOSE 8100
@@ -48,4 +48,4 @@ EXPOSE 8100
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/admin-entrypoint.sh"]
+CMD ["node", "build/index.js"]

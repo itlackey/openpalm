@@ -1,0 +1,18 @@
+# health-check.yml — Monitor that all services are running
+#
+# Checks the admin health endpoint every 5 minutes.
+#
+# To use: copy this file to ~/.config/openpalm/automations/health-check.yml
+
+name: Health Check
+description: Monitor that all services are running
+schedule: every-5-minutes
+enabled: true
+
+action:
+  type: api
+  method: GET
+  path: /health
+  timeout: 10000
+
+on_failure: log

@@ -15,10 +15,9 @@
         <img src="/logo-128.png" alt="OpenPalm Logo">
       </span>
       <span class="brand-text">OpenPalm</span>
-      <span class="brand-badge">Console</span>
+      <span class="version-badge">v{version}</span>
     </div>
     <div class="navbar-actions">
-      <span class="version-badge">v{version}</span>
       <span class="access-badge" class:access-public={channelAccess !== 'lan'}>
         <span class="access-dot"></span>
         {channelAccess === 'lan' ? 'LAN Only' : channelAccess === 'host' ? 'Host Only' : 'Custom'}

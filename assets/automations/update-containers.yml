@@ -1,0 +1,18 @@
+# update-containers.yml — Pull latest images and recreate containers
+#
+# Runs every Sunday at 3 AM. Keeps your stack up to date automatically.
+#
+# To use: copy this file to ~/.config/openpalm/automations/update-containers.yml
+
+name: Update Containers
+description: Pull latest images and recreate containers weekly
+schedule: weekly-sunday-3am
+enabled: true
+
+action:
+  type: api
+  method: POST
+  path: /admin/containers/pull
+  timeout: 300000
+
+on_failure: log

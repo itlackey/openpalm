@@ -20,3 +20,39 @@ export type ContainerListResponse = {
   dockerContainers: DockerContainer[] | null;
   dockerAvailable: boolean;
 };
+
+export type AutomationActionInfo = {
+  type: 'api' | 'http' | 'shell';
+  method?: string;
+  path?: string;
+  url?: string;
+};
+
+export type AutomationLogEntry = {
+  at: string;
+  ok: boolean;
+  durationMs: number;
+  error?: string;
+};
+
+export type AutomationInfo = {
+  name: string;
+  description: string;
+  schedule: string;
+  timezone: string;
+  enabled: boolean;
+  action: AutomationActionInfo;
+  on_failure: 'log' | 'audit';
+  fileName: string;
+  logs: AutomationLogEntry[];
+};
+
+export type SchedulerStatus = {
+  jobCount: number;
+  jobs: { name: string; fileName: string; schedule: string; running: boolean }[];
+};
+
+export type AutomationsResponse = {
+  automations: AutomationInfo[];
+  scheduler: SchedulerStatus;
+};

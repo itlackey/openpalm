@@ -35,8 +35,8 @@ CONFIG_HOME (~/.config/openpalm/)
 ├── channels/                # Installed channel definitions (populated via admin API or manually)
 │   ├── <name>.yml           # Compose overlay for channel-<name> (installed from registry or manually added)
 │   └── <name>.caddy         # Caddy route (optional — installed alongside .yml)
-├── automations/             # Scheduled automations (executed on admin container)
-│   └── <name>               # Automation file: schedule + user + command (one per line)
+├── automations/             # Scheduled automations (YAML format, executed in-process)
+│   └── <name>.yml          # Automation YAML file: schedule, action type, and config
 └── opencode/                # OpenCode user extensions (tools, plugins, skills)
     ├── opencode.json        # User OpenCode config (schema ref only; never overwritten)
     ├── tools/               # Custom tool definitions
@@ -51,8 +51,8 @@ STATE_HOME (~/.local/state/openpalm/)
 │   ├── manifest.json        # Artifact checksums & timestamps
 │   ├── Caddyfile            # Staged Caddy config (copied from DATA_HOME/caddy/Caddyfile)
 │   └── channels/            # Staged channel overlays/snippets used at runtime
-├── automations/             # Staged automation files (assembled from DATA_HOME + CONFIG_HOME)
-│   └── <name>               # Staged automation file loaded on admin container startup
+├── automations/             # Staged automation YAML files (assembled from DATA_HOME + CONFIG_HOME)
+│   └── <name>.yml          # Staged automation YAML loaded by in-process scheduler
 └── audit/
     ├── admin-audit.jsonl    # Admin audit log
     └── guardian-audit.log    # Guardian audit log
@@ -64,8 +64,8 @@ DATA_HOME (~/.local/share/openpalm/)
 ├── openmemory/              # OpenMemory persistent data
 ├── assistant/               # Assistant /home/opencode (dotfiles, caches)
 ├── guardian/                 # Guardian runtime data
-├── automations/             # System-managed automations (pre-installed, survive updates)
-│   └── <name>               # System automation file
+├── automations/             # System-managed automations (YAML, pre-installed, survive updates)
+│   └── <name>.yml          # System automation YAML file
 └── caddy/
     ├── Caddyfile            # System-managed core Caddy policy source
     ├── data/                # Caddy TLS certificates
@@ -156,10 +156,10 @@ host-to-container paths, and uses `process.env.OPENPALM_*` to resolve paths
 at runtime. The DATA_HOME mount allows the admin to pre-create subdirectories
 with correct ownership before other services start.
 
-Scheduled automations run on the admin container. The entrypoint installs
-staged automation files from `STATE_HOME/automations/` before dropping
-privileges for the main SvelteKit process. See the Automations section
-below for file format and configuration.
+Scheduled automations run in-process on the admin container using the
+Croner scheduler. Staged YAML automation files from `STATE_HOME/automations/`
+are loaded on startup. The admin container runs as non-root (USER node).
+See the Automations section below for file format and configuration.
 
 ---
 
@@ -270,50 +270,51 @@ A channel needs:
 
 ## Automations
 
-OpenPalm supports scheduled automations on the admin container.
-Automation files follow the same staging pattern as channels: user files in
-CONFIG_HOME, system files in DATA_HOME, both staged to STATE_HOME for
-runtime consumption. Jobs run on the admin container, which has access
-to Docker (via the socket proxy), CONFIG_HOME, DATA_HOME, and STATE_HOME.
+OpenPalm supports scheduled automations on the admin container using an
+in-process scheduler (Croner). Automation files are YAML and follow the same
+staging pattern as channels: user files in CONFIG_HOME, system files in
+DATA_HOME, both staged to STATE_HOME for runtime consumption. The scheduler
+runs in-process — no system cron or root privileges required.
 
 ### Adding an automation
 
-Drop a file into `CONFIG_HOME/automations/`. Each file contains one or more
-schedule lines (schedule + user field + command):
+Drop a `.yml` file into `CONFIG_HOME/automations/`:
 
-```
-# Daily backup at 2am
-SHELL=/bin/bash
-0 2 * * * node /path/to/script.sh
+```yaml
+# health-check.yml
+name: Health Check
+schedule: every-5-minutes
+action:
+  type: api
+  method: GET
+  path: /health
 ```
 
-The user field must be `node` — this is enforced at staging time; any
-automation file containing a job line with a different user is silently
-skipped and will not be installed.
+Three action types are supported: `api` (admin API call with auto-injected
+token), `http` (any HTTP endpoint), and `shell` (execFile with argument array).
 
 ### File naming
 
-Filenames must be lowercase alphanumeric with hyphens (`[a-z0-9][a-z0-9-]*`),
-with no file extension. Examples: `backup`, `weekly-cleanup`.
+Filenames must be lowercase alphanumeric with hyphens and a `.yml` extension
+(`[a-z0-9][a-z0-9-]*.yml`). Examples: `backup.yml`, `weekly-cleanup.yml`.
 
 ### System automations
 
 System-managed automation files live in `DATA_HOME/automations/`. These are
-seeded during install and survive updates. They follow the same format as
+seeded during install and survive updates. They use the same YAML format as
 user automations.
 
 ### Staging and precedence
 
 On every apply, the admin stages automation files into `STATE_HOME/automations/`:
 
-1. Copy all files from `DATA_HOME/automations/` (system automations)
-2. Copy all files from `CONFIG_HOME/automations/` (user automations)
+1. Copy all `.yml` files from `DATA_HOME/automations/` (system automations)
+2. Copy all `.yml` files from `CONFIG_HOME/automations/` (user automations)
 
 User files with the same name as a system file override the system version.
-The admin container already mounts the full STATE_HOME, so
-`STATE_HOME/automations/` is accessible without an additional bind mount.
-The entrypoint installs staged files and starts the scheduler on container
-startup. Changes require a container restart (triggered by apply).
+The in-process scheduler loads staged files on startup and reloads after
+channel install/uninstall. Changes require a container restart (triggered
+by apply).
 
 ---
 
