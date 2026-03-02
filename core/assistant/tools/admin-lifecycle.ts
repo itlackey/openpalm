@@ -30,3 +30,10 @@ export const installed = tool({
     return adminFetch("/admin/installed");
   },
 });
+
+export const upgrade = tool({
+  description: "Upgrade the OpenPalm stack. Downloads fresh assets from upstream, backs up changed files, re-stages artifacts, pulls the latest Docker images, and recreates all containers. This is a heavyweight operation that will briefly interrupt running services.",
+  async execute() {
+    return adminFetch("/admin/upgrade", { method: "POST", ...LONG_TIMEOUT });
+  },
+});

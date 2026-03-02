@@ -25,9 +25,8 @@ OpenPalm runs as a Docker Compose stack with these services:
 
 ## Available Tool Groups
 
-### `admin-containers` (list, up, down, restart, pull)
+### `admin-containers` (list, up, down, restart)
 Manage individual service containers. Use `list` first to see current status before making changes.
-- **pull** = pull the latest images for all services and recreate containers (`POST /admin/containers/pull`). Use this to apply upstream image updates without a full reinstall.
 
 ### `admin-config` (get_access_scope, set_access_scope)
 View and modify the network access scope.
@@ -54,12 +53,13 @@ View and manage external API connections (secrets stored in `secrets.env`):
 ### `admin-audit`
 View the audit trail. Every admin action is logged with timestamp, actor, action, arguments, and success/failure status. Always check the audit log when investigating issues.
 
-### `admin-lifecycle` (install, update, uninstall, installed)
+### `admin-lifecycle` (install, update, uninstall, installed, upgrade)
 Heavy operations that affect the entire stack:
 - `install` = full stack setup (creates dirs, generates secrets, starts containers)
 - `update` = regenerate config and restart containers
 - `uninstall` = stop everything and tear down
 - `installed` = list installed extensions and service statuses
+- `upgrade` = download fresh assets from upstream, back up changed files, pull latest Docker images, and recreate all containers. Use this to apply upstream updates without a full reinstall.
 
 ### `health-check`
 Quick health probe of core services (guardian, openmemory, admin).
@@ -74,4 +74,4 @@ Quick health probe of core services (guardian, openmemory, admin).
 6. **Access scope changes affect security.** Switching from `host` to `lan` exposes services to the local network. Always confirm with the user.
 7. **Channel routing is file-based.** Channels with a `.caddy` file get HTTP routing; those without are docker-network only. Access levels (LAN vs public) are controlled by the `.caddy` file content, not by an API call.
 8. **Check connections status before operations that need external APIs.** Use `admin-connections_status` to confirm all required keys are present. Use `admin-connections_get` to see which keys are configured. Never log or expose unmasked secret values.
-9. **Use `admin-containers_pull` to apply image updates** without reinstalling. This pulls the latest images and recreates containers in place.
+9. **Use `admin-lifecycle_upgrade` to apply upstream updates** without reinstalling. This downloads fresh assets, pulls latest images, and recreates containers in place.
