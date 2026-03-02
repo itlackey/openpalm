@@ -4,20 +4,35 @@
  * On first call, performs a sparse checkout of just the registry/ directory.
  * On subsequent calls, does a git pull to fetch the latest changes.
  *
- * The cloned registry lives at STATE_HOME/registry/ and is the runtime
+ * The cloned registry lives at STATE_HOME/registry-repo/ and is the runtime
  * source of truth for available channels and automations.
+ *
+ * Security: all git operations use execFileSync (no shell) with validated inputs.
  */
 import { existsSync, readdirSync, readFileSync, mkdirSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { resolveStateHome } from "./paths.js";
 
 const REPO = "itlackey/openpalm";
-const BRANCH = process.env.OPENPALM_REGISTRY_BRANCH ?? "main";
 const REPO_URL =
   process.env.OPENPALM_REGISTRY_URL ??
   `https://github.com/${REPO}.git`;
+
+/** Validate branch name: alphanumeric, hyphens, underscores, dots, slashes */
+const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
+const BRANCH = (() => {
+  const b = process.env.OPENPALM_REGISTRY_BRANCH ?? "main";
+  if (!BRANCH_RE.test(b)) throw new Error(`Invalid registry branch name: ${b}`);
+  return b;
+})();
+
+/** Validate URL: must start with https:// or git@ */
+const URL_RE = /^(https:\/\/|git@)/;
+if (!URL_RE.test(REPO_URL)) {
+  throw new Error(`Invalid registry URL: ${REPO_URL}`);
+}
 
 // ── Registry directory resolution ───────────────────────────────────
 
@@ -49,12 +64,12 @@ export function ensureRegistryClone(): string {
   mkdirSync(cloneDir, { recursive: true });
 
   try {
-    // Shallow clone with sparse checkout for just registry/
-    execSync(
-      `git clone --depth 1 --filter=blob:none --sparse --branch ${BRANCH} ${REPO_URL} .`,
-      { cwd: cloneDir, stdio: "pipe", timeout: 60_000 }
-    );
-    execSync(`git sparse-checkout set registry`, {
+    execFileSync("git", [
+      "clone", "--depth", "1", "--filter=blob:none", "--sparse",
+      "--branch", BRANCH, REPO_URL, "."
+    ], { cwd: cloneDir, stdio: "pipe", timeout: 60_000 });
+
+    execFileSync("git", ["sparse-checkout", "set", "registry"], {
       cwd: cloneDir,
       stdio: "pipe",
       timeout: 30_000
@@ -75,7 +90,6 @@ export function pullRegistry(): { updated: boolean; error?: string } {
   const cloneDir = repoCloneDir();
 
   if (!existsSync(join(cloneDir, ".git"))) {
-    // Not cloned yet — clone first
     try {
       ensureRegistryClone();
       return { updated: true };
@@ -85,7 +99,7 @@ export function pullRegistry(): { updated: boolean; error?: string } {
   }
 
   try {
-    const result = execSync(`git pull origin ${BRANCH}`, {
+    const result = execFileSync("git", ["pull", "origin", BRANCH], {
       cwd: cloneDir,
       stdio: "pipe",
       timeout: 60_000,

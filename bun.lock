@@ -52,22 +52,31 @@
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
       "version": "0.6.2",
-      "dependencies": {
+      "devDependencies": {
         "@openpalm/channels-sdk": "workspace:*",
+      },
+      "peerDependencies": {
+        "@openpalm/channels-sdk": "^0.6.2",
       },
     },
     "packages/channel-chat": {
       "name": "@openpalm/channel-chat",
       "version": "0.6.2",
-      "dependencies": {
+      "devDependencies": {
         "@openpalm/channels-sdk": "workspace:*",
+      },
+      "peerDependencies": {
+        "@openpalm/channels-sdk": "^0.6.2",
       },
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
       "version": "0.6.2",
-      "dependencies": {
+      "devDependencies": {
         "@openpalm/channels-sdk": "workspace:*",
+      },
+      "peerDependencies": {
+        "@openpalm/channels-sdk": "^0.6.2",
       },
     },
     "packages/channels-sdk": {

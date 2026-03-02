@@ -119,4 +119,5 @@ export type RegistryAutomationItem = {
 export type RegistryResponse = {
   channels: RegistryChannelItem[];
   automations: RegistryAutomationItem[];
+  source?: 'remote' | 'bundled';
 };

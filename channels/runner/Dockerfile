@@ -17,10 +17,12 @@ COPY packages/channels-sdk /app/node_modules/@openpalm/channels-sdk
 COPY channels/runner/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
+RUN chown -R bun:bun /app
+
 ENV PORT=8080
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
-  CMD curl -sf http://localhost:8080/health || exit 1
+  CMD curl -sf "http://localhost:${PORT}/health" || exit 1
 
 USER bun
 CMD ["/app/start.sh"]
