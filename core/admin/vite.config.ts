@@ -7,12 +7,27 @@ import { resolve } from "node:path";
 
 const rootDir = resolve(__dirname, "../..");
 
+/** Keys whose values are filesystem paths and must be resolved relative to rootDir */
+const PATH_KEYS = new Set([
+  "OPENPALM_CONFIG_HOME",
+  "OPENPALM_DATA_HOME",
+  "OPENPALM_STATE_HOME",
+  "OPENPALM_WORK_DIR"
+]);
+
 export default defineConfig(({ mode }) => {
-  // Load .env from repo root and populate process.env for server-side code
+  // Load .env from repo root and populate process.env for server-side code.
+  // Path values (OPENPALM_*_HOME) are resolved relative to rootDir so that
+  // the same relative paths used by Docker Compose (e.g. "../.dev/config")
+  // work correctly for the Vite dev server regardless of CWD.
   const env = loadEnv(mode, rootDir, "");
 
   for (const key in env) {
-    process.env[key] ??= env[key];
+    let value = env[key];
+    if (PATH_KEYS.has(key) && value) {
+      value = resolve(rootDir, value);
+    }
+    process.env[key] ??= value;
   }
 
   return {

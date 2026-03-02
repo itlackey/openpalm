@@ -56,3 +56,15 @@ export type AutomationsResponse = {
   automations: AutomationInfo[];
   scheduler: SchedulerStatus;
 };
+
+export type ChannelInfo = {
+  name: string;
+  hasRoute: boolean;
+  service: string;
+  status: string;
+};
+
+export type ChannelsResponse = {
+  installed: ChannelInfo[];
+  available: { name: string; hasRoute: boolean }[];
+};

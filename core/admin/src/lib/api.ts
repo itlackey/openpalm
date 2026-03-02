@@ -1,4 +1,4 @@
-import type { HealthPayload, ContainerListResponse, AutomationsResponse } from './types.js';
+import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from './types.js';
 
 const apiBase = '';
 
@@ -166,4 +166,16 @@ export async function fetchConnections(
   }
   const data = (await res.json()) as { connections: Record<string, string> };
   return data.connections;
+}
+
+export async function fetchChannels(token: string): Promise<ChannelsResponse> {
+  const res = await get('/admin/channels', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+  return (await res.json()) as ChannelsResponse;
 }

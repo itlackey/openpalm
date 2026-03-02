@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { HealthPayload } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from '$lib/types.js';
 
   interface ServiceItem {
     name: string;
@@ -21,6 +21,9 @@
     applyLoading: boolean;
     pullLoading: boolean;
     anyDangerousLoading: boolean;
+    automationsData: AutomationsResponse | null;
+    containerData: ContainerListResponse | null;
+    channelsData: ChannelsResponse | null;
     onCheckHealth: () => void;
     onInstall: () => void;
     onApplyChanges: () => void;
@@ -42,6 +45,9 @@
     applyLoading,
     pullLoading,
     anyDangerousLoading,
+    automationsData,
+    containerData,
+    channelsData,
     onCheckHealth,
     onInstall,
     onApplyChanges,
@@ -54,6 +60,43 @@
     if (status === 'ok' || status === 'running') return 'success';
     return 'danger';
   }
+
+  // Derived: automation count
+  let automationCount = $derived(automationsData?.automations.length ?? 0);
+  let enabledAutomationCount = $derived(
+    automationsData?.automations.filter(a => a.enabled).length ?? 0
+  );
+
+  // Derived: overall container health
+  let containerHealthStatus = $derived.by(() => {
+    if (!containerData?.dockerContainers) return 'unknown' as const;
+    const containers = containerData.dockerContainers;
+    if (containers.length === 0) return 'unknown' as const;
+    const allRunning = containers.every(c => c.State === 'running');
+    return allRunning ? 'healthy' as const : 'unhealthy' as const;
+  });
+
+  // Derived: enabled channels list
+  let enabledChannels = $derived(channelsData?.installed ?? []);
+
+  // Derived: assistant connectivity (from container state)
+  let assistantStatus = $derived.by(() => {
+    if (!containerData) return 'unknown' as const;
+    // Check the simple services map first
+    const status = containerData.containers['assistant'];
+    if (status === 'running') return 'connected' as const;
+    if (status === 'stopped') return 'disconnected' as const;
+    // Fall back to docker containers list
+    if (containerData.dockerContainers) {
+      const assistant = containerData.dockerContainers.find(
+        c => c.Service === 'assistant' || c.Name.includes('assistant')
+      );
+      if (assistant) {
+        return assistant.State === 'running' ? 'connected' as const : 'disconnected' as const;
+      }
+    }
+    return 'unknown' as const;
+  });
 </script>
 
 
@@ -253,8 +296,56 @@
           </span>
         </div>
         <div class="info-item">
-          <span class="info-label">Interface</span>
-          <span class="info-value info-mono">SvelteKit</span>
+          <span class="info-label">Containers</span>
+          <span class="info-value">
+            {#if containerHealthStatus === 'healthy'}
+              <span class="badge badge-success">All Healthy</span>
+            {:else if containerHealthStatus === 'unhealthy'}
+              <span class="badge badge-danger">Unhealthy</span>
+            {:else}
+              <span class="badge badge-idle">Unknown</span>
+            {/if}
+          </span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Assistant</span>
+          <span class="info-value">
+            {#if assistantStatus === 'connected'}
+              <span class="badge badge-success">Connected</span>
+            {:else if assistantStatus === 'disconnected'}
+              <span class="badge badge-danger">Disconnected</span>
+            {:else}
+              <span class="badge badge-idle">Unknown</span>
+            {/if}
+          </span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Automations</span>
+          <span class="info-value">
+            {#if automationsData}
+              <span class="info-mono">{enabledAutomationCount} active / {automationCount} total</span>
+            {:else}
+              <span class="badge badge-idle">Loading</span>
+            {/if}
+          </span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Channels</span>
+          <span class="info-value">
+            {#if enabledChannels.length > 0}
+              <span class="channel-list">
+                {#each enabledChannels as channel}
+                  <span class="badge" class:badge-success={channel.status === 'running'} class:badge-idle={channel.status !== 'running'}>
+                    {channel.name}
+                  </span>
+                {/each}
+              </span>
+            {:else if channelsData}
+              <span class="info-mono">None installed</span>
+            {:else}
+              <span class="badge badge-idle">Loading</span>
+            {/if}
+          </span>
         </div>
       </div>
     </div>
@@ -563,6 +654,13 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
+  }
+
+  .channel-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
   }
 
   /* Badges */

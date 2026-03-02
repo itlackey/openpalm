@@ -23,9 +23,10 @@
     pullContainers,
     containerAction,
     fetchConnectionStatus,
-    fetchConnections
+    fetchConnections,
+    fetchChannels
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from '$lib/types.js';
 
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -61,6 +62,7 @@
   let selectedContainerId: string | null = $state(null);
   let connectionsData: Record<string, string> = $state({});
   let connectionsLoading = $state(false);
+  let channelsData: ChannelsResponse | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
   let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
@@ -115,6 +117,7 @@
       await loadHealth();
       void loadContainers();
       void loadAutomations();
+      void loadChannels();
       void checkConnectionStatus();
     } catch {
       authError = 'Unable to reach admin API.';
@@ -270,6 +273,16 @@
       }
     }
     connectionsLoading = false;
+  }
+
+  async function loadChannels(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    try {
+      channelsData = await fetchChannels(token);
+    } catch {
+      // best-effort — don't disrupt auth flow on failure
+    }
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -438,6 +451,7 @@
         void loadHealth();
         void loadContainers();
         void loadAutomations();
+        void loadChannels();
         void checkConnectionStatus();
       } catch {
         authLocked = true;
@@ -478,6 +492,9 @@
         {applyLoading}
         {pullLoading}
         {anyDangerousLoading}
+        {automationsData}
+        {containerData}
+        {channelsData}
         onCheckHealth={loadHealth}
         onInstall={handleInstall}
         onApplyChanges={handleApplyChanges}

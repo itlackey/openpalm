@@ -18,10 +18,6 @@
       <span class="version-badge">v{version}</span>
     </div>
     <div class="navbar-actions">
-      <span class="access-badge" class:access-public={channelAccess !== 'lan'}>
-        <span class="access-dot"></span>
-        {channelAccess === 'lan' ? 'LAN Only' : channelAccess === 'host' ? 'Host Only' : 'Custom'}
-      </span>
       <button class="btn btn-secondary btn-sm" type="button" onclick={onLogout}>Sign Out</button>
     </div>
   </div>
