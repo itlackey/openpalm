@@ -34,7 +34,9 @@ export { ensureXdgDirs } from "./paths.js";
 export {
   REGISTRY_CHANNEL_YML,
   REGISTRY_CHANNEL_CADDY,
-  REGISTRY_CHANNEL_NAMES
+  REGISTRY_CHANNEL_NAMES,
+  REGISTRY_AUTOMATION_YML,
+  REGISTRY_AUTOMATION_NAMES
 } from "./registry.js";
 
 // ── audit.ts ──────────────────────────────────────────────────────────
@@ -59,7 +61,9 @@ export {
   isAllowedService,
   isValidChannel,
   installChannelFromRegistry,
-  uninstallChannel
+  uninstallChannel,
+  installAutomationFromRegistry,
+  uninstallAutomation
 } from "./channels.js";
 
 // ── staging.ts ────────────────────────────────────────────────────────

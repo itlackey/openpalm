@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync
 import type { ChannelInfo } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import { REGISTRY_CHANNEL_YML, REGISTRY_CHANNEL_CADDY } from "./registry.js";
+import { REGISTRY_AUTOMATION_YML } from "./registry.js";
 
 // ── Channel Name Validation ───────────────────────────────────────────
 
@@ -130,5 +131,55 @@ export function uninstallChannel(
 
   rmSync(ymlPath, { force: true });
   rmSync(`${channelsDir}/${name}.caddy`, { force: true });
+  return { ok: true };
+}
+
+// ── Automation Install / Uninstall ──────────────────────────────────────
+
+/** Strict automation name: same rules as channel names */
+const AUTOMATION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+/**
+ * Install an automation from the registry catalog into CONFIG_HOME/automations/.
+ */
+export function installAutomationFromRegistry(
+  name: string,
+  configDir: string
+): { ok: true } | { ok: false; error: string } {
+  if (!AUTOMATION_NAME_RE.test(name)) {
+    return { ok: false, error: `Invalid automation name: ${name}` };
+  }
+  if (!(name in REGISTRY_AUTOMATION_YML)) {
+    return { ok: false, error: `Automation "${name}" not found in registry` };
+  }
+  const automationsDir = `${configDir}/automations`;
+  mkdirSync(automationsDir, { recursive: true });
+
+  const ymlPath = `${automationsDir}/${name}.yml`;
+  if (existsSync(ymlPath)) {
+    return { ok: false, error: `Automation "${name}" is already installed` };
+  }
+
+  writeFileSync(ymlPath, REGISTRY_AUTOMATION_YML[name]);
+  return { ok: true };
+}
+
+/**
+ * Uninstall an automation by removing its .yml from CONFIG_HOME/automations/.
+ */
+export function uninstallAutomation(
+  name: string,
+  configDir: string
+): { ok: true } | { ok: false; error: string } {
+  if (!AUTOMATION_NAME_RE.test(name)) {
+    return { ok: false, error: `Invalid automation name: ${name}` };
+  }
+  const automationsDir = `${configDir}/automations`;
+  const ymlPath = `${automationsDir}/${name}.yml`;
+  if (!existsSync(ymlPath)) {
+    return { ok: false, error: `Automation "${name}" is not installed` };
+  }
+
+  rmSync(ymlPath, { force: true });
   return { ok: true };
 }

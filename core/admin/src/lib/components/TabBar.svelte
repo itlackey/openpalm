@@ -1,5 +1,5 @@
 <script lang="ts">
-  type TabId = 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections';
+  type TabId = 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry';
 
   interface Props {
     active: TabId;
@@ -53,6 +53,20 @@
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
     Connections
+  </button>
+  <button
+    class="tab"
+    role="tab"
+    aria-selected={active === 'registry'}
+    class:tab-active={active === 'registry'}
+    onclick={() => onSelect('registry')}
+    onkeydown={handleTabKeydown}
+  >
+    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+    Registry
   </button>
   <button
     class="tab"

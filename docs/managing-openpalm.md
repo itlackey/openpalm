@@ -177,8 +177,8 @@ action:
   timeout: 300000
 ```
 
-OpenPalm ships several ready-to-use examples in `assets/automations/` — copy any
-of them into `~/.config/openpalm/automations/` to activate:
+OpenPalm ships several ready-to-use examples in `registry/automations/` — install them
+from the Registry tab in the admin console, or copy any of them into `~/.config/openpalm/automations/` to activate:
 
 | File | What it does |
 |---|---|
