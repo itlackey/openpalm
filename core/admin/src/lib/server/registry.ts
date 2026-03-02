@@ -1,23 +1,27 @@
 /**
- * Channel registry catalog — discovered at build time via Vite's import.meta.glob.
+ * Channel & automation registry catalog — discovered at build time via Vite's import.meta.glob.
  *
- * Adding a new registry channel = dropping files in registry/.
+ * Adding a new registry item = dropping files in registry/channels/ or registry/automations/.
  */
 
 // ── Registry channel catalog (discovered at build time) ───────────────
-// import.meta.glob discovers all .yml and .caddy files in registry/
-// at build time. Adding a new registry channel = dropping files in registry/.
 const channelYmlModules: Record<string, string> = import.meta.glob(
-  "$registry/*.yml",
+  "$registry/channels/*.yml",
   { query: "?raw", eager: true, import: "default" }
 ) as Record<string, string>;
 
 const channelCaddyModules: Record<string, string> = import.meta.glob(
-  "$registry/*.caddy",
+  "$registry/channels/*.caddy",
   { query: "?raw", eager: true, import: "default" }
 ) as Record<string, string>;
 
-/** Extract channel name from a glob path like "/.../channels/chat.yml" → "chat" */
+// ── Registry automation catalog (discovered at build time) ────────────
+const automationYmlModules: Record<string, string> = import.meta.glob(
+  "$registry/automations/*.yml",
+  { query: "?raw", eager: true, import: "default" }
+) as Record<string, string>;
+
+/** Extract item name from a glob path like "/.../channels/chat.yml" → "chat" */
 function assetMap(modules: Record<string, string>): Record<string, string> {
   const map: Record<string, string> = {};
   for (const [path, content] of Object.entries(modules)) {
@@ -36,3 +40,9 @@ export const REGISTRY_CHANNEL_CADDY: Record<string, string> = assetMap(channelCa
 
 /** Names of registry channels derived from bundled assets */
 export const REGISTRY_CHANNEL_NAMES: string[] = Object.keys(REGISTRY_CHANNEL_YML);
+
+/** Registry automation configs, keyed by automation name (filename without .yml) */
+export const REGISTRY_AUTOMATION_YML: Record<string, string> = assetMap(automationYmlModules);
+
+/** Names of registry automations derived from bundled assets */
+export const REGISTRY_AUTOMATION_NAMES: string[] = Object.keys(REGISTRY_AUTOMATION_YML);

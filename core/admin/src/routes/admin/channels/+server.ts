@@ -54,7 +54,7 @@ export const GET: RequestHandler = async (event) => {
       name,
       hasRoute: routedChannels.has(name),
       service: `channel-${name}`,
-      status: state.services[`channel-${name}`] ?? "stopped"
+      status: state.services[`channel-${name}`] ?? "stopped",
     };
   });
 
@@ -63,7 +63,7 @@ export const GET: RequestHandler = async (event) => {
     .filter((name) => !installedNames.has(name))
     .map((name) => ({
       name,
-      hasRoute: name in REGISTRY_CHANNEL_CADDY
+      hasRoute: name in REGISTRY_CHANNEL_CADDY,
     }));
 
   appendAudit(state, actor, "channels.list", {}, true, requestId, callerType);

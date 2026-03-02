@@ -10,6 +10,7 @@
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
   import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
+  import RegistryTab from '$lib/components/RegistryTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
@@ -23,9 +24,13 @@
     containerAction,
     fetchConnectionStatus,
     fetchConnections,
-    fetchChannels
+    fetchChannels,
+    fetchRegistry,
+    registryInstall,
+    registryUninstall,
+    registryRefresh
   } from '$lib/api.js';
-  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from '$lib/types.js';
+  import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse, RegistryResponse } from '$lib/types.js';
 
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
@@ -61,9 +66,13 @@
   let connectionsData: Record<string, string> = $state({});
   let connectionsLoading = $state(false);
   let channelsData: ChannelsResponse | null = $state(null);
+  let registryData: RegistryResponse | null = $state(null);
+  let registryLoading = $state(false);
+  let registryError = $state('');
+  let registryActionLoading: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
+  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry' = $state('overview');
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -317,6 +326,82 @@
     }
   }
 
+  async function loadRegistry(): Promise<void> {
+    const token = getAdminToken();
+    tokenStored = Boolean(token);
+    if (!token) {
+      authLocked = true;
+      authError = 'Admin token required.';
+      adminStatus = '';
+      registryError = 'Admin token required for protected actions.';
+      registryData = null;
+      return;
+    }
+    registryLoading = true;
+    registryError = '';
+    try {
+      registryData = await fetchRegistry(token);
+    } catch (e) {
+      registryData = null;
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        registryError = 'Invalid admin token.';
+        applyInvalidTokenState();
+      } else {
+        registryError = `Failed to load registry: ${err.message ?? e}`;
+      }
+    }
+    registryLoading = false;
+  }
+
+  async function handleRegistryRefresh(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    registryLoading = true;
+    try {
+      await registryRefresh(token);
+    } catch {
+      // best-effort
+    }
+    await loadRegistry();
+  }
+
+  async function handleRegistryInstall(name: string, type: 'channel' | 'automation'): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    registryActionLoading = `${type}:${name}`;
+    try {
+      await registryInstall(token, name, type);
+      await loadRegistry();
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      } else {
+        registryError = `Install failed: ${err.message ?? e}`;
+      }
+    }
+    registryActionLoading = null;
+  }
+
+  async function handleRegistryUninstall(name: string, type: 'channel' | 'automation'): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    registryActionLoading = `${type}:${name}`;
+    try {
+      await registryUninstall(token, name, type);
+      await loadRegistry();
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      } else {
+        registryError = `Uninstall failed: ${err.message ?? e}`;
+      }
+    }
+    registryActionLoading = null;
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function handleApplyChanges(): Promise<void> {
@@ -395,7 +480,7 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
+  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' | 'registry'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
@@ -405,6 +490,9 @@
     }
     if (tab === 'connections' && Object.keys(connectionsData).length === 0) {
       void loadConnections();
+    }
+    if (tab === 'registry' && !registryData) {
+      void loadRegistry();
     }
   }
 
@@ -528,6 +616,17 @@
         error={automationsError}
         {tokenStored}
         onRefresh={loadAutomations}
+      />
+    {:else if activeTab === 'registry'}
+      <RegistryTab
+        data={registryData}
+        loading={registryLoading}
+        error={registryError}
+        {tokenStored}
+        actionLoading={registryActionLoading}
+        onRefresh={handleRegistryRefresh}
+        onInstall={handleRegistryInstall}
+        onUninstall={handleRegistryUninstall}
       />
     {:else if activeTab === 'connections'}
       <ConnectionsTab

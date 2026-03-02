@@ -71,7 +71,7 @@ export abstract class BaseChannel {
    */
   private _fetchFn: typeof fetch = fetch;
 
-  /** Lazily initialized structured logger. */
+  /** Lazily initialized structured logger using createLogger from @openpalm/channels-sdk. */
   private _logger?: ReturnType<typeof createLogger>;
   private get logger() {
     return (this._logger ??= createLogger(`channel-${this.name}`));

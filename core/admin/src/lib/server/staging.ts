@@ -281,6 +281,8 @@ export function discoverStagedChannelYmls(stateDir: string): string[] {
     .map((entry) => `${channelsDir}/${entry.name}`);
 }
 
+// ── Channel Env Staging ──────────────────────────────────────────────
+
 // ── Automation Staging ───────────────────────────────────────────────
 
 /** Strict automation filename: lowercase alphanumeric + hyphens, .yml extension, 1–63 chars base */
