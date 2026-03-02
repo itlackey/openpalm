@@ -383,7 +383,7 @@ Body:
 Provider API conventions:
 
 | Provider | URL Pattern | Auth |
-|----------|------------|------|
+| -------- | ----------- | ---- |
 | Ollama | `{baseUrl}/api/tags` | None |
 | Anthropic | Static list (no API) | N/A |
 | OpenAI, Groq, Mistral, Together, DeepSeek, xAI, LM Studio | `{baseUrl}/v1/models` | `Bearer {key}` |
