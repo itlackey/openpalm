@@ -36,11 +36,7 @@
   <section class="auth-card">
     <div class="auth-brand">
       <span class="brand-icon">
-        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z" />
-          <path d="M2 17l10 5 10-5" />
-          <path d="M2 12l10 5 10-5" />
-        </svg>
+        <img src="/logo-128.png" alt="OpenPalm Logo">
       </span>
       <div>
         <h1>OpenPalm Console</h1>
@@ -97,29 +93,33 @@
 
 <style>
   .auth-gate {
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
     max-width: none;
     margin: 0;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: var(--space-6);
+    overflow: hidden;
+    box-sizing: border-box;
     background-color: var(--color-bg-secondary);
-    background-image: url('/fu.png'),
-      radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.12), transparent 38%),
-      radial-gradient(circle at 85% 0%, rgba(59, 130, 246, 0.12), transparent 32%);
-    background-size: contain, auto, auto;
-    background-position: bottom left, center, center;
-    background-repeat: no-repeat, no-repeat, no-repeat;
+    background-image: url('/fu.png');
+    background-size: 35%;
+    background-position: bottom -2% left -2%;
+    background-repeat: no-repeat;
   }
 
   .auth-card {
     width: 100%;
     max-width: 460px;
+    margin-bottom: 10vh;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
     padding: var(--space-6);
+    box-sizing: border-box;
   }
 
   .auth-brand {
@@ -147,10 +147,10 @@
     justify-content: center;
     width: 34px;
     height: 34px;
-    background: var(--color-primary);
-    color: var(--color-text-inverse);
-    border-radius: var(--radius-md);
     flex-shrink: 0;
+     img{
+      max-width: 34px;
+    }
   }
 
   .auth-form {
@@ -164,7 +164,7 @@
     color: var(--color-text-secondary);
   }
 
-  .auth-form input {
+  .auth-form input:not(.sr-only) {
     width: 100%;
     height: 40px;
     border: 1px solid var(--color-border);
@@ -175,7 +175,7 @@
     font-size: var(--text-sm);
   }
 
-  .auth-form input:focus {
+  .auth-form input:not(.sr-only):focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px var(--color-primary-subtle);
@@ -289,5 +289,21 @@
   .btn-toggle:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: -2px;
+  }
+
+  @media (max-width: 480px) {
+    .auth-gate {
+      padding: var(--space-3);
+      background-size: 45%;
+    }
+
+    .auth-card {
+      padding: var(--space-4);
+      margin-bottom: 5vh;
+    }
+
+    .auth-brand h1 {
+      font-size: var(--text-lg);
+    }
   }
 </style>

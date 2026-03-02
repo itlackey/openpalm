@@ -50,7 +50,8 @@
   let automationsLoading = $state(false);
 
   // ── Content state ───────────────────────────────────────────────────────────
-  let installResult = $state('');
+  let operationResult = $state('');
+  let operationResultType: 'success' | 'error' | 'info' = $state('info');
   let artifacts = $state('');
   let artifactType: 'compose' | 'caddyfile' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
@@ -69,6 +70,7 @@
     { name: 'Admin API', status: adminHealth?.status ?? null, icon: 'shield' },
     { name: 'Guardian', status: guardianHealth?.status ?? null, icon: 'globe' }
   ]);
+  let anyDangerousLoading = $derived(installLoading || applyLoading || pullLoading);
 
   // ── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -86,7 +88,8 @@
     authLocked = true;
     authError = '';
     adminStatus = '';
-    installResult = '';
+    operationResult = '';
+    operationResultType = 'info';
     artifacts = '';
     artifactType = null;
     containerData = null;
@@ -272,31 +275,37 @@
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function handleInstall(): Promise<void> {
+    if (anyDangerousLoading) return;
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
       authLocked = true;
       authError = 'Admin token required.';
       adminStatus = '';
-      installResult = 'Admin token required for protected actions.';
+      operationResult = 'Admin token required for protected actions.';
+      operationResultType = 'error';
       return;
     }
     installLoading = true;
     try {
-      installResult = await installStack(token);
+      operationResult = await installStack(token);
+      operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
-        installResult = 'Invalid admin token.';
+        operationResult = 'Invalid admin token.';
+        operationResultType = 'error';
         applyInvalidTokenState();
       } else {
-        installResult = `Error: ${err.message ?? e}`;
+        operationResult = `Error: ${err.message ?? e}`;
+        operationResultType = 'error';
       }
     }
     installLoading = false;
   }
 
   async function handleApplyChanges(): Promise<void> {
+    if (anyDangerousLoading) return;
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -308,19 +317,22 @@
     applyLoading = true;
     try {
       await applyChanges(token);
-      installResult = 'Changes applied successfully.';
+      operationResult = 'Changes applied successfully.';
+      operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       } else {
-        installResult = `Error applying changes: ${err.message ?? e}`;
+        operationResult = `Error applying changes: ${err.message ?? e}`;
+        operationResultType = 'error';
       }
     }
     applyLoading = false;
   }
 
   async function handlePullContainers(): Promise<void> {
+    if (anyDangerousLoading) return;
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -332,13 +344,15 @@
     pullLoading = true;
     try {
       await pullContainers(token);
-      installResult = 'Container images updated successfully.';
+      operationResult = 'Container images updated successfully.';
+      operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       } else {
-        installResult = `Error pulling containers: ${err.message ?? e}`;
+        operationResult = `Error pulling containers: ${err.message ?? e}`;
+        operationResultType = 'error';
       }
     }
     pullLoading = false;
@@ -455,18 +469,20 @@
         {adminHealth}
         {guardianHealth}
         {channelAccess}
-        {installResult}
+        {operationResult}
+        {operationResultType}
         {adminStatus}
         {tokenStored}
         {healthLoading}
         {installLoading}
         {applyLoading}
         {pullLoading}
+        {anyDangerousLoading}
         onCheckHealth={loadHealth}
         onInstall={handleInstall}
         onApplyChanges={handleApplyChanges}
         onPullContainers={handlePullContainers}
-        onDismissInstallResult={() => (installResult = '')}
+        onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
       />
     {:else if activeTab === 'containers'}
       <ContainersTab
