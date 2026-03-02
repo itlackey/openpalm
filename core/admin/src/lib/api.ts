@@ -33,10 +33,20 @@ export async function fetchHealth(): Promise<{
 }> {
   const [adminRes, guardianRes] = await Promise.all([
     get('/health'),
-    get('/guardian/health')
+    get('/guardian/health').catch(() => null)
   ]);
   const admin = (await adminRes.json()) as HealthPayload;
-  const guardian = (await guardianRes.json()) as HealthPayload;
+  let guardian: HealthPayload | null = null;
+  if (guardianRes && guardianRes.ok) {
+    guardian = (await guardianRes.json()) as HealthPayload;
+  } else if (guardianRes) {
+    // Non-OK response (e.g. 503) — parse the error body for status
+    try {
+      guardian = (await guardianRes.json()) as HealthPayload;
+    } catch {
+      guardian = { status: 'unavailable', service: 'guardian' };
+    }
+  }
   return { admin, guardian };
 }
 
@@ -101,15 +111,13 @@ export async function applyChanges(token: string): Promise<void> {
   }
 }
 
-export async function pullContainers(token: string): Promise<void> {
-  const res = await post('/admin/containers/pull', {}, token);
+export async function upgradeStack(token: string): Promise<string> {
+  const res = await post('/admin/upgrade', {}, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text);
-  }
+  if (!res.ok) throw new Error(await res.text());
+  return res.text();
 }
 
 export async function containerAction(

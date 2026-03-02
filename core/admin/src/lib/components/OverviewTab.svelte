@@ -10,48 +10,42 @@
   interface Props {
     services: ServiceItem[];
     adminHealth: HealthPayload | null;
-    guardianHealth: HealthPayload | null;
     channelAccess: 'host' | 'lan' | 'custom';
     operationResult: string;
     operationResultType: 'success' | 'error' | 'info';
     adminStatus: string;
     tokenStored: boolean;
     healthLoading: boolean;
-    installLoading: boolean;
     applyLoading: boolean;
-    pullLoading: boolean;
+    upgradeLoading: boolean;
     anyDangerousLoading: boolean;
     automationsData: AutomationsResponse | null;
     containerData: ContainerListResponse | null;
     channelsData: ChannelsResponse | null;
     onCheckHealth: () => void;
-    onInstall: () => void;
     onApplyChanges: () => void;
-    onPullContainers: () => void;
+    onUpgradeStack: () => void;
     onDismissResult: () => void;
   }
 
   let {
     services,
     adminHealth,
-    guardianHealth,
     channelAccess,
     operationResult,
     operationResultType,
     adminStatus,
     tokenStored,
     healthLoading,
-    installLoading,
     applyLoading,
-    pullLoading,
+    upgradeLoading,
     anyDangerousLoading,
     automationsData,
     containerData,
     channelsData,
     onCheckHealth,
-    onInstall,
     onApplyChanges,
-    onPullContainers,
+    onUpgradeStack,
     onDismissResult
   }: Props = $props();
 
@@ -68,33 +62,50 @@
   );
 
   // Derived: overall container health
-  let containerHealthStatus = $derived.by(() => {
-    if (!containerData?.dockerContainers) return 'unknown' as const;
-    const containers = containerData.dockerContainers;
-    if (containers.length === 0) return 'unknown' as const;
-    const allRunning = containers.every(c => c.State === 'running');
-    return allRunning ? 'healthy' as const : 'unhealthy' as const;
+  // Merges both data sources for an accurate count:
+  //  - containers map (state.services): 8 CORE_SERVICES with running/stopped
+  //  - dockerContainers (docker compose ps): only physically-existing containers,
+  //    but includes docker-socket-proxy and channel services not in the map
+  let containerCounts = $derived.by(() => {
+    if (!containerData) return null;
+    // Build a unified service → state map
+    const merged = new Map<string, string>();
+    // Seed from the state.services map (8 core services)
+    if (containerData.containers) {
+      for (const [name, state] of Object.entries(containerData.containers)) {
+        merged.set(name, state);
+      }
+    }
+    // Overlay / add from dockerContainers (includes docker-socket-proxy, channels)
+    if (containerData.dockerContainers) {
+      for (const c of containerData.dockerContainers) {
+        merged.set(c.Service, c.State);
+      }
+    }
+    if (merged.size === 0) return null;
+    const total = merged.size;
+    const running = [...merged.values()].filter(s => s === 'running').length;
+    return { total, running };
   });
 
   // Derived: enabled channels list
   let enabledChannels = $derived(channelsData?.installed ?? []);
 
+  // Derived: guardian status from container state (not the health endpoint stub)
+  let guardianContainerStatus = $derived.by(() => {
+    if (!containerData?.containers) return 'unknown' as const;
+    const status = containerData.containers['guardian'];
+    if (status === 'running') return 'running' as const;
+    if (status === 'stopped') return 'stopped' as const;
+    return 'unknown' as const;
+  });
+
   // Derived: assistant connectivity (from container state)
   let assistantStatus = $derived.by(() => {
-    if (!containerData) return 'unknown' as const;
-    // Check the simple services map first
+    if (!containerData?.containers) return 'unknown' as const;
     const status = containerData.containers['assistant'];
     if (status === 'running') return 'connected' as const;
     if (status === 'stopped') return 'disconnected' as const;
-    // Fall back to docker containers list
-    if (containerData.dockerContainers) {
-      const assistant = containerData.dockerContainers.find(
-        c => c.Service === 'assistant' || c.Name.includes('assistant')
-      );
-      if (assistant) {
-        return assistant.State === 'running' ? 'connected' as const : 'disconnected' as const;
-      }
-    }
     return 'unknown' as const;
   });
 </script>
@@ -145,30 +156,6 @@
           </span>
         </button>
 
-        <button class="action-item" onclick={onInstall} disabled={anyDangerousLoading || !tokenStored}>
-          <span class="action-icon action-icon--amber">
-            {#if installLoading}
-              <span class="spinner"></span>
-            {:else}
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            {/if}
-          </span>
-          <div class="action-content">
-            <span class="action-title">Install Core Services</span>
-            <span class="action-desc">Bootstrap all core services from scratch</span>
-            <span class="action-hint">Creates containers, networks, and volumes. Safe to re-run.</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </button>
-
         <button class="action-item" onclick={onApplyChanges} disabled={anyDangerousLoading || !tokenStored}>
           <span class="action-icon action-icon--blue">
             {#if applyLoading}
@@ -193,22 +180,23 @@
           </span>
         </button>
 
-        <button class="action-item" onclick={onPullContainers} disabled={anyDangerousLoading || !tokenStored}>
+        <button class="action-item" onclick={onUpgradeStack} disabled={anyDangerousLoading || !tokenStored}>
           <span class="action-icon action-icon--amber">
-            {#if pullLoading}
+            {#if upgradeLoading}
               <span class="spinner"></span>
             {:else}
               <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
+                <polyline points="17 1 21 5 17 9" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <polyline points="7 23 3 19 7 15" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
               </svg>
             {/if}
           </span>
           <div class="action-content">
-            <span class="action-title">Pull Latest Images</span>
-            <span class="action-desc">Download newest container images for all services</span>
-            <span class="action-hint">Downloads only; does not restart running containers.</span>
+            <span class="action-title">Upgrade Stack</span>
+            <span class="action-desc">Download latest assets, pull images, restart services</span>
+            <span class="action-hint">Backs up current config before overwriting.</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -286,10 +274,10 @@
         <div class="info-item">
           <span class="info-label">Guardian</span>
           <span class="info-value">
-            {#if guardianHealth}
-              <span class="badge" class:badge-success={guardianHealth.status === 'ok'} class:badge-danger={guardianHealth.status !== 'ok'}>
-                {guardianHealth.status}
-              </span>
+            {#if guardianContainerStatus === 'running'}
+              <span class="badge badge-success">Running</span>
+            {:else if guardianContainerStatus === 'stopped'}
+              <span class="badge badge-danger">Stopped</span>
             {:else}
               <span class="badge badge-idle">Unknown</span>
             {/if}
@@ -298,10 +286,14 @@
         <div class="info-item">
           <span class="info-label">Containers</span>
           <span class="info-value">
-            {#if containerHealthStatus === 'healthy'}
-              <span class="badge badge-success">All Healthy</span>
-            {:else if containerHealthStatus === 'unhealthy'}
-              <span class="badge badge-danger">Unhealthy</span>
+            {#if containerCounts}
+              {#if containerCounts.running === containerCounts.total}
+                <span class="badge badge-success">{containerCounts.running} / {containerCounts.total} running</span>
+              {:else if containerCounts.running > 0}
+                <span class="badge badge-warning">{containerCounts.running} / {containerCounts.total} running</span>
+              {:else}
+                <span class="badge badge-danger">0 / {containerCounts.total} running</span>
+              {/if}
             {:else}
               <span class="badge badge-idle">Unknown</span>
             {/if}

@@ -4,8 +4,9 @@
  * Manages DATA_HOME source-of-truth files: Caddyfile and docker-compose.yml.
  * Owns the $assets Vite imports and access scope detection/mutation.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, join, relative } from "node:path";
 import { resolveDataHome } from "./paths.js";
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
@@ -93,4 +94,87 @@ export function ensureCoreCompose(): string {
 export function readCoreCompose(): string {
   const path = ensureCoreCompose();
   return readFileSync(path, "utf-8");
+}
+
+// ── Asset Refresh (GitHub download) ──────────────────────────────────
+
+const REPO = "itlackey/openpalm";
+const VERSION = process.env.OPENPALM_ASSET_VERSION ?? "main";
+
+/** SHA-256 hex digest of a string. */
+function sha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+/**
+ * Assets to manage: relative path within DATA_HOME → filename on GitHub.
+ * The key is the relative path under DATA_HOME; the GitHub filename is the
+ * last segment.
+ */
+const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
+  { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
+  { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" }
+];
+
+/**
+ * Download an asset from GitHub. Tries the release URL first, then raw.
+ * Returns the text content or throws with a descriptive message.
+ */
+async function downloadAsset(filename: string): Promise<string> {
+  const releaseUrl = `https://github.com/${REPO}/releases/download/${VERSION}/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/assets/${filename}`;
+
+  for (const url of [releaseUrl, rawUrl]) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return await res.text();
+    } catch {
+      // try next URL
+    }
+  }
+  throw new Error(`Failed to download ${filename} from GitHub (tried release and raw URLs for version "${VERSION}")`);
+}
+
+/**
+ * Download latest core assets from GitHub, back up changed files, and
+ * overwrite DATA_HOME with the fresh versions.
+ *
+ * Returns the backup directory (if any files were backed up) and the list
+ * of asset paths that were updated.
+ */
+export async function refreshCoreAssets(): Promise<{
+  backupDir: string | null;
+  updated: string[];
+}> {
+  const dataHome = resolveDataHome();
+  const updated: string[] = [];
+  let backupDir: string | null = null;
+
+  for (const asset of MANAGED_ASSETS) {
+    const freshContent = await downloadAsset(asset.githubFilename);
+    const targetPath = join(dataHome, asset.dataRelPath);
+
+    // Compare with existing file (if any)
+    if (existsSync(targetPath)) {
+      const currentContent = readFileSync(targetPath, "utf-8");
+      if (sha256(currentContent) === sha256(freshContent)) {
+        continue; // identical — skip
+      }
+
+      // Back up the current file before overwriting
+      if (!backupDir) {
+        backupDir = join(dataHome, "backups", new Date().toISOString().replace(/[:.]/g, "-"));
+      }
+      const backupPath = join(backupDir, asset.dataRelPath);
+      mkdirSync(dirname(backupPath), { recursive: true });
+      copyFileSync(targetPath, backupPath);
+    }
+
+    // Write the fresh content
+    mkdirSync(dirname(targetPath), { recursive: true });
+    writeFileSync(targetPath, freshContent);
+    updated.push(asset.dataRelPath);
+  }
+
+  return { backupDir, updated };
 }

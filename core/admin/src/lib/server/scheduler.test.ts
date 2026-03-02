@@ -301,7 +301,7 @@ describe("loadAutomations", () => {
     );
     writeFileSync(
       join(dir, "update.yml"),
-      'schedule: weekly\naction:\n  type: api\n  method: POST\n  path: /admin/containers/pull\n'
+      'schedule: weekly\naction:\n  type: api\n  method: POST\n  path: /admin/upgrade\n'
     );
 
     const configs = loadAutomations(stateDir);

@@ -1,8 +1,20 @@
 <script lang="ts">
   import type { DockerContainer } from '$lib/types.js';
 
+  /** Unified display entry for the containers list */
+  export type ServiceEntry = {
+    /** Unique ID for toggle — Docker container ID or service name */
+    id: string;
+    /** Compose service name */
+    service: string;
+    /** 'running' | 'stopped' | 'exited' | 'not created' etc. */
+    state: string;
+    /** Full Docker container data when available */
+    docker: DockerContainer | null;
+  };
+
   interface Props {
-    container: DockerContainer;
+    entry: ServiceEntry;
     selected: boolean;
     onToggle: () => void;
     onStart: () => void;
@@ -10,7 +22,7 @@
     onRestart: () => void;
   }
 
-  let { container, selected, onToggle, onStart, onStop, onRestart }: Props = $props();
+  let { entry, selected, onToggle, onStart, onStop, onRestart }: Props = $props();
 
   let actionInFlight: 'start' | 'stop' | 'restart' | null = $state(null);
   let confirmAction: 'start' | 'stop' | 'restart' | null = $state(null);
@@ -28,14 +40,14 @@
 
   function containerStatusColor(state: string): 'success' | 'danger' | 'warning' | 'idle' {
     if (state === 'running') return 'success';
-    if (state === 'exited' || state === 'dead') return 'danger';
+    if (state === 'exited' || state === 'dead' || state === 'stopped') return 'danger';
     if (state === 'restarting' || state === 'paused') return 'warning';
     return 'idle';
   }
 
-  let img = $derived(parseImageTag(container.Image));
-  let displayName = $derived(container.Service || container.Name);
+  let img = $derived(entry.docker ? parseImageTag(entry.docker.Image) : null);
   let isAnyActionInFlight = $derived(actionInFlight !== null);
+  let isNotCreated = $derived(!entry.docker);
 
   function requestAction(action: 'start' | 'stop' | 'restart', e: MouseEvent): void {
     e.stopPropagation();
@@ -71,16 +83,26 @@
   onclick={onToggle}
 >
   <span class="ct-col ct-col--name">
-    <span class="ct-indicator ct-indicator--{containerStatusColor(container.State)}"></span>
-    <span class="ct-service-name">{container.Service || container.Name}</span>
+    <span class="ct-indicator ct-indicator--{containerStatusColor(entry.state)}"></span>
+    <span class="ct-service-name">{entry.service}</span>
   </span>
-  <span class="ct-col ct-col--image ct-mono">{img.name}</span>
+  <span class="ct-col ct-col--image ct-mono">
+    {#if img}
+      {img.name}
+    {:else}
+      <span class="ct-not-created">--</span>
+    {/if}
+  </span>
   <span class="ct-col ct-col--tag">
-    <span class="tag-badge">{img.tag}</span>
+    {#if img}
+      <span class="tag-badge">{img.tag}</span>
+    {:else}
+      <span class="ct-not-created">--</span>
+    {/if}
   </span>
   <span class="ct-col ct-col--status">
-    <span class="badge badge-{containerStatusColor(container.State)}">
-      {container.State}
+    <span class="badge badge-{containerStatusColor(entry.state)}">
+      {entry.state}
     </span>
   </span>
   <span class="ct-col ct-col--actions">
@@ -103,83 +125,93 @@
 
 {#if selected}
   <div class="container-detail">
-    <div class="detail-grid">
-      <div class="detail-item">
-        <span class="detail-label">Container ID</span>
-        <span class="detail-value detail-mono">{container.ID}</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Name</span>
-        <span class="detail-value detail-mono">{container.Name || container.Names}</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Image</span>
-        <span class="detail-value detail-mono">{container.Image}</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Image Name</span>
-        <span class="detail-value detail-mono">{img.name}</span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Tag / Digest</span>
-        <span class="detail-value">
-          <span class="tag-badge tag-badge--lg">{img.tag}</span>
-          {#if container.Image.includes('@')}
-            <span class="detail-mono detail-digest">{container.Image.split('@')[1]?.slice(0, 19)}...</span>
-          {/if}
-        </span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">State</span>
-        <span class="detail-value">
-          <span class="badge badge-{containerStatusColor(container.State)}">{container.State}</span>
-        </span>
-      </div>
-      <div class="detail-item">
-        <span class="detail-label">Status</span>
-        <span class="detail-value">{container.Status}</span>
-      </div>
-      {#if container.Health}
+    {#if entry.docker}
+      {@const container = entry.docker}
+      <div class="detail-grid">
         <div class="detail-item">
-          <span class="detail-label">Health</span>
-          <span class="detail-value">
-            <span
-              class="badge"
-              class:badge-success={container.Health === 'healthy'}
-              class:badge-warning={container.Health === 'starting'}
-              class:badge-danger={container.Health === 'unhealthy'}
-              class:badge-idle={!['healthy', 'starting', 'unhealthy'].includes(container.Health)}
-            >
-              {container.Health}
+          <span class="detail-label">Container ID</span>
+          <span class="detail-value detail-mono">{container.ID}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Name</span>
+          <span class="detail-value detail-mono">{container.Name || container.Names}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Image</span>
+          <span class="detail-value detail-mono">{container.Image}</span>
+        </div>
+        {#if img}
+          <div class="detail-item">
+            <span class="detail-label">Image Name</span>
+            <span class="detail-value detail-mono">{img.name}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Tag / Digest</span>
+            <span class="detail-value">
+              <span class="tag-badge tag-badge--lg">{img.tag}</span>
+              {#if container.Image.includes('@')}
+                <span class="detail-mono detail-digest">{container.Image.split('@')[1]?.slice(0, 19)}...</span>
+              {/if}
             </span>
+          </div>
+        {/if}
+        <div class="detail-item">
+          <span class="detail-label">State</span>
+          <span class="detail-value">
+            <span class="badge badge-{containerStatusColor(container.State)}">{container.State}</span>
           </span>
         </div>
-      {/if}
-      {#if container.Ports}
         <div class="detail-item">
-          <span class="detail-label">Ports</span>
-          <span class="detail-value detail-mono">{container.Ports}</span>
+          <span class="detail-label">Status</span>
+          <span class="detail-value">{container.Status}</span>
         </div>
-      {/if}
-      {#if container.RunningFor}
-        <div class="detail-item">
-          <span class="detail-label">Uptime</span>
-          <span class="detail-value">{container.RunningFor}</span>
-        </div>
-      {/if}
-      {#if container.CreatedAt}
-        <div class="detail-item">
-          <span class="detail-label">Created</span>
-          <span class="detail-value">{container.CreatedAt}</span>
-        </div>
-      {/if}
-      {#if container.Project}
-        <div class="detail-item">
-          <span class="detail-label">Project</span>
-          <span class="detail-value detail-mono">{container.Project}</span>
-        </div>
-      {/if}
-    </div>
+        {#if container.Health}
+          <div class="detail-item">
+            <span class="detail-label">Health</span>
+            <span class="detail-value">
+              <span
+                class="badge"
+                class:badge-success={container.Health === 'healthy'}
+                class:badge-warning={container.Health === 'starting'}
+                class:badge-danger={container.Health === 'unhealthy'}
+                class:badge-idle={!['healthy', 'starting', 'unhealthy'].includes(container.Health)}
+              >
+                {container.Health}
+              </span>
+            </span>
+          </div>
+        {/if}
+        {#if container.Ports}
+          <div class="detail-item">
+            <span class="detail-label">Ports</span>
+            <span class="detail-value detail-mono">{container.Ports}</span>
+          </div>
+        {/if}
+        {#if container.RunningFor}
+          <div class="detail-item">
+            <span class="detail-label">Uptime</span>
+            <span class="detail-value">{container.RunningFor}</span>
+          </div>
+        {/if}
+        {#if container.CreatedAt}
+          <div class="detail-item">
+            <span class="detail-label">Created</span>
+            <span class="detail-value">{container.CreatedAt}</span>
+          </div>
+        {/if}
+        {#if container.Project}
+          <div class="detail-item">
+            <span class="detail-label">Project</span>
+            <span class="detail-value detail-mono">{container.Project}</span>
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class="detail-not-created">
+        <p>Container has not been created yet. Use <strong>Start</strong> to create and start it.</p>
+      </div>
+    {/if}
+
     {#if feedback}
       <div class="action-feedback action-feedback--{feedback.type}" role="status">
         {feedback.message}
@@ -189,7 +221,7 @@
     {#if confirmAction}
       <div class="confirm-bar" role="alert">
         <span class="confirm-text">
-          {confirmAction.charAt(0).toUpperCase() + confirmAction.slice(1)} <strong>{displayName}</strong>?
+          {confirmAction.charAt(0).toUpperCase() + confirmAction.slice(1)} <strong>{entry.service}</strong>?
         </span>
         <div class="confirm-actions">
           <button
@@ -208,18 +240,25 @@
       </div>
     {:else}
       <div class="detail-actions">
-        <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('start', e)}>
-          {#if actionInFlight === 'start'}<span class="spinner-inline"></span>{/if}
-          Start
-        </button>
-        <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('stop', e)}>
-          {#if actionInFlight === 'stop'}<span class="spinner-inline"></span>{/if}
-          Stop
-        </button>
-        <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('restart', e)}>
-          {#if actionInFlight === 'restart'}<span class="spinner-inline"></span>{/if}
-          Restart
-        </button>
+        {#if isNotCreated}
+          <button class="btn btn-primary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('start', e)}>
+            {#if actionInFlight === 'start'}<span class="spinner-inline"></span>{/if}
+            Start
+          </button>
+        {:else}
+          <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('start', e)}>
+            {#if actionInFlight === 'start'}<span class="spinner-inline"></span>{/if}
+            Start
+          </button>
+          <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('stop', e)}>
+            {#if actionInFlight === 'stop'}<span class="spinner-inline"></span>{/if}
+            Stop
+          </button>
+          <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('restart', e)}>
+            {#if actionInFlight === 'restart'}<span class="spinner-inline"></span>{/if}
+            Restart
+          </button>
+        {/if}
       </div>
     {/if}
   </div>
@@ -328,6 +367,11 @@
     transform: rotate(180deg);
   }
 
+  .ct-not-created {
+    color: var(--color-text-tertiary);
+    font-style: italic;
+  }
+
   .tag-badge {
     display: inline-flex;
     align-items: center;
@@ -428,6 +472,15 @@
     margin-top: var(--space-4);
   }
 
+  .detail-not-created {
+    padding: var(--space-2) 0;
+  }
+
+  .detail-not-created p {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+
   /* ── Action feedback ─────────────────────────────────────────────── */
 
   .action-feedback {
@@ -515,6 +568,17 @@
 
   .btn-danger:hover:not(:disabled) {
     opacity: 0.9;
+  }
+
+  .btn-primary {
+    background: var(--color-primary);
+    color: #000;
+    border-color: var(--color-primary);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+    border-color: var(--color-primary-hover);
   }
 
   .btn-sm {

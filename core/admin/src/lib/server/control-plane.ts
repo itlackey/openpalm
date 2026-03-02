@@ -78,7 +78,8 @@ export {
   discoverStagedChannelYmls,
   stageArtifacts,
   buildArtifactMeta,
-  persistArtifacts
+  persistArtifacts,
+  refreshCoreAssets
 } from "./staging.js";
 
 // ── lifecycle.ts ──────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ export {
   createState,
   applyInstall,
   applyUpdate,
+  applyUpgrade,
   applyUninstall,
   buildComposeFileList,
   buildManagedServices,

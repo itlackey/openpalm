@@ -27,7 +27,8 @@ export {
   detectAccessScope,
   setCoreCaddyAccessScope,
   ensureCoreCompose,
-  readCoreCompose
+  readCoreCompose,
+  refreshCoreAssets
 } from "./core-assets.js";
 
 // ── Crypto Utilities ──────────────────────────────────────────────────

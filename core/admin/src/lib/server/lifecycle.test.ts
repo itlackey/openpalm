@@ -85,8 +85,8 @@ describe("normalizeCaller", () => {
 describe("isAllowedAction", () => {
   test("allows documented actions from api-spec.md", () => {
     const validActions = [
-      "install", "update", "uninstall",
-      "containers.list", "containers.pull", "containers.up",
+      "install", "update", "upgrade", "uninstall",
+      "containers.list", "containers.up",
       "containers.down", "containers.restart",
       "channels.list", "channels.install", "channels.uninstall",
       "extensions.list", "extensions.install", "extensions.uninstall",

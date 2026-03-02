@@ -2,7 +2,7 @@
  * Tests for core-assets.ts — DATA_HOME source-of-truth files:
  * Caddyfile, compose, and access scope management.
  */
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   mkdirSync,
   writeFileSync,
@@ -17,7 +17,8 @@ import {
   detectAccessScope,
   setCoreCaddyAccessScope,
   ensureCoreCompose,
-  readCoreCompose
+  readCoreCompose,
+  refreshCoreAssets
 } from "./core-assets.js";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
@@ -181,5 +182,102 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     const content = readCoreCompose();
     expect(content).toBeTruthy();
     expect(typeof content).toBe("string");
+  });
+});
+
+// ── refreshCoreAssets ────────────────────────────────────────────────────
+
+describe("refreshCoreAssets", () => {
+  const origEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+  });
+
+  afterEach(() => {
+    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+    vi.restoreAllMocks();
+  });
+
+  test("downloads and writes new assets when none exist", async () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("docker-compose.yml")) {
+        return new Response("services:\n  admin:\n    image: test\n", { status: 200 });
+      }
+      if (url.includes("Caddyfile")) {
+        return new Response(":8080 {\n  respond 200\n}\n", { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await refreshCoreAssets();
+    expect(result.updated).toContain("docker-compose.yml");
+    expect(result.updated).toContain("caddy/Caddyfile");
+    expect(result.backupDir).toBeNull(); // no existing files to back up
+
+    expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
+    expect(existsSync(join(dataHome, "caddy/Caddyfile"))).toBe(true);
+  });
+
+  test("backs up changed files before overwriting", async () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    mkdirSync(dataHome, { recursive: true });
+    writeFileSync(join(dataHome, "docker-compose.yml"), "old-compose-content");
+    mkdirSync(join(dataHome, "caddy"), { recursive: true });
+    writeFileSync(join(dataHome, "caddy/Caddyfile"), "old-caddy-content");
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("docker-compose.yml")) {
+        return new Response("new-compose-content", { status: 200 });
+      }
+      if (url.includes("Caddyfile")) {
+        return new Response("new-caddy-content", { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await refreshCoreAssets();
+    expect(result.updated).toHaveLength(2);
+    expect(result.backupDir).not.toBeNull();
+
+    // Verify backup contains old content
+    const backupCompose = readFileSync(join(result.backupDir!, "docker-compose.yml"), "utf-8");
+    expect(backupCompose).toBe("old-compose-content");
+    const backupCaddy = readFileSync(join(result.backupDir!, "caddy/Caddyfile"), "utf-8");
+    expect(backupCaddy).toBe("old-caddy-content");
+
+    // Verify new content written
+    expect(readFileSync(join(dataHome, "docker-compose.yml"), "utf-8")).toBe("new-compose-content");
+    expect(readFileSync(join(dataHome, "caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
+  });
+
+  test("skips assets with identical content", async () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    const content = "same-content";
+    mkdirSync(dataHome, { recursive: true });
+    writeFileSync(join(dataHome, "docker-compose.yml"), content);
+    mkdirSync(join(dataHome, "caddy"), { recursive: true });
+    writeFileSync(join(dataHome, "caddy/Caddyfile"), content);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(content, { status: 200 });
+    });
+
+    const result = await refreshCoreAssets();
+    expect(result.updated).toHaveLength(0);
+    expect(result.backupDir).toBeNull();
+  });
+
+  test("throws when both GitHub URLs fail", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(refreshCoreAssets()).rejects.toThrow("Failed to download");
   });
 });

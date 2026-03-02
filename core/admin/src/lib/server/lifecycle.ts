@@ -10,6 +10,7 @@ import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex } from "./staging.js";
+import { refreshCoreAssets } from "./core-assets.js";
 
 // ── State Factory ──────────────────────────────────────────────────────
 
@@ -116,6 +117,26 @@ export function applyUninstall(state: ControlPlaneState): { stopped: string[] } 
   return { stopped };
 }
 
+export async function applyUpgrade(state: ControlPlaneState): Promise<{
+  backupDir: string | null;
+  updated: string[];
+  restarted: string[];
+}> {
+  const { backupDir, updated } = await refreshCoreAssets();
+
+  const restarted: string[] = [];
+  for (const [name, status] of Object.entries(state.services)) {
+    if (status === "running") {
+      restarted.push(name);
+    }
+  }
+
+  state.artifacts = stageArtifacts(state);
+  persistArtifacts(state);
+
+  return { backupDir, updated, restarted };
+}
+
 // ── Compose File List Builder ────────────────────────────────────────────
 
 /**
@@ -173,9 +194,9 @@ export function normalizeCaller(headerValue: string | null): CallerType {
 const ALLOWED_ACTIONS = new Set([
   "install",
   "update",
+  "upgrade",
   "uninstall",
   "containers.list",
-  "containers.pull",
   "containers.up",
   "containers.down",
   "containers.restart",

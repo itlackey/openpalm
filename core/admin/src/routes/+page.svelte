@@ -18,9 +18,8 @@
     fetchContainers,
     fetchArtifacts,
     fetchAutomations,
-    installStack,
     applyChanges,
-    pullContainers,
+    upgradeStack,
     containerAction,
     fetchConnectionStatus,
     fetchConnections,
@@ -43,9 +42,8 @@
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
-  let installLoading = $state(false);
   let applyLoading = $state(false);
-  let pullLoading = $state(false);
+  let upgradeLoading = $state(false);
   let artifactsLoading = $state(false);
   let containersLoading = $state(false);
   let automationsLoading = $state(false);
@@ -72,7 +70,7 @@
     { name: 'Admin API', status: adminHealth?.status ?? null, icon: 'shield' },
     { name: 'Guardian', status: guardianHealth?.status ?? null, icon: 'globe' }
   ]);
-  let anyDangerousLoading = $derived(installLoading || applyLoading || pullLoading);
+  let anyDangerousLoading = $derived(applyLoading || upgradeLoading);
 
   // ── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -287,36 +285,6 @@
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  async function handleInstall(): Promise<void> {
-    if (anyDangerousLoading) return;
-    const token = getAdminToken();
-    tokenStored = Boolean(token);
-    if (!token) {
-      authLocked = true;
-      authError = 'Admin token required.';
-      adminStatus = '';
-      operationResult = 'Admin token required for protected actions.';
-      operationResultType = 'error';
-      return;
-    }
-    installLoading = true;
-    try {
-      operationResult = await installStack(token);
-      operationResultType = 'success';
-    } catch (e) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 401) {
-        operationResult = 'Invalid admin token.';
-        operationResultType = 'error';
-        applyInvalidTokenState();
-      } else {
-        operationResult = `Error: ${err.message ?? e}`;
-        operationResultType = 'error';
-      }
-    }
-    installLoading = false;
-  }
-
   async function handleApplyChanges(): Promise<void> {
     if (anyDangerousLoading) return;
     const token = getAdminToken();
@@ -344,7 +312,7 @@
     applyLoading = false;
   }
 
-  async function handlePullContainers(): Promise<void> {
+  async function handleUpgradeStack(): Promise<void> {
     if (anyDangerousLoading) return;
     const token = getAdminToken();
     tokenStored = Boolean(token);
@@ -354,21 +322,20 @@
       adminStatus = '';
       return;
     }
-    pullLoading = true;
+    upgradeLoading = true;
     try {
-      await pullContainers(token);
-      operationResult = 'Container images updated successfully.';
+      operationResult = await upgradeStack(token);
       operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       } else {
-        operationResult = `Error pulling containers: ${err.message ?? e}`;
+        operationResult = `Error upgrading stack: ${err.message ?? e}`;
         operationResultType = 'error';
       }
     }
-    pullLoading = false;
+    upgradeLoading = false;
   }
 
   async function handleContainerAction(
@@ -481,24 +448,21 @@
       <OverviewTab
         {services}
         {adminHealth}
-        {guardianHealth}
         {channelAccess}
         {operationResult}
         {operationResultType}
         {adminStatus}
         {tokenStored}
         {healthLoading}
-        {installLoading}
         {applyLoading}
-        {pullLoading}
+        {upgradeLoading}
         {anyDangerousLoading}
         {automationsData}
         {containerData}
         {channelsData}
         onCheckHealth={loadHealth}
-        onInstall={handleInstall}
         onApplyChanges={handleApplyChanges}
-        onPullContainers={handlePullContainers}
+        onUpgradeStack={handleUpgradeStack}
         onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
       />
     {:else if activeTab === 'containers'}

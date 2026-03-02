@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ContainerListResponse } from '$lib/types.js';
-  import ContainerRow from './ContainerRow.svelte';
+  import ContainerRow, { type ServiceEntry } from './ContainerRow.svelte';
 
   interface Props {
     containerData: ContainerListResponse | null;
@@ -28,12 +28,46 @@
     onRefresh
   }: Props = $props();
 
-  let hasContainers = $derived(
-    containerData !== null &&
-      containerData.dockerAvailable &&
-      Array.isArray(containerData.dockerContainers) &&
-      containerData.dockerContainers.length > 0
-  );
+  /** Merge both data sources into a unified ServiceEntry list */
+  let serviceEntries = $derived.by((): ServiceEntry[] => {
+    if (!containerData) return [];
+    const byService = new Map<string, ServiceEntry>();
+
+    // Seed from the state.services map (core services, always present)
+    if (containerData.containers) {
+      for (const [name, state] of Object.entries(containerData.containers)) {
+        byService.set(name, { id: name, service: name, state, docker: null });
+      }
+    }
+
+    // Overlay with real Docker container data (includes docker-socket-proxy, channels)
+    if (containerData.dockerContainers) {
+      for (const c of containerData.dockerContainers) {
+        const existing = byService.get(c.Service);
+        if (existing) {
+          existing.state = c.State;
+          existing.docker = c;
+          existing.id = c.ID;
+        } else {
+          byService.set(c.Service, {
+            id: c.ID,
+            service: c.Service || c.Name,
+            state: c.State,
+            docker: c
+          });
+        }
+      }
+    }
+
+    // Sort: running first, then alphabetical
+    return [...byService.values()].sort((a, b) => {
+      if (a.state === 'running' && b.state !== 'running') return -1;
+      if (a.state !== 'running' && b.state === 'running') return 1;
+      return a.service.localeCompare(b.service);
+    });
+  });
+
+  let hasEntries = $derived(serviceEntries.length > 0);
 
   let lastUpdated: string | null = $state(null);
 
@@ -60,7 +94,7 @@
     </div>
   </div>
   <div class="panel-body panel-body--flush">
-    {#if hasContainers && Array.isArray(containerData?.dockerContainers)}
+    {#if hasEntries}
       <div class="container-table">
         <div class="container-table-header">
           <span class="ct-col ct-col--name">Container</span>
@@ -69,14 +103,14 @@
           <span class="ct-col ct-col--status">Status</span>
           <span class="ct-col ct-col--actions"></span>
         </div>
-        {#each containerData.dockerContainers as container}
+        {#each serviceEntries as entry (entry.id)}
           <ContainerRow
-            {container}
-            selected={selectedContainerId === container.ID}
-            onToggle={() => onToggleContainer(container.ID)}
-            onStart={() => onStart(container.Service)}
-            onStop={() => onStop(container.Service)}
-            onRestart={() => onRestart(container.Service)}
+            {entry}
+            selected={selectedContainerId === entry.id}
+            onToggle={() => onToggleContainer(entry.id)}
+            onStart={() => onStart(entry.service)}
+            onStop={() => onStop(entry.service)}
+            onRestart={() => onRestart(entry.service)}
           />
         {/each}
       </div>
