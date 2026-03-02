@@ -309,6 +309,123 @@ Response:
 
 `complete` is `true` when at least one provider key is set; `false` when all are empty.
 
+## OpenMemory Configuration
+
+Manage the OpenMemory (mem0) LLM and embedding provider configuration stored
+at `DATA_HOME/openmemory/default_config.json`. Changes are persisted to disk
+and optionally pushed to the running OpenMemory container via its REST API.
+
+### `GET /admin/openmemory/config`
+
+Returns the persisted config, the live runtime config (if reachable), provider
+lists, and known embedding dimension mappings.
+
+Response:
+
+```json
+{
+  "config": {
+    "mem0": {
+      "llm": { "provider": "openai", "config": { "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 2000, "api_key": "env:OPENAI_API_KEY" } },
+      "embedder": { "provider": "openai", "config": { "model": "text-embedding-3-small", "api_key": "env:OPENAI_API_KEY" } },
+      "vector_store": { "provider": "qdrant", "config": { "collection_name": "openmemory", "host": "qdrant", "port": 6333, "embedding_model_dims": 1536 } }
+    },
+    "openmemory": { "custom_instructions": "" }
+  },
+  "runtimeConfig": null,
+  "providers": {
+    "llm": ["openai", "anthropic", "ollama", "groq", "together", "mistral", "deepseek", "xai", "lmstudio"],
+    "embed": ["openai", "ollama", "huggingface", "lmstudio"]
+  },
+  "embeddingDims": {
+    "openai/text-embedding-3-small": 1536,
+    "ollama/nomic-embed-text": 768
+  }
+}
+```
+
+### `POST /admin/openmemory/config`
+
+Saves a full OpenMemory config to disk and pushes it to the running container.
+
+Body: A complete `OpenMemoryConfig` object (same shape as `config` in the GET response).
+
+Response:
+
+```json
+{ "ok": true, "persisted": true, "pushed": true }
+```
+
+Error responses:
+
+- `400 bad_request` — Missing or invalid `mem0` structure.
+
+### `POST /admin/openmemory/models`
+
+Proxy endpoint for listing available models from a provider's API. Resolves
+`env:` API key references server-side before making the upstream request.
+
+Body:
+
+```json
+{
+  "provider": "ollama",
+  "apiKeyRef": "env:OPENAI_API_KEY",
+  "baseUrl": "http://host.docker.internal:11434"
+}
+```
+
+- `provider` (required) — Must be a recognized LLM or embedding provider name.
+- `apiKeyRef` — Raw API key or `env:VAR_NAME` reference resolved from
+  `process.env` then `CONFIG_HOME/secrets.env`.
+- `baseUrl` — Provider API base URL. Falls back to provider defaults when empty.
+
+Provider API conventions:
+
+| Provider | URL Pattern | Auth |
+|----------|------------|------|
+| Ollama | `{baseUrl}/api/tags` | None |
+| Anthropic | Static list (no API) | N/A |
+| OpenAI, Groq, Mistral, Together, DeepSeek, xAI, LM Studio | `{baseUrl}/v1/models` | `Bearer {key}` |
+
+Response:
+
+```json
+{ "models": ["gpt-4o", "gpt-4o-mini"], "error": undefined }
+```
+
+On failure (unreachable provider, timeout, etc.):
+
+```json
+{ "models": [], "error": "Request timed out after 5s" }
+```
+
+Error responses:
+
+- `400 bad_request` — Invalid or missing provider name.
+
+### Ollama Integration Notes
+
+When using Ollama as the LLM or embedding provider with OpenMemory:
+
+1. **Config key**: The Ollama provider expects `ollama_base_url` (not `base_url`)
+   in the mem0 config. The admin UI handles this automatically.
+
+2. **Docker networking**: On Linux hosts, containers need
+   `extra_hosts: ["host.docker.internal:host-gateway"]` in docker-compose.yml
+   to reach `http://host.docker.internal:11434`. Docker Desktop (Mac/Windows)
+   adds this automatically.
+
+3. **Embedding dimensions**: The Qdrant collection must be created with
+   `embedding_model_dims` matching the embedding model's output dimensions
+   (e.g., 1024 for `qwen3-embedding:0.6b`, 768 for `nomic-embed-text`).
+   A dimension mismatch causes silent insert failures.
+
+4. **Model compatibility**: Models that use `<think>` tags (e.g., qwen3:4b)
+   can break mem0's JSON fact extraction parser. Use models without thinking
+   mode (e.g., `qwen2.5:14b`) for the LLM provider. Embedding models are
+   unaffected.
+
 ## Artifact and Audit APIs
 
 ### `GET /admin/artifacts`

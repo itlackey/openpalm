@@ -1,7 +1,7 @@
 /**
  * Tests for openmemory-config.ts — OpenMemory LLM & embedding config management.
  */
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -10,12 +10,14 @@ import {
   readOpenMemoryConfig,
   writeOpenMemoryConfig,
   ensureOpenMemoryConfig,
+  resolveApiKey,
+  fetchProviderModels,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
   type OpenMemoryConfig,
 } from "./openmemory-config.js";
-import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
+import { makeTempDir, trackDir, seedSecretsEnv, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
 
@@ -206,5 +208,220 @@ describe("ensureOpenMemoryConfig", () => {
 
     const config = readOpenMemoryConfig(dataDir);
     expect(config).toEqual(getDefaultConfig());
+  });
+});
+
+// ── API Key Resolution ────────────────────────────────────────────────────
+
+describe("resolveApiKey", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    // Restore original env after each test
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  test("returns empty string for empty input", () => {
+    const configDir = trackDir(makeTempDir());
+    expect(resolveApiKey("", configDir)).toBe("");
+  });
+
+  test("returns raw value when not using env: prefix", () => {
+    const configDir = trackDir(makeTempDir());
+    expect(resolveApiKey("sk-1234567890", configDir)).toBe("sk-1234567890");
+  });
+
+  test("resolves env: reference from process.env", () => {
+    const configDir = trackDir(makeTempDir());
+    process.env.TEST_API_KEY_RESOLVE = "from-process-env";
+    expect(resolveApiKey("env:TEST_API_KEY_RESOLVE", configDir)).toBe("from-process-env");
+  });
+
+  test("falls back to secrets.env when not in process.env", () => {
+    const configDir = trackDir(makeTempDir());
+    delete process.env.TEST_SECRET_KEY;
+    seedSecretsEnv(configDir, "TEST_SECRET_KEY=from-secrets-file\n");
+    expect(resolveApiKey("env:TEST_SECRET_KEY", configDir)).toBe("from-secrets-file");
+  });
+
+  test("prefers process.env over secrets.env", () => {
+    const configDir = trackDir(makeTempDir());
+    process.env.PRIORITY_KEY = "from-env";
+    seedSecretsEnv(configDir, "PRIORITY_KEY=from-secrets\n");
+    expect(resolveApiKey("env:PRIORITY_KEY", configDir)).toBe("from-env");
+  });
+
+  test("returns empty string when env: var not found anywhere", () => {
+    const configDir = trackDir(makeTempDir());
+    delete process.env.NONEXISTENT_KEY;
+    expect(resolveApiKey("env:NONEXISTENT_KEY", configDir)).toBe("");
+  });
+});
+
+// ── Provider Model Listing ────────────────────────────────────────────────
+
+describe("fetchProviderModels", () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function stubFetch(response: Response | Error) {
+    mockFetch = vi.fn();
+    if (response instanceof Error) {
+      mockFetch.mockRejectedValue(response);
+    } else {
+      mockFetch.mockResolvedValue(response);
+    }
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+  }
+
+  test("returns static list for anthropic provider", async () => {
+    const configDir = trackDir(makeTempDir());
+    const result = await fetchProviderModels("anthropic", "", "", configDir);
+    expect(result.models.length).toBeGreaterThan(0);
+    expect(result.models).toContain("claude-opus-4-20250514");
+    expect(result.models).toContain("claude-sonnet-4-20250514");
+    expect(result.error).toBeUndefined();
+  });
+
+  test("does not call fetch for anthropic", async () => {
+    stubFetch(new Error("should not be called"));
+    const configDir = trackDir(makeTempDir());
+    const result = await fetchProviderModels("anthropic", "", "", configDir);
+    expect(result.models.length).toBeGreaterThan(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("calls Ollama /api/tags endpoint", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({ models: [{ name: "llama3:latest" }, { name: "qwen2.5:14b" }] }),
+        { status: 200 }
+      )
+    );
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
+    expect(result.models).toEqual(["llama3:latest", "qwen2.5:14b"]);
+    expect(result.error).toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:11434/api/tags",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  test("uses default Ollama URL when base URL is empty", async () => {
+    stubFetch(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+    const configDir = trackDir(makeTempDir());
+
+    await fetchProviderModels("ollama", "", "", configDir);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://host.docker.internal:11434/api/tags",
+      expect.anything()
+    );
+  });
+
+  test("calls OpenAI-compatible /v1/models for other providers", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "gpt-4o-mini" }] }),
+        { status: 200 }
+      )
+    );
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("openai", "sk-test", "", configDir);
+    expect(result.models).toEqual(["gpt-4o", "gpt-4o-mini"]);
+    expect(result.error).toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/models",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer sk-test" }),
+      })
+    );
+  });
+
+  test("returns sorted model list from OpenAI-compatible API", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({ data: [{ id: "z-model" }, { id: "a-model" }, { id: "m-model" }] }),
+        { status: 200 }
+      )
+    );
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("groq", "key", "", configDir);
+    expect(result.models).toEqual(["a-model", "m-model", "z-model"]);
+  });
+
+  test("returns error on non-OK response from Ollama", async () => {
+    stubFetch(new Response("", { status: 500 }));
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
+    expect(result.models).toEqual([]);
+    expect(result.error).toContain("500");
+  });
+
+  test("returns error on non-OK response from OpenAI-compatible API", async () => {
+    stubFetch(new Response("Unauthorized", { status: 401 }));
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("openai", "bad-key", "", configDir);
+    expect(result.models).toEqual([]);
+    expect(result.error).toContain("401");
+  });
+
+  test("returns error when no base URL configured for unknown provider", async () => {
+    const configDir = trackDir(makeTempDir());
+    const result = await fetchProviderModels("unknown-provider", "", "", configDir);
+    expect(result.models).toEqual([]);
+    expect(result.error).toContain("No base URL");
+  });
+
+  test("handles fetch error gracefully (never throws)", async () => {
+    stubFetch(new Error("Connection refused"));
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
+    expect(result.models).toEqual([]);
+    expect(result.error).toContain("Connection refused");
+  });
+
+  test("handles timeout error with descriptive message", async () => {
+    const timeoutErr = new DOMException("The operation was aborted.", "TimeoutError");
+    stubFetch(timeoutErr);
+    const configDir = trackDir(makeTempDir());
+
+    const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
+    expect(result.models).toEqual([]);
+    expect(result.error).toContain("timed out");
+  });
+
+  test("strips trailing slashes from base URL", async () => {
+    stubFetch(new Response(JSON.stringify({ models: [] }), { status: 200 }));
+    const configDir = trackDir(makeTempDir());
+
+    await fetchProviderModels("ollama", "", "http://localhost:11434///", configDir);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:11434/api/tags",
+      expect.anything()
+    );
+  });
+
+  test("omits Authorization header when API key is empty", async () => {
+    stubFetch(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    const configDir = trackDir(makeTempDir());
+
+    await fetchProviderModels("lmstudio", "", "", configDir);
+    const callArgs = mockFetch.mock.calls[0];
+    const headers = (callArgs[1] as RequestInit).headers as Record<string, string>;
+    expect(headers["Authorization"]).toBeUndefined();
   });
 });
