@@ -9,6 +9,7 @@
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
+  import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
@@ -21,7 +22,8 @@
     applyChanges,
     pullContainers,
     containerAction,
-    fetchConnectionStatus
+    fetchConnectionStatus,
+    fetchConnections
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
@@ -48,22 +50,27 @@
   let automationsLoading = $state(false);
 
   // ── Content state ───────────────────────────────────────────────────────────
-  let installResult = $state('');
+  let operationResult = $state('');
+  let operationResultType: 'success' | 'error' | 'info' = $state('info');
   let artifacts = $state('');
+  let artifactType: 'compose' | 'caddyfile' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
+  let connectionsData: Record<string, string> = $state({});
+  let connectionsLoading = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' = $state('overview');
+  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   let services = $derived([
     { name: 'Admin API', status: adminHealth?.status ?? null, icon: 'shield' },
     { name: 'Guardian', status: guardianHealth?.status ?? null, icon: 'globe' }
   ]);
+  let anyDangerousLoading = $derived(installLoading || applyLoading || pullLoading);
 
   // ── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -81,8 +88,10 @@
     authLocked = true;
     authError = '';
     adminStatus = '';
-    installResult = '';
+    operationResult = '';
+    operationResultType = 'info';
     artifacts = '';
+    artifactType = null;
     containerData = null;
     selectedContainerId = null;
   }
@@ -102,7 +111,10 @@
       authLocked = false;
       authError = '';
       adminStatus = '';
+      // Auto-hydrate key data on login so the UI shows meaningful state immediately
       await loadHealth();
+      void loadContainers();
+      void loadAutomations();
       void checkConnectionStatus();
     } catch {
       authError = 'Unable to reach admin API.';
@@ -194,6 +206,7 @@
       return;
     }
     artifactsLoading = true;
+    artifactType = type;
     try {
       artifacts = await fetchArtifacts(token, type);
     } catch (e) {
@@ -236,34 +249,63 @@
     automationsLoading = false;
   }
 
-  // ── Actions ──────────────────────────────────────────────────────────────────
-
-  async function handleInstall(): Promise<void> {
+  async function loadConnections(): Promise<void> {
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
       authLocked = true;
       authError = 'Admin token required.';
       adminStatus = '';
-      installResult = 'Admin token required for protected actions.';
+      connectionsData = {};
+      return;
+    }
+    connectionsLoading = true;
+    try {
+      connectionsData = await fetchConnections(token);
+    } catch (e) {
+      connectionsData = {};
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      }
+    }
+    connectionsLoading = false;
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────────────────
+
+  async function handleInstall(): Promise<void> {
+    if (anyDangerousLoading) return;
+    const token = getAdminToken();
+    tokenStored = Boolean(token);
+    if (!token) {
+      authLocked = true;
+      authError = 'Admin token required.';
+      adminStatus = '';
+      operationResult = 'Admin token required for protected actions.';
+      operationResultType = 'error';
       return;
     }
     installLoading = true;
     try {
-      installResult = await installStack(token);
+      operationResult = await installStack(token);
+      operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
-        installResult = 'Invalid admin token.';
+        operationResult = 'Invalid admin token.';
+        operationResultType = 'error';
         applyInvalidTokenState();
       } else {
-        installResult = `Error: ${err.message ?? e}`;
+        operationResult = `Error: ${err.message ?? e}`;
+        operationResultType = 'error';
       }
     }
     installLoading = false;
   }
 
   async function handleApplyChanges(): Promise<void> {
+    if (anyDangerousLoading) return;
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -275,19 +317,22 @@
     applyLoading = true;
     try {
       await applyChanges(token);
-      installResult = 'Changes applied successfully.';
+      operationResult = 'Changes applied successfully.';
+      operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       } else {
-        installResult = `Error applying changes: ${err.message ?? e}`;
+        operationResult = `Error applying changes: ${err.message ?? e}`;
+        operationResultType = 'error';
       }
     }
     applyLoading = false;
   }
 
   async function handlePullContainers(): Promise<void> {
+    if (anyDangerousLoading) return;
     const token = getAdminToken();
     tokenStored = Boolean(token);
     if (!token) {
@@ -299,13 +344,15 @@
     pullLoading = true;
     try {
       await pullContainers(token);
-      installResult = 'Container images updated successfully.';
+      operationResult = 'Container images updated successfully.';
+      operationResultType = 'success';
     } catch (e) {
       const err = e as { status?: number; message?: string };
       if (err.status === 401) {
         applyInvalidTokenState();
       } else {
-        installResult = `Error pulling containers: ${err.message ?? e}`;
+        operationResult = `Error pulling containers: ${err.message ?? e}`;
+        operationResultType = 'error';
       }
     }
     pullLoading = false;
@@ -334,13 +381,16 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations'): void {
+  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
     }
     if (tab === 'automations' && !automationsData) {
       void loadAutomations();
+    }
+    if (tab === 'connections' && Object.keys(connectionsData).length === 0) {
+      void loadConnections();
     }
   }
 
@@ -384,6 +434,10 @@
         authLocked = false;
         authError = '';
         adminStatus = '';
+        // Auto-hydrate key data so tabs show meaningful state without manual refresh
+        void loadHealth();
+        void loadContainers();
+        void loadAutomations();
         void checkConnectionStatus();
       } catch {
         authLocked = true;
@@ -405,7 +459,7 @@
   <Navbar {version} {channelAccess} onLogout={handleLogout} />
 
   <main>
-    <ConnectionBanner missing={connectionsMissing} />
+    <ConnectionBanner missing={connectionsMissing} onNavigate={() => handleTabSelect('connections')} />
 
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
@@ -415,18 +469,20 @@
         {adminHealth}
         {guardianHealth}
         {channelAccess}
-        {installResult}
+        {operationResult}
+        {operationResultType}
         {adminStatus}
         {tokenStored}
         {healthLoading}
         {installLoading}
         {applyLoading}
         {pullLoading}
+        {anyDangerousLoading}
         onCheckHealth={loadHealth}
         onInstall={handleInstall}
         onApplyChanges={handleApplyChanges}
         onPullContainers={handlePullContainers}
-        onDismissInstallResult={() => (installResult = '')}
+        onDismissResult={() => { operationResult = ''; operationResultType = 'info'; }}
       />
     {:else if activeTab === 'containers'}
       <ContainersTab
@@ -444,11 +500,11 @@
     {:else if activeTab === 'artifacts'}
       <ArtifactsTab
         {artifacts}
+        {artifactType}
         loading={artifactsLoading}
         {tokenStored}
-        onInspectCompose={() => loadArtifacts('compose')}
-        onInspectCaddy={() => loadArtifacts('caddyfile')}
-        onDismiss={() => (artifacts = '')}
+        onInspect={(type) => loadArtifacts(type)}
+        onDismiss={() => { artifacts = ''; artifactType = null; }}
       />
     {:else if activeTab === 'automations'}
       <AutomationsTab
@@ -457,6 +513,12 @@
         error={automationsError}
         {tokenStored}
         onRefresh={loadAutomations}
+      />
+    {:else if activeTab === 'connections'}
+      <ConnectionsTab
+        connections={connectionsData}
+        loading={connectionsLoading}
+        onRefresh={loadConnections}
       />
     {/if}
   </main>

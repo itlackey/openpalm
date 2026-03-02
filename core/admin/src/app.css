@@ -19,6 +19,10 @@
   --color-warning-bg: rgba(253, 126, 20, 0.1);
   --color-info: #339af0;
   --color-info-bg: rgba(51, 154, 240, 0.08);
+  --color-pending: #868e96;
+  --color-pending-bg: rgba(134, 142, 150, 0.1);
+  --color-caution: #e67700;
+  --color-caution-bg: rgba(230, 119, 0, 0.08);
 
   /* ── Surface Colors ───────────────────────────────────────────────── */
   --color-bg: #ffffff;
@@ -26,6 +30,7 @@
   --color-bg-tertiary: #f3f4f6;
   --color-surface: #fffffffa;
   --color-surface-hover: #f9fafb;
+  --color-surface-alt: #f6f8fa;
 
   /* ── Border Colors ────────────────────────────────────────────────── */
   --color-border: #e5e7eb;
@@ -73,10 +78,12 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-full: 9999px;
 
   /* ── Shadows ──────────────────────────────────────────────────────── */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
 
   /* ── Transitions ──────────────────────────────────────────────────── */
   --transition-fast: 120ms ease;
@@ -136,4 +143,10 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-border-hover);
+}
+
+/* ── Focus & Accessibility ─────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }

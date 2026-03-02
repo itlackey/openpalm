@@ -114,7 +114,7 @@
                 <svg class="chevron" class:chevron-open={expandedLogs.has(automation.fileName)} aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
-                Logs
+                {expandedLogs.has(automation.fileName) ? 'Hide logs' : 'Show logs'}
                 {#if automation.logs.length > 0}
                   <span class="log-count">({automation.logs.length})</span>
                 {/if}
@@ -128,34 +128,36 @@
             </div>
             {#if expandedLogs.has(automation.fileName)}
               <div class="logs-panel">
-                {#if automation.logs.length === 0}
-                  <div class="logs-empty">No executions recorded yet.</div>
-                {:else}
-                  <table class="logs-table">
-                    <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>Status</th>
-                        <th>Duration</th>
-                        <th>Error</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each automation.logs as entry}
-                        <tr class:log-row-fail={!entry.ok}>
-                          <td class="log-time">{formatTime(entry.at)}</td>
-                          <td>
-                            <span class="log-status" class:log-ok={entry.ok} class:log-fail={!entry.ok}>
-                              {entry.ok ? 'OK' : 'FAIL'}
-                            </span>
-                          </td>
-                          <td class="log-duration">{formatDuration(entry.durationMs)}</td>
-                          <td class="log-error">{entry.error ?? ''}</td>
+                <div class="logs-scroll-container">
+                  {#if automation.logs.length === 0}
+                    <div class="logs-empty">No executions recorded yet.</div>
+                  {:else}
+                    <table class="logs-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Status</th>
+                          <th>Duration</th>
+                          <th class="error-col-header">Error</th>
                         </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                {/if}
+                      </thead>
+                      <tbody>
+                        {#each automation.logs as entry}
+                          <tr class:log-row-fail={!entry.ok}>
+                            <td class="log-time">{formatTime(entry.at)}</td>
+                            <td>
+                              <span class="log-status" class:log-ok={entry.ok} class:log-fail={!entry.ok}>
+                                {entry.ok ? 'OK' : 'FAIL'}
+                              </span>
+                            </td>
+                            <td class="log-duration">{formatDuration(entry.durationMs)}</td>
+                            <td class="log-error">{entry.error ?? ''}</td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  {/if}
+                </div>
               </div>
             {/if}
           </div>
@@ -171,8 +173,10 @@
           <p>Loading automations...</p>
         {:else if error}
           <p class="text-danger">{error}</p>
+          <button class="btn btn-secondary btn-sm" onclick={onRefresh}>Try Again</button>
         {:else}
           <p>No automations configured. Drop .yml files into <code>~/.config/openpalm/automations/</code> to get started.</p>
+          <p class="empty-state-hint">Automations run on a cron schedule and can execute API calls, scripts, or compose commands.</p>
         {/if}
       </div>
     {/if}
@@ -292,10 +296,6 @@
     color: var(--color-text);
   }
 
-  .meta-cron {
-    color: var(--color-text-tertiary);
-  }
-
   .meta-tz {
     color: var(--color-text-tertiary);
   }
@@ -392,6 +392,10 @@
     overflow-y: auto;
   }
 
+  .logs-scroll-container {
+    overflow-x: auto;
+  }
+
   .logs-empty {
     padding: var(--space-4);
     text-align: center;
@@ -479,6 +483,16 @@
     font-size: var(--text-sm);
   }
 
+  .empty-state-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin-top: calc(-1 * var(--space-2));
+  }
+
+  .empty-state .btn {
+    margin-top: var(--space-2);
+  }
+
   .empty-state code {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
@@ -557,6 +571,18 @@
 
     .log-error {
       max-width: 150px;
+    }
+
+    .error-col-header {
+      display: none;
+    }
+
+    .logs-scroll-container {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .logs-table {
+      min-width: 500px;
     }
   }
 

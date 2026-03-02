@@ -12,18 +12,20 @@
     adminHealth: HealthPayload | null;
     guardianHealth: HealthPayload | null;
     channelAccess: 'host' | 'lan' | 'custom';
-    installResult: string;
+    operationResult: string;
+    operationResultType: 'success' | 'error' | 'info';
     adminStatus: string;
     tokenStored: boolean;
     healthLoading: boolean;
     installLoading: boolean;
     applyLoading: boolean;
     pullLoading: boolean;
+    anyDangerousLoading: boolean;
     onCheckHealth: () => void;
     onInstall: () => void;
     onApplyChanges: () => void;
     onPullContainers: () => void;
-    onDismissInstallResult: () => void;
+    onDismissResult: () => void;
   }
 
   let {
@@ -31,18 +33,20 @@
     adminHealth,
     guardianHealth,
     channelAccess,
-    installResult,
+    operationResult,
+    operationResultType,
     adminStatus,
     tokenStored,
     healthLoading,
     installLoading,
     applyLoading,
     pullLoading,
+    anyDangerousLoading,
     onCheckHealth,
     onInstall,
     onApplyChanges,
     onPullContainers,
-    onDismissInstallResult
+    onDismissResult
   }: Props = $props();
 
   function statusColor(status: string | undefined): 'success' | 'danger' | 'idle' {
@@ -52,83 +56,19 @@
   }
 </script>
 
-<!-- Page Header -->
-<header class="page-header">
-  <div class="header-content">
-    <h1>Control Plane</h1>
-    <p class="header-subtitle">
-      Manage services, channels, and infrastructure from a single interface.
-    </p>
-    {#if adminStatus}
-      <p class="admin-hint">{adminStatus}</p>
-    {/if}
-  </div>
-  <div class="header-actions">
-    <button class="btn btn-primary" onclick={onCheckHealth} disabled={healthLoading}>
-      {#if healthLoading}
-        <span class="spinner"></span>
-      {/if}
-      Check Health
-    </button>
-    <button class="btn btn-secondary" onclick={onInstall} disabled={installLoading || !tokenStored}>
-      {#if installLoading}
-        <span class="spinner"></span>
-      {/if}
-      Install Stack
-    </button>
-  </div>
-</header>
 
-<!-- Service Status Cards -->
-<section class="status-row">
-  {#each services as svc}
-    <div class="status-card">
-      <div class="status-card-header">
-        <span class="status-icon status-icon--{statusColor(svc.status ?? undefined)}">
-          {#if svc.icon === 'shield'}
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          {:else}
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-            </svg>
-          {/if}
-        </span>
-        <div class="status-card-info">
-          <span class="status-card-name">{svc.name}</span>
-          <span class="status-card-value status-text--{statusColor(svc.status ?? undefined)}">
-            {#if svc.status === null}
-              Not checked
-            {:else if svc.status === 'ok'}
-              Healthy
-            {:else if svc.status === 'running'}
-              Running
-            {:else}
-              {svc.status}
-            {/if}
-          </span>
-        </div>
-      </div>
-      <div class="status-indicator status-indicator--{statusColor(svc.status ?? undefined)}"></div>
-    </div>
-  {/each}
-</section>
-
-<!-- Install Output -->
-{#if installResult}
-  <section class="output-section">
+<!-- Operation Output -->
+{#if operationResult}
+  <section class="output-section output-section--{operationResultType}">
     <div class="output-header">
-      <h3>Install Output</h3>
-      <button class="btn-ghost" aria-label="Dismiss" onclick={onDismissInstallResult}>
+      <h3>Operation Output</h3>
+      <button class="btn-ghost" aria-label="Dismiss" onclick={onDismissResult}>
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
     </div>
-    <pre class="output-code">{installResult}</pre>
+    <pre class="output-code">{operationResult}</pre>
   </section>
 {/if}
 
@@ -143,13 +83,17 @@
       <div class="action-list">
         <button class="action-item" onclick={onCheckHealth} disabled={healthLoading}>
           <span class="action-icon action-icon--blue">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
+            {#if healthLoading}
+              <span class="spinner"></span>
+            {:else}
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg>
+            {/if}
           </span>
           <div class="action-content">
             <span class="action-title">Health Check</span>
-            <span class="action-desc">Verify admin and guardian services</span>
+            <span class="action-desc">Verify admin and guardian services are reachable</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -158,17 +102,22 @@
           </span>
         </button>
 
-        <button class="action-item" onclick={onInstall} disabled={installLoading || !tokenStored}>
+        <button class="action-item" onclick={onInstall} disabled={anyDangerousLoading || !tokenStored}>
           <span class="action-icon action-icon--amber">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
+            {#if installLoading}
+              <span class="spinner"></span>
+            {:else}
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            {/if}
           </span>
           <div class="action-content">
-            <span class="action-title">Install Stack</span>
-            <span class="action-desc">Bootstrap all core services</span>
+            <span class="action-title">Install Core Services</span>
+            <span class="action-desc">Bootstrap all core services from scratch</span>
+            <span class="action-hint">Creates containers, networks, and volumes. Safe to re-run.</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -177,17 +126,22 @@
           </span>
         </button>
 
-        <button class="action-item" onclick={onApplyChanges} disabled={applyLoading || !tokenStored}>
+        <button class="action-item" onclick={onApplyChanges} disabled={anyDangerousLoading || !tokenStored}>
           <span class="action-icon action-icon--blue">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="16 16 12 12 8 16" />
-              <line x1="12" y1="12" x2="12" y2="21" />
-              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-            </svg>
+            {#if applyLoading}
+              <span class="spinner"></span>
+            {:else}
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 16 12 12 8 16" />
+                <line x1="12" y1="12" x2="12" y2="21" />
+                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+              </svg>
+            {/if}
           </span>
           <div class="action-content">
-            <span class="action-title">Apply Changes</span>
-            <span class="action-desc">Update and restart services with latest config</span>
+            <span class="action-title">Apply Config + Restart</span>
+            <span class="action-desc">Update configuration and restart running services</span>
+            <span class="action-hint">Restarts services with updated compose/caddy config.</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -196,17 +150,22 @@
           </span>
         </button>
 
-        <button class="action-item" onclick={onPullContainers} disabled={pullLoading || !tokenStored}>
+        <button class="action-item" onclick={onPullContainers} disabled={anyDangerousLoading || !tokenStored}>
           <span class="action-icon action-icon--amber">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
+            {#if pullLoading}
+              <span class="spinner"></span>
+            {:else}
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            {/if}
           </span>
           <div class="action-content">
-            <span class="action-title">Update All Containers</span>
-            <span class="action-desc">Pull latest images for all services</span>
+            <span class="action-title">Pull Latest Images</span>
+            <span class="action-desc">Download newest container images for all services</span>
+            <span class="action-hint">Downloads only; does not restart running containers.</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -303,43 +262,6 @@
 </div>
 
 <style>
-  /* Page Header */
-  .page-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-6);
-    margin-bottom: var(--space-8);
-  }
-
-  .page-header h1 {
-    font-size: var(--text-3xl);
-    font-weight: var(--font-bold);
-    color: var(--color-text);
-    letter-spacing: -0.025em;
-    line-height: var(--leading-tight);
-  }
-
-  .header-subtitle {
-    margin-top: var(--space-2);
-    color: var(--color-text-secondary);
-    font-size: var(--text-base);
-  }
-
-  .admin-hint {
-    margin-top: var(--space-3);
-    color: var(--color-danger);
-    font-size: var(--text-sm);
-  }
-
-  .header-actions {
-    display: flex;
-    gap: var(--space-3);
-    flex-shrink: 0;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
   /* Status Cards */
   .status-row {
     display: grid;
@@ -452,6 +374,14 @@
     border-radius: var(--radius-lg);
     overflow: hidden;
     margin-bottom: var(--space-8);
+  }
+
+  .output-section--success {
+    border-color: var(--color-success-border);
+  }
+
+  .output-section--error {
+    border-color: var(--color-danger);
   }
 
   .output-header {
@@ -586,6 +516,13 @@
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
     margin-top: 1px;
+  }
+
+  .action-hint {
+    font-size: 0.6875rem;
+    color: var(--color-text-tertiary);
+    font-style: italic;
+    margin-top: 2px;
   }
 
   .action-arrow {
@@ -740,31 +677,12 @@
   }
 
   @media (max-width: 768px) {
-    .page-header {
-      flex-direction: column;
-      gap: var(--space-4);
-    }
-
-    .header-actions {
-      width: 100%;
-    }
-
-    .header-actions .btn {
-      flex: 1;
-    }
-
     .panel-grid {
       grid-template-columns: 1fr;
     }
 
     .status-row {
       grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .page-header h1 {
-      font-size: var(--text-2xl);
     }
   }
 

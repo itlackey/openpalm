@@ -1,9 +1,10 @@
 <script lang="ts">
   interface Props {
     missing: string[];
+    onNavigate: () => void;
   }
 
-  let { missing }: Props = $props();
+  let { missing, onNavigate }: Props = $props();
 </script>
 
 {#if missing.length > 0}
@@ -16,14 +17,18 @@
       </svg>
     </span>
     <span class="connection-banner-text">
-      Some connections are not configured.
+      {#if missing.length <= 5}
+        {missing.length} connection{missing.length === 1 ? '' : 's'} not configured: {missing.join(', ')}
+      {:else}
+        {missing.length} connections not configured.
+      {/if}
     </span>
-    <a href="/connections" class="connection-banner-link">
+    <button type="button" class="connection-banner-link" onclick={onNavigate}>
       Configure connections
       <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="9 18 15 12 9 6" />
       </svg>
-    </a>
+    </button>
   </div>
 {/if}
 
@@ -60,12 +65,29 @@
     color: var(--color-primary, #ff9d00);
     text-decoration: none;
     font-weight: var(--font-semibold, 600);
+    font-size: inherit;
+    font-family: inherit;
     white-space: nowrap;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
     transition: color var(--transition-fast, 120ms ease);
   }
 
   .connection-banner-link:hover {
     color: var(--color-primary-hover, #e68a00);
     text-decoration: underline;
+  }
+
+  @media (max-width: 768px) {
+    .connection-banner {
+      flex-wrap: wrap;
+    }
+
+    .connection-banner-link {
+      width: 100%;
+      margin-top: var(--space-2, 0.5rem);
+    }
   }
 </style>

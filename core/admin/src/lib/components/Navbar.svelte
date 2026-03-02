@@ -71,17 +71,6 @@
     letter-spacing: -0.01em;
   }
 
-  .brand-badge {
-    font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    background: var(--color-bg-tertiary);
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
   .navbar-actions {
     display: flex;
     align-items: center;
@@ -93,7 +82,7 @@
     align-items: center;
     gap: var(--space-2);
     font-size: var(--text-sm);
-    font-weight: var(--font-medium);
+    font-weight: var(--font-semibold);
     color: var(--color-success);
     background: var(--color-success-bg);
     border: 1px solid var(--color-success-border);
@@ -170,8 +159,18 @@
   }
 
   @media (max-width: 480px) {
-    .brand-badge {
+    .version-badge {
       display: none;
+    }
+
+    .navbar-actions {
+      flex-shrink: 0;
+    }
+
+    .brand-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 </style>

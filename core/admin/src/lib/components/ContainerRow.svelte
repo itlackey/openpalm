@@ -12,6 +12,10 @@
 
   let { container, selected, onToggle, onStart, onStop, onRestart }: Props = $props();
 
+  let actionInFlight: 'start' | 'stop' | 'restart' | null = $state(null);
+  let confirmAction: 'start' | 'stop' | 'restart' | null = $state(null);
+  let feedback: { type: 'success' | 'error'; message: string } | null = $state(null);
+
   function parseImageTag(image: string): { name: string; tag: string } {
     const atIdx = image.indexOf('@');
     const base = atIdx > -1 ? image.slice(0, atIdx) : image;
@@ -30,6 +34,35 @@
   }
 
   let img = $derived(parseImageTag(container.Image));
+  let displayName = $derived(container.Service || container.Name);
+  let isAnyActionInFlight = $derived(actionInFlight !== null);
+
+  function requestAction(action: 'start' | 'stop' | 'restart', e: MouseEvent): void {
+    e.stopPropagation();
+    confirmAction = action;
+  }
+
+  function cancelConfirm(e: MouseEvent): void {
+    e.stopPropagation();
+    confirmAction = null;
+  }
+
+  async function executeAction(action: 'start' | 'stop' | 'restart', e: MouseEvent): Promise<void> {
+    e.stopPropagation();
+    confirmAction = null;
+    actionInFlight = action;
+    feedback = null;
+    try {
+      if (action === 'start') onStart();
+      else if (action === 'stop') onStop();
+      else onRestart();
+      feedback = { type: 'success', message: `${action.charAt(0).toUpperCase() + action.slice(1)} initiated` };
+    } catch (err) {
+      feedback = { type: 'error', message: `${action} failed: ${err instanceof Error ? err.message : err}` };
+    }
+    actionInFlight = null;
+    setTimeout(() => { feedback = null; }, 3000);
+  }
 </script>
 
 <button
@@ -147,11 +180,48 @@
         </div>
       {/if}
     </div>
-    <div class="detail-actions">
-      <button class="btn btn-secondary btn-sm" onclick={(e) => { e.stopPropagation(); onStart(); }}>Start</button>
-      <button class="btn btn-secondary btn-sm" onclick={(e) => { e.stopPropagation(); onStop(); }}>Stop</button>
-      <button class="btn btn-secondary btn-sm" onclick={(e) => { e.stopPropagation(); onRestart(); }}>Restart</button>
-    </div>
+    {#if feedback}
+      <div class="action-feedback action-feedback--{feedback.type}" role="status">
+        {feedback.message}
+      </div>
+    {/if}
+
+    {#if confirmAction}
+      <div class="confirm-bar" role="alert">
+        <span class="confirm-text">
+          {confirmAction.charAt(0).toUpperCase() + confirmAction.slice(1)} <strong>{displayName}</strong>?
+        </span>
+        <div class="confirm-actions">
+          <button
+            class="btn btn-danger btn-sm"
+            onclick={(e) => executeAction(confirmAction!, e)}
+          >
+            Confirm
+          </button>
+          <button
+            class="btn btn-secondary btn-sm"
+            onclick={(e) => cancelConfirm(e)}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    {:else}
+      <div class="detail-actions">
+        <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('start', e)}>
+          {#if actionInFlight === 'start'}<span class="spinner-inline"></span>{/if}
+          Start
+        </button>
+        <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('stop', e)}>
+          {#if actionInFlight === 'stop'}<span class="spinner-inline"></span>{/if}
+          Stop
+        </button>
+        <button class="btn btn-secondary btn-sm" disabled={isAnyActionInFlight} onclick={(e) => requestAction('restart', e)}>
+          {#if actionInFlight === 'restart'}<span class="spinner-inline"></span>{/if}
+          Restart
+        </button>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -358,6 +428,53 @@
     margin-top: var(--space-4);
   }
 
+  /* ── Action feedback ─────────────────────────────────────────────── */
+
+  .action-feedback {
+    margin-top: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+  }
+
+  .action-feedback--success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border: 1px solid var(--color-success-border);
+  }
+
+  .action-feedback--error {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+    border: 1px solid var(--color-danger);
+  }
+
+  /* ── Confirmation bar ────────────────────────────────────────────── */
+
+  .confirm-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-md);
+  }
+
+  .confirm-text {
+    font-size: var(--text-sm);
+    color: var(--color-text);
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
   .btn {
     display: inline-flex;
     align-items: center;
@@ -390,14 +507,69 @@
     border-color: var(--color-border-hover);
   }
 
+  .btn-danger {
+    background: var(--color-danger);
+    color: var(--color-text-inverse);
+    border-color: var(--color-danger);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
   .btn-sm {
     padding: 5px 12px;
     font-size: var(--text-xs);
   }
 
+  .container-table-row--clickable:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .spinner-inline {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   @media (max-width: 768px) {
-    .ct-col--image {
-      flex: 1 1 100%;
+    .container-table-row {
+      flex-wrap: wrap;
+      gap: var(--space-1);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .ct-col--name {
+      flex: 1 1 auto;
+    }
+
+    .ct-col--image,
+    .ct-col--tag {
+      display: none;
+    }
+
+    .ct-col--status {
+      flex: 0 0 auto;
+    }
+
+    .ct-col--actions {
+      flex: 0 0 20px;
     }
 
     .detail-grid {
@@ -406,6 +578,21 @@
 
     .container-detail {
       padding-left: var(--space-4);
+    }
+
+    .confirm-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .confirm-actions {
+      justify-content: flex-end;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner-inline {
+      animation: none;
     }
   }
 </style>
