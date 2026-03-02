@@ -89,8 +89,7 @@ describe("isAllowedAction", () => {
       "containers.list", "containers.up",
       "containers.down", "containers.restart",
       "channels.list", "channels.install", "channels.uninstall",
-      "extensions.list", "extensions.install", "extensions.uninstall",
-      "gallery.refresh",
+      "extensions.list",
       "artifacts.list", "artifacts.get", "artifacts.manifest",
       "audit.list",
       "accessScope.get", "accessScope.set",
@@ -320,13 +319,12 @@ describe("applyUpdate", () => {
 });
 
 describe("applyUninstall", () => {
-  test("stops all services and clears extensions", () => {
+  test("stops all services", () => {
     const state = makeTestState();
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
     state.services = { admin: "running", guardian: "running" };
-    state.installedExtensions.add("plugin-a");
 
     mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
@@ -341,6 +339,5 @@ describe("applyUninstall", () => {
     for (const status of Object.values(state.services)) {
       expect(status).toBe("stopped");
     }
-    expect(state.installedExtensions.size).toBe(0);
   });
 });

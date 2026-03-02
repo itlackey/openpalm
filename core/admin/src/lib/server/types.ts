@@ -50,7 +50,6 @@ export type ControlPlaneState = {
   configDir: string;
   dataDir: string;
   services: Record<string, "running" | "stopped">;
-  installedExtensions: Set<string>;
   artifacts: {
     compose: string;
     caddyfile: string;

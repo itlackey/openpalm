@@ -51,21 +51,19 @@ bundled assets into STATE.
 ## API scope (implemented)
 
 - Lifecycle: `/admin/install`, `/admin/update`, `/admin/uninstall`
-- Containers: `/admin/containers/list|up|down|restart|pull`
+- Containers: `/admin/containers/list|up|down|restart`
 - Channels: `/admin/channels`, `/admin/channels/install`, `/admin/channels/uninstall`
 - Access scope: `/admin/access-scope`
 - Artifacts: `/admin/artifacts`, `/admin/artifacts/:name`, `/admin/artifacts/manifest`
 - Audit: `/admin/audit`
 - Connections: `/admin/connections`, `/admin/connections/status`
+- Automations: `/admin/automations`
 - Installed: `/admin/installed`
-- Gallery: `/admin/gallery/search`, `/admin/gallery/categories`, `/admin/gallery/item/:id`,
-  `/admin/gallery/community`, `/admin/gallery/community/refresh`,
-  `/admin/gallery/install`, `/admin/gallery/uninstall`
 - Guardian proxy: `/admin/guardian/health`
 
 For full endpoint details, see [api-spec.md](./api-spec.md).
 
-Not implemented in current code: setup wizard endpoints, automations endpoints.
+Not implemented in current code: setup wizard endpoints.
 
 ## MVP acceptance criteria
 
@@ -75,7 +73,6 @@ Not implemented in current code: setup wizard endpoints, automations endpoints.
 4. Operators can inspect staged runtime artifacts under `STATE_HOME/artifacts`.
 5. Admin actions are authenticated and audit-logged.
 6. Connections API manages LLM provider keys without manual file editing.
-7. Gallery API enables browsing and installing extensions.
-8. `containers/pull` enables image updates and container recreation.
+7. `upgrade` applies upstream asset and image updates.
 9. Community channels can be built using the BaseChannel SDK (`packages/lib`)
    and the `channels/base` Docker image.

@@ -48,7 +48,6 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
     configDir,
     dataDir,
     services: {},
-    installedExtensions: new Set<string>(),
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],

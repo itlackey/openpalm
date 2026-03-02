@@ -1,5 +1,5 @@
 /**
- * GET /admin/installed — List installed extensions and active services.
+ * GET /admin/installed — List installed channels and active services.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -20,12 +20,15 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   const actor = getActor(event);
   const callerType = getCallerType(event);
+  const installed = Object.keys(state.services)
+    .filter((name) => name.startsWith("channel-"))
+    .map((name) => name.replace(/^channel-/, ""));
 
   appendAudit(state, actor, "extensions.list", {}, true, requestId, callerType);
   return jsonResponse(
     200,
     {
-      installed: Array.from(state.installedExtensions),
+      installed,
       activeServices: state.services
     },
     requestId

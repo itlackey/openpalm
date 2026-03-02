@@ -48,7 +48,6 @@ export function createState(
     configDir,
     dataDir,
     services,
-    installedExtensions: new Set<string>(),
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
@@ -111,7 +110,6 @@ export function applyUninstall(state: ControlPlaneState): { stopped: string[] } 
     }
     state.services[name] = "stopped";
   }
-  state.installedExtensions.clear();
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
   return { stopped };
@@ -205,9 +203,6 @@ const ALLOWED_ACTIONS = new Set([
   "channels.uninstall",
 
   "extensions.list",
-  "extensions.install",
-  "extensions.uninstall",
-  "gallery.refresh",
   "artifacts.list",
   "artifacts.get",
   "artifacts.manifest",

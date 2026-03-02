@@ -334,33 +334,19 @@ Response:
 { "audit": [{ "at": "...", "action": "install", "ok": true }] }
 ```
 
-## Installed Extensions and Gallery
+## Installed Services
 
 ### `GET /admin/installed`
 
 ```json
 {
-  "installed": ["plugin-memory-context"],
+  "installed": ["chat"],
   "activeServices": { "assistant": "running" }
 }
 ```
-
-### Gallery routes
-
-Implemented under `core/admin/src/routes/admin/gallery/**`:
-
-- `GET /admin/gallery/search`
-- `GET /admin/gallery/categories`
-- `GET /admin/gallery/item/:id`
-- `GET /admin/gallery/community`
-- `POST /admin/gallery/community/refresh`
-- `POST /admin/gallery/install`
-- `POST /admin/gallery/uninstall`
 
 ## Not Implemented
 
 The following endpoints are not present in current route code:
 
 - `/admin/setup/*`
-- `/admin/automations/*`
-- `/admin/gallery/npm-search`
