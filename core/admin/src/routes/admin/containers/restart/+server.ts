@@ -28,11 +28,18 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_service", "Service is not in allowlist", { service }, requestId);
   }
 
-  state.services[service] = "running";
-
+  // Try real Docker — only update state based on actual result
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
-    await composeRestart(state.stateDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    const result = await composeRestart(state.stateDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    if (result.ok) {
+      state.services[service] = "running";
+    } else {
+      appendAudit(state, actor, "containers.restart", { service, error: result.stderr }, false, requestId, callerType);
+      return errorResponse(500, "docker_error", `Failed to restart service: ${result.stderr}`, { service }, requestId);
+    }
+  } else {
+    state.services[service] = "running";
   }
 
   appendAudit(state, actor, "containers.restart", { service }, true, requestId, callerType);
