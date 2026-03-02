@@ -110,7 +110,7 @@ if [[ $seed_env -eq 1 ]]; then
 OPENPALM_CONFIG_HOME=$DEV_ROOT/config
 OPENPALM_DATA_HOME=$DEV_ROOT/data
 OPENPALM_STATE_HOME=$DEV_ROOT/state
-OPENPALM_WORK_DIR=$HOME/openpalm
+OPENPALM_WORK_DIR=$$DEV_ROOT/work
 
 # ── User/Group ──────────────────────────────────────────────────────
 OPENPALM_UID=$uid

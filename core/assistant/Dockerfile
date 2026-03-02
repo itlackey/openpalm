@@ -19,7 +19,11 @@ RUN mkdir -p /home/opencode /work /opt/opencode \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
 
-# Copy extensions (zod is provided by OpenCode's runtime, no install needed)
+# Install assistant extension dependencies
+COPY --chown=node:node core/assistant/package.json /opt/opencode/package.json
+RUN cd /opt/opencode && npm install --omit=dev
+
+# Copy assistant extensions
 COPY --chown=node:node core/assistant/ /opt/opencode/
 
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
