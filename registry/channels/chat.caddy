@@ -1,0 +1,4 @@
+handle_path /channels/chat/* {
+	import lan_only
+	reverse_proxy channel-chat:8181
+}

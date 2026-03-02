@@ -99,3 +99,24 @@ export type OpenMemoryConfigSaveResult = {
   pushed: boolean;
   pushError?: string;
 };
+
+export type RegistryChannelItem = {
+  name: string;
+  type: 'channel';
+  installed: boolean;
+  hasRoute: boolean;
+  description: string;
+};
+
+export type RegistryAutomationItem = {
+  name: string;
+  type: 'automation';
+  installed: boolean;
+  description: string;
+  schedule: string;
+};
+
+export type RegistryResponse = {
+  channels: RegistryChannelItem[];
+  automations: RegistryAutomationItem[];
+};

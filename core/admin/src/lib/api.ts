@@ -5,7 +5,8 @@ import type {
   ChannelsResponse,
   OpenMemoryConfig,
   OpenMemoryConfigResponse,
-  OpenMemoryConfigSaveResult
+  OpenMemoryConfigSaveResult,
+  RegistryResponse
 } from './types.js';
 
 const apiBase = '';
@@ -241,4 +242,59 @@ export async function fetchProviderModels(
     return { models: [], error: `HTTP ${res.status}` };
   }
   return (await res.json()) as { models: string[]; error?: string };
+}
+
+export async function fetchRegistry(token: string): Promise<RegistryResponse> {
+  const res = await get('/admin/registry', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+  return (await res.json()) as RegistryResponse;
+}
+
+export async function registryInstall(
+  token: string,
+  name: string,
+  type: 'channel' | 'automation'
+): Promise<{ ok: boolean }> {
+  const res = await post('/admin/registry/install', { name, type }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Install failed');
+  }
+  return data as { ok: boolean };
+}
+
+export async function registryUninstall(
+  token: string,
+  name: string,
+  type: 'channel' | 'automation'
+): Promise<{ ok: boolean }> {
+  const res = await post('/admin/registry/uninstall', { name, type }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Uninstall failed');
+  }
+  return data as { ok: boolean };
+}
+
+export async function registryRefresh(token: string): Promise<void> {
+  const res = await post('/admin/registry/refresh', {}, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
 }
