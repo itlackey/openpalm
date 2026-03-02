@@ -12,18 +12,20 @@
     adminHealth: HealthPayload | null;
     guardianHealth: HealthPayload | null;
     channelAccess: 'host' | 'lan' | 'custom';
-    installResult: string;
+    operationResult: string;
+    operationResultType: 'success' | 'error' | 'info';
     adminStatus: string;
     tokenStored: boolean;
     healthLoading: boolean;
     installLoading: boolean;
     applyLoading: boolean;
     pullLoading: boolean;
+    anyDangerousLoading: boolean;
     onCheckHealth: () => void;
     onInstall: () => void;
     onApplyChanges: () => void;
     onPullContainers: () => void;
-    onDismissInstallResult: () => void;
+    onDismissResult: () => void;
   }
 
   let {
@@ -31,18 +33,20 @@
     adminHealth,
     guardianHealth,
     channelAccess,
-    installResult,
+    operationResult,
+    operationResultType,
     adminStatus,
     tokenStored,
     healthLoading,
     installLoading,
     applyLoading,
     pullLoading,
+    anyDangerousLoading,
     onCheckHealth,
     onInstall,
     onApplyChanges,
     onPullContainers,
-    onDismissInstallResult
+    onDismissResult
   }: Props = $props();
 
   function statusColor(status: string | undefined): 'success' | 'danger' | 'idle' {
@@ -117,18 +121,18 @@
   {/each}
 </section>
 
-<!-- Install Output -->
-{#if installResult}
-  <section class="output-section">
+<!-- Operation Output -->
+{#if operationResult}
+  <section class="output-section output-section--{operationResultType}">
     <div class="output-header">
-      <h3>Install Output</h3>
-      <button class="btn-ghost" aria-label="Dismiss" onclick={onDismissInstallResult}>
+      <h3>Operation Output</h3>
+      <button class="btn-ghost" aria-label="Dismiss" onclick={onDismissResult}>
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
     </div>
-    <pre class="output-code">{installResult}</pre>
+    <pre class="output-code">{operationResult}</pre>
   </section>
 {/if}
 

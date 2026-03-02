@@ -153,3 +153,17 @@ export async function fetchConnectionStatus(
   }
   return (await res.json()) as { complete: boolean; missing: string[] };
 }
+
+export async function fetchConnections(
+  token: string
+): Promise<Record<string, string>> {
+  const res = await get('/admin/connections', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    return {};
+  }
+  const data = (await res.json()) as { connections: Record<string, string> };
+  return data.connections;
+}

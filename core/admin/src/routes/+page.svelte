@@ -9,6 +9,7 @@
   import ContainersTab from '$lib/components/ContainersTab.svelte';
   import ArtifactsTab from '$lib/components/ArtifactsTab.svelte';
   import AutomationsTab from '$lib/components/AutomationsTab.svelte';
+  import ConnectionsTab from '$lib/components/ConnectionsTab.svelte';
 
   import { getAdminToken, clearToken, storeToken, validateToken } from '$lib/auth.js';
   import {
@@ -21,7 +22,8 @@
     applyChanges,
     pullContainers,
     containerAction,
-    fetchConnectionStatus
+    fetchConnectionStatus,
+    fetchConnections
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse } from '$lib/types.js';
 
@@ -50,14 +52,17 @@
   // ── Content state ───────────────────────────────────────────────────────────
   let installResult = $state('');
   let artifacts = $state('');
+  let artifactType: 'compose' | 'caddyfile' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
+  let connectionsData: Record<string, string> = $state({});
+  let connectionsLoading = $state(false);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' = $state('overview');
+  let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   let services = $derived([
@@ -83,6 +88,7 @@
     adminStatus = '';
     installResult = '';
     artifacts = '';
+    artifactType = null;
     containerData = null;
     selectedContainerId = null;
   }
@@ -102,7 +108,10 @@
       authLocked = false;
       authError = '';
       adminStatus = '';
+      // Auto-hydrate key data on login so the UI shows meaningful state immediately
       await loadHealth();
+      void loadContainers();
+      void loadAutomations();
       void checkConnectionStatus();
     } catch {
       authError = 'Unable to reach admin API.';
@@ -194,6 +203,7 @@
       return;
     }
     artifactsLoading = true;
+    artifactType = type;
     try {
       artifacts = await fetchArtifacts(token, type);
     } catch (e) {
@@ -234,6 +244,29 @@
       }
     }
     automationsLoading = false;
+  }
+
+  async function loadConnections(): Promise<void> {
+    const token = getAdminToken();
+    tokenStored = Boolean(token);
+    if (!token) {
+      authLocked = true;
+      authError = 'Admin token required.';
+      adminStatus = '';
+      connectionsData = {};
+      return;
+    }
+    connectionsLoading = true;
+    try {
+      connectionsData = await fetchConnections(token);
+    } catch (e) {
+      connectionsData = {};
+      const err = e as { status?: number; message?: string };
+      if (err.status === 401) {
+        applyInvalidTokenState();
+      }
+    }
+    connectionsLoading = false;
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -334,13 +367,16 @@
     selectedContainerId = selectedContainerId === id ? null : id;
   }
 
-  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations'): void {
+  function handleTabSelect(tab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections'): void {
     activeTab = tab;
     if (tab === 'containers' && !containerData) {
       void loadContainers();
     }
     if (tab === 'automations' && !automationsData) {
       void loadAutomations();
+    }
+    if (tab === 'connections' && Object.keys(connectionsData).length === 0) {
+      void loadConnections();
     }
   }
 
@@ -384,6 +420,10 @@
         authLocked = false;
         authError = '';
         adminStatus = '';
+        // Auto-hydrate key data so tabs show meaningful state without manual refresh
+        void loadHealth();
+        void loadContainers();
+        void loadAutomations();
         void checkConnectionStatus();
       } catch {
         authLocked = true;
@@ -405,7 +445,7 @@
   <Navbar {version} {channelAccess} onLogout={handleLogout} />
 
   <main>
-    <ConnectionBanner missing={connectionsMissing} />
+    <ConnectionBanner missing={connectionsMissing} onNavigate={() => handleTabSelect('connections')} />
 
     <TabBar active={activeTab} onSelect={handleTabSelect} />
 
@@ -444,11 +484,11 @@
     {:else if activeTab === 'artifacts'}
       <ArtifactsTab
         {artifacts}
+        {artifactType}
         loading={artifactsLoading}
         {tokenStored}
-        onInspectCompose={() => loadArtifacts('compose')}
-        onInspectCaddy={() => loadArtifacts('caddyfile')}
-        onDismiss={() => (artifacts = '')}
+        onInspect={(type) => loadArtifacts(type)}
+        onDismiss={() => { artifacts = ''; artifactType = null; }}
       />
     {:else if activeTab === 'automations'}
       <AutomationsTab
@@ -457,6 +497,12 @@
         error={automationsError}
         {tokenStored}
         onRefresh={loadAutomations}
+      />
+    {:else if activeTab === 'connections'}
+      <ConnectionsTab
+        connections={connectionsData}
+        loading={connectionsLoading}
+        onRefresh={loadConnections}
       />
     {/if}
   </main>

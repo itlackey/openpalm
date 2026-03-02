@@ -8,11 +8,26 @@
   let { onSuccess, loading, error }: Props = $props();
 
   let tokenInput = $state('');
+  let showToken = $state(false);
+  let tokenInputEl: HTMLInputElement | undefined = $state();
+  let prevError = $state('');
+
+  // Refocus the token input when an auth error appears
+  $effect(() => {
+    if (error && error !== prevError) {
+      prevError = error;
+      tokenInputEl?.focus();
+      tokenInputEl?.select();
+    }
+  });
 
   function handleSubmit(e: Event): void {
     e.preventDefault();
     const token = tokenInput.trim();
-    if (!token || loading) return;
+    if (!token || loading) {
+      tokenInputEl?.focus();
+      return;
+    }
     onSuccess(token);
   }
 </script>
@@ -35,16 +50,40 @@
 
     <form class="auth-form" onsubmit={handleSubmit}>
       <label for="admin-token">Admin Token</label>
-      <input
-        id="admin-token"
-        name="admin-token"
-        type="password"
-        bind:value={tokenInput}
-        placeholder="Enter admin token"
-        autocomplete="current-password"
-      />
+      <input type="text" name="username" autocomplete="username" value="admin" class="sr-only" tabindex="-1" aria-hidden="true" />
+      <div class="token-input-wrapper">
+        <input
+          id="admin-token"
+          name="admin-token"
+          type={showToken ? 'text' : 'password'}
+          bind:value={tokenInput}
+          bind:this={tokenInputEl}
+          placeholder="Enter admin token"
+          autocomplete="current-password"
+        />
+        <button
+          type="button"
+          class="btn-toggle"
+          onclick={() => showToken = !showToken}
+          aria-label={showToken ? 'Hide token' : 'Show token'}
+        >
+          {#if showToken}
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+            </svg>
+          {:else}
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          {/if}
+        </button>
+      </div>
       {#if error}
-        <p class="auth-error">{error}</p>
+        <p class="auth-error" role="alert">{error}</p>
       {/if}
       <button class="btn btn-primary" type="submit" disabled={loading || !tokenInput.trim()}>
         {#if loading}
@@ -64,9 +103,13 @@
     display: grid;
     place-items: center;
     padding: var(--space-6);
-    background: radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.12), transparent 38%),
-      radial-gradient(circle at 85% 0%, rgba(59, 130, 246, 0.12), transparent 32%),
-      var(--color-bg-secondary);
+    background-color: var(--color-bg-secondary);
+    background-image: url('/fu.png'),
+      radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.12), transparent 38%),
+      radial-gradient(circle at 85% 0%, rgba(59, 130, 246, 0.12), transparent 32%);
+    background-size: contain, auto, auto;
+    background-position: bottom left, center, center;
+    background-repeat: no-repeat, no-repeat, no-repeat;
   }
 
   .auth-card {
@@ -197,5 +240,54 @@
     .spinner {
       animation: none;
     }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .token-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .token-input-wrapper input {
+    flex: 1;
+  }
+
+  .btn-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+  }
+
+  .btn-toggle:hover {
+    color: var(--color-text);
+    border-color: var(--color-border-hover);
+    background: var(--color-surface-hover);
+  }
+
+  .btn-toggle:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
   }
 </style>

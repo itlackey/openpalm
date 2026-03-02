@@ -34,17 +34,30 @@
       Array.isArray(containerData.dockerContainers) &&
       containerData.dockerContainers.length > 0
   );
+
+  let lastUpdated: string | null = $state(null);
+
+  $effect(() => {
+    if (!loading && containerData !== null) {
+      lastUpdated = new Date().toLocaleTimeString();
+    }
+  });
 </script>
 
 <div class="panel" role="tabpanel">
   <div class="panel-header">
     <h2>Container Status</h2>
-    <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
-      {#if loading}
-        <span class="spinner"></span>
+    <div class="panel-header-actions">
+      {#if lastUpdated}
+        <span class="last-updated">Updated {lastUpdated}</span>
       {/if}
-      Refresh
-    </button>
+      <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={loading || !tokenStored}>
+        {#if loading}
+          <span class="spinner"></span>
+        {/if}
+        Refresh
+      </button>
+    </div>
   </div>
   <div class="panel-body panel-body--flush">
     {#if hasContainers && Array.isArray(containerData?.dockerContainers)}
@@ -77,10 +90,14 @@
           <p>Loading container status...</p>
         {:else if error}
           <p class="text-danger">{error}</p>
+          <button class="btn btn-secondary btn-sm" onclick={onRefresh} disabled={!tokenStored}>
+            Try Again
+          </button>
         {:else if containerData && !containerData.dockerAvailable}
           <p>Docker is not available on this host.</p>
+          <p class="hint">Ensure Docker is running and the admin service has access to the Docker socket.</p>
         {:else}
-          <p>Click Refresh to load container information.</p>
+          <p>No containers found. Services may not be installed yet.</p>
         {/if}
       </div>
     {/if}
@@ -241,6 +258,28 @@
     .container-table-header {
       display: none;
     }
+  }
+
+  .panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .last-updated {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+
+  .empty-state .btn {
+    margin-top: var(--space-2);
+  }
+
+  .empty-state .hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    max-width: 32ch;
   }
 
   @media (prefers-reduced-motion: reduce) {
