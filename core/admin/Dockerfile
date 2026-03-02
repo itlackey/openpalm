@@ -37,6 +37,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /workspace/core/admin/build ./build
 COPY --from=build /workspace/core/admin/package.json ./
+RUN npm install --omit=dev
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
