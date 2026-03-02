@@ -5,11 +5,11 @@
   "workspaces": [
     "core/admin",
     "packages/lib",
-    "core/guardian",
-    "channels/chat",
-    "channels/api",
-    "channels/discord",
-    "channels/base"
+    "packages/channels-sdk",
+    "packages/channel-discord",
+    "packages/channel-api",
+    "packages/channel-chat",
+    "core/guardian"
   ],
   "scripts": {
     "admin:dev": "bun run --cwd core/admin dev",
@@ -21,12 +21,13 @@
     "guardian:dev": "bun run core/guardian/src/server.ts",
     "guardian:test": "bun test --cwd core/guardian",
     "lib:test": "bun test --cwd packages/lib",
-    "channel:chat:dev": "bun run channels/chat/server.ts",
-    "channel:api:dev": "bun run channels/api/server.ts",
-    "channel:discord:dev": "bun run channels/discord/server.ts",
+    "sdk:test": "bun test --cwd packages/channels-sdk",
+    "channel:chat:dev": "bun run packages/channel-chat/src/index.ts",
+    "channel:api:dev": "bun run packages/channel-api/src/index.ts",
+    "channel:discord:dev": "bun run packages/channel-discord/src/index.ts",
     "dev:setup": "./scripts/dev-setup.sh --seed-env",
     "dev:stack": "docker compose -f .dev/state/artifacts/docker-compose.yml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up -d",
-    "test": "bun test packages/ channels/ core/guardian/",
+    "test": "bun test packages/ core/guardian/",
     "check": "bun run admin:check && bun run lib:test"
   },
   "devDependencies": {

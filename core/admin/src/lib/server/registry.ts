@@ -1,38 +1,79 @@
 /**
- * Channel registry catalog — discovered at build time via Vite's import.meta.glob.
+ * Channel registry catalog — discovered at build time from channels.json.
  *
- * Adding a new registry channel = dropping files in registry/.
+ * Adding a new registry channel = adding an entry to registry/channels.json.
  */
 
-// ── Registry channel catalog (discovered at build time) ───────────────
-// import.meta.glob discovers all .yml and .caddy files in registry/
-// at build time. Adding a new registry channel = dropping files in registry/.
-const channelYmlModules: Record<string, string> = import.meta.glob(
-  "$registry/*.yml",
-  { query: "?raw", eager: true, import: "default" }
-) as Record<string, string>;
+// @ts-ignore — JSON asset import bundled by Vite at build time
+import channelCatalog from "$registry/channels.json";
 
-const channelCaddyModules: Record<string, string> = import.meta.glob(
-  "$registry/*.caddy",
-  { query: "?raw", eager: true, import: "default" }
-) as Record<string, string>;
+// ── Types ────────────────────────────────────────────────────────────────
 
-/** Extract channel name from a glob path like "/.../channels/chat.yml" → "chat" */
-function assetMap(modules: Record<string, string>): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const [path, content] of Object.entries(modules)) {
-    const filename = path.split("/").pop() ?? "";
-    const name = filename.replace(/\.\w+$/, "");
-    if (name) map[name] = content;
+export type ChannelRegistryEntry = {
+  /** npm package name (e.g., "@openpalm/channel-discord"). Mutually exclusive with image. */
+  package?: string;
+  /** Custom Docker image. When set, the system uses this image instead of channel-runner. */
+  image?: string;
+  /** Package version constraint. */
+  version?: string;
+  /** Port the channel listens on. */
+  port: number;
+  /** Docker Compose networks to attach. */
+  networks: string[];
+  /** Env vars the channel needs (auto-populated in per-channel .env file). */
+  envVars: string[];
+  /** Optional Caddy route snippet for HTTP routing. */
+  caddy?: string;
+  /** Human-readable description. */
+  description?: string;
+};
+
+// ── Exports ──────────────────────────────────────────────────────────────
+
+/** Full registry catalog keyed by channel name */
+export const CHANNEL_REGISTRY: Record<string, ChannelRegistryEntry> = channelCatalog;
+
+/** Names of registry channels */
+export const REGISTRY_CHANNEL_NAMES: string[] = Object.keys(channelCatalog);
+
+/** Generate a compose YAML overlay for a channel from registry metadata */
+export function generateChannelCompose(name: string, entry: ChannelRegistryEntry, configDir: string): string {
+  const serviceName = `channel-${name}`;
+  const image = entry.image
+    ? entry.image
+    : `\${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-runner:\${OPENPALM_IMAGE_TAG:-latest}`;
+
+  const envLines: string[] = [
+    `      PORT: "${entry.port}"`,
+    `      GUARDIAN_URL: http://guardian:8080`,
+  ];
+  if (entry.package) {
+    envLines.push(`      CHANNEL_PACKAGE: ${entry.package}`);
   }
-  return map;
+  for (const v of entry.envVars) {
+    envLines.push(`      ${v}: \${${v}}`);
+  }
+
+  const networkList = entry.networks.map(n => `      - ${n}`).join("\n") || "      - channel_lan";
+
+  return `services:
+  ${serviceName}:
+    image: ${image}
+    restart: unless-stopped
+    env_file:
+      - path: ${configDir}/channels/${name}.env
+        required: false
+    environment:
+${envLines.join("\n")}
+    networks:
+${networkList}
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/${entry.port}' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+`;
 }
-
-/** Registry channel compose overlays, keyed by channel name */
-export const REGISTRY_CHANNEL_YML: Record<string, string> = assetMap(channelYmlModules);
-
-/** Registry channel Caddy routes (optional), keyed by channel name */
-export const REGISTRY_CHANNEL_CADDY: Record<string, string> = assetMap(channelCaddyModules);
-
-/** Names of registry channels derived from bundled assets */
-export const REGISTRY_CHANNEL_NAMES: string[] = Object.keys(REGISTRY_CHANNEL_YML);

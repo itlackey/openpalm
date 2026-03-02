@@ -281,6 +281,31 @@ export function discoverStagedChannelYmls(stateDir: string): string[] {
     .map((entry) => `${channelsDir}/${entry.name}`);
 }
 
+// ── Channel Env Staging ──────────────────────────────────────────────
+
+/**
+ * Stage channel .env files from CONFIG_HOME/channels/ to STATE_HOME/artifacts/channels/.
+ * These contain per-channel environment variables (HMAC secrets, API keys, etc.).
+ */
+function stageChannelEnvFiles(state: ControlPlaneState): void {
+  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
+  mkdirSync(stagedChannelsDir, { recursive: true });
+
+  // Clean stale staged .env files before re-staging
+  for (const f of readdirSync(stagedChannelsDir)) {
+    if (f.endsWith(".env")) {
+      rmSync(`${stagedChannelsDir}/${f}`, { force: true });
+    }
+  }
+
+  const channels = discoverChannels(state.configDir);
+  for (const ch of channels) {
+    if (!ch.envPath) continue;
+    const content = readFileSync(ch.envPath, "utf-8");
+    writeFileSync(`${stagedChannelsDir}/${ch.name}.env`, content);
+  }
+}
+
 // ── Automation Staging ───────────────────────────────────────────────
 
 /** Strict automation filename: lowercase alphanumeric + hyphens, .yml extension, 1–63 chars base */
@@ -404,6 +429,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   stageSecretsEnv(state);
   stageChannelYmlFiles(state);
   stageChannelCaddyfiles(state);
+  stageChannelEnvFiles(state);
   stageAutomationFiles(state);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);

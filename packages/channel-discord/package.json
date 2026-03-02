@@ -1,12 +1,9 @@
 {
   "name": "@openpalm/channel-discord",
   "version": "0.6.2",
-  "private": true,
   "type": "module",
-  "scripts": {
-    "start": "bun run server.ts"
-  },
+  "main": "src/index.ts",
   "dependencies": {
-    "@openpalm/lib": "workspace:*"
+    "@openpalm/channels-sdk": "workspace:*"
   }
 }

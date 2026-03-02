@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { signPayload } from "@openpalm/lib/shared/crypto.ts";
-import { BaseChannel, type HandleResult } from "@openpalm/lib/shared/channel-base.ts";
+import { signPayload } from "./crypto.ts";
+import { BaseChannel, type HandleResult } from "./channel-base.ts";
 
 // ── Test channel implementations ────────────────────────────────────────
 
@@ -203,24 +203,3 @@ describe("BaseChannel routing", () => {
     expect(resp.status).toBe(404);
   });
 });
-
-describe("BaseChannel startup", () => {
-  // Plan reference: "Missing secret causes startup failure" (plan.md:218)
-  // This is a placeholder test to document the expected behavior of BaseChannel.start()
-  // when required secrets are missing. It is marked as skipped until the exact
-  // start() API and secret requirements are finalized.
-  it.skip("Missing secret causes startup failure", async () => {
-    const AnyBaseChannel = BaseChannel as any;
-
-    // TODO: Implement this test once the start() contract is confirmed.
-    // Example intent:
-    // - Ensure environment/config does not provide the required secret.
-    // - Call AnyBaseChannel.start(...).
-    // - Assert that startup fails (e.g., by throwing an error or rejecting a promise).
-
-    if (typeof AnyBaseChannel.start !== "function") {
-      throw new Error("BaseChannel.start is not implemented");
-    }
-  });
-});
-

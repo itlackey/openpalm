@@ -17,7 +17,7 @@ import {
   appendAudit,
   discoverStagedChannelYmls,
   REGISTRY_CHANNEL_NAMES,
-  REGISTRY_CHANNEL_CADDY
+  CHANNEL_REGISTRY
 } from "$lib/server/control-plane.js";
 import { existsSync, readdirSync } from "node:fs";
 
@@ -50,21 +50,29 @@ export const GET: RequestHandler = async (event) => {
     const filename = ymlPath.split("/").pop() ?? "";
     const name = filename.replace(/\.yml$/, "");
     installedNames.add(name);
+    const entry = CHANNEL_REGISTRY[name];
     return {
       name,
       hasRoute: routedChannels.has(name),
       service: `channel-${name}`,
-      status: state.services[`channel-${name}`] ?? "stopped"
+      status: state.services[`channel-${name}`] ?? "stopped",
+      package: entry?.package,
+      description: entry?.description,
     };
   });
 
   // Available = registry channels not yet installed
   const available = REGISTRY_CHANNEL_NAMES
     .filter((name) => !installedNames.has(name))
-    .map((name) => ({
-      name,
-      hasRoute: name in REGISTRY_CHANNEL_CADDY
-    }));
+    .map((name) => {
+      const entry = CHANNEL_REGISTRY[name];
+      return {
+        name,
+        hasRoute: !!entry?.caddy,
+        package: entry?.package,
+        description: entry?.description,
+      };
+    });
 
   appendAudit(state, actor, "channels.list", {}, true, requestId, callerType);
   return jsonResponse(200, { installed, available }, requestId);

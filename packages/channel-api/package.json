@@ -1,0 +1,9 @@
+{
+  "name": "@openpalm/channel-api",
+  "version": "0.6.2",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@openpalm/channels-sdk": "workspace:*"
+  }
+}

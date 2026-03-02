@@ -24,20 +24,14 @@ services:
       dockerfile: core/guardian/Dockerfile
     image: openpalm/guardian:latest
 
-  channel-chat:
-    build:
-      context: .
-      dockerfile: channels/chat/Dockerfile
-    image: openpalm/channel-chat:latest
-
   assistant:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
     image: openpalm/assistant:latest
 
-  channel-base:
+  channel-runner:
     build:
       context: .
-      dockerfile: channels/base/Dockerfile
-    image: openpalm/channel-base:latest
+      dockerfile: channels/runner/Dockerfile
+    image: openpalm/channel-runner:latest

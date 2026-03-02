@@ -4,7 +4,7 @@
  * All control plane functionality is organized into focused modules:
  *   types.ts       — shared types and constants
  *   paths.ts       — XDG path resolution and directory setup
- *   registry.ts    — channel registry catalog (Vite import.meta.glob)
+ *   registry.ts    — channel registry catalog (channels.json)
  *   audit.ts       — audit logging
  *   secrets.ts     — secrets/connections CRUD, masking, OpenCode config
  *   channels.ts    — channel validation, discovery, install/uninstall
@@ -32,10 +32,11 @@ export { ensureXdgDirs } from "./paths.js";
 
 // ── registry.ts ───────────────────────────────────────────────────────
 export {
-  REGISTRY_CHANNEL_YML,
-  REGISTRY_CHANNEL_CADDY,
-  REGISTRY_CHANNEL_NAMES
+  CHANNEL_REGISTRY,
+  REGISTRY_CHANNEL_NAMES,
+  generateChannelCompose
 } from "./registry.js";
+export type { ChannelRegistryEntry } from "./registry.js";
 
 // ── audit.ts ──────────────────────────────────────────────────────────
 export { appendAudit } from "./audit.js";

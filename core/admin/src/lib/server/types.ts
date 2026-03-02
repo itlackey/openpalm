@@ -23,6 +23,9 @@ export type ChannelInfo = {
   hasRoute: boolean;
   ymlPath: string;
   caddyPath: string | null;
+  envPath: string | null;
+  package?: string;
+  customImage?: string;
 };
 
 export type AuditEntry = {
