@@ -1,26 +1,33 @@
 /**
  * GET /admin/registry — List all registry items (channels + automations) with install status.
  *
- * Reads from the cloned registry repo in STATE_HOME/registry-repo/registry/.
- * If the repo hasn't been cloned yet, triggers an initial clone.
+ * Tries the cloned registry repo first (STATE_HOME/registry-repo/registry/).
+ * Falls back to build-time bundled assets if the clone is unavailable or empty.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
-  errorResponse,
   requireAdmin,
   getRequestId,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
-import { appendAudit } from "$lib/server/control-plane.js";
+import {
+  appendAudit,
+  REGISTRY_CHANNEL_YML,
+  REGISTRY_CHANNEL_CADDY,
+  REGISTRY_CHANNEL_NAMES,
+  REGISTRY_AUTOMATION_YML,
+  REGISTRY_AUTOMATION_NAMES
+} from "$lib/server/control-plane.js";
 import {
   ensureRegistryClone,
   discoverRegistryChannels,
   discoverRegistryAutomations
 } from "$lib/server/registry-sync.js";
 import { existsSync } from "node:fs";
+import { parse as parseYaml } from "yaml";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -31,43 +38,83 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  // Ensure the registry repo is cloned
+  // Try cloned registry first
+  let remoteChannels: ReturnType<typeof discoverRegistryChannels> = [];
+  let remoteAutomations: ReturnType<typeof discoverRegistryAutomations> = [];
+  let source: "remote" | "bundled" = "bundled";
+
   try {
     ensureRegistryClone();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    appendAudit(state, actor, "registry.list", { error: msg }, false, requestId, callerType);
-    return errorResponse(500, "registry_sync_error", msg, {}, requestId);
+    remoteChannels = discoverRegistryChannels();
+    remoteAutomations = discoverRegistryAutomations();
+  } catch {
+    // Clone failed — will fall back to bundled
   }
 
-  // Discover items from the cloned registry
-  const registryChannels = discoverRegistryChannels();
-  const registryAutomations = discoverRegistryAutomations();
+  if (remoteChannels.length > 0 || remoteAutomations.length > 0) {
+    // Use remote registry
+    source = "remote";
 
-  // Build channels list with install status
-  const channels = registryChannels.map((ch) => {
-    const installedPath = `${state.configDir}/channels/${ch.name}.yml`;
+    const channels = remoteChannels.map((ch) => {
+      const installedPath = `${state.configDir}/channels/${ch.name}.yml`;
+      return {
+        name: ch.name,
+        type: "channel" as const,
+        installed: existsSync(installedPath),
+        hasRoute: ch.hasRoute,
+        description: ch.description
+      };
+    });
+
+    const automations = remoteAutomations.map((auto) => {
+      const installedPath = `${state.configDir}/automations/${auto.name}.yml`;
+      return {
+        name: auto.name,
+        type: "automation" as const,
+        installed: existsSync(installedPath),
+        description: auto.description,
+        schedule: auto.schedule
+      };
+    });
+
+    appendAudit(state, actor, "registry.list", { source }, true, requestId, callerType);
+    return jsonResponse(200, { channels, automations, source }, requestId);
+  }
+
+  // Fallback: use bundled registry assets
+  const channels = REGISTRY_CHANNEL_NAMES.map((name) => {
+    const installedPath = `${state.configDir}/channels/${name}.yml`;
     return {
-      name: ch.name,
+      name,
       type: "channel" as const,
       installed: existsSync(installedPath),
-      hasRoute: ch.hasRoute,
-      description: ch.description
+      hasRoute: name in REGISTRY_CHANNEL_CADDY,
+      description: `Docker compose service for the ${name} channel`
     };
   });
 
-  // Build automations list with install status
-  const automations = registryAutomations.map((auto) => {
-    const installedPath = `${state.configDir}/automations/${auto.name}.yml`;
+  const automations = REGISTRY_AUTOMATION_NAMES.map((name) => {
+    const installedPath = `${state.configDir}/automations/${name}.yml`;
+    let description = "";
+    let schedule = "";
+    try {
+      const parsed = parseYaml(REGISTRY_AUTOMATION_YML[name]);
+      if (parsed && typeof parsed === "object") {
+        description = parsed.description ?? "";
+        schedule = parsed.schedule ?? "";
+      }
+    } catch {
+      // best-effort
+    }
     return {
-      name: auto.name,
+      name,
       type: "automation" as const,
       installed: existsSync(installedPath),
-      description: auto.description,
-      schedule: auto.schedule
+      description,
+      schedule
     };
   });
 
-  appendAudit(state, actor, "registry.list", {}, true, requestId, callerType);
-  return jsonResponse(200, { channels, automations }, requestId);
+  appendAudit(state, actor, "registry.list", { source }, true, requestId, callerType);
+  return jsonResponse(200, { channels, automations, source }, requestId);
 };

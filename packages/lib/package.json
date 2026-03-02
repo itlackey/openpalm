@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@openpalm/channels-sdk": "workspace:*",
     "dotenv": "^16.4.7"
   },
   "exports": {

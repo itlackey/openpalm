@@ -10,7 +10,7 @@
     },
     "core/admin": {
       "name": "@openpalm/admin",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "dependencies": {
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
@@ -44,41 +44,40 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
       },
     },
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
       },
     },
     "packages/channel-chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
       },
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
       },
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.6.1",
+      "version": "0.6.2",
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "dependencies": {
-        "@openpalm/channels-sdk": "workspace:*",
         "dotenv": "^16.4.7",
       },
     },

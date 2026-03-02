@@ -1,9 +1,8 @@
 /**
  * POST /admin/registry/install — Install a registry item (channel or automation).
  *
- * Reads the item content from the cloned registry repo, then copies it into
- * CONFIG_HOME. For channels, also stages compose artifacts and starts Docker.
- * For automations, stages and reloads the scheduler.
+ * Tries the cloned registry repo first, falls back to bundled assets.
+ * Copies content into CONFIG_HOME, stages compose artifacts, and starts Docker.
  */
 import type { RequestHandler } from "./$types";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
@@ -24,7 +23,10 @@ import {
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  randomHex
+  randomHex,
+  REGISTRY_CHANNEL_YML,
+  REGISTRY_CHANNEL_CADDY,
+  REGISTRY_AUTOMATION_YML
 } from "$lib/server/control-plane.js";
 import {
   getRegistryChannel,
@@ -55,8 +57,12 @@ export const POST: RequestHandler = async (event) => {
   }
 
   if (type === "channel") {
-    const entry = getRegistryChannel(name);
-    if (!entry) {
+    // Try remote registry first, then bundled
+    const remote = getRegistryChannel(name);
+    const yml = remote?.yml ?? REGISTRY_CHANNEL_YML[name] ?? null;
+    const caddy = remote?.caddy ?? REGISTRY_CHANNEL_CADDY[name] ?? null;
+
+    if (!yml) {
       appendAudit(state, actor, "registry.install", { name, type, error: "not found" }, false, requestId, callerType);
       return errorResponse(400, "invalid_input", `Channel "${name}" not found in registry`, {}, requestId);
     }
@@ -69,9 +75,9 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, "invalid_input", `Channel "${name}" is already installed`, {}, requestId);
     }
 
-    writeFileSync(ymlPath, entry.yml);
-    if (entry.caddy) {
-      writeFileSync(`${channelsDir}/${name}.caddy`, entry.caddy);
+    writeFileSync(ymlPath, yml);
+    if (caddy) {
+      writeFileSync(`${channelsDir}/${name}.caddy`, caddy);
     }
 
     if (!state.channelSecrets[name]) {
@@ -104,7 +110,9 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // type === "automation"
-  const content = getRegistryAutomation(name);
+  const remoteContent = getRegistryAutomation(name);
+  const content = remoteContent ?? REGISTRY_AUTOMATION_YML[name] ?? null;
+
   if (!content) {
     appendAudit(state, actor, "registry.install", { name, type, error: "not found" }, false, requestId, callerType);
     return errorResponse(400, "invalid_input", `Automation "${name}" not found in registry`, {}, requestId);
