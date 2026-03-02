@@ -38,6 +38,9 @@ List installed and available channels, install from registry, or uninstall.
 - Reports whether each channel has a Caddy HTTP route (`.caddy` file) or is docker-network only
 - Channel access is controlled by the `.caddy` file content, not by an API toggle
 
+### `admin-automations` (list)
+Inspect configured automations, scheduler status, and recent execution logs.
+
 ### `admin-artifacts` (list, manifest, get)
 Inspect the generated configuration files:
 - `compose` = docker-compose.yml
