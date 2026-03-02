@@ -61,51 +61,53 @@
     automationsData?.automations.filter(a => a.enabled).length ?? 0
   );
 
-  // Derived: overall container health
-  // Merges both data sources for an accurate count:
-  //  - containers map (state.services): 8 CORE_SERVICES with running/stopped
-  //  - dockerContainers (docker compose ps): only physically-existing containers,
-  //    but includes docker-socket-proxy and channel services not in the map
-  let containerCounts = $derived.by(() => {
-    if (!containerData) return null;
-    // Build a unified service → state map
+  // Build a unified service → state map merging both data sources.
+  // dockerContainers (live Docker data) overwrites state.services (in-memory map)
+  // so the UI always reflects the real Docker state.
+  let mergedServices = $derived.by(() => {
+    if (!containerData) return new Map<string, string>();
     const merged = new Map<string, string>();
-    // Seed from the state.services map (8 core services)
+    // Seed from state.services (8 core services)
     if (containerData.containers) {
       for (const [name, state] of Object.entries(containerData.containers)) {
         merged.set(name, state);
       }
     }
-    // Overlay / add from dockerContainers (includes docker-socket-proxy, channels)
+    // Overlay from live Docker data (wins on conflict; adds extras like docker-socket-proxy, channels)
     if (containerData.dockerContainers) {
       for (const c of containerData.dockerContainers) {
         merged.set(c.Service, c.State);
       }
     }
-    if (merged.size === 0) return null;
-    const total = merged.size;
-    const running = [...merged.values()].filter(s => s === 'running').length;
+    return merged;
+  });
+
+  // Derived: overall container health counts
+  let containerCounts = $derived.by(() => {
+    if (mergedServices.size === 0) return null;
+    const total = mergedServices.size;
+    const running = [...mergedServices.values()].filter(s => s === 'running').length;
     return { total, running };
   });
 
   // Derived: enabled channels list
   let enabledChannels = $derived(channelsData?.installed ?? []);
 
-  // Derived: guardian status from container state (not the health endpoint stub)
+  // Derived: guardian status from merged Docker data (not optimistic state.services)
   let guardianContainerStatus = $derived.by(() => {
-    if (!containerData?.containers) return 'unknown' as const;
-    const status = containerData.containers['guardian'];
+    const status = mergedServices.get('guardian');
     if (status === 'running') return 'running' as const;
-    if (status === 'stopped') return 'stopped' as const;
+    if (status === 'stopped' || status === 'exited' || status === 'created') return 'stopped' as const;
+    if (status) return 'stopped' as const; // any non-running state = stopped
     return 'unknown' as const;
   });
 
-  // Derived: assistant connectivity (from container state)
+  // Derived: assistant connectivity from merged Docker data
   let assistantStatus = $derived.by(() => {
-    if (!containerData?.containers) return 'unknown' as const;
-    const status = containerData.containers['assistant'];
+    const status = mergedServices.get('assistant');
     if (status === 'running') return 'connected' as const;
-    if (status === 'stopped') return 'disconnected' as const;
+    if (status === 'stopped' || status === 'exited' || status === 'created') return 'disconnected' as const;
+    if (status) return 'disconnected' as const;
     return 'unknown' as const;
   });
 </script>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { version } from '$app/environment';
   import ConnectionBanner from '$lib/components/ConnectionBanner.svelte';
   import Navbar from '$lib/components/Navbar.svelte';
@@ -64,6 +64,40 @@
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
   let activeTab: 'overview' | 'containers' | 'artifacts' | 'automations' | 'connections' = $state('overview');
+
+  // ── Container polling ──────────────────────────────────────────────────────
+  const POLL_INTERVAL_MS = 10_000;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startContainerPolling(): void {
+    stopContainerPolling();
+    pollTimer = setInterval(() => {
+      // Only poll when authenticated and data has been loaded at least once
+      if (!authLocked && containerData) {
+        void loadContainers();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  function stopContainerPolling(): void {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // Start polling when authenticated, stop when locked out
+  $effect(() => {
+    if (!authLocked) {
+      startContainerPolling();
+    } else {
+      stopContainerPolling();
+    }
+  });
+
+  onDestroy(() => {
+    stopContainerPolling();
+  });
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   let services = $derived([
