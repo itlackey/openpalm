@@ -38,6 +38,23 @@ export const GET: RequestHandler = async (event) => {
     }
   }
 
+  // Sync state.services from live Docker data so the in-memory map
+  // reflects actual container state instead of optimistic assumptions
+  if (dockerContainers) {
+    const dockerStateByService = new Map<string, string>();
+    for (const c of dockerContainers) {
+      if (c.Service && c.State) {
+        dockerStateByService.set(c.Service, c.State);
+      }
+    }
+    for (const service of Object.keys(state.services)) {
+      const dockerState = dockerStateByService.get(service);
+      if (dockerState) {
+        state.services[service] = dockerState === "running" ? "running" : "stopped";
+      }
+    }
+  }
+
   appendAudit(state, actor, "containers.list", {}, true, requestId, callerType);
 
   return jsonResponse(
