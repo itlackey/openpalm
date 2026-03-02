@@ -209,11 +209,11 @@ export async function registryInstall(
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
+  const data = await res.json();
   if (!res.ok) {
-    const data = await res.json();
     throw new Error(data.message || 'Install failed');
   }
-  return (await res.json()) as { ok: boolean };
+  return data as { ok: boolean };
 }
 
 export async function registryUninstall(
@@ -225,11 +225,11 @@ export async function registryUninstall(
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
+  const data = await res.json();
   if (!res.ok) {
-    const data = await res.json();
     throw new Error(data.message || 'Uninstall failed');
   }
-  return (await res.json()) as { ok: boolean };
+  return data as { ok: boolean };
 }
 
 export async function registryRefresh(token: string): Promise<void> {

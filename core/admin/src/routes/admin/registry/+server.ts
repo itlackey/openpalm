@@ -1,25 +1,26 @@
 /**
  * GET /admin/registry — List all registry items (channels + automations) with install status.
+ *
+ * Reads from the cloned registry repo in STATE_HOME/registry-repo/registry/.
+ * If the repo hasn't been cloned yet, triggers an initial clone.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
+  errorResponse,
   requireAdmin,
   getRequestId,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
+import { appendAudit } from "$lib/server/control-plane.js";
 import {
-  appendAudit,
-  REGISTRY_CHANNEL_NAMES,
-  REGISTRY_CHANNEL_CADDY,
-  REGISTRY_CHANNEL_YML,
-  REGISTRY_AUTOMATION_NAMES,
-  REGISTRY_AUTOMATION_YML
-} from "$lib/server/control-plane.js";
-import { existsSync, readFileSync } from "node:fs";
-import { parse as parseYaml } from "yaml";
+  ensureRegistryClone,
+  discoverRegistryChannels,
+  discoverRegistryAutomations
+} from "$lib/server/registry-sync.js";
+import { existsSync } from "node:fs";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -30,43 +31,40 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  // Build channels list
-  const channels = REGISTRY_CHANNEL_NAMES.map((name) => {
-    const installedPath = `${state.configDir}/channels/${name}.yml`;
-    const installed = existsSync(installedPath);
+  // Ensure the registry repo is cloned
+  try {
+    ensureRegistryClone();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    appendAudit(state, actor, "registry.list", { error: msg }, false, requestId, callerType);
+    return errorResponse(500, "registry_sync_error", msg, {}, requestId);
+  }
+
+  // Discover items from the cloned registry
+  const registryChannels = discoverRegistryChannels();
+  const registryAutomations = discoverRegistryAutomations();
+
+  // Build channels list with install status
+  const channels = registryChannels.map((ch) => {
+    const installedPath = `${state.configDir}/channels/${ch.name}.yml`;
     return {
-      name,
+      name: ch.name,
       type: "channel" as const,
-      installed,
-      hasRoute: name in REGISTRY_CHANNEL_CADDY,
-      description: `Docker compose service for the ${name} channel`
+      installed: existsSync(installedPath),
+      hasRoute: ch.hasRoute,
+      description: ch.description
     };
   });
 
-  // Build automations list
-  const automations = REGISTRY_AUTOMATION_NAMES.map((name) => {
-    const installedPath = `${state.configDir}/automations/${name}.yml`;
-    const installed = existsSync(installedPath);
-
-    // Parse description from the bundled YAML
-    let description = "";
-    let schedule = "";
-    try {
-      const parsed = parseYaml(REGISTRY_AUTOMATION_YML[name]);
-      if (parsed && typeof parsed === "object") {
-        description = parsed.description ?? "";
-        schedule = parsed.schedule ?? "";
-      }
-    } catch {
-      // best-effort
-    }
-
+  // Build automations list with install status
+  const automations = registryAutomations.map((auto) => {
+    const installedPath = `${state.configDir}/automations/${auto.name}.yml`;
     return {
-      name,
+      name: auto.name,
       type: "automation" as const,
-      installed,
-      description,
-      schedule
+      installed: existsSync(installedPath),
+      description: auto.description,
+      schedule: auto.schedule
     };
   });
 

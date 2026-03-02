@@ -1,14 +1,14 @@
 /**
- * POST /admin/registry/refresh — Re-stage artifacts and reload scheduler.
+ * POST /admin/registry/refresh — Pull latest registry from GitHub and re-stage.
  *
- * Since registry items are bundled at build time via import.meta.glob,
- * a "refresh" re-stages artifacts from CONFIG_HOME into STATE_HOME and
- * reloads the scheduler to pick up any changes.
+ * Runs `git pull` on the cloned registry repo in STATE_HOME to fetch any
+ * new or updated registry items from the remote repository.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
+  errorResponse,
   requireAdmin,
   getRequestId,
   getActor,
@@ -19,6 +19,7 @@ import {
   stageArtifacts,
   persistArtifacts
 } from "$lib/server/control-plane.js";
+import { pullRegistry } from "$lib/server/registry-sync.js";
 import { reloadScheduler } from "$lib/server/scheduler.js";
 
 export const POST: RequestHandler = async (event) => {
@@ -30,10 +31,18 @@ export const POST: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
+  // Pull latest from GitHub
+  const pullResult = pullRegistry();
+  if (pullResult.error) {
+    appendAudit(state, actor, "registry.refresh", { error: pullResult.error }, false, requestId, callerType);
+    return errorResponse(500, "registry_sync_error", pullResult.error, {}, requestId);
+  }
+
+  // Re-stage artifacts and reload scheduler
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
   reloadScheduler(state.stateDir, state.adminToken);
 
-  appendAudit(state, actor, "registry.refresh", {}, true, requestId, callerType);
-  return jsonResponse(200, { ok: true }, requestId);
+  appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);
+  return jsonResponse(200, { ok: true, updated: pullResult.updated }, requestId);
 };
