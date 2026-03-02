@@ -68,3 +68,34 @@ export type ChannelsResponse = {
   installed: ChannelInfo[];
   available: { name: string; hasRoute: boolean }[];
 };
+
+export type OpenMemoryConfig = {
+  mem0: {
+    llm: { provider: string; config: Record<string, unknown> };
+    embedder: { provider: string; config: Record<string, unknown> };
+    vector_store: {
+      provider: "qdrant";
+      config: {
+        collection_name: string;
+        host: string;
+        port: number;
+        embedding_model_dims: number;
+      };
+    };
+  };
+  openmemory: { custom_instructions: string };
+};
+
+export type OpenMemoryConfigResponse = {
+  config: OpenMemoryConfig;
+  runtimeConfig: OpenMemoryConfig | null;
+  providers: { llm: string[]; embed: string[] };
+  embeddingDims: Record<string, number>;
+};
+
+export type OpenMemoryConfigSaveResult = {
+  ok: boolean;
+  persisted: boolean;
+  pushed: boolean;
+  pushError?: string;
+};

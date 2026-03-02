@@ -275,9 +275,9 @@ describe("maskConnectionValue", () => {
     expect(maskConnectionValue("GUARDIAN_LLM_PROVIDER", "anthropic")).toBe("anthropic");
   });
 
-  test("OPENMEMORY_OPENAI_BASE_URL is returned unmasked", () => {
-    expect(maskConnectionValue("OPENMEMORY_OPENAI_BASE_URL", "http://localhost:11434")).toBe(
-      "http://localhost:11434"
+  test("GUARDIAN_LLM_MODEL is returned unmasked", () => {
+    expect(maskConnectionValue("GUARDIAN_LLM_MODEL", "gpt-4o-mini")).toBe(
+      "gpt-4o-mini"
     );
   });
 });
@@ -293,13 +293,16 @@ describe("ALLOWED_CONNECTION_KEYS", () => {
       "MISTRAL_API_KEY",
       "GOOGLE_API_KEY",
       "GUARDIAN_LLM_PROVIDER",
-      "GUARDIAN_LLM_MODEL",
-      "OPENMEMORY_OPENAI_BASE_URL",
-      "OPENMEMORY_OPENAI_API_KEY"
+      "GUARDIAN_LLM_MODEL"
     ];
     for (const key of expectedKeys) {
       expect(ALLOWED_CONNECTION_KEYS.has(key)).toBe(true);
     }
+  });
+
+  test("does not include obsolete OPENMEMORY_OPENAI_* keys (superseded by JSON config)", () => {
+    expect(ALLOWED_CONNECTION_KEYS.has("OPENMEMORY_OPENAI_BASE_URL")).toBe(false);
+    expect(ALLOWED_CONNECTION_KEYS.has("OPENMEMORY_OPENAI_API_KEY")).toBe(false);
   });
 
   test("does not include ADMIN_TOKEN (security: separate from connection keys)", () => {

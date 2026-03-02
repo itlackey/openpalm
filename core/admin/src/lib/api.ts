@@ -1,4 +1,12 @@
-import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse } from './types.js';
+import type {
+  HealthPayload,
+  ContainerListResponse,
+  AutomationsResponse,
+  ChannelsResponse,
+  OpenMemoryConfig,
+  OpenMemoryConfigResponse,
+  OpenMemoryConfigSaveResult
+} from './types.js';
 
 const apiBase = '';
 
@@ -186,4 +194,51 @@ export async function fetchChannels(token: string): Promise<ChannelsResponse> {
     throw new Error(text);
   }
   return (await res.json()) as ChannelsResponse;
+}
+
+export async function fetchOpenMemoryConfig(
+  token: string
+): Promise<OpenMemoryConfigResponse> {
+  const res = await get('/admin/openmemory/config', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as OpenMemoryConfigResponse;
+}
+
+export async function saveOpenMemoryConfig(
+  token: string,
+  config: OpenMemoryConfig
+): Promise<OpenMemoryConfigSaveResult> {
+  const res = await post('/admin/openmemory/config', config, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as OpenMemoryConfigSaveResult;
+}
+
+export async function fetchProviderModels(
+  token: string,
+  provider: string,
+  apiKeyRef: string,
+  baseUrl?: string
+): Promise<{ models: string[]; error?: string }> {
+  const res = await post(
+    '/admin/openmemory/models',
+    { provider, apiKeyRef, baseUrl: baseUrl ?? '' },
+    token
+  );
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    return { models: [], error: `HTTP ${res.status}` };
+  }
+  return (await res.json()) as { models: string[]; error?: string };
 }

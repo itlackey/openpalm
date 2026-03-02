@@ -29,9 +29,7 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "MISTRAL_API_KEY",
   "GOOGLE_API_KEY",
   "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL",
-  "OPENMEMORY_OPENAI_BASE_URL",
-  "OPENMEMORY_OPENAI_API_KEY"
+  "GUARDIAN_LLM_MODEL"
 ]);
 
 /**
@@ -49,8 +47,7 @@ export const REQUIRED_LLM_PROVIDER_KEYS = [
 /** Keys that are non-secret config — returned unmasked in connection responses. */
 export const PLAIN_CONFIG_KEYS = new Set([
   "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL",
-  "OPENMEMORY_OPENAI_BASE_URL"
+  "GUARDIAN_LLM_MODEL"
 ]);
 
 // ── Secrets Management ──────────────────────────────────────────────────

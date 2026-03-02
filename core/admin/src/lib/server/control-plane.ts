@@ -82,6 +82,22 @@ export {
   refreshCoreAssets
 } from "./staging.js";
 
+// ── openmemory-config.ts ─────────────────────────────────────────────
+export {
+  readOpenMemoryConfig,
+  writeOpenMemoryConfig,
+  ensureOpenMemoryConfig,
+  pushConfigToOpenMemory,
+  fetchConfigFromOpenMemory,
+  resolveApiKey,
+  fetchProviderModels,
+  LLM_PROVIDERS,
+  EMBED_PROVIDERS,
+  EMBEDDING_DIMS,
+  type OpenMemoryConfig,
+  type ProviderModelsResult
+} from "./openmemory-config.js";
+
 // ── lifecycle.ts ──────────────────────────────────────────────────────
 export {
   createState,

@@ -11,6 +11,7 @@ import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js
 import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex } from "./staging.js";
 import { refreshCoreAssets } from "./core-assets.js";
+import { ensureOpenMemoryConfig } from "./openmemory-config.js";
 
 // ── State Factory ──────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export function applyInstall(state: ControlPlaneState): void {
   for (const service of CORE_SERVICES) {
     state.services[service] = "running";
   }
+  ensureOpenMemoryConfig(state.dataDir);
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
 }

@@ -1,5 +1,11 @@
 <script lang="ts">
   import { getAdminToken } from '$lib/auth.js';
+  import {
+    fetchOpenMemoryConfig,
+    saveOpenMemoryConfig,
+    fetchProviderModels
+  } from '$lib/api.js';
+  import type { OpenMemoryConfig } from '$lib/types.js';
 
   interface Props {
     connections: Record<string, string>;
@@ -21,10 +27,6 @@
   let guardianProvider: string = $state('');
   let guardianModel: string = $state('');
 
-  // OpenMemory Config
-  let openMemoryBaseUrl: string = $state('');
-  let openMemoryApiKey = $state('');
-
   // Sync plain-text config fields when connections data arrives
   let lastSyncedConnections: Record<string, string> | null = $state(null);
   $effect(() => {
@@ -32,7 +34,6 @@
       lastSyncedConnections = connections;
       guardianProvider = connections['GUARDIAN_LLM_PROVIDER'] ?? '';
       guardianModel = connections['GUARDIAN_LLM_MODEL'] ?? '';
-      openMemoryBaseUrl = connections['OPENMEMORY_OPENAI_BASE_URL'] ?? '';
     }
   });
 
@@ -40,6 +41,269 @@
   let saving = $state(false);
   let saveSuccess = $state(false);
   let saveError = $state('');
+
+  // ── OpenMemory Config State ─────────────────────────────────────────────
+  let omLlmProvider = $state('openai');
+  let omLlmModel = $state('gpt-4o-mini');
+  let omLlmBaseUrl = $state('');
+  let omLlmApiKeyRef = $state('env:OPENAI_API_KEY');
+  let omLlmTemperature = $state(0.1);
+  let omLlmMaxTokens = $state(2000);
+
+  let omEmbedProvider = $state('openai');
+  let omEmbedModel = $state('text-embedding-3-small');
+  let omEmbedBaseUrl = $state('');
+  let omEmbedApiKeyRef = $state('env:OPENAI_API_KEY');
+  let omEmbedDims = $state(1536);
+
+  let omCustomInstructions = $state('');
+
+  let omLoading = $state(false);
+  let omSaving = $state(false);
+  let omSaveSuccess = $state(false);
+  let omSaveError = $state('');
+  let omLoaded = $state(false);
+
+  // ── Model Selection State ──────────────────────────────────────────────
+  let llmModels: string[] = $state([]);
+  let llmModelsLoading = $state(false);
+  let llmModelsError = $state('');
+  let llmModelCustom = $state(false);
+
+  let embedModels: string[] = $state([]);
+  let embedModelsLoading = $state(false);
+  let embedModelsError = $state('');
+  let embedModelCustom = $state(false);
+
+  let llmProviders: string[] = $state([]);
+  let embedProviders: string[] = $state([]);
+  let embeddingDimsLookup: Record<string, number> = $state({});
+
+  const API_KEY_REFS = [
+    'env:OPENAI_API_KEY',
+    'env:ANTHROPIC_API_KEY',
+    'env:GROQ_API_KEY',
+    'env:MISTRAL_API_KEY',
+    'env:GOOGLE_API_KEY',
+    'env:OPENMEMORY_OPENAI_API_KEY',
+  ];
+
+  // Auto-fill embedding dimensions when model changes
+  $effect(() => {
+    const lookupKey = `${omEmbedProvider}/${omEmbedModel}`;
+    if (embeddingDimsLookup[lookupKey]) {
+      omEmbedDims = embeddingDimsLookup[lookupKey];
+    }
+  });
+
+  // Load OpenMemory config when tab is first shown
+  $effect(() => {
+    if (!loading && !omLoaded && !omLoading) {
+      void loadOpenMemoryConfig();
+    }
+  });
+
+  async function loadOpenMemoryConfig(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+
+    omLoading = true;
+    try {
+      const data = await fetchOpenMemoryConfig(token);
+      llmProviders = [...data.providers.llm];
+      embedProviders = [...data.providers.embed];
+      embeddingDimsLookup = { ...data.embeddingDims };
+
+      const cfg = data.config;
+      omLlmProvider = cfg.mem0.llm.provider ?? 'openai';
+      omLlmModel = (cfg.mem0.llm.config.model as string) ?? 'gpt-4o-mini';
+      omLlmBaseUrl = (cfg.mem0.llm.config.base_url as string) ?? '';
+      omLlmApiKeyRef = (cfg.mem0.llm.config.api_key as string) ?? 'env:OPENAI_API_KEY';
+      omLlmTemperature = (cfg.mem0.llm.config.temperature as number) ?? 0.1;
+      omLlmMaxTokens = (cfg.mem0.llm.config.max_tokens as number) ?? 2000;
+
+      omEmbedProvider = cfg.mem0.embedder.provider ?? 'openai';
+      omEmbedModel = (cfg.mem0.embedder.config.model as string) ?? 'text-embedding-3-small';
+      omEmbedBaseUrl = (cfg.mem0.embedder.config.base_url as string) ?? '';
+      omEmbedApiKeyRef = (cfg.mem0.embedder.config.api_key as string) ?? 'env:OPENAI_API_KEY';
+      omEmbedDims = cfg.mem0.vector_store.config.embedding_model_dims ?? 1536;
+
+      omCustomInstructions = cfg.openmemory.custom_instructions ?? '';
+      omLoaded = true;
+    } catch {
+      omSaveError = 'Failed to load OpenMemory config.';
+    } finally {
+      omLoading = false;
+    }
+  }
+
+  // ── Model Loading ────────────────────────────────────────────────────
+  async function loadLlmModels(): Promise<void> {
+    const token = getAdminToken();
+    if (!token || !omLlmProvider) return;
+
+    llmModelsLoading = true;
+    llmModelsError = '';
+    try {
+      const result = await fetchProviderModels(token, omLlmProvider, omLlmApiKeyRef, omLlmBaseUrl);
+      llmModels = result.models;
+      if (result.error) {
+        llmModelsError = result.error;
+        llmModelCustom = true;
+      } else if (result.models.length > 0) {
+        // If current model is in list, keep it; otherwise prepend it
+        if (omLlmModel && !result.models.includes(omLlmModel)) {
+          llmModels = [omLlmModel, ...result.models];
+        }
+        llmModelCustom = false;
+      } else {
+        llmModelCustom = true;
+      }
+    } catch {
+      llmModelsError = 'Failed to fetch models.';
+      llmModelCustom = true;
+    } finally {
+      llmModelsLoading = false;
+    }
+  }
+
+  async function loadEmbedModels(): Promise<void> {
+    const token = getAdminToken();
+    if (!token || !omEmbedProvider) return;
+
+    embedModelsLoading = true;
+    embedModelsError = '';
+    try {
+      const result = await fetchProviderModels(token, omEmbedProvider, omEmbedApiKeyRef, omEmbedBaseUrl);
+      embedModels = result.models;
+      if (result.error) {
+        embedModelsError = result.error;
+        embedModelCustom = true;
+      } else if (result.models.length > 0) {
+        if (omEmbedModel && !result.models.includes(omEmbedModel)) {
+          embedModels = [omEmbedModel, ...result.models];
+        }
+        embedModelCustom = false;
+      } else {
+        embedModelCustom = true;
+      }
+    } catch {
+      embedModelsError = 'Failed to fetch models.';
+      embedModelCustom = true;
+    } finally {
+      embedModelsLoading = false;
+    }
+  }
+
+  // Debounced reactive model loading when provider/key/url changes
+  let llmDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    // Track reactive dependencies
+    void omLlmProvider;
+    void omLlmApiKeyRef;
+    void omLlmBaseUrl;
+
+    if (!omLoaded) return;
+    clearTimeout(llmDebounceTimer);
+    llmDebounceTimer = setTimeout(() => void loadLlmModels(), 500);
+    return () => clearTimeout(llmDebounceTimer);
+  });
+
+  let embedDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    void omEmbedProvider;
+    void omEmbedApiKeyRef;
+    void omEmbedBaseUrl;
+
+    if (!omLoaded) return;
+    clearTimeout(embedDebounceTimer);
+    embedDebounceTimer = setTimeout(() => void loadEmbedModels(), 500);
+    return () => clearTimeout(embedDebounceTimer);
+  });
+
+  function handleLlmModelSelectChange(value: string): void {
+    if (value === '__custom__') {
+      llmModelCustom = true;
+      omLlmModel = '';
+    } else {
+      omLlmModel = value;
+    }
+  }
+
+  function handleEmbedModelSelectChange(value: string): void {
+    if (value === '__custom__') {
+      embedModelCustom = true;
+      omEmbedModel = '';
+    } else {
+      omEmbedModel = value;
+    }
+  }
+
+  function buildOpenMemoryConfig(): OpenMemoryConfig {
+    const llmConfig: Record<string, unknown> = {
+      model: omLlmModel,
+      temperature: omLlmTemperature,
+      max_tokens: omLlmMaxTokens,
+      api_key: omLlmApiKeyRef,
+    };
+    if (omLlmBaseUrl.trim()) {
+      llmConfig.base_url = omLlmBaseUrl.trim();
+    }
+
+    const embedConfig: Record<string, unknown> = {
+      model: omEmbedModel,
+      api_key: omEmbedApiKeyRef,
+    };
+    if (omEmbedBaseUrl.trim()) {
+      embedConfig.base_url = omEmbedBaseUrl.trim();
+    }
+
+    return {
+      mem0: {
+        llm: { provider: omLlmProvider, config: llmConfig },
+        embedder: { provider: omEmbedProvider, config: embedConfig },
+        vector_store: {
+          provider: 'qdrant',
+          config: {
+            collection_name: 'openmemory',
+            host: 'qdrant',
+            port: 6333,
+            embedding_model_dims: omEmbedDims,
+          },
+        },
+      },
+      openmemory: { custom_instructions: omCustomInstructions },
+    };
+  }
+
+  async function handleSaveOpenMemoryConfig(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) {
+      omSaveError = 'Admin token required.';
+      return;
+    }
+
+    omSaving = true;
+    omSaveError = '';
+    omSaveSuccess = false;
+
+    try {
+      const config = buildOpenMemoryConfig();
+      const result = await saveOpenMemoryConfig(token, config);
+      if (result.ok) {
+        omSaveSuccess = true;
+        if (!result.pushed && result.pushError) {
+          omSaveError = 'Config saved to file. Restart OpenMemory to apply changes.';
+        }
+      } else {
+        omSaveError = 'Failed to save config.';
+      }
+    } catch {
+      omSaveError = 'Unable to reach admin API.';
+    } finally {
+      omSaving = false;
+    }
+  }
 
   function buildPatches(): Record<string, string> {
     const patches: Record<string, string> = {};
@@ -52,8 +316,6 @@
 
     if (guardianProvider.trim()) patches['GUARDIAN_LLM_PROVIDER'] = guardianProvider.trim();
     if (guardianModel.trim()) patches['GUARDIAN_LLM_MODEL'] = guardianModel.trim();
-    if (openMemoryBaseUrl.trim()) patches['OPENMEMORY_OPENAI_BASE_URL'] = openMemoryBaseUrl.trim();
-    if (openMemoryApiKey.trim()) patches['OPENMEMORY_OPENAI_API_KEY'] = openMemoryApiKey.trim();
 
     return patches;
   }
@@ -105,7 +367,6 @@
       groqKey = '';
       mistralKey = '';
       googleKey = '';
-      openMemoryApiKey = '';
       // Refresh data to show updated masked values
       onRefresh();
     } catch {
@@ -126,6 +387,14 @@
 
   function dismissError(): void {
     saveError = '';
+  }
+
+  function dismissOmSuccess(): void {
+    omSaveSuccess = false;
+  }
+
+  function dismissOmError(): void {
+    omSaveError = '';
   }
 </script>
 
@@ -331,56 +600,7 @@
         </div>
       </section>
 
-      <!-- ── Section 3: OpenMemory Config ────────────────────────── -->
-      <section class="panel connections-section">
-        <div class="panel-header">
-          <h3>OpenMemory Config</h3>
-          <p class="section-desc">
-            Configure the OpenAI-compatible endpoint that OpenMemory uses for embeddings.
-          </p>
-        </div>
-        <div class="panel-body">
-          <div class="form-grid">
-
-            <div class="form-field">
-              <label for="conn-openmemory-url" class="form-label">
-                OpenMemory OpenAI Base URL
-                {#if connections['OPENMEMORY_OPENAI_BASE_URL']}
-                  <span class="current-value">Current: {connections['OPENMEMORY_OPENAI_BASE_URL']}</span>
-                {/if}
-              </label>
-              <input
-                id="conn-openmemory-url"
-                type="url"
-                class="form-input"
-                bind:value={openMemoryBaseUrl}
-                placeholder="https://api.openai.com/v1"
-                autocomplete="off"
-              />
-            </div>
-
-            <div class="form-field">
-              <label for="conn-openmemory-key" class="form-label">
-                OpenMemory OpenAI API Key
-                {#if connections['OPENMEMORY_OPENAI_API_KEY']}
-                  <span class="current-value">Current: {connections['OPENMEMORY_OPENAI_API_KEY']}</span>
-                {/if}
-              </label>
-              <input
-                id="conn-openmemory-key"
-                type="password"
-                class="form-input"
-                bind:value={openMemoryApiKey}
-                placeholder="sk-..."
-                autocomplete="off"
-              />
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      <!-- ── Save Button ─────────────────────────────────────────── -->
+      <!-- ── Save Connections Button ──────────────────────────────── -->
       <div class="form-actions">
         <button class="btn btn-primary" type="submit" disabled={saving}>
           {#if saving}
@@ -390,6 +610,334 @@
         </button>
       </div>
     </form>
+
+    <!-- ── Section 3: OpenMemory Configuration ───────────────────── -->
+    <section class="panel connections-section om-section" aria-label="OpenMemory configuration">
+      <div class="panel-header">
+        <h3>OpenMemory Configuration</h3>
+        <p class="section-desc">
+          Configure the LLM and embedding providers that OpenMemory uses for memory operations.
+          API keys are referenced by environment variable name — actual values are managed above.
+        </p>
+      </div>
+
+      {#if omLoading}
+        <div class="panel-body">
+          <div class="loading-state">
+            <span class="spinner"></span>
+            <span>Loading OpenMemory config...</span>
+          </div>
+        </div>
+      {:else}
+        <!-- ── OM Feedback Messages ──────────────────────────────── -->
+        {#if omSaveSuccess}
+          <div class="feedback feedback--success om-feedback" role="status" aria-live="polite">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <span>OpenMemory config saved.</span>
+            <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={dismissOmSuccess}>
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        {/if}
+
+        {#if omSaveError}
+          <div class="feedback feedback--warning om-feedback" role="status" aria-live="polite">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{omSaveError}</span>
+            <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={dismissOmError}>
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        {/if}
+
+        <div class="panel-body">
+          <!-- LLM Provider Panel -->
+          <div class="om-panel">
+            <h4 class="om-panel-title">LLM Provider</h4>
+            <div class="form-grid">
+
+              <div class="form-field">
+                <label for="om-llm-provider" class="form-label">Provider</label>
+                <select id="om-llm-provider" class="form-input" bind:value={omLlmProvider}>
+                  {#each llmProviders as p}
+                    <option value={p}>{p}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label for="om-llm-model" class="form-label">
+                  Model
+                  {#if llmModelsLoading}
+                    <span class="spinner spinner-inline"></span>
+                  {/if}
+                </label>
+                {#if !llmModelCustom && llmModels.length > 0}
+                  <div class="model-select-row">
+                    <select
+                      id="om-llm-model"
+                      class="form-input"
+                      value={omLlmModel}
+                      onchange={(e) => handleLlmModelSelectChange(e.currentTarget.value)}
+                    >
+                      {#each llmModels as m}
+                        <option value={m}>{m}</option>
+                      {/each}
+                      <option value="__custom__">Custom...</option>
+                    </select>
+                    <button
+                      class="btn-icon"
+                      type="button"
+                      title="Refresh models"
+                      disabled={llmModelsLoading}
+                      onclick={() => void loadLlmModels()}
+                    >
+                      <svg class:spin={llmModelsLoading} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                    </button>
+                  </div>
+                {:else}
+                  <div class="model-select-row">
+                    <input
+                      id="om-llm-model"
+                      type="text"
+                      class="form-input"
+                      bind:value={omLlmModel}
+                      placeholder="gpt-4o-mini"
+                      autocomplete="off"
+                    />
+                    <button
+                      class="btn-icon"
+                      type="button"
+                      title="Load models from provider"
+                      disabled={llmModelsLoading}
+                      onclick={() => void loadLlmModels()}
+                    >
+                      <svg class:spin={llmModelsLoading} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                    </button>
+                  </div>
+                  {#if llmModelsError}
+                    <span class="field-error">{llmModelsError}</span>
+                  {/if}
+                {/if}
+              </div>
+
+              <div class="form-field">
+                <label for="om-llm-base-url" class="form-label">
+                  Base URL
+                  <span class="field-hint">(required for Ollama, LM Studio, etc.)</span>
+                </label>
+                <input
+                  id="om-llm-base-url"
+                  type="url"
+                  class="form-input"
+                  bind:value={omLlmBaseUrl}
+                  placeholder="http://host.docker.internal:11434"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="om-llm-apikey" class="form-label">API Key Reference</label>
+                <select id="om-llm-apikey" class="form-input" bind:value={omLlmApiKeyRef}>
+                  {#each API_KEY_REFS as ref}
+                    <option value={ref}>{ref}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label for="om-llm-temp" class="form-label">Temperature</label>
+                <input
+                  id="om-llm-temp"
+                  type="number"
+                  class="form-input"
+                  bind:value={omLlmTemperature}
+                  min="0"
+                  max="1"
+                  step="0.1"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="om-llm-tokens" class="form-label">Max Tokens</label>
+                <input
+                  id="om-llm-tokens"
+                  type="number"
+                  class="form-input"
+                  bind:value={omLlmMaxTokens}
+                  min="1"
+                  step="100"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Embedding Provider Panel -->
+          <div class="om-panel">
+            <h4 class="om-panel-title">Embedding Provider</h4>
+            <div class="form-grid">
+
+              <div class="form-field">
+                <label for="om-embed-provider" class="form-label">Provider</label>
+                <select id="om-embed-provider" class="form-input" bind:value={omEmbedProvider}>
+                  {#each embedProviders as p}
+                    <option value={p}>{p}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label for="om-embed-model" class="form-label">
+                  Model
+                  {#if embedModelsLoading}
+                    <span class="spinner spinner-inline"></span>
+                  {/if}
+                </label>
+                {#if !embedModelCustom && embedModels.length > 0}
+                  <div class="model-select-row">
+                    <select
+                      id="om-embed-model"
+                      class="form-input"
+                      value={omEmbedModel}
+                      onchange={(e) => handleEmbedModelSelectChange(e.currentTarget.value)}
+                    >
+                      {#each embedModels as m}
+                        <option value={m}>{m}</option>
+                      {/each}
+                      <option value="__custom__">Custom...</option>
+                    </select>
+                    <button
+                      class="btn-icon"
+                      type="button"
+                      title="Refresh models"
+                      disabled={embedModelsLoading}
+                      onclick={() => void loadEmbedModels()}
+                    >
+                      <svg class:spin={embedModelsLoading} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                    </button>
+                  </div>
+                {:else}
+                  <div class="model-select-row">
+                    <input
+                      id="om-embed-model"
+                      type="text"
+                      class="form-input"
+                      bind:value={omEmbedModel}
+                      placeholder="text-embedding-3-small"
+                      autocomplete="off"
+                    />
+                    <button
+                      class="btn-icon"
+                      type="button"
+                      title="Load models from provider"
+                      disabled={embedModelsLoading}
+                      onclick={() => void loadEmbedModels()}
+                    >
+                      <svg class:spin={embedModelsLoading} aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                    </button>
+                  </div>
+                  {#if embedModelsError}
+                    <span class="field-error">{embedModelsError}</span>
+                  {/if}
+                {/if}
+              </div>
+
+              <div class="form-field">
+                <label for="om-embed-base-url" class="form-label">
+                  Base URL
+                  <span class="field-hint">(required for Ollama, LM Studio, etc.)</span>
+                </label>
+                <input
+                  id="om-embed-base-url"
+                  type="url"
+                  class="form-input"
+                  bind:value={omEmbedBaseUrl}
+                  placeholder="http://host.docker.internal:11434"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="om-embed-apikey" class="form-label">API Key Reference</label>
+                <select id="om-embed-apikey" class="form-input" bind:value={omEmbedApiKeyRef}>
+                  {#each API_KEY_REFS as ref}
+                    <option value={ref}>{ref}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label for="om-embed-dims" class="form-label">Embedding Dimensions</label>
+                <input
+                  id="om-embed-dims"
+                  type="number"
+                  class="form-input"
+                  bind:value={omEmbedDims}
+                  min="1"
+                  step="1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom Instructions -->
+          <div class="om-panel">
+            <h4 class="om-panel-title">Custom Instructions</h4>
+            <div class="form-field">
+              <textarea
+                id="om-custom-instructions"
+                class="form-input form-textarea"
+                bind:value={omCustomInstructions}
+                placeholder="Optional instructions for memory processing..."
+                rows="3"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="info-note">
+            Changing the embedding model after data has been stored requires resetting OpenMemory.
+          </div>
+
+          <!-- Save OpenMemory Config Button -->
+          <div class="form-actions">
+            <button
+              class="btn btn-primary"
+              type="button"
+              disabled={omSaving}
+              onclick={() => void handleSaveOpenMemoryConfig()}
+            >
+              {#if omSaving}
+                <span class="spinner"></span>
+              {/if}
+              Save OpenMemory Config
+            </button>
+          </div>
+        </div>
+      {/if}
+    </section>
   {/if}
 </section>
 
@@ -476,6 +1024,21 @@
     flex-shrink: 0;
   }
 
+  .feedback--warning {
+    background: var(--color-warning-bg, rgba(255, 183, 77, 0.1));
+    border: 1px solid var(--color-warning-border, rgba(255, 183, 77, 0.35));
+    color: var(--color-text);
+  }
+
+  .feedback--warning svg {
+    color: var(--color-warning, #ffb74d);
+    flex-shrink: 0;
+  }
+
+  .om-feedback {
+    margin: var(--space-3) var(--space-5) 0;
+  }
+
   .btn-dismiss {
     background: transparent;
     border: none;
@@ -495,6 +1058,10 @@
 
   .connections-section {
     margin-bottom: var(--space-4);
+  }
+
+  .om-section {
+    margin-top: var(--space-6);
   }
 
   .panel {
@@ -528,6 +1095,36 @@
     padding: var(--space-5);
   }
 
+  /* ── OpenMemory Sub-panels ─────────────────────────────────── */
+
+  .om-panel {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .om-panel:last-of-type {
+    border-bottom: none;
+    margin-bottom: var(--space-3);
+    padding-bottom: 0;
+  }
+
+  .om-panel-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    margin-bottom: var(--space-3);
+  }
+
+  .info-note {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+  }
+
   /* ── Form Grid ───────────────────────────────────────────────── */
 
   .form-grid {
@@ -549,6 +1146,12 @@
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
     color: var(--color-text);
+  }
+
+  .field-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    font-weight: 400;
   }
 
   .current-value {
@@ -580,6 +1183,72 @@
 
   .form-input::placeholder {
     color: var(--color-text-tertiary);
+  }
+
+  .form-textarea {
+    resize: vertical;
+    min-height: 60px;
+    font-family: var(--font-sans);
+  }
+
+  select.form-input {
+    cursor: pointer;
+    appearance: auto;
+  }
+
+  /* ── Model Select Row ──────────────────────────────────────── */
+
+  .model-select-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: stretch;
+  }
+
+  .model-select-row .form-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .btn-icon:hover:not(:disabled) {
+    color: var(--color-text);
+    border-color: var(--color-border-hover);
+  }
+
+  .btn-icon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .spinner-inline {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: var(--space-1);
+  }
+
+  .field-error {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    margin-top: var(--space-1);
   }
 
   /* ── Actions ─────────────────────────────────────────────────── */

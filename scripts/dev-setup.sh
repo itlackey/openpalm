@@ -148,6 +148,44 @@ EOF
 
 fi
 
+# ── Seed OpenMemory default config ──────────────────────────────────────
+if [ ! -f "$DATA_DIR/openmemory/default_config.json" ]; then
+	cat > "$DATA_DIR/openmemory/default_config.json" << 'OMEOF'
+{
+  "mem0": {
+    "llm": {
+      "provider": "openai",
+      "config": {
+        "model": "gpt-4o-mini",
+        "temperature": 0.1,
+        "max_tokens": 2000,
+        "api_key": "env:OPENAI_API_KEY"
+      }
+    },
+    "embedder": {
+      "provider": "openai",
+      "config": {
+        "model": "text-embedding-3-small",
+        "api_key": "env:OPENAI_API_KEY"
+      }
+    },
+    "vector_store": {
+      "provider": "qdrant",
+      "config": {
+        "collection_name": "openmemory",
+        "host": "qdrant",
+        "port": 6333,
+        "embedding_model_dims": 1536
+      }
+    }
+  },
+  "openmemory": {
+    "custom_instructions": ""
+  }
+}
+OMEOF
+fi
+
 if [[ $EUID -ne 0 ]]; then
 	chown -R "$(id -u):$(id -g)" "$DATA_DIR" "$CONFIG_DIR" "$CHANNELS_DIR" "$STATE_DIR"
 else
