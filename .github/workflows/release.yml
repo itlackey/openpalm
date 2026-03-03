@@ -146,14 +146,8 @@ jobs:
             image: openpalm/admin
           - dockerfile: core/guardian/Dockerfile
             image: openpalm/guardian
-          - dockerfile: channels/chat/Dockerfile
-            image: openpalm/channel-chat
-          - dockerfile: channels/api/Dockerfile
-            image: openpalm/channel-api
-          - dockerfile: channels/discord/Dockerfile
-            image: openpalm/channel-discord
-          - dockerfile: channels/base/Dockerfile
-            image: openpalm/channel-base
+          - dockerfile: core/channel/Dockerfile
+            image: openpalm/channel
           - dockerfile: core/assistant/Dockerfile
             image: openpalm/assistant
 
@@ -194,14 +188,8 @@ jobs:
             image: openpalm/admin
           - dockerfile: core/guardian/Dockerfile
             image: openpalm/guardian
-          - dockerfile: channels/chat/Dockerfile
-            image: openpalm/channel-chat
-          - dockerfile: channels/api/Dockerfile
-            image: openpalm/channel-api
-          - dockerfile: channels/discord/Dockerfile
-            image: openpalm/channel-discord
-          - dockerfile: channels/base/Dockerfile
-            image: openpalm/channel-base
+          - dockerfile: core/channel/Dockerfile
+            image: openpalm/channel
           - dockerfile: core/assistant/Dockerfile
             image: openpalm/assistant
 
