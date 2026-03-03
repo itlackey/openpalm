@@ -10,7 +10,7 @@
     },
     "core/admin": {
       "name": "@openpalm/admin",
-      "version": "0.7.0-rc1",
+      "version": "0.7.2-rc4",
       "dependencies": {
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
@@ -44,7 +44,7 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.7.0-rc1",
+      "version": "0.7.2-rc4",
       "dependencies": {
         "@openpalm/channels-sdk": "workspace:*",
         "dotenv": "^16.4.7",
@@ -52,48 +52,48 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.0-rc3",
+      "version": "0.7.2-rc4",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },
     },
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
-      "version": "0.7.0-rc1",
+      "version": "0.7.2-rc4",
       "devDependencies": {
-        "@openpalm/channels-sdk": "^0.7.0-rc1",
+        "@openpalm/channels-sdk": "^0.7.2-rc4",
       },
       "peerDependencies": {
-        "@openpalm/channels-sdk": "^0.7.0-rc1",
+        "@openpalm/channels-sdk": "^0.7.2-rc4",
       },
     },
     "packages/channel-chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.7.0",
+      "version": "0.7.2-rc4",
       "devDependencies": {
-        "@openpalm/channels-sdk": "^0.7.0-rc1",
+        "@openpalm/channels-sdk": "^0.7.2-rc4",
       },
       "peerDependencies": {
-        "@openpalm/channels-sdk": "^0.7.0-rc1",
+        "@openpalm/channels-sdk": "^0.7.2-rc4",
       },
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.7.0-rc1",
+      "version": "0.7.2-rc4",
       "devDependencies": {
-        "@openpalm/channels-sdk": "^0.7.0-rc1",
+        "@openpalm/channels-sdk": "^0.7.2-rc4",
       },
       "peerDependencies": {
-        "@openpalm/channels-sdk": "^0.7.0-rc1",
+        "@openpalm/channels-sdk": "^0.7.2-rc4",
       },
     },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
-      "version": "0.7.0-rc1",
+      "version": "0.7.2-rc4",
     },
     "packages/cli": {
       "name": "@openpalm/cli",
-      "version": "0.7.0-rc1",
+      "version": "0.7.2-rc4",
       "bin": {
         "openpalm": "./src/main.ts",
       },
