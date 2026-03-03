@@ -19,11 +19,13 @@ describe("agent card", () => {
     const card = buildAgentCard();
     expect(card.name).toBe("OpenPalm Assistant");
     expect(card.version).toBe("0.1.0");
+    expect(card.protocolVersion).toBe("0.2.1");
     expect(card.capabilities?.streaming).toBe(true);
     expect(card.capabilities?.pushNotifications).toBe(false);
     expect(card.skills).toHaveLength(1);
     expect(card.skills![0].id).toBe("general");
-    expect(card.authentication?.schemes).toContain("bearer");
+    expect(card.securitySchemes?.bearer).toBeDefined();
+    expect(card.security).toEqual([{ bearer: [] }]);
     expect(card.defaultInputModes).toContain("text");
     expect(card.defaultOutputModes).toContain("text");
   });
@@ -118,14 +120,14 @@ describe("OpenPalmExecutor", () => {
       expect(payload.userId).toBe("ctx-1");
 
       // Verify event bus received correct events:
-      // 1. working status
+      // 1. task (working) — registers with SDK ResultManager
       // 2. artifact update
       // 3. completed status
       expect(eventBus.events).toHaveLength(3);
 
-      const workingEvent = eventBus.events[0] as Record<string, unknown>;
-      expect(workingEvent.kind).toBe("status-update");
-      expect((workingEvent.status as Record<string, unknown>).state).toBe("working");
+      const taskEvent = eventBus.events[0] as Record<string, unknown>;
+      expect(taskEvent.kind).toBe("task");
+      expect((taskEvent.status as Record<string, unknown>).state).toBe("working");
 
       const artifactEvent = eventBus.events[1] as Record<string, unknown>;
       expect(artifactEvent.kind).toBe("artifact-update");
@@ -159,7 +161,7 @@ describe("OpenPalmExecutor", () => {
 
       await executor.execute(context as any, eventBus as any);
 
-      // Should have: working, then failed
+      // Should have: task (working), then failed status
       expect(eventBus.events).toHaveLength(2);
 
       const failedEvent = eventBus.events[1] as Record<string, unknown>;
@@ -188,7 +190,7 @@ describe("OpenPalmExecutor", () => {
 
       await executor.execute(context as any, eventBus as any);
 
-      // Should have: working, then failed
+      // Should have: task (working), then failed status
       expect(eventBus.events).toHaveLength(2);
 
       const failedEvent = eventBus.events[1] as Record<string, unknown>;
@@ -199,7 +201,7 @@ describe("OpenPalmExecutor", () => {
     }
   });
 
-  it("publishes failed status when message has no text parts", async () => {
+  it("publishes failed task when message has no text parts", async () => {
     const executor = new OpenPalmExecutor({
       guardianUrl: "http://guardian:8080",
       channelSecret: "test-secret",
@@ -224,6 +226,7 @@ describe("OpenPalmExecutor", () => {
 
     expect(eventBus.events).toHaveLength(1);
     const failedEvent = eventBus.events[0] as Record<string, unknown>;
+    expect(failedEvent.kind).toBe("task");
     expect((failedEvent.status as Record<string, unknown>).state).toBe("failed");
     expect(eventBus.finished).toHaveBeenCalled();
   });

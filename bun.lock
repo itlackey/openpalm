@@ -49,6 +49,19 @@
         "@openpalm/lib": "workspace:*",
       },
     },
+    "packages/channel-a2a": {
+      "name": "@openpalm/channel-a2a",
+      "version": "0.6.2",
+      "dependencies": {
+        "@a2a-js/sdk": "^0.3.0",
+      },
+      "devDependencies": {
+        "@openpalm/channels-sdk": "workspace:*",
+      },
+      "peerDependencies": {
+        "@openpalm/channels-sdk": "^0.6.2",
+      },
+    },
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
       "version": "0.6.2",
@@ -92,6 +105,8 @@
     },
   },
   "packages": {
+    "@a2a-js/sdk": ["@a2a-js/sdk@0.3.10", "", { "dependencies": { "uuid": "^11.1.0" }, "peerDependencies": { "@bufbuild/protobuf": "^2.10.2", "@grpc/grpc-js": "^1.11.0", "express": "^4.21.2 || ^5.1.0" }, "optionalPeers": ["@bufbuild/protobuf", "@grpc/grpc-js", "express"] }, "sha512-t6w5ctnwJkSOMRl6M9rn95C1FTHCPqixxMR0yWXtzhZXEnF6mF1NAK0CfKlG3cz+tcwTxkmn287QZC3t9XPgrA=="],
+
     "@babel/helper-string-parser": ["@babel/helper-string-parser@7.27.1", "", {}, "sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA=="],
 
     "@babel/helper-validator-identifier": ["@babel/helper-validator-identifier@7.28.5", "", {}, "sha512-qSs4ifwzKJSV39ucNjsvc6WVHs6b7S03sOh2OcHF9UHfVPqWWALUsNUVzhSBiItjRZoLHx7nIarVjqKVusUZ1Q=="],
@@ -193,6 +208,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@openpalm/admin": ["@openpalm/admin@workspace:core/admin"],
+
+    "@openpalm/channel-a2a": ["@openpalm/channel-a2a@workspace:packages/channel-a2a"],
 
     "@openpalm/channel-api": ["@openpalm/channel-api@workspace:packages/channel-api"],
 

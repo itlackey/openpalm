@@ -15,14 +15,19 @@ export function buildAgentCard(): AgentCard {
       "Local-first AI assistant powered by OpenCode with memory, stack management, and coding capabilities",
     url: Bun.env.A2A_PUBLIC_URL || "/",
     version: "0.1.0",
+    protocolVersion: "0.2.1",
     capabilities: {
       streaming: true,
       pushNotifications: false,
       stateTransitionHistory: true,
     },
-    authentication: {
-      schemes: ["bearer"],
+    securitySchemes: {
+      bearer: {
+        type: "http",
+        scheme: "bearer",
+      },
     },
+    security: [{ bearer: [] }],
     defaultInputModes: ["text"],
     defaultOutputModes: ["text"],
     skills: [
