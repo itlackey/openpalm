@@ -120,7 +120,7 @@ jobs:
       - name: Type check admin UI
         run: cd core/admin && bun run check
 
-      - name: Test (lib + guardian + channels)
+      - name: Test (sdk + guardian + channels)
         run: bun run test
 
       - name: Validate Docker Compose manifests
