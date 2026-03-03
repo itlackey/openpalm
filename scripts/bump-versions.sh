@@ -5,8 +5,8 @@ set -euo pipefail
 
 VERSION="${1:?Usage: bump-versions.sh <version>}"
 
-if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-  echo "Error: version must be semver (e.g. 1.2.3), got '${VERSION}'" >&2
+if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+  echo "Error: version must be semver (e.g. 1.2.3 or 1.2.3-rc1), got '${VERSION}'" >&2
   exit 1
 fi
 
