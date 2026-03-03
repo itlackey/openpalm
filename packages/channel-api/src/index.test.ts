@@ -197,6 +197,17 @@ describe("api channel legacy completions", () => {
     expect(parsed.userId).toBe("u2");
     expect(parsed.text).toBe("test prompt");
   });
+
+  it("accepts array prompt values", async () => {
+    const { handler, captured } = createHandlerWithCapture();
+    const resp = await handler(new Request("http://api/v1/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-3.5", prompt: ["test", "prompt"] }),
+    }));
+    expect(resp.status).toBe(200);
+    const parsed = JSON.parse(captured().body) as Record<string, unknown>;
+    expect(parsed.text).toBe("test prompt");
+  });
 });
 
 // ── POST /v1/messages (Anthropic) ────────────────────────────────────────
@@ -314,6 +325,16 @@ describe("api channel OpenAI auth", () => {
     const resp = await handler(new Request("http://api/v1/chat/completions", {
       method: "POST",
       headers: { authorization: "Bearer key-123" },
+      body: JSON.stringify({ model: "gpt-4", messages: [{ role: "user", content: "hello" }] }),
+    }));
+    expect(resp.status).toBe(200);
+  });
+
+  it("accepts chat completions with extra Bearer whitespace", async () => {
+    const handler = createHandler({ apiKey: "key-123" });
+    const resp = await handler(new Request("http://api/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: "Bearer    key-123" },
       body: JSON.stringify({ model: "gpt-4", messages: [{ role: "user", content: "hello" }] }),
     }));
     expect(resp.status).toBe(200);
@@ -444,5 +465,39 @@ describe("api channel error handling", () => {
       }),
     }));
     expect(resp.status).toBe(502);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.type).toBe("error");
+    expect(body.error).toBeDefined();
+  });
+
+  it("returns 502 when guardian success body is not json", async () => {
+    const invalidJsonFetch = (async () =>
+      new Response("not json", { status: 200 })
+    ) as typeof fetch;
+
+    const channel = new ApiChannel();
+    Object.defineProperty(channel, "secret", { get: () => "test-secret" });
+    Object.defineProperty(channel, "apiKey", { get: () => "" });
+    const handler = channel.createFetch(invalidJsonFetch);
+
+    const openAiResp = await handler(new Request("http://api/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-4", messages: [{ role: "user", content: "hi" }] }),
+    }));
+    expect(openAiResp.status).toBe(502);
+    const openAiBody = await openAiResp.json() as Record<string, unknown>;
+    expect(openAiBody.error).toBeDefined();
+
+    const anthropicResp = await handler(new Request("http://api/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "claude-3",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    }));
+    expect(anthropicResp.status).toBe(502);
+    const anthropicBody = await anthropicResp.json() as Record<string, unknown>;
+    expect(anthropicBody.type).toBe("error");
   });
 });

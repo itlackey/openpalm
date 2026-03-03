@@ -13,6 +13,7 @@
  */
 
 import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 // ── Error helpers ────────────────────────────────────────────────────────
 
@@ -29,6 +30,12 @@ function anthropicError(message: string, type = "invalid_request_error") {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const left = createHash("sha256").update(a).digest();
+  const right = createHash("sha256").update(b).digest();
+  return timingSafeEqual(left, right);
 }
 
 /**
@@ -68,21 +75,25 @@ export default class ApiChannel extends BaseChannel {
   /** Validate OpenAI-style Bearer auth. Returns true if authorized. */
   private checkOpenAIAuth(req: Request): boolean {
     if (!this.apiKey) return true;
-    return req.headers.get("authorization") === `Bearer ${this.apiKey}`;
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) return false;
+    const match = authHeader.trim().match(/^Bearer\s+(\S+)\s*$/i);
+    const token = match?.[1] ?? "";
+    if (!token) return false;
+    return safeEqual(token, this.apiKey);
   }
 
   /** Validate Anthropic-style x-api-key auth. Returns true if authorized. */
   private checkAnthropicAuth(req: Request): boolean {
     if (!this.apiKey) return true;
-    return req.headers.get("x-api-key") === this.apiKey;
+    const apiKey = req.headers.get("x-api-key")?.trim();
+    if (!apiKey) return false;
+    return safeEqual(apiKey, this.apiKey);
   }
 
   // ── Routing ──────────────────────────────────────────────────────────
 
   async route(req: Request, url: URL): Promise<Response | null> {
-    // Health endpoint handled by base class
-    if (url.pathname === "/health") return null;
-
     // Models listing — no auth required, useful for client discovery
     if (url.pathname === "/v1/models" && req.method === "GET") {
       return this.handleModels();
@@ -166,7 +177,17 @@ export default class ApiChannel extends BaseChannel {
       return this.json(400, openAIError("Streaming is not supported"));
     }
 
-    const text = typeof body.prompt === "string" && body.prompt.trim() ? body.prompt : null;
+    const prompt = body.prompt;
+    let text: string | null = null;
+    if (typeof prompt === "string" && prompt.trim()) {
+      text = prompt;
+    } else if (Array.isArray(prompt)) {
+      const parts = prompt.filter((p): p is string | number => typeof p === "string" || typeof p === "number");
+      if (parts.length === prompt.length) {
+        const joined = parts.map((p) => String(p)).join(" ");
+        text = joined.trim() ? joined : null;
+      }
+    }
     if (!text) return this.json(400, openAIError("prompt is required"));
 
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
@@ -210,7 +231,7 @@ export default class ApiChannel extends BaseChannel {
       ? meta.user_id
       : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model });
+    const answer = await this.forwardToGuardian(userId, text, { model }, anthropicError);
     if (answer instanceof Response) return answer;
 
     return this.json(200, {
@@ -235,20 +256,26 @@ export default class ApiChannel extends BaseChannel {
     userId: string,
     text: string,
     metadata: Record<string, unknown>,
+    formatError: (message: string, type?: string) => Record<string, unknown> = openAIError,
   ): Promise<string | Response> {
     let guardianResp: Response;
     try {
       guardianResp = await this.forward({ userId, text, metadata });
     } catch (err) {
-      return this.json(502, openAIError(`Guardian error: ${err}`));
+      return this.json(502, formatError(`Guardian error: ${err}`));
     }
 
     if (!guardianResp.ok) {
       const status = guardianResp.status >= 500 ? 502 : guardianResp.status;
-      return this.json(status, openAIError(`Guardian error (${guardianResp.status})`));
+      return this.json(status, formatError(`Guardian error (${guardianResp.status})`));
     }
 
-    const data = await guardianResp.json() as Record<string, unknown>;
+    let data: Record<string, unknown>;
+    try {
+      data = await guardianResp.json() as Record<string, unknown>;
+    } catch {
+      return this.json(502, formatError("Guardian returned invalid JSON"));
+    }
     return typeof data.answer === "string" ? data.answer : "";
   }
 
