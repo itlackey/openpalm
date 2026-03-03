@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/assistant-tools",
-  "version": "0.7.0-rc1",
+  "version": "0.7.0-rc3",
   "type": "module",
   "description": "Core OpenPalm assistant extensions for OpenCode",
   "main": "./dist/index.js",
