@@ -1,0 +1,13 @@
+{
+  "name": "@openpalm/cli",
+  "version": "0.7.0-rc1",
+  "type": "module",
+  "description": "OpenPalm Bun CLI",
+  "bin": {
+    "openpalm": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test"
+  }
+}

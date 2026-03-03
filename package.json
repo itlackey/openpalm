@@ -8,6 +8,7 @@
     "packages/channel-discord",
     "packages/channel-api",
     "packages/channel-chat",
+    "packages/cli",
     "packages/assistant-tools",
     "core/guardian"
   ],
