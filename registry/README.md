@@ -10,7 +10,7 @@ Each channel consists of a compose overlay (`.yml`) and an optional Caddy route 
 |---|---|
 | `chat.yml` / `chat.caddy` | OpenAI/Anthropic-compatible chat API (`@openpalm/channel-chat`, port 8181) |
 | `api.yml` | Full OpenAI + Anthropic API facade (`@openpalm/channel-api`, port 8182) |
-| `discord.yml` | Discord webhook adapter (`@openpalm/channel-discord`, port 8184) |
+| `discord.yml` | Discord interactions + webhook adapter (`@openpalm/channel-discord`, port 8184) |
 
 ### Installing a channel
 
