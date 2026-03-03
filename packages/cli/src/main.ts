@@ -2,8 +2,11 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
+const REPO_OWNER = 'itlackey';
+const REPO_NAME = 'openpalm';
 
 type Command =
   | 'install'
@@ -52,7 +55,13 @@ async function loadAdminToken(): Promise<string> {
     for (const line of text.split('\n')) {
       if (!line || line.startsWith('#')) continue;
       const [key, ...rest] = line.split('=');
-      if (key === 'ADMIN_TOKEN') return rest.join('=').trim().replace(/^"|"$/g, '');
+      if (key === 'ADMIN_TOKEN') {
+        const value = rest.join('=').trim();
+        if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+          return value.slice(1, -1);
+        }
+        return value;
+      }
     }
   } catch {
     // Best effort only.
@@ -147,8 +156,8 @@ async function isStackRunning(): Promise<boolean> {
 }
 
 async function fetchAsset(repoRef: string, filename: string): Promise<string> {
-  const releaseUrl = `https://github.com/itlackey/openpalm/releases/download/${repoRef}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/itlackey/openpalm/${repoRef}/core/assets/${filename}`;
+  const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/core/assets/${filename}`;
 
   const releaseResponse = await fetch(releaseUrl, { signal: AbortSignal.timeout(30000) });
   if (releaseResponse.ok) {
@@ -193,7 +202,7 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
 }
 
 function randomHex(size = 16): string {
-  return Buffer.from(crypto.getRandomValues(new Uint8Array(size))).toString('hex');
+  return randomBytes(size).toString('hex');
 }
 
 async function ensureSecrets(configHome: string): Promise<void> {
@@ -252,7 +261,7 @@ async function waitForAdminHealthy(): Promise<void> {
     }
     await Bun.sleep(3000);
   }
-  throw new Error('Admin did not become healthy within timeout');
+  throw new Error('Admin did not become healthy within 120 seconds');
 }
 
 async function openBrowser(url: string): Promise<void> {
@@ -389,25 +398,25 @@ async function runServiceAction(action: 'up' | 'down' | 'restart', services: str
     }
     const status = await adminRequest('/admin/containers/list');
     const serviceNames = getServiceNames(status);
-    await Promise.all(serviceNames.map(async (service) => {
+    for (const service of serviceNames) {
       const result = await adminRequest('/admin/containers/restart', {
         method: 'POST',
         body: JSON.stringify({ service }),
       });
       console.log(JSON.stringify(result, null, 2));
-    }));
+    }
     return;
   }
 
   const endpoint = action === 'up' ? '/admin/containers/up' : action === 'down' ? '/admin/containers/down' : '/admin/containers/restart';
 
-  await Promise.all(services.map(async (service) => {
+  for (const service of services) {
     const result = await adminRequest(endpoint, {
       method: 'POST',
       body: JSON.stringify({ service }),
     });
     console.log(JSON.stringify(result, null, 2));
-  }));
+  }
 }
 
 function getServiceNames(status: unknown): string[] {
