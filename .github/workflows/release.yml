@@ -53,7 +53,7 @@ jobs:
             TAG="${REF_NAME}"
           else
             VERSION="${INPUT_VERSION}"
-            if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
               echo 'Invalid version. Must be semver like 1.2.3 or 1.2.3-rc1.'
               exit 1
             fi
@@ -83,7 +83,11 @@ jobs:
           fi
 
           VERSION="${TAG#v}"
-          if echo "${VERSION}" | grep -q '-'; then
+          if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "Invalid tag ${TAG}. Must be semver like v1.2.3 or v1.2.3-rc1."
+            exit 1
+          fi
+          if echo "${VERSION}" | grep -Eq -- '-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$'; then
             PRERELEASE='true'
           else
             PRERELEASE='false'
