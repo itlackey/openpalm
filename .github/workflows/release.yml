@@ -36,12 +36,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       - name: Resolve release tag
         id: resolve
         env:
@@ -59,20 +53,6 @@ jobs:
             fi
 
             TAG="v${VERSION}"
-
-            git config user.name 'github-actions[bot]'
-            git config user.email 'github-actions[bot]@users.noreply.github.com'
-
-            # Bump all workspace package.json versions
-            ./scripts/bump-versions.sh "${VERSION}"
-
-            if git diff --quiet; then
-              echo "Versions already at ${VERSION}, no changes needed."
-            else
-              git add -A '*.json'
-              git commit -m "chore: bump versions to ${VERSION}"
-              git push origin HEAD:"${GITHUB_REF_NAME}"
-            fi
 
             # Always move the tag to the current HEAD (handles reruns where the
             # tag exists but points to an old commit that predates recent changes).
@@ -128,6 +108,22 @@ jobs:
           ADMIN_TOKEN: ci-placeholder
           POSTGRES_PASSWORD: ci-placeholder
         run: docker compose -f core/assets/docker-compose.yml -f docker-compose.override.yml config -q
+
+  publish-npm:
+    name: Publish npm packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [prepare-tag, quality-gates]
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ needs.prepare-tag.outputs.tag }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: oven-sh/setup-bun@v2
+      - name: Install and build
+        run: bun install && cd packages/assistant-tools && bun run build
+      - name: Publish @openpalm/assistant-tools
+        run: cd packages/assistant-tools && npm publish --access public
 
   build-images:
     name: Build Docker images
@@ -277,12 +273,14 @@ jobs:
 
             ## npm Packages
 
-            | Package | Version |
-            |---|---|
-            | [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk) | ${{ needs.prepare-tag.outputs.version }} |
-            | [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat) | ${{ needs.prepare-tag.outputs.version }} |
-            | [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api) | ${{ needs.prepare-tag.outputs.version }} |
-            | [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord) | ${{ needs.prepare-tag.outputs.version }} |
+            npm packages are versioned and published on an independent release cycle
+            via the npm release workflow.
+
+            - [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk)
+            - [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat)
+            - [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api)
+            - [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord)
+            - [@openpalm/assistant-tools](https://www.npmjs.com/package/@openpalm/assistant-tools)
 
             ## Quick Install
 

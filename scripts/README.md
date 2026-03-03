@@ -27,11 +27,14 @@ Re-run to update — secrets are never overwritten. Options:
 
 ### `bump-versions.sh`
 
-Updates all workspace `package.json` files to a new semver version. Used by the release workflow.
+Updates all workspace `package.json` files to a new semver version for coordinated/manual versioning.
 
 ```bash
 ./scripts/bump-versions.sh 1.2.3
 ```
+
+For npm package publishing, this repo now uses Changesets via `.changeset/` and
+the `npm-release` GitHub workflow.
 
 ## Development scripts
 

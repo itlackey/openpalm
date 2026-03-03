@@ -8,6 +8,7 @@
     "packages/channel-discord",
     "packages/channel-api",
     "packages/channel-chat",
+    "packages/assistant-tools",
     "core/guardian"
   ],
   "scripts": {
@@ -25,10 +26,14 @@
     "channel:discord:dev": "bun run packages/channel-discord/src/index.ts",
     "dev:setup": "./scripts/dev-setup.sh --seed-env",
     "dev:stack": "docker compose -f .dev/state/artifacts/docker-compose.yml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up -d",
+    "changeset": "changeset",
+    "version:packages": "changeset version && bun install",
+    "release:packages": "changeset publish",
     "test": "bun test packages/channels-sdk packages/channel-chat packages/channel-api packages/channel-discord core/guardian/",
     "check": "bun run admin:check && bun run sdk:test"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "@vitest/coverage-v8": "^4.0.18"
   }
 }

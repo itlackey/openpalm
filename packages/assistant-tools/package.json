@@ -1,0 +1,21 @@
+{
+  "name": "@openpalm/assistant-tools",
+  "version": "0.7.0-rc1",
+  "type": "module",
+  "description": "Core OpenPalm assistant extensions for OpenCode",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "opencode",
+    "AGENTS.md"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --format esm --target node"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.2.15"
+  }
+}

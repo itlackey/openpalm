@@ -154,6 +154,21 @@ bun run check            # admin:check + sdk:test
 
 `dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
+## npm Package Releases
+
+OpenPalm publishes npm packages on an independent release cycle from Docker images.
+
+- Package releases are managed with Changesets (`.changeset/`) and the `npm-release` workflow.
+- When a PR changes a publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`), add a changeset file.
+
+```bash
+bun run changeset
+```
+
+- CI enforces that package changes include a changeset.
+- On merge to `main`, GitHub Actions either opens/updates a version PR or publishes changed packages automatically.
+- Repository maintainers must set `NPM_TOKEN` in GitHub Actions secrets for publishing.
+
 ## License
 
 See [LICENSE](LICENSE).

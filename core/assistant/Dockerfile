@@ -7,6 +7,7 @@ FROM node:22-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server \
+        python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
@@ -19,12 +20,14 @@ RUN mkdir -p /home/opencode /work /opt/opencode \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
 
-# Install assistant extension dependencies
+# Install plugin dependencies (offline fallback for npm registry)
+COPY --chown=node:node packages/assistant-tools/ /opt/opencode/node_modules/@openpalm/assistant-tools/
 COPY --chown=node:node core/assistant/package.json /opt/opencode/package.json
 RUN cd /opt/opencode && npm install --omit=dev
 
-# Copy assistant extensions
-COPY --chown=node:node core/assistant/ /opt/opencode/
+# Copy config and persona
+COPY --chown=node:node core/assistant/opencode.jsonc /opt/opencode/opencode.jsonc
+COPY --chown=node:node packages/assistant-tools/AGENTS.md /opt/opencode/AGENTS.md
 
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

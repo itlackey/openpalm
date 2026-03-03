@@ -2,6 +2,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@openpalm/assistant-tools": "0.7.0-rc1",
     "@itlackey/openkit": "0.2.2",
     "@opencode-ai/plugin": "1.2.15"
   }
