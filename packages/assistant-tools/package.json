@@ -13,7 +13,8 @@
     "AGENTS.md"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --format esm --target node"
+    "build": "bun build src/index.ts --outdir dist --format esm --target node",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.2.15"

@@ -1,0 +1,11 @@
+name: Publish @openpalm/channels-sdk
+on:
+  push:
+    branches: [main]
+    paths: ['packages/channels-sdk/**']
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/channels-sdk
+      package-name: '@openpalm/channels-sdk'

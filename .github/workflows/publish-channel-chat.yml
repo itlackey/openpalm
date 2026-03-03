@@ -1,0 +1,11 @@
+name: Publish @openpalm/channel-chat
+on:
+  push:
+    branches: [main]
+    paths: ['packages/channel-chat/**']
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/channel-chat
+      package-name: '@openpalm/channel-chat'

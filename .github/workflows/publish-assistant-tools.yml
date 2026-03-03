@@ -1,0 +1,12 @@
+name: Publish @openpalm/assistant-tools
+on:
+  push:
+    branches: [main]
+    paths: ['packages/assistant-tools/**']
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/assistant-tools
+      package-name: '@openpalm/assistant-tools'
+      needs-build: true

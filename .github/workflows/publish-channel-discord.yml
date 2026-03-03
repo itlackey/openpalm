@@ -1,0 +1,11 @@
+name: Publish @openpalm/channel-discord
+on:
+  push:
+    branches: [main]
+    paths: ['packages/channel-discord/**']
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/channel-discord
+      package-name: '@openpalm/channel-discord'

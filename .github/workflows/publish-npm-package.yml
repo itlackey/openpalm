@@ -1,0 +1,69 @@
+name: Publish npm package
+
+on:
+  workflow_call:
+    inputs:
+      package-dir:
+        required: true
+        type: string
+      package-name:
+        required: true
+        type: string
+      needs-build:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Auto-bump patch if version already published
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          if npm view "${{ inputs.package-name }}@${CURRENT}" version 2>/dev/null; then
+            npm version patch --no-git-tag-version
+            NEW=$(node -p "require('./package.json').version")
+            echo "Bumped ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
+            echo "BUMPED=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        if: inputs.needs-build
+        working-directory: ${{ inputs.package-dir }}
+        run: bun run build
+
+      - name: Publish
+        working-directory: ${{ inputs.package-dir }}
+        run: npm publish --provenance --access public
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+
+      - name: Commit version bump
+        if: env.BUMPED == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.package-dir }}/package.json"
+          git commit -m "chore(${{ inputs.package-name }}): bump to $(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
+          git push

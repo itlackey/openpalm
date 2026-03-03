@@ -79,107 +79,11 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
 
-  quality-gates:
-    name: Release quality gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: prepare-tag
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare-tag.outputs.tag }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install Bun workspace dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Type check admin UI
-        run: cd core/admin && bun run check
-
-      - name: Test (sdk + guardian + channels)
-        run: bun run test
-
-      - name: Validate Docker Compose manifests
-        env:
-          ADMIN_TOKEN: ci-placeholder
-          POSTGRES_PASSWORD: ci-placeholder
-        run: docker compose -f core/assets/docker-compose.yml -f docker-compose.override.yml config -q
-
-  publish-npm:
-    name: Publish npm packages
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [prepare-tag, quality-gates]
-    steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ needs.prepare-tag.outputs.tag }}" }
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - uses: oven-sh/setup-bun@v2
-      - name: Install and build
-        run: bun install && cd packages/assistant-tools && bun run build
-      - name: Publish @openpalm/assistant-tools
-        run: cd packages/assistant-tools && npm publish --access public
-
-  build-images:
-    name: Build Docker images
+  push-images:
+    name: Build and push Docker images
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs:
-      - prepare-tag
-      - quality-gates
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - dockerfile: core/admin/Dockerfile
-            image: openpalm/admin
-          - dockerfile: core/guardian/Dockerfile
-            image: openpalm/guardian
-          - dockerfile: core/channel/Dockerfile
-            image: openpalm/channel
-          - dockerfile: core/assistant/Dockerfile
-            image: openpalm/assistant
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare-tag.outputs.tag }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: false
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
-
-  push-images:
-    name: Push Docker images
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs:
-      - prepare-tag
-      - build-images
+    needs: prepare-tag
     strategy:
       fail-fast: true
       matrix:
@@ -220,7 +124,7 @@ jobs:
             type=raw,value=latest,enable=${{ needs.prepare-tag.outputs.prerelease != 'true' }}
             type=raw,value=v${{ needs.prepare-tag.outputs.version }}
 
-      - name: Push image
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -230,14 +134,13 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
   build-cli-artifacts:
     name: Build CLI artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs:
-      - prepare-tag
-      - quality-gates
+    needs: prepare-tag
     strategy:
       fail-fast: true
       matrix:
@@ -333,7 +236,7 @@ jobs:
             ## npm Packages
 
             npm packages are versioned and published on an independent release cycle
-            via the npm release workflow.
+            via per-package publish workflows.
 
             - [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk)
             - [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat)
