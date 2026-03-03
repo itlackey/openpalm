@@ -103,6 +103,9 @@ speaks the OpenAI API protocol. Discord, Telegram, and voice channels speak
 their native protocols. All of them do the same thing at the end: sign the
 message with their HMAC secret and POST it to Guardian.
 
+The runtime image for registry-backed adapters is the unified
+`channel`, built from `core/channel/Dockerfile`.
+
 ### Supporting services
 - **Postgres** — relational storage
 - **Qdrant** — vector store for semantic memory

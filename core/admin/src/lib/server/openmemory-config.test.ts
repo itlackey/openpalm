@@ -11,7 +11,10 @@ import {
   writeOpenMemoryConfig,
   ensureOpenMemoryConfig,
   resolveApiKey,
+  resolveConfigForPush,
   fetchProviderModels,
+  checkQdrantDimensions,
+  resetQdrantCollection,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
@@ -423,5 +426,237 @@ describe("fetchProviderModels", () => {
     const callArgs = mockFetch.mock.calls[0];
     const headers = (callArgs[1] as RequestInit).headers as Record<string, string>;
     expect(headers["Authorization"]).toBeUndefined();
+  });
+});
+
+// ── resolveConfigForPush ──────────────────────────────────────────────
+
+describe("resolveConfigForPush", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  test("resolves env: references in llm api_key", () => {
+    const configDir = trackDir(makeTempDir());
+    process.env.OPENAI_API_KEY = "sk-resolved-key";
+
+    const config = getDefaultConfig();
+    config.mem0.llm.config.api_key = "env:OPENAI_API_KEY";
+
+    const resolved = resolveConfigForPush(config, configDir);
+    expect(resolved.mem0.llm.config.api_key).toBe("sk-resolved-key");
+  });
+
+  test("resolves env: references in embedder api_key", () => {
+    const configDir = trackDir(makeTempDir());
+    process.env.OPENAI_API_KEY = "sk-embed-key";
+
+    const config = getDefaultConfig();
+    config.mem0.embedder.config.api_key = "env:OPENAI_API_KEY";
+
+    const resolved = resolveConfigForPush(config, configDir);
+    expect(resolved.mem0.embedder.config.api_key).toBe("sk-embed-key");
+  });
+
+  test("passes through raw API keys unchanged", () => {
+    const configDir = trackDir(makeTempDir());
+
+    const config = getDefaultConfig();
+    config.mem0.llm.config.api_key = "sk-raw-key-12345";
+
+    const resolved = resolveConfigForPush(config, configDir);
+    expect(resolved.mem0.llm.config.api_key).toBe("sk-raw-key-12345");
+  });
+
+  test("does not mutate the original config", () => {
+    const configDir = trackDir(makeTempDir());
+    process.env.OPENAI_API_KEY = "resolved";
+
+    const config = getDefaultConfig();
+    const originalApiKey = config.mem0.llm.config.api_key;
+
+    resolveConfigForPush(config, configDir);
+    expect(config.mem0.llm.config.api_key).toBe(originalApiKey);
+  });
+
+  test("falls back to secrets.env for env: refs not in process.env", () => {
+    const configDir = trackDir(makeTempDir());
+    delete process.env.MY_CUSTOM_KEY;
+    seedSecretsEnv(configDir, "MY_CUSTOM_KEY=from-secrets\n");
+
+    const config = getDefaultConfig();
+    config.mem0.llm.config.api_key = "env:MY_CUSTOM_KEY";
+
+    const resolved = resolveConfigForPush(config, configDir);
+    expect(resolved.mem0.llm.config.api_key).toBe("from-secrets");
+  });
+
+  test("handles config without api_key fields", () => {
+    const configDir = trackDir(makeTempDir());
+
+    const config = getDefaultConfig();
+    delete (config.mem0.llm.config as Record<string, unknown>).api_key;
+    delete (config.mem0.embedder.config as Record<string, unknown>).api_key;
+
+    const resolved = resolveConfigForPush(config, configDir);
+    expect(resolved.mem0.llm.config.api_key).toBeUndefined();
+    expect(resolved.mem0.embedder.config.api_key).toBeUndefined();
+  });
+});
+
+// ── checkQdrantDimensions ─────────────────────────────────────────────
+
+describe("checkQdrantDimensions", () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function stubFetch(response: Response | Error) {
+    mockFetch = vi.fn();
+    if (response instanceof Error) {
+      mockFetch.mockRejectedValue(response);
+    } else {
+      mockFetch.mockResolvedValue(response);
+    }
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+  }
+
+  test("returns match=true when collection does not exist (404)", async () => {
+    stubFetch(new Response("", { status: 404 }));
+
+    const config = getDefaultConfig();
+    const result = await checkQdrantDimensions(config);
+    expect(result.match).toBe(true);
+    expect(result.expectedDims).toBe(1536);
+  });
+
+  test("returns match=true when dimensions agree", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          result: { config: { params: { vectors: { size: 1536 } } } },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const config = getDefaultConfig();
+    const result = await checkQdrantDimensions(config);
+    expect(result.match).toBe(true);
+    expect(result.currentDims).toBe(1536);
+    expect(result.expectedDims).toBe(1536);
+  });
+
+  test("returns match=false when dimensions differ", async () => {
+    stubFetch(
+      new Response(
+        JSON.stringify({
+          result: { config: { params: { vectors: { size: 768 } } } },
+        }),
+        { status: 200 }
+      )
+    );
+
+    const config = getDefaultConfig();
+    const result = await checkQdrantDimensions(config);
+    expect(result.match).toBe(false);
+    expect(result.currentDims).toBe(768);
+    expect(result.expectedDims).toBe(1536);
+  });
+
+  test("returns match=true on network error (graceful degradation)", async () => {
+    stubFetch(new Error("Connection refused"));
+
+    const config = getDefaultConfig();
+    const result = await checkQdrantDimensions(config);
+    expect(result.match).toBe(true);
+    expect(result.error).toContain("Connection refused");
+  });
+
+  test("returns match=true when vector size not in response", async () => {
+    stubFetch(
+      new Response(JSON.stringify({ result: {} }), { status: 200 })
+    );
+
+    const config = getDefaultConfig();
+    const result = await checkQdrantDimensions(config);
+    expect(result.match).toBe(true);
+  });
+
+  test("calls correct Qdrant API URL with collection name", async () => {
+    stubFetch(new Response("", { status: 404 }));
+
+    const config = getDefaultConfig();
+    config.mem0.vector_store.config.collection_name = "my-memories";
+    await checkQdrantDimensions(config);
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://qdrant:6333/collections/my-memories",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+});
+
+// ── resetQdrantCollection ─────────────────────────────────────────────
+
+describe("resetQdrantCollection", () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function stubFetch(response: Response | Error) {
+    mockFetch = vi.fn();
+    if (response instanceof Error) {
+      mockFetch.mockRejectedValue(response);
+    } else {
+      mockFetch.mockResolvedValue(response);
+    }
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+  }
+
+  test("returns ok=true on successful delete", async () => {
+    stubFetch(new Response("", { status: 200 }));
+    const result = await resetQdrantCollection("openmemory");
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=true when collection already gone (404)", async () => {
+    stubFetch(new Response("", { status: 404 }));
+    const result = await resetQdrantCollection("openmemory");
+    expect(result.ok).toBe(true);
+  });
+
+  test("returns ok=false on server error", async () => {
+    stubFetch(new Response("Internal error", { status: 500 }));
+    const result = await resetQdrantCollection("openmemory");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("500");
+  });
+
+  test("returns ok=false on network error", async () => {
+    stubFetch(new Error("Connection refused"));
+    const result = await resetQdrantCollection("openmemory");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Connection refused");
+  });
+
+  test("sends DELETE request to correct URL", async () => {
+    stubFetch(new Response("", { status: 200 }));
+    await resetQdrantCollection("my-collection");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://qdrant:6333/collections/my-collection",
+      expect.objectContaining({ method: "DELETE" })
+    );
   });
 });

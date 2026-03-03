@@ -29,7 +29,13 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "MISTRAL_API_KEY",
   "GOOGLE_API_KEY",
   "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL"
+  "GUARDIAN_LLM_MODEL",
+  "SYSTEM_LLM_PROVIDER",
+  "SYSTEM_LLM_BASE_URL",
+  "MEMORY_LLM_MODEL",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_DIMS",
+  "OPENMEMORY_USER_ID"
 ]);
 
 /**
@@ -47,7 +53,13 @@ export const REQUIRED_LLM_PROVIDER_KEYS = [
 /** Keys that are non-secret config — returned unmasked in connection responses. */
 export const PLAIN_CONFIG_KEYS = new Set([
   "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL"
+  "GUARDIAN_LLM_MODEL",
+  "SYSTEM_LLM_PROVIDER",
+  "SYSTEM_LLM_BASE_URL",
+  "MEMORY_LLM_MODEL",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_DIMS",
+  "OPENMEMORY_USER_ID"
 ]);
 
 // ── Secrets Management ──────────────────────────────────────────────────

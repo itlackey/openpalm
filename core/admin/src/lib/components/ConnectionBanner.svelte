@@ -17,11 +17,7 @@
       </svg>
     </span>
     <span class="connection-banner-text">
-      {#if missing.length <= 5}
-        {missing.length} connection{missing.length === 1 ? '' : 's'} not configured: {missing.join(', ')}
-      {:else}
-        {missing.length} connections not configured.
-      {/if}
+      Not configured: {missing.join(', ')}
     </span>
     <button type="button" class="connection-banner-link" onclick={onNavigate}>
       Configure connections

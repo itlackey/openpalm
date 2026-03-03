@@ -30,8 +30,8 @@ services:
       dockerfile: core/assistant/Dockerfile
     image: openpalm/assistant:latest
 
-  channel-runner:
+  channel:
     build:
       context: .
-      dockerfile: channels/runner/Dockerfile
-    image: openpalm/channel-runner:latest
+      dockerfile: core/channel/Dockerfile
+    image: openpalm/channel:latest

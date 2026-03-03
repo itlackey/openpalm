@@ -2,6 +2,8 @@
 
 This document is a short SvelteKit-specific quality guide aligned with current Svelte/SvelteKit best practices and this repo's architecture contract in `docs/core-principles.md`.
 
+**VERY IMPORTANT** The use of the $effect rune should be avoided and replaced with event handlers unless there is a solid justification to use $effect and approval to do so. Any instance of $effect should be treated as a bug to fix.
+
 ### 1) Server/client boundaries
 
 1. Keep secrets and privileged operations server-only (`+page.server.ts`, `+layout.server.ts`, `+server.ts`, `$lib/server/*`).

@@ -1,7 +1,7 @@
 # Channel: Discord — Discord bot adapter
 services:
   channel-discord:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-runner:${OPENPALM_IMAGE_TAG:-latest}
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: "8184"
