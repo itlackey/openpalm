@@ -34,7 +34,9 @@ export const GET: RequestHandler = async (event) => {
       type: c.action.type,
       method: c.action.method,
       path: c.action.path,
-      url: c.action.url
+      url: c.action.url,
+      content: c.action.content,
+      agent: c.action.agent
     },
     on_failure: c.on_failure,
     fileName: c.fileName,

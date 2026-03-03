@@ -1,0 +1,29 @@
+# assistant-daily-briefing.yml — Send a prompt directly to the assistant
+#
+# Uses the "assistant" action type to send a message to the OpenCode
+# assistant server without going through a channel adapter.
+#
+# Required fields:
+#   type: assistant
+#   content: The prompt text to send
+#
+# Optional fields:
+#   agent: Label for session identification (used in session title for audit)
+#   timeout: Max wait time in milliseconds (default 120000)
+#
+# To use: copy this file to ~/.config/openpalm/automations/
+
+name: Daily Briefing
+description: Ask the assistant for a daily system health summary
+schedule: daily-8am
+enabled: true
+
+action:
+  type: assistant
+  content: >
+    Good morning. Give me a brief summary of system health,
+    any recent errors in the audit log, and open tasks.
+  # agent: reporter     # optional: label for session identification
+  timeout: 120000
+
+on_failure: log

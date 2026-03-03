@@ -7,7 +7,7 @@
  * 3. Automation loading from directory
  * 4. Scheduler start/stop lifecycle
  */
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -19,7 +19,8 @@ import {
   loadAutomations,
   startScheduler,
   stopScheduler,
-  getSchedulerStatus
+  getSchedulerStatus,
+  executeAction
 } from "./scheduler.js";
 
 function makeTempDir(): string {
@@ -258,6 +259,75 @@ action:
       "X-Custom": "value"
     });
   });
+
+  test("parses valid assistant automation with content only", () => {
+    const yaml = `
+schedule: daily-8am
+action:
+  type: assistant
+  content: Good morning. Summarize system health and open tasks.
+`;
+    const config = parseAutomationYaml(yaml, "assistant-prompt.yml");
+    expect(config).not.toBeNull();
+    expect(config!.action.type).toBe("assistant");
+    expect(config!.action.content).toBe(
+      "Good morning. Summarize system health and open tasks."
+    );
+    expect(config!.action.agent).toBeUndefined();
+    expect(config!.action.timeout).toBe(120_000);
+    expect(config!.name).toBe("assistant-prompt");
+  });
+
+  test("parses assistant automation with optional agent", () => {
+    const yaml = `
+name: Daily Report
+description: Ask the assistant for a daily report
+schedule: daily-8am
+action:
+  type: assistant
+  content: Generate a daily system report.
+  agent: reporter
+`;
+    const config = parseAutomationYaml(yaml, "daily-report.yml");
+    expect(config).not.toBeNull();
+    expect(config!.name).toBe("Daily Report");
+    expect(config!.description).toBe("Ask the assistant for a daily report");
+    expect(config!.action.type).toBe("assistant");
+    expect(config!.action.content).toBe("Generate a daily system report.");
+    expect(config!.action.agent).toBe("reporter");
+  });
+
+  test("parses assistant automation with custom timeout", () => {
+    const yaml = `
+schedule: daily
+action:
+  type: assistant
+  content: Run a long analysis task.
+  timeout: 300000
+`;
+    const config = parseAutomationYaml(yaml, "long-task.yml");
+    expect(config).not.toBeNull();
+    expect(config!.action.timeout).toBe(300_000);
+  });
+
+  test("rejects assistant action without content", () => {
+    const yaml = `
+schedule: daily
+action:
+  type: assistant
+`;
+    expect(parseAutomationYaml(yaml, "no-content.yml")).toBeNull();
+  });
+
+  test("rejects assistant action with empty content", () => {
+    const yaml = `
+schedule: daily
+action:
+  type: assistant
+  content: "   "
+`;
+    expect(parseAutomationYaml(yaml, "empty-content.yml")).toBeNull();
+  });
 });
 
 // ── resolveSchedule ──────────────────────────────────────────────────
@@ -413,5 +483,125 @@ describe("scheduler lifecycle", () => {
   test("startScheduler handles missing automations dir gracefully", () => {
     startScheduler(stateDir, "test-token");
     expect(getSchedulerStatus().jobCount).toBe(0);
+  });
+});
+
+// ── executeAction: assistant ─────────────────────────────────────────
+
+describe("executeAction assistant", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("rejects invalid session ID from assistant", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "bad id with spaces" }), { status: 200 })
+    );
+
+    await expect(
+      executeAction(
+        { type: "assistant", content: "hello", timeout: 5000 },
+        "test-token"
+      )
+    ).rejects.toThrow("Invalid session ID from assistant");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects session ID with path traversal characters", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "../admin/evil" }), { status: 200 })
+    );
+
+    await expect(
+      executeAction(
+        { type: "assistant", content: "hello", timeout: 5000 },
+        "test-token"
+      )
+    ).rejects.toThrow("Invalid session ID from assistant");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("completes two-step flow with valid session ID", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "session_abc-123" }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ info: {}, parts: [{ type: "text", text: "done" }] }),
+          { status: 200 }
+        )
+      );
+
+    await executeAction(
+      { type: "assistant", content: "summarize health", timeout: 5000 },
+      "test-token"
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // Step 1: session creation
+    const [sessionUrl, sessionOpts] = fetchSpy.mock.calls[0];
+    expect(sessionUrl).toContain("/session");
+    expect(JSON.parse(sessionOpts!.body as string)).toHaveProperty("title");
+    // Step 2: message send
+    const [messageUrl, messageOpts] = fetchSpy.mock.calls[1];
+    expect(messageUrl).toContain("/session/session_abc-123/message");
+    const body = JSON.parse(messageOpts!.body as string);
+    expect(body.parts[0].text).toBe("summarize health");
+  });
+
+  test("sends no auth header when OPENCODE_SERVER_PASSWORD is unset", async () => {
+    delete process.env.OPENCODE_SERVER_PASSWORD;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "sess1" }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ info: {}, parts: [] }),
+          { status: 200 }
+        )
+      );
+
+    await executeAction(
+      { type: "assistant", content: "hello", timeout: 5000 },
+      "test-token"
+    );
+
+    const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
+    expect(headers["authorization"]).toBeUndefined();
+  });
+
+  test("throws on session creation failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("service unavailable", { status: 503 })
+    );
+
+    await expect(
+      executeAction(
+        { type: "assistant", content: "hello", timeout: 5000 },
+        "test-token"
+      )
+    ).rejects.toThrow("assistant POST /session 503");
+  });
+
+  test("throws on message send failure", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "sess1" }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response("inference timeout", { status: 504 })
+      );
+
+    await expect(
+      executeAction(
+        { type: "assistant", content: "hello", timeout: 5000 },
+        "test-token"
+      )
+    ).rejects.toThrow("assistant POST /session/sess1/message 504");
   });
 });

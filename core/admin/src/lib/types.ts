@@ -22,10 +22,12 @@ export type ContainerListResponse = {
 };
 
 export type AutomationActionInfo = {
-  type: 'api' | 'http' | 'shell';
+  type: 'api' | 'http' | 'shell' | 'assistant';
   method?: string;
   path?: string;
   url?: string;
+  content?: string;
+  agent?: string;
 };
 
 export type AutomationLogEntry = {
