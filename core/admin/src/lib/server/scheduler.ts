@@ -2,11 +2,13 @@
  * In-process automation scheduler — replaces system cron.
  *
  * Uses Croner for cron job scheduling within the Node.js process.
- * Automations are .yml files in STATE_HOME/automations/ with three
- * action types: api (admin API call), http (any URL), shell (execFile).
+ * Automations are .yml files in STATE_HOME/automations/ with four
+ * action types: api (admin API call), http (any URL), shell (execFile),
+ * assistant (OpenCode session message).
  *
  * Security: shell actions use execFile with argument arrays — no shell
- * interpolation. API actions auto-inject the admin token.
+ * interpolation. API actions auto-inject the admin token. Assistant
+ * actions validate the session ID before URL interpolation.
  */
 import { Cron } from "croner";
 import { parse as parseYaml } from "yaml";
@@ -19,7 +21,7 @@ const logger = createLogger("scheduler");
 
 // ── Types ─────────────────────────────────────────────────────────────
 
-export type ActionType = "api" | "http" | "shell";
+export type ActionType = "api" | "http" | "shell" | "assistant";
 
 export type AutomationAction = {
   type: ActionType;
@@ -30,6 +32,12 @@ export type AutomationAction = {
   headers?: Record<string, string>;
   command?: string[];
   timeout?: number;
+  /** The prompt text to send to the assistant (assistant action only). */
+  content?: string;
+  /** OpenCode agent label for the session (assistant action only, optional).
+   *  Currently used in the session title for identification/audit purposes.
+   *  Will be forwarded as an API parameter when OpenCode adds agent selection support. */
+  agent?: string;
 };
 
 export type AutomationConfig = {
@@ -147,7 +155,7 @@ export function parseAutomationYaml(
 
   const actionObj = action as Record<string, unknown>;
   const actionType = actionObj.type as string | undefined;
-  if (!actionType || !["api", "http", "shell"].includes(actionType)) {
+  if (!actionType || !["api", "http", "shell", "assistant"].includes(actionType)) {
     logger.warn("automation action has invalid 'type'", {
       fileName,
       type: String(actionType)
@@ -170,6 +178,12 @@ export function parseAutomationYaml(
       return null;
     }
   }
+  if (actionType === "assistant") {
+    if (typeof actionObj.content !== "string" || !actionObj.content.trim()) {
+      logger.warn("assistant action missing or empty 'content'", { fileName });
+      return null;
+    }
+  }
 
   const schedule = resolveSchedule(rawSchedule.trim());
 
@@ -189,8 +203,12 @@ export function parseAutomationYaml(
       command: Array.isArray(actionObj.command)
         ? actionObj.command.map(String)
         : undefined,
+      content: typeof actionObj.content === "string" ? actionObj.content : undefined,
+      agent: typeof actionObj.agent === "string" ? actionObj.agent : undefined,
       timeout:
-        typeof actionObj.timeout === "number" ? actionObj.timeout : 30_000
+        typeof actionObj.timeout === "number"
+          ? actionObj.timeout
+          : actionType === "assistant" ? 120_000 : 30_000
     },
     on_failure:
       doc.on_failure === "audit" ? "audit" : "log",
@@ -310,6 +328,87 @@ function executeShellAction(action: AutomationAction): Promise<void> {
   });
 }
 
+/**
+ * Execute an assistant action — creates an OpenCode session and sends the
+ * prompt. Uses the same two-step pattern as the guardian: POST /session then
+ * POST /session/:id/message.
+ *
+ * TODO: The HTTP client logic below (auth header, session create, session-ID
+ * validation) duplicates the guardian's `askAssistant` implementation. Extract
+ * a shared helper module and reuse it here and in the guardian to prevent drift.
+ */
+async function executeAssistantAction(action: AutomationAction): Promise<void> {
+  if (!action.content) {
+    throw new Error("assistant action requires a non-empty 'content' field");
+  }
+
+  const baseUrl = process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
+  const password = process.env.OPENCODE_SERVER_PASSWORD;
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
+  const authHeader = password
+    ? `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
+    : undefined;
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (authHeader) headers["authorization"] = authHeader;
+
+  const timeout = action.timeout ?? 120_000;
+
+  // Step 1: Create a session
+  const createCtrl = new AbortController();
+  const createTimer = setTimeout(() => createCtrl.abort(), 10_000);
+  let sessionId: string;
+  try {
+    const resp = await fetch(`${baseUrl}/session`, {
+      method: "POST",
+      headers,
+      signal: createCtrl.signal,
+      body: JSON.stringify({ title: `automation/${action.agent ?? "default"}` })
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`assistant POST /session ${resp.status}: ${body}`);
+    }
+    const session = (await resp.json()) as { id: string };
+    sessionId = session.id;
+    if (typeof sessionId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+      throw new Error("Invalid session ID from assistant");
+    }
+  } finally {
+    clearTimeout(createTimer);
+  }
+
+  // Step 2: Send the prompt and wait for response
+  const msgCtrl = new AbortController();
+  const msgTimer = setTimeout(() => msgCtrl.abort(), timeout);
+  try {
+    const resp = await fetch(`${baseUrl}/session/${sessionId}/message`, {
+      method: "POST",
+      headers,
+      signal: msgCtrl.signal,
+      body: JSON.stringify({
+        parts: [{ type: "text", text: action.content }]
+      })
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(
+        `assistant POST /session/${sessionId}/message ${resp.status}: ${body}`
+      );
+    }
+    // Drain/cancel the response body so the underlying connection can be
+    // reused and resources are freed (fire-and-forget — we don't need the body).
+    try {
+      await resp.body?.cancel();
+    } catch {
+      // Ignore cancellation errors; they don't affect the automation outcome.
+    }
+    logger.info("assistant action completed", { sessionId });
+  } finally {
+    clearTimeout(msgTimer);
+  }
+}
+
 /** Dispatch to the correct action executor. */
 export async function executeAction(
   action: AutomationAction,
@@ -322,6 +421,8 @@ export async function executeAction(
       return executeHttpAction(action);
     case "shell":
       return executeShellAction(action);
+    case "assistant":
+      return executeAssistantAction(action);
   }
 }
 
