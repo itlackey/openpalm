@@ -165,18 +165,7 @@ bun run check            # admin:check + sdk:test
 
 ## npm Package Releases
 
-OpenPalm publishes npm packages on an independent release cycle from Docker images.
-
-- Package releases are managed with Changesets (`.changeset/`) and the `npm-release` workflow.
-- When a PR changes a publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`), add a changeset file.
-
-```bash
-bun run changeset
-```
-
-- CI enforces that package changes include a changeset.
-- On merge to `main`, GitHub Actions either opens/updates a version PR or publishes changed packages automatically.
-- Repository maintainers must set `NPM_TOKEN` in GitHub Actions secrets for publishing.
+OpenPalm publishes npm packages on an independent release cycle from Docker images. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`, `packages/cli`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Repository maintainers must set `NPM_TOKEN` in GitHub Actions secrets for publishing.
 
 ## License
 

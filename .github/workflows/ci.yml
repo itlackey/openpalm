@@ -47,24 +47,3 @@ jobs:
           ADMIN_TOKEN: ci-placeholder
           POSTGRES_PASSWORD: ci-placeholder
         run: docker compose -f core/assets/docker-compose.yml -f docker-compose.override.yml config -q
-      - name: Validate changeset for package changes
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          git fetch origin "${BASE_REF}" --depth=1
-          CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")
-
-          if ! echo "${CHANGED_FILES}" | grep -Eq '^packages/(channels-sdk|assistant-tools|channel-(chat|api|discord))/'; then
-            echo "No publishable package changes detected."
-            exit 0
-          fi
-
-          if echo "${CHANGED_FILES}" | grep -Eq '^\.changeset/.+\.md$'; then
-            echo "Changeset detected."
-            exit 0
-          fi
-
-          echo "Publishable package changes detected, but no .changeset/*.md file was added."
-          echo "Run 'bun run changeset' and commit the generated changeset file."
-          exit 1

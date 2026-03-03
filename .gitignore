@@ -19,3 +19,4 @@ test-results/.last-run.json
 .opencode/
 .plans/
 packages/cli/dist/
+package-lock.json

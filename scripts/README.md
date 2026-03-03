@@ -48,8 +48,7 @@ Updates all workspace `package.json` files to a new semver version for coordinat
 ./scripts/bump-versions.sh 1.2.3
 ```
 
-For npm package publishing, this repo now uses Changesets via `.changeset/` and
-the `npm-release` GitHub workflow.
+For npm package publishing, each package has its own GitHub Actions workflow that publishes when its version field changes on `main`.
 
 ## Development scripts
 
