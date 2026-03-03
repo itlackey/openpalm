@@ -2,6 +2,7 @@
   "name": "openpalm",
   "version": "0.7.0-rc1",
   "private": true,
+  "license": "CC-BY-4.0",
   "workspaces": [
     "core/admin",
     "packages/channels-sdk",

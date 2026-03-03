@@ -2,6 +2,7 @@
   "name": "@openpalm/cli",
   "version": "0.7.0-rc1",
   "type": "module",
+  "license": "CC-BY-4.0",
   "description": "OpenPalm Bun CLI",
   "bin": {
     "openpalm": "./src/main.ts"

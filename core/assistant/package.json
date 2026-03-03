@@ -1,5 +1,6 @@
 {
   "private": true,
+  "license": "CC-BY-4.0",
   "type": "module",
   "dependencies": {
     "@openpalm/assistant-tools": "0.7.0-rc1",

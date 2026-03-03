@@ -2,6 +2,7 @@
   "name": "@openpalm/channel-discord",
   "version": "0.7.0-rc1",
   "type": "module",
+  "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/itlackey/openpalm",

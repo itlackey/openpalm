@@ -2,6 +2,7 @@
   "name": "@openpalm/admin",
   "version": "0.7.0-rc1",
   "private": true,
+  "license": "CC-BY-4.0",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

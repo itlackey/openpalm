@@ -2,6 +2,7 @@
   "name": "@openpalm/guardian",
   "version": "0.7.0-rc1",
   "private": true,
+  "license": "CC-BY-4.0",
   "type": "module",
   "scripts": {
     "start": "bun run src/server.ts",
