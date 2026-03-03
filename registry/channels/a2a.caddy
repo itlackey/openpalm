@@ -1,0 +1,11 @@
+# A2A agent card discovery (standard well-known path)
+handle /.well-known/agent.json {
+	import lan_only
+	reverse_proxy channel-a2a:8282
+}
+
+# A2A JSON-RPC endpoint
+handle_path /channels/a2a/* {
+	import lan_only
+	reverse_proxy channel-a2a:8282
+}
