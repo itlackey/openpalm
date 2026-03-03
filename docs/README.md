@@ -6,7 +6,9 @@ Documentation index for OpenPalm.
 
 | Document | Description |
 |---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
+| [manual-setup.md](manual-setup.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
 
