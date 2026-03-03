@@ -2,6 +2,11 @@
   "name": "@openpalm/channel-chat",
   "version": "0.7.0-rc1",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm",
+    "directory": "packages/channel-chat"
+  },
   "main": "src/index.ts",
   "peerDependencies": {
     "@openpalm/channels-sdk": "^0.7.0-rc1"

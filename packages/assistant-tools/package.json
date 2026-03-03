@@ -16,6 +16,11 @@
     "build": "bun build src/index.ts --outdir dist --format esm --target node",
     "prepublishOnly": "bun run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm",
+    "directory": "packages/assistant-tools"
+  },
   "dependencies": {
     "@opencode-ai/plugin": "1.2.15"
   }
