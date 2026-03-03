@@ -40,6 +40,17 @@ Options:
 | `--version TAG` | Install a specific release tag (default: `latest`) |
 | `--install-dir PATH` | Install to a custom directory |
 
+### `release.sh`
+
+Bumps all workspace versions, runs tests, commits, pushes, and tags a release in one step. The push triggers npm publish workflows for all packages; the tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
+
+```bash
+./scripts/release.sh 0.7.2        # stable release
+./scripts/release.sh 0.8.0-rc1    # prerelease
+```
+
+Aborts if the working tree is dirty or the tag already exists.
+
 ### `bump-versions.sh`
 
 Updates all workspace `package.json` files to a new semver version for coordinated/manual versioning. Also updates `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `peerDependencies` to `^<new-version>`.
