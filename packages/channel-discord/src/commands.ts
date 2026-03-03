@@ -33,7 +33,7 @@ export const BUILTIN_COMMANDS: CustomCommandDef[] = [
   },
 ];
 
-const VALID_NAME = /^[\w-]{1,32}$/;
+const VALID_NAME = /^[a-z0-9_-]{1,32}$/;
 const MAX_DESCRIPTION_LENGTH = 100;
 const MAX_CUSTOM_COMMANDS = 20;
 

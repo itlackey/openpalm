@@ -251,9 +251,12 @@ export async function handleInteraction(interaction: DiscordInteraction, deps: I
   }
 
   if (interaction.type === InteractionType.APPLICATION_COMMAND_AUTOCOMPLETE) {
-    return { type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: {} };
+    return { type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } };
   }
 
   log.warn("unknown_interaction_type", { type: interaction.type });
-  return { type: InteractionResponseType.PONG };
+  return immediateResponse({
+    content: "Sorry, this interaction type is not supported.",
+    flags: MessageFlags.EPHEMERAL,
+  });
 }

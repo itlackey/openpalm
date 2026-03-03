@@ -65,8 +65,16 @@ describe("health endpoint", () => {
 });
 
 describe("interactions endpoint", () => {
+  it("returns 503 when public key is missing", async () => {
+    const channel = new DiscordChannel();
+    const handler = channel.createFetch();
+    const resp = await handler(interactionRequest({ id: "1", type: 1 }));
+    expect(resp.status).toBe(503);
+  });
+
   it("handles ping interactions (type 1)", async () => {
     const channel = new DiscordChannel();
+    Object.defineProperty(channel, "allowUnsignedInteractions", { get: () => true });
     const handler = channel.createFetch();
     const resp = await handler(interactionRequest({ id: "1", type: 1 }));
     expect(resp.status).toBe(200);
@@ -91,6 +99,7 @@ describe("interactions endpoint", () => {
 
   it("handles /help command with ephemeral embed", async () => {
     const channel = new DiscordChannel();
+    Object.defineProperty(channel, "allowUnsignedInteractions", { get: () => true });
     const handler = channel.createFetch();
     const resp = await handler(interactionRequest({
       id: "1",
@@ -107,6 +116,7 @@ describe("interactions endpoint", () => {
 
   it("denies interaction from blocked user", async () => {
     const channel = new DiscordChannel();
+    Object.defineProperty(channel, "allowUnsignedInteractions", { get: () => true });
     Object.defineProperty(channel, "permissions", {
       value: {
         allowedGuilds: new Set(),
@@ -254,6 +264,12 @@ describe("permissions and commands helpers", () => {
     const commands = parseCustomCommands(json);
     expect(commands.length).toBe(1);
     expect(commands[0].name).toBe("summarize");
+  });
+
+  it("parseCustomCommands rejects uppercase command names", () => {
+    const json = JSON.stringify([{ name: "Summarize", description: "Invalid name" }]);
+    const commands = parseCustomCommands(json);
+    expect(commands.length).toBe(0);
   });
 
   it("buildCommandRegistry includes builtins", () => {

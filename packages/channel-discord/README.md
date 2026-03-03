@@ -32,14 +32,15 @@ This channel supports:
    - `https://<your-openpalm-host>/discord/interactions`
 6. Install the `discord` channel in OpenPalm (`/admin/channels/install`) and set env values in your stack env/config.
 
-> `DISCORD_PUBLIC_KEY` is strongly recommended in production. If unset, signature verification is disabled.
+> `DISCORD_PUBLIC_KEY` is required in production. Without it, `/discord/interactions` returns `503 missing_public_key` unless `DISCORD_ALLOW_UNSIGNED_INTERACTIONS=true` is explicitly set for local/dev use.
 
 ## Environment variables
 
 | Variable | Required | Purpose |
 |---|---|---|
 | `CHANNEL_DISCORD_SECRET` | yes | HMAC secret for guardian forwarding (admin-managed) |
-| `DISCORD_PUBLIC_KEY` | recommended | Verifies Discord interaction signatures |
+| `DISCORD_PUBLIC_KEY` | yes (production) | Verifies Discord interaction signatures |
+| `DISCORD_ALLOW_UNSIGNED_INTERACTIONS` | no | Set `true` only for local/dev to allow unsigned interaction requests |
 | `DISCORD_APPLICATION_ID` | yes (for command registration) | Discord application ID |
 | `DISCORD_BOT_TOKEN` | yes (for command registration) | Bot token used to register commands |
 | `DISCORD_REGISTER_COMMANDS` | no | Set `false` to disable startup slash-command registration |

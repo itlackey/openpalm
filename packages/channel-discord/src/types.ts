@@ -86,6 +86,7 @@ export type InteractionResponse = {
     content?: string;
     embeds?: DiscordEmbed[];
     flags?: number;
+    choices?: Array<{ name: string; value: string }>;
   };
 };
 

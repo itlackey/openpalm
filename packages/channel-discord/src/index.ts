@@ -60,6 +60,10 @@ export default class DiscordChannel extends BaseChannel {
     return Bun.env.DISCORD_PUBLIC_KEY ?? "";
   }
 
+  get allowUnsignedInteractions(): boolean {
+    return Bun.env.DISCORD_ALLOW_UNSIGNED_INTERACTIONS === "true";
+  }
+
   get applicationId(): string {
     return Bun.env.DISCORD_APPLICATION_ID ?? "";
   }
@@ -70,6 +74,10 @@ export default class DiscordChannel extends BaseChannel {
 
   async route(req: Request, url: URL): Promise<Response | null> {
     if (url.pathname === "/discord/interactions" && req.method === "POST") {
+      if (!this.publicKey && !this.allowUnsignedInteractions) {
+        return this.json(503, { error: "missing_public_key" });
+      }
+
       const contentLength = Number(req.headers.get("content-length") ?? "0");
       if (contentLength > 1_048_576) {
         return this.json(413, { error: "payload_too_large" });
@@ -98,13 +106,15 @@ export default class DiscordChannel extends BaseChannel {
         return this.json(400, { error: "invalid_json" });
       }
 
+      const forwardFetch = (this as unknown as { _fetchFn?: typeof fetch })._fetchFn ?? fetch;
+
       const deps: InteractionDeps = {
         guardianUrl: this.guardianUrl,
         sharedSecret: this.secret,
         applicationId: this.applicationId,
         commands: this.commands,
         permissions: this.permissions,
-        forwardFetch: fetch,
+        forwardFetch,
       };
 
       const response = await handleInteraction(interaction, deps);
@@ -154,6 +164,12 @@ export default class DiscordChannel extends BaseChannel {
       if (!this.applicationId) {
         log.warn("startup_warning", { reason: "DISCORD_APPLICATION_ID not set — slash command registration skipped" });
       }
+      if (!this.botToken) {
+        log.warn("startup_warning", { reason: "DISCORD_BOT_TOKEN not set — slash command registration skipped" });
+      }
+      if (Bun.env.DISCORD_REGISTER_COMMANDS === "false") {
+        log.warn("startup_warning", { reason: "DISCORD_REGISTER_COMMANDS is 'false' — slash command registration skipped" });
+      }
       return;
     }
 
@@ -180,8 +196,10 @@ export default class DiscordChannel extends BaseChannel {
   }
 
   override start(): void {
-    if (!this.publicKey) {
-      log.warn("startup_warning", { reason: "DISCORD_PUBLIC_KEY is not set — signature verification disabled" });
+    if (!this.publicKey && this.allowUnsignedInteractions) {
+      log.warn("startup_warning", { reason: "DISCORD_PUBLIC_KEY is not set — unsigned interactions allowed for dev mode" });
+    } else if (!this.publicKey) {
+      log.error("startup_error", { reason: "DISCORD_PUBLIC_KEY not set — interactions endpoint will reject requests" });
     }
     void this.registerCommandsOnStart();
     super.start();
