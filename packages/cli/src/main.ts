@@ -49,9 +49,9 @@ async function adminRequest(path: string, init?: RequestInit): Promise<unknown> 
   const response = await fetch(`${ADMIN_URL}${path}`, {
     ...init,
     headers: {
-      'content-type': 'application/json',
-      'x-requested-by': 'cli',
-      ...(token ? { 'x-admin-token': token } : {}),
+      'Content-Type': 'application/json',
+      'X-Requested-By': 'cli',
+      ...(token ? { 'X-Admin-Token': token } : {}),
       ...init?.headers,
     },
     signal: init?.signal ?? AbortSignal.timeout(120_000),
@@ -105,7 +105,7 @@ async function runComposeLogs(services: string[]): Promise<void> {
     ...services,
   ];
 
-  const proc = Bun.spawn(composeArgs, { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' });
+  const proc = Bun.spawn(['docker', ...composeArgs], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     throw new Error('Failed to fetch logs with docker compose');
@@ -122,7 +122,15 @@ async function runServiceAction(action: 'up' | 'down' | 'restart', services: str
       console.log(JSON.stringify(await adminRequest('/admin/uninstall', { method: 'POST' }), null, 2));
       return;
     }
-    console.log(JSON.stringify(await adminRequest('/admin/update', { method: 'POST' }), null, 2));
+    const status = await adminRequest('/admin/containers/list');
+    const serviceNames = getServiceNames(status);
+    for (const service of serviceNames) {
+      const result = await adminRequest('/admin/containers/restart', {
+        method: 'POST',
+        body: JSON.stringify({ service }),
+      });
+      console.log(JSON.stringify(result, null, 2));
+    }
     return;
   }
 
@@ -135,6 +143,17 @@ async function runServiceAction(action: 'up' | 'down' | 'restart', services: str
     });
     console.log(JSON.stringify(result, null, 2));
   }
+}
+
+function getServiceNames(status: unknown): string[] {
+  if (!status || typeof status !== 'object' || !('containers' in status)) {
+    return [];
+  }
+  const containers = (status as { containers?: unknown }).containers;
+  if (!containers || typeof containers !== 'object') {
+    return [];
+  }
+  return Object.keys(containers as Record<string, unknown>);
 }
 
 async function runServiceCommand(args: string[]): Promise<void> {
