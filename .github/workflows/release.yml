@@ -28,6 +28,7 @@ jobs:
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
 
     steps:
       - name: Checkout
@@ -52,8 +53,8 @@ jobs:
             TAG="${REF_NAME}"
           else
             VERSION="${INPUT_VERSION}"
-            if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-              echo 'Invalid version. Must be semver like 1.2.3.'
+            if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+              echo 'Invalid version. Must be semver like 1.2.3 or 1.2.3-rc1.'
               exit 1
             fi
 
@@ -82,8 +83,18 @@ jobs:
           fi
 
           VERSION="${TAG#v}"
+          if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "Invalid tag ${TAG}. Must be semver like v1.2.3 or v1.2.3-rc1."
+            exit 1
+          fi
+          if echo "${VERSION}" | grep -Eq -- '-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$'; then
+            PRERELEASE='true'
+          else
+            PRERELEASE='false'
+          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
 
   quality-gates:
     name: Release quality gates
@@ -218,7 +229,7 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ needs.prepare-tag.outputs.prerelease != 'true' }}
             type=raw,value=v${{ needs.prepare-tag.outputs.version }}
 
       - name: Push image
@@ -268,6 +279,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-tag.outputs.tag }}
           name: OpenPalm ${{ needs.prepare-tag.outputs.tag }}
+          prerelease: ${{ needs.prepare-tag.outputs.prerelease == 'true' }}
           generate_release_notes: true
           files: |
             dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz
