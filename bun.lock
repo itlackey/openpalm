@@ -92,6 +92,13 @@
       "name": "@openpalm/channels-sdk",
       "version": "0.7.0-rc1",
     },
+    "packages/cli": {
+      "name": "@openpalm/cli",
+      "version": "0.7.0-rc1",
+      "bin": {
+        "openpalm": "./src/main.ts",
+      },
+    },
   },
   "packages": {
     "@babel/helper-string-parser": ["@babel/helper-string-parser@7.27.1", "", {}, "sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA=="],
@@ -257,6 +264,8 @@
     "@openpalm/channel-discord": ["@openpalm/channel-discord@workspace:packages/channel-discord"],
 
     "@openpalm/channels-sdk": ["@openpalm/channels-sdk@workspace:packages/channels-sdk"],
+
+    "@openpalm/cli": ["@openpalm/cli@workspace:packages/cli"],
 
     "@openpalm/guardian": ["@openpalm/guardian@workspace:core/guardian"],
 
