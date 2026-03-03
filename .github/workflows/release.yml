@@ -230,6 +230,51 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}
 
+  build-cli-artifacts:
+    name: Build CLI artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - prepare-tag
+      - quality-gates
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - script: build:linux-x64
+            artifact: openpalm-cli-linux-x64
+          - script: build:linux-arm64
+            artifact: openpalm-cli-linux-arm64
+          - script: build:darwin-x64
+            artifact: openpalm-cli-darwin-x64
+          - script: build:darwin-arm64
+            artifact: openpalm-cli-darwin-arm64
+          - script: build:windows-x64
+            artifact: openpalm-cli-windows-x64.exe
+          - script: build:windows-arm64
+            artifact: openpalm-cli-windows-arm64.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-tag.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build CLI binary
+        run: bun run --cwd packages/cli ${{ matrix.script }}
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/cli/dist/${{ matrix.artifact }}
+
   release:
     name: Publish GitHub release
     runs-on: ubuntu-latest
@@ -237,6 +282,7 @@ jobs:
     needs:
       - prepare-tag
       - push-images
+      - build-cli-artifacts
 
     steps:
       - name: Checkout
@@ -253,6 +299,13 @@ jobs:
             registry \
             scripts \
             README.md
+
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openpalm-cli-*
+          path: dist
+          merge-multiple: true
 
       - name: Generate checksums
         run: |
@@ -297,3 +350,9 @@ jobs:
           files: |
             dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz
             dist/checksums-sha256.txt
+            dist/openpalm-cli-linux-x64
+            dist/openpalm-cli-linux-arm64
+            dist/openpalm-cli-darwin-x64
+            dist/openpalm-cli-darwin-arm64
+            dist/openpalm-cli-windows-x64.exe
+            dist/openpalm-cli-windows-arm64.exe

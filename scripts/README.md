@@ -25,6 +25,21 @@ Re-run to update — secrets are never overwritten. Options:
 | `--no-start` | Set up files but don't start Docker services |
 | `--no-open` | Don't open the admin UI after install |
 
+### `install.sh`
+
+Installs the compiled OpenPalm CLI binary from GitHub Releases into `~/.local/bin/openpalm` by default.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.sh | bash
+```
+
+Options:
+
+| Flag | Effect |
+|---|---|
+| `--version TAG` | Install a specific release tag (default: `latest`) |
+| `--install-dir PATH` | Install to a custom directory |
+
 ### `bump-versions.sh`
 
 Updates all workspace `package.json` files to a new semver version for coordinated/manual versioning.
