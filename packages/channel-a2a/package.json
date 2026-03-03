@@ -1,0 +1,15 @@
+{
+  "name": "@openpalm/channel-a2a",
+  "version": "0.6.2",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.0"
+  },
+  "peerDependencies": {
+    "@openpalm/channels-sdk": "^0.6.2"
+  },
+  "devDependencies": {
+    "@openpalm/channels-sdk": "workspace:*"
+  }
+}

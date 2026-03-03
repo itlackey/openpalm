@@ -1,0 +1,26 @@
+# Channel: A2A — Agent-to-Agent protocol adapter
+#
+# Exposes the OpenPalm assistant as an A2A-discoverable agent.
+# External AI agents discover capabilities via /.well-known/agent.json
+# and communicate via A2A JSON-RPC (message/send, message/stream,
+# tasks/get, tasks/cancel).
+services:
+  channel-a2a:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel-runner:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8282"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_PACKAGE: "@openpalm/channel-a2a"
+      CHANNEL_A2A_SECRET: ${CHANNEL_A2A_SECRET}
+      A2A_BEARER_TOKEN: ${A2A_BEARER_TOKEN:-}
+      A2A_PUBLIC_URL: ${A2A_PUBLIC_URL:-}
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8282' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

@@ -9,6 +9,7 @@
     "packages/channel-discord",
     "packages/channel-api",
     "packages/channel-chat",
+    "packages/channel-a2a",
     "core/guardian"
   ],
   "scripts": {
