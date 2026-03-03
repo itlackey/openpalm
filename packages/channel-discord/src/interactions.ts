@@ -148,7 +148,7 @@ async function handleAssistantQuery(
   const isEphemeral = commandDef?.ephemeral ?? false;
   const deferred = deferredResponse(isEphemeral);
 
-  queueMicrotask(async () => {
+  void (async () => {
     const applicationId = interaction.application_id ?? deps.applicationId;
     const interactionToken = interaction.token ?? "";
 
@@ -206,7 +206,7 @@ async function handleAssistantQuery(
         embeds: [errorEmbed("An unexpected error occurred. Please try again later.")],
       });
     }
-  });
+  })();
 
   return deferred;
 }

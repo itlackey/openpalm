@@ -16,10 +16,25 @@ async function verifyDiscordSignature(
   body: string,
 ): Promise<boolean> {
   if (!publicKey || !signature || !timestamp) return false;
+
+  const fromHex = (hex: string): Uint8Array | null => {
+    if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return null;
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+      const byte = hex.slice(i * 2, i * 2 + 2);
+      bytes[i] = Number.parseInt(byte, 16);
+    }
+    return bytes;
+  };
+
   try {
+    const publicKeyBytes = fromHex(publicKey);
+    const signatureBytes = fromHex(signature);
+    if (!publicKeyBytes || !signatureBytes) return false;
+
     const key = await crypto.subtle.importKey(
       "raw",
-      Buffer.from(publicKey, "hex"),
+      publicKeyBytes,
       { name: "Ed25519" },
       false,
       ["verify"],
@@ -27,7 +42,7 @@ async function verifyDiscordSignature(
     return await crypto.subtle.verify(
       "Ed25519",
       key,
-      Buffer.from(signature, "hex"),
+      signatureBytes,
       new TextEncoder().encode(timestamp + body),
     );
   } catch {
@@ -133,7 +148,7 @@ export default class DiscordChannel extends BaseChannel {
     };
   }
 
-  private registerCommandsOnStart(): void {
+  private async registerCommandsOnStart(): Promise<void> {
     const registrationPayload = buildCommandRegistry(parseCustomCommands(Bun.env.DISCORD_CUSTOM_COMMANDS)).registrationPayload;
     if (!this.applicationId || !this.botToken || Bun.env.DISCORD_REGISTER_COMMANDS === "false") {
       if (!this.applicationId) {
@@ -150,19 +165,25 @@ export default class DiscordChannel extends BaseChannel {
     const allowedGuilds = this.permissions.allowedGuilds;
     if (allowedGuilds.size > 0) {
       for (const guildId of allowedGuilds) {
-        void registerCommands(apiConfig, registrationPayload, guildId);
+        const ok = await registerCommands(apiConfig, registrationPayload, guildId);
+        if (!ok) {
+          log.error("startup_error", { reason: "guild_command_registration_failed", guildId });
+        }
       }
       return;
     }
 
-    void registerCommands(apiConfig, registrationPayload);
+    const ok = await registerCommands(apiConfig, registrationPayload);
+    if (!ok) {
+      log.error("startup_error", { reason: "global_command_registration_failed" });
+    }
   }
 
   override start(): void {
     if (!this.publicKey) {
       log.warn("startup_warning", { reason: "DISCORD_PUBLIC_KEY is not set — signature verification disabled" });
     }
-    this.registerCommandsOnStart();
+    void this.registerCommandsOnStart();
     super.start();
   }
 }

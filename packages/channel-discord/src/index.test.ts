@@ -152,6 +152,16 @@ describe("webhook endpoint", () => {
     expect(body.error).toBe("text_required");
   });
 
+  it("returns 400 when userId missing", async () => {
+    const cap = capturingFetch();
+    const channel = new DiscordChannel();
+    const handler = channel.createFetch(cap.mockFetch);
+    const resp = await handler(webhookRequest({ text: "hello" }));
+    expect(resp.status).toBe(400);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.error).toBe("missing_user_id");
+  });
+
   it("returns 400 for invalid JSON", async () => {
     const channel = new DiscordChannel();
     const handler = channel.createFetch();
@@ -160,6 +170,8 @@ describe("webhook endpoint", () => {
       body: "not-json{{{",
     }));
     expect(resp.status).toBe(400);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.error).toBe("invalid_request");
   });
 
   it("HMAC: x-channel-signature matches signPayload", async () => {

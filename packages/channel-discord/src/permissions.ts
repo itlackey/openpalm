@@ -42,7 +42,7 @@ export function extractIdentifiers(interaction: DiscordInteraction): {
     userId: user?.id ?? "",
     guildId: interaction.guild_id ?? "",
     roles: interaction.member?.roles ?? [],
-    username: user?.username ?? user?.global_name ?? "unknown",
+    username: user?.global_name ?? user?.username ?? "unknown",
   };
 }
 
