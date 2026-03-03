@@ -74,12 +74,10 @@ jobs:
               git push origin HEAD:"${GITHUB_REF_NAME}"
             fi
 
-            if git rev-parse "${TAG}" >/dev/null 2>&1; then
-              echo "Tag ${TAG} already exists."
-            else
-              git tag -a "${TAG}" -m "Release ${TAG}"
-              git push origin "${TAG}"
-            fi
+            # Always move the tag to the current HEAD (handles reruns where the
+            # tag exists but points to an old commit that predates recent changes).
+            git tag -fa "${TAG}" -m "Release ${TAG}"
+            git push --force origin "${TAG}"
           fi
 
           VERSION="${TAG#v}"
