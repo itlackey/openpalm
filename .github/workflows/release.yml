@@ -119,6 +119,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
+          context: git
           images: ${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable=${{ needs.prepare-tag.outputs.prerelease != 'true' }}
