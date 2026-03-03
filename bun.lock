@@ -80,7 +80,7 @@
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.7.0-rc1",
+      "version": "0.7.0",
       "devDependencies": {
         "@openpalm/channels-sdk": "workspace:*",
       },
