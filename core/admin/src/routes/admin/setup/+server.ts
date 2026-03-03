@@ -28,7 +28,7 @@ import {
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
-import { createLogger } from "@openpalm/lib/shared/logger";
+import { createLogger } from "$lib/server/logger.js";
 import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "./$types";
 

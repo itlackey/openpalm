@@ -1,7 +1,7 @@
 ## BunJS implementation rules
 
 This document defines Bun-specific implementation rules for OpenPalm's **Bun
-services only**: `core/guardian/`, `channels/*`, `packages/lib/`, and any
+services only**: `core/guardian/`, `channels/*`, `packages/channels-sdk/`, and any
 Bun-based utilities. It does **not** apply to the admin service (`core/admin/`),
 which is a SvelteKit/Node.js app and follows Node.js and SvelteKit conventions
 (see `docs/sveltekit-rules.md`).
@@ -87,11 +87,11 @@ Use this before adding parallel test frameworks unless a missing feature is prov
 
 ### 4) Structured logging
 
-All Bun services must use `createLogger` from `packages/lib/src/shared/logger.ts`
+All Bun services must use `createLogger` from `packages/channels-sdk/src/logger.ts`
 for structured JSON output. Do not use bare `console.log` for operational events.
 
 ```typescript
-import { createLogger } from "@openpalm/lib/shared/logger.js";
+import { createLogger } from "@openpalm/channels-sdk/logger";
 const logger = createLogger("guardian"); // or "channel-chat", etc.
 
 logger.info("Request accepted", { requestId, actor });

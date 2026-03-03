@@ -14,10 +14,10 @@
  *   6. Forward to assistant and return response
  */
 
-import { ERROR_CODES, validatePayload } from "@openpalm/lib/shared/channel.ts";
-import { verifySignature } from "@openpalm/lib/shared/crypto.ts";
-import { createLogger } from "@openpalm/lib/shared/logger.ts";
-import { parseEnvContent } from "@openpalm/lib/shared/env.ts";
+import { parse as dotenvParse } from "dotenv";
+import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
+import { verifySignature } from "@openpalm/channels-sdk/crypto";
+import { createLogger } from "@openpalm/channels-sdk/logger";
 
 const logger = createLogger("guardian");
 
@@ -33,10 +33,10 @@ const SECRETS_PATH = Bun.env.GUARDIAN_SECRETS_PATH;
 const CHANNEL_SECRET_RE = /^CHANNEL_[A-Z0-9_]+_SECRET$/;
 
 function parseChannelSecrets(content: string): Record<string, string> {
-  const parsed = parseEnvContent(content);
+  const parsed = dotenvParse(content);
   const secrets: Record<string, string> = {};
   for (const [key, val] of Object.entries(parsed)) {
-    if (CHANNEL_SECRET_RE.test(key) && val) {
+    if (CHANNEL_SECRET_RE.test(key) && typeof val === "string" && val) {
       const ch = key.replace(/^CHANNEL_/, "").replace(/_SECRET$/, "").toLowerCase();
       secrets[ch] = val;
     }

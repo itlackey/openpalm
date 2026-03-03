@@ -9,15 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 
 WORKDIR /app
 # Bun workspace symlinks are not available inside Docker builds, so we copy the
-# raw TypeScript source of @openpalm/lib directly into node_modules.
-COPY packages/lib /app/node_modules/@openpalm/lib
+# raw TypeScript source of @openpalm/channels-sdk directly into node_modules.
+COPY packages/channels-sdk /app/node_modules/@openpalm/channels-sdk
 COPY core/guardian/ .
-# Install lib's own declared dependencies (e.g. dotenv) so transitive
-# imports from lib source resolve correctly at runtime.
-RUN cd /app/node_modules/@openpalm/lib && bun install --production
+# Install channels-sdk's own declared dependencies so transitive imports
+# from sdk source resolve correctly at runtime.
+RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
 # Strip workspace:* dep (pre-installed via COPY above) and remove the workspace
 # lockfile so bun install resolves remaining deps without CI frozen-lockfile enforcement.
-RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/lib'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
+RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/channels-sdk'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
     && rm -f bun.lock bun.lockb \
     && bun install --production
 

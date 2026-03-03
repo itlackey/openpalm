@@ -7,40 +7,21 @@ hoists all dependencies so module resolution works seamlessly. Docker builds
 don't have this luxury — each service builds in isolation, and the workspace
 structure isn't available.
 
-The admin service uses a Vite alias to resolve `@openpalm/lib` to source:
-
-```
-"@openpalm/lib": resolve(__dirname, "../../packages/lib/src")
-```
-
-When Vite processes `packages/lib/src/shared/env.ts`, that file imports `dotenv`.
-Standard Node module resolution walks **up the directory tree** from the
-importing file looking for `node_modules/dotenv`. If `node_modules` isn't at a
-common ancestor of both the admin source and the lib source, resolution fails.
+The admin service is built with Node + Vite, while guardian/channel services run
+on Bun and copy workspace source into image-local `node_modules` paths. The two
+toolchains require explicit, predictable dependency resolution in Docker.
 
 ## Solution: Admin (SvelteKit/Node build)
 
 Install admin's dependencies at the **workspace root** (`/workspace/`) so
-`node_modules` sits at a common ancestor of both `core/admin/` and
-`packages/lib/`:
+`node_modules` sits at a common ancestor of admin build sources:
 
 ```
 /workspace/
 ├── node_modules/        ← npm install puts deps here (real dirs, no symlinks)
-│   └── dotenv/          ← resolvable from any subdirectory
 ├── core/admin/          ← SvelteKit source + vite.config.ts
-├── packages/lib/src/    ← aliased via @openpalm/lib
 ├── core/assets/
 └── registry/
-```
-
-Resolution from `packages/lib/src/shared/env.ts`:
-```
-/workspace/packages/lib/src/shared/node_modules/ → no
-/workspace/packages/lib/src/node_modules/        → no
-/workspace/packages/lib/node_modules/            → no
-/workspace/packages/node_modules/                → no
-/workspace/node_modules/                         → dotenv found (real directory)
 ```
 
 Key details:
@@ -54,16 +35,16 @@ Key details:
 
 ## Solution: Guardian + Channels (Bun runtime)
 
-These services copy `packages/lib` source directly into
-`/app/node_modules/@openpalm/lib` and run on Bun. To resolve lib's own
-transitive dependencies (e.g. dotenv), each Dockerfile runs:
+These services copy `packages/channels-sdk` source directly into
+`/app/node_modules/@openpalm/channels-sdk` and run on Bun. To resolve sdk
+transitive dependencies, each Dockerfile runs:
 
 ```dockerfile
-RUN cd /app/node_modules/@openpalm/lib && bun install --production
+RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
 ```
 
-This installs lib's declared dependencies into
-`/app/node_modules/@openpalm/lib/node_modules/`. Since these services run on
+This installs sdk declared dependencies into
+`/app/node_modules/@openpalm/channels-sdk/node_modules/`. Since these services run on
 Bun (which created the install), there's no cross-tool resolution concern.
 
 ## Why not Bun workspace install in Docker?
@@ -78,5 +59,5 @@ depending on Bun's symlink structure for Node module resolution is fragile.
 | File | What | Why |
 |------|------|-----|
 | `core/admin/Dockerfile` | npm install at workspace root | Common ancestor for module resolution |
-| `core/guardian/Dockerfile` | Install lib's deps after copy | Fix missing dotenv (pre-existing bug) |
-| `channels/*/Dockerfile` | Install lib's deps after copy | Robustness for future lib dependencies |
+| `core/guardian/Dockerfile` | Install channels-sdk deps after copy | Ensure sdk transitive deps resolve |
+| `core/channel/Dockerfile` | Install channels-sdk deps after copy | Robustness for future sdk dependencies |

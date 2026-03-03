@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 
 # Install the channels SDK
 COPY packages/channels-sdk /app/node_modules/@openpalm/channels-sdk
+RUN cd /app/node_modules/@openpalm/channels-sdk && bun install --production
 
 # Startup script installs the channel package (if set) then runs the entrypoint
 COPY core/channel/start.sh /app/start.sh

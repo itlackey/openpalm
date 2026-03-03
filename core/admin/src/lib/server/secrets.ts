@@ -5,7 +5,7 @@
  * and OpenCode config seeding.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { parseEnvFile, mergeEnvContent } from "@openpalm/lib/shared/env";
+import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigHome } from "./paths.js";
 

@@ -90,7 +90,6 @@ Schedule recurring tasks by dropping a `.yaml` file into `~/.config/openpalm/aut
 - **Channel runtime** (`core/channel/`) — Unified `channel` image entrypoint used by registry channel overlays.
 - **Channel packages** (`packages/channel-*/`) — Translate external protocols into signed guardian messages.
 - **Channels SDK** (`packages/channels-sdk/`) — `BaseChannel` abstract class, HMAC crypto, logger, and payload types.
-- **Shared lib** (`packages/lib/`) — Internal library for guardian and legacy consumers.
 
 **Key rules:**
 - The **Admin API** is the sole orchestrator — no other component runs Docker commands.
@@ -147,10 +146,10 @@ bun run admin:dev        # core/admin dev server
 bun run admin:check      # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
-bun run lib:test         # packages/lib tests
+bun run sdk:test         # packages/channels-sdk tests
 bun run dev:setup        # seed .dev/ dirs and configs
 bun run dev:stack        # start dev stack via docker compose
-bun run check            # admin:check + lib:test
+bun run check            # admin:check + sdk:test
 ```
 
 `dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.

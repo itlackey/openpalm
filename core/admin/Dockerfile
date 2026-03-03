@@ -7,14 +7,13 @@ FROM node:22-slim AS build
 WORKDIR /workspace
 
 # Install admin deps at workspace root so node_modules lands at /workspace/.
-# Standard Node module resolution from both core/admin/ and packages/lib/
-# walks up to /workspace/node_modules/ — no symlinks, no workspace protocol.
+# Standard Node module resolution from core/admin/ walks up to
+# /workspace/node_modules/ — no symlinks, no workspace protocol.
 COPY core/admin/package.json .
 RUN npm install
 
-# Copy source into monorepo layout matching Vite alias paths
+# Copy source into monorepo layout
 COPY core/admin/ core/admin/
-COPY packages/lib/ packages/lib/
 COPY core/assets/ core/assets/
 COPY registry/ registry/
 

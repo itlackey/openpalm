@@ -1,5 +1,5 @@
 import { userInfo } from "node:os";
-import { parseEnvFile } from "@openpalm/lib/shared/env";
+import { parseEnvFile } from './env.js';
 
 export function readSecretsKeys(configDir: string): Record<string, boolean> {
   const parsed = parseEnvFile(`${configDir}/secrets.env`);

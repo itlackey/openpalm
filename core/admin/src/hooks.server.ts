@@ -6,7 +6,7 @@
  * records the outcome in the audit log. This guarantees that the latest
  * CONFIG_HOME state is synced into the runtime on every admin boot.
  */
-import { createLogger } from "@openpalm/lib/shared/logger";
+import { createLogger } from "$lib/server/logger.js";
 import { getState } from "$lib/server/state.js";
 import {
   ensureXdgDirs,

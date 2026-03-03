@@ -4,7 +4,6 @@
   "private": true,
   "workspaces": [
     "core/admin",
-    "packages/lib",
     "packages/channels-sdk",
     "packages/channel-discord",
     "packages/channel-api",
@@ -20,15 +19,14 @@
     "admin:test:e2e": "cd core/admin && npm run test:e2e",
     "guardian:dev": "bun run core/guardian/src/server.ts",
     "guardian:test": "bun test --cwd core/guardian",
-    "lib:test": "bun test --cwd packages/lib",
     "sdk:test": "bun test --cwd packages/channels-sdk",
     "channel:chat:dev": "bun run packages/channel-chat/src/index.ts",
     "channel:api:dev": "bun run packages/channel-api/src/index.ts",
     "channel:discord:dev": "bun run packages/channel-discord/src/index.ts",
     "dev:setup": "./scripts/dev-setup.sh --seed-env",
     "dev:stack": "docker compose -f .dev/state/artifacts/docker-compose.yml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up -d",
-    "test": "bun test packages/ core/guardian/",
-    "check": "bun run admin:check && bun run lib:test"
+    "test": "bun test packages/channels-sdk packages/channel-chat packages/channel-api packages/channel-discord core/guardian/",
+    "check": "bun run admin:check && bun run sdk:test"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18"

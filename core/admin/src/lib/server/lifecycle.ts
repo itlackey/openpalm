@@ -4,7 +4,7 @@
  * State factory, apply* lifecycle transitions, compose file list builders,
  * and caller/action validation.
  */
-import { parseEnvFile } from "@openpalm/lib/shared/env";
+import { parseEnvFile } from './env.js';
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";

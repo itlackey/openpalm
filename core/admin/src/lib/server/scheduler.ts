@@ -13,7 +13,7 @@ import { parse as parseYaml } from "yaml";
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createLogger } from "@openpalm/lib/shared/logger";
+import { createLogger } from "./logger.js";
 
 const logger = createLogger("scheduler");
 

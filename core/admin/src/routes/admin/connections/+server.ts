@@ -32,7 +32,7 @@ import {
   type OpenMemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
-import { createLogger } from "@openpalm/lib/shared/logger";
+import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("connections");
 

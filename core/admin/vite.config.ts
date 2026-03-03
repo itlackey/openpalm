@@ -36,8 +36,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "$assets": resolve(__dirname, "../assets"),
-        "$registry": resolve(__dirname, "../../registry"),
-        "@openpalm/lib": resolve(__dirname, "../../packages/lib/src")
+        "$registry": resolve(__dirname, "../../registry")
       }
     },
     test: {

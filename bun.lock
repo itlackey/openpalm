@@ -10,7 +10,7 @@
     },
     "core/admin": {
       "name": "@openpalm/admin",
-      "version": "0.6.2",
+      "version": "0.7.0-rc1",
       "dependencies": {
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
@@ -44,9 +44,10 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.6.2",
+      "version": "0.7.0-rc1",
       "dependencies": {
-        "@openpalm/lib": "workspace:*",
+        "@openpalm/channels-sdk": "workspace:*",
+        "dotenv": "^16.4.7",
       },
     },
     "packages/channel-api": {
@@ -82,13 +83,6 @@
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
       "version": "0.6.2",
-    },
-    "packages/lib": {
-      "name": "@openpalm/lib",
-      "version": "0.6.2",
-      "dependencies": {
-        "dotenv": "^16.4.7",
-      },
     },
   },
   "packages": {
@@ -203,8 +197,6 @@
     "@openpalm/channels-sdk": ["@openpalm/channels-sdk@workspace:packages/channels-sdk"],
 
     "@openpalm/guardian": ["@openpalm/guardian@workspace:core/guardian"],
-
-    "@openpalm/lib": ["@openpalm/lib@workspace:packages/lib"],
 
     "@playwright/test": ["@playwright/test@1.58.2", "", { "dependencies": { "playwright": "1.58.2" }, "bin": { "playwright": "cli.js" } }, "sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA=="],
 

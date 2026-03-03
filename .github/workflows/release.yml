@@ -279,7 +279,6 @@ jobs:
 
             | Package | Version |
             |---|---|
-            | [@openpalm/lib](https://www.npmjs.com/package/@openpalm/lib) | ${{ needs.prepare-tag.outputs.version }} |
             | [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk) | ${{ needs.prepare-tag.outputs.version }} |
             | [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat) | ${{ needs.prepare-tag.outputs.version }} |
             | [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api) | ${{ needs.prepare-tag.outputs.version }} |

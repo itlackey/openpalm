@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { mergeEnvContent } from "@openpalm/lib/shared/env";
+import { mergeEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
 import { appendAudit } from "./audit.js";
