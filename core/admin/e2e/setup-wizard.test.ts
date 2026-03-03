@@ -1,5 +1,34 @@
 import { expect, test } from '@playwright/test';
 
+/**
+ * Helper: mock the /admin/setup/models endpoint so the "Test Connection"
+ * button in step 2 succeeds and populates the model list.
+ */
+async function mockModelsEndpoint(page: import('@playwright/test').Page) {
+	await page.route('**/admin/setup/models', (route) => {
+		if (route.request().method() === 'POST') {
+			return route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					models: ['llama3', 'llama3:70b', 'nomic-embed-text', 'mistral']
+				})
+			});
+		}
+		return route.continue();
+	});
+}
+
+/**
+ * Helper: navigate from step 2 (connect) through "Test Connection" so
+ * the Next button becomes enabled. Uses ollama (no API key required).
+ */
+async function completeConnectStep(page: import('@playwright/test').Page) {
+	await page.locator('#llm-provider').selectOption('ollama');
+	await page.getByRole('button', { name: 'Test Connection' }).click();
+	await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
+}
+
 test.describe('Setup Wizard', () => {
 	test('setup page loads and shows wizard with admin token step', async ({ page }) => {
 		await page.goto('/setup');
@@ -21,6 +50,7 @@ test.describe('Setup Wizard', () => {
 	});
 
 	test('wizard navigates through all 4 steps', async ({ page }) => {
+		await mockModelsEndpoint(page);
 		await page.goto('/setup');
 
 		// Step 1: Admin Token
@@ -28,44 +58,51 @@ test.describe('Setup Wizard', () => {
 		await page.locator('#admin-token').fill('my-secure-token');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 2: LLM Provider
-		await expect(page.getByTestId('step-llm')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('LLM Provider');
-		await page.locator('#openai-api-key').fill('sk-test-key-1234567890');
-		await page.locator('#openai-base-url').fill('http://host.docker.internal:11434/v1');
+		// Step 2: System LLM Connection
+		await expect(page.getByTestId('step-connect')).toBeVisible();
+		await expect(page.locator('h2')).toHaveText('System LLM Connection');
+		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 3: OpenMemory — user ID pre-populated from server-detected userId
-		await expect(page.getByTestId('step-openmemory')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('OpenMemory');
-		// Server provides detected user — just verify the field has a non-empty value
+		// Step 3: Select Models
+		await expect(page.getByTestId('step-models')).toBeVisible();
+		await expect(page.locator('h2')).toHaveText('Select Models');
+		// Verify model selects are populated
+		await expect(page.locator('#guardian-model')).toBeVisible();
+		await expect(page.locator('#memory-model')).toBeVisible();
+		await expect(page.locator('#embedding-model')).toBeVisible();
+		// OpenMemory user ID is pre-populated from server-detected userId
 		const userIdValue = await page.locator('#openmemory-user-id').inputValue();
 		expect(userIdValue.length).toBeGreaterThan(0);
 		await page.locator('#openmemory-user-id').fill('alice');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 4: Review — should show local values only
+		// Step 4: Review & Install
 		await expect(page.getByTestId('step-review')).toBeVisible();
 		await expect(page.locator('h2')).toHaveText('Review & Install');
 		// Admin token just says "Set"
 		await expect(page.getByText('Set').first()).toBeVisible();
-		// API key is masked (shows last 4 chars from local input)
-		await expect(page.locator('.review-value.mono').nth(1)).toContainText('7890');
+		// Provider shows "ollama"
+		await expect(page.getByText('ollama')).toBeVisible();
 		// User ID
 		await expect(page.getByText('alice')).toBeVisible();
 	});
 
 	test('back button navigation works through all steps', async ({ page }) => {
+		await mockModelsEndpoint(page);
 		await page.goto('/setup');
 
 		// Step 1 -> 2
 		await page.locator('#admin-token').fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByTestId('step-llm')).toBeVisible();
+		await expect(page.getByTestId('step-connect')).toBeVisible();
+
+		// Test connection so Next is enabled
+		await completeConnectStep(page);
 
 		// Step 2 -> 3
 		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByTestId('step-openmemory')).toBeVisible();
+		await expect(page.getByTestId('step-models')).toBeVisible();
 
 		// Step 3 -> 4
 		await page.getByRole('button', { name: 'Next' }).click();
@@ -73,10 +110,10 @@ test.describe('Setup Wizard', () => {
 
 		// Go back: 4 -> 3 -> 2 -> 1
 		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.getByTestId('step-openmemory')).toBeVisible();
+		await expect(page.getByTestId('step-models')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.getByTestId('step-llm')).toBeVisible();
+		await expect(page.getByTestId('step-connect')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Back' }).click();
 		await expect(page.getByTestId('step-token')).toBeVisible();
@@ -84,6 +121,8 @@ test.describe('Setup Wizard', () => {
 
 	test('install triggers POST and redirects to home', async ({ page }) => {
 		let postDone = false;
+
+		await mockModelsEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -120,6 +159,7 @@ test.describe('Setup Wizard', () => {
 		// Navigate through wizard
 		await page.locator('#admin-token').fill('my-token');
 		await page.getByRole('button', { name: 'Next' }).click();
+		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Next' }).click();
 		await expect(page.getByTestId('step-review')).toBeVisible();
@@ -131,10 +171,12 @@ test.describe('Setup Wizard', () => {
 		await page.waitForURL('/', { timeout: 10000 });
 	});
 
-	test('POST sends adminToken in request body', async ({ page }) => {
+	test('POST sends correct fields in request body', async ({ page }) => {
 		let postedBody: Record<string, unknown> = {};
 		let postHeaders: Record<string, string> = {};
 		let postDone = false;
+
+		await mockModelsEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -166,16 +208,27 @@ test.describe('Setup Wizard', () => {
 		});
 
 		await page.goto('/setup');
+
+		// Step 1: Admin Token
 		await page.locator('#admin-token').fill('secret-token-abc');
 		await page.getByRole('button', { name: 'Next' }).click();
-		await page.locator('#openai-api-key').fill('sk-test');
+
+		// Step 2: Connect — fill openai API key and test connection
+		await page.locator('#llm-api-key').fill('sk-test');
+		await page.getByRole('button', { name: 'Test Connection' }).click();
+		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
 		await page.getByRole('button', { name: 'Next' }).click();
+
+		// Step 3: Models → Step 4: Review
 		await page.getByRole('button', { name: 'Next' }).click();
+
+		// Install
 		await page.getByRole('button', { name: 'Install Stack' }).click();
 		await expect(page).toHaveURL('/');
 
 		expect(postedBody.adminToken).toBe('secret-token-abc');
-		expect(postedBody.openaiApiKey).toBe('sk-test');
+		expect(postedBody.llmApiKey).toBe('sk-test');
+		expect(postedBody.llmProvider).toBe('openai');
 		expect(postHeaders['x-admin-token']).toBeTruthy();
 	});
 
@@ -206,6 +259,8 @@ test.describe('Setup Wizard', () => {
 	test('install error shows error message and allows retry', async ({ page }) => {
 		let callCount = 0;
 		let postSucceeded = false;
+
+		await mockModelsEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -250,6 +305,7 @@ test.describe('Setup Wizard', () => {
 		// Navigate to review
 		await page.locator('#admin-token').fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
+		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Next' }).click();
 
@@ -263,6 +319,8 @@ test.describe('Setup Wizard', () => {
 	});
 
 	test('Docker unavailable returns error to UI', async ({ page }) => {
+		await mockModelsEndpoint(page);
+
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
 				return route.fulfill({
@@ -282,6 +340,7 @@ test.describe('Setup Wizard', () => {
 		// Navigate to review and install
 		await page.locator('#admin-token').fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
+		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Install Stack' }).click();
@@ -291,6 +350,8 @@ test.describe('Setup Wizard', () => {
 	});
 
 	test('Docker Compose failure returns error to UI', async ({ page }) => {
+		await mockModelsEndpoint(page);
+
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
 				return route.fulfill({
@@ -309,6 +370,7 @@ test.describe('Setup Wizard', () => {
 
 		await page.locator('#admin-token').fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
+		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Next' }).click();
 		await page.getByRole('button', { name: 'Install Stack' }).click();
@@ -318,15 +380,12 @@ test.describe('Setup Wizard', () => {
 
 	test('setup API reports setupComplete based on server state', async ({ page }) => {
 		// Verify the GET /admin/setup endpoint reflects actual server state.
-		// With ADMIN_TOKEN empty, setupComplete should be false.
+		// With OPENPALM_SETUP_COMPLETE=false, setupComplete should be false.
 		const response = await page.request.get('/admin/setup');
 		expect(response.ok()).toBeTruthy();
 		const data = await response.json();
 		expect(data).toHaveProperty('setupComplete');
 		expect(typeof data.setupComplete).toBe('boolean');
-		// The server-side +page.server.ts uses the same check to decide
-		// whether to redirect /setup → /. When setupComplete is true,
-		// the SSR redirect prevents the wizard from rendering.
 	});
 
 	test('setup endpoint does not require authentication on first run', async ({ page }) => {
