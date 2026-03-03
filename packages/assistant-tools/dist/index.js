@@ -9,60 +9,394 @@ var __export = (target, all) => {
     });
 };
 
-// opencode/plugins/memory-context.ts
+// opencode/plugins/memory-lib.ts
 var OPENMEMORY_URL = process.env.OPENMEMORY_API_URL || "http://openmemory:8765";
 var USER_ID = process.env.OPENMEMORY_USER_ID || "default_user";
-async function memorySearch(query) {
+var APP_NAME = "openpalm-assistant";
+async function pluginMemoryFetch(path, options) {
   try {
-    const res = await fetch(`${OPENMEMORY_URL}/api/v1/memories/filter`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, search_query: query, page: 1, size: 10 }),
-      signal: AbortSignal.timeout(5000)
+    const { timeoutMs, ...rest } = options ?? {};
+    const res = await fetch(`${OPENMEMORY_URL}${path}`, {
+      ...rest,
+      headers: { "content-type": "application/json", ...rest?.headers },
+      signal: rest?.signal ?? AbortSignal.timeout(timeoutMs ?? 5000)
     });
     if (!res.ok)
-      return "";
-    const data = await res.json();
-    const items = data?.items || [];
-    if (items.length === 0)
-      return "";
-    return items.map((m) => `- ${m.content}`).join(`
-`);
+      return null;
+    return await res.json();
   } catch {
-    return "";
+    return null;
   }
+}
+async function searchMemories(query, opts) {
+  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : opts.size ?? 10;
+  const data = await pluginMemoryFetch("/api/v1/memories/filter", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: USER_ID,
+      search_query: query,
+      page: 1,
+      size: fetchSize
+    })
+  });
+  let items = data?.items ?? [];
+  if (opts?.category) {
+    items = items.filter((m) => m.metadata?.category === opts.category);
+  }
+  return items.slice(0, opts?.size ?? 10);
+}
+async function addMemory(text, meta) {
+  const metadata = {
+    category: meta?.category ?? "semantic",
+    source: meta?.source ?? "auto-extract",
+    confidence: meta?.confidence ?? 0.7,
+    access_count: 0,
+    last_accessed: new Date().toISOString(),
+    ...meta
+  };
+  const data = await pluginMemoryFetch("/api/v1/memories/", {
+    method: "POST",
+    timeoutMs: 1e4,
+    body: JSON.stringify({
+      user_id: USER_ID,
+      text,
+      app: APP_NAME,
+      metadata,
+      infer: true
+    })
+  });
+  return data?.id ?? null;
 }
 async function getMemoryStats() {
-  try {
-    const res = await fetch(`${OPENMEMORY_URL}/api/v1/stats/?user_id=${encodeURIComponent(USER_ID)}`, {
-      headers: { "content-type": "application/json" },
-      signal: AbortSignal.timeout(3000)
-    });
-    if (!res.ok)
-      return "";
-    const data = await res.json();
-    return `Memory store: ${data.total_memories || 0} memories across ${data.total_apps || 0} apps.`;
-  } catch {
+  return pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(USER_ID)}`, { timeoutMs: 3000 });
+}
+async function isMemoryAvailable() {
+  return await getMemoryStats() !== null;
+}
+function formatMemoriesForContext(memories, heading) {
+  if (memories.length === 0)
     return "";
+  const lines = [];
+  if (heading)
+    lines.push(heading);
+  for (const m of memories) {
+    const tag = m.metadata?.category ? `[${m.metadata.category}]` : "";
+    lines.push(`- ${tag} ${m.content}`);
   }
+  return lines.join(`
+`);
+}
+
+// opencode/plugins/memory-hygiene.ts
+var STALE_THRESHOLD_DAYS = 30;
+var LOW_CONFIDENCE_THRESHOLD = 0.3;
+async function runQuickHygiene() {
+  const report = { duplicatesFound: 0, staleFound: 0 };
+  try {
+    const data = await pluginMemoryFetch("/api/v1/memories/filter", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: USER_ID,
+        page: 1,
+        size: 50,
+        sort_column: "created_at",
+        sort_direction: "desc"
+      })
+    });
+    const items = data?.items;
+    if (!items || items.length === 0)
+      return report;
+    const seen = new Map;
+    for (const mem of items) {
+      const key = normalise(mem.content ?? mem.memory ?? "");
+      if (!key)
+        continue;
+      if (seen.has(key)) {
+        report.duplicatesFound++;
+      } else {
+        seen.set(key, mem.id);
+      }
+    }
+    const now = Date.now();
+    for (const mem of items) {
+      const lastAccessed = mem.metadata?.last_accessed ? new Date(mem.metadata.last_accessed).getTime() : new Date(mem.created_at ?? now).getTime();
+      const daysSince = (now - lastAccessed) / (1000 * 60 * 60 * 24);
+      const confidence = mem.metadata?.confidence ?? 0.7;
+      if (daysSince > STALE_THRESHOLD_DAYS && confidence < LOW_CONFIDENCE_THRESHOLD) {
+        report.staleFound++;
+      }
+    }
+  } catch {}
+  return report;
+}
+function buildHygienePrompt(report) {
+  if (report.duplicatesFound === 0 && report.staleFound === 0)
+    return null;
+  const parts = [
+    "[SYSTEM: Memory Hygiene]",
+    "",
+    "A quick memory-store health check found potential issues:"
+  ];
+  if (report.duplicatesFound > 0) {
+    parts.push(`- ${report.duplicatesFound} potential duplicate memories detected`);
+  }
+  if (report.staleFound > 0) {
+    parts.push(`- ${report.staleFound} stale low-confidence memories found`);
+  }
+  parts.push("");
+  parts.push("Use memory-list to review and memory-delete to clean up obvious duplicates or stale entries. " + "Be conservative — only remove clearly redundant or incorrect information.");
+  return parts.join(`
+`);
+}
+function normalise(content) {
+  return content.toLowerCase().replace(/[^\w\s]/g, "").trim().slice(0, 60);
+}
+
+// opencode/plugins/memory-context.ts
+var sessions = new Map;
+var lastHygieneRunAt = 0;
+var sessionsSinceReflexion = 0;
+var HYGIENE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+var EXTRACTION_COOLDOWN_MS = 60000;
+var MIN_IDLE_COUNT_FOR_EXTRACTION = 2;
+var REFLEXION_SESSION_INTERVAL = 10;
+var REFLEXION_EPISODE_THRESHOLD = 5;
+function buildExtractionPrompt(state) {
+  return `[SYSTEM: Memory Extraction]
+
+Review the conversation so far and extract any important NEW information worth remembering long-term. For each item, call memory-add with the text and appropriate metadata JSON string.
+
+Categories (use as the "category" field in metadata):
+- "semantic" — general facts, user preferences, project decisions, technical knowledge
+- "episodic" — specific events or outcomes from this session (what happened, results, errors)
+- "procedural" — procedures, workflows, multi-step patterns that worked (how-to knowledge)
+
+For each learning, call memory-add like this:
+  memory-add({ text: "clear standalone statement", metadata: '{"category":"semantic","source":"auto-extract","session_id":"${state.sessionId}","project":"${state.project}"}' })
+
+Rules:
+- Only genuinely NEW information not already in memory
+- Write each memory as a clear, self-contained statement
+- Never store secrets, API keys, passwords, or tokens
+- Skip ephemeral details (current git branch, temp file paths)
+- Prefer quality over quantity — one precise statement over five vague ones
+- After storing memories, briefly acknowledge what you learned (e.g. "Noted for future sessions: ...")
+
+If nothing worth remembering was discussed, respond with "Nothing to extract." and no tool calls.`;
+}
+function buildReflexionPrompt(episodes, project) {
+  const episodeList = episodes.map((e) => `- ${e.content}`).join(`
+`);
+  return `[SYSTEM: Cross-Session Reflexion]
+
+Review these past session episodes for project "${project}" and extract higher-level insights — recurring patterns, successful approaches, evolving preferences, or lessons learned across sessions:
+
+${episodeList}
+
+For each insight, call memory-add with metadata:
+  memory-add({ text: "insight statement", metadata: '{"category":"semantic or procedural","source":"reflexion","project":"${project}","confidence":"0.5"}' })
+
+Rules:
+- Only extract genuinely novel insights not already captured as individual memories
+- Generalise from specific episodes into reusable knowledge
+- Prefer procedural memories for workflow patterns, semantic for facts/preferences
+
+If no new insights emerge, respond with "No new insights." and no tool calls.`;
 }
 var MemoryContextPlugin = async (ctx) => {
+  const client = ctx?.client;
   return {
-    "experimental.session.compacting": async (_input, output) => {
-      const memories = await memorySearch("user preferences project context important decisions");
-      const stats = await getMemoryStats();
-      const lines = ["## OpenMemory Context"];
-      if (stats)
-        lines.push(stats);
-      if (memories) {
+    "session.created": async (input, output) => {
+      const sessionId = input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+      const project = input?.project?.name ?? ctx?.project?.name ?? ctx?.directory ?? "unknown";
+      sessions.set(sessionId, {
+        sessionId,
+        project,
+        startedAt: new Date().toISOString(),
+        contextInjected: false,
+        idleCount: 0,
+        lastExtractionAt: 0,
+        extractedThisSession: []
+      });
+      if (!await isMemoryAvailable())
+        return;
+      const [semanticMems, proceduralMems, episodicMems, stats] = await Promise.all([
+        searchMemories("user preferences project context conventions decisions", { size: 10, category: "semantic" }),
+        searchMemories("procedures workflows patterns how to", {
+          size: 5,
+          category: "procedural"
+        }),
+        searchMemories("recent sessions outcomes results", {
+          size: 5,
+          category: "episodic"
+        }),
+        getMemoryStats()
+      ]);
+      let projectMems = [];
+      if (project !== "unknown") {
+        projectMems = await searchMemories(`${project} project specific context`, { size: 5 });
+      }
+      const lines = ["## OpenMemory — Session Context"];
+      if (stats) {
+        lines.push(`Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`);
+      }
+      lines.push("");
+      if (semanticMems.length > 0) {
+        lines.push("### Known Facts & Preferences");
+        lines.push(formatMemoriesForContext(semanticMems));
         lines.push("");
-        lines.push("### Relevant Memories");
-        lines.push("The following memories from OpenMemory should be preserved:");
-        lines.push(memories);
+      }
+      if (proceduralMems.length > 0) {
+        lines.push("### Learned Procedures");
+        lines.push("These are patterns and workflows learned from past sessions:");
+        lines.push(formatMemoriesForContext(proceduralMems));
+        lines.push("");
+      }
+      if (episodicMems.length > 0) {
+        lines.push("### Recent Session History");
+        lines.push(formatMemoriesForContext(episodicMems));
+        lines.push("");
+      }
+      if (projectMems.length > 0) {
+        lines.push(`### Project Context (${project})`);
+        lines.push(formatMemoriesForContext(projectMems));
+        lines.push("");
+      }
+      lines.push("### Memory Instructions");
+      lines.push("You have access to OpenMemory tools. Use `memory-search` to find additional context. " + "Important learnings from this session will be automatically extracted and stored. " + "Use `memory-add` explicitly for anything the auto-extraction might miss.");
+      if (output?.context) {
+        output.context.push(lines.join(`
+`));
+      }
+      const state = sessions.get(sessionId);
+      if (state)
+        state.contextInjected = true;
+      const now = Date.now();
+      if (now - lastHygieneRunAt > HYGIENE_INTERVAL_MS) {
+        lastHygieneRunAt = now;
+        try {
+          const report = await runQuickHygiene();
+          const prompt = buildHygienePrompt(report);
+          if (prompt && typeof client?.session?.prompt === "function") {
+            await client.session.prompt({
+              path: { id: sessionId },
+              body: { parts: [{ type: "text", text: prompt }] }
+            });
+          }
+        } catch {}
+      }
+      sessionsSinceReflexion++;
+      if (sessionsSinceReflexion >= REFLEXION_SESSION_INTERVAL && episodicMems.length >= REFLEXION_EPISODE_THRESHOLD && typeof client?.session?.prompt === "function") {
+        sessionsSinceReflexion = 0;
+        try {
+          const prompt = buildReflexionPrompt(episodicMems, project);
+          await client.session.prompt({
+            path: { id: sessionId },
+            body: { parts: [{ type: "text", text: prompt }] }
+          });
+        } catch {}
+      }
+    },
+    "session.idle": async (input) => {
+      const sessionId = input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+      const state = sessions.get(sessionId);
+      if (!state)
+        return;
+      state.idleCount++;
+      if (state.idleCount < MIN_IDLE_COUNT_FOR_EXTRACTION)
+        return;
+      const now = Date.now();
+      if (now - state.lastExtractionAt < EXTRACTION_COOLDOWN_MS)
+        return;
+      if (!await isMemoryAvailable())
+        return;
+      state.lastExtractionAt = now;
+      const sessionClient = input?.client ?? client;
+      if (typeof sessionClient?.session?.prompt !== "function")
+        return;
+      try {
+        const prompt = buildExtractionPrompt(state);
+        await sessionClient.session.prompt({
+          path: { id: sessionId },
+          body: { parts: [{ type: "text", text: prompt }] }
+        });
+      } catch {}
+    },
+    "session.deleted": async (input) => {
+      const sessionId = input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+      const state = sessions.get(sessionId);
+      if (!state)
+        return;
+      if (state.idleCount >= MIN_IDLE_COUNT_FOR_EXTRACTION) {
+        if (await isMemoryAvailable()) {
+          const summary = `Session in project "${state.project}" started ${state.startedAt}. ` + `${state.extractedThisSession.length} learnings extracted across ` + `${state.idleCount} exchanges.`;
+          await addMemory(summary, {
+            category: "episodic",
+            source: "auto-extract",
+            session_id: sessionId,
+            project: state.project,
+            confidence: 0.8,
+            created_by_hook: "session.deleted"
+          });
+        }
+      }
+      sessions.delete(sessionId);
+    },
+    "tool.execute.before": async (input, output) => {
+      const toolName = input?.tool?.name;
+      if (!toolName)
+        return;
+      const proceduralPrefixes = [
+        "admin-lifecycle",
+        "admin-containers",
+        "admin-channels",
+        "admin-config"
+      ];
+      if (!proceduralPrefixes.some((p) => toolName.startsWith(p)))
+        return;
+      const memories = await searchMemories(`procedure for ${toolName.replace(/_/g, " ")} operations`, { size: 3, category: "procedural" });
+      if (memories.length === 0)
+        return;
+      const guidance = formatMemoriesForContext(memories, `### Relevant Procedures for ${toolName}`);
+      if (output?.context) {
+        output.context.push(guidance);
+      }
+    },
+    "experimental.session.compacting": async (_input, output) => {
+      const sessionId = _input?.session?.id ?? _input?.properties?.sessionId ?? "unknown";
+      const state = sessions.get(sessionId);
+      const [semanticMems, proceduralMems, stats] = await Promise.all([
+        searchMemories("user preferences project context important decisions", { size: 10, category: "semantic" }),
+        searchMemories("procedures patterns workflows", {
+          size: 5,
+          category: "procedural"
+        }),
+        getMemoryStats()
+      ]);
+      const lines = ["## OpenMemory Context (Compaction)"];
+      if (stats) {
+        lines.push(`Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`);
+      }
+      if (semanticMems.length > 0) {
+        lines.push("");
+        lines.push("### Known Facts & Preferences");
+        lines.push(formatMemoriesForContext(semanticMems));
+      }
+      if (proceduralMems.length > 0) {
+        lines.push("");
+        lines.push("### Learned Procedures");
+        lines.push(formatMemoriesForContext(proceduralMems));
+      }
+      if (state) {
+        lines.push("");
+        lines.push("### Session State");
+        lines.push(`- Project: ${state.project}`);
+        lines.push(`- Session started: ${state.startedAt}`);
+        lines.push(`- Memories extracted this session: ${state.extractedThisSession.length}`);
       }
       lines.push("");
       lines.push("### Memory Instructions");
-      lines.push("You have access to OpenMemory tools. Use `memory-search` to find relevant context before starting tasks. " + "Use `memory-add` to store important learnings, user preferences, and project decisions discovered during this session.");
+      lines.push("You have access to OpenMemory tools. Use `memory-search` to find relevant context. " + "Important learnings are automatically extracted. Use `memory-add` for anything the auto-extraction might miss. " + "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).");
       output.context.push(lines.join(`
 `));
     },
@@ -12490,12 +12824,12 @@ var memory_search_default = tool({
 });
 
 // opencode/tools/memory-add.ts
-var APP_NAME = "openpalm-assistant";
+var APP_NAME2 = "openpalm-assistant";
 var memory_add_default = tool({
   description: "Store a new memory in OpenMemory. Call this when the user shares preferences, makes decisions, provides project context, states facts about themselves or their environment, or when you learn something important that should persist across sessions. The memory system will automatically extract and deduplicate facts. Write memories as clear, standalone statements.",
   args: {
     text: tool.schema.string().describe("The memory content to store. Write as a clear, self-contained statement. Examples: 'User prefers TypeScript over JavaScript', 'Project uses PostgreSQL 18 with Qdrant vector store', 'Deploy target is Docker Compose on Ubuntu 24.04'"),
-    metadata: tool.schema.string().optional().describe(`Optional JSON object of key-value metadata to attach, e.g. '{"category":"preference","project":"openpalm"}'`)
+    metadata: tool.schema.string().optional().describe(`Optional JSON object of key-value metadata. Supports 'category' ('semantic' for facts/preferences, 'episodic' for events/outcomes, 'procedural' for workflows/patterns), 'source', 'project', etc. Example: '{"category":"semantic","project":"openpalm"}'`)
   },
   async execute(args) {
     let metadata = {};
@@ -12504,12 +12838,22 @@ var memory_add_default = tool({
         metadata = JSON.parse(args.metadata);
       } catch {}
     }
+    if (!metadata.category)
+      metadata.category = "semantic";
+    if (!metadata.source)
+      metadata.source = "manual";
+    if (metadata.confidence === undefined)
+      metadata.confidence = 1;
+    if (!metadata.access_count)
+      metadata.access_count = 0;
+    if (!metadata.last_accessed)
+      metadata.last_accessed = new Date().toISOString();
     return memoryFetch("/api/v1/memories/", {
       method: "POST",
       body: JSON.stringify({
         user_id: USER_ID2,
         text: args.text,
-        app: APP_NAME,
+        app: APP_NAME2,
         metadata,
         infer: true
       })

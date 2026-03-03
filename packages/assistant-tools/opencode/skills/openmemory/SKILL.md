@@ -49,28 +49,25 @@ The assistant connects to `http://openmemory:8765` via REST API.
 
 ## Compound Memory Pattern
 
-Compound memory means the assistant improves over time by accumulating knowledge. Follow this pattern:
+Compound memory means the assistant improves over time by accumulating knowledge. Steps 1 and 2 are now **automated** by the memory-context plugin, but you can still perform them manually for targeted operations.
 
-### 1. Retrieve Before Acting
+### 1. Retrieve Before Acting (Automated)
 
-**Always search memory before starting a task:**
+On session start, the plugin automatically retrieves relevant semantic, episodic, and procedural memories and injects them as context. You can still search explicitly for deeper or more specific context:
 
 ```
 memory-search({ query: "user preferences for TypeScript projects" })
 memory-search({ query: "project architecture decisions" })
 ```
 
-This retrieves relevant context from past sessions so you don't ask questions the user has already answered.
+### 2. Learn During Interaction (Automated)
 
-### 2. Learn During Interaction
+When you finish responding, the plugin automatically extracts important learnings from the conversation and stores them with the appropriate category. You can still add memories manually for things the auto-extraction might miss:
 
-**Store important facts as you discover them:**
-
-- User preferences: "User prefers Bun over npm for package management"
-- Project decisions: "OpenPalm uses SvelteKit for the control plane UI"
-- Technical discoveries: "OpenCode custom tools must use 'args' not 'parameters'"
-- Environment facts: "Production server runs Ubuntu 24.04 with Docker Compose"
-- Behavioral preferences: "User wants concise responses, no emojis"
+```
+memory-add({ text: "User prefers Bun over npm", metadata: '{"category":"semantic"}' })
+memory-add({ text: "When deploying channels: check registry first", metadata: '{"category":"procedural"}' })
+```
 
 ### 3. Update When Things Change
 
@@ -87,6 +84,8 @@ memory-update({ memory_id: "uuid", memory_content: "Updated fact..." })
 ```
 memory-delete({ memory_ids: ["uuid1", "uuid2"] })
 ```
+
+Memory hygiene checks also run automatically once per day, prompting you to review duplicates and stale entries.
 
 ## What to Remember
 
@@ -120,16 +119,62 @@ Write memories as clear, self-contained statements that will make sense out of c
 
 ## Automatic Behavior
 
-The `memory-context` plugin automatically:
+The `memory-context` plugin provides full lifecycle automation:
 
-1. **On compaction** — injects relevant memories into the compaction prompt so context survives window resets
-2. **Shell environment** — ensures `OPENMEMORY_API_URL` and `OPENMEMORY_USER_ID` are available
+### On Session Start (`session.created`)
+- Retrieves relevant semantic, procedural, and episodic memories in parallel
+- Injects project-specific context if the working directory is identified
+- Runs a daily memory hygiene check (detects duplicates and stale entries)
+- Triggers cross-session reflexion when enough episodes have accumulated (every ~10 sessions)
+
+### During Interaction (`session.idle`)
+- After the agent finishes responding (throttled to once per 60 seconds, skipping single-turn interactions)
+- Automatically reflects on the conversation and extracts learnings using the LLM
+- Categorises memories as semantic, episodic, or procedural
+- Transparently acknowledges key learnings to the user
+
+### Before Tool Execution (`tool.execute.before`)
+- For admin operation tools, searches for relevant procedural memories
+- Injects past procedures and patterns as guidance before the tool runs
+
+### On Compaction (`experimental.session.compacting`)
+- Injects categorised memories (semantic + procedural) into the compaction context
+- Preserves session state metadata so context survives window resets
+
+### On Session End (`session.deleted`)
+- Stores an episodic summary of the session for cross-session learning
+- Cleans up per-session tracking state
+
+### Shell Environment
+- Ensures `OPENMEMORY_API_URL` and `OPENMEMORY_USER_ID` are available to child processes
+
+## Memory Categories
+
+All memories are tagged with a category in their metadata:
+
+| Category | Tag | What to Store | Examples |
+|----------|-----|--------------|----------|
+| **Semantic** | `[semantic]` | Facts, preferences, knowledge | "User prefers Bun over npm" |
+| **Episodic** | `[episodic]` | Session events, outcomes, errors | "Restarted openmemory to fix dimension mismatch" |
+| **Procedural** | `[procedural]` | Workflows, patterns, how-tos | "When adding a channel: check registry, install, verify health" |
+
+### Confidence Scoring
+
+Memories carry a confidence value (0.0–1.0):
+- **Manual** memories (via `memory-add` tool): 1.0
+- **Auto-extracted** (session.idle): 0.7
+- **Reflexion** insights (cross-session synthesis): 0.5
+
+### Cross-Session Reflexion
+
+When enough episodic memories accumulate for a project (~5+ episodes), the plugin asks the LLM to synthesise higher-level insights — recurring patterns, successful approaches, and lessons learned. These are stored as semantic or procedural memories with `source: "reflexion"`.
 
 ## When to Use This Skill
 
 Load this skill when:
-- Starting a new session and needing to recall past context
+- You need to understand how the automated memory system works
 - The user asks about their preferences or past decisions
 - You need to understand the project's technical constraints
 - Managing the memory store (browsing, cleaning up, reviewing what's stored)
 - Diagnosing why the assistant is or isn't remembering things
+- You want to manually add memories the auto-extraction might miss

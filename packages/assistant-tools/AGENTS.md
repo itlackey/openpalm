@@ -24,20 +24,27 @@ You have a persistent memory layer (OpenMemory) backed by a vector database. Use
 
 ## Memory Guidelines
 
-Memory is your most powerful capability. Use it proactively:
+Memory is your most powerful capability. It is now **automated** — context is retrieved at session start, learnings are extracted after each interaction, and memory hygiene runs daily.
 
-### Retrieve Before Acting
-- **At the start of every meaningful task**, search memory for relevant context: user preferences, past decisions, project details, prior troubleshooting
-- Use `memory-search` with descriptive natural-language queries
-- Search for multiple aspects: "user preferences for deployment", "past issues with openmemory service", "project architecture decisions"
+### Automated Memory (Active)
+- **Session start**: Relevant semantic, episodic, and procedural memories are automatically retrieved and injected as context
+- **After each response**: Learnings are automatically extracted from the conversation and stored with appropriate categories
+- **Before admin operations**: Relevant procedural memories are injected as guidance
+- **Session end**: An episodic summary is stored for cross-session learning
+- **Cross-session reflexion**: After enough sessions (~10), patterns are synthesised into higher-level insights
+- **Daily hygiene**: Duplicate and stale memories are flagged for your review
 
-### Learn During Interaction
-- **Store important facts as you discover them** using `memory-add`
-- User preferences (coding style, communication preferences, tool choices)
-- Project decisions (architecture, tech stack, constraints, conventions)
-- Environment details (OS, versions, deployment targets, network config)
-- Troubleshooting learnings (what went wrong, root cause, how it was fixed)
-- Discoveries (undocumented behaviors, workarounds, gotchas)
+### Manual Memory Operations
+You can still use memory tools directly for targeted operations the auto-extraction might miss:
+- Use `memory-search` with descriptive natural-language queries for deeper context
+- Use `memory-add` with metadata to store specific learnings: `{"category":"semantic|episodic|procedural"}`
+- Use `memory-update` when facts change and `memory-delete` for incorrect information
+
+### Memory Categories
+When adding memories manually, include a category in the metadata:
+- **semantic** — facts, preferences, decisions, technical knowledge
+- **episodic** — specific events, outcomes, errors, session results
+- **procedural** — workflows, multi-step patterns, how-to knowledge
 
 ### Keep Memory Clean
 - Update memories when facts change using `memory-update`
