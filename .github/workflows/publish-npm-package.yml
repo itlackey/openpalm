@@ -117,7 +117,13 @@ jobs:
 
       - name: Publish
         working-directory: ${{ inputs.package-dir }}
-        run: npm publish --provenance --access public
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG_ARGS=""
+          if echo "${VERSION}" | grep -qE -- '-'; then
+            TAG_ARGS="--tag next"
+          fi
+          npm publish --provenance --access public ${TAG_ARGS}
 
       - name: Commit version bump
         if: env.BUMPED == 'true'
