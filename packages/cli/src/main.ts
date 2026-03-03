@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
-import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
+const COMMANDS: readonly Command[] = ['install', 'uninstall', 'update', 'start', 'stop', 'restart', 'logs', 'status', 'service'];
 
 type Command =
   | 'install'
@@ -31,7 +31,7 @@ async function loadAdminToken(): Promise<string> {
 
   const secretsPath = join(defaultConfigHome(), 'secrets.env');
   try {
-    const text = await readFile(secretsPath, 'utf8');
+    const text = await Bun.file(secretsPath).text();
     for (const line of text.split('\n')) {
       if (!line || line.startsWith('#')) continue;
       const [key, ...rest] = line.split('=');
@@ -108,7 +108,7 @@ async function runComposeLogs(services: string[]): Promise<void> {
   const proc = Bun.spawn(['docker', ...composeArgs], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    throw new Error('Failed to fetch logs with docker compose');
+    throw new Error(`Failed to fetch logs with docker compose (exit code ${exitCode})`);
   }
 }
 
@@ -197,7 +197,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     printUsage();
     return;
   }
-  const command = rawCommand as Command;
+  if (!COMMANDS.includes(rawCommand as Command)) {
+    throw new Error(`Unknown command: ${rawCommand}`);
+  }
+
+  const command = rawCommand;
 
   if (command === 'install') {
     console.log(JSON.stringify(await adminRequest('/admin/install', { method: 'POST' }), null, 2));
