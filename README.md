@@ -156,10 +156,13 @@ bun run channel:chat:dev    # chat channel dev server
 bun run channel:api:dev     # api channel dev server
 bun run channel:discord:dev # discord channel dev server
 bun run dev:setup        # seed .dev/ dirs and configs
-bun run dev:stack        # start dev stack via docker compose
+bun run dev:stack        # start dev stack (pull images)
+bun run dev:build        # start dev stack (build from source)
 bun run test             # all non-admin tests (sdk, guardian, channels, cli)
 bun run check            # admin:check + sdk:test
 ```
+
+`dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
 
 `dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 

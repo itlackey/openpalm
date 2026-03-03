@@ -1,10 +1,15 @@
 # Local development override — builds images from source instead of pulling
 #
-# Usage (from project root):
+# Preferred usage:
+#   bun run dev:build
+#
+# Manual equivalent (from project root):
 #   docker compose --project-directory . \
 #     -f core/assets/docker-compose.yml \
-#     -f docker-compose.override.yml \
-#     --env-file .dev/config/secrets.env up --build -d
+#     -f compose.dev.yaml \
+#     --env-file .dev/state/artifacts/stack.env \
+#     --env-file .dev/state/artifacts/secrets.env \
+#     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives
 # in a different directory (core/assets/ or .dev/state/artifacts/). Without it,
