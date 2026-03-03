@@ -74,5 +74,5 @@ Not implemented in current code: setup wizard endpoints.
 5. Admin actions are authenticated and audit-logged.
 6. Connections API manages LLM provider keys without manual file editing.
 7. `upgrade` applies upstream asset and image updates.
-9. Community channels can be built using the BaseChannel SDK (`packages/lib`)
-   and the `channels/base` Docker image.
+9. Community channels can be built using the `@openpalm/channels-sdk` package
+   and the `core/channel` Docker image.
