@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/channels-sdk",
-  "version": "0.6.2",
+  "version": "0.7.0-rc1",
   "type": "module",
   "main": "src/index.ts",
   "exports": {
