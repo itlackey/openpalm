@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/guardian",
-  "version": "0.7.2-rc4",
+  "version": "0.7.2",
   "private": true,
   "license": "CC-BY-4.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@openpalm/channels-sdk": "^0.7.2-rc4",
+    "@openpalm/channels-sdk": "^0.7.2",
     "dotenv": "^16.4.7"
   }
 }

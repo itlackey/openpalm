@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/channel-discord",
-  "version": "0.7.2-rc4",
+  "version": "0.7.2",
   "type": "module",
   "license": "CC-BY-4.0",
   "repository": {
@@ -10,9 +10,9 @@
   },
   "main": "src/index.ts",
   "peerDependencies": {
-    "@openpalm/channels-sdk": "^0.7.2-rc4"
+    "@openpalm/channels-sdk": "^0.7.2"
   },
   "devDependencies": {
-    "@openpalm/channels-sdk": "^0.7.2-rc4"
+    "@openpalm/channels-sdk": "^0.7.2"
   }
 }
