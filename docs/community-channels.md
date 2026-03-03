@@ -116,4 +116,4 @@ See `packages/channels-sdk/src/channel-base.test.ts` for a full test suite.
 |---|---|
 | [`@openpalm/channel-chat`](../packages/channel-chat/) | OpenAI/Anthropic-compatible chat API |
 | [`@openpalm/channel-api`](../packages/channel-api/) | Full OpenAI + Anthropic API facade |
-| [`@openpalm/channel-discord`](../packages/channel-discord/) | Discord webhook adapter |
+| [`@openpalm/channel-discord`](../packages/channel-discord/) | Discord interactions + webhook adapter |
