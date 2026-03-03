@@ -18,12 +18,21 @@ import {
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  CORE_SERVICES
+  CORE_SERVICES,
+  writeOpenMemoryConfig,
+  readOpenMemoryConfig,
+  resolveConfigForPush,
+  pushConfigToOpenMemory,
+  EMBEDDING_DIMS,
+  type OpenMemoryConfig
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
+import { createLogger } from "@openpalm/lib/shared/logger";
 import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "./$types";
+
+const logger = createLogger("setup");
 
 function safeTokenCompare(a: string, b: string): boolean {
   if (!a || !b) return false;
@@ -108,15 +117,45 @@ export const POST: RequestHandler = async (event) => {
   if (typeof body.adminToken === "string" && body.adminToken) {
     updates.ADMIN_TOKEN = body.adminToken;
   }
-  if (typeof body.openaiApiKey === "string") {
+
+  // ── System LLM connection fields (new wizard) ──
+  const llmProvider = (body.llmProvider as string) ?? "";
+  const llmApiKey = (body.llmApiKey as string) ?? "";
+  const llmBaseUrl = (body.llmBaseUrl as string) ?? "";
+  const guardianModel = (body.guardianModel as string) ?? "";
+  const memoryModel = (body.memoryModel as string) ?? "";
+  const embeddingModel = (body.embeddingModel as string) ?? "";
+  const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
+  const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
+
+  // Map provider → env var name for the API key
+  const PROVIDER_KEY_MAP: Record<string, string> = {
+    openai: "OPENAI_API_KEY",
+    anthropic: "ANTHROPIC_API_KEY",
+    groq: "GROQ_API_KEY",
+    mistral: "MISTRAL_API_KEY",
+    google: "GOOGLE_API_KEY",
+  };
+
+  if (llmApiKey) {
+    const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";
+    updates[envVarName] = llmApiKey;
+  }
+
+  // Legacy fallback: accept old openaiApiKey field
+  if (!llmApiKey && typeof body.openaiApiKey === "string" && body.openaiApiKey) {
     updates.OPENAI_API_KEY = body.openaiApiKey;
   }
   if (typeof body.openaiBaseUrl === "string") {
     updates.OPENAI_BASE_URL = body.openaiBaseUrl;
   }
-  if (typeof body.openmemoryUserId === "string") {
-    updates.OPENMEMORY_USER_ID = body.openmemoryUserId;
+
+  if (guardianModel) {
+    updates.GUARDIAN_LLM_PROVIDER = llmProvider || "openai";
+    updates.GUARDIAN_LLM_MODEL = guardianModel;
   }
+
+  updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
   // Ensure directories and secrets.env exist before updating
   try {
@@ -137,6 +176,52 @@ export const POST: RequestHandler = async (event) => {
   // authenticated endpoints work immediately
   if (updates.ADMIN_TOKEN) {
     state.adminToken = updates.ADMIN_TOKEN;
+  }
+
+  // Build and persist OpenMemory config from wizard selections
+  if (llmProvider && memoryModel) {
+    const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
+      ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
+      : llmApiKey; // raw key if no standard env var
+
+    const llmConfig: Record<string, unknown> = {
+      model: memoryModel,
+      temperature: 0.1,
+      max_tokens: 2000,
+      api_key: apiKeyEnvRef,
+    };
+    if (llmBaseUrl.trim()) llmConfig.base_url = llmBaseUrl.trim();
+
+    // Embedding provider — for now same provider as LLM
+    const embedApiKeyRef = apiKeyEnvRef;
+    const embedConfig: Record<string, unknown> = {
+      model: embeddingModel || "text-embedding-3-small",
+      api_key: embedApiKeyRef,
+    };
+    if (llmBaseUrl.trim()) embedConfig.base_url = llmBaseUrl.trim();
+
+    // Resolve embedding dimensions
+    const lookupKey = `${llmProvider}/${embeddingModel}`;
+    const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
+
+    const omConfig: OpenMemoryConfig = {
+      mem0: {
+        llm: { provider: llmProvider, config: llmConfig },
+        embedder: { provider: llmProvider, config: embedConfig },
+        vector_store: {
+          provider: "qdrant",
+          config: {
+            collection_name: "openmemory",
+            host: "qdrant",
+            port: 6333,
+            embedding_model_dims: resolvedDims,
+          },
+        },
+      },
+      openmemory: { custom_instructions: "" },
+    };
+
+    writeOpenMemoryConfig(state.dataDir, omConfig);
   }
 
   // Run install sequence
@@ -207,6 +292,30 @@ export const POST: RequestHandler = async (event) => {
       requestId
     );
   }
+
+  // Fire-and-forget: push resolved OpenMemory config to the running container.
+  // OpenMemory may take time to start, so retry with delays.
+  void (async () => {
+    const config = readOpenMemoryConfig(state.dataDir);
+    const resolved = resolveConfigForPush(config, state.configDir);
+    const maxAttempts = 5;
+    const delayMs = 10_000;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await pushConfigToOpenMemory(resolved);
+      if (result.ok) {
+        logger.info("pushed OpenMemory config after setup install", { attempt });
+        return;
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      } else {
+        logger.warn("failed to push OpenMemory config after setup install", {
+          attempts: maxAttempts,
+          error: result.error
+        });
+      }
+    }
+  })();
 
   return jsonResponse(
     200,

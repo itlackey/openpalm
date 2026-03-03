@@ -1,5 +1,0 @@
-[test]
-# Admin uses vitest (unit/browser) and playwright (e2e) — not bun test.
-# Run admin tests via: bun run admin:test
-# Note: Bun has no test exclude option. Use `bun run test` (which scans
-# only packages/, channels/, and core/guardian/) instead of bare `bun test`.

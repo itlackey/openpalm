@@ -98,6 +98,28 @@ export type OpenMemoryConfigSaveResult = {
   persisted: boolean;
   pushed: boolean;
   pushError?: string;
+  dimensionWarning?: string;
+  dimensionMismatch?: boolean;
+};
+
+export type SystemConnectionPayload = {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  guardianModel: string;
+  memoryModel: string;
+  embeddingModel: string;
+  embeddingDims: number;
+  openmemoryUserId: string;
+  customInstructions: string;
+};
+
+export type SystemConnectionSaveResult = {
+  ok: boolean;
+  pushed: boolean;
+  pushError?: string;
+  dimensionWarning?: string;
+  dimensionMismatch?: boolean;
 };
 
 export type RegistryChannelItem = {

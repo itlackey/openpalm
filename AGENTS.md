@@ -9,7 +9,7 @@
 ## Project Overview
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose, Caddy, and OpenCode.
-Key components: `core/admin/` (SvelteKit admin UI + API), `core/guardian/` (HMAC-signed ingress), `channels/chat/` (OpenAI-compatible adapter), `core/assistant/` (OpenCode runtime config).
+Key components: `core/admin/` (SvelteKit admin UI + API), `core/guardian/` (HMAC-signed ingress), `core/channel/` (unified channel image), `channels/chat/` (OpenAI-compatible adapter), `core/assistant/` (OpenCode runtime config).
 
 See [`docs/core-principles.md`](docs/core-principles.md) for the filesystem/volume-mount contract.
 
@@ -202,6 +202,7 @@ Before submitting any change:
 | `core/admin/src/lib/server/helpers.ts` | Shared request/response utilities |
 | `core/admin/src/lib/server/docker.ts` | Docker Compose shell-out wrapper |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
+| `core/channel/Dockerfile` | Unified `channel` image build |
 | `assets/` | Bundled compose files, Caddyfile, channel overlays |
 | `core/assistant/AGENTS.md` | Assistant persona and operational guidelines |
 | `.opencode/opencode.json` | OpenCode project configuration |

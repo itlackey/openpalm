@@ -6,6 +6,8 @@ import type {
   OpenMemoryConfig,
   OpenMemoryConfigResponse,
   OpenMemoryConfigSaveResult,
+  SystemConnectionPayload,
+  SystemConnectionSaveResult,
   RegistryResponse
 } from './types.js';
 
@@ -242,6 +244,20 @@ export async function fetchProviderModels(
     return { models: [], error: `HTTP ${res.status}` };
   }
   return (await res.json()) as { models: string[]; error?: string };
+}
+
+export async function saveSystemConnection(
+  token: string,
+  payload: SystemConnectionPayload
+): Promise<SystemConnectionSaveResult> {
+  const res = await post('/admin/connections', payload, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as SystemConnectionSaveResult;
 }
 
 export async function fetchRegistry(token: string): Promise<RegistryResponse> {

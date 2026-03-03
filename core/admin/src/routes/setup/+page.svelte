@@ -10,17 +10,61 @@
   let { data }: Props = $props();
 
   // ── Wizard state ────────────────────────────────────────────────────────
-  type WizardStep = 'token' | 'llm' | 'openmemory' | 'review';
+  type WizardStep = 'token' | 'connect' | 'models' | 'review';
   let step: WizardStep = $state('token');
   let setupComplete = $state(false);
   let loading = $state(true);
 
+  // ── Provider constants (duplicated from server to avoid import) ────────
+  const LLM_PROVIDERS = [
+    'openai', 'anthropic', 'ollama', 'groq', 'together',
+    'mistral', 'deepseek', 'xai', 'lmstudio'
+  ];
+
+  const PROVIDER_DEFAULT_URLS: Record<string, string> = {
+    openai: 'https://api.openai.com',
+    groq: 'https://api.groq.com/openai',
+    mistral: 'https://api.mistral.ai',
+    together: 'https://api.together.xyz',
+    deepseek: 'https://api.deepseek.com',
+    xai: 'https://api.x.ai',
+    lmstudio: 'http://host.docker.internal:1234',
+    ollama: 'http://host.docker.internal:11434',
+  };
+
+  // Providers that don't need an API key
+  const NO_KEY_PROVIDERS = new Set(['ollama', 'lmstudio']);
+
+  const EMBEDDING_DIMS: Record<string, number> = {
+    'openai/text-embedding-3-small': 1536,
+    'openai/text-embedding-3-large': 3072,
+    'openai/text-embedding-ada-002': 1536,
+    'ollama/nomic-embed-text': 768,
+    'ollama/mxbai-embed-large': 1024,
+    'ollama/all-minilm': 384,
+    'ollama/snowflake-arctic-embed': 1024,
+  };
+
   // ── Form fields ─────────────────────────────────────────────────────────
   let adminToken = $state('');
-  let openaiApiKey = $state('');
-  let openaiBaseUrl = $state('');
-  let openmemoryUserId = $state(untrack(() => data.detectedUserId ?? 'default_user'));
   let setupSessionToken = $state(untrack(() => data.setupToken ?? ''));
+
+  // Step 2 — Connect
+  let llmProvider = $state('openai');
+  let llmApiKey = $state('');
+  let llmBaseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
+
+  // Step 3 — Models
+  let guardianModel = $state('');
+  let memoryModel = $state('');
+  let embeddingModel = $state('');
+  let embeddingDims = $state(1536);
+  let openmemoryUserId = $state(untrack(() => data.detectedUserId ?? 'default_user'));
+
+  // Model list state
+  let modelList: string[] = $state([]);
+  let modelListLoading = $state(false);
+  let modelListError = $state('');
 
   // ── Install state ───────────────────────────────────────────────────────
   let installing = $state(false);
@@ -29,6 +73,9 @@
 
   // ── Validation ──────────────────────────────────────────────────────────
   let tokenError = $state('');
+  let connectError = $state('');
+  let testingConnection = $state(false);
+  let connectionTested = $state(false);
 
   // ── API helpers ─────────────────────────────────────────────────────────
 
@@ -40,13 +87,89 @@
     };
   }
 
-  // ── Review display values (from local state only, never from server) ──
+  // ── Event handlers for provider/model changes ─────────────────────────
+
+  function handleProviderChange(newProvider: string): void {
+    llmProvider = newProvider;
+    // Auto-fill base URL if current URL is a provider default or empty
+    if (!llmBaseUrl || Object.values(PROVIDER_DEFAULT_URLS).includes(llmBaseUrl)) {
+      llmBaseUrl = PROVIDER_DEFAULT_URLS[newProvider] ?? '';
+    }
+    // Reset connection state for new provider
+    connectionTested = false;
+    modelList = [];
+    connectError = '';
+  }
+
+  function handleEmbeddingModelChange(newModel: string): void {
+    embeddingModel = newModel;
+    // Auto-fill dimensions for known models
+    const key = `${llmProvider}/${newModel}`;
+    if (EMBEDDING_DIMS[key]) {
+      embeddingDims = EMBEDDING_DIMS[key];
+    }
+  }
+
+  // ── Review display values ────────────────────────────────────────────
 
   let maskedApiKey = $derived(
-    openaiApiKey
-      ? openaiApiKey.slice(0, 3) + '...' + openaiApiKey.slice(-4)
-      : '(not set)'
+    llmApiKey
+      ? llmApiKey.slice(0, 3) + '...' + llmApiKey.slice(-4)
+      : NO_KEY_PROVIDERS.has(llmProvider) ? '(not required)' : '(not set)'
   );
+
+  let needsApiKey = $derived(!NO_KEY_PROVIDERS.has(llmProvider));
+
+  // ── Test Connection handler ──────────────────────────────────────────
+
+  async function testConnection(): Promise<void> {
+    testingConnection = true;
+    connectError = '';
+    modelListError = '';
+    try {
+      const res = await fetch('/admin/setup/models', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...buildHeaders(setupSessionToken)
+        },
+        body: JSON.stringify({
+          provider: llmProvider,
+          apiKey: llmApiKey,
+          baseUrl: llmBaseUrl,
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        connectError = data.message ?? `Connection test failed (HTTP ${res.status})`;
+        return;
+      }
+      const result = await res.json();
+      if (result.error) {
+        connectError = result.error;
+        return;
+      }
+      modelList = result.models ?? [];
+      connectionTested = true;
+
+      // Pre-select first model for each role if not already set
+      if (modelList.length > 0) {
+        if (!guardianModel) guardianModel = modelList[0];
+        if (!memoryModel) memoryModel = modelList[0];
+        if (!embeddingModel) {
+          // Try to find an embedding model
+          const embedCandidate = modelList.find(m =>
+            m.includes('embed') || m.includes('ada')
+          );
+          embeddingModel = embedCandidate ?? modelList[0];
+        }
+      }
+    } catch {
+      connectError = 'Network error — unable to reach admin API.';
+    } finally {
+      testingConnection = false;
+    }
+  }
 
   // ── Install handler ─────────────────────────────────────────────────────
 
@@ -63,8 +186,13 @@
         },
         body: JSON.stringify({
           adminToken,
-          openaiApiKey,
-          openaiBaseUrl,
+          llmProvider,
+          llmApiKey,
+          llmBaseUrl,
+          guardianModel,
+          memoryModel,
+          embeddingModel,
+          embeddingDims,
           openmemoryUserId
         })
       });
@@ -148,20 +276,20 @@
         <span class="step-line" class:active={step !== 'token'}></span>
         <button
           class="step-dot"
-          class:active={step === 'llm'}
-          class:completed={step === 'openmemory' || step === 'review'}
-          onclick={() => { if (step === 'openmemory' || step === 'review') step = 'llm'; }}
-          aria-label="Step 2: LLM Provider"
-          aria-current={step === 'llm' ? 'step' : undefined}
+          class:active={step === 'connect'}
+          class:completed={step === 'models' || step === 'review'}
+          onclick={() => { if (step === 'models' || step === 'review') step = 'connect'; }}
+          aria-label="Step 2: System LLM Connection"
+          aria-current={step === 'connect' ? 'step' : undefined}
         >2</button>
-        <span class="step-line" class:active={step === 'openmemory' || step === 'review'}></span>
+        <span class="step-line" class:active={step === 'models' || step === 'review'}></span>
         <button
           class="step-dot"
-          class:active={step === 'openmemory'}
+          class:active={step === 'models'}
           class:completed={step === 'review'}
-          onclick={() => { if (step === 'review') step = 'openmemory'; }}
-          aria-label="Step 3: OpenMemory"
-          aria-current={step === 'openmemory' ? 'step' : undefined}
+          onclick={() => { if (step === 'review') step = 'models'; }}
+          aria-label="Step 3: Models"
+          aria-current={step === 'models' ? 'step' : undefined}
         >3</button>
         <span class="step-line" class:active={step === 'review'}></span>
         <button
@@ -197,49 +325,153 @@
                 return;
               }
               tokenError = '';
-              step = 'llm';
+              step = 'connect';
             }}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: LLM Provider -->
-      {#if step === 'llm'}
-        <div class="step-content" data-testid="step-llm">
-          <h2>LLM Provider</h2>
+      <!-- Step 2: System LLM Connection -->
+      {#if step === 'connect'}
+        <div class="step-content" data-testid="step-connect">
+          <h2>System LLM Connection</h2>
+          <p class="step-description">Connect to an LLM provider for memory, embeddings, and guardian routing.</p>
+
           <div class="field-group">
-            <label for="openai-api-key">OpenAI API Key</label>
-            <input
-              id="openai-api-key"
-              type="password"
-              bind:value={openaiApiKey}
-              placeholder="sk-... (leave empty to configure later)"
-            />
-            <p class="field-hint">Required for OpenMemory embeddings. Can be added later via secrets.env.</p>
+            <label for="llm-provider">Provider</label>
+            <select
+              id="llm-provider"
+              value={llmProvider}
+              onchange={(e) => handleProviderChange(e.currentTarget.value)}
+            >
+              {#each LLM_PROVIDERS as p}
+                <option value={p}>{p}</option>
+              {/each}
+            </select>
           </div>
+
+          {#if needsApiKey}
+            <div class="field-group">
+              <label for="llm-api-key">API Key</label>
+              <input
+                id="llm-api-key"
+                type="password"
+                bind:value={llmApiKey}
+                placeholder={llmProvider === 'openai' ? 'sk-...' : 'Enter API key'}
+              />
+            </div>
+          {/if}
+
           <div class="field-group">
-            <label for="openai-base-url">OpenAI Base URL</label>
+            <label for="llm-base-url">Base URL</label>
             <input
-              id="openai-base-url"
+              id="llm-base-url"
               type="url"
-              bind:value={openaiBaseUrl}
-              placeholder="https://api.openai.com/v1 (default if empty)"
+              bind:value={llmBaseUrl}
+              placeholder="Provider base URL"
             />
-            <p class="field-hint">For Ollama: <code>http://host.docker.internal:11434/v1</code></p>
+            <p class="field-hint">
+              {#if llmProvider === 'ollama'}
+                Default: <code>http://host.docker.internal:11434</code>
+              {:else if llmProvider === 'lmstudio'}
+                Default: <code>http://host.docker.internal:1234</code>
+              {:else}
+                Leave default unless using a custom endpoint.
+              {/if}
+            </p>
           </div>
+
+          {#if connectError}
+            <p class="field-error" role="alert">{connectError}</p>
+          {/if}
+
+          {#if connectionTested}
+            <div class="connection-success" role="status">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span>Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.</span>
+            </div>
+          {/if}
+
           <div class="step-actions">
             <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
-            <button class="btn btn-primary" onclick={() => (step = 'openmemory')}>Next</button>
+            <button
+              class="btn btn-outline"
+              onclick={() => void testConnection()}
+              disabled={testingConnection || (needsApiKey && !llmApiKey.trim())}
+            >
+              {#if testingConnection}
+                <span class="spinner"></span>
+                Testing...
+              {:else}
+                Test Connection
+              {/if}
+            </button>
+            <button
+              class="btn btn-primary"
+              disabled={!connectionTested}
+              onclick={() => (step = 'models')}
+            >Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 3: OpenMemory -->
-      {#if step === 'openmemory'}
-        <div class="step-content" data-testid="step-openmemory">
-          <h2>OpenMemory</h2>
+      <!-- Step 3: Models -->
+      {#if step === 'models'}
+        <div class="step-content" data-testid="step-models">
+          <h2>Select Models</h2>
+          <p class="step-description">Choose which models to use for each role.</p>
+
           <div class="field-group">
-            <label for="openmemory-user-id">User ID</label>
+            <label for="guardian-model">Guardian Model</label>
+            <select id="guardian-model" bind:value={guardianModel}>
+              {#each modelList as m}
+                <option value={m}>{m}</option>
+              {/each}
+            </select>
+            <p class="field-hint">Used for message routing and safety decisions.</p>
+          </div>
+
+          <div class="field-group">
+            <label for="memory-model">Memory Model</label>
+            <select id="memory-model" bind:value={memoryModel}>
+              {#each modelList as m}
+                <option value={m}>{m}</option>
+              {/each}
+            </select>
+            <p class="field-hint">Used by OpenMemory for memory reasoning (mem0 LLM).</p>
+          </div>
+
+          <div class="field-group">
+            <label for="embedding-model">Embedding Model</label>
+            <select
+              id="embedding-model"
+              value={embeddingModel}
+              onchange={(e) => handleEmbeddingModelChange(e.currentTarget.value)}
+            >
+              {#each modelList as m}
+                <option value={m}>{m}</option>
+              {/each}
+            </select>
+            <p class="field-hint">Used for memory vector embeddings. Changing this later requires a collection reset.</p>
+          </div>
+
+          <div class="field-group">
+            <label for="embedding-dims">Embedding Dimensions</label>
+            <input
+              id="embedding-dims"
+              type="number"
+              bind:value={embeddingDims}
+              min="1"
+              step="1"
+            />
+            <p class="field-hint">Auto-filled for known models. Edit if using a custom model.</p>
+          </div>
+
+          <div class="field-group">
+            <label for="openmemory-user-id">OpenMemory User ID</label>
             <input
               id="openmemory-user-id"
               type="text"
@@ -248,8 +480,9 @@
             />
             <p class="field-hint">Identifies the memory owner. Use a unique name if running multiple instances.</p>
           </div>
+
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'llm')}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'connect')}>Back</button>
             <button class="btn btn-primary" onclick={() => (step = 'review')}>Next</button>
           </div>
         </div>
@@ -265,12 +498,32 @@
               <span class="review-value mono">Set</span>
             </div>
             <div class="review-item">
-              <span class="review-label">OpenAI API Key</span>
+              <span class="review-label">LLM Provider</span>
+              <span class="review-value">{llmProvider}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">API Key</span>
               <span class="review-value mono">{maskedApiKey}</span>
             </div>
             <div class="review-item">
-              <span class="review-label">OpenAI Base URL</span>
-              <span class="review-value mono">{openaiBaseUrl || '(default)'}</span>
+              <span class="review-label">Base URL</span>
+              <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Guardian Model</span>
+              <span class="review-value mono">{guardianModel}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Memory Model</span>
+              <span class="review-value mono">{memoryModel}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Embedding Model</span>
+              <span class="review-value mono">{embeddingModel}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Embedding Dimensions</span>
+              <span class="review-value mono">{embeddingDims}</span>
             </div>
             <div class="review-item">
               <span class="review-label">OpenMemory User ID</span>
@@ -283,7 +536,7 @@
           {/if}
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'openmemory')} disabled={installing}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'models')} disabled={installing}>Back</button>
             <button class="btn btn-primary" onclick={handleInstall} disabled={installing}>
               {#if installing}
                 <span class="spinner"></span>
@@ -411,6 +664,12 @@
     font-size: var(--text-lg);
     font-weight: var(--font-semibold);
     color: var(--color-text);
+    margin-bottom: var(--space-2);
+  }
+
+  .step-description {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
     margin-bottom: var(--space-4);
   }
 
@@ -426,7 +685,8 @@
     margin-bottom: var(--space-1);
   }
 
-  .field-group input {
+  .field-group input,
+  .field-group select {
     width: 100%;
     height: 40px;
     border: 1px solid var(--color-border);
@@ -437,7 +697,8 @@
     font-size: var(--text-sm);
   }
 
-  .field-group input:focus {
+  .field-group input:focus,
+  .field-group select:focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px var(--color-primary-subtle);
@@ -461,6 +722,20 @@
     margin: 0 0 var(--space-2);
     color: var(--color-danger);
     font-size: var(--text-sm);
+  }
+
+  /* ── Connection Success ──────────────────────────────────────────────── */
+  .connection-success {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-success-bg, rgba(64, 192, 87, 0.1));
+    border: 1px solid var(--color-success-border, rgba(64, 192, 87, 0.25));
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
   }
 
   /* ── Step Actions ────────────────────────────────────────────────────── */
@@ -610,6 +885,16 @@
   .btn-secondary:hover:not(:disabled) {
     background: var(--color-bg-secondary);
     border-color: var(--color-border-hover);
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+
+  .btn-outline:hover:not(:disabled) {
+    background: var(--color-primary-subtle, rgba(80, 200, 120, 0.08));
   }
 
   .spinner {

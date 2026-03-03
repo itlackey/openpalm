@@ -73,33 +73,6 @@
     gap: var(--space-3);
   }
 
-  .access-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    color: var(--color-success);
-    background: var(--color-success-bg);
-    border: 1px solid var(--color-success-border);
-    padding: 4px 12px;
-    border-radius: var(--radius-full);
-    transition: all var(--transition-normal);
-  }
-
-  .access-badge.access-public {
-    color: var(--color-warning);
-    background: var(--color-warning-bg);
-    border-color: rgba(253, 126, 20, 0.25);
-  }
-
-  .access-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
   .version-badge {
     font-size: var(--text-xs);
     font-weight: var(--font-medium);

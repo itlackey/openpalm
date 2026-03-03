@@ -87,6 +87,7 @@ Schedule recurring tasks by dropping a `.yaml` file into `~/.config/openpalm/aut
 - **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
 - **Assistant** (`core/assistant/`) — OpenCode runtime. No Docker socket. Calls Admin API for stack operations.
+- **Channel runtime** (`core/channel/`) — Unified `channel` image entrypoint used by registry channel overlays.
 - **Channel adapters** (`channels/`) — Translate external protocols into signed guardian messages.
 - **Shared lib** (`packages/lib/`) — SDK for channel validation, crypto, and logging.
 

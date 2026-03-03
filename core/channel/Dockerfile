@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY packages/channels-sdk /app/node_modules/@openpalm/channels-sdk
 
 # Startup script installs the channel package (if set) then runs the entrypoint
-COPY channels/runner/start.sh /app/start.sh
+COPY core/channel/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 RUN chown -R bun:bun /app

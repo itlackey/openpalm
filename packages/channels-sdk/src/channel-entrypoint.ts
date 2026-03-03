@@ -1,7 +1,7 @@
 /**
  * OpenPalm Channel Entrypoint — Dynamic loader for community channel adapters.
  *
- * This script is the CMD of the unified channel-runner Docker image.
+ * This script is the CMD of the unified channel Docker image.
  * It loads a channel from either an npm package or a local TypeScript file,
  * validates it exports a BaseChannel subclass, and starts the server.
  *

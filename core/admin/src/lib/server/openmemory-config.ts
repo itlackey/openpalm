@@ -49,7 +49,7 @@ export const EMBEDDING_DIMS: Record<string, number> = {
 };
 
 /** Default base URLs per provider (used when no base_url is configured). */
-const PROVIDER_DEFAULT_URLS: Record<string, string> = {
+export const PROVIDER_DEFAULT_URLS: Record<string, string> = {
   openai: "https://api.openai.com",
   groq: "https://api.groq.com/openai",
   mistral: "https://api.mistral.ai",
@@ -218,6 +218,105 @@ export function ensureOpenMemoryConfig(dataDir: string): void {
   const path = configPath(dataDir);
   if (existsSync(path)) return;
   writeOpenMemoryConfig(dataDir, getDefaultConfig());
+}
+
+// ── Config Resolution ────────────────────────────────────────────────
+
+/**
+ * Resolve all `env:VAR` references in an OpenMemoryConfig to their actual
+ * values. Used before pushing config to the OpenMemory REST API — the
+ * container receives real API keys, not env references it cannot resolve.
+ */
+export function resolveConfigForPush(
+  config: OpenMemoryConfig,
+  configDir: string
+): OpenMemoryConfig {
+  const resolved = structuredClone(config);
+
+  // Resolve LLM api_key
+  if (typeof resolved.mem0.llm.config.api_key === "string") {
+    resolved.mem0.llm.config.api_key = resolveApiKey(
+      resolved.mem0.llm.config.api_key as string,
+      configDir
+    );
+  }
+
+  // Resolve embedder api_key
+  if (typeof resolved.mem0.embedder.config.api_key === "string") {
+    resolved.mem0.embedder.config.api_key = resolveApiKey(
+      resolved.mem0.embedder.config.api_key as string,
+      configDir
+    );
+  }
+
+  return resolved;
+}
+
+// ── Qdrant Dimension Checking ───────────────────────────────────────
+
+const QDRANT_API_BASE = "http://qdrant:6333";
+
+export type QdrantDimensionResult = {
+  match: boolean;
+  currentDims?: number;
+  expectedDims: number;
+  error?: string;
+};
+
+/**
+ * Compare the current Qdrant collection dimensions against the config.
+ * Returns { match: true } if they agree or the collection doesn't exist yet.
+ */
+export async function checkQdrantDimensions(
+  config: OpenMemoryConfig
+): Promise<QdrantDimensionResult> {
+  const expectedDims = config.mem0.vector_store.config.embedding_model_dims;
+  const collectionName = config.mem0.vector_store.config.collection_name;
+  try {
+    const res = await fetch(
+      `${QDRANT_API_BASE}/collections/${encodeURIComponent(collectionName)}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (res.status === 404) {
+      // Collection doesn't exist yet — no mismatch
+      return { match: true, expectedDims };
+    }
+    if (!res.ok) {
+      return { match: true, expectedDims, error: `Qdrant returned ${res.status}` };
+    }
+    const data = (await res.json()) as {
+      result?: { config?: { params?: { vectors?: { size?: number } } } };
+    };
+    const currentDims = data.result?.config?.params?.vectors?.size;
+    if (currentDims === undefined) {
+      // Can't determine — assume OK
+      return { match: true, expectedDims };
+    }
+    return { match: currentDims === expectedDims, currentDims, expectedDims };
+  } catch (err) {
+    return { match: true, expectedDims, error: String(err) };
+  }
+}
+
+/**
+ * Delete a Qdrant collection so OpenMemory recreates it with correct dimensions.
+ */
+export async function resetQdrantCollection(
+  collectionName: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(
+      `${QDRANT_API_BASE}/collections/${encodeURIComponent(collectionName)}`,
+      { method: "DELETE", signal: AbortSignal.timeout(10000) }
+    );
+    if (!res.ok && res.status !== 404) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `Qdrant returned ${res.status}: ${text}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 }
 
 // ── Runtime API ──────────────────────────────────────────────────────────

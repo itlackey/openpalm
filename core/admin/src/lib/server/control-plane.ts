@@ -94,12 +94,17 @@ export {
   pushConfigToOpenMemory,
   fetchConfigFromOpenMemory,
   resolveApiKey,
+  resolveConfigForPush,
   fetchProviderModels,
+  checkQdrantDimensions,
+  resetQdrantCollection,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
+  PROVIDER_DEFAULT_URLS,
   type OpenMemoryConfig,
-  type ProviderModelsResult
+  type ProviderModelsResult,
+  type QdrantDimensionResult
 } from "./openmemory-config.js";
 
 // ── lifecycle.ts ──────────────────────────────────────────────────────

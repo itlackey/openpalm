@@ -3,8 +3,8 @@ set -e
 
 # Install the channel npm package if specified
 if [ -n "$CHANNEL_PACKAGE" ]; then
-  echo "Installing channel package: $CHANNEL_PACKAGE"
-  bun add "$CHANNEL_PACKAGE"
+	echo "Installing channel package: $CHANNEL_PACKAGE"
+	bun add "$CHANNEL_PACKAGE"
 fi
 
 # Run the channel entrypoint

@@ -19,6 +19,8 @@ import {
   writeOpenMemoryConfig,
   pushConfigToOpenMemory,
   fetchConfigFromOpenMemory,
+  resolveConfigForPush,
+  checkQdrantDimensions,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
@@ -73,11 +75,20 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", "Failed to write config file", {}, requestId);
   }
 
-  const pushResult = await pushConfigToOpenMemory(config);
+  // Resolve env: references before pushing to container
+  const resolved = resolveConfigForPush(config, state.configDir);
+  const pushResult = await pushConfigToOpenMemory(resolved);
+
+  // Check Qdrant dimension mismatch
+  const dimCheck = await checkQdrantDimensions(config);
+  const dimensionMismatch = !dimCheck.match;
+  const dimensionWarning = dimensionMismatch
+    ? `Embedding dimensions changed (current collection: ${dimCheck.currentDims}, config: ${dimCheck.expectedDims}). Reset the Qdrant collection to apply.`
+    : undefined;
 
   appendAudit(
     state, actor, "openmemory.config.set",
-    { pushed: pushResult.ok }, true, requestId, callerType
+    { pushed: pushResult.ok, dimensionMismatch }, true, requestId, callerType
   );
 
   return jsonResponse(200, {
@@ -85,5 +96,7 @@ export const POST: RequestHandler = async (event) => {
     persisted: true,
     pushed: pushResult.ok,
     pushError: pushResult.error,
+    dimensionWarning,
+    dimensionMismatch,
   }, requestId);
 };

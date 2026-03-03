@@ -35,7 +35,8 @@ function coreCaddyfilePath(): string {
 
 /**
  * Ensure the system-managed core Caddyfile exists in DATA_HOME.
- * This file is the source of truth for access scope policy.
+ * Seeds the bundled asset on first run. On subsequent runs, leaves the
+ * existing file intact (user may have customized access scope).
  */
 export function ensureCoreCaddyfile(): string {
   const path = coreCaddyfilePath();
@@ -79,13 +80,22 @@ function coreComposePath(): string {
 }
 
 /**
- * Ensure the system-managed core docker-compose.yml exists in DATA_HOME.
- * This file is the source of truth for the base compose definition.
+ * Ensure the system-managed core docker-compose.yml in DATA_HOME is
+ * up to date with the bundled asset. Seeds on first run; on subsequent
+ * runs, overwrites if the bundled version has changed (e.g. after an
+ * image rebuild). This prevents stale compose definitions after upgrades.
  */
 export function ensureCoreCompose(): string {
   const path = coreComposePath();
   mkdirSync(dirname(path), { recursive: true });
   if (!existsSync(path)) {
+    writeFileSync(path, coreComposeAsset);
+  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(coreComposeAsset)) {
+    // Back up the stale file before overwriting
+    const backupDir = join(dirname(path), "backups");
+    mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    copyFileSync(path, join(backupDir, `docker-compose.${ts}.yml`));
     writeFileSync(path, coreComposeAsset);
   }
   return path;
