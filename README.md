@@ -88,8 +88,9 @@ Schedule recurring tasks by dropping a `.yaml` file into `~/.config/openpalm/aut
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
 - **Assistant** (`core/assistant/`) — OpenCode runtime. No Docker socket. Calls Admin API for stack operations.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image entrypoint used by registry channel overlays.
-- **Channel adapters** (`channels/`) — Translate external protocols into signed guardian messages.
-- **Shared lib** (`packages/lib/`) — SDK for channel validation, crypto, and logging.
+- **Channel packages** (`packages/channel-*/`) — Translate external protocols into signed guardian messages.
+- **Channels SDK** (`packages/channels-sdk/`) — `BaseChannel` abstract class, HMAC crypto, logger, and payload types.
+- **Shared lib** (`packages/lib/`) — Internal library for guardian and legacy consumers.
 
 **Key rules:**
 - The **Admin API** is the sole orchestrator — no other component runs Docker commands.
@@ -117,8 +118,15 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 | Component | README |
 |---|---|
 | Assets (compose, Caddyfile) | [assets/README.md](assets/README.md) |
-| API channel | [channels/api/README.md](channels/api/README.md) |
-| Discord channel | [channels/discord/README.md](channels/discord/README.md) |
+| Admin (UI + API) | [core/admin/README.md](core/admin/README.md) |
+| Guardian | [core/guardian/README.md](core/guardian/README.md) |
+| Channel runtime | [core/channel/README.md](core/channel/README.md) |
+| Channels SDK | [packages/channels-sdk/README.md](packages/channels-sdk/README.md) |
+| Channel: API | [packages/channel-api/README.md](packages/channel-api/README.md) |
+| Channel: Chat | [packages/channel-chat/README.md](packages/channel-chat/README.md) |
+| Channel: Discord | [packages/channel-discord/README.md](packages/channel-discord/README.md) |
+| Registry | [registry/README.md](registry/README.md) |
+| Scripts | [scripts/README.md](scripts/README.md) |
 
 ## Development
 
