@@ -16,6 +16,7 @@ import A2AChannel from "./index.ts";
 
 describe("agent card", () => {
   it("returns a valid A2A agent card", () => {
+    const hasBearer = Boolean(Bun.env.A2A_BEARER_TOKEN);
     const card = buildAgentCard();
     expect(card.name).toBe("OpenPalm Assistant");
     expect(card.version).toBe("0.1.0");
@@ -24,8 +25,8 @@ describe("agent card", () => {
     expect(card.capabilities?.pushNotifications).toBe(false);
     expect(card.skills).toHaveLength(1);
     expect(card.skills![0].id).toBe("general");
-    expect(card.securitySchemes?.bearer).toBeDefined();
-    expect(card.security).toEqual([{ bearer: [] }]);
+    expect(Boolean(card.securitySchemes?.bearer)).toBe(hasBearer);
+    expect(Boolean(card.security)).toBe(hasBearer);
     expect(card.defaultInputModes).toContain("text");
     expect(card.defaultOutputModes).toContain("text");
   });

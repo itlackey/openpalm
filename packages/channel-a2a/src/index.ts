@@ -23,7 +23,6 @@ import {
   ServerCallContext,
   UnauthenticatedUser,
 } from "@a2a-js/sdk/server";
-import type { AgentCard } from "@a2a-js/sdk";
 import { buildAgentCard } from "./agent-card.ts";
 import { OpenPalmExecutor } from "./executor.ts";
 
@@ -77,81 +76,90 @@ export default class A2AChannel extends BaseChannel {
     const requestHandler = new DefaultRequestHandler(agentCard, taskStore, executor);
     const transportHandler = new JsonRpcTransportHandler(requestHandler);
 
-    Bun.serve({
-      port: this.port,
-      fetch: async (req: Request): Promise<Response> => {
-        const url = new URL(req.url);
+    try {
+      Bun.serve({
+        port: this.port,
+        fetch: async (req: Request): Promise<Response> => {
+          const url = new URL(req.url);
 
-        // Health endpoint
-        if (url.pathname === "/health" && req.method === "GET") {
-          return Response.json({ ok: true, service: "channel-a2a" });
-        }
+          // Health endpoint
+          if (url.pathname === "/health" && req.method === "GET") {
+            return Response.json({ ok: true, service: "channel-a2a" });
+          }
 
-        // Agent Card discovery — public, no auth required
-        if (
-          (url.pathname === "/.well-known/agent.json" ||
-            url.pathname === "/.well-known/agent-card.json") &&
-          req.method === "GET"
-        ) {
-          return Response.json(agentCard);
-        }
+          // Agent Card discovery — no bearer auth required
+          if (
+            (url.pathname === "/.well-known/agent.json" ||
+              url.pathname === "/.well-known/agent-card.json") &&
+            req.method === "GET"
+          ) {
+            return Response.json(agentCard);
+          }
 
-        // Only accept POST for A2A JSON-RPC
-        if (req.method !== "POST") {
-          return Response.json({ error: "not_found" }, { status: 404 });
-        }
+          // Only accept POST for A2A JSON-RPC
+          if (req.method !== "POST") {
+            return Response.json({ error: "not_found" }, { status: 404 });
+          }
 
-        // Bearer token authentication
-        if (this.bearerToken) {
-          const auth = req.headers.get("authorization");
-          if (auth !== `Bearer ${this.bearerToken}`) {
+          // Bearer token authentication
+          if (this.bearerToken) {
+            const auth = req.headers.get("authorization");
+            if (auth !== `Bearer ${this.bearerToken}`) {
+              return Response.json(
+                {
+                  jsonrpc: "2.0",
+                  error: { code: -32001, message: "Unauthorized" },
+                  id: null,
+                },
+                { status: 401 },
+              );
+            }
+          }
+
+          // Parse JSON-RPC request body
+          let body: unknown;
+          try {
+            body = await req.json();
+          } catch {
             return Response.json(
               {
                 jsonrpc: "2.0",
-                error: { code: -32001, message: "Unauthorized" },
+                error: { code: -32700, message: "Parse error" },
                 id: null,
               },
-              { status: 401 },
+              { status: 400 },
             );
           }
-        }
 
-        // Parse JSON-RPC request body
-        let body: unknown;
-        try {
-          body = await req.json();
-        } catch {
-          return Response.json(
-            {
-              jsonrpc: "2.0",
-              error: { code: -32700, message: "Parse error" },
-              id: null,
-            },
-            { status: 400 },
-          );
-        }
+          // Create server call context (no auth beyond bearer token)
+          const context = new ServerCallContext(undefined, new UnauthenticatedUser());
 
-        // Create server call context (no auth beyond bearer token)
-        const context = new ServerCallContext(undefined, new UnauthenticatedUser());
+          // Dispatch to the SDK's JSON-RPC transport handler
+          const result = await transportHandler.handle(body, context);
 
-        // Dispatch to the SDK's JSON-RPC transport handler
-        const result = await transportHandler.handle(body, context);
+          // If the result is an async generator, stream as SSE
+          if (result && typeof result === "object" && Symbol.asyncIterator in result) {
+            return this.streamSSE(result as AsyncGenerator<unknown>);
+          }
 
-        // If the result is an async generator, stream as SSE
-        if (result && typeof result === "object" && Symbol.asyncIterator in result) {
-          return this.streamSSE(result as AsyncGenerator<unknown>);
-        }
+          // Regular JSON-RPC response
+          return Response.json(result);
+        },
+      });
 
-        // Regular JSON-RPC response
-        return Response.json(result);
-      },
-    });
-
-    logger.info("started", { port: this.port });
+      logger.info("started", { port: this.port });
+    } catch (err) {
+      logger.error("failed to start server", {
+        port: this.port,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      process.exit(1);
+    }
   }
 
   /** Convert an async generator of JSON-RPC events into an SSE Response. */
   private streamSSE(generator: AsyncGenerator<unknown>): Response {
+    let streamClosed = false;
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -160,6 +168,7 @@ export default class A2AChannel extends BaseChannel {
             controller.enqueue(encoder.encode(formatSSEEvent(event)));
           }
         } catch (err) {
+          if (streamClosed) return;
           const errorEvent = {
             jsonrpc: "2.0",
             error: { code: -32603, message: `Stream error: ${err}` },
@@ -167,7 +176,16 @@ export default class A2AChannel extends BaseChannel {
           };
           controller.enqueue(encoder.encode(formatSSEEvent(errorEvent)));
         } finally {
-          controller.close();
+          if (!streamClosed) {
+            streamClosed = true;
+            controller.close();
+          }
+        }
+      },
+      async cancel() {
+        streamClosed = true;
+        if (typeof generator.return === "function") {
+          await generator.return(undefined);
         }
       },
     });
