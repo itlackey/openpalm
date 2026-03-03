@@ -18,3 +18,4 @@ test-results/.last-run.json
 .vscode/
 .opencode/
 .plans/
+packages/cli/dist/

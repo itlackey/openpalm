@@ -6,7 +6,7 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { resolveDataHome } from "./paths.js";
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
