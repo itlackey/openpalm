@@ -576,9 +576,7 @@ describe("executeAction assistant", () => {
       const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
       expect(headers["authorization"]).toBeUndefined();
     } finally {
-      if (prevPassword === undefined) {
-        delete process.env.OPENCODE_SERVER_PASSWORD;
-      } else {
+      if (prevPassword !== undefined) {
         process.env.OPENCODE_SERVER_PASSWORD = prevPassword;
       }
     }
