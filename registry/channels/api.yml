@@ -1,0 +1,19 @@
+# Channel: API — Full OpenAI + Anthropic compatible API facade
+services:
+  channel-api:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8182"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_PACKAGE: "@openpalm/channel-api"
+      CHANNEL_API_SECRET: ${CHANNEL_API_SECRET}
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8182' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
