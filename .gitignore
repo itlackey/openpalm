@@ -15,3 +15,5 @@ core/admin/coverage/
 core/admin/test-results/
 test-results/.last-run.json
 .private
+.vscode/
+.opencode/
