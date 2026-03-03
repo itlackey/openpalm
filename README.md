@@ -119,13 +119,17 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 | Assets (compose, Caddyfile) | [core/assets/README.md](core/assets/README.md) |
 | Admin (UI + API) | [core/admin/README.md](core/admin/README.md) |
 | Guardian | [core/guardian/README.md](core/guardian/README.md) |
+| Assistant | [core/assistant/README.md](core/assistant/README.md) |
 | Channel runtime | [core/channel/README.md](core/channel/README.md) |
 | Channels SDK | [packages/channels-sdk/README.md](packages/channels-sdk/README.md) |
+| Assistant tools | [packages/assistant-tools/README.md](packages/assistant-tools/README.md) |
+| CLI | [packages/cli/README.md](packages/cli/README.md) |
 | Channel: API | [packages/channel-api/README.md](packages/channel-api/README.md) |
 | Channel: Chat | [packages/channel-chat/README.md](packages/channel-chat/README.md) |
 | Channel: Discord | [packages/channel-discord/README.md](packages/channel-discord/README.md) |
 | Registry | [registry/README.md](registry/README.md) |
 | Scripts | [scripts/README.md](scripts/README.md) |
+| Docs index | [docs/README.md](docs/README.md) |
 
 ## Development
 
@@ -147,8 +151,13 @@ bun run admin:check      # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
 bun run sdk:test         # packages/channels-sdk tests
+bun run cli:test         # packages/cli tests
+bun run channel:chat:dev    # chat channel dev server
+bun run channel:api:dev     # api channel dev server
+bun run channel:discord:dev # discord channel dev server
 bun run dev:setup        # seed .dev/ dirs and configs
 bun run dev:stack        # start dev stack via docker compose
+bun run test             # all non-admin tests (sdk, guardian, channels, cli)
 bun run check            # admin:check + sdk:test
 ```
 

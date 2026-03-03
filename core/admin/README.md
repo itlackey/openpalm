@@ -16,20 +16,33 @@ SvelteKit application that serves as the single control-plane component for Open
 ```
 src/
 ├── lib/
-│   ├── server/          # Business logic (control-plane, docker, helpers)
-│   │   ├── control-plane.ts  # Barrel re-export
+│   ├── server/               # Business logic
+│   │   ├── control-plane.ts  # Barrel re-export of all modules below
 │   │   ├── types.ts          # Shared types and constants
 │   │   ├── paths.ts          # XDG path resolution
+│   │   ├── state.ts          # Runtime state factory
+│   │   ├── env.ts            # Environment/env-file utilities
 │   │   ├── channels.ts       # Channel discovery and install/uninstall
-│   │   ├── staging.ts        # Artifact staging pipeline
+│   │   ├── staging.ts        # Artifact staging pipeline (CONFIG/DATA → STATE)
+│   │   ├── core-assets.ts    # Bundled compose/Caddyfile management
 │   │   ├── lifecycle.ts      # Compose builders and lifecycle helpers
 │   │   ├── secrets.ts        # Secrets/connections CRUD
 │   │   ├── docker.ts         # Docker Compose shell-out wrapper
-│   │   └── helpers.ts        # Request/response utilities
-│   └── components/      # Svelte UI components
+│   │   ├── helpers.ts        # Request/response utilities
+│   │   ├── audit.ts          # Audit logging
+│   │   ├── registry.ts       # Channel/automation registry catalog
+│   │   ├── registry-sync.ts  # Remote registry sync
+│   │   ├── scheduler.ts      # Automations cron scheduler
+│   │   ├── setup-status.ts   # First-run setup state
+│   │   ├── openmemory-config.ts # OpenMemory provider/model config
+│   │   └── logger.ts         # Structured logger
+│   ├── components/           # Svelte UI components
+│   ├── auth.ts               # Auth utilities
+│   ├── api.ts                # Client-side API helpers
+│   └── types.ts              # Shared TypeScript types
 └── routes/
-    ├── setup/           # Setup wizard pages
-    └── admin/           # Admin API endpoints (+server.ts files)
+    ├── setup/                # Setup wizard pages
+    └── admin/                # Admin API endpoints (+server.ts files)
 ```
 
 ## Development

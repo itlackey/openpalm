@@ -42,6 +42,7 @@ Pre-built YAML automations that can be installed to `~/.config/openpalm/automati
 | `health-check.yml` | Checks admin health endpoint every 5 minutes |
 | `update-containers.yml` | Pulls and restarts updated container images |
 | `prompt-assistant.yml` | Sends a scheduled prompt to the assistant |
+| `assistant-daily-briefing.yml` | Sends a daily briefing prompt to the assistant |
 | `cleanup-logs.yml` | Cleans up old log files |
 
 Browse and install automations from the **Registry** tab in the admin console, or copy any file directly to `~/.config/openpalm/automations/`.
