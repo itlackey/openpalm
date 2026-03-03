@@ -15,7 +15,7 @@ RUN npm install
 # Copy source into monorepo layout matching Vite alias paths
 COPY core/admin/ core/admin/
 COPY packages/lib/ packages/lib/
-COPY assets/ assets/
+COPY core/assets/ core/assets/
 COPY registry/ registry/
 
 # Build SvelteKit (adapter-node produces self-contained build/)

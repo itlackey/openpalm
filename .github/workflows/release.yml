@@ -129,7 +129,7 @@ jobs:
         env:
           ADMIN_TOKEN: ci-placeholder
           POSTGRES_PASSWORD: ci-placeholder
-        run: docker compose -f assets/docker-compose.yml -f docker-compose.override.yml config -q
+        run: docker compose -f core/assets/docker-compose.yml -f docker-compose.override.yml config -q
 
   build-images:
     name: Build Docker images
@@ -249,7 +249,6 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz \
-            assets \
             core \
             packages \
             registry \

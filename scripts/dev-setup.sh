@@ -8,7 +8,7 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env   Copy assets/secrets.env to .dev/config/secrets.env if missing,
+  --seed-env   Copy core/assets/secrets.env to .dev/config/secrets.env if missing,
                and generate STATE_HOME/artifacts/stack.env with auto-detected values.
   --force      Overwrite seeded files even if they already exist.
   -h, --help   Show this help
@@ -42,11 +42,11 @@ CHANNELS_DIR="$DEV_ROOT/config/channels"
 STATE_DIR="$DEV_ROOT/state"
 DATA_DIR="$DEV_ROOT/data"
 
-CADDY_SRC="$ROOT_DIR/assets/Caddyfile"
+CADDY_SRC="$ROOT_DIR/core/assets/Caddyfile"
 CADDY_CORE_DEST="$DATA_DIR/caddy/Caddyfile"
-COMPOSE_SRC="$ROOT_DIR/assets/docker-compose.yml"
+COMPOSE_SRC="$ROOT_DIR/core/assets/docker-compose.yml"
 COMPOSE_CORE_DEST="$DATA_DIR/docker-compose.yml"
-ENV_SRC="$ROOT_DIR/assets/secrets.env"
+ENV_SRC="$ROOT_DIR/core/assets/secrets.env"
 ENV_DEST="$DEV_ROOT/config/secrets.env"
 STACK_ENV_DATA="$DATA_DIR/stack.env"
 STACK_ENV_DEST="$STATE_DIR/artifacts/stack.env"

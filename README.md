@@ -117,7 +117,7 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 
 | Component | README |
 |---|---|
-| Assets (compose, Caddyfile) | [assets/README.md](assets/README.md) |
+| Assets (compose, Caddyfile) | [core/assets/README.md](core/assets/README.md) |
 | Admin (UI + API) | [core/admin/README.md](core/admin/README.md) |
 | Guardian | [core/guardian/README.md](core/guardian/README.md) |
 | Channel runtime | [core/channel/README.md](core/channel/README.md) |
@@ -153,7 +153,7 @@ bun run dev:stack        # start dev stack via docker compose
 bun run check            # admin:check + lib:test
 ```
 
-`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## License
 

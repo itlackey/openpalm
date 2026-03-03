@@ -30,7 +30,7 @@ Install admin's dependencies at the **workspace root** (`/workspace/`) so
 │   └── dotenv/          ← resolvable from any subdirectory
 ├── core/admin/          ← SvelteKit source + vite.config.ts
 ├── packages/lib/src/    ← aliased via @openpalm/lib
-├── assets/
+├── core/assets/
 └── registry/
 ```
 

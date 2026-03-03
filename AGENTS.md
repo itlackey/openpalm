@@ -108,7 +108,7 @@ Read these before making significant changes. They are the authoritative sources
   ```
 - Use `import type` for type-only imports
 - SvelteKit path aliases: `$lib/`, `$lib/server/`, `$app/environment`
-- Custom Vite aliases: `$assets` → `assets/` (repo root), `$registry` → `registry/` (channel registry)
+- Custom Vite aliases: `$assets` → `core/assets/`, `$registry` → `registry/` (channel registry)
 - **Prefer Bun and Web Platform built-ins** before adding third-party dependencies (see `docs/bunjs-rules.md`)
 
 ### Naming
@@ -203,6 +203,6 @@ Before submitting any change:
 | `core/admin/src/lib/server/docker.ts` | Docker Compose shell-out wrapper |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `core/channel/Dockerfile` | Unified `channel` image build |
-| `assets/` | Bundled compose files, Caddyfile, channel overlays |
+| `core/assets/` | Bundled compose files, Caddyfile, channel overlays |
 | `core/assistant/AGENTS.md` | Assistant persona and operational guidelines |
 | `.opencode/opencode.json` | OpenCode project configuration |

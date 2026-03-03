@@ -284,7 +284,7 @@ download_asset() {
 
 	# Try GitHub release first, then fall back to raw.githubusercontent.com
 	local release_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/${filename}"
-	local raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/assets/${filename}"
+	local raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/core/assets/${filename}"
 
 	if curl -fsSL --retry 2 -o "$dest" "$release_url" 2>/dev/null; then
 		ok "Downloaded $filename (release)"
