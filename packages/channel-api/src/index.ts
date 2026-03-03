@@ -13,7 +13,6 @@
  */
 
 import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";
-import { createHash, timingSafeEqual } from "node:crypto";
 
 // ── Error helpers ────────────────────────────────────────────────────────
 
@@ -32,10 +31,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+/** Constant-time string comparison (XOR loop, same pattern as channels-sdk crypto.ts). */
 function safeEqual(a: string, b: string): boolean {
-  const left = createHash("sha256").update(a).digest();
-  const right = createHash("sha256").update(b).digest();
-  return timingSafeEqual(left, right);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 /**
@@ -94,6 +97,8 @@ export default class ApiChannel extends BaseChannel {
   // ── Routing ──────────────────────────────────────────────────────────
 
   async route(req: Request, url: URL): Promise<Response | null> {
+    const requestId = crypto.randomUUID();
+
     // Models listing — no auth required, useful for client discovery
     if (url.pathname === "/v1/models" && req.method === "GET") {
       return this.handleModels();
@@ -101,17 +106,17 @@ export default class ApiChannel extends BaseChannel {
 
     // OpenAI: POST /v1/chat/completions
     if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-      return this.handleChatCompletions(req);
+      return this.handleChatCompletions(req, requestId);
     }
 
     // OpenAI: POST /v1/completions
     if (url.pathname === "/v1/completions" && req.method === "POST") {
-      return this.handleCompletions(req);
+      return this.handleCompletions(req, requestId);
     }
 
     // Anthropic: POST /v1/messages
     if (url.pathname === "/v1/messages" && req.method === "POST") {
-      return this.handleAnthropicMessages(req);
+      return this.handleAnthropicMessages(req, requestId);
     }
 
     return this.json(404, openAIError("Not found"));
@@ -131,8 +136,9 @@ export default class ApiChannel extends BaseChannel {
 
   // ── POST /v1/chat/completions ────────────────────────────────────────
 
-  private async handleChatCompletions(req: Request): Promise<Response> {
+  private async handleChatCompletions(req: Request, requestId: string): Promise<Response> {
     if (!this.checkOpenAIAuth(req)) {
+      this.log("warn", "auth_failure", { requestId, path: "/v1/chat/completions" });
       return this.json(401, openAIError("Unauthorized", "authentication_error"));
     }
 
@@ -149,9 +155,10 @@ export default class ApiChannel extends BaseChannel {
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model });
-    if (answer instanceof Response) return answer; // error response
+    const answer = await this.forwardToGuardian(userId, text, { model }, openAIError, requestId);
+    if (answer instanceof Response) return answer;
 
+    this.log("info", "request_forwarded", { requestId, userId, path: "/v1/chat/completions" });
     const created = Math.floor(Date.now() / 1000);
     return this.json(200, {
       id: `chatcmpl-${crypto.randomUUID()}`,
@@ -165,8 +172,9 @@ export default class ApiChannel extends BaseChannel {
 
   // ── POST /v1/completions ─────────────────────────────────────────────
 
-  private async handleCompletions(req: Request): Promise<Response> {
+  private async handleCompletions(req: Request, requestId: string): Promise<Response> {
     if (!this.checkOpenAIAuth(req)) {
+      this.log("warn", "auth_failure", { requestId, path: "/v1/completions" });
       return this.json(401, openAIError("Unauthorized", "authentication_error"));
     }
 
@@ -193,9 +201,10 @@ export default class ApiChannel extends BaseChannel {
     const model = typeof body.model === "string" && body.model.trim() ? body.model : "openpalm";
     const userId = typeof body.user === "string" && body.user.trim() ? body.user : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model });
+    const answer = await this.forwardToGuardian(userId, text, { model }, openAIError, requestId);
     if (answer instanceof Response) return answer;
 
+    this.log("info", "request_forwarded", { requestId, userId, path: "/v1/completions" });
     const created = Math.floor(Date.now() / 1000);
     return this.json(200, {
       id: `cmpl-${crypto.randomUUID()}`,
@@ -209,8 +218,9 @@ export default class ApiChannel extends BaseChannel {
 
   // ── POST /v1/messages (Anthropic) ────────────────────────────────────
 
-  private async handleAnthropicMessages(req: Request): Promise<Response> {
+  private async handleAnthropicMessages(req: Request, requestId: string): Promise<Response> {
     if (!this.checkAnthropicAuth(req)) {
+      this.log("warn", "auth_failure", { requestId, path: "/v1/messages" });
       return this.json(401, anthropicError("Unauthorized", "authentication_error"));
     }
 
@@ -231,9 +241,10 @@ export default class ApiChannel extends BaseChannel {
       ? meta.user_id
       : "api-user";
 
-    const answer = await this.forwardToGuardian(userId, text, { model }, anthropicError);
+    const answer = await this.forwardToGuardian(userId, text, { model }, anthropicError, requestId);
     if (answer instanceof Response) return answer;
 
+    this.log("info", "request_forwarded", { requestId, userId, path: "/v1/messages" });
     return this.json(200, {
       id: `msg_${crypto.randomUUID()}`,
       type: "message",
@@ -257,16 +268,19 @@ export default class ApiChannel extends BaseChannel {
     text: string,
     metadata: Record<string, unknown>,
     formatError: (message: string, type?: string) => Record<string, unknown> = openAIError,
+    requestId?: string,
   ): Promise<string | Response> {
     let guardianResp: Response;
     try {
       guardianResp = await this.forward({ userId, text, metadata });
     } catch (err) {
-      return this.json(502, formatError(`Guardian error: ${err}`));
+      this.log("error", "guardian_fetch_failed", { requestId, error: String(err) });
+      return this.json(502, formatError("Guardian unavailable"));
     }
 
     if (!guardianResp.ok) {
       const status = guardianResp.status >= 500 ? 502 : guardianResp.status;
+      this.log("error", "guardian_error", { requestId, status: guardianResp.status });
       return this.json(status, formatError(`Guardian error (${guardianResp.status})`));
     }
 
@@ -274,6 +288,7 @@ export default class ApiChannel extends BaseChannel {
     try {
       data = await guardianResp.json() as Record<string, unknown>;
     } catch {
+      this.log("error", "guardian_invalid_json", { requestId });
       return this.json(502, formatError("Guardian returned invalid JSON"));
     }
     return typeof data.answer === "string" ? data.answer : "";
