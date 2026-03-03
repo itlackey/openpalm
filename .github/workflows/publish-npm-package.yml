@@ -48,14 +48,61 @@ jobs:
           EXPLICIT_VERSION: ${{ inputs.version }}
         run: |
           CURRENT=$(node -p "require('./package.json').version")
+
+          set_version() {
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+              pkg.version = process.argv[1];
+              fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+            " "$1"
+          }
+
+          # Compute semver increment using node (avoids npm version which
+          # chokes on workspace: protocol refs in the monorepo lockfile)
+          bump_version() {
+            node -e "
+              const cur = process.argv[1], type = process.argv[2];
+              const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
+              if (!m) { console.error('Cannot parse version: ' + cur); process.exit(1); }
+              let [, ma, mi, pa, pre] = m;
+              ma = +ma; mi = +mi; pa = +pa;
+              switch (type) {
+                case 'major':      console.log(ma+1+'.0.0'); break;
+                case 'minor':      console.log(ma+'.'+(mi+1)+'.0'); break;
+                case 'patch':      console.log(pre ? ma+'.'+mi+'.'+pa : ma+'.'+mi+'.'+(pa+1)); break;
+                case 'prerelease': {
+                  if (pre) {
+                    const parts = pre.split('.');
+                    const last = parseInt(parts[parts.length-1]);
+                    if (!isNaN(last)) { parts[parts.length-1] = String(last+1); }
+                    else { parts.push('0'); }
+                    console.log(ma+'.'+mi+'.'+pa+'-'+parts.join('.'));
+                  } else {
+                    console.log(ma+'.'+mi+'.'+(pa+1)+'-0');
+                  }
+                  break;
+                }
+                default: console.error('Unknown bump type: '+type); process.exit(1);
+              }
+            " "$1" "$2"
+          }
+
           if [ -n "${EXPLICIT_VERSION}" ]; then
-            npm version "${EXPLICIT_VERSION}" --no-git-tag-version
-            NEW=$(node -p "require('./package.json').version")
+            case "${EXPLICIT_VERSION}" in
+              major|minor|patch|prerelease)
+                NEW=$(bump_version "${CURRENT}" "${EXPLICIT_VERSION}")
+                ;;
+              *)
+                NEW="${EXPLICIT_VERSION}"
+                ;;
+            esac
+            set_version "${NEW}"
             echo "Set ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
             echo "BUMPED=true" >> "$GITHUB_ENV"
           elif npm view "${{ inputs.package-name }}@${CURRENT}" version 2>/dev/null; then
-            npm version patch --no-git-tag-version
-            NEW=$(node -p "require('./package.json').version")
+            NEW=$(bump_version "${CURRENT}" "patch")
+            set_version "${NEW}"
             echo "Bumped ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
             echo "BUMPED=true" >> "$GITHUB_ENV"
           fi
