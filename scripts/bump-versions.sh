@@ -12,17 +12,14 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Every package.json that carries a version field
-MANIFESTS=(
-  package.json
-  core/admin/package.json
-  core/guardian/package.json
-  packages/lib/package.json
-  channels/chat/package.json
-  channels/api/package.json
-  channels/discord/package.json
-  channels/base/package.json
-)
+# Build manifest list dynamically from workspace entries in root package.json
+MANIFESTS=(package.json)
+while IFS= read -r ws; do
+  MANIFESTS+=("${ws}/package.json")
+done < <(node -e "
+  const pkg = JSON.parse(require('fs').readFileSync('${ROOT}/package.json', 'utf-8'));
+  (pkg.workspaces || []).forEach(w => console.log(w));
+")
 
 for manifest in "${MANIFESTS[@]}"; do
   file="${ROOT}/${manifest}"

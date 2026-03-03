@@ -250,11 +250,10 @@ jobs:
           mkdir -p dist
           tar -czf dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz \
             assets \
-            channels \
             core \
             packages \
+            registry \
             scripts \
-            docker-compose.override.yml \
             README.md
 
       - name: Generate checksums
