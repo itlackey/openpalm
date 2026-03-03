@@ -267,6 +267,33 @@ jobs:
           name: OpenPalm ${{ needs.prepare-tag.outputs.tag }}
           prerelease: ${{ needs.prepare-tag.outputs.prerelease == 'true' }}
           generate_release_notes: true
+          body: |
+            ## Docker Images
+
+            | Image | Pull command |
+            |---|---|
+            | [openpalm/admin](https://hub.docker.com/r/openpalm/admin) | `docker pull openpalm/admin:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/guardian](https://hub.docker.com/r/openpalm/guardian) | `docker pull openpalm/guardian:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/channel](https://hub.docker.com/r/openpalm/channel) | `docker pull openpalm/channel:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
+
+            ## npm Packages
+
+            | Package | Version |
+            |---|---|
+            | [@openpalm/lib](https://www.npmjs.com/package/@openpalm/lib) | ${{ needs.prepare-tag.outputs.version }} |
+            | [@openpalm/channels-sdk](https://www.npmjs.com/package/@openpalm/channels-sdk) | ${{ needs.prepare-tag.outputs.version }} |
+            | [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat) | ${{ needs.prepare-tag.outputs.version }} |
+            | [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api) | ${{ needs.prepare-tag.outputs.version }} |
+            | [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord) | ${{ needs.prepare-tag.outputs.version }} |
+
+            ## Quick Install
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+            ```
+
+            ## What's Changed
           files: |
             dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz
             dist/checksums-sha256.txt

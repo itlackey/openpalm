@@ -17,3 +17,4 @@ test-results/.last-run.json
 .private
 .vscode/
 .opencode/
+.plans/
