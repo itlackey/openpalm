@@ -16,6 +16,7 @@ permissions:
 jobs:
   publish:
     uses: ./.github/workflows/publish-npm-package.yml
+    secrets: inherit
     with:
       package-dir: packages/channel-discord
       package-name: '@openpalm/channel-discord'
