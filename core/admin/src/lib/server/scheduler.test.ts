@@ -553,26 +553,35 @@ describe("executeAction assistant", () => {
   });
 
   test("sends no auth header when OPENCODE_SERVER_PASSWORD is unset", async () => {
+    const prevPassword = process.env.OPENCODE_SERVER_PASSWORD;
     delete process.env.OPENCODE_SERVER_PASSWORD;
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "sess1" }), { status: 200 })
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ info: {}, parts: [] }),
-          { status: 200 }
+    try {
+      const fetchSpy = vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ id: "sess1" }), { status: 200 })
         )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ info: {}, parts: [] }),
+            { status: 200 }
+          )
+        );
+
+      await executeAction(
+        { type: "assistant", content: "hello", timeout: 5000 },
+        "test-token"
       );
 
-    await executeAction(
-      { type: "assistant", content: "hello", timeout: 5000 },
-      "test-token"
-    );
-
-    const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
-    expect(headers["authorization"]).toBeUndefined();
+      const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
+      expect(headers["authorization"]).toBeUndefined();
+    } finally {
+      if (prevPassword === undefined) {
+        delete process.env.OPENCODE_SERVER_PASSWORD;
+      } else {
+        process.env.OPENCODE_SERVER_PASSWORD = prevPassword;
+      }
+    }
   });
 
   test("throws on session creation failure", async () => {
