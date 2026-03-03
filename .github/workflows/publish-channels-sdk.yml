@@ -3,9 +3,16 @@ on:
   push:
     branches: [main]
     paths: ['packages/channels-sdk/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.0, minor, prerelease). Leave empty for auto patch bump.'
+        required: false
+        type: string
 jobs:
   publish:
     uses: ./.github/workflows/publish-npm-package.yml
     with:
       package-dir: packages/channels-sdk
       package-name: '@openpalm/channels-sdk'
+      version: ${{ inputs.version || '' }}

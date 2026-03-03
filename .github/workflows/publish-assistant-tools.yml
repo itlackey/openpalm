@@ -3,6 +3,12 @@ on:
   push:
     branches: [main]
     paths: ['packages/assistant-tools/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.0, minor, prerelease). Leave empty for auto patch bump.'
+        required: false
+        type: string
 jobs:
   publish:
     uses: ./.github/workflows/publish-npm-package.yml
@@ -10,3 +16,4 @@ jobs:
       package-dir: packages/assistant-tools
       package-name: '@openpalm/assistant-tools'
       needs-build: true
+      version: ${{ inputs.version || '' }}

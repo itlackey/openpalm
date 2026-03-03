@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      version:
+        description: 'Explicit version or bump keyword (e.g. 1.2.0, minor, prerelease). Empty = auto patch bump.'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -37,11 +42,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Auto-bump patch if version already published
+      - name: Resolve version
         working-directory: ${{ inputs.package-dir }}
+        env:
+          EXPLICIT_VERSION: ${{ inputs.version }}
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          if npm view "${{ inputs.package-name }}@${CURRENT}" version 2>/dev/null; then
+          if [ -n "${EXPLICIT_VERSION}" ]; then
+            npm version "${EXPLICIT_VERSION}" --no-git-tag-version
+            NEW=$(node -p "require('./package.json').version")
+            echo "Set ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
+            echo "BUMPED=true" >> "$GITHUB_ENV"
+          elif npm view "${{ inputs.package-name }}@${CURRENT}" version 2>/dev/null; then
             npm version patch --no-git-tag-version
             NEW=$(node -p "require('./package.json').version")
             echo "Bumped ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
