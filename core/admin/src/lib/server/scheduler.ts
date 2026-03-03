@@ -332,8 +332,16 @@ function executeShellAction(action: AutomationAction): Promise<void> {
  * Execute an assistant action — creates an OpenCode session and sends the
  * prompt. Uses the same two-step pattern as the guardian: POST /session then
  * POST /session/:id/message.
+ *
+ * TODO: The HTTP client logic below (auth header, session create, session-ID
+ * validation) duplicates the guardian's `askAssistant` implementation. Extract
+ * a shared helper module and reuse it here and in the guardian to prevent drift.
  */
 async function executeAssistantAction(action: AutomationAction): Promise<void> {
+  if (!action.content) {
+    throw new Error("assistant action requires a non-empty 'content' field");
+  }
+
   const baseUrl = process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
   const password = process.env.OPENCODE_SERVER_PASSWORD;
   const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
@@ -388,8 +396,13 @@ async function executeAssistantAction(action: AutomationAction): Promise<void> {
         `assistant POST /session/${sessionId}/message ${resp.status}: ${body}`
       );
     }
-    // Response is consumed but not returned — automations are fire-and-forget.
-    // The assistant will have executed tools/actions as needed.
+    // Drain/cancel the response body so the underlying connection can be
+    // reused and resources are freed (fire-and-forget — we don't need the body).
+    try {
+      await resp.body?.cancel();
+    } catch {
+      // Ignore cancellation errors; they don't affect the automation outcome.
+    }
     logger.info("assistant action completed", { sessionId });
   } finally {
     clearTimeout(msgTimer);
