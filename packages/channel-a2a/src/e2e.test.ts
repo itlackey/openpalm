@@ -15,9 +15,9 @@
  * connect to the OpenPalm A2A channel using the standard A2A protocol.
  */
 
-import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { buildAgentCard } from "./agent-card.ts";
-import { OpenPalmExecutor, type ExecutorConfig } from "./executor.ts";
+import { OpenPalmExecutor } from "./executor.ts";
 import {
   InMemoryTaskStore,
   DefaultRequestHandler,
@@ -201,7 +201,7 @@ describe("E2E: agent card discovery", () => {
     expect(card.url).toBeDefined();
     expect(card.capabilities).toBeDefined();
     expect(card.skills).toBeDefined();
-    expect(card.securitySchemes).toBeDefined();
+    expect(Boolean(card.securitySchemes)).toBe(Boolean(Bun.env.A2A_BEARER_TOKEN));
   });
 
   it("serves agent card at /.well-known/agent.json (legacy path)", async () => {

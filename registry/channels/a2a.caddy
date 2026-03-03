@@ -4,6 +4,11 @@ handle /.well-known/agent.json {
 	reverse_proxy channel-a2a:8282
 }
 
+handle /.well-known/agent-card.json {
+	import lan_only
+	reverse_proxy channel-a2a:8282
+}
+
 # A2A JSON-RPC endpoint
 handle_path /channels/a2a/* {
 	import lan_only

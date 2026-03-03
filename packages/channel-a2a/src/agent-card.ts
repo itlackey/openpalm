@@ -9,6 +9,7 @@
 import type { AgentCard } from "@a2a-js/sdk";
 
 export function buildAgentCard(): AgentCard {
+  const bearerToken = Bun.env.A2A_BEARER_TOKEN ?? "";
   return {
     name: "OpenPalm Assistant",
     description:
@@ -21,13 +22,17 @@ export function buildAgentCard(): AgentCard {
       pushNotifications: false,
       stateTransitionHistory: true,
     },
-    securitySchemes: {
-      bearer: {
-        type: "http",
-        scheme: "bearer",
-      },
-    },
-    security: [{ bearer: [] }],
+    ...(bearerToken
+      ? {
+          securitySchemes: {
+            bearer: {
+              type: "http",
+              scheme: "bearer",
+            },
+          },
+          security: [{ bearer: [] }],
+        }
+      : {}),
     defaultInputModes: ["text"],
     defaultOutputModes: ["text"],
     skills: [
