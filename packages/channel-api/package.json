@@ -13,6 +13,6 @@
     "@openpalm/channels-sdk": "^0.7.0-rc1"
   },
   "devDependencies": {
-    "@openpalm/channels-sdk": "workspace:*"
+    "@openpalm/channels-sdk": "^0.7.0-rc1"
   }
 }

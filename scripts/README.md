@@ -42,7 +42,7 @@ Options:
 
 ### `bump-versions.sh`
 
-Updates all workspace `package.json` files to a new semver version for coordinated/manual versioning.
+Updates all workspace `package.json` files to a new semver version for coordinated/manual versioning. Also updates `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `peerDependencies` to `^<new-version>`.
 
 ```bash
 ./scripts/bump-versions.sh 1.2.3

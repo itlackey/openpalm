@@ -28,6 +28,20 @@ bun add <package> --cwd packages/foo     # workspace package dependency
 bun install --frozen-lockfile            # should pass — lock file is already updated
 ```
 
+## Cross-Package References
+
+All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `peerDependencies` use **real semver ranges** (e.g. `"^0.7.0-rc1"`), not `workspace:*`.
+
+### Why real ranges, not `workspace:*`
+
+- Bun workspaces resolve dependencies by **package name**. When a dependency matches a workspace package, Bun uses the local copy regardless of the version range. A real range like `"^0.7.0-rc1"` works identically to `"workspace:*"` during local development.
+- `workspace:*` is a Bun/pnpm-specific protocol. npm cannot resolve it, so published packages would ship the literal string `workspace:*` — breaking consumers.
+- Docker builds that `bun install --production` after copying SDK source also resolve by name, so real ranges work there too.
+
+### Keeping ranges in sync
+
+`scripts/bump-versions.sh` updates both the `version` field and all `@openpalm/*` dependency ranges across every workspace package. After bumping, all cross-references point to `^<new-version>`.
+
 ### Why Docker builds don't use lock files
 
 Docker builds install dependencies without `--frozen-lockfile`:

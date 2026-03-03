@@ -28,15 +28,21 @@ for manifest in "${MANIFESTS[@]}"; do
     continue
   fi
 
-  # Replace the top-level "version" field in-place
-  tmp=$(mktemp)
+  # Update version and @openpalm/* cross-references in-place
   node -e "
     const fs = require('fs');
     const pkg = JSON.parse(fs.readFileSync('${file}', 'utf-8'));
     pkg.version = '${VERSION}';
+    for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
+      if (!pkg[field]) continue;
+      for (const dep of Object.keys(pkg[field])) {
+        if (dep.startsWith('@openpalm/')) {
+          pkg[field][dep] = '^${VERSION}';
+        }
+      }
+    }
     fs.writeFileSync('${file}', JSON.stringify(pkg, null, 2) + '\n');
   "
-  rm -f "${tmp}"
 
   echo "  ${manifest} → ${VERSION}"
 done

@@ -52,7 +52,7 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.0-rc1",
+      "version": "0.7.0-rc3",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },
@@ -61,7 +61,7 @@
       "name": "@openpalm/channel-api",
       "version": "0.7.0-rc1",
       "devDependencies": {
-        "@openpalm/channels-sdk": "workspace:*",
+        "@openpalm/channels-sdk": "^0.7.0-rc1",
       },
       "peerDependencies": {
         "@openpalm/channels-sdk": "^0.7.0-rc1",
@@ -69,9 +69,9 @@
     },
     "packages/channel-chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.7.0-rc1",
+      "version": "0.7.0",
       "devDependencies": {
-        "@openpalm/channels-sdk": "workspace:*",
+        "@openpalm/channels-sdk": "^0.7.0-rc1",
       },
       "peerDependencies": {
         "@openpalm/channels-sdk": "^0.7.0-rc1",
@@ -81,7 +81,7 @@
       "name": "@openpalm/channel-discord",
       "version": "0.7.0-rc1",
       "devDependencies": {
-        "@openpalm/channels-sdk": "workspace:*",
+        "@openpalm/channels-sdk": "^0.7.0-rc1",
       },
       "peerDependencies": {
         "@openpalm/channels-sdk": "^0.7.0-rc1",
