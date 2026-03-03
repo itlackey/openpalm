@@ -115,8 +115,6 @@ jobs:
       - name: Publish
         working-directory: ${{ inputs.package-dir }}
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Commit version bump
         if: env.BUMPED == 'true'
