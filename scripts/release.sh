@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Bump all workspace versions, commit, push, and tag a release.
-# The push triggers npm publish workflows for all packages.
+# Bump platform versions, commit, push, and tag a release.
+# Platform packages (admin, guardian, CLI, Docker images) share a single
+# coordinated version. npm packages are versioned independently via their
+# own publish workflows.
+#
 # The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
 #
 # Usage: ./scripts/release.sh 0.7.2
@@ -29,9 +32,9 @@ if git rev-parse "${TAG}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- Bump versions ---
-echo "Bumping all packages to ${VERSION}..."
-./scripts/bump-versions.sh "${VERSION}"
+# --- Bump platform versions ---
+echo "Bumping platform packages to ${VERSION}..."
+./scripts/bump-platform.sh "${VERSION}"
 
 # --- Update lockfile ---
 echo "Updating lockfile..."
@@ -47,7 +50,7 @@ echo "Committing..."
 git add -A
 git commit -m "chore: release ${VERSION}"
 
-# --- Push (triggers npm publish workflows) ---
+# --- Push ---
 echo "Pushing to main..."
 git push origin main
 
@@ -58,6 +61,6 @@ git push origin "${TAG}"
 
 echo ""
 echo "Release ${VERSION} initiated."
-echo "  npm publishes:  triggered by push to main"
 echo "  Docker + CLI:   triggered by tag ${TAG}"
+echo "  npm packages:   versioned independently (use publish workflows)"
 echo "  Monitor:        gh run list --limit 10"

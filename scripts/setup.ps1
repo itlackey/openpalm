@@ -352,7 +352,7 @@ function Start-AdminPull {
   if ($OptNoStart) { return }
 
   Info 'Downloading admin image in the background...'
-  $image = "$(if ($env:OPENPALM_IMAGE_NAMESPACE) { $env:OPENPALM_IMAGE_NAMESPACE } else { 'openpalm' })/admin:$(if ($env:OPENPALM_IMAGE_TAG) { $env:OPENPALM_IMAGE_TAG } else { 'latest' })"
+  $image = "$(if ($env:OPENPALM_IMAGE_NAMESPACE) { $env:OPENPALM_IMAGE_NAMESPACE } else { 'openpalm' })/admin:$(Resolve-ImageTag)"
   $script:PullJob = Start-Job -ScriptBlock {
     param($Image)
     docker pull $Image | Out-String
@@ -414,6 +414,16 @@ OPENMEMORY_USER_ID=$detectedUser
   Ok 'Generated secrets.env (admin token will be set by setup wizard)'
 }
 
+function Resolve-ImageTag {
+  if ($env:OPENPALM_IMAGE_TAG) {
+    return $env:OPENPALM_IMAGE_TAG
+  }
+  if ($OptVersion -match '^v\d+\.\d+\.\d+') {
+    return $OptVersion
+  }
+  return 'latest'
+}
+
 function New-RandomHex([int]$Bytes) {
   $buffer = New-Object byte[] $Bytes
   [System.Security.Cryptography.RandomNumberGenerator]::Fill($buffer)
@@ -434,7 +444,7 @@ function Generate-StackEnv {
 
   $pgPassword = New-RandomHex 16
   $imageNamespace = if ($env:OPENPALM_IMAGE_NAMESPACE) { $env:OPENPALM_IMAGE_NAMESPACE } else { 'openpalm' }
-  $imageTag = if ($env:OPENPALM_IMAGE_TAG) { $env:OPENPALM_IMAGE_TAG } else { 'latest' }
+  $imageTag = Resolve-ImageTag
 
   @"
 # OpenPalm Stack Bootstrap — system-managed, do not edit

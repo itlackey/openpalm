@@ -8,6 +8,7 @@ admin/build/
 CLAUDE.md
 core/admin/.svelte-kit/
 core/admin/build/
+core/admin/undefined/
 core/admin/.env
 core/admin/.env.local
 core/admin/test-results/.last-run.json
@@ -18,5 +19,5 @@ test-results/.last-run.json
 .vscode/
 .opencode/
 .plans/
-packages/cli/dist/
+core/cli/dist/
 package-lock.json

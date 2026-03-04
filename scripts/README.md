@@ -42,7 +42,7 @@ Options:
 
 ### `release.sh`
 
-Bumps all workspace versions, runs tests, commits, pushes, and tags a release in one step. The push triggers npm publish workflows for all packages; the tag triggers the Release workflow (Docker images, CLI binaries, GitHub release).
+Bumps platform package versions, runs tests, commits, pushes, and tags a release. The tag triggers the Release workflow (Docker images, CLI binaries, GitHub release). npm packages are **not** bumped — they are versioned independently via per-package publish workflows.
 
 ```bash
 ./scripts/release.sh 0.7.2        # stable release
@@ -51,15 +51,15 @@ Bumps all workspace versions, runs tests, commits, pushes, and tags a release in
 
 Aborts if the working tree is dirty or the tag already exists.
 
-### `bump-versions.sh`
+### `bump-platform.sh`
 
-Updates all workspace `package.json` files to a new semver version for coordinated/manual versioning. Also updates `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `peerDependencies` to `^<new-version>`.
+Updates platform `package.json` files (root, `core/admin`, `core/guardian`, `core/cli`) to a new semver version. Does not touch npm packages or dependency cross-references.
 
 ```bash
-./scripts/bump-versions.sh 1.2.3
+./scripts/bump-platform.sh 1.2.3
 ```
 
-For npm package publishing, each package has its own GitHub Actions workflow that publishes when its version field changes on `main`.
+npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant-tools`) are versioned independently via their own GitHub Actions publish workflows.
 
 ## Development scripts
 

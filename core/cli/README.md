@@ -48,7 +48,7 @@ bun run build:linux-x64        # Cross-compile (also: linux-arm64, darwin-x64, d
 ## Development
 
 ```bash
-cd packages/cli
+cd core/cli
 bun run start -- install --no-start
 bun test
 ```

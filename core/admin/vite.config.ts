@@ -4,8 +4,10 @@ import devtoolsJson from "vite-plugin-devtools-json";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { loadEnv } from "vite";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 
 const rootDir = resolve(__dirname, "../..");
+const adminPkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8"));
 
 /** Keys whose values are filesystem paths and must be resolved relative to rootDir */
 const PATH_KEYS = new Set([
@@ -32,6 +34,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [sveltekit(), devtoolsJson()],
+    define: {
+      __APP_VERSION__: JSON.stringify(adminPkg.version)
+    },
     envDir: rootDir,
     resolve: {
       alias: {

@@ -42,6 +42,13 @@
         "vitest-browser-svelte": "^2.0.2",
       },
     },
+    "core/cli": {
+      "name": "@openpalm/cli",
+      "version": "0.7.3",
+      "bin": {
+        "openpalm": "./src/main.ts",
+      },
+    },
     "core/guardian": {
       "name": "@openpalm/guardian",
       "version": "0.7.3",
@@ -52,7 +59,7 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.3",
+      "version": "0.7.4",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },
@@ -90,13 +97,6 @@
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
       "version": "0.7.3",
-    },
-    "packages/cli": {
-      "name": "@openpalm/cli",
-      "version": "0.7.3",
-      "bin": {
-        "openpalm": "./src/main.ts",
-      },
     },
   },
   "packages": {
@@ -216,7 +216,7 @@
 
     "@openpalm/channels-sdk": ["@openpalm/channels-sdk@workspace:packages/channels-sdk"],
 
-    "@openpalm/cli": ["@openpalm/cli@workspace:packages/cli"],
+    "@openpalm/cli": ["@openpalm/cli@workspace:core/cli"],
 
     "@openpalm/guardian": ["@openpalm/guardian@workspace:core/guardian"],
 
