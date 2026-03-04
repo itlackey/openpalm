@@ -77,6 +77,7 @@ export {
   ensureCoreCompose,
   readCoreCompose,
   ensureOpenCodeSystemConfig,
+  ensureOpenMemoryPatch,
   stagedEnvFile,
   stagedStackEnvFile,
   buildEnvFiles,

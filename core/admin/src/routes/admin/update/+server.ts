@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureSecrets, ensureXdgDirs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
+import { applyUpdate, appendAudit, ensureSecrets, ensureXdgDirs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureOpenMemoryPatch, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import type { RequestHandler } from "./$types";
 
@@ -22,6 +22,7 @@ export const POST: RequestHandler = async (event) => {
   ensureXdgDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
+  ensureOpenMemoryPatch();
   ensureSecrets(state);
   const result = applyUpdate(state);
 

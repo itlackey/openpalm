@@ -37,7 +37,7 @@ done
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEV_ROOT="$ROOT_DIR/.dev"
 
-CONFIG_DIR="$DEV_ROOT/config/opencode"
+CONFIG_DIR="$DEV_ROOT/config/assistant"
 CHANNELS_DIR="$DEV_ROOT/config/channels"
 STATE_DIR="$DEV_ROOT/state"
 DATA_DIR="$DEV_ROOT/data"
