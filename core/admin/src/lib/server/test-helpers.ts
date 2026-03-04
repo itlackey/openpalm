@@ -43,7 +43,6 @@ export function makeTestState(overrides: Partial<ControlPlaneState> = {}): Contr
   return {
     adminToken: "test-admin-token",
     setupToken: "test-setup-token",
-    postgresPassword: "test-pg-password",
     stateDir,
     configDir,
     dataDir,

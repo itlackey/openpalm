@@ -256,15 +256,6 @@ describe("persistArtifacts", () => {
     expect(manifest[1].name).toBe("caddyfile");
   });
 
-  test("persists system secrets (postgres password) in stack.env", () => {
-    persistArtifacts(state);
-
-    const stackEnvPath = join(state.stateDir, "artifacts", "stack.env");
-    expect(existsSync(stackEnvPath)).toBe(true);
-    const content = readFileSync(stackEnvPath, "utf-8");
-    expect(content).toContain(`POSTGRES_PASSWORD=${state.postgresPassword}`);
-  });
-
   test("generates channel secrets for discovered channels", () => {
     seedConfigChannels(state.configDir, [
       { name: "chat", yml: "services: {}" }
@@ -289,7 +280,6 @@ describe("persistArtifacts", () => {
     expect(content).toContain(`OPENPALM_CONFIG_HOME=${state.configDir}`);
     expect(content).toContain(`OPENPALM_DATA_HOME=${state.dataDir}`);
     expect(content).toContain(`OPENPALM_STATE_HOME=${state.stateDir}`);
-    expect(content).toContain(`POSTGRES_PASSWORD=${state.postgresPassword}`);
   });
 
   test("stages channel yml files from CONFIG to STATE", () => {

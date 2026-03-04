@@ -72,11 +72,10 @@ describe("getDefaultConfig", () => {
     expect(config.mem0.embedder.config.model).toBe("text-embedding-3-small");
   });
 
-  test("returns config with qdrant vector store", () => {
+  test("returns config with qdrant vector store using embedded path", () => {
     const config = getDefaultConfig();
     expect(config.mem0.vector_store.provider).toBe("qdrant");
-    expect(config.mem0.vector_store.config.host).toBe("qdrant");
-    expect(config.mem0.vector_store.config.port).toBe(6333);
+    expect(config.mem0.vector_store.config.path).toBe("/data/qdrant");
     expect(config.mem0.vector_store.config.embedding_model_dims).toBe(1536);
   });
 
@@ -512,151 +511,67 @@ describe("resolveConfigForPush", () => {
 // ── checkQdrantDimensions ─────────────────────────────────────────────
 
 describe("checkQdrantDimensions", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-  const originalFetch = globalThis.fetch;
+  test("returns match=true when dimensions agree", () => {
+    const dataDir = trackDir(makeTempDir());
+    const persisted = getDefaultConfig();
+    writeOpenMemoryConfig(dataDir, persisted);
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  function stubFetch(response: Response | Error) {
-    mockFetch = vi.fn();
-    if (response instanceof Error) {
-      mockFetch.mockRejectedValue(response);
-    } else {
-      mockFetch.mockResolvedValue(response);
-    }
-    globalThis.fetch = mockFetch as unknown as typeof fetch;
-  }
-
-  test("returns match=true when collection does not exist (404)", async () => {
-    stubFetch(new Response("", { status: 404 }));
-
-    const config = getDefaultConfig();
-    const result = await checkQdrantDimensions(config);
-    expect(result.match).toBe(true);
-    expect(result.expectedDims).toBe(1536);
-  });
-
-  test("returns match=true when dimensions agree", async () => {
-    stubFetch(
-      new Response(
-        JSON.stringify({
-          result: { config: { params: { vectors: { size: 1536 } } } },
-        }),
-        { status: 200 }
-      )
-    );
-
-    const config = getDefaultConfig();
-    const result = await checkQdrantDimensions(config);
+    const newConfig = getDefaultConfig();
+    const result = checkQdrantDimensions(dataDir, newConfig);
     expect(result.match).toBe(true);
     expect(result.currentDims).toBe(1536);
     expect(result.expectedDims).toBe(1536);
   });
 
-  test("returns match=false when dimensions differ", async () => {
-    stubFetch(
-      new Response(
-        JSON.stringify({
-          result: { config: { params: { vectors: { size: 768 } } } },
-        }),
-        { status: 200 }
-      )
-    );
+  test("returns match=false when dimensions differ", () => {
+    const dataDir = trackDir(makeTempDir());
+    const persisted = getDefaultConfig();
+    writeOpenMemoryConfig(dataDir, persisted);
 
-    const config = getDefaultConfig();
-    const result = await checkQdrantDimensions(config);
+    const newConfig = getDefaultConfig();
+    newConfig.mem0.vector_store.config.embedding_model_dims = 3072;
+    const result = checkQdrantDimensions(dataDir, newConfig);
     expect(result.match).toBe(false);
-    expect(result.currentDims).toBe(768);
-    expect(result.expectedDims).toBe(1536);
+    expect(result.currentDims).toBe(1536);
+    expect(result.expectedDims).toBe(3072);
   });
 
-  test("returns match=true on network error (graceful degradation)", async () => {
-    stubFetch(new Error("Connection refused"));
-
-    const config = getDefaultConfig();
-    const result = await checkQdrantDimensions(config);
+  test("returns match=true when no persisted config exists (uses defaults)", () => {
+    const dataDir = trackDir(makeTempDir());
+    const newConfig = getDefaultConfig();
+    const result = checkQdrantDimensions(dataDir, newConfig);
     expect(result.match).toBe(true);
-    expect(result.error).toContain("Connection refused");
-  });
-
-  test("returns match=true when vector size not in response", async () => {
-    stubFetch(
-      new Response(JSON.stringify({ result: {} }), { status: 200 })
-    );
-
-    const config = getDefaultConfig();
-    const result = await checkQdrantDimensions(config);
-    expect(result.match).toBe(true);
-  });
-
-  test("calls correct Qdrant API URL with collection name", async () => {
-    stubFetch(new Response("", { status: 404 }));
-
-    const config = getDefaultConfig();
-    config.mem0.vector_store.config.collection_name = "my-memories";
-    await checkQdrantDimensions(config);
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://qdrant:6333/collections/my-memories",
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
-    );
   });
 });
 
 // ── resetQdrantCollection ─────────────────────────────────────────────
 
 describe("resetQdrantCollection", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-  const originalFetch = globalThis.fetch;
+  test("returns ok=true when qdrant directory exists", () => {
+    const dataDir = trackDir(makeTempDir());
+    const { mkdirSync } = require("node:fs");
+    mkdirSync(join(dataDir, "openmemory", "qdrant", "collections"), { recursive: true });
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
+    const result = resetQdrantCollection(dataDir);
+    expect(result.ok).toBe(true);
+    expect(existsSync(join(dataDir, "openmemory", "qdrant"))).toBe(false);
   });
 
-  function stubFetch(response: Response | Error) {
-    mockFetch = vi.fn();
-    if (response instanceof Error) {
-      mockFetch.mockRejectedValue(response);
-    } else {
-      mockFetch.mockResolvedValue(response);
-    }
-    globalThis.fetch = mockFetch as unknown as typeof fetch;
-  }
-
-  test("returns ok=true on successful delete", async () => {
-    stubFetch(new Response("", { status: 200 }));
-    const result = await resetQdrantCollection("openmemory");
+  test("returns ok=true when qdrant directory does not exist", () => {
+    const dataDir = trackDir(makeTempDir());
+    const result = resetQdrantCollection(dataDir);
     expect(result.ok).toBe(true);
   });
 
-  test("returns ok=true when collection already gone (404)", async () => {
-    stubFetch(new Response("", { status: 404 }));
-    const result = await resetQdrantCollection("openmemory");
+  test("cleans up nested qdrant data", () => {
+    const dataDir = trackDir(makeTempDir());
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    const qdrantDir = join(dataDir, "openmemory", "qdrant");
+    mkdirSync(join(qdrantDir, "collections", "openmemory"), { recursive: true });
+    writeFileSync(join(qdrantDir, "collections", "openmemory", "data.bin"), "test");
+
+    const result = resetQdrantCollection(dataDir);
     expect(result.ok).toBe(true);
-  });
-
-  test("returns ok=false on server error", async () => {
-    stubFetch(new Response("Internal error", { status: 500 }));
-    const result = await resetQdrantCollection("openmemory");
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("500");
-  });
-
-  test("returns ok=false on network error", async () => {
-    stubFetch(new Error("Connection refused"));
-    const result = await resetQdrantCollection("openmemory");
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain("Connection refused");
-  });
-
-  test("sends DELETE request to correct URL", async () => {
-    stubFetch(new Response("", { status: 200 }));
-    await resetQdrantCollection("my-collection");
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://qdrant:6333/collections/my-collection",
-      expect.objectContaining({ method: "DELETE" })
-    );
+    expect(existsSync(qdrantDir)).toBe(false);
   });
 });

@@ -226,7 +226,7 @@
         }
         if (result.dimensionMismatch) {
           dimensionMismatch = true;
-          dimensionWarning = result.dimensionWarning ?? 'Embedding dimensions changed. Reset the Qdrant collection to apply.';
+          dimensionWarning = result.dimensionWarning ?? 'Embedding dimensions changed. Reset the memory collection to apply.';
         }
 
         onRefresh();
@@ -244,7 +244,7 @@
     const token = getAdminToken();
     if (!token) return;
 
-    if (!confirm('This will delete all stored memories in the Qdrant collection. OpenMemory will recreate the collection with the correct dimensions. Continue?')) {
+    if (!confirm('This will delete all stored memories. The collection will be recreated with the correct dimensions on restart. Continue?')) {
       return;
     }
 
@@ -265,7 +265,7 @@
         dimensionWarning = '';
       } else {
         const data = await res.json().catch(() => ({})) as { message?: string };
-        saveError = data.message ?? 'Failed to reset Qdrant collection.';
+        saveError = data.message ?? 'Failed to reset memory collection.';
       }
     } catch {
       saveError = 'Unable to reach admin API.';
@@ -375,7 +375,7 @@
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
-        <span>Qdrant collection reset. OpenMemory will recreate it with the new dimensions.</span>
+        <span>Memory collection reset. Restart OpenMemory to recreate it with the new dimensions.</span>
         <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => resetSuccess = false}>
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

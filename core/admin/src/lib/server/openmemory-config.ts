@@ -5,7 +5,7 @@
  * that controls which LLM/embedding provider OpenMemory uses. Also provides
  * runtime push/fetch via the OpenMemory REST API at /api/v1/config/.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { loadSecretsEnvFile } from "./secrets.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -18,8 +18,7 @@ export type OpenMemoryConfig = {
       provider: "qdrant";
       config: {
         collection_name: string;
-        host: string;
-        port: number;
+        path: string;
         embedding_model_dims: number;
       };
     };
@@ -176,8 +175,7 @@ export function getDefaultConfig(): OpenMemoryConfig {
         provider: "qdrant",
         config: {
           collection_name: "openmemory",
-          host: "qdrant",
-          port: 6333,
+          path: "/data/qdrant",
           embedding_model_dims: 1536,
         },
       },
@@ -252,66 +250,44 @@ export function resolveConfigForPush(
   return resolved;
 }
 
-// ── Qdrant Dimension Checking ───────────────────────────────────────
-
-const QDRANT_API_BASE = "http://qdrant:6333";
+// ── Dimension Checking ──────────────────────────────────────────────
 
 export type QdrantDimensionResult = {
   match: boolean;
   currentDims?: number;
   expectedDims: number;
-  error?: string;
 };
 
 /**
- * Compare the current Qdrant collection dimensions against the config.
- * Returns { match: true } if they agree or the collection doesn't exist yet.
+ * Compare the persisted config's embedding dimensions against a new config.
+ * Since Qdrant runs in embedded mode inside the OpenMemory container,
+ * we can't query its HTTP API directly. Instead we compare the persisted
+ * config (which reflects the collection's actual dimensions) against the
+ * incoming config to detect mismatches.
  */
-export async function checkQdrantDimensions(
-  config: OpenMemoryConfig
-): Promise<QdrantDimensionResult> {
-  const expectedDims = config.mem0.vector_store.config.embedding_model_dims;
-  const collectionName = config.mem0.vector_store.config.collection_name;
-  try {
-    const res = await fetch(
-      `${QDRANT_API_BASE}/collections/${encodeURIComponent(collectionName)}`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (res.status === 404) {
-      // Collection doesn't exist yet — no mismatch
-      return { match: true, expectedDims };
-    }
-    if (!res.ok) {
-      return { match: true, expectedDims, error: `Qdrant returned ${res.status}` };
-    }
-    const data = (await res.json()) as {
-      result?: { config?: { params?: { vectors?: { size?: number } } } };
-    };
-    const currentDims = data.result?.config?.params?.vectors?.size;
-    if (currentDims === undefined) {
-      // Can't determine — assume OK
-      return { match: true, expectedDims };
-    }
-    return { match: currentDims === expectedDims, currentDims, expectedDims };
-  } catch (err) {
-    return { match: true, expectedDims, error: String(err) };
-  }
+export function checkQdrantDimensions(
+  dataDir: string,
+  newConfig: OpenMemoryConfig
+): QdrantDimensionResult {
+  const expectedDims = newConfig.mem0.vector_store.config.embedding_model_dims;
+  const persisted = readOpenMemoryConfig(dataDir);
+  const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
+  return { match: currentDims === expectedDims, currentDims, expectedDims };
 }
 
 /**
- * Delete a Qdrant collection so OpenMemory recreates it with correct dimensions.
+ * Delete the embedded Qdrant data directory so OpenMemory recreates the
+ * collection with correct dimensions on next startup.
+ *
+ * The OpenMemory container must be restarted after this operation.
  */
-export async function resetQdrantCollection(
-  collectionName: string
-): Promise<{ ok: boolean; error?: string }> {
+export function resetQdrantCollection(
+  dataDir: string
+): { ok: boolean; error?: string } {
+  const qdrantPath = `${dataDir}/openmemory/qdrant`;
   try {
-    const res = await fetch(
-      `${QDRANT_API_BASE}/collections/${encodeURIComponent(collectionName)}`,
-      { method: "DELETE", signal: AbortSignal.timeout(10000) }
-    );
-    if (!res.ok && res.status !== 404) {
-      const text = await res.text().catch(() => "");
-      return { ok: false, error: `Qdrant returned ${res.status}: ${text}` };
+    if (existsSync(qdrantPath)) {
+      rmSync(qdrantPath, { recursive: true, force: true });
     }
     return { ok: true };
   } catch (err) {

@@ -183,8 +183,7 @@ function stageStackEnv(state: ControlPlaneState): void {
 
   // Admin-managed dynamic values to merge into the staged file
   const adminManaged: Record<string, string> = {
-    OPENPALM_SETUP_COMPLETE: state.adminToken ? "true" : "false",
-    POSTGRES_PASSWORD: state.postgresPassword
+    OPENPALM_SETUP_COMPLETE: state.adminToken ? "true" : "false"
   };
   for (const [ch, secret] of Object.entries(state.channelSecrets)) {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
@@ -195,7 +194,7 @@ function stageStackEnv(state: ControlPlaneState): void {
   });
 
   // Update DATA_HOME/stack.env with merged content so persisted values
-  // (POSTGRES_PASSWORD, channel secrets) survive admin restarts.
+  // (channel secrets) survive admin restarts.
   writeFileSync(dataStackEnv, content);
 
   // Stage to STATE_HOME/artifacts/ for compose consumption
@@ -241,9 +240,6 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
     "# ── OpenMemory ──────────────────────────────────────────────────────",
     `OPENMEMORY_DASHBOARD_API_URL=${process.env.OPENMEMORY_DASHBOARD_API_URL ?? "http://localhost:8765"}`,
     `OPENMEMORY_USER_ID=${process.env.OPENMEMORY_USER_ID ?? "default_user"}`,
-    "",
-    "# ── Database ────────────────────────────────────────────────────────",
-    `POSTGRES_PASSWORD=${state.postgresPassword}`,
     "",
     "# ── Channel HMAC Secrets ────────────────────────────────────────────",
     ""

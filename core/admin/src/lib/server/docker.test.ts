@@ -306,11 +306,11 @@ describe("composeStop", () => {
     mockExecSuccess();
 
     const { composeStop } = await import("./docker.js");
-    await composeStop("/state", ["postgres"]);
+    await composeStop("/state", ["openmemory"]);
 
     const args = capturedArgs();
     expect(args).toContain("stop");
-    expect(args).toContain("postgres");
+    expect(args).toContain("openmemory");
   });
 });
 

@@ -212,8 +212,7 @@ export const POST: RequestHandler = async (event) => {
           provider: "qdrant",
           config: {
             collection_name: "openmemory",
-            host: "qdrant",
-            port: 6333,
+            path: "/data/qdrant",
             embedding_model_dims: resolvedDims,
           },
         },

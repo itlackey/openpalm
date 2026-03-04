@@ -156,25 +156,6 @@ describe("createState", () => {
     process.env.ADMIN_TOKEN = origEnv.ADMIN_TOKEN;
   });
 
-  test("loads persisted postgres password from stack.env", () => {
-    const base = trackDir(makeTempDir());
-    process.env.OPENPALM_CONFIG_HOME = join(base, "config");
-    process.env.OPENPALM_STATE_HOME = join(base, "state");
-    process.env.OPENPALM_DATA_HOME = join(base, "data");
-    delete process.env.ADMIN_TOKEN;
-
-    // Seed DATA_HOME/stack.env with a known password
-    const dataDir = join(base, "data");
-    mkdirSync(dataDir, { recursive: true });
-    writeFileSync(
-      join(dataDir, "stack.env"),
-      "# Stack config\nPOSTGRES_PASSWORD=persisted-pg-pass\n"
-    );
-
-    const state = createState();
-    expect(state.postgresPassword).toBe("persisted-pg-pass");
-  });
-
   test("loads persisted channel secrets from stack.env", () => {
     const base = trackDir(makeTempDir());
     process.env.OPENPALM_CONFIG_HOME = join(base, "config");
@@ -225,17 +206,6 @@ describe("createState", () => {
     expect(state.adminToken).toBe("explicit-token");
   });
 
-  test("generates random postgres password when not persisted", () => {
-    const base = trackDir(makeTempDir());
-    process.env.OPENPALM_CONFIG_HOME = join(base, "config");
-    process.env.OPENPALM_STATE_HOME = join(base, "state");
-    process.env.OPENPALM_DATA_HOME = join(base, "data");
-
-    const state = createState();
-    // Should be a hex string (32 chars for 16 bytes)
-    expect(state.postgresPassword).toMatch(/^[a-f0-9]{32}$/);
-  });
-
   test("initializes all core services as stopped", () => {
     const base = trackDir(makeTempDir());
     process.env.OPENPALM_CONFIG_HOME = join(base, "config");
@@ -252,10 +222,8 @@ describe("createState", () => {
 // ── Core Service Constants ──────────────────────────────────────────────
 
 describe("CORE_SERVICES", () => {
-  test("includes all expected services from docs", () => {
+  test("includes all expected services", () => {
     expect(CORE_SERVICES).toContain("caddy");
-    expect(CORE_SERVICES).toContain("postgres");
-    expect(CORE_SERVICES).toContain("qdrant");
     expect(CORE_SERVICES).toContain("openmemory");
     expect(CORE_SERVICES).toContain("openmemory-ui");
     expect(CORE_SERVICES).toContain("assistant");
@@ -263,8 +231,8 @@ describe("CORE_SERVICES", () => {
     expect(CORE_SERVICES).toContain("admin");
   });
 
-  test("has exactly 8 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(8);
+  test("has exactly 6 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(6);
   });
 });
 
@@ -303,7 +271,7 @@ describe("applyUpdate", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
-    state.services = { admin: "running", guardian: "running", postgres: "stopped" };
+    state.services = { admin: "running", guardian: "running", openmemory: "stopped" };
 
     mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
@@ -314,7 +282,7 @@ describe("applyUpdate", () => {
     const result = applyUpdate(state);
     expect(result.restarted).toContain("admin");
     expect(result.restarted).toContain("guardian");
-    expect(result.restarted).not.toContain("postgres");
+    expect(result.restarted).not.toContain("openmemory");
   });
 });
 

@@ -190,8 +190,7 @@ async function handleUnifiedSave(
         provider: "qdrant",
         config: {
           collection_name: "openmemory",
-          host: "qdrant",
-          port: 6333,
+          path: "/data/qdrant",
           embedding_model_dims: resolvedDims,
         },
       },
@@ -213,17 +212,13 @@ async function handleUnifiedSave(
     pushError = String(err);
   }
 
-  // 4. Check Qdrant dimensions
+  // 4. Check embedding dimension change
   let dimensionWarning: string | undefined;
   let dimensionMismatch = false;
-  try {
-    const dimResult = await checkQdrantDimensions(omConfig);
-    if (!dimResult.match) {
-      dimensionMismatch = true;
-      dimensionWarning = `Embedding dimensions changed: collection has ${dimResult.currentDims}, config expects ${dimResult.expectedDims}. Reset the collection to apply.`;
-    }
-  } catch {
-    // Qdrant not reachable — non-fatal
+  const dimResult = checkQdrantDimensions(state.dataDir, omConfig);
+  if (!dimResult.match) {
+    dimensionMismatch = true;
+    dimensionWarning = `Embedding dimensions changed: current ${dimResult.currentDims}, config expects ${dimResult.expectedDims}. Reset the memory collection to apply.`;
   }
 
   appendAudit(

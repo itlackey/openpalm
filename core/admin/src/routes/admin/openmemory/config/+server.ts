@@ -79,11 +79,11 @@ export const POST: RequestHandler = async (event) => {
   const resolved = resolveConfigForPush(config, state.configDir);
   const pushResult = await pushConfigToOpenMemory(resolved);
 
-  // Check Qdrant dimension mismatch
-  const dimCheck = await checkQdrantDimensions(config);
+  // Check embedding dimension mismatch against persisted config
+  const dimCheck = checkQdrantDimensions(state.dataDir, config);
   const dimensionMismatch = !dimCheck.match;
   const dimensionWarning = dimensionMismatch
-    ? `Embedding dimensions changed (current collection: ${dimCheck.currentDims}, config: ${dimCheck.expectedDims}). Reset the Qdrant collection to apply.`
+    ? `Embedding dimensions changed (current: ${dimCheck.currentDims}, config: ${dimCheck.expectedDims}). Reset the memory collection to apply.`
     : undefined;
 
   appendAudit(
