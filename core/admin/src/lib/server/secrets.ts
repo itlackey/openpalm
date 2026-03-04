@@ -10,7 +10,7 @@ import type { ControlPlaneState } from "./types.js";
 import { resolveConfigHome } from "./paths.js";
 
 /**
- * Minimal opencode.json seeded into CONFIG_HOME/opencode/ on first install.
+ * Minimal opencode.json seeded into CONFIG_HOME/assistant/ on first install.
  * Contains only the schema reference so OpenCode can validate it — no provider
  * config is included, preserving user credentials and choices.
  */
@@ -203,7 +203,7 @@ export function loadSecretsEnvFile(configDir?: string): Record<string, string> {
 // ── OpenCode Config ────────────────────────────────────────────────────
 
 /**
- * Seed a starter OpenCode config directory into CONFIG_HOME/opencode/ on first install.
+ * Seed a starter OpenCode config directory into CONFIG_HOME/assistant/ on first install.
  *
  * Creates opencode.json (schema reference only) and three subdirectories —
  * tools/, plugins/, skills/ — so the user has a ready-made layout to extend.
@@ -212,7 +212,7 @@ export function loadSecretsEnvFile(configDir?: string): Record<string, string> {
  */
 export function ensureOpenCodeConfig(): void {
   const configHome = resolveConfigHome();
-  const opencodePath = `${configHome}/opencode`;
+  const opencodePath = `${configHome}/assistant`;
   mkdirSync(opencodePath, { recursive: true });
 
   const configFile = `${opencodePath}/opencode.json`;

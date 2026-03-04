@@ -262,7 +262,7 @@ create_directories() {
 		# CONFIG_HOME — user-editable
 		"$CONFIG_HOME"
 		"$CONFIG_HOME/channels"
-		"$CONFIG_HOME/opencode"
+		"$CONFIG_HOME/assistant"
 		"$CONFIG_HOME/automations"
 
 		# DATA_HOME — persistent service data
@@ -493,7 +493,7 @@ EOF
 seed_opencode() {
 	header "Seeding OpenCode config"
 
-	local opencode_dir="${CONFIG_HOME}/opencode"
+	local opencode_dir="${CONFIG_HOME}/assistant"
 	local config_file="${opencode_dir}/opencode.json"
 
 	# Write-once: skip if config already exists

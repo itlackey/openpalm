@@ -175,7 +175,7 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
   const dirs = [
     configHome,
     join(configHome, 'channels'),
-    join(configHome, 'opencode'),
+    join(configHome, 'assistant'),
     join(configHome, 'automations'),
     dataHome,
     join(dataHome, 'openmemory'),
@@ -185,11 +185,13 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
     join(dataHome, 'caddy', 'data'),
     join(dataHome, 'caddy', 'config'),
     join(dataHome, 'automations'),
+    join(dataHome, 'opencode'),
     stateHome,
     join(stateHome, 'artifacts'),
     join(stateHome, 'audit'),
     join(stateHome, 'artifacts', 'channels'),
     join(stateHome, 'automations'),
+    join(stateHome, 'opencode'),
     workDir,
   ];
 
@@ -224,7 +226,7 @@ async function ensureStackEnv(configHome: string, dataHome: string, stateHome: s
 }
 
 async function ensureOpenCodeConfig(configHome: string): Promise<void> {
-  const opencodeDir = join(configHome, 'opencode');
+  const opencodeDir = join(configHome, 'assistant');
   const configFile = join(opencodeDir, 'opencode.json');
   if (!(await Bun.file(configFile).exists())) {
     await Bun.write(configFile, '{\n  "$schema": "https://opencode.ai/config.json"\n}\n');
@@ -232,6 +234,48 @@ async function ensureOpenCodeConfig(configHome: string): Promise<void> {
   await mkdir(join(opencodeDir, 'tools'), { recursive: true });
   await mkdir(join(opencodeDir, 'plugins'), { recursive: true });
   await mkdir(join(opencodeDir, 'skills'), { recursive: true });
+}
+
+async function writeIfChanged(path: string, content: string): Promise<void> {
+  const file = Bun.file(path);
+  if (await file.exists()) {
+    const existing = await file.text();
+    if (existing === content) {
+      return;
+    }
+  }
+  await Bun.write(path, content);
+}
+
+async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
+  const opencodeSystemDir = join(dataHome, 'assistant');
+  await mkdir(opencodeSystemDir, { recursive: true });
+
+  const systemConfig = join(opencodeSystemDir, 'opencode.jsonc');
+  const systemConfigContent =
+    JSON.stringify(
+      {
+        "$schema": "https://opencode.ai/config.json",
+        "model": "opencode/big-pickle",
+        "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
+      },
+      null,
+      2,
+    ) + "\n";
+  await writeIfChanged(systemConfig, systemConfigContent);
+
+  const agentsFile = join(opencodeSystemDir, 'AGENTS.md');
+  const assetsAgentsPath = join(import.meta.dir, '..', '..', 'assets', 'AGENTS.md');
+  let agentsContent: string;
+  if (await Bun.file(assetsAgentsPath).exists()) {
+    agentsContent = await Bun.file(assetsAgentsPath).text();
+  } else {
+    agentsContent =
+      '# OpenPalm Assistant\n\n' +
+      'This file defines the assistant persona.\n' +
+      'It is seeded by the CLI on first install and managed by the admin on subsequent updates.\n';
+  }
+  await writeIfChanged(agentsFile, agentsContent);
 }
 
 async function runDockerCompose(args: string[]): Promise<void> {
@@ -314,6 +358,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await ensureSecrets(configHome);
   await ensureStackEnv(configHome, dataHome, stateHome, workDir);
   await ensureOpenCodeConfig(configHome);
+  await ensureOpenCodeSystemConfig(dataHome);
 
   if (options.noStart) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');

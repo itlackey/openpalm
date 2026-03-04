@@ -15,6 +15,10 @@ import coreComposeAsset from "$assets/docker-compose.yml?raw";
 import caddyfileAsset from "$assets/Caddyfile?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import openmemoryMemoryPyAsset from "$assets/openmemory-memory.py?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import opencodeConfigAsset from "$assets/opencode.jsonc?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import agentsMdAsset from "$assets/AGENTS.md?raw";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -135,6 +139,40 @@ export function readCoreCompose(): string {
   return readFileSync(path, "utf-8");
 }
 
+// ── OpenCode System Config (DATA_HOME source of truth) ──────────────
+
+/**
+ * Ensure the system-managed OpenCode config exists in DATA_HOME/assistant/.
+ * Seeds opencode.jsonc and AGENTS.md from bundled assets. On subsequent
+ * runs, overwrites if the bundled version has changed (e.g. after an
+ * image rebuild). Backs up stale files before overwriting.
+ */
+export function ensureOpenCodeSystemConfig(): void {
+  const dir = `${resolveDataHome()}/assistant`;
+  mkdirSync(dir, { recursive: true });
+  writeIfChanged(`${dir}/opencode.jsonc`, opencodeConfigAsset);
+  writeIfChanged(`${dir}/AGENTS.md`, agentsMdAsset);
+}
+
+/**
+ * Write content to a file if it has changed, backing up the old version.
+ */
+function writeIfChanged(path: string, content: string): void {
+  if (!existsSync(path)) {
+    writeFileSync(path, content);
+    return;
+  }
+  const existing = readFileSync(path, "utf-8");
+  if (sha256(existing) === sha256(content)) return;
+
+  const backupDir = join(dirname(path), "backups");
+  mkdirSync(backupDir, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const basename = path.split("/").pop()!;
+  copyFileSync(path, join(backupDir, `${basename}.${ts}`));
+  writeFileSync(path, content);
+}
+
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
 
 const REPO = "itlackey/openpalm";
@@ -153,7 +191,9 @@ function sha256(content: string): string {
 const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
   { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
-  { dataRelPath: "openmemory/memory.py", githubFilename: "openmemory-memory.py" }
+  { dataRelPath: "openmemory/memory.py", githubFilename: "openmemory-memory.py" },
+  { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
+  { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" }
 ];
 
 /**

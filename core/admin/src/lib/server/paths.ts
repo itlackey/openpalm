@@ -2,7 +2,7 @@
  * XDG path resolution and directory setup for the OpenPalm control plane.
  *
  * Directory model (XDG-compliant):
- *   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, opencode/
+ *   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, assistant/
  *   DATA_HOME   (~/.local/share/openpalm) — opaque service data (openmemory, etc.)
  *   STATE_HOME  (~/.local/state/openpalm) — assembled runtime, audit logs
  */
@@ -47,7 +47,7 @@ export function ensureXdgDirs(): void {
     // CONFIG_HOME — user-editable
     configHome,
     `${configHome}/channels`,
-    `${configHome}/opencode`,
+    `${configHome}/assistant`,
     `${configHome}/automations`,
 
     // DATA_HOME — persistent service data (pre-created to avoid root-owned dirs)
@@ -59,13 +59,15 @@ export function ensureXdgDirs(): void {
     `${dataHome}/caddy/data`,
     `${dataHome}/caddy/config`,
     `${dataHome}/automations`,
+    `${dataHome}/opencode`,
 
     // STATE_HOME — assembled runtime
     stateHome,
     `${stateHome}/artifacts`,
     `${stateHome}/audit`,
     `${stateHome}/artifacts/channels`,
-    `${stateHome}/automations`
+    `${stateHome}/automations`,
+    `${stateHome}/opencode`
   ]) {
     mkdirSync(dir, { recursive: true });
   }

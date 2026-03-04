@@ -63,13 +63,15 @@ OpenMemory uses embedded Qdrant (file-based) and SQLite — all data is stored w
 
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
-| `$DATA_HOME/assistant` | `/home/opencode` | rw | OpenCode user home (dotfiles, caches) |
-| `$CONFIG_HOME/opencode` | `/home/opencode/.config/opencode` | rw | OpenCode user extensions overlay |
+| `$DATA_HOME/assistant` | `/etc/opencode` | rw | System config (`OPENCODE_CONFIG_DIR`) — model, plugins, persona |
+| `$CONFIG_HOME/assistant` | `/home/opencode/.config/opencode` | rw | User extensions — custom tools, plugins, skills |
+| `$STATE_HOME/opencode` | `/home/opencode/.local/state/opencode` | rw | Logs and session state |
+| `$DATA_HOME/opencode` | `/home/opencode/.local/share/opencode` | rw | OpenCode data directory |
 | `$OPENPALM_WORK_DIR` | `/work` | rw | Working directory for user projects |
 
-The OpenCode overlay mount lets users add tools, plugins, or skills to
-`CONFIG_HOME/opencode/` without rebuilding the image. OpenCode merges config
-from `/opt/opencode/` (built-in) and `~/.config/opencode/` (user).
+Users add tools, plugins, or skills to `CONFIG_HOME/assistant/` without
+rebuilding the image. OpenCode merges config from `/etc/opencode/` (system)
+and `~/.config/opencode/` (user).
 
 The assistant runs as `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`)
 with `working_dir: /work`. It has **no Docker socket access**.

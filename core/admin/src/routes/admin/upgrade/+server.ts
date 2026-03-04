@@ -12,6 +12,8 @@ import {
   appendAudit,
   ensureXdgDirs,
   ensureOpenCodeConfig,
+  ensureOpenCodeSystemConfig,
+  ensureOpenMemoryPatch,
   ensureSecrets,
   buildComposeFileList,
   buildEnvFiles,
@@ -31,6 +33,8 @@ export const POST: RequestHandler = async (event) => {
 
   ensureXdgDirs();
   ensureOpenCodeConfig();
+  ensureOpenCodeSystemConfig();
+  ensureOpenMemoryPatch();
   ensureSecrets(state);
 
   // 1. Download fresh assets, back up changed files, stage artifacts

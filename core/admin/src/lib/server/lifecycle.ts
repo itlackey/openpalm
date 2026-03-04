@@ -84,6 +84,7 @@ export function applyUpdate(state: ControlPlaneState): { restarted: string[] } {
       restarted.push(name);
     }
   }
+  ensureOpenMemoryPatch();
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
   return { restarted };
@@ -108,6 +109,7 @@ export async function applyUpgrade(state: ControlPlaneState): Promise<{
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
+  ensureOpenMemoryPatch();
 
   const restarted: string[] = [];
   for (const [name, status] of Object.entries(state.services)) {

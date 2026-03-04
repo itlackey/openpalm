@@ -22,7 +22,7 @@ These are hard constraints that must never be violated during development:
 
 1. **Admin is the sole orchestrator.** Only the admin container has Docker socket access. No other container may mount or access the Docker socket.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant.
-3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/opencode`, `WORK_DIR`), and interacts with the stack exclusively through the admin API.
+3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `WORK_DIR`), and interacts with the stack exclusively through the admin API.
 4. **LAN-first by default.** Admin interfaces, dashboards, and channels are LAN-restricted by default. Nothing is publicly exposed without explicit user opt-in.
 
 ---
