@@ -13,6 +13,8 @@ import { resolveDataHome } from "./paths.js";
 import coreComposeAsset from "$assets/docker-compose.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import caddyfileAsset from "$assets/Caddyfile?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import openmemoryMemoryPyAsset from "$assets/openmemory-memory.py?raw";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -73,6 +75,33 @@ export function setCoreCaddyAccessScope(scope: "host" | "lan"): { ok: true } | {
   return { ok: true };
 }
 
+// ── OpenMemory memory.py patch (DATA_HOME) ─────────────────────────────
+
+function openMemoryPatchPath(): string {
+  return `${resolveDataHome()}/openmemory/memory.py`;
+}
+
+/**
+ * Ensure the patched memory.py exists in DATA_HOME/openmemory/.
+ * The OpenMemory compose service bind-mounts this file; if it's missing
+ * Docker will create a directory at the mount path and the container
+ * will fail to start.
+ */
+export function ensureOpenMemoryPatch(): string {
+  const path = openMemoryPatchPath();
+  mkdirSync(dirname(path), { recursive: true });
+  if (!existsSync(path)) {
+    writeFileSync(path, openmemoryMemoryPyAsset);
+  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(openmemoryMemoryPyAsset)) {
+    const backupDir = join(dirname(path), "backups");
+    mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    copyFileSync(path, join(backupDir, `memory.${ts}.py`));
+    writeFileSync(path, openmemoryMemoryPyAsset);
+  }
+  return path;
+}
+
 // ── Core Compose (DATA_HOME source of truth) ──────────────────────────
 
 function coreComposePath(): string {
@@ -123,7 +152,8 @@ function sha256(content: string): string {
  */
 const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
-  { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" }
+  { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
+  { dataRelPath: "openmemory/memory.py", githubFilename: "openmemory-memory.py" }
 ];
 
 /**

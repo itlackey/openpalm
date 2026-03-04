@@ -109,7 +109,7 @@ Dev mode mirrors the production [XDG three-tier layout](directory-structure.md) 
 ```
 .dev/
 ├── config/          # CONFIG_HOME — secrets.env, channels/, opencode/
-├── data/            # DATA_HOME  — postgres, qdrant, assistant data
+├── data/            # DATA_HOME  — openmemory, assistant, guardian data
 └── state/           # STATE_HOME — assembled runtime artifacts
     └── artifacts/   # stack.env, secrets.env, docker-compose.yml
 ```

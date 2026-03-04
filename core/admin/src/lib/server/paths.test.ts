@@ -50,8 +50,7 @@ describe("ensureXdgDirs", () => {
 
     // DATA subtrees
     expect(existsSync(dataHome)).toBe(true);
-    expect(existsSync(join(dataHome, "postgres"))).toBe(true);
-    expect(existsSync(join(dataHome, "qdrant"))).toBe(true);
+    expect(existsSync(join(dataHome, "openmemory"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy", "data"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy", "config"))).toBe(true);

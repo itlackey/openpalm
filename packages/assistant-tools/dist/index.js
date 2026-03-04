@@ -12958,7 +12958,7 @@ var set_access_scope = tool({
 });
 
 // opencode/tools/admin-containers.ts
-var VALID_SERVICES = "caddy, postgres, qdrant, openmemory, openmemory-ui, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
+var VALID_SERVICES = "caddy, openmemory, openmemory-ui, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
 var list = tool({
   description: "List all OpenPalm containers and their current status (running/stopped/healthy)",
   async execute() {

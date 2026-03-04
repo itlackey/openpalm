@@ -65,6 +65,13 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "Invalid OpenMemory config structure", {}, requestId);
   }
 
+  // Check embedding dimension mismatch BEFORE writing (compare new vs previously-persisted)
+  const dimCheck = checkQdrantDimensions(state.dataDir, config);
+  const dimensionMismatch = !dimCheck.match;
+  const dimensionWarning = dimensionMismatch
+    ? `Embedding dimensions changed (current: ${dimCheck.currentDims}, config: ${dimCheck.expectedDims}). Reset the memory collection to apply.`
+    : undefined;
+
   try {
     writeOpenMemoryConfig(state.dataDir, config);
   } catch (err) {
@@ -78,13 +85,6 @@ export const POST: RequestHandler = async (event) => {
   // Resolve env: references before pushing to container
   const resolved = resolveConfigForPush(config, state.configDir);
   const pushResult = await pushConfigToOpenMemory(resolved);
-
-  // Check Qdrant dimension mismatch
-  const dimCheck = await checkQdrantDimensions(config);
-  const dimensionMismatch = !dimCheck.match;
-  const dimensionWarning = dimensionMismatch
-    ? `Embedding dimensions changed (current collection: ${dimCheck.currentDims}, config: ${dimCheck.expectedDims}). Reset the Qdrant collection to apply.`
-    : undefined;
 
   appendAudit(
     state, actor, "openmemory.config.set",

@@ -79,8 +79,7 @@ export type OpenMemoryConfig = {
       provider: "qdrant";
       config: {
         collection_name: string;
-        host: string;
-        port: number;
+        path: string;
         embedding_model_dims: number;
       };
     };

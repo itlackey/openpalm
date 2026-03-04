@@ -221,16 +221,21 @@ describe("refreshCoreAssets", () => {
       if (url.includes("Caddyfile")) {
         return new Response(":8080 {\n  respond 200\n}\n", { status: 200 });
       }
+      if (url.includes("openmemory-memory.py")) {
+        return new Response("# patched memory.py\n", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
     expect(result.updated).toContain("docker-compose.yml");
     expect(result.updated).toContain("caddy/Caddyfile");
+    expect(result.updated).toContain("openmemory/memory.py");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy/Caddyfile"))).toBe(true);
+    expect(existsSync(join(dataHome, "openmemory/memory.py"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -239,6 +244,8 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "docker-compose.yml"), "old-compose-content");
     mkdirSync(join(dataHome, "caddy"), { recursive: true });
     writeFileSync(join(dataHome, "caddy/Caddyfile"), "old-caddy-content");
+    mkdirSync(join(dataHome, "openmemory"), { recursive: true });
+    writeFileSync(join(dataHome, "openmemory/memory.py"), "old-memory-content");
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -248,11 +255,14 @@ describe("refreshCoreAssets", () => {
       if (url.includes("Caddyfile")) {
         return new Response("new-caddy-content", { status: 200 });
       }
+      if (url.includes("openmemory-memory.py")) {
+        return new Response("new-memory-content", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(2);
+    expect(result.updated).toHaveLength(3);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -260,10 +270,13 @@ describe("refreshCoreAssets", () => {
     expect(backupCompose).toBe("old-compose-content");
     const backupCaddy = readFileSync(join(result.backupDir!, "caddy/Caddyfile"), "utf-8");
     expect(backupCaddy).toBe("old-caddy-content");
+    const backupMemory = readFileSync(join(result.backupDir!, "openmemory/memory.py"), "utf-8");
+    expect(backupMemory).toBe("old-memory-content");
 
     // Verify new content written
     expect(readFileSync(join(dataHome, "docker-compose.yml"), "utf-8")).toBe("new-compose-content");
     expect(readFileSync(join(dataHome, "caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
+    expect(readFileSync(join(dataHome, "openmemory/memory.py"), "utf-8")).toBe("new-memory-content");
   });
 
   test("skips assets with identical content", async () => {
@@ -273,6 +286,8 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "docker-compose.yml"), content);
     mkdirSync(join(dataHome, "caddy"), { recursive: true });
     writeFileSync(join(dataHome, "caddy/Caddyfile"), content);
+    mkdirSync(join(dataHome, "openmemory"), { recursive: true });
+    writeFileSync(join(dataHome, "openmemory/memory.py"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

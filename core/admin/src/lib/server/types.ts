@@ -10,9 +10,7 @@ export type CoreServiceName =
   | "openmemory"
   | "openmemory-ui"
   | "admin"
-  | "caddy"
-  | "postgres"
-  | "qdrant";
+  | "caddy";
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
@@ -45,7 +43,6 @@ export type ArtifactMeta = {
 export type ControlPlaneState = {
   adminToken: string;
   setupToken: string;
-  postgresPassword: string;
   stateDir: string;
   configDir: string;
   dataDir: string;
@@ -63,8 +60,6 @@ export type ControlPlaneState = {
 
 export const CORE_SERVICES: CoreServiceName[] = [
   "caddy",
-  "postgres",
-  "qdrant",
   "openmemory",
   "openmemory-ui",
   "assistant",

@@ -8,7 +8,7 @@
 #
 # Directory model:
 #   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, opencode/
-#   DATA_HOME   (~/.local/share/openpalm) — opaque service data (postgres, qdrant, etc.)
+#   DATA_HOME   (~/.local/share/openpalm) — opaque service data (openmemory, etc.)
 #   STATE_HOME  (~/.local/state/openpalm) — generated artifacts, audit logs
 
 services:
@@ -26,40 +26,8 @@ services:
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [assistant_net, channel_lan, channel_public]
 
-  # ── Postgres ───────────────────────────────────────────────────────
-  postgres:
-    image: postgres:18.2-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-openpalm}
-      POSTGRES_USER: ${POSTGRES_USER:-openpalm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
-    volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/postgres:/var/lib/postgresql
-    networks: [assistant_net]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openpalm}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── Qdrant ─────────────────────────────────────────────────────────
-  qdrant:
-    image: qdrant/qdrant:v1.17
-    restart: unless-stopped
-    volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/qdrant:/qdrant/storage
-    networks:
-      assistant_net:
-        aliases:
-          - mem0_store
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # ── OpenMemory MCP ─────────────────────────────────────────────────
+  # Uses embedded Qdrant (file-based) and SQLite — no external database servers needed.
   openmemory:
     image: mem0/openmemory-mcp:latest@sha256:b665d382a94fdc18c7bb84a647d4bebdc98d9e7fc1146fc5e559ca7f5f7f9211
     restart: unless-stopped
@@ -68,21 +36,15 @@ services:
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}
-      QDRANT_URL: http://qdrant:6333
+      DATABASE_URL: sqlite:////data/openmemory.db
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/memory.py:/usr/src/openmemory/app/utils/memory.py:ro
     networks: [assistant_net]
-    depends_on:
-      qdrant:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
       interval: 15s

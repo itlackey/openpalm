@@ -18,10 +18,8 @@ OpenMemory runs as a service in the OpenPalm stack:
 
 | Service | Port | Role |
 |---------|------|------|
-| `openmemory` | 8765 | FastAPI server with vector search (Qdrant) + relational DB (Postgres) |
+| `openmemory` | 8765 | FastAPI server with embedded Qdrant (vectors) + SQLite (metadata) |
 | `openmemory-ui` | 3001 | Dashboard for browsing/managing memories |
-| `qdrant` | 6333 | Vector database for semantic similarity search |
-| `postgres` | 5432 | Relational store for memory metadata, access logs, app tracking |
 
 The assistant connects to `http://openmemory:8765` via REST API.
 

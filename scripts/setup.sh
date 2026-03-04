@@ -267,8 +267,6 @@ create_directories() {
 
 		# DATA_HOME — persistent service data
 		"$DATA_HOME"
-		"$DATA_HOME/postgres"
-		"$DATA_HOME/qdrant"
 		"$DATA_HOME/openmemory"
 		"$DATA_HOME/assistant"
 		"$DATA_HOME/guardian"
@@ -320,6 +318,9 @@ download_assets() {
 	# DATA_HOME — seed core assets (source of truth for admin staging)
 	download_asset "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
 	download_asset "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
+
+	# Seed patched memory.py for OpenMemory embedded Qdrant support
+	download_asset "openmemory-memory.py" "${DATA_HOME}/openmemory/memory.py"
 
 	# Bootstrap staging: copy to STATE so compose can start admin before first apply
 	cp "${DATA_HOME}/docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
@@ -459,9 +460,6 @@ generate_stack_env() {
 		return 0
 	fi
 
-	local pg_password
-	pg_password="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p -c 32)"
-
 	cat >"$data_stack_env" <<EOF
 # OpenPalm Stack Bootstrap — system-managed, do not edit
 # Written by setup.sh for initial admin startup. Overwritten by admin on each apply.
@@ -482,9 +480,6 @@ OPENPALM_DOCKER_SOCK=${DOCKER_SOCK}
 # ── Images ──────────────────────────────────────────────────────────
 OPENPALM_IMAGE_NAMESPACE=${OPENPALM_IMAGE_NAMESPACE:-openpalm}
 OPENPALM_IMAGE_TAG=$(resolve_image_tag)
-
-# ── Database ────────────────────────────────────────────────────────
-POSTGRES_PASSWORD=${pg_password}
 EOF
 
 	# Stage to STATE_HOME/artifacts/ for compose consumption
@@ -543,8 +538,8 @@ compose_up_admin() {
 	fi
 
 	info "Starting admin container..."
-	# Start only the admin and its Docker socket proxy; skip other services (e.g. postgres)
-	# to avoid needing a placeholder POSTGRES_PASSWORD at this stage.
+	# Start only the admin and its Docker socket proxy; skip other services
+	# since the setup wizard hasn't configured API keys yet.
 	compose_cmd up -d docker-socket-proxy admin
 
 	ok "Admin service started"

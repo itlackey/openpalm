@@ -10,7 +10,7 @@ import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex } from "./staging.js";
-import { refreshCoreAssets } from "./core-assets.js";
+import { refreshCoreAssets, ensureOpenMemoryPatch } from "./core-assets.js";
 import { ensureOpenMemoryConfig } from "./openmemory-config.js";
 
 // ── State Factory ──────────────────────────────────────────────────────
@@ -32,19 +32,12 @@ export function createState(
 
   const dataDir = resolveDataHome();
 
-  // Load persisted values from DATA_HOME/stack.env (source of truth)
-  const persistedPostgresPassword = loadPersistedPostgresPassword(dataDir);
-  const postgresPassword =
-    persistedPostgresPassword
-    ?? randomHex(16);
-
   const persistedSecrets = loadPersistedChannelSecrets(dataDir);
   const channelSecrets: Record<string, string> = { ...persistedSecrets };
 
   return {
     adminToken: resolvedAdminToken,
     setupToken: randomHex(16),
-    postgresPassword,
     stateDir,
     configDir,
     dataDir,
@@ -57,15 +50,6 @@ export function createState(
 }
 
 // ── Private Loaders ───────────────────────────────────────────────────
-
-/**
- * Load persisted postgres password from DATA_HOME/stack.env.
- * stack.env is the single source of truth for all system-managed values.
- */
-function loadPersistedPostgresPassword(dataDir: string): string | null {
-  const parsed = parseEnvFile(`${dataDir}/stack.env`);
-  return parsed.POSTGRES_PASSWORD ?? null;
-}
 
 /**
  * Load persisted channel secrets from DATA_HOME/stack.env.
@@ -88,6 +72,7 @@ export function applyInstall(state: ControlPlaneState): void {
     state.services[service] = "running";
   }
   ensureOpenMemoryConfig(state.dataDir);
+  ensureOpenMemoryPatch();
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
 }

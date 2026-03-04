@@ -70,7 +70,7 @@ Each service's `environment:` block lists only the `${VAR}` references it needs.
 - A `.env` file in the project directory (standalone default)
 - An explicit `--env-file secrets.env` flag
 
-This means each container only receives the secrets it explicitly declares — the guardian gets channel secrets, the assistant gets API keys, postgres gets its password, etc.
+This means each container only receives the secrets it explicitly declares — the guardian gets channel secrets, the assistant gets API keys, etc.
 
 ## Adding a New Channel
 

@@ -3,7 +3,7 @@
  *
  * Directory model (XDG-compliant):
  *   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, opencode/
- *   DATA_HOME   (~/.local/share/openpalm) — opaque service data (postgres, qdrant, etc.)
+ *   DATA_HOME   (~/.local/share/openpalm) — opaque service data (openmemory, etc.)
  *   STATE_HOME  (~/.local/state/openpalm) — assembled runtime, audit logs
  */
 import { mkdirSync } from "node:fs";
@@ -52,8 +52,6 @@ export function ensureXdgDirs(): void {
 
     // DATA_HOME — persistent service data (pre-created to avoid root-owned dirs)
     dataHome,
-    `${dataHome}/postgres`,
-    `${dataHome}/qdrant`,
     `${dataHome}/openmemory`,
     `${dataHome}/assistant`,
     `${dataHome}/guardian`,
