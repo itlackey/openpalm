@@ -94,7 +94,10 @@ export const LOCAL_EMBEDDING_DIMS: Record<string, number> = {
 
 /** Model Runner probe endpoints in priority order. */
 const MODEL_RUNNER_ENDPOINTS = [
+  // Docker Desktop (macOS/Windows) — model runner sidecar at port 80
   "http://model-runner.docker.internal/engines/v1",
+  // Linux docker-model-plugin — model runner container at port 12434
+  "http://model-runner.docker.internal:12434/engines/v1",
   "http://host.docker.internal:12434/engines/v1",
 ];
 
@@ -277,28 +280,53 @@ export function readLocalModelsCompose(dataDir: string, configDir?: string): Loc
  *
  * We use simple line-based parsing to avoid a YAML dependency.
  * The file format is tightly controlled (we generate it), so this is safe.
+ *
+ * Supports two formats:
+ * - New: comment-based metadata (`# local-llm: <model>`, `# context_size: <n>`)
+ * - Legacy: `models:` top-level element (`local-llm:\n    model: <model>`)
  */
 export function parseLocalModelsCompose(yaml: string): LocalModelSelection {
   const selection: LocalModelSelection = {};
 
-  // Extract models section — look for "local-llm:" and "local-embedding:" blocks
-  const llmModelMatch = yaml.match(/local-llm:\s*\n\s+model:\s*(.+)/);
-  if (llmModelMatch) {
-    const model = llmModelMatch[1].trim();
-    const ctxMatch = yaml.match(/local-llm:\s*\n\s+model:\s*.+\n\s+context_size:\s*(\d+)/);
+  // ── New format: comment-based metadata ──
+  const commentLlm = yaml.match(/^# local-llm:\s*(.+)/m);
+  const commentEmbed = yaml.match(/^# local-embedding:\s*(.+)/m);
+
+  if (commentLlm) {
+    const model = commentLlm[1].trim();
+    const ctxMatch = yaml.match(/^# context_size:\s*(\d+)/m);
     selection.systemModel = {
       model,
       contextSize: ctxMatch ? parseInt(ctxMatch[1], 10) : undefined,
     };
   }
 
-  const embedModelMatch = yaml.match(/local-embedding:\s*\n\s+model:\s*(.+)/);
-  if (embedModelMatch) {
-    const model = embedModelMatch[1].trim();
-    // Read persisted dimensions comment, fall back to lookup table, then default
-    const dimsMatch = yaml.match(/local-embedding:\s*\n\s+model:\s*.+\n\s+# dimensions:\s*(\d+)/);
+  if (commentEmbed) {
+    const model = commentEmbed[1].trim();
+    const dimsMatch = yaml.match(/^# embedding_dims:\s*(\d+)/m);
     const dims = dimsMatch ? parseInt(dimsMatch[1], 10) : (LOCAL_EMBEDDING_DIMS[model] ?? 384);
     selection.embeddingModel = { model, dimensions: dims };
+  }
+
+  // ── Legacy format: models: top-level element ──
+  if (!commentLlm && !commentEmbed) {
+    const llmModelMatch = yaml.match(/local-llm:\s*\n\s+model:\s*(.+)/);
+    if (llmModelMatch) {
+      const model = llmModelMatch[1].trim();
+      const ctxMatch = yaml.match(/local-llm:\s*\n\s+model:\s*.+\n\s+context_size:\s*(\d+)/);
+      selection.systemModel = {
+        model,
+        contextSize: ctxMatch ? parseInt(ctxMatch[1], 10) : undefined,
+      };
+    }
+
+    const embedModelMatch = yaml.match(/local-embedding:\s*\n\s+model:\s*(.+)/);
+    if (embedModelMatch) {
+      const model = embedModelMatch[1].trim();
+      const dimsMatch = yaml.match(/local-embedding:\s*\n\s+model:\s*.+\n\s+# dimensions:\s*(\d+)/);
+      const dims = dimsMatch ? parseInt(dimsMatch[1], 10) : (LOCAL_EMBEDDING_DIMS[model] ?? 384);
+      selection.embeddingModel = { model, dimensions: dims };
+    }
   }
 
   return selection;
@@ -313,7 +341,8 @@ export function parseLocalModelsCompose(yaml: string): LocalModelSelection {
  */
 export function writeLocalModelsCompose(
   dataDir: string,
-  selection: LocalModelSelection
+  selection: LocalModelSelection,
+  modelRunnerUrl?: string
 ): void {
   const path = localModelsPath(dataDir);
 
@@ -323,7 +352,7 @@ export function writeLocalModelsCompose(
     return;
   }
 
-  const yaml = generateModelOverlayYaml(selection, dataDir);
+  const yaml = generateModelOverlayYaml(selection, modelRunnerUrl, dataDir);
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(path, yaml);
 }
@@ -331,61 +360,45 @@ export function writeLocalModelsCompose(
 /**
  * Generate Docker Compose overlay YAML from a LocalModelSelection.
  *
- * Uses the `models:` top-level element (Docker Compose v2.35+) with
- * long syntax for environment variable injection into dependent services.
+ * Produces a services-only overlay with environment variables pointing
+ * services to the Model Runner's OpenAI-compatible API. This avoids the
+ * `models:` top-level element which requires Docker Model Plugin access
+ * through the Docker socket proxy.
  *
- * When HF models are configured, includes a volume mount for the shared
- * HF cache directory so Model Runner can use pre-downloaded models.
+ * Model metadata (names, context_size, dimensions) is stored as comments
+ * at the top for round-trip parsing by parseLocalModelsCompose().
  */
-export function generateModelOverlayYaml(selection: LocalModelSelection, dataDir?: string): string {
-  const lines: string[] = [
-    "# Local AI models — managed by OpenPalm admin",
-    "# Docker Model Runner compose overlay (requires Docker Compose v2.35+)",
-    "",
-  ];
-
+export function generateModelOverlayYaml(
+  selection: LocalModelSelection,
+  modelRunnerUrl?: string,
+  dataDir?: string,
+): string {
   const hasSystem = !!selection.systemModel;
   const hasEmbedding = !!selection.embeddingModel;
 
   if (!hasSystem && !hasEmbedding) return "";
 
-  // Check if any model uses HF refs (need volume mount)
-  const hasHfModel =
-    (hasSystem && selection.systemModel!.model.startsWith("hf.co/")) ||
-    (hasEmbedding && selection.embeddingModel!.model.startsWith("hf.co/"));
+  // Use provided URL or a sensible default for the overlay
+  const url = modelRunnerUrl || MODEL_RUNNER_ENDPOINTS[0];
 
-  // ── models: top-level element ──
-  lines.push("models:");
+  const lines: string[] = [
+    "# Local AI models — managed by OpenPalm admin",
+  ];
 
+  // ── Metadata comments (used by parseLocalModelsCompose) ──
   if (hasSystem) {
-    lines.push(`  local-llm:`);
-    lines.push(`    model: ${selection.systemModel!.model}`);
+    lines.push(`# local-llm: ${selection.systemModel!.model}`);
     if (selection.systemModel!.contextSize) {
-      lines.push(`    context_size: ${selection.systemModel!.contextSize}`);
+      lines.push(`# context_size: ${selection.systemModel!.contextSize}`);
     }
   }
-
   if (hasEmbedding) {
-    lines.push(`  local-embedding:`);
-    lines.push(`    model: ${selection.embeddingModel!.model}`);
+    lines.push(`# local-embedding: ${selection.embeddingModel!.model}`);
     if (selection.embeddingModel!.dimensions) {
-      lines.push(`    # dimensions: ${selection.embeddingModel!.dimensions}`);
+      lines.push(`# embedding_dims: ${selection.embeddingModel!.dimensions}`);
     }
   }
 
-  // ── volumes: top-level (if HF models are used) ──
-  if (hasHfModel && dataDir) {
-    lines.push("");
-    lines.push("volumes:");
-    lines.push("  hf-cache:");
-    lines.push("    driver: local");
-    lines.push("    driver_opts:");
-    lines.push("      type: none");
-    lines.push(`      device: ${dataDir}/models/hf-cache`);
-    lines.push("      o: bind");
-  }
-
-  // ── services: with model references ──
   lines.push("");
   lines.push("services:");
 
@@ -394,10 +407,9 @@ export function generateModelOverlayYaml(selection: LocalModelSelection, dataDir
     lines.push("  guardian:");
     lines.push("    extra_hosts:");
     lines.push('      - "model-runner.docker.internal:host-gateway"');
-    lines.push("    models:");
-    lines.push("      local-llm:");
-    lines.push("        endpoint_var: LOCAL_LLM_URL");
-    lines.push("        model_var: LOCAL_LLM_MODEL");
+    lines.push("    environment:");
+    lines.push(`      LOCAL_LLM_URL: "${url}"`);
+    lines.push(`      LOCAL_LLM_MODEL: "${selection.systemModel!.model}"`);
   }
 
   // OpenMemory — depends on system model (for LLM) and/or embedding model
@@ -405,16 +417,14 @@ export function generateModelOverlayYaml(selection: LocalModelSelection, dataDir
     lines.push("  openmemory:");
     lines.push("    extra_hosts:");
     lines.push('      - "model-runner.docker.internal:host-gateway"');
-    lines.push("    models:");
+    lines.push("    environment:");
     if (hasSystem) {
-      lines.push("      local-llm:");
-      lines.push("        endpoint_var: LOCAL_LLM_URL");
-      lines.push("        model_var: LOCAL_LLM_MODEL");
+      lines.push(`      LOCAL_LLM_URL: "${url}"`);
+      lines.push(`      LOCAL_LLM_MODEL: "${selection.systemModel!.model}"`);
     }
     if (hasEmbedding) {
-      lines.push("      local-embedding:");
-      lines.push("        endpoint_var: LOCAL_EMBEDDING_URL");
-      lines.push("        model_var: LOCAL_EMBEDDING_MODEL");
+      lines.push(`      LOCAL_EMBEDDING_URL: "${url}"`);
+      lines.push(`      LOCAL_EMBEDDING_MODEL: "${selection.embeddingModel!.model}"`);
     }
   }
 

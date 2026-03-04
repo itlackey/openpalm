@@ -180,6 +180,9 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
+    extra_hosts:
+      - "model-runner.docker.internal:host-gateway"
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8100:8100"
     environment:

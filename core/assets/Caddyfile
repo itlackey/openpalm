@@ -41,4 +41,10 @@
 	handle_path /guardian/* {
 		reverse_proxy guardian:8080
 	}
+
+	# ── Admin UI catch-all (SvelteKit pages + assets) ────────────────
+	handle {
+		import lan_only
+		reverse_proxy admin:8100
+	}
 }

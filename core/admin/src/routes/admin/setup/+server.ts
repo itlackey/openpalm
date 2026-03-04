@@ -246,11 +246,13 @@ export const POST: RequestHandler = async (event) => {
       selection.embeddingModel = { model: localEmbeddingModel, dimensions: localEmbeddingDims };
     }
 
-    // Write DATA_HOME/local-models.yml compose overlay
-    writeLocalModelsCompose(state.dataDir, selection);
-
-    // Detect Model Runner and apply local models to guardian/openmemory
+    // Detect Model Runner URL for compose overlay and config updates
     const detection = await detectModelRunner();
+
+    // Write DATA_HOME/local-models.yml compose overlay
+    writeLocalModelsCompose(state.dataDir, selection, detection.url);
+
+    // Apply local models to guardian/openmemory
     if (detection.available) {
       // Apply system model to Guardian
       if (localSystemModel) {

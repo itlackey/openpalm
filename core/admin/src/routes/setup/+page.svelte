@@ -18,7 +18,7 @@
   let loading = $state(true);
 
   // Step ordering helpers
-  const STEP_ORDER: WizardStep[] = ['token', 'connect', 'local-models', 'models', 'review'];
+  const STEP_ORDER: WizardStep[] = ['token', 'local-models', 'connect', 'models', 'review'];
   function isAfter(a: WizardStep, b: WizardStep): boolean {
     return STEP_ORDER.indexOf(a) > STEP_ORDER.indexOf(b);
   }
@@ -119,7 +119,7 @@
     if (modelRunnerChecked) return;
     modelRunnerChecking = true;
     try {
-      const res = await fetch('/admin/models/local', {
+      const res = await fetch('/admin/setup/model-runner', {
         headers: buildHeaders(setupSessionToken)
       });
       if (res.ok) {
@@ -303,20 +303,20 @@
         <span class="step-line" class:active={isAfter(step, 'token')}></span>
         <button
           class="step-dot"
+          class:active={step === 'local-models'}
+          class:completed={isAfter(step, 'local-models')}
+          onclick={() => { if (isAfter(step, 'local-models')) { step = 'local-models'; void checkModelRunner(); } }}
+          aria-label="Step 2: Local Models"
+          aria-current={step === 'local-models' ? 'step' : undefined}
+        >2</button>
+        <span class="step-line" class:active={isAfter(step, 'local-models')}></span>
+        <button
+          class="step-dot"
           class:active={step === 'connect'}
           class:completed={isAfter(step, 'connect')}
           onclick={() => { if (isAfter(step, 'connect')) step = 'connect'; }}
-          aria-label="Step 2: System LLM Connection"
+          aria-label="Step 3: System LLM Connection"
           aria-current={step === 'connect' ? 'step' : undefined}
-        >2</button>
-        <span class="step-line" class:active={isAfter(step, 'connect')}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'local-models'}
-          class:completed={isAfter(step, 'local-models')}
-          onclick={() => { if (isAfter(step, 'local-models')) step = 'local-models'; }}
-          aria-label="Step 3: Local Models"
-          aria-current={step === 'local-models' ? 'step' : undefined}
         >3</button>
         <span class="step-line" class:active={isAfter(step, 'local-models')}></span>
         <button
@@ -361,100 +361,14 @@
                 return;
               }
               tokenError = '';
-              step = 'connect';
+              step = 'local-models';
+              void checkModelRunner();
             }}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: System LLM Connection -->
-      {#if step === 'connect'}
-        <div class="step-content" data-testid="step-connect">
-          <h2>System LLM Connection</h2>
-          <p class="step-description">Connect to an LLM provider for memory, embeddings, and guardian routing.</p>
-
-          <div class="field-group">
-            <label for="llm-provider">Provider</label>
-            <select
-              id="llm-provider"
-              value={llmProvider}
-              onchange={(e) => handleProviderChange(e.currentTarget.value)}
-            >
-              {#each LLM_PROVIDERS as p}
-                <option value={p}>{p}</option>
-              {/each}
-            </select>
-          </div>
-
-          {#if needsApiKey}
-            <div class="field-group">
-              <label for="llm-api-key">API Key</label>
-              <input
-                id="llm-api-key"
-                type="password"
-                bind:value={llmApiKey}
-                placeholder={llmProvider === 'openai' ? 'sk-...' : 'Enter API key'}
-              />
-            </div>
-          {/if}
-
-          <div class="field-group">
-            <label for="llm-base-url">Base URL</label>
-            <input
-              id="llm-base-url"
-              type="url"
-              bind:value={llmBaseUrl}
-              placeholder="Provider base URL"
-            />
-            <p class="field-hint">
-              {#if llmProvider === 'ollama'}
-                Default: <code>http://host.docker.internal:11434</code>
-              {:else if llmProvider === 'lmstudio'}
-                Default: <code>http://host.docker.internal:1234</code>
-              {:else}
-                Leave default unless using a custom endpoint.
-              {/if}
-            </p>
-          </div>
-
-          {#if connectError}
-            <p class="field-error" role="alert">{connectError}</p>
-          {/if}
-
-          {#if connectionTested}
-            <div class="connection-success" role="status">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              <span>Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.</span>
-            </div>
-          {/if}
-
-          <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
-            <button
-              class="btn btn-outline"
-              onclick={() => void testConnection()}
-              disabled={testingConnection || (needsApiKey && !llmApiKey.trim())}
-            >
-              {#if testingConnection}
-                <span class="spinner"></span>
-                Testing...
-              {:else}
-                Test Connection
-              {/if}
-            </button>
-            <button
-              class="btn btn-primary"
-              disabled={!connectionTested}
-              onclick={() => { step = 'local-models'; void checkModelRunner(); }}
-            >Next</button>
-          </div>
-        </div>
-      {/if}
-
-      <!-- Step 3: Local Models (Docker Model Runner) -->
+      <!-- Step 2: Local Models (Docker Model Runner) -->
       {#if step === 'local-models'}
         <div class="step-content" data-testid="step-local-models">
           <h2>Local Models</h2>
@@ -570,13 +484,100 @@
           {/if}
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'connect')}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
             <button
               class="btn btn-primary"
               onclick={() => {
-                step = 'models';
+                step = 'connect';
               }}
             >{modelRunnerAvailable && !modelRunnerChecking ? 'Next' : 'Skip'}</button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Step 3: System LLM Connection -->
+      {#if step === 'connect'}
+        <div class="step-content" data-testid="step-connect">
+          <h2>System LLM Connection</h2>
+          <p class="step-description">Connect to an LLM provider for memory, embeddings, and guardian routing.</p>
+
+          <div class="field-group">
+            <label for="llm-provider">Provider</label>
+            <select
+              id="llm-provider"
+              value={llmProvider}
+              onchange={(e) => handleProviderChange(e.currentTarget.value)}
+            >
+              {#each LLM_PROVIDERS as p}
+                <option value={p}>{p}</option>
+              {/each}
+            </select>
+          </div>
+
+          {#if needsApiKey}
+            <div class="field-group">
+              <label for="llm-api-key">API Key</label>
+              <input
+                id="llm-api-key"
+                type="password"
+                bind:value={llmApiKey}
+                placeholder={llmProvider === 'openai' ? 'sk-...' : 'Enter API key'}
+              />
+            </div>
+          {/if}
+
+          <div class="field-group">
+            <label for="llm-base-url">Base URL</label>
+            <input
+              id="llm-base-url"
+              type="url"
+              bind:value={llmBaseUrl}
+              placeholder="Provider base URL"
+            />
+            <p class="field-hint">
+              {#if llmProvider === 'ollama'}
+                Default: <code>http://host.docker.internal:11434</code>
+              {:else if llmProvider === 'lmstudio'}
+                Default: <code>http://host.docker.internal:1234</code>
+              {:else}
+                Leave default unless using a custom endpoint.
+              {/if}
+            </p>
+          </div>
+
+          {#if connectError}
+            <p class="field-error" role="alert">{connectError}</p>
+          {/if}
+
+          {#if connectionTested}
+            <div class="connection-success" role="status">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span>Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.</span>
+            </div>
+          {/if}
+
+          <div class="step-actions">
+            <button class="btn btn-secondary" onclick={() => (step = 'local-models')}>Back</button>
+            <button
+              class="btn btn-outline"
+              onclick={() => void testConnection()}
+              disabled={testingConnection || (needsApiKey && !llmApiKey.trim())}
+            >
+              {#if testingConnection}
+                <span class="spinner"></span>
+                Testing...
+              {:else}
+                Test Connection
+              {/if}
+            </button>
+            <button
+              class="btn btn-primary"
+              disabled={!connectionTested}
+              onclick={() => { step = 'models'; }}
+            >Next</button>
           </div>
         </div>
       {/if}
@@ -645,7 +646,7 @@
           </div>
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'local-models')}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'connect')}>Back</button>
             <button class="btn btn-primary" onclick={() => (step = 'review')}>Next</button>
           </div>
         </div>

@@ -163,12 +163,12 @@ export const POST: RequestHandler = async (event) => {
     });
   }
 
-  // Write compose overlay
-  writeLocalModelsCompose(state.dataDir, selection);
-
-  // Detect Model Runner URL for config updates
+  // Detect Model Runner URL for compose overlay and config updates
   const detection = await detectModelRunner();
   const modelRunnerUrl = detection.url;
+
+  // Write compose overlay
+  writeLocalModelsCompose(state.dataDir, selection, modelRunnerUrl);
 
   // Apply to Guardian config if requested
   const applyToGuardian = body.applyToGuardian === true;
@@ -286,7 +286,11 @@ export const DELETE: RequestHandler = async (event) => {
     } else {
       return errorResponse(400, "invalid_target", `Unknown model target: "${target}"`, {}, requestId);
     }
-    writeLocalModelsCompose(state.dataDir, current);
+    // Detect URL for overlay when partial models remain
+    const det = current.systemModel || current.embeddingModel
+      ? await detectModelRunner()
+      : { url: "" };
+    writeLocalModelsCompose(state.dataDir, current, det.url);
   }
 
   // Re-stage and reconcile compose

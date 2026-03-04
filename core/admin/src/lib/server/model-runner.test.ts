@@ -135,36 +135,36 @@ describe("model catalog", () => {
 // ── generateModelOverlayYaml ─────────────────────────────────────────────
 
 describe("generateModelOverlayYaml", () => {
+  const testUrl = "http://model-runner.docker.internal:12434/engines/v1";
+
   test("generates YAML with system model only", () => {
     const yaml = generateModelOverlayYaml({
       systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF", contextSize: 131072 },
-    });
-    expect(yaml).toContain("local-llm:");
-    expect(yaml).toContain("model: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
-    expect(yaml).toContain("context_size: 131072");
-    expect(yaml).not.toContain("local-embedding:");
+    }, testUrl);
+    expect(yaml).toContain("# local-llm: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
+    expect(yaml).toContain("# context_size: 131072");
+    expect(yaml).not.toContain("# local-embedding:");
+    expect(yaml).toContain("LOCAL_LLM_MODEL");
   });
 
   test("generates YAML with embedding model only", () => {
     const yaml = generateModelOverlayYaml({
       embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
-    });
-    expect(yaml).toContain("local-embedding:");
-    expect(yaml).toContain("model: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF");
-    expect(yaml).toContain("# dimensions: 768");
-    expect(yaml).not.toContain("local-llm:");
+    }, testUrl);
+    expect(yaml).toContain("# local-embedding: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF");
+    expect(yaml).toContain("# embedding_dims: 768");
+    expect(yaml).not.toContain("# local-llm:");
+    expect(yaml).toContain("LOCAL_EMBEDDING_MODEL");
   });
 
   test("generates YAML with both models", () => {
     const yaml = generateModelOverlayYaml({
       systemModel: { model: "ai/mistral", contextSize: 4096 },
       embeddingModel: { model: "ai/nomic-embed-text", dimensions: 768 },
-    });
-    expect(yaml).toContain("local-llm:");
-    expect(yaml).toContain("local-embedding:");
-    expect(yaml).toContain("model: ai/mistral");
-    expect(yaml).toContain("model: ai/nomic-embed-text");
-    expect(yaml).toContain("# dimensions: 768");
+    }, testUrl);
+    expect(yaml).toContain("# local-llm: ai/mistral");
+    expect(yaml).toContain("# local-embedding: ai/nomic-embed-text");
+    expect(yaml).toContain("# embedding_dims: 768");
   });
 
   test("returns empty string when no models", () => {
@@ -174,49 +174,50 @@ describe("generateModelOverlayYaml", () => {
   test("omits context_size when not specified", () => {
     const yaml = generateModelOverlayYaml({
       systemModel: { model: "ai/smollm2" },
-    });
-    expect(yaml).toContain("model: ai/smollm2");
+    }, testUrl);
+    expect(yaml).toContain("# local-llm: ai/smollm2");
     expect(yaml).not.toContain("context_size");
   });
 
-  test("includes services section with extra_hosts", () => {
+  test("includes services section with extra_hosts and environment", () => {
     const yaml = generateModelOverlayYaml({
       systemModel: { model: "ai/mistral" },
-    });
+    }, testUrl);
     expect(yaml).toContain("services:");
     expect(yaml).toContain("guardian:");
     expect(yaml).toContain("model-runner.docker.internal:host-gateway");
+    expect(yaml).toContain("environment:");
+    expect(yaml).toContain(`LOCAL_LLM_URL: "${testUrl}"`);
+    expect(yaml).toContain('LOCAL_LLM_MODEL: "ai/mistral"');
   });
 
-  test("includes volume mount for HF models", () => {
+  test("does not use models: top-level element", () => {
+    const yaml = generateModelOverlayYaml({
+      systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" },
+    }, testUrl);
+    // Should not have models: as a YAML key (only in comments)
+    expect(yaml).not.toMatch(/^models:/m);
+  });
+
+  test("includes model runner URL in environment vars", () => {
     const yaml = generateModelOverlayYaml(
       { systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" } },
-      "/data/openpalm"
+      "http://model-runner.docker.internal/engines/v1",
     );
-    expect(yaml).toContain("volumes:");
-    expect(yaml).toContain("hf-cache:");
-    expect(yaml).toContain("/data/openpalm/models/hf-cache");
-  });
-
-  test("omits volume mount for ai/ models", () => {
-    const yaml = generateModelOverlayYaml(
-      { systemModel: { model: "ai/mistral" } },
-      "/data/openpalm"
-    );
-    expect(yaml).not.toContain("volumes:");
-    expect(yaml).not.toContain("hf-cache:");
+    expect(yaml).toContain('LOCAL_LLM_URL: "http://model-runner.docker.internal/engines/v1"');
   });
 });
 
 // ── parseLocalModelsCompose ──────────────────────────────────────────────
 
 describe("parseLocalModelsCompose", () => {
-  test("parses system model from YAML", () => {
+  test("parses system model from new comment format", () => {
     const yaml = [
-      "models:",
-      "  local-llm:",
-      "    model: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
-      "    context_size: 131072",
+      "# Local AI models — managed by OpenPalm admin",
+      "# local-llm: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "# context_size: 131072",
+      "",
+      "services:",
     ].join("\n");
 
     const result = parseLocalModelsCompose(yaml);
@@ -227,12 +228,10 @@ describe("parseLocalModelsCompose", () => {
     expect(result.embeddingModel).toBeUndefined();
   });
 
-  test("parses embedding model with persisted dimensions", () => {
+  test("parses embedding model from new comment format", () => {
     const yaml = [
-      "models:",
-      "  local-embedding:",
-      "    model: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF",
-      "    # dimensions: 768",
+      "# local-embedding: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF",
+      "# embedding_dims: 768",
     ].join("\n");
 
     const result = parseLocalModelsCompose(yaml);
@@ -242,24 +241,41 @@ describe("parseLocalModelsCompose", () => {
     });
   });
 
-  test("falls back to lookup table when no persisted dimensions", () => {
+  test("parses legacy models: format (backward compat)", () => {
+    const yaml = [
+      "models:",
+      "  local-llm:",
+      "    model: ai/mistral",
+      "    context_size: 4096",
+    ].join("\n");
+
+    const result = parseLocalModelsCompose(yaml);
+    expect(result.systemModel).toEqual({
+      model: "ai/mistral",
+      contextSize: 4096,
+    });
+  });
+
+  test("parses legacy embedding with dimensions comment", () => {
     const yaml = [
       "models:",
       "  local-embedding:",
       "    model: ai/all-minilm",
+      "    # dimensions: 384",
     ].join("\n");
 
     const result = parseLocalModelsCompose(yaml);
     expect(result.embeddingModel?.dimensions).toBe(384);
   });
 
-  test("falls back to 384 for unknown model without persisted dims", () => {
-    const yaml = [
-      "models:",
-      "  local-embedding:",
-      "    model: hf.co/custom/embed-model",
-    ].join("\n");
+  test("falls back to lookup table when no persisted dimensions", () => {
+    const yaml = "# local-embedding: ai/all-minilm\n";
+    const result = parseLocalModelsCompose(yaml);
+    expect(result.embeddingModel?.dimensions).toBe(384);
+  });
 
+  test("falls back to 384 for unknown model without persisted dims", () => {
+    const yaml = "# local-embedding: hf.co/custom/embed-model\n";
     const result = parseLocalModelsCompose(yaml);
     expect(result.embeddingModel?.dimensions).toBe(384);
   });
@@ -273,11 +289,13 @@ describe("parseLocalModelsCompose", () => {
 // ── Round-trip ────────────────────────────────────────────────────────────
 
 describe("generate → parse round-trip", () => {
+  const testUrl = "http://model-runner.docker.internal:12434/engines/v1";
+
   test("system model round-trips correctly", () => {
     const original: LocalModelSelection = {
       systemModel: { model: "ai/mistral", contextSize: 4096 },
     };
-    const yaml = generateModelOverlayYaml(original);
+    const yaml = generateModelOverlayYaml(original, testUrl);
     const parsed = parseLocalModelsCompose(yaml);
     expect(parsed.systemModel).toEqual(original.systemModel);
   });
@@ -286,7 +304,7 @@ describe("generate → parse round-trip", () => {
     const original: LocalModelSelection = {
       embeddingModel: { model: "hf.co/custom/model", dimensions: 1024 },
     };
-    const yaml = generateModelOverlayYaml(original);
+    const yaml = generateModelOverlayYaml(original, testUrl);
     const parsed = parseLocalModelsCompose(yaml);
     expect(parsed.embeddingModel).toEqual(original.embeddingModel);
   });
@@ -296,7 +314,7 @@ describe("generate → parse round-trip", () => {
       systemModel: { model: "hf.co/bartowski/Phi-4-mini-instruct-GGUF", contextSize: 16384 },
       embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
     };
-    const yaml = generateModelOverlayYaml(original);
+    const yaml = generateModelOverlayYaml(original, testUrl);
     const parsed = parseLocalModelsCompose(yaml);
     expect(parsed.systemModel).toEqual(original.systemModel);
     expect(parsed.embeddingModel).toEqual(original.embeddingModel);
@@ -307,7 +325,7 @@ describe("generate → parse round-trip", () => {
       systemModel: { model: "ai/phi4-mini", contextSize: 4096 },
       embeddingModel: { model: "ai/nomic-embed-text", dimensions: 768 },
     };
-    const yaml = generateModelOverlayYaml(original);
+    const yaml = generateModelOverlayYaml(original, testUrl);
     const parsed = parseLocalModelsCompose(yaml);
     expect(parsed.systemModel).toEqual(original.systemModel);
     expect(parsed.embeddingModel).toEqual(original.embeddingModel);
@@ -369,7 +387,7 @@ describe("readLocalModelsCompose / writeLocalModelsCompose", () => {
 
     // Write to CONFIG_HOME (legacy location)
     writeFileSync(join(configDir, "local-models.yml"),
-      generateModelOverlayYaml({ systemModel: { model: "ai/mistral", contextSize: 4096 } })
+      generateModelOverlayYaml({ systemModel: { model: "ai/mistral", contextSize: 4096 } }, "http://localhost/engines/v1")
     );
 
     // Read should find it via configDir fallback and copy to dataDir
@@ -453,7 +471,7 @@ describe("migrateLocalModelsToDataDir", () => {
     const dataDir = join(tmpDir, "data");
     mkdirSync(configDir, { recursive: true });
 
-    const content = generateModelOverlayYaml({ systemModel: { model: "ai/mistral" } });
+    const content = generateModelOverlayYaml({ systemModel: { model: "ai/mistral" } }, "http://localhost/engines/v1");
     writeFileSync(join(configDir, "local-models.yml"), content);
 
     migrateLocalModelsToDataDir(configDir, dataDir);
