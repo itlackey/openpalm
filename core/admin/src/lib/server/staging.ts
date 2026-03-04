@@ -349,6 +349,36 @@ function stageAutomationFiles(state: ControlPlaneState): void {
   }
 }
 
+// ── Model Overlay Staging ─────────────────────────────────────────────
+
+const LOCAL_MODELS_FILENAME = "local-models.yml";
+
+/**
+ * Stage CONFIG_HOME/local-models.yml → STATE_HOME/artifacts/local-models.yml.
+ * If the source file doesn't exist, removes the staged copy.
+ */
+function stageModelOverlay(state: ControlPlaneState): void {
+  const source = `${state.configDir}/${LOCAL_MODELS_FILENAME}`;
+  const dest = `${state.stateDir}/artifacts/${LOCAL_MODELS_FILENAME}`;
+
+  if (existsSync(source)) {
+    const content = readFileSync(source, "utf-8");
+    mkdirSync(`${state.stateDir}/artifacts`, { recursive: true });
+    writeFileSync(dest, content);
+  } else if (existsSync(dest)) {
+    rmSync(dest, { force: true });
+  }
+}
+
+/**
+ * Discover the staged local-models.yml overlay in STATE_HOME/artifacts/.
+ * Returns the absolute path if it exists, or null.
+ */
+export function discoverModelOverlay(stateDir: string): string | null {
+  const path = `${stateDir}/artifacts/${LOCAL_MODELS_FILENAME}`;
+  return existsSync(path) ? path : null;
+}
+
 // ── Top-Level Staging ─────────────────────────────────────────────────
 
 export function stageArtifacts(state: ControlPlaneState): {
@@ -408,6 +438,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   stageChannelYmlFiles(state);
   stageChannelCaddyfiles(state);
   stageAutomationFiles(state);
+  stageModelOverlay(state);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
   writeFileSync(

@@ -144,3 +144,44 @@ export type RegistryResponse = {
   automations: RegistryAutomationItem[];
   source?: 'remote' | 'bundled';
 };
+
+// ── Local Models (Docker Model Runner) ──────────────────────────────
+
+export type LocalModelSelection = {
+  systemModel?: { model: string; contextSize?: number };
+  embeddingModel?: { model: string; dimensions: number };
+};
+
+export type SuggestedModel = {
+  id: string;
+  label: string;
+  size: string;
+  contextSize?: number;
+  dimensions?: number;
+};
+
+export type LocalModelsResponse = {
+  modelRunnerAvailable: boolean;
+  modelRunnerUrl: string;
+  config: LocalModelSelection | null;
+  suggestedSystemModels: SuggestedModel[];
+  suggestedEmbeddingModels: SuggestedModel[];
+  embeddingDims: Record<string, number>;
+  pulledModels: string[];
+};
+
+export type LocalModelStatusResponse = {
+  systemModelReady: boolean;
+  embeddingModelReady: boolean;
+  configured: boolean;
+  modelRunnerAvailable?: boolean;
+  systemModel?: string | null;
+  embeddingModel?: string | null;
+};
+
+export type LocalModelSavePayload = {
+  systemModel?: { model: string; contextSize?: number };
+  embeddingModel?: { model: string; dimensions?: number };
+  applyToGuardian?: boolean;
+  applyToMemory?: boolean;
+};

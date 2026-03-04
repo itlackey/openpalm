@@ -26,7 +26,12 @@ import {
   resolveConfigForPush,
   pushConfigToOpenMemory,
   EMBEDDING_DIMS,
-  type OpenMemoryConfig
+  LOCAL_EMBEDDING_DIMS,
+  detectModelRunner,
+  writeLocalModelsCompose,
+  patchSecretsEnvFile,
+  type OpenMemoryConfig,
+  type LocalModelSelection
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
@@ -223,6 +228,70 @@ export const POST: RequestHandler = async (event) => {
     };
 
     writeOpenMemoryConfig(state.dataDir, omConfig);
+  }
+
+  // ── Local model configuration (Docker Model Runner) ──
+  const localSystemModel = (body.localSystemModel as string) ?? "";
+  const localEmbeddingModel = (body.localEmbeddingModel as string) ?? "";
+  const localEmbeddingDims = typeof body.localEmbeddingDims === "number"
+    ? body.localEmbeddingDims
+    : (localEmbeddingModel ? (LOCAL_EMBEDDING_DIMS[localEmbeddingModel] ?? 384) : 0);
+
+  if (localSystemModel || localEmbeddingModel) {
+    const selection: LocalModelSelection = {};
+
+    if (localSystemModel) {
+      selection.systemModel = { model: localSystemModel, contextSize: 4096 };
+    }
+    if (localEmbeddingModel) {
+      selection.embeddingModel = { model: localEmbeddingModel, dimensions: localEmbeddingDims };
+    }
+
+    // Write CONFIG_HOME/local-models.yml compose overlay
+    writeLocalModelsCompose(state.configDir, selection);
+
+    // Detect Model Runner and apply local models to guardian/openmemory
+    const detection = await detectModelRunner();
+    if (detection.available) {
+      // Apply system model to Guardian
+      if (localSystemModel) {
+        patchSecretsEnvFile(state.configDir, {
+          GUARDIAN_LLM_PROVIDER: "openai",
+          GUARDIAN_LLM_MODEL: localSystemModel,
+          SYSTEM_LLM_BASE_URL: detection.url,
+        });
+      }
+
+      // Apply local models to OpenMemory config
+      const omConfigForLocal = readOpenMemoryConfig(state.dataDir);
+
+      if (localSystemModel) {
+        omConfigForLocal.mem0.llm = {
+          provider: "openai",
+          config: {
+            model: localSystemModel,
+            base_url: detection.url,
+            api_key: "not-needed",
+            temperature: 0.1,
+            max_tokens: 2000,
+          },
+        };
+      }
+
+      if (localEmbeddingModel) {
+        omConfigForLocal.mem0.embedder = {
+          provider: "openai",
+          config: {
+            model: localEmbeddingModel,
+            base_url: detection.url,
+            api_key: "not-needed",
+          },
+        };
+        omConfigForLocal.mem0.vector_store.config.embedding_model_dims = localEmbeddingDims;
+      }
+
+      writeOpenMemoryConfig(state.dataDir, omConfigForLocal);
+    }
   }
 
   // Run install sequence

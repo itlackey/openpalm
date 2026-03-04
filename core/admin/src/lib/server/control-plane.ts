@@ -82,6 +82,7 @@ export {
   stagedStackEnvFile,
   buildEnvFiles,
   discoverStagedChannelYmls,
+  discoverModelOverlay,
   stageArtifacts,
   buildArtifactMeta,
   persistArtifacts,
@@ -121,3 +122,20 @@ export {
   normalizeCaller,
   isAllowedAction
 } from "./lifecycle.js";
+
+// ── model-runner.ts ──────────────────────────────────────────────────
+export {
+  detectModelRunner,
+  readLocalModelsCompose,
+  writeLocalModelsCompose,
+  generateModelOverlayYaml,
+  parseLocalModelsCompose,
+  listPulledModels,
+  isValidModelName,
+  SUGGESTED_SYSTEM_MODELS,
+  SUGGESTED_EMBEDDING_MODELS,
+  LOCAL_EMBEDDING_DIMS,
+  type LocalModelSelection,
+  type ModelRunnerDetection,
+  type SuggestedModel
+} from "./model-runner.js";

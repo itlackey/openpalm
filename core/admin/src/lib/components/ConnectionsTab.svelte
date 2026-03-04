@@ -4,8 +4,13 @@
     fetchConnections,
     fetchOpenMemoryConfig,
     fetchProviderModels,
-    saveSystemConnection
+    saveSystemConnection,
+    fetchLocalModels,
+    saveLocalModels,
+    deleteLocalModel,
+    fetchLocalModelStatus
   } from '$lib/api.js';
+  import type { SuggestedModel, LocalModelSelection } from '$lib/types.js';
 
   interface Props {
     connections: Record<string, string>;
@@ -82,6 +87,30 @@
 
   // ── Loaded flag ───────────────────────────────────────────────────
   let loaded = $state(false);
+
+  // ── Local Models State ──────────────────────────────────────────
+  let localModelRunnerAvailable = $state(false);
+  let localConfig: LocalModelSelection | null = $state(null);
+  let localSuggestedSystem: SuggestedModel[] = $state([]);
+  let localSuggestedEmbedding: SuggestedModel[] = $state([]);
+  let localEmbeddingDimsMap: Record<string, number> = $state({});
+  let localLoading = $state(false);
+  let localSaving = $state(false);
+  let localError = $state('');
+  let localSuccess = $state(false);
+  let localEditing = $state(false);
+  let editSystemModel = $state('');
+  let editEmbeddingModel = $state('');
+  let editEmbeddingDims = $state(384);
+  let useCustomEditSystem = $state(false);
+  let useCustomEditEmbedding = $state(false);
+  let customEditSystemUrl = $state('');
+  let customEditEmbeddingUrl = $state('');
+  // Toast state
+  let toastVisible = $state(false);
+  let toastMessage = $state('');
+  let toastModelType = $state<'system' | 'embedding' | ''>('');
+  let statusPollTimer: ReturnType<typeof setInterval> | null = null;
 
   // ── Derived ───────────────────────────────────────────────────────
   let needsApiKey = $derived(!NO_KEY_PROVIDERS.has(provider));
@@ -277,6 +306,173 @@
   function handleSubmit(e: SubmitEvent): void {
     e.preventDefault();
     void handleSave();
+  }
+
+  // ── Local Models Functions ─────────────────────────────────────────
+
+  async function loadLocalModels(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+
+    localLoading = true;
+    localError = '';
+    try {
+      const data = await fetchLocalModels(token);
+      localModelRunnerAvailable = data.modelRunnerAvailable;
+      localConfig = data.config;
+      localSuggestedSystem = data.suggestedSystemModels;
+      localSuggestedEmbedding = data.suggestedEmbeddingModels;
+      localEmbeddingDimsMap = data.embeddingDims ?? {};
+    } catch {
+      localError = 'Failed to load local model info.';
+    } finally {
+      localLoading = false;
+    }
+  }
+
+  void loadLocalModels();
+
+  function startEditing(): void {
+    localEditing = true;
+    localSuccess = false;
+    localError = '';
+    editSystemModel = localConfig?.systemModel?.model ?? '';
+    editEmbeddingModel = localConfig?.embeddingModel?.model ?? '';
+    editEmbeddingDims = localConfig?.embeddingModel?.dimensions ?? 384;
+    useCustomEditSystem = false;
+    useCustomEditEmbedding = false;
+    customEditSystemUrl = '';
+    customEditEmbeddingUrl = '';
+  }
+
+  function cancelEditing(): void {
+    localEditing = false;
+  }
+
+  function handleEditSystemChange(value: string): void {
+    if (value === '__custom__') {
+      useCustomEditSystem = true;
+      editSystemModel = '';
+    } else {
+      useCustomEditSystem = false;
+      editSystemModel = value;
+    }
+  }
+
+  function handleEditEmbeddingChange(value: string): void {
+    if (value === '__custom__') {
+      useCustomEditEmbedding = true;
+      editEmbeddingModel = '';
+    } else {
+      useCustomEditEmbedding = false;
+      editEmbeddingModel = value;
+      const dims = localEmbeddingDimsMap[value];
+      if (dims) editEmbeddingDims = dims;
+    }
+  }
+
+  async function handleLocalModelSave(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+
+    const sysModel = useCustomEditSystem ? customEditSystemUrl.trim() : editSystemModel;
+    const embModel = useCustomEditEmbedding ? customEditEmbeddingUrl.trim() : editEmbeddingModel;
+
+    if (!sysModel && !embModel) {
+      localError = 'Select at least one model.';
+      return;
+    }
+
+    localSaving = true;
+    localError = '';
+    localSuccess = false;
+
+    try {
+      const payload: { systemModel?: { model: string; contextSize?: number }; embeddingModel?: { model: string; dimensions?: number }; applyToGuardian?: boolean; applyToMemory?: boolean } = {};
+      if (sysModel) {
+        payload.systemModel = { model: sysModel, contextSize: 4096 };
+        payload.applyToGuardian = true;
+      }
+      if (embModel) {
+        payload.embeddingModel = { model: embModel, dimensions: editEmbeddingDims };
+        payload.applyToMemory = true;
+      }
+
+      const result = await saveLocalModels(token, payload);
+      if (result.ok) {
+        localSuccess = true;
+        localEditing = false;
+        await loadLocalModels();
+        if (result.pulling) {
+          startStatusPolling();
+        }
+      }
+    } catch (err) {
+      localError = err instanceof Error ? err.message : 'Failed to save local models.';
+    } finally {
+      localSaving = false;
+    }
+  }
+
+  async function handleLocalModelDelete(target: string): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+
+    if (!confirm(`Remove local model "${target}"? This will update the compose configuration.`)) {
+      return;
+    }
+
+    localSaving = true;
+    localError = '';
+    try {
+      await deleteLocalModel(token, target);
+      localSuccess = false;
+      await loadLocalModels();
+    } catch (err) {
+      localError = err instanceof Error ? err.message : 'Failed to delete local model.';
+    } finally {
+      localSaving = false;
+    }
+  }
+
+  function startStatusPolling(): void {
+    stopStatusPolling();
+    statusPollTimer = setInterval(() => void pollModelStatus(), 5000);
+  }
+
+  function stopStatusPolling(): void {
+    if (statusPollTimer) {
+      clearInterval(statusPollTimer);
+      statusPollTimer = null;
+    }
+  }
+
+  async function pollModelStatus(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) { stopStatusPolling(); return; }
+
+    try {
+      const status = await fetchLocalModelStatus(token);
+      if (status.systemModelReady && status.embeddingModelReady && status.configured) {
+        stopStatusPolling();
+        toastMessage = 'Local models are ready and applied.';
+        toastVisible = true;
+        toastModelType = '';
+        await loadLocalModels();
+      } else if (status.systemModelReady && !status.embeddingModelReady && localConfig?.embeddingModel) {
+        // System ready, embedding still pulling
+      } else if (!status.systemModelReady && status.embeddingModelReady && localConfig?.systemModel) {
+        // Embedding ready, system still pulling
+      }
+    } catch {
+      // Polling error — keep trying
+    }
+  }
+
+  function dismissToast(): void {
+    toastVisible = false;
+    toastMessage = '';
+    toastModelType = '';
   }
 </script>
 
@@ -595,8 +791,238 @@
         </button>
       </div>
     </form>
+
+    <!-- ── Section 3: Local Models ──────────────────────────────── -->
+    <section class="panel connections-section local-models-section">
+      <div class="panel-header">
+        <h3>Local Models</h3>
+        <p class="section-desc">
+          Run models locally with Docker Model Runner — zero API costs, full privacy.
+        </p>
+      </div>
+      <div class="panel-body">
+        {#if localLoading}
+          <div class="loading-state">
+            <span class="spinner"></span>
+            <span>Detecting Docker Model Runner...</span>
+          </div>
+        {:else if !localModelRunnerAvailable}
+          <div class="local-unavailable">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <div>
+              <p>Docker Model Runner is not detected.</p>
+              <p class="field-hint">Enable Model Runner in Docker Desktop settings or install it on Linux to use local models.</p>
+            </div>
+            <button class="btn btn-outline btn-sm" type="button" onclick={() => void loadLocalModels()}>
+              Retry
+            </button>
+          </div>
+        {:else}
+          <div class="local-status">
+            <span class="status-dot status-dot--ok"></span>
+            <span>Docker Model Runner available</span>
+          </div>
+
+          {#if localError}
+            <div class="feedback feedback--error local-feedback" role="alert">
+              <span>{localError}</span>
+              <button class="btn-dismiss" type="button" onclick={() => localError = ''}>
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          {/if}
+
+          {#if localSuccess}
+            <div class="feedback feedback--success local-feedback" role="status">
+              <span>Local models saved. Models are being pulled in the background.</span>
+              <button class="btn-dismiss" type="button" onclick={() => localSuccess = false}>
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          {/if}
+
+          {#if localEditing}
+            <!-- ── Editing Mode ────────────────────────────────────── -->
+            <div class="local-edit-form">
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="local-sys-model" class="form-label">System Model</label>
+                  {#if useCustomEditSystem}
+                    <input
+                      id="local-sys-model"
+                      type="text"
+                      class="form-input"
+                      bind:value={customEditSystemUrl}
+                      placeholder="hf.co/username/model"
+                    />
+                    <button class="btn-link" type="button" onclick={() => { useCustomEditSystem = false; editSystemModel = ''; }}>
+                      Back to suggested models
+                    </button>
+                  {:else}
+                    <select
+                      id="local-sys-model"
+                      class="form-input"
+                      value={editSystemModel}
+                      onchange={(e) => handleEditSystemChange(e.currentTarget.value)}
+                    >
+                      <option value="">None</option>
+                      {#each localSuggestedSystem as m}
+                        <option value={m.id}>{m.label} ({m.size})</option>
+                      {/each}
+                      <option value="__custom__">Custom (HuggingFace)...</option>
+                    </select>
+                  {/if}
+                  <span class="field-hint">Used by Guardian and OpenMemory for reasoning.</span>
+                </div>
+
+                <div class="form-field">
+                  <label for="local-emb-model" class="form-label">Embedding Model</label>
+                  {#if useCustomEditEmbedding}
+                    <input
+                      id="local-emb-model"
+                      type="text"
+                      class="form-input"
+                      bind:value={customEditEmbeddingUrl}
+                      placeholder="hf.co/username/model"
+                    />
+                    <button class="btn-link" type="button" onclick={() => { useCustomEditEmbedding = false; editEmbeddingModel = ''; }}>
+                      Back to suggested models
+                    </button>
+                  {:else}
+                    <select
+                      id="local-emb-model"
+                      class="form-input"
+                      value={editEmbeddingModel}
+                      onchange={(e) => handleEditEmbeddingChange(e.currentTarget.value)}
+                    >
+                      <option value="">None</option>
+                      {#each localSuggestedEmbedding as m}
+                        <option value={m.id}>{m.label} ({m.size}) — {m.dimensions}d</option>
+                      {/each}
+                      <option value="__custom__">Custom (HuggingFace)...</option>
+                    </select>
+                  {/if}
+                  <span class="field-hint">Used by OpenMemory for embeddings.</span>
+                </div>
+
+                {#if editEmbeddingModel || useCustomEditEmbedding}
+                  <div class="form-field">
+                    <label for="local-emb-dims" class="form-label">Embedding Dimensions</label>
+                    <input
+                      id="local-emb-dims"
+                      type="number"
+                      class="form-input"
+                      bind:value={editEmbeddingDims}
+                      min="1"
+                      step="1"
+                    />
+                    <span class="field-hint">Auto-filled for known models.</span>
+                  </div>
+                {/if}
+              </div>
+
+              <div class="local-edit-actions">
+                <button
+                  class="btn btn-primary btn-sm"
+                  type="button"
+                  disabled={localSaving}
+                  onclick={() => void handleLocalModelSave()}
+                >
+                  {#if localSaving}
+                    <span class="spinner"></span>
+                  {/if}
+                  Save Local Models
+                </button>
+                <button class="btn btn-outline btn-sm" type="button" onclick={cancelEditing}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          {:else}
+            <!-- ── Display Mode ────────────────────────────────────── -->
+            {#if localConfig && (localConfig.systemModel || localConfig.embeddingModel)}
+              <div class="local-models-list">
+                {#if localConfig.systemModel}
+                  <div class="local-model-item">
+                    <div class="local-model-info">
+                      <span class="local-model-role">System Model</span>
+                      <code class="local-model-id">{localConfig.systemModel.model}</code>
+                    </div>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      type="button"
+                      disabled={localSaving}
+                      onclick={() => void handleLocalModelDelete(localConfig!.systemModel!.model)}
+                      aria-label="Remove system model"
+                    >
+                      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-2 14H7L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                    </button>
+                  </div>
+                {/if}
+                {#if localConfig.embeddingModel}
+                  <div class="local-model-item">
+                    <div class="local-model-info">
+                      <span class="local-model-role">Embedding Model</span>
+                      <code class="local-model-id">{localConfig.embeddingModel.model}</code>
+                      <span class="local-model-dims">{localConfig.embeddingModel.dimensions}d</span>
+                    </div>
+                    <button
+                      class="btn btn-ghost btn-sm"
+                      type="button"
+                      disabled={localSaving}
+                      onclick={() => void handleLocalModelDelete(localConfig!.embeddingModel!.model)}
+                      aria-label="Remove embedding model"
+                    >
+                      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-2 14H7L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                    </button>
+                  </div>
+                {/if}
+              </div>
+              <button class="btn btn-outline btn-sm" type="button" onclick={startEditing}>
+                Change Models
+              </button>
+            {:else}
+              <p class="local-empty">No local models configured.</p>
+              <button class="btn btn-outline btn-sm" type="button" onclick={startEditing}>
+                Add Local Model
+              </button>
+            {/if}
+          {/if}
+        {/if}
+      </div>
+    </section>
   {/if}
 </section>
+
+<!-- ── Toast Notification ───────────────────────────────────────── -->
+{#if toastVisible}
+  <div class="toast" role="status" aria-live="polite">
+    <div class="toast-content">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{toastMessage}</span>
+    </div>
+    <button class="btn-dismiss" type="button" onclick={dismissToast} aria-label="Dismiss">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
+  </div>
+{/if}
 
 <style>
   .connections-tab {
@@ -942,9 +1368,174 @@
     }
   }
 
+  /* ── Local Models ─────────────────────────────────────────── */
+
+  .local-unavailable {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-bg-secondary, rgba(128, 128, 128, 0.06));
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+  }
+
+  .local-unavailable p {
+    margin: 0;
+  }
+
+  .local-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-4);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot--ok {
+    background: var(--color-success, #40c057);
+  }
+
+  .local-feedback {
+    margin-bottom: var(--space-4);
+  }
+
+  .local-edit-form {
+    margin-top: var(--space-2);
+  }
+
+  .local-edit-actions {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+  }
+
+  .btn-link {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .btn-link:hover {
+    opacity: 0.8;
+  }
+
+  .local-models-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .local-model-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-secondary, rgba(128, 128, 128, 0.06));
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+  }
+
+  .local-model-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .local-model-role {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+    width: 110px;
+  }
+
+  .local-model-id {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .local-model-dims {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .local-empty {
+    color: var(--color-text-tertiary);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-3);
+  }
+
+  /* ── Toast Notification ─────────────────────────────────────── */
+
+  .toast {
+    position: fixed;
+    bottom: var(--space-6);
+    right: var(--space-6);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-success-border, rgba(64, 192, 87, 0.4));
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: var(--text-sm);
+    z-index: 1000;
+    max-width: 420px;
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .toast-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 1;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
   @media (max-width: 640px) {
     .form-grid {
       grid-template-columns: 1fr;
+    }
+
+    .toast {
+      left: var(--space-4);
+      right: var(--space-4);
+      max-width: none;
     }
   }
 </style>

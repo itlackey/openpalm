@@ -8,7 +8,10 @@ import type {
   OpenMemoryConfigSaveResult,
   SystemConnectionPayload,
   SystemConnectionSaveResult,
-  RegistryResponse
+  RegistryResponse,
+  LocalModelsResponse,
+  LocalModelSavePayload,
+  LocalModelStatusResponse
 } from './types.js';
 
 const apiBase = '';
@@ -313,4 +316,63 @@ export async function registryRefresh(token: string): Promise<void> {
     const text = await res.text();
     throw new Error(text);
   }
+}
+
+// ── Local Models (Docker Model Runner) ────────────────────────────────
+
+export async function fetchLocalModels(token: string): Promise<LocalModelsResponse> {
+  const res = await get('/admin/models/local', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as LocalModelsResponse;
+}
+
+export async function saveLocalModels(
+  token: string,
+  payload: LocalModelSavePayload
+): Promise<{ ok: boolean; pulling?: boolean; modelRunnerUrl?: string }> {
+  const res = await post('/admin/models/local', payload, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as { ok: boolean; pulling?: boolean; modelRunnerUrl?: string };
+}
+
+export async function deleteLocalModel(
+  token: string,
+  target: string
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${apiBase}/admin/models/local`, {
+    method: 'DELETE',
+    headers: {
+      'content-type': 'application/json',
+      ...buildHeaders(token)
+    },
+    body: JSON.stringify({ model: target })
+  });
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as { ok: boolean };
+}
+
+export async function fetchLocalModelStatus(token: string): Promise<LocalModelStatusResponse> {
+  const res = await get('/admin/models/local/status', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as LocalModelStatusResponse;
 }
