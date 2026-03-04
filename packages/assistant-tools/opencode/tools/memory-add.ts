@@ -15,13 +15,21 @@ export default tool({
     metadata: tool.schema
       .string()
       .optional()
-      .describe("Optional JSON object of key-value metadata to attach, e.g. '{\"category\":\"preference\",\"project\":\"openpalm\"}'"),
+      .describe(
+        "Optional JSON object of key-value metadata. Supports 'category' ('semantic' for facts/preferences, 'episodic' for events/outcomes, 'procedural' for workflows/patterns), 'source', 'project', etc. Example: '{\"category\":\"semantic\",\"project\":\"openpalm\"}'",
+      ),
   },
   async execute(args) {
-    let metadata: Record<string, string> = {};
+    let metadata: Record<string, any> = {};
     if (args.metadata) {
       try { metadata = JSON.parse(args.metadata); } catch {}
     }
+    // Apply defaults for categorisation fields when not provided
+    if (!metadata.category) metadata.category = "semantic";
+    if (!metadata.source) metadata.source = "manual";
+    if (metadata.confidence === undefined) metadata.confidence = 1.0;
+    if (!metadata.access_count) metadata.access_count = 0;
+    if (!metadata.last_accessed) metadata.last_accessed = new Date().toISOString();
     return memoryFetch("/api/v1/memories/", {
       method: "POST",
       body: JSON.stringify({
