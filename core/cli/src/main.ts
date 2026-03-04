@@ -236,21 +236,46 @@ async function ensureOpenCodeConfig(configHome: string): Promise<void> {
   await mkdir(join(opencodeDir, 'skills'), { recursive: true });
 }
 
+async function writeIfChanged(path: string, content: string): Promise<void> {
+  const file = Bun.file(path);
+  if (await file.exists()) {
+    const existing = await file.text();
+    if (existing === content) {
+      return;
+    }
+  }
+  await Bun.write(path, content);
+}
+
 async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
   const opencodeSystemDir = join(dataHome, 'assistant');
   await mkdir(opencodeSystemDir, { recursive: true });
+
   const systemConfig = join(opencodeSystemDir, 'opencode.jsonc');
-  if (!(await Bun.file(systemConfig).exists())) {
-    await Bun.write(systemConfig, JSON.stringify({
-      "$schema": "https://opencode.ai/config.json",
-      "model": "opencode/big-pickle",
-      "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
-    }, null, 2) + "\n");
-  }
+  const systemConfigContent =
+    JSON.stringify(
+      {
+        "$schema": "https://opencode.ai/config.json",
+        "model": "opencode/big-pickle",
+        "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
+      },
+      null,
+      2,
+    ) + "\n";
+  await writeIfChanged(systemConfig, systemConfigContent);
+
   const agentsFile = join(opencodeSystemDir, 'AGENTS.md');
-  if (!(await Bun.file(agentsFile).exists())) {
-    await Bun.write(agentsFile, '# OpenPalm Assistant\n\nThis file defines the assistant persona.\nIt is seeded by the CLI on first install and managed by the admin on subsequent updates.\n');
+  const assetsAgentsPath = join(import.meta.dir, '..', '..', 'assets', 'AGENTS.md');
+  let agentsContent: string;
+  if (await Bun.file(assetsAgentsPath).exists()) {
+    agentsContent = await Bun.file(assetsAgentsPath).text();
+  } else {
+    agentsContent =
+      '# OpenPalm Assistant\n\n' +
+      'This file defines the assistant persona.\n' +
+      'It is seeded by the CLI on first install and managed by the admin on subsequent updates.\n';
   }
+  await writeIfChanged(agentsFile, agentsContent);
 }
 
 async function runDockerCompose(args: string[]): Promise<void> {
