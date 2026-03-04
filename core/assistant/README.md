@@ -13,7 +13,7 @@ Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of O
 
 The assistant is deliberately isolated:
 - No Docker socket mount
-- No host filesystem access beyond designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/opencode`, `OPENPALM_WORK_DIR`)
+- No host filesystem access beyond designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `OPENPALM_WORK_DIR`)
 - Admin API calls are HMAC-authenticated and allowlisted
 
 ## Plugin Architecture
@@ -34,11 +34,11 @@ The Dockerfile pre-installs the package at `/opt/opencode/node_modules/` as an o
 | Location | Source | Purpose |
 |---|---|---|
 | `packages/assistant-tools/` | Git repo | Plugin source: tools, plugins, skills, AGENTS.md |
-| `/opt/opencode/node_modules/@openpalm/assistant-tools/` | Docker image | Offline fallback for npm install |
-| `/opt/opencode/AGENTS.md` | Docker COPY | Assistant persona (always present) |
-| `/opt/opencode/opencode.jsonc` | Docker COPY | OpenCode config with plugin list |
-| `~/.cache/opencode/node_modules/` | Runtime (DATA_HOME volume) | OpenCode's npm cache — plugins auto-installed here |
-| `CONFIG_HOME/opencode/` | Runtime mount | User extensions — no image rebuild needed |
+| `core/assets/opencode.jsonc` | Git repo | System config (model + plugins) — seeded to DATA_HOME/assistant/ |
+| `core/assets/AGENTS.md` | Git repo | Assistant persona — seeded to DATA_HOME/assistant/ |
+| `DATA_HOME/assistant/` | Runtime mount | System config mounted at `/etc/opencode` |
+| `CONFIG_HOME/assistant/` | Runtime mount | User extensions mounted at `~/.config/opencode` |
+| `~/.cache/opencode/node_modules/` | Container ephemeral | Plugins auto-installed from config on startup |
 
 ### Updating tools
 
@@ -54,4 +54,4 @@ See [`packages/assistant-tools/AGENTS.md`](../../packages/assistant-tools/AGENTS
 |---|---|
 | `OPENPALM_ADMIN_URL` | Admin API base URL |
 | `OPENPALM_ADMIN_TOKEN` | Token for Admin API authentication |
-| `OPENCODE_CONFIG_HOME` | OpenCode config directory (maps to `CONFIG_HOME/opencode`) |
+| `OPENCODE_CONFIG_DIR` | System config directory (maps to `DATA_HOME/assistant`, mounted at `/etc/opencode`) |

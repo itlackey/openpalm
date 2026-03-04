@@ -92,9 +92,9 @@ actions and service names are legal — the assistant can't do anything
 unauthorized.
 
 Extensions live in two places:
-- `/opt/opencode/` — core extensions baked into the image (always loaded,
-  higher precedence)
-- `CONFIG_HOME/opencode/` — user extensions mounted at runtime (no rebuild
+- `/etc/opencode/` — system config mounted from `DATA_HOME/assistant/`
+  (model, plugins, persona — managed by admin)
+- `CONFIG_HOME/assistant/` — user extensions mounted at runtime (no rebuild
   needed)
 
 ### Channel adapters (e.g. channel-chat, port 8181)

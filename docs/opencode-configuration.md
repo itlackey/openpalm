@@ -11,11 +11,11 @@ assistant service.
 OpenCode supports a layered configuration model. OpenPalm uses three layers:
 
 1. **User config** — persisted on the host at
-   `$OPENPALM_CONFIG_HOME/opencode/` and bind-mounted into the container at
+   `$OPENPALM_CONFIG_HOME/assistant/` and bind-mounted into the container at
    `~/.config/opencode/`. Users can add custom tools, plugins, or skills here.
    This is the lowest-precedence layer.
 2. **System config** — persisted on the host at
-   `$OPENPALM_DATA_HOME/opencode/` and bind-mounted into the container at
+   `$OPENPALM_DATA_HOME/assistant/` and bind-mounted into the container at
    `/etc/opencode/` via `OPENCODE_CONFIG_DIR`. Contains the model selection,
    plugin declarations, and persona (AGENTS.md). Overrides user config.
 3. **Project config** — an `opencode.json` in the `/work` directory (if present).
@@ -74,13 +74,14 @@ on first boot (cached at `~/.cache/opencode/node_modules/`).
 
 ### Volume Mounts
 
-Four non-overlapping mounts, each at a distinct container path:
+Five non-overlapping mounts, each at a distinct container path:
 
 | Host Path | Container Path | Purpose |
 |---|---|---|
-| `DATA_HOME/opencode` | `/etc/opencode` | System config (`OPENCODE_CONFIG_DIR`) — model, plugins, persona |
-| `CONFIG_HOME/opencode` | `~/.config/opencode` | User extensions — custom tools, plugins, skills |
-| `STATE_HOME/opencode` | `~/.local/state/opencode` | Logs and session state (OpenCode writes here natively) |
+| `DATA_HOME/assistant` | `/etc/opencode` | System config (`OPENCODE_CONFIG_DIR`) — model, plugins, persona |
+| `CONFIG_HOME/assistant` | `~/.config/opencode` | User extensions — custom tools, plugins, skills |
+| `STATE_HOME/opencode` | `~/.local/state/opencode` | Logs and session state |
+| `DATA_HOME/opencode` | `~/.local/share/opencode` | OpenCode data directory |
 | `WORK_DIR` | `/work` | Project files |
 
 ### Environment Variables
@@ -109,7 +110,7 @@ LLM provider keys are passed through from the host:
 
 ---
 
-## System Config (`DATA_HOME/opencode/`)
+## System Config (`DATA_HOME/assistant/`)
 
 System config is managed by the admin control plane. Files are seeded by
 `ensureOpenCodeSystemConfig()` (called on every install, update, and startup)
@@ -210,7 +211,7 @@ Skills are markdown reference documents that OpenCode surfaces on demand:
 
 Users can add their own tools, plugins, or skills without rebuilding the image.
 
-**Host path:** `$OPENPALM_CONFIG_HOME/opencode/`
+**Host path:** `$OPENPALM_CONFIG_HOME/assistant/`
 **Container path:** `/home/opencode/.config/opencode/`
 
 This directory lives under CONFIG_HOME — the single user touchpoint for all
@@ -235,19 +236,22 @@ system-managed set.
 Install                              Runtime
 ───────                              ───────
 ensureXdgDirs()                      Container starts
-  creates DATA_HOME/opencode/          │
-  creates CONFIG_HOME/opencode/        ├── OPENCODE_CONFIG_DIR=/etc/opencode
+  creates DATA_HOME/assistant/         │
+  creates CONFIG_HOME/assistant/       ├── OPENCODE_CONFIG_DIR=/etc/opencode
   creates STATE_HOME/opencode/         │     reads opencode.jsonc (model + plugins)
-                                       │     reads AGENTS.md (persona)
-ensureOpenCodeSystemConfig()           │
-  writes DATA_HOME/opencode/           ├── ~/.config/opencode/ (user extensions)
-    opencode.jsonc                     │     merges tools/, plugins/, skills/
-    AGENTS.md                          │
-                                       ├── auto-installs plugins via bun
-ensureOpenCodeConfig()                 │     → ~/.cache/opencode/node_modules/
-  writes CONFIG_HOME/opencode/         │
-    opencode.json (schema ref)         ├── logs → ~/.local/state/opencode/
-    tools/ plugins/ skills/            │     (STATE_HOME/opencode on host)
+  creates DATA_HOME/opencode/          │     reads AGENTS.md (persona)
                                        │
-docker compose up                      └── opencode web --port 4096 --print-logs
+ensureOpenCodeSystemConfig()           ├── ~/.config/opencode/ (user extensions)
+  writes DATA_HOME/assistant/          │     merges tools/, plugins/, skills/
+    opencode.jsonc                     │
+    AGENTS.md                          ├── auto-installs plugins via bun
+                                       │     → ~/.cache/opencode/node_modules/
+ensureOpenCodeConfig()                 │
+  writes CONFIG_HOME/assistant/        ├── logs → ~/.local/state/opencode/
+    opencode.json (schema ref)         │     (STATE_HOME/opencode on host)
+    tools/ plugins/ skills/            │
+                                       ├── data → ~/.local/share/opencode/
+docker compose up                      │     (DATA_HOME/opencode on host)
+                                       │
+                                       └── opencode web --port 4096 --print-logs
 ```

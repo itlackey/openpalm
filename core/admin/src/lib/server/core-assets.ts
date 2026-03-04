@@ -142,13 +142,13 @@ export function readCoreCompose(): string {
 // ── OpenCode System Config (DATA_HOME source of truth) ──────────────
 
 /**
- * Ensure the system-managed OpenCode config exists in DATA_HOME/opencode/.
+ * Ensure the system-managed OpenCode config exists in DATA_HOME/assistant/.
  * Seeds opencode.jsonc and AGENTS.md from bundled assets. On subsequent
  * runs, overwrites if the bundled version has changed (e.g. after an
  * image rebuild). Backs up stale files before overwriting.
  */
 export function ensureOpenCodeSystemConfig(): void {
-  const dir = `${resolveDataHome()}/opencode`;
+  const dir = `${resolveDataHome()}/assistant`;
   mkdirSync(dir, { recursive: true });
   writeIfChanged(`${dir}/opencode.jsonc`, opencodeConfigAsset);
   writeIfChanged(`${dir}/AGENTS.md`, agentsMdAsset);
@@ -192,8 +192,8 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
   { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
   { dataRelPath: "openmemory/memory.py", githubFilename: "openmemory-memory.py" },
-  { dataRelPath: "opencode/opencode.jsonc", githubFilename: "opencode.jsonc" },
-  { dataRelPath: "opencode/AGENTS.md", githubFilename: "AGENTS.md" }
+  { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
+  { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" }
 ];
 
 /**

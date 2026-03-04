@@ -175,7 +175,7 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
   const dirs = [
     configHome,
     join(configHome, 'channels'),
-    join(configHome, 'opencode'),
+    join(configHome, 'assistant'),
     join(configHome, 'automations'),
     dataHome,
     join(dataHome, 'openmemory'),
@@ -226,7 +226,7 @@ async function ensureStackEnv(configHome: string, dataHome: string, stateHome: s
 }
 
 async function ensureOpenCodeConfig(configHome: string): Promise<void> {
-  const opencodeDir = join(configHome, 'opencode');
+  const opencodeDir = join(configHome, 'assistant');
   const configFile = join(opencodeDir, 'opencode.json');
   if (!(await Bun.file(configFile).exists())) {
     await Bun.write(configFile, '{\n  "$schema": "https://opencode.ai/config.json"\n}\n');
@@ -237,7 +237,7 @@ async function ensureOpenCodeConfig(configHome: string): Promise<void> {
 }
 
 async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
-  const opencodeSystemDir = join(dataHome, 'opencode');
+  const opencodeSystemDir = join(dataHome, 'assistant');
   await mkdir(opencodeSystemDir, { recursive: true });
   const systemConfig = join(opencodeSystemDir, 'opencode.jsonc');
   if (!(await Bun.file(systemConfig).exists())) {

@@ -37,7 +37,7 @@ CONFIG_HOME (~/.config/openpalm/)
 │   └── <name>.caddy         # Caddy route (optional — installed alongside .yml)
 ├── automations/             # Scheduled automations (YAML format, executed in-process)
 │   └── <name>.yml          # Automation YAML file: schedule, action type, and config
-└── opencode/                # OpenCode user extensions (tools, plugins, skills)
+└── assistant/               # OpenCode user extensions (tools, plugins, skills)
     ├── opencode.json        # User OpenCode config (schema ref only; never overwritten)
     ├── tools/               # Custom tool definitions
     ├── plugins/             # Custom plugin definitions
@@ -60,7 +60,8 @@ STATE_HOME (~/.local/state/openpalm/)
 DATA_HOME (~/.local/share/openpalm/)
 ├── stack.env                # Source of truth for host-detected infrastructure config
 ├── openmemory/              # OpenMemory persistent data (SQLite + embedded Qdrant)
-├── assistant/               # Assistant /home/opencode (dotfiles, caches)
+├── assistant/               # System-managed OpenCode config (opencode.jsonc, AGENTS.md)
+├── opencode/                # OpenCode data directory
 ├── guardian/                 # Guardian runtime data
 ├── automations/             # System-managed automations (YAML, pre-installed, survive updates)
 │   └── <name>.yml          # System automation YAML file
@@ -105,14 +106,15 @@ system-managed by admin logic.
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `$DATA_HOME/assistant` | `/home/opencode` | rw | User home (dotfiles, caches) |
-| `$CONFIG_HOME/opencode` | `/home/opencode/.config/opencode` | rw | OpenCode extensions overlay |
+| `$DATA_HOME/assistant` | `/etc/opencode` | rw | System config (`OPENCODE_CONFIG_DIR`) — model, plugins, persona |
+| `$CONFIG_HOME/assistant` | `/home/opencode/.config/opencode` | rw | User extensions — custom tools, plugins, skills |
+| `$STATE_HOME/opencode` | `/home/opencode/.local/state/opencode` | rw | Logs and session state |
+| `$DATA_HOME/opencode` | `/home/opencode/.local/share/opencode` | rw | OpenCode data directory |
 | `$OPENPALM_WORK_DIR` | `/work` | rw | Working directory for projects |
 
-The OpenCode extensions mount overlays onto the assistant's home directory.
-Users drop tools, plugins, or skills into `CONFIG_HOME/opencode/` and they
+Users drop tools, plugins, or skills into `CONFIG_HOME/assistant/` and they
 appear inside the container at the standard OpenCode user config path. This
-complements the built-in config at `/opt/opencode/` without requiring a rebuild.
+complements the system config at `/etc/opencode/` without requiring a rebuild.
 
 ### Guardian
 

@@ -31,7 +31,7 @@ Channel services are added via compose overlays and staged into
 
 ## Filesystem model
 
-- `CONFIG_HOME`: user-editable sources (`secrets.env`, `channels/`, `opencode/`).
+- `CONFIG_HOME`: user-editable sources (`secrets.env`, `channels/`, `assistant/`).
 - `DATA_HOME`: persistent service data and source-of-truth `stack.env`.
 - `STATE_HOME`: assembled runtime (`artifacts/`, staged channels, audit).
 

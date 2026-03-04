@@ -40,7 +40,7 @@ describe("ensureXdgDirs", () => {
     // CONFIG subtrees
     expect(existsSync(configHome)).toBe(true);
     expect(existsSync(join(configHome, "channels"))).toBe(true);
-    expect(existsSync(join(configHome, "opencode"))).toBe(true);
+    expect(existsSync(join(configHome, "assistant"))).toBe(true);
 
     // STATE subtrees
     expect(existsSync(stateHome)).toBe(true);

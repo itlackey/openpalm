@@ -7,7 +7,7 @@
 # Copy .env.example to .env and fill in the required values.
 #
 # Directory model:
-#   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, opencode/
+#   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, assistant/
 #   DATA_HOME   (~/.local/share/openpalm) — opaque service data (openmemory, etc.)
 #   STATE_HOME  (~/.local/state/openpalm) — generated artifacts, audit logs
 
@@ -91,9 +91,10 @@ services:
       - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:4096:4096"
       - "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/opencode:/etc/opencode
-      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/opencode:/home/opencode/.config/opencode
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/assistant:/etc/opencode
+      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/assistant:/home/opencode/.config/opencode
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/opencode:/home/opencode/.local/state/opencode
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/opencode:/home/opencode/.local/share/opencode
       - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
     working_dir: /work
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
