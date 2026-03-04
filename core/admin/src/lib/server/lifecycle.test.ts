@@ -135,6 +135,31 @@ describe("buildComposeFileList", () => {
     expect(files).toHaveLength(2);
     expect(files[1]).toContain("chat.yml");
   });
+
+  test("includes local-models.yml overlay when staged", () => {
+    const state = makeTestState();
+    trackDir(state.stateDir);
+    trackDir(state.configDir);
+    trackDir(state.dataDir);
+
+    const artifactsDir = join(state.stateDir, "artifacts");
+    mkdirSync(artifactsDir, { recursive: true });
+    writeFileSync(join(artifactsDir, "local-models.yml"), "models: {}");
+
+    const files = buildComposeFileList(state);
+    expect(files).toContain(join(artifactsDir, "local-models.yml"));
+  });
+
+  test("omits local-models.yml overlay when not staged", () => {
+    const state = makeTestState();
+    trackDir(state.stateDir);
+    trackDir(state.configDir);
+    trackDir(state.dataDir);
+
+    const files = buildComposeFileList(state);
+    expect(files).toHaveLength(1); // just core compose
+    expect(files.some((f) => f.includes("local-models.yml"))).toBe(false);
+  });
 });
 
 // ── createState (exercises private loaders) ─────────────────────────────

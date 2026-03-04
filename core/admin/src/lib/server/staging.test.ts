@@ -649,3 +649,73 @@ describe("Automation file staging", () => {
     expect(first).toBe(second);
   });
 });
+
+// ── Model Overlay Staging ─────────────────────────────────────────────────
+
+const LOCAL_MODELS_FILENAME = "local-models.yml";
+
+function stageModelOverlayFn(configDir: string, stateDir: string): void {
+  const source = join(configDir, LOCAL_MODELS_FILENAME);
+  const dest = join(stateDir, "artifacts", LOCAL_MODELS_FILENAME);
+
+  if (existsSync(source)) {
+    const content = readFileSync(source, "utf-8");
+    mkdirSync(join(stateDir, "artifacts"), { recursive: true });
+    writeFileSync(dest, content);
+  } else if (existsSync(dest)) {
+    rmSync(dest, { force: true });
+  }
+}
+
+function discoverModelOverlayFn(stateDir: string): string | null {
+  const path = join(stateDir, "artifacts", LOCAL_MODELS_FILENAME);
+  return existsSync(path) ? path : null;
+}
+
+describe("Model overlay staging", () => {
+  test("stages local-models.yml from CONFIG_HOME to STATE_HOME", () => {
+    const content = "models:\n  local-llm:\n    model: ai/mistral\n";
+    writeFileSync(join(configDir, LOCAL_MODELS_FILENAME), content);
+
+    stageModelOverlayFn(configDir, stateDir);
+
+    const stagedPath = join(stateDir, "artifacts", LOCAL_MODELS_FILENAME);
+    expect(existsSync(stagedPath)).toBe(true);
+    expect(readFileSync(stagedPath, "utf-8")).toBe(content);
+  });
+
+  test("removes staged overlay when source is deleted", () => {
+    const content = "models:\n  local-llm:\n    model: ai/mistral\n";
+    writeFileSync(join(configDir, LOCAL_MODELS_FILENAME), content);
+
+    // Stage first
+    stageModelOverlayFn(configDir, stateDir);
+    expect(existsSync(join(stateDir, "artifacts", LOCAL_MODELS_FILENAME))).toBe(true);
+
+    // Remove source and re-stage
+    rmSync(join(configDir, LOCAL_MODELS_FILENAME));
+    stageModelOverlayFn(configDir, stateDir);
+    expect(existsSync(join(stateDir, "artifacts", LOCAL_MODELS_FILENAME))).toBe(false);
+  });
+
+  test("does nothing when no source or staged file exists", () => {
+    stageModelOverlayFn(configDir, stateDir);
+    expect(existsSync(join(stateDir, "artifacts", LOCAL_MODELS_FILENAME))).toBe(false);
+  });
+});
+
+describe("discoverModelOverlay", () => {
+  test("returns path when staged overlay exists", () => {
+    const artifactsDir = join(stateDir, "artifacts");
+    mkdirSync(artifactsDir, { recursive: true });
+    writeFileSync(join(artifactsDir, LOCAL_MODELS_FILENAME), "models: {}");
+
+    const result = discoverModelOverlayFn(stateDir);
+    expect(result).toBe(join(artifactsDir, LOCAL_MODELS_FILENAME));
+  });
+
+  test("returns null when no staged overlay", () => {
+    const result = discoverModelOverlayFn(stateDir);
+    expect(result).toBeNull();
+  });
+});

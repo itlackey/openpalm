@@ -444,6 +444,11 @@
     toastMessage = '';
     toastModelType = '';
   }
+
+  // Clean up status polling on component teardown
+  $effect(() => {
+    return () => stopStatusPolling();
+  });
 </script>
 
 <section class="connections-tab" aria-label="Connections configuration">
@@ -930,7 +935,7 @@
                       class="btn btn-ghost btn-sm"
                       type="button"
                       disabled={localSaving}
-                      onclick={() => void handleLocalModelDelete(localConfig!.systemModel!.model)}
+                      onclick={() => void handleLocalModelDelete('system')}
                       aria-label="Remove system model"
                     >
                       <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -950,7 +955,7 @@
                       class="btn btn-ghost btn-sm"
                       type="button"
                       disabled={localSaving}
-                      onclick={() => void handleLocalModelDelete(localConfig!.embeddingModel!.model)}
+                      onclick={() => void handleLocalModelDelete('embedding')}
                       aria-label="Remove embedding model"
                     >
                       <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

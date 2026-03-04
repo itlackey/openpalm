@@ -30,6 +30,7 @@ import {
   detectModelRunner,
   writeLocalModelsCompose,
   patchSecretsEnvFile,
+  isValidModelName,
   type OpenMemoryConfig,
   type LocalModelSelection
 } from "$lib/server/control-plane.js";
@@ -221,6 +222,17 @@ export const POST: RequestHandler = async (event) => {
     : (localEmbeddingModel ? (LOCAL_EMBEDDING_DIMS[localEmbeddingModel] ?? 384) : 0);
 
   if (localSystemModel || localEmbeddingModel) {
+    // Validate local model names before writing
+    if (localSystemModel && !isValidModelName(localSystemModel)) {
+      return errorResponse(400, "invalid_model", `Invalid local system model name: "${localSystemModel}"`, {}, requestId);
+    }
+    if (localEmbeddingModel && !isValidModelName(localEmbeddingModel)) {
+      return errorResponse(400, "invalid_model", `Invalid local embedding model name: "${localEmbeddingModel}"`, {}, requestId);
+    }
+    if (localEmbeddingDims && (localEmbeddingDims < 1 || !Number.isInteger(localEmbeddingDims))) {
+      return errorResponse(400, "invalid_dims", "Embedding dimensions must be a positive integer", {}, requestId);
+    }
+
     const selection: LocalModelSelection = {};
 
     if (localSystemModel) {

@@ -147,7 +147,9 @@ export function parseLocalModelsCompose(yaml: string): LocalModelSelection {
   const embedModelMatch = yaml.match(/local-embedding:\s*\n\s+model:\s*(.+)/);
   if (embedModelMatch) {
     const model = embedModelMatch[1].trim();
-    const dims = LOCAL_EMBEDDING_DIMS[model] ?? 384;
+    // Read persisted dimensions comment, fall back to lookup table, then default
+    const dimsMatch = yaml.match(/local-embedding:\s*\n\s+model:\s*.+\n\s+# dimensions:\s*(\d+)/);
+    const dims = dimsMatch ? parseInt(dimsMatch[1], 10) : (LOCAL_EMBEDDING_DIMS[model] ?? 384);
     selection.embeddingModel = { model, dimensions: dims };
   }
 
@@ -207,6 +209,9 @@ export function generateModelOverlayYaml(selection: LocalModelSelection): string
   if (hasEmbedding) {
     lines.push(`  local-embedding:`);
     lines.push(`    model: ${selection.embeddingModel!.model}`);
+    if (selection.embeddingModel!.dimensions) {
+      lines.push(`    # dimensions: ${selection.embeddingModel!.dimensions}`);
+    }
   }
 
   // ── services: with model references ──
@@ -253,7 +258,8 @@ export function generateModelOverlayYaml(selection: LocalModelSelection): string
 
 // ── Validation ──────────────────────────────────────────────────────────
 
-/** Validate a model name (must be ai/... or hf.co/...) */
+/** Validate a model name (must be ai/... or hf.co/..., no whitespace/control chars) */
 export function isValidModelName(model: string): boolean {
-  return /^(ai\/|hf\.co\/).+/.test(model);
+  if (!model || /[\s\x00-\x1f\x7f]/.test(model)) return false;
+  return /^(ai\/|hf\.co\/)[a-zA-Z0-9._:/-]+$/.test(model);
 }
