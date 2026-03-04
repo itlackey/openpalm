@@ -20,6 +20,8 @@
     "admin:test": "cd core/admin && npm test",
     "admin:test:unit": "cd core/admin && npm run test:unit -- --run",
     "admin:test:e2e": "cd core/admin && npm run test:e2e",
+    "admin:test:stack": "cd core/admin && RUN_DOCKER_STACK_TESTS=1 npx playwright test",
+    "admin:test:llm": "cd core/admin && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 npx playwright test",
     "guardian:dev": "bun run core/guardian/src/server.ts",
     "guardian:test": "bun test --cwd core/guardian",
     "sdk:test": "bun test --cwd packages/channels-sdk",
