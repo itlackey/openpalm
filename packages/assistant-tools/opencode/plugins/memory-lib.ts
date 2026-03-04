@@ -76,11 +76,12 @@ export async function pluginMemoryFetch(
 /** Semantic search with optional client-side category filtering. */
 export async function searchMemories(
   query: string,
-  opts?: { size?: number; category?: MemoryCategory },
+  opts?: { size?: number; category?: MemoryCategory; timeoutMs?: number },
 ): Promise<MemoryItem[]> {
   const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : (opts.size ?? 10);
   const data = await pluginMemoryFetch("/api/v1/memories/filter", {
     method: "POST",
+    timeoutMs: opts?.timeoutMs,
     body: JSON.stringify({
       user_id: USER_ID,
       search_query: query,
@@ -125,19 +126,19 @@ export async function addMemory(
 }
 
 /** Quick stats: total memories and app count. */
-export async function getMemoryStats(): Promise<{
+export async function getMemoryStats(timeoutMs = 3_000): Promise<{
   total_memories: number;
   total_apps: number;
 } | null> {
   return pluginMemoryFetch(
     `/api/v1/stats/?user_id=${encodeURIComponent(USER_ID)}`,
-    { timeoutMs: 3_000 },
+    { timeoutMs },
   );
 }
 
 /** Returns true if the OpenMemory service is reachable. */
-export async function isMemoryAvailable(): Promise<boolean> {
-  return (await getMemoryStats()) !== null;
+export async function isMemoryAvailable(timeoutMs?: number): Promise<boolean> {
+  return (await getMemoryStats(timeoutMs)) !== null;
 }
 
 // ---------------------------------------------------------------------------

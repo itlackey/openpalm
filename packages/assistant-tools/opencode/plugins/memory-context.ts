@@ -36,7 +36,6 @@ interface SessionState {
   contextInjected: boolean;
   idleCount: number;
   lastExtractionAt: number;
-  extractedThisSession: string[];
 }
 
 const sessions = new Map<string, SessionState>();
@@ -49,6 +48,7 @@ const EXTRACTION_COOLDOWN_MS = 60_000; // 60 seconds between extractions
 const MIN_IDLE_COUNT_FOR_EXTRACTION = 2;
 const REFLEXION_SESSION_INTERVAL = 10;
 const REFLEXION_EPISODE_THRESHOLD = 5;
+const REFLEXION_DEFAULT_CONFIDENCE = 0.5;
 
 // ---------------------------------------------------------------------------
 // Extraction prompt builder
@@ -94,7 +94,7 @@ Review these past session episodes for project "${project}" and extract higher-l
 ${episodeList}
 
 For each insight, call memory-add with metadata:
-  memory-add({ text: "insight statement", metadata: '{"category":"semantic or procedural","source":"reflexion","project":"${project}","confidence":"0.5"}' })
+  memory-add({ text: "insight statement", metadata: '{"category":"semantic or procedural","source":"reflexion","project":"${project}","confidence":${REFLEXION_DEFAULT_CONFIDENCE}}' })
 
 Rules:
 - Only extract genuinely novel insights not already captured as individual memories
@@ -129,14 +129,19 @@ export const MemoryContextPlugin = async (ctx: any) => {
         contextInjected: false,
         idleCount: 0,
         lastExtractionAt: 0,
-        extractedThisSession: [],
       });
 
-      // Graceful degradation
-      if (!(await isMemoryAvailable())) return;
+      // Graceful degradation: fetch stats once and bail out if unavailable
+      const stats = await getMemoryStats();
+      if (!stats) return;
 
-      // Parallel retrieval: semantic + procedural + episodic + stats
-      const [semanticMems, proceduralMems, episodicMems, stats] =
+      const episodicQuery =
+        project !== "unknown"
+          ? `${project} recent sessions outcomes results`
+          : "recent sessions outcomes results";
+
+      // Parallel retrieval: semantic + procedural + episodic
+      const [semanticMems, proceduralMems, episodicMems] =
         await Promise.all([
           searchMemories(
             "user preferences project context conventions decisions",
@@ -146,12 +151,17 @@ export const MemoryContextPlugin = async (ctx: any) => {
             size: 5,
             category: "procedural",
           }),
-          searchMemories("recent sessions outcomes results", {
+          searchMemories(episodicQuery, {
             size: 5,
             category: "episodic",
           }),
-          getMemoryStats(),
         ]);
+      const reflexionEpisodes =
+        project !== "unknown"
+          ? episodicMems.filter(
+            (m) => !m.metadata?.project || m.metadata.project === project,
+          )
+          : episodicMems;
 
       // Project-scoped search (conditional)
       let projectMems: MemoryItem[] = [];
@@ -237,12 +247,12 @@ export const MemoryContextPlugin = async (ctx: any) => {
       sessionsSinceReflexion++;
       if (
         sessionsSinceReflexion >= REFLEXION_SESSION_INTERVAL &&
-        episodicMems.length >= REFLEXION_EPISODE_THRESHOLD &&
+        reflexionEpisodes.length >= REFLEXION_EPISODE_THRESHOLD &&
         typeof client?.session?.prompt === "function"
       ) {
         sessionsSinceReflexion = 0;
         try {
-          const prompt = buildReflexionPrompt(episodicMems, project);
+          const prompt = buildReflexionPrompt(reflexionEpisodes, project);
           await client.session.prompt({
             path: { id: sessionId },
             body: { parts: [{ type: "text", text: prompt }] },
@@ -305,8 +315,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
         if (await isMemoryAvailable()) {
           const summary =
             `Session in project "${state.project}" started ${state.startedAt}. ` +
-            `${state.extractedThisSession.length} learnings extracted across ` +
-            `${state.idleCount} exchanges.`;
+            `Automated memory extraction was run across ${state.idleCount} exchanges.`;
           await addMemory(summary, {
             category: "episodic",
             source: "auto-extract",
@@ -336,10 +345,11 @@ export const MemoryContextPlugin = async (ctx: any) => {
         "admin-config",
       ];
       if (!proceduralPrefixes.some((p) => toolName.startsWith(p))) return;
+      if (!(await isMemoryAvailable(1_200))) return;
 
       const memories = await searchMemories(
         `procedure for ${toolName.replace(/_/g, " ")} operations`,
-        { size: 3, category: "procedural" },
+        { size: 3, category: "procedural", timeoutMs: 1_200 },
       );
       if (memories.length === 0) return;
 
@@ -360,16 +370,18 @@ export const MemoryContextPlugin = async (ctx: any) => {
         _input?.session?.id ?? _input?.properties?.sessionId ?? "unknown";
       const state = sessions.get(sessionId);
 
-      const [semanticMems, proceduralMems, stats] = await Promise.all([
+      const stats = await getMemoryStats(1_500);
+      if (!stats) return;
+      const [semanticMems, proceduralMems] = await Promise.all([
         searchMemories(
           "user preferences project context important decisions",
-          { size: 10, category: "semantic" },
+          { size: 10, category: "semantic", timeoutMs: 1_500 },
         ),
         searchMemories("procedures patterns workflows", {
           size: 5,
           category: "procedural",
+          timeoutMs: 1_500,
         }),
-        getMemoryStats(),
       ]);
 
       const lines = ["## OpenMemory Context (Compaction)"];
@@ -396,9 +408,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
         lines.push("### Session State");
         lines.push(`- Project: ${state.project}`);
         lines.push(`- Session started: ${state.startedAt}`);
-        lines.push(
-          `- Memories extracted this session: ${state.extractedThisSession.length}`,
-        );
+        lines.push(`- Automated extraction idle count: ${state.idleCount}`);
       }
 
       lines.push("");
