@@ -36,14 +36,14 @@ export const POST: RequestHandler = async (event) => {
   const result = resetQdrantCollection(state.dataDir);
 
   appendAudit(
-    state, actor, "openmemory.qdrant.reset",
+    state, actor, "openmemory.collection.reset",
     { collection: collectionName, ok: result.ok, error: result.error },
     result.ok, requestId, callerType
   );
 
   if (!result.ok) {
     return errorResponse(
-      502, "qdrant_reset_failed",
+      502, "collection_reset_failed",
       `Failed to reset memory collection: ${result.error}`,
       {}, requestId
     );

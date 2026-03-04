@@ -304,8 +304,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   const composeContent = await fetchAsset(options.version, 'docker-compose.yml');
   const caddyContent = await fetchAsset(options.version, 'Caddyfile');
+  const memoryPyContent = await fetchAsset(options.version, 'openmemory-memory.py');
   await Bun.write(join(dataHome, 'docker-compose.yml'), composeContent);
   await Bun.write(join(dataHome, 'caddy', 'Caddyfile'), caddyContent);
+  await Bun.write(join(dataHome, 'openmemory', 'memory.py'), memoryPyContent);
   await Bun.write(join(stateHome, 'artifacts', 'docker-compose.yml'), composeContent);
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 

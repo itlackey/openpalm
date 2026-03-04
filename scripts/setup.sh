@@ -319,6 +319,9 @@ download_assets() {
 	download_asset "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
 	download_asset "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
 
+	# Seed patched memory.py for OpenMemory embedded Qdrant support
+	download_asset "openmemory-memory.py" "${DATA_HOME}/openmemory/memory.py"
+
 	# Bootstrap staging: copy to STATE so compose can start admin before first apply
 	cp "${DATA_HOME}/docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
 	cp "${DATA_HOME}/caddy/Caddyfile" "${STATE_HOME}/artifacts/Caddyfile"
