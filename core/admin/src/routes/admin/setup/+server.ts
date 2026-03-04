@@ -126,8 +126,7 @@ export const POST: RequestHandler = async (event) => {
   const llmProvider = (body.llmProvider as string) ?? "";
   const llmApiKey = (body.llmApiKey as string) ?? "";
   const llmBaseUrl = (body.llmBaseUrl as string) ?? "";
-  const guardianModel = (body.guardianModel as string) ?? "";
-  const memoryModel = (body.memoryModel as string) ?? "";
+  const systemModel = (body.systemModel as string) ?? (body.guardianModel as string) ?? "";
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
@@ -145,9 +144,12 @@ export const POST: RequestHandler = async (event) => {
     updates.OPENAI_BASE_URL = body.openaiBaseUrl;
   }
 
-  if (guardianModel) {
-    updates.GUARDIAN_LLM_PROVIDER = llmProvider || "openai";
-    updates.GUARDIAN_LLM_MODEL = guardianModel;
+  if (systemModel) {
+    updates.SYSTEM_LLM_PROVIDER = llmProvider || "openai";
+    updates.SYSTEM_LLM_MODEL = systemModel;
+  }
+  if (llmBaseUrl) {
+    updates.SYSTEM_LLM_BASE_URL = llmBaseUrl;
   }
 
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
@@ -174,13 +176,13 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Build and persist OpenMemory config from wizard selections
-  if (llmProvider && memoryModel) {
+  if (llmProvider && systemModel) {
     const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
       ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
       : llmApiKey; // raw key if no standard env var
 
     const llmConfig: Record<string, unknown> = {
-      model: memoryModel,
+      model: systemModel,
       temperature: 0.1,
       max_tokens: 2000,
       api_key: apiKeyEnvRef,
@@ -252,16 +254,21 @@ export const POST: RequestHandler = async (event) => {
     // Write DATA_HOME/local-models.yml compose overlay
     writeLocalModelsCompose(state.dataDir, selection, detection.url);
 
-    // Apply local models to guardian/openmemory
+    // Apply local models to secrets.env + OpenMemory config
     if (detection.available) {
-      // Apply system model to Guardian
+      // detection.url is base URL without /v1 (e.g. http://host:port/engines)
+      const localSecrets: Record<string, string> = {
+        SYSTEM_LLM_PROVIDER: "openai",
+        SYSTEM_LLM_BASE_URL: detection.url,
+      };
       if (localSystemModel) {
-        patchSecretsEnvFile(state.configDir, {
-          GUARDIAN_LLM_PROVIDER: "openai",
-          GUARDIAN_LLM_MODEL: localSystemModel,
-          SYSTEM_LLM_BASE_URL: detection.url,
-        });
+        localSecrets.SYSTEM_LLM_MODEL = localSystemModel;
       }
+      if (localEmbeddingModel) {
+        localSecrets.EMBEDDING_MODEL = localEmbeddingModel;
+        localSecrets.EMBEDDING_DIMS = String(localEmbeddingDims || 384);
+      }
+      patchSecretsEnvFile(state.configDir, localSecrets);
 
       // Apply local models to OpenMemory config using shared helper
       const omConfigForLocal = readOpenMemoryConfig(state.dataDir);

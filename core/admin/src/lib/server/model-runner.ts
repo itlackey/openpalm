@@ -92,13 +92,17 @@ export const LOCAL_EMBEDDING_DIMS: Record<string, number> = {
   "ai/snowflake-arctic-embed": 1024,
 };
 
-/** Model Runner probe endpoints in priority order. */
-const MODEL_RUNNER_ENDPOINTS = [
+/**
+ * Model Runner probe URLs — full path to /engines/v1/models for detection.
+ * detectModelRunner() strips `/v1` to return the base URL (e.g. `http://host:port/engines`)
+ * consistent with PROVIDER_DEFAULT_URLS (all providers store base URLs without `/v1`).
+ */
+const MODEL_RUNNER_PROBE_URLS = [
   // Docker Desktop (macOS/Windows) — model runner sidecar at port 80
-  "http://model-runner.docker.internal/engines/v1",
+  "http://model-runner.docker.internal/engines/v1/models",
   // Linux docker-model-plugin — model runner container at port 12434
-  "http://model-runner.docker.internal:12434/engines/v1",
-  "http://host.docker.internal:12434/engines/v1",
+  "http://model-runner.docker.internal:12434/engines/v1/models",
+  "http://host.docker.internal:12434/engines/v1/models",
 ];
 
 const LOCAL_MODELS_FILENAME = "local-models.yml";
@@ -108,15 +112,19 @@ const LOCAL_MODELS_META_FILENAME = "local-models.json";
 
 /**
  * Probe Docker Model Runner endpoints to check availability.
- * Returns the first working endpoint URL, or { available: false }.
+ * Returns the base URL without `/v1` (e.g. `http://host:port/engines`),
+ * consistent with how all providers store base URLs. Callers append `/v1/models`
+ * or `/v1` as needed.
  */
 export async function detectModelRunner(): Promise<ModelRunnerDetection> {
-  for (const baseUrl of MODEL_RUNNER_ENDPOINTS) {
+  for (const probeUrl of MODEL_RUNNER_PROBE_URLS) {
     try {
-      const res = await fetch(`${baseUrl}/models`, {
+      const res = await fetch(probeUrl, {
         signal: AbortSignal.timeout(3000),
       });
       if (res.ok) {
+        // Strip /v1/models to get base URL (e.g. http://host:port/engines)
+        const baseUrl = probeUrl.replace(/\/v1\/models$/, "");
         return { available: true, url: baseUrl };
       }
     } catch {
@@ -128,12 +136,13 @@ export async function detectModelRunner(): Promise<ModelRunnerDetection> {
 
 /**
  * List models currently available in Model Runner.
+ * modelRunnerUrl is a base URL without /v1 (e.g. http://host:port/engines).
  * Returns model IDs or empty array on failure.
  */
 export async function listPulledModels(modelRunnerUrl: string): Promise<string[]> {
   if (!modelRunnerUrl) return [];
   try {
-    const res = await fetch(`${modelRunnerUrl}/models`, {
+    const res = await fetch(`${modelRunnerUrl.replace(/\/+$/, "")}/v1/models`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
@@ -360,26 +369,23 @@ export function writeLocalModelsCompose(
 /**
  * Generate Docker Compose overlay YAML from a LocalModelSelection.
  *
- * Produces a services-only overlay with environment variables pointing
- * services to the Model Runner's OpenAI-compatible API. This avoids the
- * `models:` top-level element which requires Docker Model Plugin access
- * through the Docker socket proxy.
+ * Produces a services-only overlay with extra_hosts for DNS resolution
+ * so containers can reach Model Runner. All model configuration flows
+ * through secrets.env (SYSTEM_LLM_MODEL, EMBEDDING_MODEL, etc.) and
+ * OpenMemory config YAML — no LOCAL_* env vars needed.
  *
  * Model metadata (names, context_size, dimensions) is stored as comments
  * at the top for round-trip parsing by parseLocalModelsCompose().
  */
 export function generateModelOverlayYaml(
   selection: LocalModelSelection,
-  modelRunnerUrl?: string,
-  dataDir?: string,
+  _modelRunnerUrl?: string,
+  _dataDir?: string,
 ): string {
   const hasSystem = !!selection.systemModel;
   const hasEmbedding = !!selection.embeddingModel;
 
   if (!hasSystem && !hasEmbedding) return "";
-
-  // Use provided URL or a sensible default for the overlay
-  const url = modelRunnerUrl || MODEL_RUNNER_ENDPOINTS[0];
 
   const lines: string[] = [
     "# Local AI models — managed by OpenPalm admin",
@@ -402,30 +408,18 @@ export function generateModelOverlayYaml(
   lines.push("");
   lines.push("services:");
 
-  // Guardian — depends on system model only
+  // Guardian — needs DNS for model-runner.docker.internal
   if (hasSystem) {
     lines.push("  guardian:");
     lines.push("    extra_hosts:");
     lines.push('      - "model-runner.docker.internal:host-gateway"');
-    lines.push("    environment:");
-    lines.push(`      LOCAL_LLM_URL: "${url}"`);
-    lines.push(`      LOCAL_LLM_MODEL: "${selection.systemModel!.model}"`);
   }
 
-  // OpenMemory — depends on system model (for LLM) and/or embedding model
+  // OpenMemory — needs DNS for model-runner.docker.internal
   if (hasSystem || hasEmbedding) {
     lines.push("  openmemory:");
     lines.push("    extra_hosts:");
     lines.push('      - "model-runner.docker.internal:host-gateway"');
-    lines.push("    environment:");
-    if (hasSystem) {
-      lines.push(`      LOCAL_LLM_URL: "${url}"`);
-      lines.push(`      LOCAL_LLM_MODEL: "${selection.systemModel!.model}"`);
-    }
-    if (hasEmbedding) {
-      lines.push(`      LOCAL_EMBEDDING_URL: "${url}"`);
-      lines.push(`      LOCAL_EMBEDDING_MODEL: "${selection.embeddingModel!.model}"`);
-    }
   }
 
   // Admin — needs extra_hosts for Model Runner detection
@@ -479,18 +473,23 @@ export function updateModelMetadata(
 /**
  * Apply local model selections to OpenMemory config.
  * Extracted from route handlers to eliminate duplication.
+ *
+ * modelRunnerUrl is a base URL without /v1 (e.g. http://host:port/engines).
+ * mem0 expects base_url with /v1 (it appends /chat/completions directly).
  */
 export function applyLocalModelsToOpenMemory(
   omConfig: OpenMemoryConfig,
   selection: LocalModelSelection,
   modelRunnerUrl: string
 ): OpenMemoryConfig {
+  const apiUrl = `${modelRunnerUrl.replace(/\/+$/, "")}/v1`;
+
   if (selection.systemModel) {
     omConfig.mem0.llm = {
       provider: "openai",
       config: {
         model: selection.systemModel.model,
-        base_url: modelRunnerUrl,
+        base_url: apiUrl,
         api_key: "not-needed",
         temperature: 0.1,
         max_tokens: 2000,
@@ -503,7 +502,7 @@ export function applyLocalModelsToOpenMemory(
       provider: "openai",
       config: {
         model: selection.embeddingModel.model,
-        base_url: modelRunnerUrl,
+        base_url: apiUrl,
         api_key: "not-needed",
       },
     };

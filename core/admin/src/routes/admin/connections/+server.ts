@@ -115,8 +115,7 @@ async function handleUnifiedSave(
   const provider = body.provider as string;
   const apiKey = (body.apiKey as string) ?? "";
   const baseUrl = (body.baseUrl as string) ?? "";
-  const guardianModel = (body.guardianModel as string) ?? "";
-  const memoryModel = (body.memoryModel as string) ?? "";
+  const systemModel = (body.systemModel as string) ?? "";
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
@@ -131,11 +130,9 @@ async function handleUnifiedSave(
     patches[envVarName] = apiKey;
   }
 
-  patches.GUARDIAN_LLM_PROVIDER = provider;
-  if (guardianModel) patches.GUARDIAN_LLM_MODEL = guardianModel;
   patches.SYSTEM_LLM_PROVIDER = provider;
   if (baseUrl) patches.SYSTEM_LLM_BASE_URL = baseUrl;
-  if (memoryModel) patches.MEMORY_LLM_MODEL = memoryModel;
+  if (systemModel) patches.SYSTEM_LLM_MODEL = systemModel;
   if (embeddingModel) patches.EMBEDDING_MODEL = embeddingModel;
   if (embeddingDims) patches.EMBEDDING_DIMS = String(embeddingDims);
   patches.OPENMEMORY_USER_ID = openmemoryUserId;
@@ -157,7 +154,7 @@ async function handleUnifiedSave(
     : apiKey;
 
   const llmConfig: Record<string, unknown> = {
-    model: memoryModel,
+    model: systemModel,
     temperature: 0.1,
     max_tokens: 2000,
     api_key: apiKeyEnvRef,

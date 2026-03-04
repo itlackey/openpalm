@@ -28,14 +28,16 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "GROQ_API_KEY",
   "MISTRAL_API_KEY",
   "GOOGLE_API_KEY",
-  "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL",
   "SYSTEM_LLM_PROVIDER",
   "SYSTEM_LLM_BASE_URL",
-  "MEMORY_LLM_MODEL",
+  "SYSTEM_LLM_MODEL",
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
-  "OPENMEMORY_USER_ID"
+  "OPENMEMORY_USER_ID",
+  // Read aliases — kept so existing secrets.env files are recognized
+  "GUARDIAN_LLM_PROVIDER",
+  "GUARDIAN_LLM_MODEL",
+  "MEMORY_LLM_MODEL",
 ]);
 
 /**
@@ -52,14 +54,16 @@ export const REQUIRED_LLM_PROVIDER_KEYS = [
 
 /** Keys that are non-secret config — returned unmasked in connection responses. */
 export const PLAIN_CONFIG_KEYS = new Set([
-  "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL",
   "SYSTEM_LLM_PROVIDER",
   "SYSTEM_LLM_BASE_URL",
-  "MEMORY_LLM_MODEL",
+  "SYSTEM_LLM_MODEL",
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
-  "OPENMEMORY_USER_ID"
+  "OPENMEMORY_USER_ID",
+  // Read aliases
+  "GUARDIAN_LLM_PROVIDER",
+  "GUARDIAN_LLM_MODEL",
+  "MEMORY_LLM_MODEL",
 ]);
 
 // ── Secrets Management ──────────────────────────────────────────────────

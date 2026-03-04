@@ -170,14 +170,22 @@ export const POST: RequestHandler = async (event) => {
   // Write compose overlay
   writeLocalModelsCompose(state.dataDir, selection, modelRunnerUrl);
 
-  // Apply to Guardian config if requested
+  // Apply to system connection config if requested
   const applyToGuardian = body.applyToGuardian === true;
-  if (applyToGuardian && selection.systemModel && modelRunnerUrl) {
-    patchSecretsEnvFile(state.configDir, {
-      GUARDIAN_LLM_PROVIDER: "openai",
-      GUARDIAN_LLM_MODEL: selection.systemModel.model,
+  if (applyToGuardian && modelRunnerUrl) {
+    // modelRunnerUrl is base URL without /v1 (e.g. http://host:port/engines)
+    const localSecrets: Record<string, string> = {
+      SYSTEM_LLM_PROVIDER: "openai",
       SYSTEM_LLM_BASE_URL: modelRunnerUrl,
-    });
+    };
+    if (selection.systemModel) {
+      localSecrets.SYSTEM_LLM_MODEL = selection.systemModel.model;
+    }
+    if (selection.embeddingModel) {
+      localSecrets.EMBEDDING_MODEL = selection.embeddingModel.model;
+      localSecrets.EMBEDDING_DIMS = String(selection.embeddingModel.dimensions ?? 384);
+    }
+    patchSecretsEnvFile(state.configDir, localSecrets);
   }
 
   // Apply to OpenMemory config if requested

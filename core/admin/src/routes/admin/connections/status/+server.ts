@@ -32,21 +32,24 @@ export const GET: RequestHandler = async (event) => {
   const raw = readSecretsEnvFile(state.configDir);
   const missing: string[] = [];
 
-  const provider = (raw.SYSTEM_LLM_PROVIDER ?? "").trim();
+  const provider = (raw.SYSTEM_LLM_PROVIDER ?? raw.GUARDIAN_LLM_PROVIDER ?? "").trim();
+  const systemModel = (raw.SYSTEM_LLM_MODEL ?? raw.GUARDIAN_LLM_MODEL ?? "").trim();
+  const baseUrl = (raw.SYSTEM_LLM_BASE_URL ?? "").trim();
 
   if (!provider) {
-    // No system provider configured yet
     missing.push("System LLM provider");
   } else if (!NO_KEY_PROVIDERS.has(provider)) {
-    // Provider needs an API key — check it
-    const keyVar = PROVIDER_KEY_MAP[provider];
-    if (keyVar && !(raw[keyVar] ?? "").trim()) {
-      missing.push(`${provider} API key`);
+    // Provider needs an API key — check it (custom baseUrl counts as "no key needed")
+    if (!baseUrl) {
+      const keyVar = PROVIDER_KEY_MAP[provider];
+      if (keyVar && !(raw[keyVar] ?? "").trim()) {
+        missing.push(`${provider} API key`);
+      }
     }
   }
 
-  if (!(raw.GUARDIAN_LLM_MODEL ?? "").trim()) {
-    missing.push("Guardian model");
+  if (!systemModel) {
+    missing.push("System model");
   }
 
   const complete = missing.length === 0;

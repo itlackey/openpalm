@@ -135,7 +135,7 @@ describe("model catalog", () => {
 // ── generateModelOverlayYaml ─────────────────────────────────────────────
 
 describe("generateModelOverlayYaml", () => {
-  const testUrl = "http://model-runner.docker.internal:12434/engines/v1";
+  const testUrl = "http://model-runner.docker.internal:12434";
 
   test("generates YAML with system model only", () => {
     const yaml = generateModelOverlayYaml({
@@ -144,7 +144,9 @@ describe("generateModelOverlayYaml", () => {
     expect(yaml).toContain("# local-llm: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
     expect(yaml).toContain("# context_size: 131072");
     expect(yaml).not.toContain("# local-embedding:");
-    expect(yaml).toContain("LOCAL_LLM_MODEL");
+    // Overlay only provides extra_hosts, no LOCAL_* env vars
+    expect(yaml).not.toContain("LOCAL_LLM_MODEL");
+    expect(yaml).not.toContain("environment:");
   });
 
   test("generates YAML with embedding model only", () => {
@@ -154,7 +156,8 @@ describe("generateModelOverlayYaml", () => {
     expect(yaml).toContain("# local-embedding: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF");
     expect(yaml).toContain("# embedding_dims: 768");
     expect(yaml).not.toContain("# local-llm:");
-    expect(yaml).toContain("LOCAL_EMBEDDING_MODEL");
+    expect(yaml).not.toContain("LOCAL_EMBEDDING_MODEL");
+    expect(yaml).not.toContain("environment:");
   });
 
   test("generates YAML with both models", () => {
@@ -179,16 +182,17 @@ describe("generateModelOverlayYaml", () => {
     expect(yaml).not.toContain("context_size");
   });
 
-  test("includes services section with extra_hosts and environment", () => {
+  test("includes services section with extra_hosts only (no environment vars)", () => {
     const yaml = generateModelOverlayYaml({
       systemModel: { model: "ai/mistral" },
     }, testUrl);
     expect(yaml).toContain("services:");
     expect(yaml).toContain("guardian:");
     expect(yaml).toContain("model-runner.docker.internal:host-gateway");
-    expect(yaml).toContain("environment:");
-    expect(yaml).toContain(`LOCAL_LLM_URL: "${testUrl}"`);
-    expect(yaml).toContain('LOCAL_LLM_MODEL: "ai/mistral"');
+    // No LOCAL_* environment vars — config flows through secrets.env
+    expect(yaml).not.toContain("environment:");
+    expect(yaml).not.toContain("LOCAL_LLM_URL");
+    expect(yaml).not.toContain("LOCAL_LLM_MODEL");
   });
 
   test("does not use models: top-level element", () => {
@@ -199,12 +203,14 @@ describe("generateModelOverlayYaml", () => {
     expect(yaml).not.toMatch(/^models:/m);
   });
 
-  test("includes model runner URL in environment vars", () => {
+  test("does not include model runner URL in environment vars", () => {
     const yaml = generateModelOverlayYaml(
       { systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" } },
-      "http://model-runner.docker.internal/engines/v1",
+      "http://model-runner.docker.internal/engines",
     );
-    expect(yaml).toContain('LOCAL_LLM_URL: "http://model-runner.docker.internal/engines/v1"');
+    // Config flows through secrets.env, not compose overlay
+    expect(yaml).not.toContain("LOCAL_LLM_URL");
+    expect(yaml).not.toContain("environment:");
   });
 });
 
@@ -289,7 +295,7 @@ describe("parseLocalModelsCompose", () => {
 // ── Round-trip ────────────────────────────────────────────────────────────
 
 describe("generate → parse round-trip", () => {
-  const testUrl = "http://model-runner.docker.internal:12434/engines/v1";
+  const testUrl = "http://model-runner.docker.internal:12434";
 
   test("system model round-trips correctly", () => {
     const original: LocalModelSelection = {
@@ -387,7 +393,7 @@ describe("readLocalModelsCompose / writeLocalModelsCompose", () => {
 
     // Write to CONFIG_HOME (legacy location)
     writeFileSync(join(configDir, "local-models.yml"),
-      generateModelOverlayYaml({ systemModel: { model: "ai/mistral", contextSize: 4096 } }, "http://localhost/engines/v1")
+      generateModelOverlayYaml({ systemModel: { model: "ai/mistral", contextSize: 4096 } }, "http://localhost")
     );
 
     // Read should find it via configDir fallback and copy to dataDir
@@ -471,7 +477,7 @@ describe("migrateLocalModelsToDataDir", () => {
     const dataDir = join(tmpDir, "data");
     mkdirSync(configDir, { recursive: true });
 
-    const content = generateModelOverlayYaml({ systemModel: { model: "ai/mistral" } }, "http://localhost/engines/v1");
+    const content = generateModelOverlayYaml({ systemModel: { model: "ai/mistral" } }, "http://localhost");
     writeFileSync(join(configDir, "local-models.yml"), content);
 
     migrateLocalModelsToDataDir(configDir, dataDir);
@@ -509,6 +515,9 @@ describe("migrateLocalModelsToDataDir", () => {
 // ── applyLocalModelsToOpenMemory ──────────────────────────────────────────
 
 describe("applyLocalModelsToOpenMemory", () => {
+  // modelRunnerUrl follows the new convention: base URL without /v1
+  const modelRunnerUrl = "http://model-runner.docker.internal/engines";
+
   function makeBaseConfig(): OpenMemoryConfig {
     return {
       mem0: {
@@ -527,10 +536,11 @@ describe("applyLocalModelsToOpenMemory", () => {
     const config = makeBaseConfig();
     applyLocalModelsToOpenMemory(config, {
       systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" },
-    }, "http://model-runner.docker.internal/engines/v1");
+    }, modelRunnerUrl);
 
     expect(config.mem0.llm.provider).toBe("openai");
     expect(config.mem0.llm.config.model).toBe("hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
+    // mem0 expects base_url with /v1 (it appends /chat/completions directly)
     expect(config.mem0.llm.config.base_url).toBe("http://model-runner.docker.internal/engines/v1");
   });
 
@@ -538,7 +548,7 @@ describe("applyLocalModelsToOpenMemory", () => {
     const config = makeBaseConfig();
     applyLocalModelsToOpenMemory(config, {
       embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
-    }, "http://model-runner.docker.internal/engines/v1");
+    }, modelRunnerUrl);
 
     expect(config.mem0.embedder.provider).toBe("openai");
     expect(config.mem0.embedder.config.model).toBe("hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF");
@@ -550,7 +560,7 @@ describe("applyLocalModelsToOpenMemory", () => {
     applyLocalModelsToOpenMemory(config, {
       systemModel: { model: "ai/mistral" },
       embeddingModel: { model: "ai/all-minilm", dimensions: 384 },
-    }, "http://model-runner.docker.internal/engines/v1");
+    }, modelRunnerUrl);
 
     expect(config.mem0.llm.config.model).toBe("ai/mistral");
     expect(config.mem0.embedder.config.model).toBe("ai/all-minilm");

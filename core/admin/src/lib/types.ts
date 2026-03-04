@@ -107,8 +107,7 @@ export type SystemConnectionPayload = {
   provider: string;
   apiKey: string;
   baseUrl: string;
-  guardianModel: string;
-  memoryModel: string;
+  systemModel: string;
   embeddingModel: string;
   embeddingDims: number;
   openmemoryUserId: string;

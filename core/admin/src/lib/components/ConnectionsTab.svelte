@@ -31,8 +31,7 @@
   let provider = $state('openai');
   let apiKey = $state('');
   let baseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
-  let guardianModel = $state('');
-  let memoryModel = $state('');
+  let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
   let openmemoryUserId = $state('default_user');
@@ -98,19 +97,44 @@
     if (!token || loaded) return;
 
     try {
-      const conns = await fetchConnections(token);
+      const [conns, localData] = await Promise.all([
+        fetchConnections(token),
+        fetchLocalModels(token).catch(() => null),
+      ]);
+
       // Pre-fill from saved system connection fields
-      if (conns.SYSTEM_LLM_PROVIDER) provider = conns.SYSTEM_LLM_PROVIDER;
+      const resolvedProvider = conns.SYSTEM_LLM_PROVIDER || conns.GUARDIAN_LLM_PROVIDER || '';
+      if (resolvedProvider) provider = resolvedProvider;
       if (conns.SYSTEM_LLM_BASE_URL) {
         baseUrl = conns.SYSTEM_LLM_BASE_URL;
-      } else if (conns.SYSTEM_LLM_PROVIDER) {
-        baseUrl = PROVIDER_DEFAULT_URLS[conns.SYSTEM_LLM_PROVIDER] ?? '';
+      } else if (resolvedProvider) {
+        baseUrl = PROVIDER_DEFAULT_URLS[resolvedProvider] ?? '';
       }
-      if (conns.GUARDIAN_LLM_MODEL) guardianModel = conns.GUARDIAN_LLM_MODEL;
-      if (conns.MEMORY_LLM_MODEL) memoryModel = conns.MEMORY_LLM_MODEL;
+      // SYSTEM_LLM_MODEL with legacy fallbacks
+      const resolvedModel = conns.SYSTEM_LLM_MODEL || conns.GUARDIAN_LLM_MODEL || conns.MEMORY_LLM_MODEL || '';
+      if (resolvedModel) systemModel = resolvedModel;
       if (conns.EMBEDDING_MODEL) embeddingModel = conns.EMBEDDING_MODEL;
       if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
       if (conns.OPENMEMORY_USER_ID) openmemoryUserId = conns.OPENMEMORY_USER_ID;
+
+      // Fallback: fill empty fields from local model config
+      const lc = localData?.config;
+      if (lc) {
+        if (!systemModel && lc.systemModel?.model) systemModel = lc.systemModel.model;
+        if (!embeddingModel && lc.embeddingModel?.model) embeddingModel = lc.embeddingModel.model;
+        if (!conns.EMBEDDING_DIMS && lc.embeddingModel?.dimensions) {
+          embeddingDims = lc.embeddingModel.dimensions;
+        }
+      }
+
+      // Also populate local models state from the same fetch
+      if (localData) {
+        localModelRunnerAvailable = localData.modelRunnerAvailable;
+        localConfig = localData.config;
+        localSuggestedSystem = localData.suggestedSystemModels;
+        localSuggestedEmbedding = localData.suggestedEmbeddingModels;
+        localEmbeddingDimsMap = localData.embeddingDims ?? {};
+      }
 
       // Load custom instructions from OpenMemory config
       try {
@@ -172,8 +196,7 @@
 
       // Pre-select models if not already set
       if (modelList.length > 0) {
-        if (!guardianModel) guardianModel = modelList[0];
-        if (!memoryModel) memoryModel = modelList[0];
+        if (!systemModel) systemModel = modelList[0];
         if (!embeddingModel) {
           const embedCandidate = modelList.find(m =>
             m.includes('embed') || m.includes('ada')
@@ -208,8 +231,7 @@
         provider,
         apiKey,
         baseUrl,
-        guardianModel,
-        memoryModel,
+        systemModel,
         embeddingModel,
         embeddingDims,
         openmemoryUserId,
@@ -630,7 +652,7 @@
               class="btn btn-outline"
               type="button"
               onclick={() => void testConnection()}
-              disabled={modelListLoading || (needsApiKey && !apiKey.trim() && !maskedCurrentKey)}
+              disabled={modelListLoading || (needsApiKey && !apiKey.trim() && !maskedCurrentKey && !baseUrl)}
             >
               {#if modelListLoading}
                 <span class="spinner"></span>
@@ -645,7 +667,7 @@
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
-                Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.
+                Connected{modelList.length > 0 ? ` — ${modelList.length} model${modelList.length !== 1 ? 's' : ''} found.` : '.'}
               </span>
             {/if}
             {#if modelListError}
@@ -657,31 +679,17 @@
           <div class="form-grid model-grid">
 
             <div class="form-field">
-              <label for="conn-guardian-model" class="form-label">Guardian Model</label>
+              <label for="conn-system-model" class="form-label">System Model</label>
               {#if modelList.length > 0}
-                <select id="conn-guardian-model" class="form-input" bind:value={guardianModel}>
+                <select id="conn-system-model" class="form-input" bind:value={systemModel}>
                   {#each modelList as m}
                     <option value={m}>{m}</option>
                   {/each}
                 </select>
               {:else}
-                <input id="conn-guardian-model" type="text" class="form-input" bind:value={guardianModel} placeholder="gpt-4o-mini" />
+                <input id="conn-system-model" type="text" class="form-input" bind:value={systemModel} placeholder="gpt-4o-mini" />
               {/if}
-              <span class="field-hint">Used for message routing and safety decisions.</span>
-            </div>
-
-            <div class="form-field">
-              <label for="conn-memory-model" class="form-label">Memory Model</label>
-              {#if modelList.length > 0}
-                <select id="conn-memory-model" class="form-input" bind:value={memoryModel}>
-                  {#each modelList as m}
-                    <option value={m}>{m}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input id="conn-memory-model" type="text" class="form-input" bind:value={memoryModel} placeholder="gpt-4o-mini" />
-              {/if}
-              <span class="field-hint">Used by OpenMemory for memory reasoning.</span>
+              <span class="field-hint">Used for message routing, safety, and memory reasoning.</span>
             </div>
 
             <div class="form-field">

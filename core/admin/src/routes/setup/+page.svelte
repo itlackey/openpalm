@@ -113,28 +113,41 @@
 
   let needsApiKey = $derived(!NO_KEY_PROVIDERS.has(llmProvider));
 
+  // True when the user has selected both local system + embedding models,
+  // meaning a cloud provider is optional (can skip Steps 3 & 4).
+  let hasFullLocalModels = $derived(
+    !!(localSystemModel || customSystemModelUrl) && !!(localEmbeddingModel || customEmbeddingModelUrl)
+  );
+
   // ── Local Model Runner detection ────────────────────────────────────
 
-  async function checkModelRunner(): Promise<void> {
-    if (modelRunnerChecked) return;
+  async function checkModelRunner(retries = 3, delayMs = 3000): Promise<void> {
     modelRunnerChecking = true;
-    try {
-      const res = await fetch('/admin/setup/model-runner', {
-        headers: buildHeaders(setupSessionToken)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        modelRunnerAvailable = data.modelRunnerAvailable ?? false;
-        suggestedSystemModels = data.suggestedSystemModels ?? [];
-        suggestedEmbeddingModels = data.suggestedEmbeddingModels ?? [];
-        localEmbeddingDimsMap = data.embeddingDims ?? {};
+    modelRunnerAvailable = false;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch('/admin/setup/model-runner', {
+          headers: buildHeaders(setupSessionToken)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.modelRunnerAvailable) {
+            modelRunnerAvailable = true;
+            suggestedSystemModels = data.suggestedSystemModels ?? [];
+            suggestedEmbeddingModels = data.suggestedEmbeddingModels ?? [];
+            localEmbeddingDimsMap = data.embeddingDims ?? {};
+            break;
+          }
+        }
+      } catch {
+        // Network error — will retry
       }
-    } catch {
-      modelRunnerAvailable = false;
-    } finally {
-      modelRunnerChecking = false;
-      modelRunnerChecked = true;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
     }
+    modelRunnerChecking = false;
+    modelRunnerChecked = true;
   }
 
   function handleLocalEmbeddingChange(model: string): void {
@@ -387,6 +400,7 @@
               <div>
                 <p>Docker Model Runner is not detected.</p>
                 <p class="field-hint" style="margin-top: var(--space-1);">Enable it in Docker Desktop settings or install Docker Model Runner on your Linux host. You can configure local models later in the admin panel.</p>
+                <button class="link-btn" type="button" style="margin-top: var(--space-2);" onclick={() => { modelRunnerChecked = false; void checkModelRunner(); }}>Retry detection</button>
               </div>
             </div>
           {:else}
@@ -559,6 +573,15 @@
             </div>
           {/if}
 
+          {#if hasFullLocalModels && !connectionTested}
+            <div class="info-banner" role="status" style="margin-top: var(--space-3);">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+              <span>Local models are configured. A cloud provider is optional — you can skip this step.</span>
+            </div>
+          {/if}
+
           <div class="step-actions">
             <button class="btn btn-secondary" onclick={() => (step = 'local-models')}>Back</button>
             <button
@@ -575,9 +598,9 @@
             </button>
             <button
               class="btn btn-primary"
-              disabled={!connectionTested}
-              onclick={() => { step = 'models'; }}
-            >Next</button>
+              disabled={!connectionTested && !hasFullLocalModels}
+              onclick={() => { step = hasFullLocalModels && !connectionTested ? 'review' : 'models'; }}
+            >{hasFullLocalModels && !connectionTested ? 'Skip to Review' : 'Next'}</button>
           </div>
         </div>
       {/if}
@@ -661,50 +684,73 @@
               <span class="review-label">Admin Token</span>
               <span class="review-value mono">Set</span>
             </div>
-            <div class="review-item">
-              <span class="review-label">LLM Provider</span>
-              <span class="review-value">{llmProvider}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">API Key</span>
-              <span class="review-value mono">{maskedApiKey}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">Base URL</span>
-              <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">Guardian Model</span>
-              <span class="review-value mono">{guardianModel}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">Memory Model</span>
-              <span class="review-value mono">{memoryModel}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">Embedding Model</span>
-              <span class="review-value mono">{embeddingModel}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">Embedding Dimensions</span>
-              <span class="review-value mono">{embeddingDims}</span>
-            </div>
+
+            {#if hasFullLocalModels && !connectionTested}
+              <!-- Local-only setup: show local model details -->
+              <div class="review-item">
+                <span class="review-label">LLM Provider</span>
+                <span class="review-value">Docker Model Runner (local)</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">System Model</span>
+                <span class="review-value mono">{useCustomSystemModel ? customSystemModelUrl : localSystemModel}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Embedding Model</span>
+                <span class="review-value mono">{useCustomEmbeddingModel ? customEmbeddingModelUrl : localEmbeddingModel}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Embedding Dimensions</span>
+                <span class="review-value mono">{localEmbeddingDims}</span>
+              </div>
+            {:else}
+              <!-- Cloud provider setup -->
+              <div class="review-item">
+                <span class="review-label">LLM Provider</span>
+                <span class="review-value">{llmProvider}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">API Key</span>
+                <span class="review-value mono">{maskedApiKey}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Base URL</span>
+                <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Guardian Model</span>
+                <span class="review-value mono">{guardianModel}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Memory Model</span>
+                <span class="review-value mono">{memoryModel}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Embedding Model</span>
+                <span class="review-value mono">{embeddingModel}</span>
+              </div>
+              <div class="review-item">
+                <span class="review-label">Embedding Dimensions</span>
+                <span class="review-value mono">{embeddingDims}</span>
+              </div>
+              {#if localSystemModel || customSystemModelUrl}
+                <div class="review-item">
+                  <span class="review-label">Local System Model</span>
+                  <span class="review-value mono">{useCustomSystemModel ? customSystemModelUrl : localSystemModel}</span>
+                </div>
+              {/if}
+              {#if localEmbeddingModel || customEmbeddingModelUrl}
+                <div class="review-item">
+                  <span class="review-label">Local Embedding Model</span>
+                  <span class="review-value mono">{useCustomEmbeddingModel ? customEmbeddingModelUrl : localEmbeddingModel}</span>
+                </div>
+              {/if}
+            {/if}
+
             <div class="review-item">
               <span class="review-label">OpenMemory User ID</span>
               <span class="review-value">{openmemoryUserId}</span>
             </div>
-            {#if localSystemModel || customSystemModelUrl}
-              <div class="review-item">
-                <span class="review-label">Local System Model</span>
-                <span class="review-value mono">{useCustomSystemModel ? customSystemModelUrl : localSystemModel}</span>
-              </div>
-            {/if}
-            {#if localEmbeddingModel || customEmbeddingModelUrl}
-              <div class="review-item">
-                <span class="review-label">Local Embedding Model</span>
-                <span class="review-value mono">{useCustomEmbeddingModel ? customEmbeddingModelUrl : localEmbeddingModel}</span>
-              </div>
-            {/if}
           </div>
 
           {#if installError}
@@ -712,7 +758,7 @@
           {/if}
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'models')} disabled={installing}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = hasFullLocalModels && !connectionTested ? 'connect' : 'models')} disabled={installing}>Back</button>
             <button class="btn btn-primary" onclick={handleInstall} disabled={installing}>
               {#if installing}
                 <span class="spinner"></span>
