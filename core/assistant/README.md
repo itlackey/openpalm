@@ -27,7 +27,7 @@ opencode.jsonc
   → Tools, plugins, skills registered via the plugin entry point
 ```
 
-Plugins are installed by Bun at container startup and cached ephemerally. The first boot requires network access to npm; subsequent restarts use the cached modules.
+Plugins are installed by Bun at container startup and cached ephemerally. The first container boot (and any time the container is recreated, e.g. via `docker compose up`) requires network access to npm; only in-place restarts of the same container (e.g. `docker restart`) can reuse the cached modules.
 
 ### What lives where
 
