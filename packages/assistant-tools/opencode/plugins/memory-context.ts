@@ -419,6 +419,10 @@ export const MemoryContextPlugin = async (ctx: any) => {
           "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).",
       );
 
+      if (!output) return;
+      if (!output.context) {
+        output.context = [];
+      }
       output.context.push(lines.join("\n"));
     },
 
