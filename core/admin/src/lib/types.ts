@@ -160,6 +160,17 @@ export type SuggestedModel = {
   dimensions?: number;
 };
 
+export type LocalModelMetadataEntry = {
+  source: "huggingface" | "docker";
+  dimensions?: number;
+  contextSize?: number;
+  pipelineTag?: string;
+  downloads?: number;
+  downloadedAt?: string;
+  status?: "pending" | "downloading" | "ready" | "error";
+  error?: string;
+};
+
 export type LocalModelsResponse = {
   modelRunnerAvailable: boolean;
   modelRunnerUrl: string;
@@ -168,6 +179,7 @@ export type LocalModelsResponse = {
   suggestedEmbeddingModels: SuggestedModel[];
   embeddingDims: Record<string, number>;
   pulledModels: string[];
+  metadata?: { models: Record<string, LocalModelMetadataEntry> };
 };
 
 export type LocalModelStatusResponse = {

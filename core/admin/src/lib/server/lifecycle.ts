@@ -12,6 +12,7 @@ import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, discoverModelOverlay, randomHex } from "./staging.js";
 import { refreshCoreAssets, ensureOpenMemoryPatch } from "./core-assets.js";
 import { ensureOpenMemoryConfig } from "./openmemory-config.js";
+import { migrateLocalModelsToDataDir } from "./model-runner.js";
 
 // ── State Factory ──────────────────────────────────────────────────────
 
@@ -31,6 +32,9 @@ export function createState(
   }
 
   const dataDir = resolveDataHome();
+
+  // Migrate local-models.yml from CONFIG_HOME → DATA_HOME if needed
+  migrateLocalModelsToDataDir(configDir, dataDir);
 
   const persistedSecrets = loadPersistedChannelSecrets(dataDir);
   const channelSecrets: Record<string, string> = { ...persistedSecrets };

@@ -31,6 +31,10 @@ import {
   writeLocalModelsCompose,
   patchSecretsEnvFile,
   isValidModelName,
+  applyLocalModelsToOpenMemory,
+  downloadHuggingFaceModel,
+  parseHfRef,
+  updateModelMetadata,
   type OpenMemoryConfig,
   type LocalModelSelection
 } from "$lib/server/control-plane.js";
@@ -242,8 +246,8 @@ export const POST: RequestHandler = async (event) => {
       selection.embeddingModel = { model: localEmbeddingModel, dimensions: localEmbeddingDims };
     }
 
-    // Write CONFIG_HOME/local-models.yml compose overlay
-    writeLocalModelsCompose(state.configDir, selection);
+    // Write DATA_HOME/local-models.yml compose overlay
+    writeLocalModelsCompose(state.dataDir, selection);
 
     // Detect Model Runner and apply local models to guardian/openmemory
     const detection = await detectModelRunner();
@@ -257,35 +261,29 @@ export const POST: RequestHandler = async (event) => {
         });
       }
 
-      // Apply local models to OpenMemory config
+      // Apply local models to OpenMemory config using shared helper
       const omConfigForLocal = readOpenMemoryConfig(state.dataDir);
-
-      if (localSystemModel) {
-        omConfigForLocal.mem0.llm = {
-          provider: "openai",
-          config: {
-            model: localSystemModel,
-            base_url: detection.url,
-            api_key: "not-needed",
-            temperature: 0.1,
-            max_tokens: 2000,
-          },
-        };
-      }
-
-      if (localEmbeddingModel) {
-        omConfigForLocal.mem0.embedder = {
-          provider: "openai",
-          config: {
-            model: localEmbeddingModel,
-            base_url: detection.url,
-            api_key: "not-needed",
-          },
-        };
-        omConfigForLocal.mem0.vector_store.config.embedding_model_dims = localEmbeddingDims;
-      }
-
+      applyLocalModelsToOpenMemory(omConfigForLocal, selection, detection.url);
       writeOpenMemoryConfig(state.dataDir, omConfigForLocal);
+    }
+
+    // Fire-and-forget: download HF models for cache persistence
+    const hfModels = [localSystemModel, localEmbeddingModel].filter(m => m && parseHfRef(m));
+    for (const hfModel of hfModels) {
+      updateModelMetadata(state.dataDir, hfModel, { source: "huggingface", status: "pending" });
+      void (async () => {
+        updateModelMetadata(state.dataDir, hfModel, { status: "downloading" });
+        const result = await downloadHuggingFaceModel(hfModel, state.dataDir);
+        if (result.error) {
+          updateModelMetadata(state.dataDir, hfModel, { status: "error", error: result.error });
+        } else {
+          updateModelMetadata(state.dataDir, hfModel, {
+            status: "ready",
+            downloadedAt: new Date().toISOString(),
+            error: undefined,
+          });
+        }
+      })();
     }
   }
 

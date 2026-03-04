@@ -354,11 +354,11 @@ function stageAutomationFiles(state: ControlPlaneState): void {
 const LOCAL_MODELS_FILENAME = "local-models.yml";
 
 /**
- * Stage CONFIG_HOME/local-models.yml → STATE_HOME/artifacts/local-models.yml.
+ * Stage DATA_HOME/local-models.yml → STATE_HOME/artifacts/local-models.yml.
  * If the source file doesn't exist, removes the staged copy.
  */
 function stageModelOverlay(state: ControlPlaneState): void {
-  const source = `${state.configDir}/${LOCAL_MODELS_FILENAME}`;
+  const source = `${state.dataDir}/${LOCAL_MODELS_FILENAME}`;
   const dest = `${state.stateDir}/artifacts/${LOCAL_MODELS_FILENAME}`;
 
   if (existsSync(source)) {

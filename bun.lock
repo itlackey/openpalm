@@ -12,6 +12,7 @@
       "name": "@openpalm/admin",
       "version": "0.7.3",
       "dependencies": {
+        "@huggingface/hub": "^1.1.2",
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
       },
@@ -59,7 +60,7 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.4",
+      "version": "0.7.5",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },
@@ -181,6 +182,10 @@
     "@eslint/object-schema": ["@eslint/object-schema@2.1.7", "", {}, "sha512-VtAOaymWVfZcmZbp6E2mympDIHvyjXs/12LqWYjVw6qjrfF+VK+fyG33kChz3nnK+SU5/NeHOqrTEHS8sXO3OA=="],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.1", "", { "dependencies": { "@eslint/core": "^0.17.0", "levn": "^0.4.1" } }, "sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA=="],
+
+    "@huggingface/hub": ["@huggingface/hub@1.1.2", "", { "dependencies": { "@huggingface/tasks": "^0.18.2" } }, "sha512-Jf4GhvVj9ABDw4Itb3BV1T7f22iewuZva476qTicQ4kOTbosuUuFDhsVH7ZH6rVNgg20Ll9kaNBF5CXjySIT+w=="],
+
+    "@huggingface/tasks": ["@huggingface/tasks@0.18.12", "", {}, "sha512-hUEYhXJzJCUhLSBNglW+Sji5fuzMnpBimp3kbdcGor+MaN9xb+qrcLnMC7X8aOcZaZdCErwYYIqz2oSP2EM4Bg=="],
 
     "@humanfs/core": ["@humanfs/core@0.19.1", "", {}, "sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA=="],
 

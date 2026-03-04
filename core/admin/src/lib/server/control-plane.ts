@@ -132,10 +132,21 @@ export {
   parseLocalModelsCompose,
   listPulledModels,
   isValidModelName,
+  parseHfRef,
+  fetchHuggingFaceModelInfo,
+  downloadHuggingFaceModel,
+  readLocalModelsMeta,
+  writeLocalModelsMeta,
+  updateModelMetadata,
+  applyLocalModelsToOpenMemory,
+  buildModelRestartServices,
+  migrateLocalModelsToDataDir,
   SUGGESTED_SYSTEM_MODELS,
   SUGGESTED_EMBEDDING_MODELS,
   LOCAL_EMBEDDING_DIMS,
   type LocalModelSelection,
   type ModelRunnerDetection,
-  type SuggestedModel
+  type SuggestedModel,
+  type HuggingFaceModelInfo,
+  type LocalModelMetadata
 } from "./model-runner.js";

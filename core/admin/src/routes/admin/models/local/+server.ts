@@ -18,6 +18,13 @@ import {
   writeLocalModelsCompose,
   listPulledModels,
   isValidModelName,
+  parseHfRef,
+  fetchHuggingFaceModelInfo,
+  downloadHuggingFaceModel,
+  readLocalModelsMeta,
+  updateModelMetadata,
+  applyLocalModelsToOpenMemory,
+  buildModelRestartServices,
   SUGGESTED_SYSTEM_MODELS,
   SUGGESTED_EMBEDDING_MODELS,
   LOCAL_EMBEDDING_DIMS,
@@ -35,13 +42,16 @@ import {
   type LocalModelSelection
 } from "$lib/server/control-plane.js";
 import { composeUp } from "$lib/server/docker.js";
+import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
+
+const logger = createLogger("models-local");
 
 /**
  * GET /admin/models/local
  *
  * Returns Model Runner availability, current config, suggested models,
- * and list of already-pulled models.
+ * list of already-pulled models, and model metadata.
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -51,12 +61,14 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   const [detection, config] = await Promise.all([
     detectModelRunner(),
-    Promise.resolve(readLocalModelsCompose(state.configDir)),
+    Promise.resolve(readLocalModelsCompose(state.dataDir, state.configDir)),
   ]);
 
   const pulledModels = detection.available
     ? await listPulledModels(detection.url)
     : [];
+
+  const metadata = readLocalModelsMeta(state.dataDir);
 
   return jsonResponse(200, {
     modelRunnerAvailable: detection.available,
@@ -66,14 +78,18 @@ export const GET: RequestHandler = async (event) => {
     suggestedEmbeddingModels: SUGGESTED_EMBEDDING_MODELS,
     embeddingDims: LOCAL_EMBEDDING_DIMS,
     pulledModels,
+    metadata,
   }, requestId);
 };
 
 /**
  * POST /admin/models/local
  *
- * Save local model configuration. Writes CONFIG_HOME/local-models.yml,
+ * Save local model configuration. Writes DATA_HOME/local-models.yml,
  * re-stages artifacts, and runs compose up to trigger model pulling.
+ *
+ * For HF models, verifies existence via HF Hub API and triggers background
+ * download to DATA_HOME/models/hf-cache/ for persistence.
  *
  * Body: {
  *   systemModel?: { model: string, contextSize?: number },
@@ -120,8 +136,35 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
+  // For HF models, verify existence before saving
+  const hfModels: string[] = [];
+  if (selection.systemModel && parseHfRef(selection.systemModel.model)) {
+    hfModels.push(selection.systemModel.model);
+  }
+  if (selection.embeddingModel && parseHfRef(selection.embeddingModel.model)) {
+    hfModels.push(selection.embeddingModel.model);
+  }
+
+  for (const hfModel of hfModels) {
+    const info = await fetchHuggingFaceModelInfo(hfModel);
+    if (!info.exists) {
+      return errorResponse(400, "model_not_found", `HuggingFace model not found: "${hfModel}"`, {}, requestId);
+    }
+    if (info.gated) {
+      return errorResponse(400, "model_gated", `Model "${hfModel}" is gated and requires authentication`, {}, requestId);
+    }
+    // Store metadata
+    updateModelMetadata(state.dataDir, hfModel, {
+      source: "huggingface",
+      pipelineTag: info.pipelineTag,
+      downloads: info.downloads,
+      contextSize: info.contextLength,
+      status: "pending",
+    });
+  }
+
   // Write compose overlay
-  writeLocalModelsCompose(state.configDir, selection);
+  writeLocalModelsCompose(state.dataDir, selection);
 
   // Detect Model Runner URL for config updates
   const detection = await detectModelRunner();
@@ -141,32 +184,7 @@ export const POST: RequestHandler = async (event) => {
   const applyToMemory = body.applyToMemory === true;
   if (applyToMemory && modelRunnerUrl) {
     const omConfig = readOpenMemoryConfig(state.dataDir);
-
-    if (selection.systemModel) {
-      omConfig.mem0.llm = {
-        provider: "openai",
-        config: {
-          model: selection.systemModel.model,
-          base_url: modelRunnerUrl,
-          api_key: "not-needed",
-          temperature: 0.1,
-          max_tokens: 2000,
-        },
-      };
-    }
-
-    if (selection.embeddingModel) {
-      omConfig.mem0.embedder = {
-        provider: "openai",
-        config: {
-          model: selection.embeddingModel.model,
-          base_url: modelRunnerUrl,
-          api_key: "not-needed",
-        },
-      };
-      omConfig.mem0.vector_store.config.embedding_model_dims = selection.embeddingModel.dimensions;
-    }
-
+    applyLocalModelsToOpenMemory(omConfig, selection, modelRunnerUrl);
     writeOpenMemoryConfig(state.dataDir, omConfig);
 
     // Push to running OpenMemory container (fire-and-forget)
@@ -180,12 +198,35 @@ export const POST: RequestHandler = async (event) => {
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
 
-  // Run compose up to trigger model pulling
+  // Targeted restart: only restart affected services
+  const restartServices = buildModelRestartServices(applyToGuardian, applyToMemory);
+
   const composeResult = await composeUp(state.stateDir, {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
-    services: buildManagedServices(state),
+    services: restartServices.length > 0
+      ? restartServices
+      : buildManagedServices(state),
   });
+
+  // Fire-and-forget: download HF models in background for cache persistence
+  for (const hfModel of hfModels) {
+    void (async () => {
+      updateModelMetadata(state.dataDir, hfModel, { status: "downloading" });
+      const result = await downloadHuggingFaceModel(hfModel, state.dataDir);
+      if (result.error) {
+        updateModelMetadata(state.dataDir, hfModel, { status: "error", error: result.error });
+        logger.warn("HF model download failed", { model: hfModel, error: result.error });
+      } else {
+        updateModelMetadata(state.dataDir, hfModel, {
+          status: "ready",
+          downloadedAt: new Date().toISOString(),
+          error: undefined,
+        });
+        logger.info("HF model downloaded", { model: hfModel, path: result.localPath });
+      }
+    })();
+  }
 
   appendAudit(
     state,
@@ -196,6 +237,7 @@ export const POST: RequestHandler = async (event) => {
       embeddingModel: selection.embeddingModel?.model ?? null,
       applyToGuardian,
       applyToMemory,
+      hfModels: hfModels.length > 0 ? hfModels : undefined,
       composeOk: composeResult.ok,
     },
     composeResult.ok,
@@ -206,6 +248,7 @@ export const POST: RequestHandler = async (event) => {
   return jsonResponse(200, {
     ok: true,
     pulling: composeResult.ok,
+    downloading: hfModels.length > 0,
     modelRunnerUrl,
     composeResult: { ok: composeResult.ok, stderr: composeResult.stderr },
   }, requestId);
@@ -226,14 +269,14 @@ export const DELETE: RequestHandler = async (event) => {
   const state = getState();
   const body = await parseJsonBody(event.request);
 
-  const current = readLocalModelsCompose(state.configDir);
+  const current = readLocalModelsCompose(state.dataDir, state.configDir);
   if (!current) {
     return jsonResponse(200, { ok: true, message: "No local models configured" }, requestId);
   }
 
   if (body.all === true) {
     // Remove all local models
-    writeLocalModelsCompose(state.configDir, {});
+    writeLocalModelsCompose(state.dataDir, {});
   } else {
     const target = String(body.model ?? "");
     if (target === "local-llm" || target === "system") {
@@ -243,7 +286,7 @@ export const DELETE: RequestHandler = async (event) => {
     } else {
       return errorResponse(400, "invalid_target", `Unknown model target: "${target}"`, {}, requestId);
     }
-    writeLocalModelsCompose(state.configDir, current);
+    writeLocalModelsCompose(state.dataDir, current);
   }
 
   // Re-stage and reconcile compose

@@ -7,9 +7,13 @@
  * 3. parseLocalModelsCompose round-trips with generateModelOverlayYaml
  * 4. Embedding dimensions persist through YAML round-trip
  * 5. readLocalModelsCompose/writeLocalModelsCompose filesystem operations
+ * 6. HuggingFace model ref parsing
+ * 7. applyLocalModelsToOpenMemory shared helper
+ * 8. JSON metadata sidecar read/write
+ * 9. CONFIG_HOME → DATA_HOME migration
  */
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,8 +23,19 @@ import {
   parseLocalModelsCompose,
   readLocalModelsCompose,
   writeLocalModelsCompose,
+  parseHfRef,
+  applyLocalModelsToOpenMemory,
+  readLocalModelsMeta,
+  writeLocalModelsMeta,
+  updateModelMetadata,
+  migrateLocalModelsToDataDir,
+  buildModelRestartServices,
+  SUGGESTED_SYSTEM_MODELS,
+  SUGGESTED_EMBEDDING_MODELS,
+  LOCAL_EMBEDDING_DIMS,
   type LocalModelSelection,
 } from "./model-runner.js";
+import type { OpenMemoryConfig } from "./openmemory-config.js";
 
 // ── isValidModelName ────────────────────────────────────────────────────
 
@@ -34,6 +49,7 @@ describe("isValidModelName", () => {
   test("accepts hf.co/ prefixed models", () => {
     expect(isValidModelName("hf.co/user/model-name")).toBe(true);
     expect(isValidModelName("hf.co/org/model:tag")).toBe(true);
+    expect(isValidModelName("hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF")).toBe(true);
   });
 
   test("rejects empty string", () => {
@@ -68,26 +84,74 @@ describe("isValidModelName", () => {
   });
 });
 
+// ── parseHfRef ────────────────────────────────────────────────────────────
+
+describe("parseHfRef", () => {
+  test("parses valid HF refs", () => {
+    expect(parseHfRef("hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF")).toEqual({
+      repo: "bartowski/Llama-3.2-3B-Instruct-GGUF",
+    });
+    expect(parseHfRef("hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF")).toEqual({
+      repo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    });
+  });
+
+  test("returns null for non-HF refs", () => {
+    expect(parseHfRef("ai/llama3.2:3B-Q4_K_M")).toBeNull();
+    expect(parseHfRef("local/model")).toBeNull();
+  });
+
+  test("returns null for malformed HF refs", () => {
+    expect(parseHfRef("hf.co/")).toBeNull();
+    expect(parseHfRef("hf.co/no-slash")).toBeNull();
+  });
+});
+
+// ── Model catalog ─────────────────────────────────────────────────────────
+
+describe("model catalog", () => {
+  test("suggested system models use HF refs as primary", () => {
+    for (const model of SUGGESTED_SYSTEM_MODELS) {
+      expect(model.id).toMatch(/^hf\.co\//);
+    }
+  });
+
+  test("suggested embedding models use HF refs as primary", () => {
+    for (const model of SUGGESTED_EMBEDDING_MODELS) {
+      expect(model.id).toMatch(/^hf\.co\//);
+    }
+  });
+
+  test("LOCAL_EMBEDDING_DIMS includes both HF and legacy entries", () => {
+    // HF entries
+    expect(LOCAL_EMBEDDING_DIMS["hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF"]).toBe(768);
+    expect(LOCAL_EMBEDDING_DIMS["hf.co/ChristianAzinn/all-MiniLM-L6-v2-gguf"]).toBe(384);
+    // Legacy ai/ entries
+    expect(LOCAL_EMBEDDING_DIMS["ai/all-minilm"]).toBe(384);
+    expect(LOCAL_EMBEDDING_DIMS["ai/nomic-embed-text"]).toBe(768);
+  });
+});
+
 // ── generateModelOverlayYaml ─────────────────────────────────────────────
 
 describe("generateModelOverlayYaml", () => {
   test("generates YAML with system model only", () => {
     const yaml = generateModelOverlayYaml({
-      systemModel: { model: "ai/llama3.2:3B-Q4_K_M", contextSize: 4096 },
+      systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF", contextSize: 131072 },
     });
     expect(yaml).toContain("local-llm:");
-    expect(yaml).toContain("model: ai/llama3.2:3B-Q4_K_M");
-    expect(yaml).toContain("context_size: 4096");
+    expect(yaml).toContain("model: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
+    expect(yaml).toContain("context_size: 131072");
     expect(yaml).not.toContain("local-embedding:");
   });
 
   test("generates YAML with embedding model only", () => {
     const yaml = generateModelOverlayYaml({
-      embeddingModel: { model: "ai/all-minilm", dimensions: 384 },
+      embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
     });
     expect(yaml).toContain("local-embedding:");
-    expect(yaml).toContain("model: ai/all-minilm");
-    expect(yaml).toContain("# dimensions: 384");
+    expect(yaml).toContain("model: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF");
+    expect(yaml).toContain("# dimensions: 768");
     expect(yaml).not.toContain("local-llm:");
   });
 
@@ -123,6 +187,25 @@ describe("generateModelOverlayYaml", () => {
     expect(yaml).toContain("guardian:");
     expect(yaml).toContain("model-runner.docker.internal:host-gateway");
   });
+
+  test("includes volume mount for HF models", () => {
+    const yaml = generateModelOverlayYaml(
+      { systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" } },
+      "/data/openpalm"
+    );
+    expect(yaml).toContain("volumes:");
+    expect(yaml).toContain("hf-cache:");
+    expect(yaml).toContain("/data/openpalm/models/hf-cache");
+  });
+
+  test("omits volume mount for ai/ models", () => {
+    const yaml = generateModelOverlayYaml(
+      { systemModel: { model: "ai/mistral" } },
+      "/data/openpalm"
+    );
+    expect(yaml).not.toContain("volumes:");
+    expect(yaml).not.toContain("hf-cache:");
+  });
 });
 
 // ── parseLocalModelsCompose ──────────────────────────────────────────────
@@ -132,14 +215,14 @@ describe("parseLocalModelsCompose", () => {
     const yaml = [
       "models:",
       "  local-llm:",
-      "    model: ai/llama3.2:3B-Q4_K_M",
-      "    context_size: 4096",
+      "    model: hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "    context_size: 131072",
     ].join("\n");
 
     const result = parseLocalModelsCompose(yaml);
     expect(result.systemModel).toEqual({
-      model: "ai/llama3.2:3B-Q4_K_M",
-      contextSize: 4096,
+      model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
+      contextSize: 131072,
     });
     expect(result.embeddingModel).toBeUndefined();
   });
@@ -148,13 +231,13 @@ describe("parseLocalModelsCompose", () => {
     const yaml = [
       "models:",
       "  local-embedding:",
-      "    model: ai/nomic-embed-text",
+      "    model: hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF",
       "    # dimensions: 768",
     ].join("\n");
 
     const result = parseLocalModelsCompose(yaml);
     expect(result.embeddingModel).toEqual({
-      model: "ai/nomic-embed-text",
+      model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF",
       dimensions: 768,
     });
   });
@@ -210,6 +293,17 @@ describe("generate → parse round-trip", () => {
 
   test("both models round-trip correctly", () => {
     const original: LocalModelSelection = {
+      systemModel: { model: "hf.co/bartowski/Phi-4-mini-instruct-GGUF", contextSize: 16384 },
+      embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
+    };
+    const yaml = generateModelOverlayYaml(original);
+    const parsed = parseLocalModelsCompose(yaml);
+    expect(parsed.systemModel).toEqual(original.systemModel);
+    expect(parsed.embeddingModel).toEqual(original.embeddingModel);
+  });
+
+  test("legacy ai/ models still round-trip", () => {
+    const original: LocalModelSelection = {
       systemModel: { model: "ai/phi4-mini", contextSize: 4096 },
       embeddingModel: { model: "ai/nomic-embed-text", dimensions: 768 },
     };
@@ -239,8 +333,8 @@ describe("readLocalModelsCompose / writeLocalModelsCompose", () => {
 
   test("write then read round-trips", () => {
     const selection: LocalModelSelection = {
-      systemModel: { model: "ai/llama3.2:3B-Q4_K_M", contextSize: 4096 },
-      embeddingModel: { model: "ai/all-minilm", dimensions: 384 },
+      systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF", contextSize: 131072 },
+      embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
     };
     writeLocalModelsCompose(tmpDir, selection);
     const result = readLocalModelsCompose(tmpDir);
@@ -261,10 +355,207 @@ describe("readLocalModelsCompose / writeLocalModelsCompose", () => {
   });
 
   test("creates parent directory if needed", () => {
-    const nestedDir = join(tmpDir, "nested", "config");
+    const nestedDir = join(tmpDir, "nested", "data");
     writeLocalModelsCompose(nestedDir, {
       systemModel: { model: "ai/smollm2" },
     });
     expect(readLocalModelsCompose(nestedDir)).not.toBeNull();
+  });
+
+  test("reads from configDir as fallback (migration)", () => {
+    const dataDir = join(tmpDir, "data");
+    const configDir = join(tmpDir, "config");
+    mkdirSync(configDir, { recursive: true });
+
+    // Write to CONFIG_HOME (legacy location)
+    writeFileSync(join(configDir, "local-models.yml"),
+      generateModelOverlayYaml({ systemModel: { model: "ai/mistral", contextSize: 4096 } })
+    );
+
+    // Read should find it via configDir fallback and copy to dataDir
+    const result = readLocalModelsCompose(dataDir, configDir);
+    expect(result).not.toBeNull();
+    expect(result!.systemModel?.model).toBe("ai/mistral");
+
+    // File should now exist in dataDir too
+    expect(existsSync(join(dataDir, "local-models.yml"))).toBe(true);
+  });
+});
+
+// ── Metadata sidecar ──────────────────────────────────────────────────────
+
+describe("metadata sidecar", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "model-runner-meta-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("reads empty metadata when file missing", () => {
+    const meta = readLocalModelsMeta(tmpDir);
+    expect(meta).toEqual({ models: {} });
+  });
+
+  test("writes and reads metadata", () => {
+    const meta = {
+      models: {
+        "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF": {
+          source: "huggingface" as const,
+          pipelineTag: "text-generation",
+          downloads: 10000,
+          status: "ready" as const,
+          downloadedAt: "2024-01-01T00:00:00Z",
+        },
+      },
+    };
+    writeLocalModelsMeta(tmpDir, meta);
+    const result = readLocalModelsMeta(tmpDir);
+    expect(result).toEqual(meta);
+  });
+
+  test("updateModelMetadata merges fields", () => {
+    updateModelMetadata(tmpDir, "hf.co/test/model", {
+      source: "huggingface",
+      status: "pending",
+    });
+    updateModelMetadata(tmpDir, "hf.co/test/model", {
+      status: "ready",
+      downloadedAt: "2024-01-01T00:00:00Z",
+    });
+    const meta = readLocalModelsMeta(tmpDir);
+    expect(meta.models["hf.co/test/model"]).toEqual({
+      source: "huggingface",
+      status: "ready",
+      downloadedAt: "2024-01-01T00:00:00Z",
+    });
+  });
+});
+
+// ── Migration ─────────────────────────────────────────────────────────────
+
+describe("migrateLocalModelsToDataDir", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "model-runner-migrate-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("copies from CONFIG_HOME to DATA_HOME", () => {
+    const configDir = join(tmpDir, "config");
+    const dataDir = join(tmpDir, "data");
+    mkdirSync(configDir, { recursive: true });
+
+    const content = generateModelOverlayYaml({ systemModel: { model: "ai/mistral" } });
+    writeFileSync(join(configDir, "local-models.yml"), content);
+
+    migrateLocalModelsToDataDir(configDir, dataDir);
+
+    expect(existsSync(join(dataDir, "local-models.yml"))).toBe(true);
+    expect(readFileSync(join(dataDir, "local-models.yml"), "utf-8")).toBe(content);
+  });
+
+  test("no-op if DATA_HOME copy already exists", () => {
+    const configDir = join(tmpDir, "config");
+    const dataDir = join(tmpDir, "data");
+    mkdirSync(configDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
+
+    writeFileSync(join(configDir, "local-models.yml"), "old-content");
+    writeFileSync(join(dataDir, "local-models.yml"), "new-content");
+
+    migrateLocalModelsToDataDir(configDir, dataDir);
+
+    // DATA_HOME copy should not be overwritten
+    expect(readFileSync(join(dataDir, "local-models.yml"), "utf-8")).toBe("new-content");
+  });
+
+  test("no-op if CONFIG_HOME has no file", () => {
+    const configDir = join(tmpDir, "config");
+    const dataDir = join(tmpDir, "data");
+    mkdirSync(configDir, { recursive: true });
+
+    migrateLocalModelsToDataDir(configDir, dataDir);
+
+    expect(existsSync(join(dataDir, "local-models.yml"))).toBe(false);
+  });
+});
+
+// ── applyLocalModelsToOpenMemory ──────────────────────────────────────────
+
+describe("applyLocalModelsToOpenMemory", () => {
+  function makeBaseConfig(): OpenMemoryConfig {
+    return {
+      mem0: {
+        llm: { provider: "openai", config: {} },
+        embedder: { provider: "openai", config: {} },
+        vector_store: {
+          provider: "qdrant",
+          config: { collection_name: "openmemory", path: "/data/qdrant", embedding_model_dims: 1536 },
+        },
+      },
+      openmemory: { custom_instructions: "" },
+    };
+  }
+
+  test("applies system model to LLM config", () => {
+    const config = makeBaseConfig();
+    applyLocalModelsToOpenMemory(config, {
+      systemModel: { model: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF" },
+    }, "http://model-runner.docker.internal/engines/v1");
+
+    expect(config.mem0.llm.provider).toBe("openai");
+    expect(config.mem0.llm.config.model).toBe("hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
+    expect(config.mem0.llm.config.base_url).toBe("http://model-runner.docker.internal/engines/v1");
+  });
+
+  test("applies embedding model to embedder config", () => {
+    const config = makeBaseConfig();
+    applyLocalModelsToOpenMemory(config, {
+      embeddingModel: { model: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", dimensions: 768 },
+    }, "http://model-runner.docker.internal/engines/v1");
+
+    expect(config.mem0.embedder.provider).toBe("openai");
+    expect(config.mem0.embedder.config.model).toBe("hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF");
+    expect(config.mem0.vector_store.config.embedding_model_dims).toBe(768);
+  });
+
+  test("applies both models", () => {
+    const config = makeBaseConfig();
+    applyLocalModelsToOpenMemory(config, {
+      systemModel: { model: "ai/mistral" },
+      embeddingModel: { model: "ai/all-minilm", dimensions: 384 },
+    }, "http://model-runner.docker.internal/engines/v1");
+
+    expect(config.mem0.llm.config.model).toBe("ai/mistral");
+    expect(config.mem0.embedder.config.model).toBe("ai/all-minilm");
+    expect(config.mem0.vector_store.config.embedding_model_dims).toBe(384);
+  });
+});
+
+// ── buildModelRestartServices ─────────────────────────────────────────────
+
+describe("buildModelRestartServices", () => {
+  test("returns empty for no flags", () => {
+    expect(buildModelRestartServices(false, false)).toEqual([]);
+  });
+
+  test("returns guardian only", () => {
+    expect(buildModelRestartServices(true, false)).toEqual(["guardian"]);
+  });
+
+  test("returns openmemory only", () => {
+    expect(buildModelRestartServices(false, true)).toEqual(["openmemory"]);
+  });
+
+  test("returns both", () => {
+    expect(buildModelRestartServices(true, true)).toEqual(["guardian", "openmemory"]);
   });
 });

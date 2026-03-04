@@ -654,8 +654,8 @@ describe("Automation file staging", () => {
 
 const LOCAL_MODELS_FILENAME = "local-models.yml";
 
-function stageModelOverlayFn(configDir: string, stateDir: string): void {
-  const source = join(configDir, LOCAL_MODELS_FILENAME);
+function stageModelOverlayFn(dataDir: string, stateDir: string): void {
+  const source = join(dataDir, LOCAL_MODELS_FILENAME);
   const dest = join(stateDir, "artifacts", LOCAL_MODELS_FILENAME);
 
   if (existsSync(source)) {
@@ -673,11 +673,21 @@ function discoverModelOverlayFn(stateDir: string): string | null {
 }
 
 describe("Model overlay staging", () => {
-  test("stages local-models.yml from CONFIG_HOME to STATE_HOME", () => {
-    const content = "models:\n  local-llm:\n    model: ai/mistral\n";
-    writeFileSync(join(configDir, LOCAL_MODELS_FILENAME), content);
+  let modelDataDir: string;
 
-    stageModelOverlayFn(configDir, stateDir);
+  beforeEach(() => {
+    modelDataDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(modelDataDir, { recursive: true, force: true });
+  });
+
+  test("stages local-models.yml from DATA_HOME to STATE_HOME", () => {
+    const content = "models:\n  local-llm:\n    model: ai/mistral\n";
+    writeFileSync(join(modelDataDir, LOCAL_MODELS_FILENAME), content);
+
+    stageModelOverlayFn(modelDataDir, stateDir);
 
     const stagedPath = join(stateDir, "artifacts", LOCAL_MODELS_FILENAME);
     expect(existsSync(stagedPath)).toBe(true);
@@ -686,20 +696,20 @@ describe("Model overlay staging", () => {
 
   test("removes staged overlay when source is deleted", () => {
     const content = "models:\n  local-llm:\n    model: ai/mistral\n";
-    writeFileSync(join(configDir, LOCAL_MODELS_FILENAME), content);
+    writeFileSync(join(modelDataDir, LOCAL_MODELS_FILENAME), content);
 
     // Stage first
-    stageModelOverlayFn(configDir, stateDir);
+    stageModelOverlayFn(modelDataDir, stateDir);
     expect(existsSync(join(stateDir, "artifacts", LOCAL_MODELS_FILENAME))).toBe(true);
 
     // Remove source and re-stage
-    rmSync(join(configDir, LOCAL_MODELS_FILENAME));
-    stageModelOverlayFn(configDir, stateDir);
+    rmSync(join(modelDataDir, LOCAL_MODELS_FILENAME));
+    stageModelOverlayFn(modelDataDir, stateDir);
     expect(existsSync(join(stateDir, "artifacts", LOCAL_MODELS_FILENAME))).toBe(false);
   });
 
   test("does nothing when no source or staged file exists", () => {
-    stageModelOverlayFn(configDir, stateDir);
+    stageModelOverlayFn(modelDataDir, stateDir);
     expect(existsSync(join(stateDir, "artifacts", LOCAL_MODELS_FILENAME))).toBe(false);
   });
 });
