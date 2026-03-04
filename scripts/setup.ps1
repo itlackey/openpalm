@@ -284,8 +284,6 @@ function Create-Directories {
     (Join-Path $LocalConfigHome 'channels'),
     (Join-Path $LocalConfigHome 'opencode'),
     $LocalDataHome,
-    (Join-Path $LocalDataHome 'postgres'),
-    (Join-Path $LocalDataHome 'qdrant'),
     (Join-Path $LocalDataHome 'openmemory'),
     (Join-Path $LocalDataHome 'assistant'),
     (Join-Path $LocalDataHome 'guardian'),
@@ -442,7 +440,6 @@ function Generate-StackEnv {
     return
   }
 
-  $pgPassword = New-RandomHex 16
   $imageNamespace = if ($env:OPENPALM_IMAGE_NAMESPACE) { $env:OPENPALM_IMAGE_NAMESPACE } else { 'openpalm' }
   $imageTag = Resolve-ImageTag
 
@@ -467,9 +464,6 @@ OPENPALM_DOCKER_SOCK=$DockerSock
 # ── Images ──────────────────────────────────────────────────────────
 OPENPALM_IMAGE_NAMESPACE=$imageNamespace
 OPENPALM_IMAGE_TAG=$imageTag
-
-# ── Database ────────────────────────────────────────────────────────
-POSTGRES_PASSWORD=$pgPassword
 "@ | Set-Content -LiteralPath $dataStackEnv -Encoding UTF8
 
   Copy-Item -LiteralPath $dataStackEnv -Destination $stagedStackEnv -Force

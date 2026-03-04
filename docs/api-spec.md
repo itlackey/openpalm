@@ -47,7 +47,7 @@ Response:
 ```json
 {
   "ok": true,
-  "started": ["caddy", "postgres", "qdrant", "openmemory", "openmemory-ui", "assistant", "guardian", "admin", "channel-chat"],
+  "started": ["caddy", "openmemory", "openmemory-ui", "assistant", "guardian", "admin", "channel-chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" },
   "artifactsDir": "/home/user/.local/state/openpalm/artifacts"
@@ -120,7 +120,7 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `openmemory`, `openmemory-ui`, `admin`, `caddy`, `postgres`, `qdrant`
+  `assistant`, `guardian`, `openmemory`, `openmemory-ui`, `admin`, `caddy`
 - Allowed channel services: `channel-*` only if a matching staged
   `STATE_HOME/artifacts/channels/<name>.yml` exists.
 
@@ -328,7 +328,7 @@ Response:
     "mem0": {
       "llm": { "provider": "openai", "config": { "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 2000, "api_key": "env:OPENAI_API_KEY" } },
       "embedder": { "provider": "openai", "config": { "model": "text-embedding-3-small", "api_key": "env:OPENAI_API_KEY" } },
-      "vector_store": { "provider": "qdrant", "config": { "collection_name": "openmemory", "host": "qdrant", "port": 6333, "embedding_model_dims": 1536 } }
+      "vector_store": { "provider": "qdrant", "config": { "collection_name": "openmemory", "path": "/data/qdrant", "embedding_model_dims": 1536 } }
     },
     "openmemory": { "custom_instructions": "" }
   },

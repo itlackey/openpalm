@@ -45,5 +45,4 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           ADMIN_TOKEN: ci-placeholder
-          POSTGRES_PASSWORD: ci-placeholder
         run: docker compose -f core/assets/docker-compose.yml -f compose.dev.yaml config -q

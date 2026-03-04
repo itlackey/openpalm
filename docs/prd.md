@@ -20,8 +20,6 @@ OpenPalm delivers a local-first AI platform with a strict control plane:
 Core services:
 
 - `caddy`
-- `postgres`
-- `qdrant`
 - `openmemory`
 - `openmemory-ui`
 - `assistant`
@@ -44,7 +42,7 @@ bundled assets into STATE.
 
 - User-managed: `CONFIG_HOME/secrets.env` (`ADMIN_TOKEN`, LLM provider keys).
 - System-managed: `DATA_HOME/stack.env` (host-detected infrastructure config,
-  `POSTGRES_PASSWORD`, `CHANNEL_<NAME>_SECRET` — seeded by setup.sh, updated by admin).
+  `CHANNEL_<NAME>_SECRET` — seeded by setup.sh, updated by admin).
 - System-managed Caddy policy source: `DATA_HOME/caddy/Caddyfile`.
 - Staged runtime env: `STATE_HOME/artifacts/stack.env` and `STATE_HOME/artifacts/secrets.env`.
 

@@ -66,7 +66,7 @@ export const PLAIN_CONFIG_KEYS = new Set([
 
 /**
  * Write a consolidated user-editable secrets.env to CONFIG_HOME/secrets.env.
- * System-managed secrets (POSTGRES_PASSWORD, channel HMAC keys) are persisted
+ * System-managed secrets (channel HMAC keys) are persisted
  * in DATA_HOME/stack.env and staged into STATE_HOME/artifacts/stack.env.
  * Only writes once — skips if secrets.env already exists.
  */

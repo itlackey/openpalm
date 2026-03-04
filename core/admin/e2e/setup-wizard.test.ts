@@ -132,7 +132,7 @@ test.describe('Setup Wizard', () => {
 					contentType: 'application/json',
 					body: JSON.stringify({
 						ok: true,
-						started: ['caddy', 'postgres', 'qdrant', 'openmemory', 'admin'],
+						started: ['caddy', 'openmemory', 'admin'],
 						dockerAvailable: true,
 						composeResult: { ok: true, stderr: '' }
 					})

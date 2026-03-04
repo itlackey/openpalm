@@ -107,9 +107,7 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **Postgres** — relational storage
-- **Qdrant** — vector store for semantic memory
-- **OpenMemory** — memory MCP server backed by Qdrant; gives the assistant
+- **OpenMemory** — memory MCP server with embedded Qdrant and SQLite; gives the assistant
   persistent memory across conversations
 - **OpenMemory UI** — dashboard at `/admin/openmemory/`
 
@@ -201,8 +199,7 @@ never read directly by Docker or Caddy — it's only read by the admin during
 apply.
 
 `STATE_HOME/artifacts/secrets.env` is a verbatim copy of
-`CONFIG_HOME/secrets.env`. System-managed values (`POSTGRES_PASSWORD` and
-channel HMAC secrets) are written into `STATE_HOME/artifacts/stack.env`
+`CONFIG_HOME/secrets.env`. System-managed values (channel HMAC secrets) are written into `STATE_HOME/artifacts/stack.env`
 separately — they do not appear in the staged `secrets.env`.
 
 Access scope is controlled by the system-managed core Caddyfile in

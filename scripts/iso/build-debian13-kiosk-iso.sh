@@ -126,9 +126,7 @@ build_image_cache() {
 
   local images=(
     'docker.io/library/caddy:2'
-    'docker.io/library/postgres:16-alpine'
-    'docker.io/qdrant/qdrant:latest'
-    'docker.io/mem0/openmemory:latest'
+    'docker.io/mem0/openmemory-mcp:latest'
     'ghcr.io/sst/opencode:latest'
     'docker.io/itlackey/openpalm-guardian:latest'
     'docker.io/itlackey/openpalm-admin:latest'

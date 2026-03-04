@@ -91,7 +91,7 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 						mem0: {
 							llm: { provider: 'openai', config: { model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 2000, api_key: 'env:OPENAI_API_KEY' } },
 							embedder: { provider: 'openai', config: { model: 'text-embedding-3-small', api_key: 'env:OPENAI_API_KEY' } },
-							vector_store: { provider: 'qdrant', config: { collection_name: 'openmemory', host: 'qdrant', port: 6333, embedding_model_dims: 1536 } }
+							vector_store: { provider: 'qdrant', config: { collection_name: 'openmemory', path: '/data/qdrant', embedding_model_dims: 1536 } }
 						},
 						openmemory: { custom_instructions: '' }
 					},
@@ -262,8 +262,7 @@ test.describe('OpenMemory Config API', () => {
 					provider: 'qdrant',
 					config: {
 						collection_name: 'openmemory',
-						host: 'qdrant',
-						port: 6333,
+						path: '/data/qdrant',
 						embedding_model_dims: 768
 					}
 				}
@@ -523,8 +522,7 @@ test.describe('OpenMemory Ollama Integration', () => {
 					provider: 'qdrant',
 					config: {
 						collection_name: 'openmemory',
-						host: 'qdrant',
-						port: 6333,
+						path: '/data/qdrant',
 						embedding_model_dims: 768
 					}
 				}

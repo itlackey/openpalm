@@ -2,7 +2,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
@@ -179,8 +178,6 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
     join(configHome, 'opencode'),
     join(configHome, 'automations'),
     dataHome,
-    join(dataHome, 'postgres'),
-    join(dataHome, 'qdrant'),
     join(dataHome, 'openmemory'),
     join(dataHome, 'assistant'),
     join(dataHome, 'guardian'),
@@ -201,10 +198,6 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
   }
 }
 
-function randomHex(size = 16): string {
-  return randomBytes(size).toString('hex');
-}
-
 async function ensureSecrets(configHome: string): Promise<void> {
   const secretsPath = join(configHome, 'secrets.env');
   if (await Bun.file(secretsPath).exists()) {
@@ -221,7 +214,7 @@ async function ensureStackEnv(configHome: string, dataHome: string, stateHome: s
   const dataStackEnv = join(dataHome, 'stack.env');
   const stagedStackEnv = join(stateHome, 'artifacts', 'stack.env');
   if (!(await Bun.file(dataStackEnv).exists())) {
-    const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=/var/run/docker.sock\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG || 'latest'}\nPOSTGRES_PASSWORD=${randomHex()}\n`;
+    const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=/var/run/docker.sock\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG || 'latest'}\n`;
     await Bun.write(dataStackEnv, content);
   }
   await Bun.write(stagedStackEnv, Bun.file(dataStackEnv));

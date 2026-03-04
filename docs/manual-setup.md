@@ -21,7 +21,7 @@ OpenPalm uses three host directories following the [XDG Base Directory Specifica
 | Tier | Default | Purpose |
 |------|---------|---------|
 | **CONFIG_HOME** | `~/.config/openpalm` | User-editable: secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `~/.local/share/openpalm` | Opaque service data (postgres, qdrant, etc.) |
+| **DATA_HOME** | `~/.local/share/openpalm` | Opaque service data (openmemory, assistant, etc.) |
 | **STATE_HOME** | `~/.local/state/openpalm` | Assembled runtime artifacts, audit logs |
 | **WORK_DIR** | `~/openpalm` | Assistant working directory |
 
@@ -40,8 +40,6 @@ mkdir -p ~/.config/openpalm/automations
 mkdir -p ~/.config/openpalm/opencode/{tools,plugins,skills}
 
 # DATA_HOME
-mkdir -p ~/.local/share/openpalm/postgres
-mkdir -p ~/.local/share/openpalm/qdrant
 mkdir -p ~/.local/share/openpalm/openmemory
 mkdir -p ~/.local/share/openpalm/assistant
 mkdir -p ~/.local/share/openpalm/guardian
@@ -165,8 +163,6 @@ OPENPALM_INGRESS_PORT=8080
 OPENMEMORY_DASHBOARD_API_URL=http://localhost:8765
 OPENMEMORY_USER_ID=default_user
 
-# ── Database ────────────────────────────────────────────────────────
-POSTGRES_PASSWORD=$(openssl rand -hex 16)
 EOF
 ```
 
@@ -215,8 +211,7 @@ cat > ~/.local/share/openpalm/openmemory/default_config.json << 'EOF'
       "provider": "qdrant",
       "config": {
         "collection_name": "openmemory",
-        "host": "qdrant",
-        "port": 6333,
+        "path": "/data/qdrant",
         "embedding_model_dims": 1536
       }
     }
@@ -226,6 +221,19 @@ cat > ~/.local/share/openpalm/openmemory/default_config.json << 'EOF'
   }
 }
 EOF
+```
+
+You also need the patched `memory.py` that enables embedded Qdrant support:
+
+```bash
+cp core/assets/openmemory-memory.py ~/.local/share/openpalm/openmemory/memory.py
+```
+
+If you don't have a local clone, download it:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/itlackey/openpalm/main/core/assets/openmemory-memory.py" \
+  -o ~/.local/share/openpalm/openmemory/memory.py
 ```
 
 ---
@@ -324,10 +332,9 @@ After completing all steps, your host should have:
 ~/.local/share/openpalm/             # DATA_HOME
 ├── stack.env                        # System config (source of truth)
 ├── docker-compose.yml               # Core compose (source of truth)
-├── postgres/
-├── qdrant/
 ├── openmemory/
-│   └── default_config.json
+│   ├── default_config.json
+│   └── memory.py
 ├── assistant/
 ├── guardian/
 ├── automations/
