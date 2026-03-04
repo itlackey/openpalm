@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# Bump the "version" field in every workspace package.json to the given semver.
+# Bump the "version" field in EVERY workspace package.json to the given semver.
+# This includes both platform packages and npm packages.
+#
+# NOTE: For platform releases, use bump-platform.sh instead — it only bumps
+# platform packages (admin, guardian, CLI) and leaves npm package versions
+# untouched so they can be versioned independently.
+#
 # Usage: ./scripts/bump-versions.sh 0.6.0
 set -euo pipefail
 
