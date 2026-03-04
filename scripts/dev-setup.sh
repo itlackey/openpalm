@@ -107,7 +107,7 @@ if [[ $seed_env -eq 1 ]]; then
 OPENPALM_CONFIG_HOME=$DEV_ROOT/config
 OPENPALM_DATA_HOME=$DEV_ROOT/data
 OPENPALM_STATE_HOME=$DEV_ROOT/state
-OPENPALM_WORK_DIR=$$DEV_ROOT/work
+OPENPALM_WORK_DIR=$DEV_ROOT/work
 
 # ── User/Group ──────────────────────────────────────────────────────
 OPENPALM_UID=$uid
@@ -176,6 +176,14 @@ if [ ! -f "$DATA_DIR/openmemory/default_config.json" ]; then
   }
 }
 OMEOF
+fi
+
+# ── Seed OpenMemory patched memory.py ─────────────────────────────────────
+# The upstream openmemory-mcp image hardcodes host-based Qdrant config.
+# This patched memory.py reads vector_store config from default_config.json,
+# enabling embedded (file-based) Qdrant via the `path` key.
+if [[ ! -f "$DATA_DIR/openmemory/memory.py" || $force -eq 1 ]]; then
+	cp "$ROOT_DIR/core/assets/openmemory-memory.py" "$DATA_DIR/openmemory/memory.py"
 fi
 
 if [[ $EUID -ne 0 ]]; then

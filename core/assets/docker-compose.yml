@@ -41,12 +41,13 @@ services:
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}
-      DATABASE_URL: sqlite:///data/openmemory.db
+      DATABASE_URL: sqlite:////data/openmemory.db
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/memory.py:/usr/src/openmemory/app/utils/memory.py:ro
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
