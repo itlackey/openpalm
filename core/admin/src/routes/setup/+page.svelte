@@ -1,6 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { untrack } from 'svelte';
+  import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, NO_KEY_PROVIDERS, EMBEDDING_DIMS } from '$lib/provider-constants.js';
+  import type { SuggestedModel } from '$lib/types.js';
   import type { PageData } from './$types';
 
   interface Props {
@@ -20,36 +22,6 @@
   function isAfter(a: WizardStep, b: WizardStep): boolean {
     return STEP_ORDER.indexOf(a) > STEP_ORDER.indexOf(b);
   }
-
-  // ── Provider constants (duplicated from server to avoid import) ────────
-  const LLM_PROVIDERS = [
-    'openai', 'anthropic', 'ollama', 'groq', 'together',
-    'mistral', 'deepseek', 'xai', 'lmstudio'
-  ];
-
-  const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-    openai: 'https://api.openai.com',
-    groq: 'https://api.groq.com/openai',
-    mistral: 'https://api.mistral.ai',
-    together: 'https://api.together.xyz',
-    deepseek: 'https://api.deepseek.com',
-    xai: 'https://api.x.ai',
-    lmstudio: 'http://host.docker.internal:1234',
-    ollama: 'http://host.docker.internal:11434',
-  };
-
-  // Providers that don't need an API key
-  const NO_KEY_PROVIDERS = new Set(['ollama', 'lmstudio']);
-
-  const EMBEDDING_DIMS: Record<string, number> = {
-    'openai/text-embedding-3-small': 1536,
-    'openai/text-embedding-3-large': 3072,
-    'openai/text-embedding-ada-002': 1536,
-    'ollama/nomic-embed-text': 768,
-    'ollama/mxbai-embed-large': 1024,
-    'ollama/all-minilm': 384,
-    'ollama/snowflake-arctic-embed': 1024,
-  };
 
   // ── Form fields ─────────────────────────────────────────────────────────
   let adminToken = $state('');
@@ -73,7 +45,6 @@
   let modelListError = $state('');
 
   // Step 3 — Local Models (Docker Model Runner)
-  type SuggestedModel = { id: string; label: string; size: string; contextSize?: number; dimensions?: number };
   let localSystemModel = $state('');
   let localEmbeddingModel = $state('');
   let localEmbeddingDims = $state(384);
@@ -531,7 +502,15 @@
                 <select
                   id="local-system-model"
                   value={localSystemModel}
-                  onchange={(e) => { localSystemModel = e.currentTarget.value; }}
+                  onchange={(e) => {
+                    const val = e.currentTarget.value;
+                    if (val === '__custom__') {
+                      useCustomSystemModel = true;
+                      localSystemModel = '';
+                    } else {
+                      localSystemModel = val;
+                    }
+                  }}
                 >
                   <option value="">None (use cloud provider)</option>
                   {#each suggestedSystemModels as m}
@@ -539,11 +518,6 @@
                   {/each}
                   <option value="__custom__">Custom (HuggingFace)...</option>
                 </select>
-                {#if localSystemModel === '__custom__'}
-                  <script>
-                    // Switch to custom mode when selected
-                  </script>
-                {/if}
                 <p class="field-hint">
                   Used for message routing, memory reasoning, and system tasks.
                 </p>
@@ -600,11 +574,6 @@
             <button
               class="btn btn-primary"
               onclick={() => {
-                // Handle __custom__ selection for system model
-                if (localSystemModel === '__custom__') {
-                  useCustomSystemModel = true;
-                  localSystemModel = '';
-                }
                 step = 'models';
               }}
             >{modelRunnerAvailable && !modelRunnerChecking ? 'Next' : 'Skip'}</button>

@@ -123,10 +123,6 @@ export const POST: RequestHandler = async (event) => {
   // Write compose overlay
   writeLocalModelsCompose(state.configDir, selection);
 
-  // Re-stage all artifacts
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
-
   // Detect Model Runner URL for config updates
   const detection = await detectModelRunner();
   const modelRunnerUrl = detection.url;
@@ -180,7 +176,7 @@ export const POST: RequestHandler = async (event) => {
     })();
   }
 
-  // Re-stage after config changes
+  // Stage all artifacts once after all config changes
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
 

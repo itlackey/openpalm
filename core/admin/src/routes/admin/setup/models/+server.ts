@@ -11,7 +11,8 @@ import {
   jsonResponse,
   errorResponse,
   getRequestId,
-  parseJsonBody
+  parseJsonBody,
+  safeTokenCompare
 } from "$lib/server/helpers.js";
 import {
   fetchProviderModels,
@@ -19,15 +20,6 @@ import {
   EMBED_PROVIDERS
 } from "$lib/server/control-plane.js";
 import { isSetupComplete } from "$lib/server/setup-status.js";
-import { timingSafeEqual } from "node:crypto";
-
-function safeTokenCompare(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
-}
 
 const VALID_PROVIDERS = new Set<string>([...LLM_PROVIDERS, ...EMBED_PROVIDERS]);
 

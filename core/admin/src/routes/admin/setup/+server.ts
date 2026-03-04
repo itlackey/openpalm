@@ -4,7 +4,8 @@ import {
   errorResponse,
   requireAdmin,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  safeTokenCompare
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -25,7 +26,6 @@ import {
   readOpenMemoryConfig,
   resolveConfigForPush,
   pushConfigToOpenMemory,
-  EMBEDDING_DIMS,
   LOCAL_EMBEDDING_DIMS,
   detectModelRunner,
   writeLocalModelsCompose,
@@ -33,21 +33,13 @@ import {
   type OpenMemoryConfig,
   type LocalModelSelection
 } from "$lib/server/control-plane.js";
+import { PROVIDER_KEY_MAP, EMBEDDING_DIMS } from "$lib/provider-constants.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
-import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("setup");
-
-function safeTokenCompare(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
-}
 
 /**
  * GET /admin/setup — no auth required.
@@ -134,15 +126,6 @@ export const POST: RequestHandler = async (event) => {
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
-
-  // Map provider → env var name for the API key
-  const PROVIDER_KEY_MAP: Record<string, string> = {
-    openai: "OPENAI_API_KEY",
-    anthropic: "ANTHROPIC_API_KEY",
-    groq: "GROQ_API_KEY",
-    mistral: "MISTRAL_API_KEY",
-    google: "GOOGLE_API_KEY",
-  };
 
   if (llmApiKey) {
     const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";

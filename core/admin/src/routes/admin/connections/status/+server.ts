@@ -18,17 +18,7 @@ import {
   appendAudit,
   readSecretsEnvFile
 } from "$lib/server/control-plane.js";
-
-/** Map provider → env var for API key. */
-const PROVIDER_KEY_MAP: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  groq: "GROQ_API_KEY",
-  mistral: "MISTRAL_API_KEY",
-  google: "GOOGLE_API_KEY",
-};
-
-const NO_KEY_PROVIDERS = new Set(["ollama", "lmstudio"]);
+import { PROVIDER_KEY_MAP, NO_KEY_PROVIDERS } from "$lib/provider-constants.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

@@ -7,6 +7,14 @@
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { loadSecretsEnvFile } from "./secrets.js";
+import {
+  LLM_PROVIDERS,
+  EMBEDDING_DIMS,
+  PROVIDER_DEFAULT_URLS,
+} from "../provider-constants.js";
+
+// Re-export shared constants for barrel compatibility
+export { LLM_PROVIDERS, EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS };
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -26,38 +34,11 @@ export type OpenMemoryConfig = {
   openmemory: { custom_instructions: string };
 };
 
-// ── Constants ────────────────────────────────────────────────────────────
-
-export const LLM_PROVIDERS = [
-  "openai", "anthropic", "ollama", "groq", "together",
-  "mistral", "deepseek", "xai", "lmstudio"
-] as const;
+// ── Constants (module-specific) ─────────────────────────────────────────
 
 export const EMBED_PROVIDERS = [
   "openai", "ollama", "huggingface", "lmstudio"
 ] as const;
-
-export const EMBEDDING_DIMS: Record<string, number> = {
-  "openai/text-embedding-3-small": 1536,
-  "openai/text-embedding-3-large": 3072,
-  "openai/text-embedding-ada-002": 1536,
-  "ollama/nomic-embed-text": 768,
-  "ollama/mxbai-embed-large": 1024,
-  "ollama/all-minilm": 384,
-  "ollama/snowflake-arctic-embed": 1024,
-};
-
-/** Default base URLs per provider (used when no base_url is configured). */
-export const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-  openai: "https://api.openai.com",
-  groq: "https://api.groq.com/openai",
-  mistral: "https://api.mistral.ai",
-  together: "https://api.together.xyz",
-  deepseek: "https://api.deepseek.com",
-  xai: "https://api.x.ai",
-  lmstudio: "http://host.docker.internal:1234",
-  ollama: "http://host.docker.internal:11434",
-};
 
 /** Static model list for Anthropic (no listing API available). */
 const ANTHROPIC_MODELS = [

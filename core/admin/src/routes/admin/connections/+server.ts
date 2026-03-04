@@ -28,22 +28,13 @@ import {
   resolveConfigForPush,
   pushConfigToOpenMemory,
   checkQdrantDimensions,
-  EMBEDDING_DIMS,
   type OpenMemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
+import { PROVIDER_KEY_MAP, EMBEDDING_DIMS } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("connections");
-
-/** Map provider name → env var for the API key. */
-const PROVIDER_KEY_MAP: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  groq: "GROQ_API_KEY",
-  mistral: "MISTRAL_API_KEY",
-  google: "GOOGLE_API_KEY",
-};
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

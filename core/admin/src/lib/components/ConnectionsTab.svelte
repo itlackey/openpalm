@@ -10,6 +10,13 @@
     deleteLocalModel,
     fetchLocalModelStatus
   } from '$lib/api.js';
+  import {
+    LLM_PROVIDERS,
+    PROVIDER_DEFAULT_URLS,
+    PROVIDER_KEY_MAP,
+    NO_KEY_PROVIDERS,
+    EMBEDDING_DIMS
+  } from '$lib/provider-constants.js';
   import type { SuggestedModel, LocalModelSelection } from '$lib/types.js';
 
   interface Props {
@@ -19,43 +26,6 @@
   }
 
   let { connections, loading, onRefresh }: Props = $props();
-
-  // ── Provider Constants (duplicated from server to avoid import) ────
-  const LLM_PROVIDERS = [
-    'openai', 'anthropic', 'ollama', 'groq', 'together',
-    'mistral', 'deepseek', 'xai', 'lmstudio'
-  ];
-
-  const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-    openai: 'https://api.openai.com',
-    groq: 'https://api.groq.com/openai',
-    mistral: 'https://api.mistral.ai',
-    together: 'https://api.together.xyz',
-    deepseek: 'https://api.deepseek.com',
-    xai: 'https://api.x.ai',
-    lmstudio: 'http://host.docker.internal:1234',
-    ollama: 'http://host.docker.internal:11434',
-  };
-
-  const PROVIDER_KEY_MAP: Record<string, string> = {
-    openai: 'OPENAI_API_KEY',
-    anthropic: 'ANTHROPIC_API_KEY',
-    groq: 'GROQ_API_KEY',
-    mistral: 'MISTRAL_API_KEY',
-    google: 'GOOGLE_API_KEY',
-  };
-
-  const NO_KEY_PROVIDERS = new Set(['ollama', 'lmstudio']);
-
-  const EMBEDDING_DIMS: Record<string, number> = {
-    'openai/text-embedding-3-small': 1536,
-    'openai/text-embedding-3-large': 3072,
-    'openai/text-embedding-ada-002': 1536,
-    'ollama/nomic-embed-text': 768,
-    'ollama/mxbai-embed-large': 1024,
-    'ollama/all-minilm': 384,
-    'ollama/snowflake-arctic-embed': 1024,
-  };
 
   // ── Form State ────────────────────────────────────────────────────
   let provider = $state('openai');
