@@ -12,6 +12,7 @@ import {
   ensureXdgDirs,
   ensureSecrets,
   ensureOpenCodeConfig,
+  ensureOpenCodeSystemConfig,
   stageArtifacts,
   persistArtifacts,
   appendAudit,
@@ -34,6 +35,7 @@ function runStartupApply(): void {
     const state = getState();
     ensureSecrets(state);
     ensureOpenCodeConfig();
+    ensureOpenCodeSystemConfig();
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
 

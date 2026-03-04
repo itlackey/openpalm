@@ -11,6 +11,7 @@ import {
   updateSecretsEnv,
   ensureXdgDirs,
   ensureOpenCodeConfig,
+  ensureOpenCodeSystemConfig,
   ensureSecrets,
   applyInstall,
   appendAudit,
@@ -225,6 +226,7 @@ export const POST: RequestHandler = async (event) => {
 
   // Run install sequence
   ensureOpenCodeConfig();
+  ensureOpenCodeSystemConfig();
   applyInstall(state);
 
   // Discover staged channels and register them

@@ -76,6 +76,7 @@ export {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
+  ensureOpenCodeSystemConfig,
   stagedEnvFile,
   stagedStackEnvFile,
   buildEnvFiles,

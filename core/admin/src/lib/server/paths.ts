@@ -59,13 +59,15 @@ export function ensureXdgDirs(): void {
     `${dataHome}/caddy/data`,
     `${dataHome}/caddy/config`,
     `${dataHome}/automations`,
+    `${dataHome}/opencode`,
 
     // STATE_HOME — assembled runtime
     stateHome,
     `${stateHome}/artifacts`,
     `${stateHome}/audit`,
     `${stateHome}/artifacts/channels`,
-    `${stateHome}/automations`
+    `${stateHome}/automations`,
+    `${stateHome}/opencode`
   ]) {
     mkdirSync(dir, { recursive: true });
   }

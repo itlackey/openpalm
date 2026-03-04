@@ -185,11 +185,13 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
     join(dataHome, 'caddy', 'data'),
     join(dataHome, 'caddy', 'config'),
     join(dataHome, 'automations'),
+    join(dataHome, 'opencode'),
     stateHome,
     join(stateHome, 'artifacts'),
     join(stateHome, 'audit'),
     join(stateHome, 'artifacts', 'channels'),
     join(stateHome, 'automations'),
+    join(stateHome, 'opencode'),
     workDir,
   ];
 
@@ -232,6 +234,19 @@ async function ensureOpenCodeConfig(configHome: string): Promise<void> {
   await mkdir(join(opencodeDir, 'tools'), { recursive: true });
   await mkdir(join(opencodeDir, 'plugins'), { recursive: true });
   await mkdir(join(opencodeDir, 'skills'), { recursive: true });
+}
+
+async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
+  const opencodeSystemDir = join(dataHome, 'opencode');
+  await mkdir(opencodeSystemDir, { recursive: true });
+  const systemConfig = join(opencodeSystemDir, 'opencode.jsonc');
+  if (!(await Bun.file(systemConfig).exists())) {
+    await Bun.write(systemConfig, JSON.stringify({
+      "$schema": "https://opencode.ai/config.json",
+      "model": "opencode/big-pickle",
+      "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
+    }, null, 2) + "\n");
+  }
 }
 
 async function runDockerCompose(args: string[]): Promise<void> {
@@ -314,6 +329,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await ensureSecrets(configHome);
   await ensureStackEnv(configHome, dataHome, stateHome, workDir);
   await ensureOpenCodeConfig(configHome);
+  await ensureOpenCodeSystemConfig(dataHome);
 
   if (options.noStart) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');

@@ -8,86 +8,44 @@ assistant service.
 
 ## Overview
 
-OpenCode supports a layered configuration model. OpenPalm uses two layers:
+OpenCode supports a layered configuration model. OpenPalm uses three layers:
 
-1. **Built-in config** — bundled into the Docker image at `/opt/opencode/` and
-   loaded via the `OPENCODE_CONFIG_DIR` environment variable.  This layer is
-   immutable at runtime.
-2. **User extensions** — persisted on the host at
+1. **User config** — persisted on the host at
    `$OPENPALM_CONFIG_HOME/opencode/` and bind-mounted into the container at
-   `/home/opencode/.config/opencode/` as an overlay.  Users can drop additional
-   tools, plugins, or skills here without rebuilding the image.
+   `~/.config/opencode/`. Users can add custom tools, plugins, or skills here.
+   This is the lowest-precedence layer.
+2. **System config** — persisted on the host at
+   `$OPENPALM_DATA_HOME/opencode/` and bind-mounted into the container at
+   `/etc/opencode/` via `OPENCODE_CONFIG_DIR`. Contains the model selection,
+   plugin declarations, and persona (AGENTS.md). Overrides user config.
+3. **Project config** — an `opencode.json` in the `/work` directory (if present).
+   Highest precedence, overrides everything.
+
+Plugins declared in the system config (`@openpalm/assistant-tools`,
+`@itlackey/openkit`) are auto-installed by OpenCode at startup via `bun` —
+no `npm install` in the Dockerfile.
 
 ---
 
 ## Build-Time: Image Contents
 
-The `core/assistant/Dockerfile` copies the `core/assistant/` directory into the image and
-installs the entrypoint script:
+The `core/assistant/Dockerfile` installs OpenCode, Bun, and system tools.
+It does **not** bake in plugins, config files, or persona — those are
+mounted at runtime.
 
 ```dockerfile
-COPY --chown=node:node core/assistant/ /opt/opencode/
+FROM node:lts-trixie
+RUN apt-get update && apt-get install -y tini curl git ca-certificates bash openssh-server python3 python3-pip
+RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path
+RUN mkdir -p /home/opencode /work && chown node:node /home/opencode /work
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
-```
-
-After the build, `/opt/opencode/` inside the image contains:
-
-```
-/opt/opencode/
-├── opencode.jsonc        # Model selection
-├── package.json          # Runtime dependency (zod v4)
-├── entrypoint.sh         # Container startup script
-├── tools/                # Custom tool definitions
-│   ├── admin-artifacts.ts
-│   ├── admin-audit.ts
-│   ├── admin-channels.ts
-│   ├── admin-config.ts
-│   ├── admin-containers.ts
-│   ├── admin-lifecycle.ts
-│   ├── health-check.ts
-│   ├── memory-add.ts
-│   ├── memory-apps.ts
-│   ├── memory-delete.ts
-│   ├── memory-get.ts
-│   ├── memory-list.ts
-│   ├── memory-search.ts
-│   ├── memory-stats.ts
-│   └── memory-update.ts
-├── plugins/
-│   └── memory-context.ts  # Compound-memory plugin
-└── skills/
-    ├── openmemory/SKILL.md
-    └── openpalm-admin/SKILL.md
-```
-
-### opencode.jsonc
-
-Minimal config that selects the default model:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "opencode/big-pickle"
-}
-```
-
-### package.json
-
-Minimal package marker. Zod is provided by OpenCode's runtime, so no explicit
-dependency declaration is needed:
-
-```json
-{
-  "private": true
-}
 ```
 
 ---
 
 ## Startup: Entrypoint Script
 
-When the container starts, `entrypoint.sh` (installed at
-`/usr/local/bin/opencode-entrypoint.sh`) runs via `tini`:
+When the container starts, `entrypoint.sh` runs via `tini`:
 
 ```bash
 #!/usr/bin/env bash
@@ -101,24 +59,35 @@ if [ "$ENABLE_SSH" = "1" ] || [ "$ENABLE_SSH" = "true" ]; then
   # ... SSH setup (authorized_keys, host keys, sshd) ...
 fi
 
-# 2. Start the OpenCode web server as the node user
+# 2. Start the OpenCode web server
 cd /work
-exec su -s /bin/bash node -c "opencode web --hostname 0.0.0.0 --port ${PORT} --print-logs"
+exec opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
 ```
 
-The container starts as `root` (to allow optional SSH daemon setup), then
-drops to the `node` user via `su` for the OpenCode process. OpenCode discovers
-tools, plugins, and skills from `OPENCODE_CONFIG_DIR`.
+OpenCode discovers tools, plugins, and skills from both `OPENCODE_CONFIG_DIR`
+and `~/.config/opencode/`. Plugins declared in the config are auto-installed
+on first boot (cached at `~/.cache/opencode/node_modules/`).
 
 ---
 
 ## Runtime Environment
 
-The compose file sets these environment variables on the assistant service:
+### Volume Mounts
+
+Four non-overlapping mounts, each at a distinct container path:
+
+| Host Path | Container Path | Purpose |
+|---|---|---|
+| `DATA_HOME/opencode` | `/etc/opencode` | System config (`OPENCODE_CONFIG_DIR`) — model, plugins, persona |
+| `CONFIG_HOME/opencode` | `~/.config/opencode` | User extensions — custom tools, plugins, skills |
+| `STATE_HOME/opencode` | `~/.local/state/opencode` | Logs and session state (OpenCode writes here natively) |
+| `WORK_DIR` | `/work` | Project files |
+
+### Environment Variables
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/opt/opencode` | Root for built-in config, tools, plugins, skills |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | System config directory (overrides user config) |
 | `OPENCODE_PORT` | `4096` | Web-server listen port |
 | `OPENCODE_AUTH` | `false` | Auth handled by Caddy / Admin — disabled in OpenCode |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server (disabled by default, toggleable) |
@@ -140,10 +109,35 @@ LLM provider keys are passed through from the host:
 
 ---
 
+## System Config (`DATA_HOME/opencode/`)
+
+System config is managed by the admin control plane. Files are seeded by
+`ensureOpenCodeSystemConfig()` (called on every install, update, and startup)
+and overwritten when the bundled version changes (with backup).
+
+### opencode.jsonc
+
+Selects the default model and declares plugins for auto-install:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/big-pickle",
+  "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
+}
+```
+
+### AGENTS.md
+
+Persona definition for the OpenPalm assistant. Describes role, memory
+guidelines, behavior rules, and available skills.
+
+---
+
 ## Tools
 
-Tools are TypeScript files in `/opt/opencode/tools/`. OpenCode auto-discovers
-them. They fall into two groups:
+Tools are TypeScript files provided by the `@openpalm/assistant-tools` plugin
+(auto-installed at runtime). They fall into two groups:
 
 ### Admin Tools
 
@@ -220,9 +214,8 @@ Users can add their own tools, plugins, or skills without rebuilding the image.
 **Container path:** `/home/opencode/.config/opencode/`
 
 This directory lives under CONFIG_HOME — the single user touchpoint for all
-editable configuration. It is mounted as an overlay into the assistant
-container, sitting on top of the assistant's home directory at the standard
-OpenCode user config path.
+editable configuration. It is bind-mounted into the assistant container at the
+standard OpenCode user config path.
 
 This is created by `ensureXdgDirs()` during installation and persists across
 container restarts. `ensureOpenCodeConfig()` (called on every install and
@@ -230,33 +223,31 @@ update) seeds a starter `opencode.json` (schema reference only) and creates
 the `tools/`, `plugins/`, and `skills/` subdirectories if they are absent.
 The config file is never overwritten once it exists, so user edits are safe.
 
-OpenCode merges configuration from both `OPENCODE_CONFIG_DIR` (built-in) and
-`$HOME/.config/opencode/` (user), so user-added extensions complement the
-built-in set.
+OpenCode merges configuration from both `~/.config/opencode/` (user) and
+`OPENCODE_CONFIG_DIR` (system), so user-added extensions complement the
+system-managed set.
 
 ---
 
 ## Configuration Flow Summary
 
 ```
-Build Time                    Install Time                  Runtime
-──────────                    ────────────                  ───────
-core/assistant/  ──COPY──►  /opt/opencode/          OPENCODE_CONFIG_DIR=/opt/opencode
-                              │                             │
-                              │                    opencode discovers tools/,
-                              │                    plugins/, skills/
-                              │
-                        ensureXdgDirs() creates    User drops files into
-                        host dirs                  $CONFIG_HOME/opencode/
-                               │                             │
-                        ensureOpenCodeConfig()       Merged at runtime by OpenCode
-                        seeds opencode.json,                 │
-                        tools/, plugins/, skills/
-                               │
-                        stageCompose()
-                        sets env vars, mounts               │
-                              │                             │
-                       docker compose up ──────►  entrypoint.sh
-                                                    ├── optional SSH setup
-                                                    └── su node → opencode web --port 4096
+Install                              Runtime
+───────                              ───────
+ensureXdgDirs()                      Container starts
+  creates DATA_HOME/opencode/          │
+  creates CONFIG_HOME/opencode/        ├── OPENCODE_CONFIG_DIR=/etc/opencode
+  creates STATE_HOME/opencode/         │     reads opencode.jsonc (model + plugins)
+                                       │     reads AGENTS.md (persona)
+ensureOpenCodeSystemConfig()           │
+  writes DATA_HOME/opencode/           ├── ~/.config/opencode/ (user extensions)
+    opencode.jsonc                     │     merges tools/, plugins/, skills/
+    AGENTS.md                          │
+                                       ├── auto-installs plugins via bun
+ensureOpenCodeConfig()                 │     → ~/.cache/opencode/node_modules/
+  writes CONFIG_HOME/opencode/         │
+    opencode.json (schema ref)         ├── logs → ~/.local/state/opencode/
+    tools/ plugins/ skills/            │     (STATE_HOME/opencode on host)
+                                       │
+docker compose up                      └── opencode web --port 4096 --print-logs
 ```

@@ -72,10 +72,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      OPENCODE_CONFIG_DIR: /opt/opencode
+      OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
+      HOME: /home/opencode
       OPENPALM_ADMIN_API_URL: http://admin:8100
       OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       OPENMEMORY_API_URL: http://openmemory:8765
@@ -86,13 +87,13 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      HOME: /home/opencode
     ports:
       - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:4096:4096"
       - "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/assistant:/home/opencode
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/opencode:/etc/opencode
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/opencode:/home/opencode/.config/opencode
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/opencode:/home/opencode/.local/state/opencode
       - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
     working_dir: /work
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"

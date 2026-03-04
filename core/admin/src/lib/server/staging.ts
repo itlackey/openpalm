@@ -31,6 +31,7 @@ export {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
+  ensureOpenCodeSystemConfig,
   refreshCoreAssets
 } from "./core-assets.js";
 
