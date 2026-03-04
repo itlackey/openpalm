@@ -123,7 +123,7 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 | Channel runtime | [core/channel/README.md](core/channel/README.md) |
 | Channels SDK | [packages/channels-sdk/README.md](packages/channels-sdk/README.md) |
 | Assistant tools | [packages/assistant-tools/README.md](packages/assistant-tools/README.md) |
-| CLI | [packages/cli/README.md](packages/cli/README.md) |
+| CLI | [core/cli/README.md](core/cli/README.md) |
 | Channel: API | [packages/channel-api/README.md](packages/channel-api/README.md) |
 | Channel: Chat | [packages/channel-chat/README.md](packages/channel-chat/README.md) |
 | Channel: Discord | [packages/channel-discord/README.md](packages/channel-discord/README.md) |
@@ -151,7 +151,7 @@ bun run admin:check      # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
 bun run sdk:test         # packages/channels-sdk tests
-bun run cli:test         # packages/cli tests
+bun run cli:test         # core/cli tests
 bun run channel:chat:dev    # chat channel dev server
 bun run channel:api:dev     # api channel dev server
 bun run channel:discord:dev # discord channel dev server
@@ -168,7 +168,7 @@ bun run check            # admin:check + sdk:test
 
 ## npm Package Releases
 
-OpenPalm publishes npm packages on an independent release cycle from Docker images. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`, `packages/cli`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Repository maintainers must set `NPM_TOKEN` in GitHub Actions secrets for publishing.
+OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`core/admin`, `core/guardian`, `core/cli`) share a coordinated version managed by `scripts/release.sh`. Repository maintainers must set `NPM_TOKEN` in GitHub Actions secrets for publishing.
 
 ## License
 

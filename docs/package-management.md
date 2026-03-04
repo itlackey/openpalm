@@ -40,7 +40,7 @@ All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `pe
 
 ### Keeping ranges in sync
 
-`scripts/bump-versions.sh` updates both the `version` field and all `@openpalm/*` dependency ranges across every workspace package. After bumping, all cross-references point to `^<new-version>`.
+Platform packages (root, `core/admin`, `core/guardian`, `core/cli`) share a coordinated version bumped by `scripts/bump-platform.sh`. npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant-tools`) are versioned independently via per-package publish workflows. Cross-references between the two groups use real semver ranges and are updated manually when a dependency's API changes.
 
 ### Why Docker builds don't use lock files
 
