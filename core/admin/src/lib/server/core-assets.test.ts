@@ -19,6 +19,7 @@ import {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
+  ensureOpenCodeSystemConfig,
   refreshCoreAssets
 } from "./core-assets.js";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
@@ -195,6 +196,81 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   });
 });
 
+// ── ensureOpenCodeSystemConfig ────────────────────────────────────────────
+
+describe("ensureOpenCodeSystemConfig", () => {
+  const origEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+  });
+
+  afterEach(() => {
+    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+  });
+
+  test("seeds opencode.jsonc and AGENTS.md on first run", () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    ensureOpenCodeSystemConfig();
+
+    const configPath = join(dataHome, "assistant", "opencode.jsonc");
+    const agentsPath = join(dataHome, "assistant", "AGENTS.md");
+    expect(existsSync(configPath)).toBe(true);
+    expect(existsSync(agentsPath)).toBe(true);
+
+    const configContent = readFileSync(configPath, "utf-8");
+    expect(configContent).toContain("$schema");
+    const agentsContent = readFileSync(agentsPath, "utf-8");
+    expect(agentsContent.length).toBeGreaterThan(0);
+  });
+
+  test("is idempotent — skips unchanged files", () => {
+    ensureOpenCodeSystemConfig();
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    const configPath = join(dataHome, "assistant", "opencode.jsonc");
+    const content1 = readFileSync(configPath, "utf-8");
+
+    ensureOpenCodeSystemConfig();
+    const content2 = readFileSync(configPath, "utf-8");
+    expect(content1).toBe(content2);
+
+    // No backups should exist since content didn't change
+    const backupDir = join(dataHome, "assistant", "backups");
+    expect(existsSync(backupDir)).toBe(false);
+  });
+
+  test("overwrites stale files and creates backups", () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    const assistantDir = join(dataHome, "assistant");
+    mkdirSync(assistantDir, { recursive: true });
+    writeFileSync(join(assistantDir, "opencode.jsonc"), "stale-config");
+    writeFileSync(join(assistantDir, "AGENTS.md"), "stale-agents");
+
+    ensureOpenCodeSystemConfig();
+
+    // Content should be updated
+    const configContent = readFileSync(join(assistantDir, "opencode.jsonc"), "utf-8");
+    expect(configContent).not.toBe("stale-config");
+    expect(configContent).toContain("$schema");
+
+    const agentsContent = readFileSync(join(assistantDir, "AGENTS.md"), "utf-8");
+    expect(agentsContent).not.toBe("stale-agents");
+
+    // Backups should exist
+    const backupDir = join(assistantDir, "backups");
+    expect(existsSync(backupDir)).toBe(true);
+    const backups = readdirSync(backupDir);
+    expect(backups.length).toBe(2);
+    const configBackups = backups.filter(f => f.startsWith("opencode.jsonc."));
+    const agentsBackups = backups.filter(f => f.startsWith("AGENTS.md."));
+    expect(configBackups.length).toBe(1);
+    expect(agentsBackups.length).toBe(1);
+    expect(readFileSync(join(backupDir, configBackups[0]), "utf-8")).toBe("stale-config");
+    expect(readFileSync(join(backupDir, agentsBackups[0]), "utf-8")).toBe("stale-agents");
+  });
+});
+
 // ── refreshCoreAssets ────────────────────────────────────────────────────
 
 describe("refreshCoreAssets", () => {
@@ -224,6 +300,12 @@ describe("refreshCoreAssets", () => {
       if (url.includes("openmemory-memory.py")) {
         return new Response("# patched memory.py\n", { status: 200 });
       }
+      if (url.includes("opencode.jsonc")) {
+        return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+      }
+      if (url.includes("AGENTS.md")) {
+        return new Response("# OpenCode Agents\n", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
@@ -231,11 +313,15 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("docker-compose.yml");
     expect(result.updated).toContain("caddy/Caddyfile");
     expect(result.updated).toContain("openmemory/memory.py");
+    expect(result.updated).toContain("assistant/opencode.jsonc");
+    expect(result.updated).toContain("assistant/AGENTS.md");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy/Caddyfile"))).toBe(true);
     expect(existsSync(join(dataHome, "openmemory/memory.py"))).toBe(true);
+    expect(existsSync(join(dataHome, "assistant/opencode.jsonc"))).toBe(true);
+    expect(existsSync(join(dataHome, "assistant/AGENTS.md"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -246,6 +332,9 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "caddy/Caddyfile"), "old-caddy-content");
     mkdirSync(join(dataHome, "openmemory"), { recursive: true });
     writeFileSync(join(dataHome, "openmemory/memory.py"), "old-memory-content");
+    mkdirSync(join(dataHome, "assistant"), { recursive: true });
+    writeFileSync(join(dataHome, "assistant/opencode.jsonc"), "old-opencode-content");
+    writeFileSync(join(dataHome, "assistant/AGENTS.md"), "old-agents-content");
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -258,11 +347,17 @@ describe("refreshCoreAssets", () => {
       if (url.includes("openmemory-memory.py")) {
         return new Response("new-memory-content", { status: 200 });
       }
+      if (url.includes("opencode.jsonc")) {
+        return new Response("new-opencode-content", { status: 200 });
+      }
+      if (url.includes("AGENTS.md")) {
+        return new Response("new-agents-content", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(3);
+    expect(result.updated).toHaveLength(5);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -272,11 +367,17 @@ describe("refreshCoreAssets", () => {
     expect(backupCaddy).toBe("old-caddy-content");
     const backupMemory = readFileSync(join(result.backupDir!, "openmemory/memory.py"), "utf-8");
     expect(backupMemory).toBe("old-memory-content");
+    const backupOpencode = readFileSync(join(result.backupDir!, "assistant/opencode.jsonc"), "utf-8");
+    expect(backupOpencode).toBe("old-opencode-content");
+    const backupAgents = readFileSync(join(result.backupDir!, "assistant/AGENTS.md"), "utf-8");
+    expect(backupAgents).toBe("old-agents-content");
 
     // Verify new content written
     expect(readFileSync(join(dataHome, "docker-compose.yml"), "utf-8")).toBe("new-compose-content");
     expect(readFileSync(join(dataHome, "caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
     expect(readFileSync(join(dataHome, "openmemory/memory.py"), "utf-8")).toBe("new-memory-content");
+    expect(readFileSync(join(dataHome, "assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
+    expect(readFileSync(join(dataHome, "assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
   });
 
   test("skips assets with identical content", async () => {
@@ -288,6 +389,9 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "caddy/Caddyfile"), content);
     mkdirSync(join(dataHome, "openmemory"), { recursive: true });
     writeFileSync(join(dataHome, "openmemory/memory.py"), content);
+    mkdirSync(join(dataHome, "assistant"), { recursive: true });
+    writeFileSync(join(dataHome, "assistant/opencode.jsonc"), content);
+    writeFileSync(join(dataHome, "assistant/AGENTS.md"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

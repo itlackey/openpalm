@@ -48,12 +48,16 @@ describe("ensureXdgDirs", () => {
     expect(existsSync(join(stateHome, "audit"))).toBe(true);
     expect(existsSync(join(stateHome, "artifacts", "channels"))).toBe(true);
 
+    // STATE subtrees (continued)
+    expect(existsSync(join(stateHome, "opencode"))).toBe(true);
+
     // DATA subtrees
     expect(existsSync(dataHome)).toBe(true);
     expect(existsSync(join(dataHome, "openmemory"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy", "data"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy", "config"))).toBe(true);
+    expect(existsSync(join(dataHome, "opencode"))).toBe(true);
   });
 
   test("is idempotent — safe to call multiple times", () => {

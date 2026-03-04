@@ -27,7 +27,7 @@ opencode.jsonc
   → Tools, plugins, skills registered via the plugin entry point
 ```
 
-The Dockerfile pre-installs the package at `/opt/opencode/node_modules/` as an offline fallback, so the container works without network access to npm.
+Plugins are installed by Bun at container startup and cached ephemerally. The first boot requires network access to npm; subsequent restarts use the cached modules.
 
 ### What lives where
 

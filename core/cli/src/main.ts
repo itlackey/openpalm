@@ -247,6 +247,10 @@ async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
       "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
     }, null, 2) + "\n");
   }
+  const agentsFile = join(opencodeSystemDir, 'AGENTS.md');
+  if (!(await Bun.file(agentsFile).exists())) {
+    await Bun.write(agentsFile, '# OpenPalm Assistant\n\nThis file defines the assistant persona.\nIt is seeded by the CLI on first install and managed by the admin on subsequent updates.\n');
+  }
 }
 
 async function runDockerCompose(args: string[]): Promise<void> {
