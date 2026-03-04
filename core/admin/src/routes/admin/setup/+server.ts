@@ -21,12 +21,12 @@ import {
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  CORE_SERVICES,
   writeOpenMemoryConfig,
   readOpenMemoryConfig,
   resolveConfigForPush,
   pushConfigToOpenMemory,
   LOCAL_EMBEDDING_DIMS,
+  LOCAL_CONTEXT_SIZES,
   detectModelRunner,
   writeLocalModelsCompose,
   patchSecretsEnvFile,
@@ -150,11 +150,32 @@ export const POST: RequestHandler = async (event) => {
   }
   if (llmBaseUrl) {
     updates.SYSTEM_LLM_BASE_URL = llmBaseUrl;
+    // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+    updates.OPENAI_BASE_URL = `${llmBaseUrl.replace(/\/+$/, "")}/v1`;
   }
 
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
-  // Ensure directories and secrets.env exist before updating
+  // ── Validate local model fields BEFORE any writes (transactional) ──
+  const localSystemModel = (body.localSystemModel as string) ?? "";
+  const localEmbeddingModel = (body.localEmbeddingModel as string) ?? "";
+  const localEmbeddingDims = typeof body.localEmbeddingDims === "number"
+    ? body.localEmbeddingDims
+    : (localEmbeddingModel ? (LOCAL_EMBEDDING_DIMS[localEmbeddingModel] ?? 384) : 0);
+
+  if (localSystemModel || localEmbeddingModel) {
+    if (localSystemModel && !isValidModelName(localSystemModel)) {
+      return errorResponse(400, "invalid_model", `Invalid local system model name: "${localSystemModel}"`, {}, requestId);
+    }
+    if (localEmbeddingModel && !isValidModelName(localEmbeddingModel)) {
+      return errorResponse(400, "invalid_model", `Invalid local embedding model name: "${localEmbeddingModel}"`, {}, requestId);
+    }
+    if (localEmbeddingDims && (localEmbeddingDims < 1 || !Number.isInteger(localEmbeddingDims))) {
+      return errorResponse(400, "invalid_dims", "Embedding dimensions must be a positive integer", {}, requestId);
+    }
+  }
+
+  // ── All validation passed — persist changes ──
   try {
     ensureXdgDirs();
     ensureSecrets(state);
@@ -187,7 +208,7 @@ export const POST: RequestHandler = async (event) => {
       max_tokens: 2000,
       api_key: apiKeyEnvRef,
     };
-    if (llmBaseUrl.trim()) llmConfig.base_url = llmBaseUrl.trim();
+    if (llmBaseUrl.trim()) llmConfig.openai_base_url = `${llmBaseUrl.trim().replace(/\/+$/, "")}/v1`;
 
     // Embedding provider — for now same provider as LLM
     const embedApiKeyRef = apiKeyEnvRef;
@@ -195,7 +216,7 @@ export const POST: RequestHandler = async (event) => {
       model: embeddingModel || "text-embedding-3-small",
       api_key: embedApiKeyRef,
     };
-    if (llmBaseUrl.trim()) embedConfig.base_url = llmBaseUrl.trim();
+    if (llmBaseUrl.trim()) embedConfig.openai_base_url = `${llmBaseUrl.trim().replace(/\/+$/, "")}/v1`;
 
     // Resolve embedding dimensions
     const lookupKey = `${llmProvider}/${embeddingModel}`;
@@ -221,28 +242,12 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // ── Local model configuration (Docker Model Runner) ──
-  const localSystemModel = (body.localSystemModel as string) ?? "";
-  const localEmbeddingModel = (body.localEmbeddingModel as string) ?? "";
-  const localEmbeddingDims = typeof body.localEmbeddingDims === "number"
-    ? body.localEmbeddingDims
-    : (localEmbeddingModel ? (LOCAL_EMBEDDING_DIMS[localEmbeddingModel] ?? 384) : 0);
-
   if (localSystemModel || localEmbeddingModel) {
-    // Validate local model names before writing
-    if (localSystemModel && !isValidModelName(localSystemModel)) {
-      return errorResponse(400, "invalid_model", `Invalid local system model name: "${localSystemModel}"`, {}, requestId);
-    }
-    if (localEmbeddingModel && !isValidModelName(localEmbeddingModel)) {
-      return errorResponse(400, "invalid_model", `Invalid local embedding model name: "${localEmbeddingModel}"`, {}, requestId);
-    }
-    if (localEmbeddingDims && (localEmbeddingDims < 1 || !Number.isInteger(localEmbeddingDims))) {
-      return errorResponse(400, "invalid_dims", "Embedding dimensions must be a positive integer", {}, requestId);
-    }
 
     const selection: LocalModelSelection = {};
 
     if (localSystemModel) {
-      selection.systemModel = { model: localSystemModel, contextSize: 4096 };
+      selection.systemModel = { model: localSystemModel, contextSize: LOCAL_CONTEXT_SIZES[localSystemModel] };
     }
     if (localEmbeddingModel) {
       selection.embeddingModel = { model: localEmbeddingModel, dimensions: localEmbeddingDims };
@@ -260,6 +265,8 @@ export const POST: RequestHandler = async (event) => {
       const localSecrets: Record<string, string> = {
         SYSTEM_LLM_PROVIDER: "openai",
         SYSTEM_LLM_BASE_URL: detection.url,
+        // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+        OPENAI_BASE_URL: `${detection.url.replace(/\/+$/, "")}/v1`,
       };
       if (localSystemModel) {
         localSecrets.SYSTEM_LLM_MODEL = localSystemModel;
@@ -341,7 +348,7 @@ export const POST: RequestHandler = async (event) => {
   });
 
   const started = [
-    ...CORE_SERVICES,
+    ...buildManagedServices(state),
     ...channelNames.map((name) => `channel-${name}`)
   ];
 

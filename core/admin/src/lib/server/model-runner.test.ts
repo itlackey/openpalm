@@ -33,6 +33,7 @@ import {
   SUGGESTED_SYSTEM_MODELS,
   SUGGESTED_EMBEDDING_MODELS,
   LOCAL_EMBEDDING_DIMS,
+  LOCAL_CONTEXT_SIZES,
   type LocalModelSelection,
 } from "./model-runner.js";
 import type { OpenMemoryConfig } from "./openmemory-config.js";
@@ -125,10 +126,18 @@ describe("model catalog", () => {
   test("LOCAL_EMBEDDING_DIMS includes both HF and legacy entries", () => {
     // HF entries
     expect(LOCAL_EMBEDDING_DIMS["hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF"]).toBe(768);
-    expect(LOCAL_EMBEDDING_DIMS["hf.co/ChristianAzinn/all-MiniLM-L6-v2-gguf"]).toBe(384);
+    expect(LOCAL_EMBEDDING_DIMS["hf.co/leliuga/all-MiniLM-L6-v2-GGUF"]).toBe(384);
     // Legacy ai/ entries
     expect(LOCAL_EMBEDDING_DIMS["ai/all-minilm"]).toBe(384);
     expect(LOCAL_EMBEDDING_DIMS["ai/nomic-embed-text"]).toBe(768);
+  });
+
+  test("LOCAL_CONTEXT_SIZES is derived from SUGGESTED_SYSTEM_MODELS", () => {
+    for (const model of SUGGESTED_SYSTEM_MODELS) {
+      if (model.contextSize) {
+        expect(LOCAL_CONTEXT_SIZES[model.id]).toBe(model.contextSize);
+      }
+    }
   });
 });
 
@@ -211,6 +220,24 @@ describe("generateModelOverlayYaml", () => {
     // Config flows through secrets.env, not compose overlay
     expect(yaml).not.toContain("LOCAL_LLM_URL");
     expect(yaml).not.toContain("environment:");
+  });
+
+  test("adds host.docker.internal extra_hosts when detection URL uses it", () => {
+    const yaml = generateModelOverlayYaml(
+      { systemModel: { model: "ai/mistral" } },
+      "http://host.docker.internal:12434/engines",
+    );
+    expect(yaml).toContain("model-runner.docker.internal:host-gateway");
+    expect(yaml).toContain("host.docker.internal:host-gateway");
+  });
+
+  test("does not add host.docker.internal when URL uses model-runner.docker.internal", () => {
+    const yaml = generateModelOverlayYaml(
+      { systemModel: { model: "ai/mistral" } },
+      "http://model-runner.docker.internal/engines",
+    );
+    expect(yaml).toContain("model-runner.docker.internal:host-gateway");
+    expect(yaml).not.toContain("host.docker.internal:host-gateway");
   });
 });
 
@@ -540,8 +567,9 @@ describe("applyLocalModelsToOpenMemory", () => {
 
     expect(config.mem0.llm.provider).toBe("openai");
     expect(config.mem0.llm.config.model).toBe("hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF");
-    // mem0 expects base_url with /v1 (it appends /chat/completions directly)
-    expect(config.mem0.llm.config.base_url).toBe("http://model-runner.docker.internal/engines/v1");
+    // mem0's Pydantic BaseLlmConfig uses openai_base_url (appends /chat/completions directly)
+    expect(config.mem0.llm.config.openai_base_url).toBe("http://model-runner.docker.internal/engines/v1");
+    expect(config.mem0.llm.config.base_url).toBeUndefined();
   });
 
   test("applies embedding model to embedder config", () => {

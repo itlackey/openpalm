@@ -55,9 +55,11 @@ mkdir -p "$CONFIG_DIR" "$CHANNELS_DIR" "$DEV_ROOT/config/automations" \
 	"$STATE_DIR/artifacts/channels/lan" \
 	"$STATE_DIR/audit" "$STATE_DIR/automations" "$STATE_DIR/opencode" \
 	"$DATA_DIR/openmemory" \
-	"$DATA_DIR/assistant" "$DATA_DIR/guardian" \
+	"$DATA_DIR/assistant" "$DATA_DIR/assistant/.config/opencode" \
+	"$DATA_DIR/guardian" \
 	"$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
-	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/opencode"
+	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/opencode" \
+	"$DEV_ROOT/work"
 
 # Seed core assets to DATA_HOME (source of truth) — write-once unless --force
 if [[ ! -f "$CADDY_CORE_DEST" || $force -eq 1 ]]; then

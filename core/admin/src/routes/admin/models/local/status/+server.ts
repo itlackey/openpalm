@@ -22,7 +22,7 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const config = readLocalModelsCompose(state.configDir);
+  const config = readLocalModelsCompose(state.dataDir, state.configDir);
 
   if (!config || (!config.systemModel && !config.embeddingModel)) {
     return jsonResponse(200, {
@@ -45,11 +45,11 @@ export const GET: RequestHandler = async (event) => {
   const pulledModels = await listPulledModels(detection.url);
 
   const systemModelReady = config.systemModel
-    ? pulledModels.some((m) => m === config.systemModel!.model || m.startsWith(config.systemModel!.model))
+    ? pulledModels.some((m) => m === config.systemModel!.model)
     : false;
 
   const embeddingModelReady = config.embeddingModel
-    ? pulledModels.some((m) => m === config.embeddingModel!.model || m.startsWith(config.embeddingModel!.model))
+    ? pulledModels.some((m) => m === config.embeddingModel!.model)
     : false;
 
   return jsonResponse(200, {

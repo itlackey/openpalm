@@ -33,8 +33,7 @@
   let llmBaseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
 
   // Step 3 — Models
-  let guardianModel = $state('');
-  let memoryModel = $state('');
+  let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
   let openmemoryUserId = $state(untrack(() => data.detectedUserId ?? 'default_user'));
@@ -186,13 +185,19 @@
         connectError = result.error;
         return;
       }
-      modelList = result.models ?? [];
+      const apiModels: string[] = result.models ?? [];
+
+      // Merge API results with any currently-configured models so dropdowns
+      // don't lose the user's selection (models may still be pulling).
+      const merged = new Set<string>(apiModels);
+      if (systemModel) merged.add(systemModel);
+      if (embeddingModel) merged.add(embeddingModel);
+      modelList = [...merged].sort();
       connectionTested = true;
 
       // Pre-select first model for each role if not already set
       if (modelList.length > 0) {
-        if (!guardianModel) guardianModel = modelList[0];
-        if (!memoryModel) memoryModel = modelList[0];
+        if (!systemModel) systemModel = modelList[0];
         if (!embeddingModel) {
           // Try to find an embedding model
           const embedCandidate = modelList.find(m =>
@@ -226,8 +231,7 @@
           llmProvider,
           llmApiKey,
           llmBaseUrl,
-          guardianModel,
-          memoryModel,
+          systemModel,
           embeddingModel,
           embeddingDims,
           openmemoryUserId,
@@ -612,23 +616,13 @@
           <p class="step-description">Choose which models to use for each role.{#if localSystemModel || localEmbeddingModel || customSystemModelUrl || customEmbeddingModelUrl} Local models will be pre-selected where configured.{/if}</p>
 
           <div class="field-group">
-            <label for="guardian-model">Guardian Model</label>
-            <select id="guardian-model" bind:value={guardianModel}>
+            <label for="system-model">System Model</label>
+            <select id="system-model" bind:value={systemModel}>
               {#each modelList as m}
                 <option value={m}>{m}</option>
               {/each}
             </select>
-            <p class="field-hint">Used for message routing and safety decisions.</p>
-          </div>
-
-          <div class="field-group">
-            <label for="memory-model">Memory Model</label>
-            <select id="memory-model" bind:value={memoryModel}>
-              {#each modelList as m}
-                <option value={m}>{m}</option>
-              {/each}
-            </select>
-            <p class="field-hint">Used by OpenMemory for memory reasoning (mem0 LLM).</p>
+            <p class="field-hint">Used for message routing, safety, and memory reasoning.</p>
           </div>
 
           <div class="field-group">
@@ -718,12 +712,8 @@
                 <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
               </div>
               <div class="review-item">
-                <span class="review-label">Guardian Model</span>
-                <span class="review-value mono">{guardianModel}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">Memory Model</span>
-                <span class="review-value mono">{memoryModel}</span>
+                <span class="review-label">System Model</span>
+                <span class="review-value mono">{systemModel}</span>
               </div>
               <div class="review-item">
                 <span class="review-label">Embedding Model</span>

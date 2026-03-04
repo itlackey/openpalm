@@ -22,6 +22,7 @@ import {
   fetchHuggingFaceModelInfo,
   downloadHuggingFaceModel,
   readLocalModelsMeta,
+  writeLocalModelsMeta,
   updateModelMetadata,
   applyLocalModelsToOpenMemory,
   buildModelRestartServices,
@@ -86,7 +87,7 @@ export const GET: RequestHandler = async (event) => {
  * POST /admin/models/local
  *
  * Save local model configuration. Writes DATA_HOME/local-models.yml,
- * re-stages artifacts, and runs compose up to trigger model pulling.
+ * re-stages artifacts, and runs compose up.
  *
  * For HF models, verifies existence via HF Hub API and triggers background
  * download to DATA_HOME/models/hf-cache/ for persistence.
@@ -117,10 +118,11 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(400, "invalid_model", `Invalid system model name: "${model}". Must start with ai/ or hf.co/`, {}, requestId);
     }
     if (model) {
-      selection.systemModel = {
-        model,
-        contextSize: typeof sm.contextSize === "number" ? sm.contextSize : undefined,
-      };
+      const contextSize = typeof sm.contextSize === "number" ? sm.contextSize : undefined;
+      if (contextSize !== undefined && (!Number.isInteger(contextSize) || contextSize < 1)) {
+        return errorResponse(400, "invalid_context_size", "Context size must be a positive integer", {}, requestId);
+      }
+      selection.systemModel = { model, contextSize };
     }
   }
 
@@ -132,6 +134,9 @@ export const POST: RequestHandler = async (event) => {
     }
     if (model) {
       const dims = typeof em.dimensions === "number" ? em.dimensions : (LOCAL_EMBEDDING_DIMS[model] ?? 384);
+      if (!Number.isInteger(dims) || dims < 1) {
+        return errorResponse(400, "invalid_dims", "Embedding dimensions must be a positive integer", {}, requestId);
+      }
       selection.embeddingModel = { model, dimensions: dims };
     }
   }
@@ -177,6 +182,8 @@ export const POST: RequestHandler = async (event) => {
     const localSecrets: Record<string, string> = {
       SYSTEM_LLM_PROVIDER: "openai",
       SYSTEM_LLM_BASE_URL: modelRunnerUrl,
+      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+      OPENAI_BASE_URL: `${modelRunnerUrl.replace(/\/+$/, "")}/v1`,
     };
     if (selection.systemModel) {
       localSecrets.SYSTEM_LLM_MODEL = selection.systemModel.model;
@@ -282,14 +289,21 @@ export const DELETE: RequestHandler = async (event) => {
     return jsonResponse(200, { ok: true, message: "No local models configured" }, requestId);
   }
 
+  // Track which models are being removed for cleanup
+  const removedModels: string[] = [];
+
   if (body.all === true) {
-    // Remove all local models
+    // Collect all model IDs being removed
+    if (current.systemModel) removedModels.push(current.systemModel.model);
+    if (current.embeddingModel) removedModels.push(current.embeddingModel.model);
     writeLocalModelsCompose(state.dataDir, {});
   } else {
     const target = String(body.model ?? "");
     if (target === "local-llm" || target === "system") {
+      if (current.systemModel) removedModels.push(current.systemModel.model);
       delete current.systemModel;
     } else if (target === "local-embedding" || target === "embedding") {
+      if (current.embeddingModel) removedModels.push(current.embeddingModel.model);
       delete current.embeddingModel;
     } else {
       return errorResponse(400, "invalid_target", `Unknown model target: "${target}"`, {}, requestId);
@@ -299,6 +313,27 @@ export const DELETE: RequestHandler = async (event) => {
       ? await detectModelRunner()
       : { url: "" };
     writeLocalModelsCompose(state.dataDir, current, det.url);
+  }
+
+  // Prune metadata entries for removed models
+  if (removedModels.length > 0) {
+    const meta = readLocalModelsMeta(state.dataDir);
+    for (const id of removedModels) {
+      delete meta.models[id];
+    }
+    writeLocalModelsMeta(state.dataDir, meta);
+  }
+
+  // Clear model-related secrets when all local models removed
+  if (!current.systemModel && !current.embeddingModel) {
+    patchSecretsEnvFile(state.configDir, {
+      SYSTEM_LLM_PROVIDER: "",
+      SYSTEM_LLM_BASE_URL: "",
+      SYSTEM_LLM_MODEL: "",
+      OPENAI_BASE_URL: "",
+      EMBEDDING_MODEL: "",
+      EMBEDDING_DIMS: "",
+    });
   }
 
   // Re-stage and reconcile compose

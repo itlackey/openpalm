@@ -191,7 +191,14 @@
         modelListError = result.error;
         return;
       }
-      modelList = result.models ?? [];
+      const apiModels = result.models ?? [];
+
+      // Merge API results with any currently-configured models so dropdowns
+      // don't lose the user's selection (models may still be pulling).
+      const merged = new Set(apiModels);
+      if (systemModel) merged.add(systemModel);
+      if (embeddingModel) merged.add(embeddingModel);
+      modelList = [...merged].sort();
       connectionTested = true;
 
       // Pre-select models if not already set
@@ -445,16 +452,15 @@
 
     try {
       const status = await fetchLocalModelStatus(token);
-      if (status.systemModelReady && status.embeddingModelReady && status.configured) {
+      // Treat unconfigured model types as ready (don't block on them)
+      const sysReady = status.systemModelReady || !localConfig?.systemModel;
+      const embedReady = status.embeddingModelReady || !localConfig?.embeddingModel;
+      if (sysReady && embedReady && status.configured) {
         stopStatusPolling();
         toastMessage = 'Local models are ready and applied.';
         toastVisible = true;
         toastModelType = '';
         await loadLocalModels();
-      } else if (status.systemModelReady && !status.embeddingModelReady && localConfig?.embeddingModel) {
-        // System ready, embedding still pulling
-      } else if (!status.systemModelReady && status.embeddingModelReady && localConfig?.systemModel) {
-        // Embedding ready, system still pulling
       }
     } catch {
       // Polling error — keep trying
@@ -813,7 +819,7 @@
           {#if localError}
             <div class="feedback feedback--error local-feedback" role="alert">
               <span>{localError}</span>
-              <button class="btn-dismiss" type="button" onclick={() => localError = ''}>
+              <button class="btn-dismiss" type="button" aria-label="Dismiss error" onclick={() => localError = ''}>
                 <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
@@ -824,7 +830,7 @@
           {#if localSuccess}
             <div class="feedback feedback--success local-feedback" role="status">
               <span>Local models saved. Models are being pulled in the background.</span>
-              <button class="btn-dismiss" type="button" onclick={() => localSuccess = false}>
+              <button class="btn-dismiss" type="button" aria-label="Dismiss notification" onclick={() => localSuccess = false}>
                 <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>

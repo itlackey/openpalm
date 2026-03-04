@@ -76,15 +76,20 @@ export const SUGGESTED_SYSTEM_MODELS: SuggestedModel[] = [
 export const SUGGESTED_EMBEDDING_MODELS: SuggestedModel[] = [
   { id: "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF", label: "Nomic Embed v1.5", size: "~274 MB", dimensions: 768 },
   { id: "hf.co/ChristianAzinn/snowflake-arctic-embed-s-gguf", label: "Snowflake Arctic S", size: "~23 MB", dimensions: 384 },
-  { id: "hf.co/ChristianAzinn/all-MiniLM-L6-v2-gguf", label: "All-MiniLM-L6 v2", size: "~23 MB", dimensions: 384 },
+  { id: "hf.co/leliuga/all-MiniLM-L6-v2-GGUF", label: "All-MiniLM-L6 v2", size: "~23 MB", dimensions: 384 },
 ];
+
+/** Context sizes for known local system models (from SUGGESTED_SYSTEM_MODELS). */
+export const LOCAL_CONTEXT_SIZES: Record<string, number> = Object.fromEntries(
+  SUGGESTED_SYSTEM_MODELS.filter(m => m.contextSize).map(m => [m.id, m.contextSize!])
+);
 
 /** Embedding dimensions for known local models (HF + legacy ai/ refs). */
 export const LOCAL_EMBEDDING_DIMS: Record<string, number> = {
   // HuggingFace models (primary)
   "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF": 768,
   "hf.co/ChristianAzinn/snowflake-arctic-embed-s-gguf": 384,
-  "hf.co/ChristianAzinn/all-MiniLM-L6-v2-gguf": 384,
+  "hf.co/leliuga/all-MiniLM-L6-v2-GGUF": 384,
   // Legacy Docker ai/ refs (backward compat)
   "ai/all-minilm": 384,
   "ai/nomic-embed-text": 768,
@@ -103,6 +108,8 @@ const MODEL_RUNNER_PROBE_URLS = [
   // Linux docker-model-plugin — model runner container at port 12434
   "http://model-runner.docker.internal:12434/engines/v1/models",
   "http://host.docker.internal:12434/engines/v1/models",
+  // Localhost fallback — admin running on host (dev) or model runner on host
+  "http://localhost:12434/engines/v1/models",
 ];
 
 const LOCAL_MODELS_FILENAME = "local-models.yml";
@@ -361,7 +368,7 @@ export function writeLocalModelsCompose(
     return;
   }
 
-  const yaml = generateModelOverlayYaml(selection, modelRunnerUrl, dataDir);
+  const yaml = generateModelOverlayYaml(selection, modelRunnerUrl);
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(path, yaml);
 }
@@ -379,8 +386,7 @@ export function writeLocalModelsCompose(
  */
 export function generateModelOverlayYaml(
   selection: LocalModelSelection,
-  _modelRunnerUrl?: string,
-  _dataDir?: string,
+  modelRunnerUrl?: string,
 ): string {
   const hasSystem = !!selection.systemModel;
   const hasEmbedding = !!selection.embeddingModel;
@@ -405,27 +411,37 @@ export function generateModelOverlayYaml(
     }
   }
 
+  // Derive required extra_hosts from the detection URL.
+  // Always include model-runner.docker.internal; also include
+  // host.docker.internal if the detected URL uses it.
+  const extraHosts = ['"model-runner.docker.internal:host-gateway"'];
+  if (modelRunnerUrl && modelRunnerUrl.includes("host.docker.internal")) {
+    extraHosts.push('"host.docker.internal:host-gateway"');
+  }
+
+  const extraHostsYaml = extraHosts.map(h => `      - ${h}`).join("\n");
+
   lines.push("");
   lines.push("services:");
 
-  // Guardian — needs DNS for model-runner.docker.internal
+  // Guardian — needs DNS for model runner hosts
   if (hasSystem) {
     lines.push("  guardian:");
     lines.push("    extra_hosts:");
-    lines.push('      - "model-runner.docker.internal:host-gateway"');
+    lines.push(extraHostsYaml);
   }
 
-  // OpenMemory — needs DNS for model-runner.docker.internal
+  // OpenMemory — needs DNS for model runner hosts
   if (hasSystem || hasEmbedding) {
     lines.push("  openmemory:");
     lines.push("    extra_hosts:");
-    lines.push('      - "model-runner.docker.internal:host-gateway"');
+    lines.push(extraHostsYaml);
   }
 
   // Admin — needs extra_hosts for Model Runner detection
   lines.push("  admin:");
   lines.push("    extra_hosts:");
-  lines.push('      - "model-runner.docker.internal:host-gateway"');
+  lines.push(extraHostsYaml);
 
   lines.push("");
   return lines.join("\n");
@@ -475,7 +491,8 @@ export function updateModelMetadata(
  * Extracted from route handlers to eliminate duplication.
  *
  * modelRunnerUrl is a base URL without /v1 (e.g. http://host:port/engines).
- * mem0 expects base_url with /v1 (it appends /chat/completions directly).
+ * mem0's Pydantic BaseLlmConfig uses `openai_base_url` (not `base_url`) —
+ * it appends /chat/completions directly, so we pass the full /v1 URL.
  */
 export function applyLocalModelsToOpenMemory(
   omConfig: OpenMemoryConfig,
@@ -489,7 +506,7 @@ export function applyLocalModelsToOpenMemory(
       provider: "openai",
       config: {
         model: selection.systemModel.model,
-        base_url: apiUrl,
+        openai_base_url: apiUrl,
         api_key: "not-needed",
         temperature: 0.1,
         max_tokens: 2000,
@@ -502,7 +519,7 @@ export function applyLocalModelsToOpenMemory(
       provider: "openai",
       config: {
         model: selection.embeddingModel.model,
-        base_url: apiUrl,
+        openai_base_url: apiUrl,
         api_key: "not-needed",
       },
     };

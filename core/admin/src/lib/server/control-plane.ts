@@ -144,6 +144,7 @@ export {
   SUGGESTED_SYSTEM_MODELS,
   SUGGESTED_EMBEDDING_MODELS,
   LOCAL_EMBEDDING_DIMS,
+  LOCAL_CONTEXT_SIZES,
   type LocalModelSelection,
   type ModelRunnerDetection,
   type SuggestedModel,
