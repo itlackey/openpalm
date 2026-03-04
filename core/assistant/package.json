@@ -3,7 +3,7 @@
   "license": "CC-BY-4.0",
   "type": "module",
   "dependencies": {
-    "@openpalm/assistant-tools": "0.7.0-rc1",
+    "@openpalm/assistant-tools": "0.7.2",
     "@itlackey/openkit": "0.2.2",
     "@opencode-ai/plugin": "1.2.15"
   }

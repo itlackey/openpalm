@@ -5,7 +5,7 @@
 # Falls back to CHANNEL_FILE for legacy file-based channels.
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM oven/bun:1-slim
+FROM oven/bun:1.3-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

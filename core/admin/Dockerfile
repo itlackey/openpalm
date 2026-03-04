@@ -3,7 +3,7 @@
 # Built with npm + Vite, runs on Node.js (adapter-node).
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM node:22-slim AS build
+FROM node:lts-trixie-slim AS build
 WORKDIR /workspace
 
 # Install admin deps at workspace root so node_modules lands at /workspace/.
@@ -23,9 +23,9 @@ ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
-FROM node:22-slim
+FROM node:lts-trixie-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
@@ -33,12 +33,18 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
   && rm -rf /var/lib/apt/lists/*
 
+
 WORKDIR /app
 COPY --from=build /workspace/core/admin/build ./build
 COPY --from=build /workspace/core/admin/package.json ./
 RUN npm install --omit=dev
 
 RUN mkdir -p /state /data && chown node:node /state /data
+
+# Install Bun to /usr/local so it's on PATH for all users
+ENV BUN_INSTALL=/usr/local
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/usr/local/bin:$PATH"
 
 USER node
 

@@ -3,7 +3,7 @@
 # validates HMAC + nonce + rate limits, forwards to the assistant.
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM oven/bun:1-slim
+FROM oven/bun:1.3-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
