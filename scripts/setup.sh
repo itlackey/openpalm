@@ -100,6 +100,25 @@ parse_args() {
 	done
 }
 
+# ── Image tag resolution ─────────────────────────────────────────────
+# When --version is a semver tag (v0.7.3, v1.0.0-rc1, etc.), use it as
+# the Docker image tag so the install is pinned to a specific release.
+
+resolve_image_tag() {
+	if [[ -n "${OPENPALM_IMAGE_TAG:-}" ]]; then
+		echo "$OPENPALM_IMAGE_TAG"
+		return
+	fi
+	case "$OPT_VERSION" in
+	v[0-9]*)
+		echo "$OPT_VERSION"
+		;;
+	*)
+		echo "latest"
+		;;
+	esac
+}
+
 # ── Preflight checks ─────────────────────────────────────────────────
 
 preflight_checks() {
@@ -328,7 +347,7 @@ start_admin_pull() {
 	PULL_LOG="$(mktemp)"
 	info "Downloading admin image in the background..."
 
-	docker pull "${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}" \
+	docker pull "${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:$(resolve_image_tag)" \
 		>"$PULL_LOG" 2>&1 &
 	PULL_PID=$!
 }
@@ -462,7 +481,7 @@ OPENPALM_DOCKER_SOCK=${DOCKER_SOCK}
 
 # ── Images ──────────────────────────────────────────────────────────
 OPENPALM_IMAGE_NAMESPACE=${OPENPALM_IMAGE_NAMESPACE:-openpalm}
-OPENPALM_IMAGE_TAG=${OPENPALM_IMAGE_TAG:-latest}
+OPENPALM_IMAGE_TAG=$(resolve_image_tag)
 
 # ── Database ────────────────────────────────────────────────────────
 POSTGRES_PASSWORD=${pg_password}

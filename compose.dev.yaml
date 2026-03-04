@@ -21,22 +21,22 @@ services:
     build:
       context: .
       dockerfile: core/admin/Dockerfile
-    image: openpalm/admin:latest
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
 
   guardian:
     build:
       context: .
       dockerfile: core/guardian/Dockerfile
-    image: openpalm/guardian:latest
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
 
   assistant:
     build:
       context: .
       dockerfile: core/assistant/Dockerfile
-    image: openpalm/assistant:latest
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
 
   channel:
     build:
       context: .
       dockerfile: core/channel/Dockerfile
-    image: openpalm/channel:latest
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}

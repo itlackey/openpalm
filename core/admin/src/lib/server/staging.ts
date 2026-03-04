@@ -20,6 +20,9 @@ import {
   LAN_ONLY_IMPORT
 } from "./core-assets.js";
 
+declare const __APP_VERSION__: string;
+const DEFAULT_IMAGE_TAG = typeof __APP_VERSION__ !== "undefined" ? `v${__APP_VERSION__}` : "latest";
+
 // Re-export core-assets functions for barrel compatibility
 export {
   ensureCoreCaddyfile,
@@ -229,7 +232,7 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm"}`,
-    `OPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG ?? "latest"}`,
+    `OPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG ?? DEFAULT_IMAGE_TAG}`,
     "",
     "# ── Networking ──────────────────────────────────────────────────────",
     `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
