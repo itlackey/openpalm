@@ -16,6 +16,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     ports:
       - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-8080}:80"
     volumes:
@@ -31,9 +32,11 @@ services:
   openmemory:
     image: mem0/openmemory-mcp:latest@sha256:b665d382a94fdc18c7bb84a647d4bebdc98d9e7fc1146fc5e559ca7f5f7f9211
     restart: unless-stopped
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      HOME: /data
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}
@@ -44,6 +47,7 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/memory.py:/usr/src/openmemory/app/utils/memory.py:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/config.py:/usr/src/openmemory/app/routers/config.py:ro
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
@@ -172,14 +176,11 @@ services:
       start_period: 5s
 
   # ── Admin ──────────────────────────────────────────────────────────
-  # Container starts as root for scheduled automation setup, then
-  # drops to target user via gosu before running the SvelteKit app.
-  # Automation files are staged to STATE_HOME/automations/ by the
-  # control plane and loaded by the entrypoint on startup.
   admin:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/admin:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     extra_hosts:
       - "model-runner.docker.internal:host-gateway"
       - "host.docker.internal:host-gateway"
@@ -195,9 +196,6 @@ services:
       OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
       # Docker API via socket proxy — no direct socket mount needed
       DOCKER_HOST: tcp://docker-socket-proxy:2375
-      # Entrypoint drops privileges from root to this UID/GID via gosu
-      OPENPALM_UID: "${OPENPALM_UID:-1000}"
-      OPENPALM_GID: "${OPENPALM_GID:-1000}"
     # env_file loads stack.env into the container so OPENPALM_* vars are available
     # to child docker compose invocations. secrets.env provides ADMIN_TOKEN + LLM keys.
     env_file:
