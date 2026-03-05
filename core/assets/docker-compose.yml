@@ -86,6 +86,8 @@ services:
       OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       OPENMEMORY_API_URL: http://openmemory:8765
       OPENMEMORY_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
+      OPENPALM_UID: ${OPENPALM_UID:-1000}
+      OPENPALM_GID: ${OPENPALM_GID:-1000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -102,7 +104,6 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/opencode:/home/opencode/.local/share/opencode
       - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
     working_dir: /work
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [assistant_net]
     depends_on:
       openmemory:
