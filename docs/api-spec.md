@@ -339,7 +339,7 @@ Response:
   },
   "runtimeConfig": null,
   "providers": {
-    "llm": ["openai", "anthropic", "ollama", "groq", "together", "mistral", "deepseek", "xai", "lmstudio"],
+    "llm": ["openai", "anthropic", "ollama", "groq", "together", "mistral", "deepseek", "xai", "lmstudio", "model-runner"],
     "embed": ["openai", "ollama", "huggingface", "lmstudio"]
   },
   "embeddingDims": {
@@ -391,7 +391,7 @@ Provider API conventions:
 | -------- | ----------- | ---- |
 | Ollama | `{baseUrl}/api/tags` | None |
 | Anthropic | Static list (no API) | N/A |
-| OpenAI, Groq, Mistral, Together, DeepSeek, xAI, LM Studio | `{baseUrl}/v1/models` | `Bearer {key}` |
+| OpenAI, Groq, Mistral, Together, DeepSeek, xAI, LM Studio, Model Runner | `{baseUrl}/v1/models` | `Bearer {key}` (optional) |
 
 Response:
 
@@ -467,8 +467,101 @@ When using Ollama as the LLM or embedding provider with OpenMemory:
 }
 ```
 
-## Not Implemented
+## Setup
 
-The following endpoints are not present in current route code:
+### `GET /admin/setup`
 
-- `/admin/setup/*`
+**No authentication required.** Returns setup status and which config keys are set
+(booleans only, never values). During first-run (before setup is complete), also
+returns an ephemeral `setupToken` for authenticating the setup POST.
+
+Response:
+
+```json
+{
+  "setupComplete": false,
+  "installed": false,
+  "setupToken": "abc123...",
+  "detectedUserId": "node",
+  "configured": {
+    "OPENAI_API_KEY": false,
+    "OPENAI_BASE_URL": false,
+    "OPENMEMORY_USER_ID": false,
+    "GROQ_API_KEY": false,
+    "MISTRAL_API_KEY": false,
+    "GOOGLE_API_KEY": false
+  }
+}
+```
+
+### `POST /admin/setup`
+
+Runs the setup wizard. During first-run, authenticates with the ephemeral
+`setupToken` via `x-admin-token` header. After setup is complete, requires
+normal admin auth.
+
+Body:
+
+```json
+{
+  "adminToken": "my-secure-token",
+  "llmProvider": "openai",
+  "llmApiKey": "sk-...",
+  "llmBaseUrl": "",
+  "systemModel": "gpt-4o-mini",
+  "embeddingModel": "text-embedding-3-small",
+  "embeddingDims": 1536,
+  "openmemoryUserId": "default_user"
+}
+```
+
+All fields except `adminToken` are optional. The endpoint:
+1. Writes credentials to `CONFIG_HOME/secrets.env`
+2. Builds and writes OpenMemory config
+3. Runs `docker compose up` to start the stack
+4. Pushes config to OpenMemory and provisions the user (fire-and-forget)
+
+Response:
+
+```json
+{
+  "ok": true,
+  "started": ["caddy", "openmemory", "assistant", "guardian"],
+  "dockerAvailable": true,
+  "composeResult": { "ok": true, "stderr": "" }
+}
+```
+
+### `POST /admin/setup/models`
+
+Proxy endpoint for listing available models during setup. Same behavior as
+`POST /admin/openmemory/models` but accepts the ephemeral setup token for
+first-run authentication.
+
+## Local Provider Detection
+
+### `GET /admin/providers/local`
+
+Probes well-known local LLM provider endpoints to detect which are running.
+During first-run setup, accepts the ephemeral setup token; after setup,
+requires admin auth.
+
+Probed providers:
+
+| Provider | Probe URLs |
+|----------|-----------|
+| `model-runner` | `model-runner.docker.internal/engines/v1/models`, `:12434` variants, `localhost:12434` |
+| `ollama` | `host.docker.internal:11434/api/tags`, `localhost:11434` |
+| `lmstudio` | `host.docker.internal:1234/v1/models`, `localhost:1234` |
+
+Response:
+
+```json
+{
+  "providers": [
+    { "provider": "model-runner", "url": "http://model-runner.docker.internal/engines", "available": true },
+    { "provider": "ollama", "url": "", "available": false },
+    { "provider": "lmstudio", "url": "", "available": false }
+  ]
+}
+```
