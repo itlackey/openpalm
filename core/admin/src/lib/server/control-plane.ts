@@ -101,6 +101,7 @@ export {
   fetchProviderModels,
   checkQdrantDimensions,
   resetQdrantCollection,
+  provisionOpenMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,

@@ -241,7 +241,6 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
     "",
     "# ── OpenMemory ──────────────────────────────────────────────────────",
     `OPENMEMORY_DASHBOARD_API_URL=${process.env.OPENMEMORY_DASHBOARD_API_URL ?? "http://localhost:8765"}`,
-    `OPENMEMORY_USER_ID=${process.env.OPENMEMORY_USER_ID ?? "default_user"}`,
     "",
     "# ── Channel HMAC Secrets ────────────────────────────────────────────",
     ""

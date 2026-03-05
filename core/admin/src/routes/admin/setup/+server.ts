@@ -25,6 +25,7 @@ import {
   readOpenMemoryConfig,
   resolveConfigForPush,
   pushConfigToOpenMemory,
+  provisionOpenMemoryUser,
   LOCAL_EMBEDDING_DIMS,
   LOCAL_CONTEXT_SIZES,
   detectModelRunner,
@@ -344,7 +345,8 @@ export const POST: RequestHandler = async (event) => {
   const dockerResult = await composeUp(state.stateDir, {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
-    services: buildManagedServices(state)
+    services: buildManagedServices(state),
+    forceRecreate: true,
   });
 
   const started = [
@@ -374,7 +376,7 @@ export const POST: RequestHandler = async (event) => {
     );
   }
 
-  // Fire-and-forget: push resolved OpenMemory config to the running container.
+  // Fire-and-forget: push resolved OpenMemory config and provision user.
   // OpenMemory may take time to start, so retry with delays.
   void (async () => {
     const config = readOpenMemoryConfig(state.dataDir);
@@ -385,6 +387,8 @@ export const POST: RequestHandler = async (event) => {
       const result = await pushConfigToOpenMemory(resolved);
       if (result.ok) {
         logger.info("pushed OpenMemory config after setup install", { attempt });
+        // Provision the user so memory-add doesn't get "User not found"
+        await provisionOpenMemoryUser(openmemoryUserId);
         return;
       }
       if (attempt < maxAttempts) {

@@ -308,3 +308,145 @@ export async function fetchConfigFromOpenMemory(): Promise<OpenMemoryConfig | nu
     return null;
   }
 }
+
+/**
+ * Provision a user in OpenMemory by completing an MCP SSE handshake.
+ *
+ * OpenMemory only creates users when an MCP tool call is processed through
+ * an active SSE session (via `get_or_create_user` in mcp_server.py).
+ * The REST API endpoints return 404 "User not found" for unknown user_ids.
+ *
+ * Flow:
+ * 1. Open SSE connection → receive session endpoint URL
+ * 2. POST `initialize` to establish the MCP session
+ * 3. POST `tools/call` for `add_memories` which triggers user creation
+ * 4. Abort the SSE connection
+ *
+ * This is fire-and-forget; failure is non-fatal.
+ */
+export async function provisionOpenMemoryUser(
+  userId: string,
+  appName = "openpalm-assistant"
+): Promise<{ ok: boolean; error?: string }> {
+  const sseController = new AbortController();
+  const overallTimeout = setTimeout(() => sseController.abort(), 10_000);
+
+  try {
+    // Step 1: Open SSE connection
+    const sseRes = await fetch(
+      `${OPENMEMORY_API_BASE}/mcp/${appName}/sse/${userId}`,
+      { signal: sseController.signal }
+    ).catch(() => null);
+
+    if (!sseRes || !sseRes.ok || !sseRes.body) {
+      clearTimeout(overallTimeout);
+      return { ok: false, error: sseRes ? `SSE HTTP ${sseRes.status}` : "SSE connection failed" };
+    }
+
+    // Helper: read next SSE event from the stream with a timeout.
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+
+    const readNextEvent = async (
+      timeoutMs = 5_000
+    ): Promise<{ event: string; data: string } | null> => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const remaining = Math.max(deadline - Date.now(), 100);
+        const timeoutRace = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), remaining)
+        );
+        const chunk = await Promise.race([reader.read(), timeoutRace]);
+        if (!chunk || (chunk as { done: boolean }).done) return null;
+        sseBuffer += decoder.decode(
+          (chunk as { value: Uint8Array }).value,
+          { stream: true }
+        );
+        // SSE format: "event: <type>\r\ndata: <payload>\r\n\r\n"
+        const eventMatch = sseBuffer.match(
+          /event:\s*(\S+)\r?\n(?:data:\s*(.*)\r?\n)?\r?\n/
+        );
+        if (eventMatch) {
+          sseBuffer = sseBuffer.slice(
+            (eventMatch.index ?? 0) + eventMatch[0].length
+          );
+          return { event: eventMatch[1], data: eventMatch[2] || "" };
+        }
+      }
+      return null;
+    };
+
+    // Step 2: Read the endpoint event
+    const endpointEvt = await readNextEvent(5_000);
+    if (!endpointEvt || endpointEvt.event !== "endpoint" || !endpointEvt.data) {
+      clearTimeout(overallTimeout);
+      sseController.abort();
+      return { ok: false, error: "No endpoint event received from SSE" };
+    }
+
+    const fullMessagesUrl = `${OPENMEMORY_API_BASE}${endpointEvt.data}`;
+
+    // Step 3: Send MCP initialize
+    await fetch(fullMessagesUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: appName, version: "1.0.0" },
+        },
+      }),
+    }).catch(() => null);
+
+    // Step 4: Read initialize response to confirm session is established
+    await readNextEvent(5_000);
+
+    // Step 5: Send initialized notification (required by MCP protocol
+    // before the server accepts tool calls)
+    await fetch(fullMessagesUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      }),
+    }).catch(() => null);
+
+    // Brief pause
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Step 6: Send add_memories tool call — this triggers get_or_create_user
+    await fetch(fullMessagesUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "add_memories",
+          arguments: {
+            text: `User ${userId} account provisioned by OpenPalm setup.`,
+          },
+        },
+      }),
+    }).catch(() => null);
+
+    // Step 7: Wait for tool response (confirms user creation completed)
+    await readNextEvent(8_000);
+
+    clearTimeout(overallTimeout);
+    sseController.abort();
+    return { ok: true };
+  } catch {
+    clearTimeout(overallTimeout);
+    sseController.abort();
+    // AbortError is expected
+    return { ok: true };
+  }
+}

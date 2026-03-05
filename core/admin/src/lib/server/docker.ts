@@ -9,7 +9,7 @@
  * command injection. No user input is ever interpolated into shell strings.
  */
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 export type DockerResult = {
   ok: boolean;
@@ -18,17 +18,40 @@ export type DockerResult = {
   code: number;
 };
 
+/**
+ * Parse a dotenv file into a key-value map.
+ * Handles `KEY=value` lines; ignores comments and blank lines.
+ */
+function parseEnvFile(path: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  try {
+    const content = readFileSync(path, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
+      }
+    }
+  } catch {
+    // File not readable — skip
+  }
+  return vars;
+}
+
 /** Execute docker with an argument array — no shell interpolation. */
 function run(
   args: string[],
   cwd?: string,
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
+  envOverrides?: Record<string, string>
 ): Promise<DockerResult> {
   return new Promise((resolve) => {
     execFile(
       "docker",
       args,
-      { cwd, timeout: timeoutMs, env: { ...process.env } },
+      { cwd, timeout: timeoutMs, env: { ...process.env, ...envOverrides } },
       (error, stdout, stderr) => {
         resolve({
           ok: !error,
@@ -114,6 +137,7 @@ export async function composeUp(
     profiles?: string[];
     services?: string[];
     envFiles?: string[];
+    forceRecreate?: boolean;
   } = {}
 ): Promise<DockerResult> {
   const primaryFile = options.files?.[0] ?? composeFile(stateDir);
@@ -143,11 +167,24 @@ export async function composeUp(
 
   args.push("up", "-d");
 
+  if (options.forceRecreate) {
+    args.push("--force-recreate");
+  }
+
   if (options.services && options.services.length > 0) {
     args.push(...options.services);
   }
 
-  return run(args, stateDir, 300_000);
+  // Merge env file values into the process environment so Docker Compose
+  // resolves ${VAR} from fresh env files, not stale admin process env.
+  // Process env takes precedence over --env-file in Docker Compose,
+  // so we must override it explicitly.
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  return run(args, stateDir, 300_000, envOverrides);
 }
 
 /**
