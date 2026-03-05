@@ -194,6 +194,12 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     expect(content).toBeTruthy();
     expect(typeof content).toBe("string");
   });
+
+  test("openmemory service includes explicit user defaults for provisioning", () => {
+    const content = readCoreCompose();
+    expect(content).toContain("USER: ${OPENMEMORY_USER_ID:-default_user}");
+    expect(content).toContain("OPENMEMORY_USER_ID: ${OPENMEMORY_USER_ID:-default_user}");
+  });
 });
 
 // ── ensureOpenCodeSystemConfig ────────────────────────────────────────────

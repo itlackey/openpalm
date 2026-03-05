@@ -7,6 +7,7 @@ ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 # Ensure cache directory exists and is writable by the current UID
 # (the container may run as an arbitrary UID via OPENPALM_UID)
 mkdir -p /home/opencode/.cache 2>/dev/null || true
+mkdir -p /home/opencode/.config /home/opencode/.config/gh 2>/dev/null || true
 
 if [ "$ENABLE_SSH" = "1" ] || [ "$ENABLE_SSH" = "true" ]; then
 	mkdir -p /var/run/sshd /home/opencode/.ssh

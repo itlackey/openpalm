@@ -171,9 +171,27 @@ detect_platform() {
 	esac
 	ok "Platform: $PLATFORM"
 
-	HOST_UID="$(id -u)"
-	HOST_GID="$(id -g)"
-	ok "User: UID=$HOST_UID GID=$HOST_GID"
+	if [[ -n "${OPENPALM_UID:-}" ]]; then
+		HOST_UID="${OPENPALM_UID}"
+	elif [[ "$PLATFORM" == "darwin" ]]; then
+		HOST_UID="1000"
+	else
+		HOST_UID="$(id -u)"
+	fi
+
+	if [[ -n "${OPENPALM_GID:-}" ]]; then
+		HOST_GID="${OPENPALM_GID}"
+	elif [[ "$PLATFORM" == "darwin" ]]; then
+		HOST_GID="1000"
+	else
+		HOST_GID="$(id -g)"
+	fi
+
+	if [[ "$PLATFORM" == "darwin" && -z "${OPENPALM_UID:-}" && -z "${OPENPALM_GID:-}" ]]; then
+		ok "User mapping: macOS defaults to UID=1000 GID=1000 (override with OPENPALM_UID/OPENPALM_GID)"
+	else
+		ok "User: UID=$HOST_UID GID=$HOST_GID"
+	fi
 
 	# Docker socket path — detect from the active docker context (supports
 	# OrbStack, Colima, Rancher Desktop, etc. whose socket is not at the
@@ -454,7 +472,17 @@ generate_stack_env() {
 	local staged_stack_env="${STATE_HOME}/artifacts/stack.env"
 
 	if [[ -f "$data_stack_env" ]]; then
-		ok "stack.env exists — not overwriting"
+		if [[ "$PLATFORM" == "darwin" && -z "${OPENPALM_UID:-}" && -z "${OPENPALM_GID:-}" ]]; then
+			awk '
+				/^OPENPALM_UID=/ { print "OPENPALM_UID=1000"; next }
+				/^OPENPALM_GID=/ { print "OPENPALM_GID=1000"; next }
+				{ print }
+			' "$data_stack_env" >"${data_stack_env}.tmp"
+			mv "${data_stack_env}.tmp" "$data_stack_env"
+			ok "stack.env exists — normalized OPENPALM_UID/GID to 1000 for macOS"
+		else
+			ok "stack.env exists — not overwriting"
+		fi
 		# Always stage to STATE_HOME/artifacts/ for compose consumption
 		cp "$data_stack_env" "$staged_stack_env"
 		return 0

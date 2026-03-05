@@ -38,6 +38,8 @@ services:
       - "model-runner.docker.internal:host-gateway"
     environment:
       HOME: /data
+      USER: ${OPENMEMORY_USER_ID:-default_user}
+      OPENMEMORY_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}

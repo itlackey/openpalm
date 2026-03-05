@@ -226,6 +226,8 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `USER` | `${OPENMEMORY_USER_ID:-default_user}` | Stable login/user identity used by OpenMemory user initialization paths |
+| `OPENMEMORY_USER_ID` | `default_user` | Default user identifier for memory APIs and MCP bootstrap |
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
 | `DATABASE_URL` | `sqlite:////data/openmemory.db` | SQLite database path (absolute, inside container) |
 
@@ -252,8 +254,8 @@ You never set these in `CONFIG_HOME/secrets.env`.
 | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | admin process env |
 | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | admin process env |
 | `OPENPALM_WORK_DIR` | `$HOME/openpalm` | admin process env |
-| `OPENPALM_UID` | current user UID | `process.getuid()` |
-| `OPENPALM_GID` | current group GID | `process.getgid()` |
+| `OPENPALM_UID` | Linux: current UID; macOS setup scripts: `1000` | `process.getuid()` / setup script normalization |
+| `OPENPALM_GID` | Linux: current GID; macOS setup scripts: `1000` | `process.getgid()` / setup script normalization |
 | `OPENPALM_IMAGE_NAMESPACE` | `openpalm` | admin process env (overridable) |
 | `OPENPALM_IMAGE_TAG` | `latest` | admin process env (overridable) |
 | `OPENPALM_INGRESS_BIND_ADDRESS` | `127.0.0.1` | admin process env (overridable) |

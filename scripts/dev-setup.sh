@@ -92,8 +92,21 @@ if [[ $seed_env -eq 1 ]]; then
 	# dev-setup.sh seeds it so the full stack can start before the admin
 	# has run for the first time.
 	if [[ ! -f "$STACK_ENV_DATA" || $force -eq 1 ]]; then
-		uid=$(id -u)
-		gid=$(id -g)
+		if [[ -n "${OPENPALM_UID:-}" ]]; then
+			uid="${OPENPALM_UID}"
+		elif [[ "$(uname -s)" == "Darwin" ]]; then
+			uid="1000"
+		else
+			uid=$(id -u)
+		fi
+
+		if [[ -n "${OPENPALM_GID:-}" ]]; then
+			gid="${OPENPALM_GID}"
+		elif [[ "$(uname -s)" == "Darwin" ]]; then
+			gid="1000"
+		else
+			gid=$(id -g)
+		fi
 
 		# Detect Docker socket path from the active docker context (supports
 		# OrbStack, Colima, Rancher Desktop, etc.)
