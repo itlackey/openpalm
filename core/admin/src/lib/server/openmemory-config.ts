@@ -443,10 +443,12 @@ export async function provisionOpenMemoryUser(
     clearTimeout(overallTimeout);
     sseController.abort();
     return { ok: true };
-  } catch {
+  } catch (err) {
     clearTimeout(overallTimeout);
     sseController.abort();
-    // AbortError is expected
-    return { ok: true };
+    if (err instanceof Error && err.name === "AbortError") {
+      return { ok: true };
+    }
+    return { ok: false, error: String(err) };
   }
 }

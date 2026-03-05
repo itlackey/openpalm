@@ -68,6 +68,29 @@ export function mem0ProviderName(provider: string): string {
   return provider;
 }
 
+/**
+ * Map provider/base URL input to the mem0 config key/value pair.
+ * OpenAI-compatible providers use openai_base_url (+ /v1), while Ollama uses ollama_base_url.
+ */
+export function mem0BaseUrlConfig(
+  provider: string,
+  baseUrl: string
+): { key: "openai_base_url" | "ollama_base_url"; value: string } | null {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.replace(/\/+$/, "");
+  const mem0Provider = mem0ProviderName(provider);
+
+  if (mem0Provider === "ollama") {
+    return { key: "ollama_base_url", value: normalized };
+  }
+  if (mem0Provider === "openai") {
+    return { key: "openai_base_url", value: `${normalized}/v1` };
+  }
+  return null;
+}
+
 /** Contextual help for local/self-hosted providers. */
 export const LOCAL_PROVIDER_HELP: Record<string, string> = {
   "model-runner": "Add models with: docker model pull ai/model-name",

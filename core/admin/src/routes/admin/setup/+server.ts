@@ -28,7 +28,12 @@ import {
   provisionOpenMemoryUser,
   type OpenMemoryConfig
 } from "$lib/server/control-plane.js";
-import { PROVIDER_KEY_MAP, EMBEDDING_DIMS, mem0ProviderName } from "$lib/provider-constants.js";
+import {
+  PROVIDER_KEY_MAP,
+  EMBEDDING_DIMS,
+  mem0ProviderName,
+  mem0BaseUrlConfig
+} from "$lib/provider-constants.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
@@ -132,8 +137,12 @@ export const POST: RequestHandler = async (event) => {
   }
   if (llmBaseUrl) {
     updates.SYSTEM_LLM_BASE_URL = llmBaseUrl;
-    // OPENAI_BASE_URL is read by the openmemory container as env var fallback
-    updates.OPENAI_BASE_URL = `${llmBaseUrl.replace(/\/+$/, "")}/v1`;
+    const mem0Url = mem0BaseUrlConfig(llmProvider, llmBaseUrl);
+    if (mem0Url?.key === "openai_base_url") {
+      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+      // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
+      updates.OPENAI_BASE_URL = mem0Url.value;
+    }
   }
 
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
@@ -171,7 +180,8 @@ export const POST: RequestHandler = async (event) => {
       max_tokens: 2000,
       api_key: apiKeyEnvRef,
     };
-    if (llmBaseUrl.trim()) llmConfig.openai_base_url = `${llmBaseUrl.trim().replace(/\/+$/, "")}/v1`;
+    const mem0BaseUrl = mem0BaseUrlConfig(llmProvider, llmBaseUrl);
+    if (mem0BaseUrl) llmConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
     // Embedding provider — for now same provider as LLM
     const embedApiKeyRef = apiKeyEnvRef;
@@ -179,7 +189,7 @@ export const POST: RequestHandler = async (event) => {
       model: embeddingModel || "text-embedding-3-small",
       api_key: embedApiKeyRef,
     };
-    if (llmBaseUrl.trim()) embedConfig.openai_base_url = `${llmBaseUrl.trim().replace(/\/+$/, "")}/v1`;
+    if (mem0BaseUrl) embedConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
     // Resolve embedding dimensions
     const lookupKey = `${llmProvider}/${embeddingModel}`;

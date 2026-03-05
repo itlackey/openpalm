@@ -15,6 +15,7 @@ import {
   fetchProviderModels,
   checkQdrantDimensions,
   resetQdrantCollection,
+  provisionOpenMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
@@ -573,5 +574,40 @@ describe("resetQdrantCollection", () => {
     const result = resetQdrantCollection(dataDir);
     expect(result.ok).toBe(true);
     expect(existsSync(qdrantDir)).toBe(false);
+  });
+});
+
+describe("provisionOpenMemoryUser", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("returns ok=false when stream processing throws a non-abort error", async () => {
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.error(new Error("stream failed"));
+      },
+    });
+    globalThis.fetch = vi.fn(async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
+
+    const result = await provisionOpenMemoryUser("test-user");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("stream failed");
+  });
+
+  test("treats AbortError as non-fatal", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.error(abortError);
+      },
+    });
+    globalThis.fetch = vi.fn(async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
+
+    const result = await provisionOpenMemoryUser("test-user");
+    expect(result).toEqual({ ok: true });
   });
 });

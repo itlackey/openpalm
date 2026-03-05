@@ -59,6 +59,7 @@
 
   // ── Derived ───────────────────────────────────────────────────────
   let isLocalProvider = $derived(['ollama', 'lmstudio', 'model-runner'].includes(provider));
+  let canTestWithoutCredentials = $derived(provider === 'anthropic');
 
   let maskedCurrentKey = $derived.by(() => {
     const envVar = PROVIDER_KEY_MAP[provider];
@@ -444,7 +445,7 @@
               class="btn btn-outline"
               type="button"
               onclick={() => void testConnection()}
-              disabled={modelListLoading || (!isLocalProvider && !apiKey.trim() && !maskedCurrentKey && !baseUrl)}
+              disabled={modelListLoading || (!isLocalProvider && !canTestWithoutCredentials && !apiKey.trim() && !maskedCurrentKey && !baseUrl)}
             >
               {#if modelListLoading}
                 <span class="spinner"></span>

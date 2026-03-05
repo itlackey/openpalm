@@ -31,7 +31,12 @@ import {
   type OpenMemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
-import { PROVIDER_KEY_MAP, EMBEDDING_DIMS, mem0ProviderName } from "$lib/provider-constants.js";
+import {
+  PROVIDER_KEY_MAP,
+  EMBEDDING_DIMS,
+  mem0ProviderName,
+  mem0BaseUrlConfig
+} from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("connections");
@@ -133,8 +138,12 @@ async function handleUnifiedSave(
   patches.SYSTEM_LLM_PROVIDER = provider;
   if (baseUrl) {
     patches.SYSTEM_LLM_BASE_URL = baseUrl;
-    // OPENAI_BASE_URL is read by the openmemory container as env var fallback
-    patches.OPENAI_BASE_URL = `${baseUrl.replace(/\/+$/, "")}/v1`;
+    const mem0Url = mem0BaseUrlConfig(provider, baseUrl);
+    if (mem0Url?.key === "openai_base_url") {
+      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+      // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
+      patches.OPENAI_BASE_URL = mem0Url.value;
+    }
   }
   if (systemModel) patches.SYSTEM_LLM_MODEL = systemModel;
   if (embeddingModel) patches.EMBEDDING_MODEL = embeddingModel;
@@ -163,13 +172,14 @@ async function handleUnifiedSave(
     max_tokens: 2000,
     api_key: apiKeyEnvRef,
   };
-  if (baseUrl.trim()) llmConfig.openai_base_url = `${baseUrl.trim().replace(/\/+$/, "")}/v1`;
+  const mem0BaseUrl = mem0BaseUrlConfig(provider, baseUrl);
+  if (mem0BaseUrl) llmConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
   const embedConfig: Record<string, unknown> = {
     model: embeddingModel || "text-embedding-3-small",
     api_key: apiKeyEnvRef,
   };
-  if (baseUrl.trim()) embedConfig.openai_base_url = `${baseUrl.trim().replace(/\/+$/, "")}/v1`;
+  if (mem0BaseUrl) embedConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
   const lookupKey = `${provider}/${embeddingModel}`;
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
