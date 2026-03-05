@@ -73,8 +73,7 @@ Users add tools, plugins, or skills to `CONFIG_HOME/assistant/` without
 rebuilding the image. OpenCode merges config from `/etc/opencode/` (system)
 and `~/.config/opencode/` (user).
 
-The assistant runs as `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`)
-with `working_dir: /work`. It has **no Docker socket access**.
+The assistant container starts as root only to normalize runtime user mapping, then drops privileges to `$OPENPALM_UID:$OPENPALM_GID` (default `1000:1000`) before launching OpenCode. This ensures bind-mounted files are writable across Linux/macOS runtimes while preserving non-root execution for the app process. It uses `working_dir: /work` and has **no Docker socket access**.
 
 ### 2.4 Guardian
 
@@ -215,7 +214,9 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |
 | `OPENPALM_ADMIN_TOKEN` | from secrets.env | Bearer token for Admin API |
 | `OPENMEMORY_API_URL` | `http://openmemory:8765` | OpenMemory service URL |
-| `OPENMEMORY_USER_ID` | `default_user` | User identifier for memory |
+| `OPENMEMORY_USER_ID` | `default_user` | User identifier for memory (entrypoint auto-falls back to runtime username when left as default) |
+| `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target runtime UID used by assistant entrypoint before dropping privileges |
+| `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target runtime GID used by assistant entrypoint before dropping privileges |
 | `OPENAI_API_KEY` | pass-through | OpenAI provider key |
 | `ANTHROPIC_API_KEY` | pass-through | Anthropic provider key |
 | `GROQ_API_KEY` | pass-through | Groq provider key |

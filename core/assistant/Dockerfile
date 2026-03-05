@@ -6,7 +6,7 @@
 FROM node:lts-trixie
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server \
+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu \
         python3 python3-pip \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
