@@ -21,8 +21,9 @@ RUN apt-get update \
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path
 ENV PATH="/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode /work \
-    && chown node:node /home/opencode /work \
+RUN mkdir -p /home/opencode/.cache /work \
+    && chmod 777 /home/opencode /home/opencode/.cache \
+    && chown node:node /home/opencode /home/opencode/.cache /work \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
