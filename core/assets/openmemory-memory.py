@@ -305,7 +305,7 @@ def get_memory_client(custom_instructions: str = None):
 
 
 def get_default_user_id():
-    user = os.environ.get("OPENMEMORY_USER_ID") or os.environ.get("USER")
-    if user and user.strip():
-        return user.strip()
+    user = (os.environ.get("OPENMEMORY_USER_ID") or os.environ.get("USER") or "").strip()
+    if user:
+        return user
     return "default_user"

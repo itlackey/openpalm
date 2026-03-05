@@ -473,12 +473,26 @@ generate_stack_env() {
 
 	if [[ -f "$data_stack_env" ]]; then
 		if [[ "$PLATFORM" == "darwin" && -z "${OPENPALM_UID:-}" && -z "${OPENPALM_GID:-}" ]]; then
+			local current_uid current_gid has_uid has_gid
+			current_uid="$(grep '^OPENPALM_UID=' "$data_stack_env" | head -n1 | cut -d'=' -f2-)"
+			current_gid="$(grep '^OPENPALM_GID=' "$data_stack_env" | head -n1 | cut -d'=' -f2-)"
+			has_uid=0
+			has_gid=0
+			grep -q '^OPENPALM_UID=' "$data_stack_env" && has_uid=1
+			grep -q '^OPENPALM_GID=' "$data_stack_env" && has_gid=1
 			awk '
 				/^OPENPALM_UID=/ { print "OPENPALM_UID=1000"; next }
 				/^OPENPALM_GID=/ { print "OPENPALM_GID=1000"; next }
 				{ print }
 			' "$data_stack_env" >"${data_stack_env}.tmp"
+			if [[ $has_uid -eq 0 ]]; then
+				printf '\nOPENPALM_UID=1000\n' >>"${data_stack_env}.tmp"
+			fi
+			if [[ $has_gid -eq 0 ]]; then
+				printf 'OPENPALM_GID=1000\n' >>"${data_stack_env}.tmp"
+			fi
 			mv "${data_stack_env}.tmp" "$data_stack_env"
+			info "macOS UID/GID normalization: OPENPALM_UID=${current_uid:-unset}->1000 OPENPALM_GID=${current_gid:-unset}->1000"
 			ok "stack.env exists — normalized OPENPALM_UID/GID to 1000 for macOS"
 		else
 			ok "stack.env exists — not overwriting"
