@@ -136,21 +136,7 @@ describe("buildComposeFileList", () => {
     expect(files[1]).toContain("chat.yml");
   });
 
-  test("includes local-models.yml overlay when staged", () => {
-    const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
-
-    const artifactsDir = join(state.stateDir, "artifacts");
-    mkdirSync(artifactsDir, { recursive: true });
-    writeFileSync(join(artifactsDir, "local-models.yml"), "models: {}");
-
-    const files = buildComposeFileList(state);
-    expect(files).toContain(join(artifactsDir, "local-models.yml"));
-  });
-
-  test("omits local-models.yml overlay when not staged", () => {
+  test("does not include local-models.yml overlay (removed)", () => {
     const state = makeTestState();
     trackDir(state.stateDir);
     trackDir(state.configDir);

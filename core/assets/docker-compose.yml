@@ -35,6 +35,7 @@ services:
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "model-runner.docker.internal:host-gateway"
     environment:
       HOME: /data
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -74,6 +75,7 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "model-runner.docker.internal:host-gateway"
     environment:
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"

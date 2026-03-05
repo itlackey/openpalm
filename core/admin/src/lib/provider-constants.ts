@@ -9,7 +9,7 @@
 /** Supported LLM providers. */
 export const LLM_PROVIDERS = [
   "openai", "anthropic", "ollama", "groq", "together",
-  "mistral", "deepseek", "xai", "lmstudio"
+  "mistral", "deepseek", "xai", "lmstudio", "model-runner"
 ] as const;
 
 /** Default base URLs per provider. */
@@ -22,6 +22,7 @@ export const PROVIDER_DEFAULT_URLS: Record<string, string> = {
   xai: "https://api.x.ai",
   lmstudio: "http://host.docker.internal:1234",
   ollama: "http://host.docker.internal:11434",
+  "model-runner": "http://model-runner.docker.internal/engines",
 };
 
 /** Map provider name → env var for the API key. */
@@ -33,9 +34,6 @@ export const PROVIDER_KEY_MAP: Record<string, string> = {
   google: "GOOGLE_API_KEY",
 };
 
-/** Providers that don't need an API key. */
-export const NO_KEY_PROVIDERS = new Set(["ollama", "lmstudio"]);
-
 /** Known embedding model dimensions (cloud providers). */
 export const EMBEDDING_DIMS: Record<string, number> = {
   "openai/text-embedding-3-small": 1536,
@@ -45,4 +43,25 @@ export const EMBEDDING_DIMS: Record<string, number> = {
   "ollama/mxbai-embed-large": 1024,
   "ollama/all-minilm": 384,
   "ollama/snowflake-arctic-embed": 1024,
+};
+
+/** Provider display labels for UI. */
+export const PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  ollama: "Ollama",
+  groq: "Groq",
+  together: "Together AI",
+  mistral: "Mistral",
+  deepseek: "DeepSeek",
+  xai: "xAI (Grok)",
+  lmstudio: "LM Studio",
+  "model-runner": "Docker Model Runner",
+};
+
+/** Contextual help for local/self-hosted providers. */
+export const LOCAL_PROVIDER_HELP: Record<string, string> = {
+  "model-runner": "Add models with: docker model pull ai/model-name",
+  ollama: "Add models with: ollama pull model-name",
+  lmstudio: "Download models from the LM Studio Discover tab.",
 };

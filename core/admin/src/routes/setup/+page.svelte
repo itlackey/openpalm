@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { untrack } from 'svelte';
-  import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, NO_KEY_PROVIDERS, EMBEDDING_DIMS } from '$lib/provider-constants.js';
-  import type { SuggestedModel } from '$lib/types.js';
+  import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS } from '$lib/provider-constants.js';
+  import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
 
   interface Props {
@@ -12,13 +12,13 @@
   let { data }: Props = $props();
 
   // ── Wizard state ────────────────────────────────────────────────────────
-  type WizardStep = 'token' | 'connect' | 'local-models' | 'models' | 'review';
+  type WizardStep = 'token' | 'provider' | 'models' | 'review';
   let step: WizardStep = $state('token');
   let setupComplete = $state(false);
   let loading = $state(true);
 
   // Step ordering helpers
-  const STEP_ORDER: WizardStep[] = ['token', 'local-models', 'connect', 'models', 'review'];
+  const STEP_ORDER: WizardStep[] = ['token', 'provider', 'models', 'review'];
   function isAfter(a: WizardStep, b: WizardStep): boolean {
     return STEP_ORDER.indexOf(a) > STEP_ORDER.indexOf(b);
   }
@@ -27,10 +27,15 @@
   let adminToken = $state('');
   let setupSessionToken = $state(untrack(() => data.setupToken ?? ''));
 
-  // Step 2 — Connect
+  // Step 2 — Provider (unified: cloud + local detection)
   let llmProvider = $state('openai');
   let llmApiKey = $state('');
   let llmBaseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
+
+  // Step 2 — Provider (unified: cloud + local detection)
+  let detectedProviders: LocalProviderDetection[] = $state([]);
+  let detectingProviders = $state(false);
+  let providersDetected = $state(false);
 
   // Step 3 — Models
   let systemModel = $state('');
@@ -42,21 +47,6 @@
   let modelList: string[] = $state([]);
   let modelListLoading = $state(false);
   let modelListError = $state('');
-
-  // Step 3 — Local Models (Docker Model Runner)
-  let localSystemModel = $state('');
-  let localEmbeddingModel = $state('');
-  let localEmbeddingDims = $state(384);
-  let modelRunnerAvailable = $state(false);
-  let modelRunnerChecking = $state(false);
-  let modelRunnerChecked = $state(false);
-  let suggestedSystemModels: SuggestedModel[] = $state([]);
-  let suggestedEmbeddingModels: SuggestedModel[] = $state([]);
-  let localEmbeddingDimsMap: Record<string, number> = $state({});
-  let useCustomSystemModel = $state(false);
-  let useCustomEmbeddingModel = $state(false);
-  let customSystemModelUrl = $state('');
-  let customEmbeddingModelUrl = $state('');
 
   // ── Install state ───────────────────────────────────────────────────────
   let installing = $state(false);
@@ -83,11 +73,13 @@
 
   function handleProviderChange(newProvider: string): void {
     llmProvider = newProvider;
-    // Auto-fill base URL if current URL is a provider default or empty
-    if (!llmBaseUrl || Object.values(PROVIDER_DEFAULT_URLS).includes(llmBaseUrl)) {
+    // Auto-fill base URL from detected provider or defaults
+    const detected = detectedProviders.find(p => p.provider === newProvider && p.available);
+    if (detected) {
+      llmBaseUrl = detected.url;
+    } else if (!llmBaseUrl || Object.values(PROVIDER_DEFAULT_URLS).includes(llmBaseUrl)) {
       llmBaseUrl = PROVIDER_DEFAULT_URLS[newProvider] ?? '';
     }
-    // Reset connection state for new provider
     connectionTested = false;
     modelList = [];
     connectError = '';
@@ -107,53 +99,26 @@
   let maskedApiKey = $derived(
     llmApiKey
       ? llmApiKey.slice(0, 3) + '...' + llmApiKey.slice(-4)
-      : NO_KEY_PROVIDERS.has(llmProvider) ? '(not required)' : '(not set)'
+      : '(not set)'
   );
 
-  let needsApiKey = $derived(!NO_KEY_PROVIDERS.has(llmProvider));
+  // ── Local Provider detection ──────────────────────────────────────────
 
-  // True when the user has selected both local system + embedding models,
-  // meaning a cloud provider is optional (can skip Steps 3 & 4).
-  let hasFullLocalModels = $derived(
-    !!(localSystemModel || customSystemModelUrl) && !!(localEmbeddingModel || customEmbeddingModelUrl)
-  );
-
-  // ── Local Model Runner detection ────────────────────────────────────
-
-  async function checkModelRunner(retries = 3, delayMs = 3000): Promise<void> {
-    modelRunnerChecking = true;
-    modelRunnerAvailable = false;
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const res = await fetch('/admin/setup/model-runner', {
-          headers: buildHeaders(setupSessionToken)
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.modelRunnerAvailable) {
-            modelRunnerAvailable = true;
-            suggestedSystemModels = data.suggestedSystemModels ?? [];
-            suggestedEmbeddingModels = data.suggestedEmbeddingModels ?? [];
-            localEmbeddingDimsMap = data.embeddingDims ?? {};
-            break;
-          }
-        }
-      } catch {
-        // Network error — will retry
+  async function detectLocalProviders(): Promise<void> {
+    detectingProviders = true;
+    try {
+      const res = await fetch('/admin/providers/local', {
+        headers: buildHeaders(setupSessionToken)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        detectedProviders = data.providers ?? [];
       }
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
+    } catch {
+      // Detection failed — continue with cloud providers only
     }
-    modelRunnerChecking = false;
-    modelRunnerChecked = true;
-  }
-
-  function handleLocalEmbeddingChange(model: string): void {
-    localEmbeddingModel = model;
-    if (localEmbeddingDimsMap[model]) {
-      localEmbeddingDims = localEmbeddingDimsMap[model];
-    }
+    detectingProviders = false;
+    providersDetected = true;
   }
 
   // ── Test Connection handler ──────────────────────────────────────────
@@ -235,9 +200,6 @@
           embeddingModel,
           embeddingDims,
           openmemoryUserId,
-          localSystemModel: useCustomSystemModel ? customSystemModelUrl : localSystemModel,
-          localEmbeddingModel: useCustomEmbeddingModel ? customEmbeddingModelUrl : localEmbeddingModel,
-          localEmbeddingDims
         })
       });
       if (!res.ok) {
@@ -309,49 +271,13 @@
 
       <!-- Step indicators -->
       <nav class="step-indicators" aria-label="Wizard steps">
-        <button
-          class="step-dot"
-          class:active={step === 'token'}
-          class:completed={isAfter(step, 'token')}
-          onclick={() => { step = 'token'; }}
-          aria-label="Step 1: Admin Token"
-          aria-current={step === 'token' ? 'step' : undefined}
-        >1</button>
+        <button class="step-dot" class:active={step === 'token'} class:completed={isAfter(step, 'token')} onclick={() => { step = 'token'; }} aria-label="Step 1: Admin Token" aria-current={step === 'token' ? 'step' : undefined}>1</button>
         <span class="step-line" class:active={isAfter(step, 'token')}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'local-models'}
-          class:completed={isAfter(step, 'local-models')}
-          onclick={() => { if (isAfter(step, 'local-models')) { step = 'local-models'; void checkModelRunner(); } }}
-          aria-label="Step 2: Local Models"
-          aria-current={step === 'local-models' ? 'step' : undefined}
-        >2</button>
-        <span class="step-line" class:active={isAfter(step, 'local-models')}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'connect'}
-          class:completed={isAfter(step, 'connect')}
-          onclick={() => { if (isAfter(step, 'connect')) step = 'connect'; }}
-          aria-label="Step 3: System LLM Connection"
-          aria-current={step === 'connect' ? 'step' : undefined}
-        >3</button>
-        <span class="step-line" class:active={isAfter(step, 'local-models')}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'models'}
-          class:completed={isAfter(step, 'models')}
-          onclick={() => { if (isAfter(step, 'models')) step = 'models'; }}
-          aria-label="Step 4: Models"
-          aria-current={step === 'models' ? 'step' : undefined}
-        >4</button>
+        <button class="step-dot" class:active={step === 'provider'} class:completed={isAfter(step, 'provider')} onclick={() => { if (isAfter(step, 'provider')) { step = 'provider'; void detectLocalProviders(); } }} aria-label="Step 2: Provider" aria-current={step === 'provider' ? 'step' : undefined}>2</button>
+        <span class="step-line" class:active={isAfter(step, 'provider')}></span>
+        <button class="step-dot" class:active={step === 'models'} class:completed={isAfter(step, 'models')} onclick={() => { if (isAfter(step, 'models')) step = 'models'; }} aria-label="Step 3: Models" aria-current={step === 'models' ? 'step' : undefined}>3</button>
         <span class="step-line" class:active={isAfter(step, 'models')}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'review'}
-          aria-label="Step 5: Review & Install"
-          aria-current={step === 'review' ? 'step' : undefined}
-          disabled
-        >5</button>
+        <button class="step-dot" class:active={step === 'review'} aria-label="Step 4: Review & Install" aria-current={step === 'review' ? 'step' : undefined} disabled>4</button>
       </nav>
 
       <!-- Step 1: Admin Token -->
@@ -378,146 +304,42 @@
                 return;
               }
               tokenError = '';
-              step = 'local-models';
-              void checkModelRunner();
+              step = 'provider';
+              void detectLocalProviders();
             }}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: Local Models (Docker Model Runner) -->
-      {#if step === 'local-models'}
-        <div class="step-content" data-testid="step-local-models">
-          <h2>Local Models</h2>
-          <p class="step-description">Optionally run AI models locally with Docker Model Runner. No API costs, full data privacy.</p>
+      <!-- Step 2: LLM Provider -->
+      {#if step === 'provider'}
+        <div class="step-content" data-testid="step-provider">
+          <h2>LLM Provider</h2>
+          <p class="step-description">Choose your LLM provider. Local providers are auto-detected.</p>
 
-          {#if modelRunnerChecking}
+          {#if detectingProviders}
             <div class="loading-state" style="justify-content: flex-start; padding: var(--space-4) 0;">
               <span class="spinner"></span>
-              <span style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-left: var(--space-2);">Checking Docker Model Runner...</span>
-            </div>
-          {:else if !modelRunnerAvailable}
-            <div class="info-banner" role="status">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
-              </svg>
-              <div>
-                <p>Docker Model Runner is not detected.</p>
-                <p class="field-hint" style="margin-top: var(--space-1);">Enable it in Docker Desktop settings or install Docker Model Runner on your Linux host. You can configure local models later in the admin panel.</p>
-                <button class="link-btn" type="button" style="margin-top: var(--space-2);" onclick={() => { modelRunnerChecked = false; void checkModelRunner(); }}>Retry detection</button>
-              </div>
-            </div>
-          {:else}
-            <div class="connection-success" role="status" style="margin-bottom: var(--space-4);">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              <span>Docker Model Runner detected.</span>
-            </div>
-
-            <!-- System Model -->
-            <div class="field-group">
-              <label for="local-system-model">System Model (Guardian + Memory)</label>
-              {#if useCustomSystemModel}
-                <input
-                  id="local-system-model"
-                  type="text"
-                  bind:value={customSystemModelUrl}
-                  placeholder="hf.co/username/model-name-GGUF"
-                />
-                <p class="field-hint">
-                  Enter a HuggingFace GGUF model URL (must start with <code>hf.co/</code>).
-                  <button class="link-btn" type="button" onclick={() => { useCustomSystemModel = false; customSystemModelUrl = ''; }}>Use suggested model</button>
-                </p>
-              {:else}
-                <select
-                  id="local-system-model"
-                  value={localSystemModel}
-                  onchange={(e) => {
-                    const val = e.currentTarget.value;
-                    if (val === '__custom__') {
-                      useCustomSystemModel = true;
-                      localSystemModel = '';
-                    } else {
-                      localSystemModel = val;
-                    }
-                  }}
-                >
-                  <option value="">None (use cloud provider)</option>
-                  {#each suggestedSystemModels as m}
-                    <option value={m.id}>{m.label} — {m.size}</option>
-                  {/each}
-                  <option value="__custom__">Custom (HuggingFace)...</option>
-                </select>
-                <p class="field-hint">
-                  Used for message routing, memory reasoning, and system tasks.
-                </p>
-              {/if}
-            </div>
-
-            <!-- Embedding Model -->
-            <div class="field-group">
-              <label for="local-embedding-model">Embedding Model (Memory)</label>
-              {#if useCustomEmbeddingModel}
-                <input
-                  id="local-embedding-model"
-                  type="text"
-                  bind:value={customEmbeddingModelUrl}
-                  placeholder="hf.co/username/model-name-GGUF"
-                />
-                <div class="field-group" style="margin-top: var(--space-2); margin-bottom: 0;">
-                  <label for="local-embedding-dims-custom">Embedding Dimensions</label>
-                  <input id="local-embedding-dims-custom" type="number" bind:value={localEmbeddingDims} min="1" step="1" />
-                </div>
-                <p class="field-hint">
-                  Enter a HuggingFace GGUF embedding model URL.
-                  <button class="link-btn" type="button" onclick={() => { useCustomEmbeddingModel = false; customEmbeddingModelUrl = ''; }}>Use suggested model</button>
-                </p>
-              {:else}
-                <select
-                  id="local-embedding-model"
-                  value={localEmbeddingModel}
-                  onchange={(e) => {
-                    const val = e.currentTarget.value;
-                    if (val === '__custom__') {
-                      useCustomEmbeddingModel = true;
-                      localEmbeddingModel = '';
-                    } else {
-                      handleLocalEmbeddingChange(val);
-                    }
-                  }}
-                >
-                  <option value="">None (use cloud provider)</option>
-                  {#each suggestedEmbeddingModels as m}
-                    <option value={m.id}>{m.label} — {m.size} ({m.dimensions}d)</option>
-                  {/each}
-                  <option value="__custom__">Custom (HuggingFace)...</option>
-                </select>
-                <p class="field-hint">
-                  Used for memory vector embeddings. Changing this later requires a collection reset.
-                </p>
-              {/if}
+              <span style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-left: var(--space-2);">Detecting local providers...</span>
             </div>
           {/if}
 
-          <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
-            <button
-              class="btn btn-primary"
-              onclick={() => {
-                step = 'connect';
-              }}
-            >{modelRunnerAvailable && !modelRunnerChecking ? 'Next' : 'Skip'}</button>
-          </div>
-        </div>
-      {/if}
-
-      <!-- Step 3: System LLM Connection -->
-      {#if step === 'connect'}
-        <div class="step-content" data-testid="step-connect">
-          <h2>System LLM Connection</h2>
-          <p class="step-description">Connect to an LLM provider for memory, embeddings, and guardian routing.</p>
+          {#if providersDetected}
+            {#each detectedProviders.filter(p => p.available) as dp}
+              <button
+                class="provider-option"
+                class:selected={llmProvider === dp.provider}
+                type="button"
+                onclick={() => handleProviderChange(dp.provider)}
+              >
+                <span class="provider-option-status">
+                  <span class="status-dot status-dot--ok"></span>
+                </span>
+                <span class="provider-option-label">{PROVIDER_LABELS[dp.provider] ?? dp.provider}</span>
+                <span class="provider-option-hint">Detected</span>
+              </button>
+            {/each}
+          {/if}
 
           <div class="field-group">
             <label for="llm-provider">Provider</label>
@@ -527,22 +349,20 @@
               onchange={(e) => handleProviderChange(e.currentTarget.value)}
             >
               {#each LLM_PROVIDERS as p}
-                <option value={p}>{p}</option>
+                <option value={p}>{PROVIDER_LABELS[p] ?? p}</option>
               {/each}
             </select>
           </div>
 
-          {#if needsApiKey}
-            <div class="field-group">
-              <label for="llm-api-key">API Key</label>
-              <input
-                id="llm-api-key"
-                type="password"
-                bind:value={llmApiKey}
-                placeholder={llmProvider === 'openai' ? 'sk-...' : 'Enter API key'}
-              />
-            </div>
-          {/if}
+          <div class="field-group">
+            <label for="llm-api-key">API Key <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span></label>
+            <input
+              id="llm-api-key"
+              type="password"
+              bind:value={llmApiKey}
+              placeholder="Enter API key (optional for local providers)"
+            />
+          </div>
 
           <div class="field-group">
             <label for="llm-base-url">Base URL</label>
@@ -552,15 +372,11 @@
               bind:value={llmBaseUrl}
               placeholder="Provider base URL"
             />
-            <p class="field-hint">
-              {#if llmProvider === 'ollama'}
-                Default: <code>http://host.docker.internal:11434</code>
-              {:else if llmProvider === 'lmstudio'}
-                Default: <code>http://host.docker.internal:1234</code>
-              {:else}
-                Leave default unless using a custom endpoint.
-              {/if}
-            </p>
+            {#if LOCAL_PROVIDER_HELP[llmProvider]}
+              <p class="field-hint">{LOCAL_PROVIDER_HELP[llmProvider]}</p>
+            {:else}
+              <p class="field-hint">Leave default unless using a custom endpoint.</p>
+            {/if}
           </div>
 
           {#if connectError}
@@ -577,21 +393,12 @@
             </div>
           {/if}
 
-          {#if hasFullLocalModels && !connectionTested}
-            <div class="info-banner" role="status" style="margin-top: var(--space-3);">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
-              </svg>
-              <span>Local models are configured. A cloud provider is optional — you can skip this step.</span>
-            </div>
-          {/if}
-
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'local-models')}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
             <button
               class="btn btn-outline"
               onclick={() => void testConnection()}
-              disabled={testingConnection || (needsApiKey && !llmApiKey.trim())}
+              disabled={testingConnection}
             >
               {#if testingConnection}
                 <span class="spinner"></span>
@@ -602,18 +409,18 @@
             </button>
             <button
               class="btn btn-primary"
-              disabled={!connectionTested && !hasFullLocalModels}
-              onclick={() => { step = hasFullLocalModels && !connectionTested ? 'review' : 'models'; }}
-            >{hasFullLocalModels && !connectionTested ? 'Skip to Review' : 'Next'}</button>
+              disabled={!connectionTested}
+              onclick={() => { step = 'models'; }}
+            >Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 4: Models -->
+      <!-- Step 3: Models -->
       {#if step === 'models'}
         <div class="step-content" data-testid="step-models">
           <h2>Select Models</h2>
-          <p class="step-description">Choose which models to use for each role.{#if localSystemModel || localEmbeddingModel || customSystemModelUrl || customEmbeddingModelUrl} Local models will be pre-selected where configured.{/if}</p>
+          <p class="step-description">Choose which models to use for each role.</p>
 
           <div class="field-group">
             <label for="system-model">System Model</label>
@@ -641,35 +448,24 @@
 
           <div class="field-group">
             <label for="embedding-dims">Embedding Dimensions</label>
-            <input
-              id="embedding-dims"
-              type="number"
-              bind:value={embeddingDims}
-              min="1"
-              step="1"
-            />
+            <input id="embedding-dims" type="number" bind:value={embeddingDims} min="1" step="1" />
             <p class="field-hint">Auto-filled for known models. Edit if using a custom model.</p>
           </div>
 
           <div class="field-group">
             <label for="openmemory-user-id">OpenMemory User ID</label>
-            <input
-              id="openmemory-user-id"
-              type="text"
-              bind:value={openmemoryUserId}
-              placeholder="default_user"
-            />
+            <input id="openmemory-user-id" type="text" bind:value={openmemoryUserId} placeholder="default_user" />
             <p class="field-hint">Identifies the memory owner. Use a unique name if running multiple instances.</p>
           </div>
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'connect')}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'provider')}>Back</button>
             <button class="btn btn-primary" onclick={() => (step = 'review')}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 5: Review & Install -->
+      <!-- Step 4: Review & Install -->
       {#if step === 'review'}
         <div class="step-content" data-testid="step-review">
           <h2>Review & Install</h2>
@@ -678,65 +474,30 @@
               <span class="review-label">Admin Token</span>
               <span class="review-value mono">Set</span>
             </div>
-
-            {#if hasFullLocalModels && !connectionTested}
-              <!-- Local-only setup: show local model details -->
-              <div class="review-item">
-                <span class="review-label">LLM Provider</span>
-                <span class="review-value">Docker Model Runner (local)</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">System Model</span>
-                <span class="review-value mono">{useCustomSystemModel ? customSystemModelUrl : localSystemModel}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">Embedding Model</span>
-                <span class="review-value mono">{useCustomEmbeddingModel ? customEmbeddingModelUrl : localEmbeddingModel}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">Embedding Dimensions</span>
-                <span class="review-value mono">{localEmbeddingDims}</span>
-              </div>
-            {:else}
-              <!-- Cloud provider setup -->
-              <div class="review-item">
-                <span class="review-label">LLM Provider</span>
-                <span class="review-value">{llmProvider}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">API Key</span>
-                <span class="review-value mono">{maskedApiKey}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">Base URL</span>
-                <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">System Model</span>
-                <span class="review-value mono">{systemModel}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">Embedding Model</span>
-                <span class="review-value mono">{embeddingModel}</span>
-              </div>
-              <div class="review-item">
-                <span class="review-label">Embedding Dimensions</span>
-                <span class="review-value mono">{embeddingDims}</span>
-              </div>
-              {#if localSystemModel || customSystemModelUrl}
-                <div class="review-item">
-                  <span class="review-label">Local System Model</span>
-                  <span class="review-value mono">{useCustomSystemModel ? customSystemModelUrl : localSystemModel}</span>
-                </div>
-              {/if}
-              {#if localEmbeddingModel || customEmbeddingModelUrl}
-                <div class="review-item">
-                  <span class="review-label">Local Embedding Model</span>
-                  <span class="review-value mono">{useCustomEmbeddingModel ? customEmbeddingModelUrl : localEmbeddingModel}</span>
-                </div>
-              {/if}
-            {/if}
-
+            <div class="review-item">
+              <span class="review-label">LLM Provider</span>
+              <span class="review-value">{PROVIDER_LABELS[llmProvider] ?? llmProvider}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">API Key</span>
+              <span class="review-value mono">{maskedApiKey}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Base URL</span>
+              <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">System Model</span>
+              <span class="review-value mono">{systemModel}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Embedding Model</span>
+              <span class="review-value mono">{embeddingModel}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Embedding Dimensions</span>
+              <span class="review-value mono">{embeddingDims}</span>
+            </div>
             <div class="review-item">
               <span class="review-label">OpenMemory User ID</span>
               <span class="review-value">{openmemoryUserId}</span>
@@ -748,7 +509,7 @@
           {/if}
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = hasFullLocalModels && !connectionTested ? 'connect' : 'models')} disabled={installing}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'models')} disabled={installing}>Back</button>
             <button class="btn btn-primary" onclick={handleInstall} disabled={installing}>
               {#if installing}
                 <span class="spinner"></span>
@@ -1176,5 +937,54 @@
     .review-value {
       text-align: left;
     }
+  }
+
+  /* ── Provider Option Buttons ─────────────────────────────────────────── */
+  .provider-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
+    transition: all var(--transition-fast);
+  }
+
+  .provider-option:hover {
+    border-color: var(--color-primary);
+    background: var(--color-bg-secondary);
+  }
+
+  .provider-option.selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary-subtle, rgba(80, 200, 120, 0.08));
+  }
+
+  .provider-option-status {
+    display: flex;
+    align-items: center;
+  }
+
+  .status-dot--ok {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-success);
+  }
+
+  .provider-option-label {
+    flex: 1;
+    font-weight: var(--font-medium);
+  }
+
+  .provider-option-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
   }
 </style>

@@ -155,7 +155,7 @@ async function handleUnifiedSave(
   // 2. Build and write OpenMemory config
   const apiKeyEnvRef = PROVIDER_KEY_MAP[provider]
     ? `env:${PROVIDER_KEY_MAP[provider]}`
-    : apiKey;
+    : (apiKey || "not-needed");
 
   const llmConfig: Record<string, unknown> = {
     model: systemModel,

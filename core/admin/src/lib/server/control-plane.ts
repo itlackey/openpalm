@@ -82,7 +82,6 @@ export {
   stagedStackEnvFile,
   buildEnvFiles,
   discoverStagedChannelYmls,
-  discoverModelOverlay,
   stageArtifacts,
   buildArtifactMeta,
   persistArtifacts,
@@ -126,32 +125,6 @@ export {
 
 // ── model-runner.ts ──────────────────────────────────────────────────
 export {
-  detectModelRunner,
-  readLocalModelsCompose,
-  writeLocalModelsCompose,
-  generateModelOverlayYaml,
-  parseLocalModelsCompose,
-  listPulledModels,
-  isValidModelName,
-  parseHfRef,
-  fetchHuggingFaceModelInfo,
-  downloadAndPackageModel,
-  findGgufFileUrl,
-  downloadGgufFile,
-  packageGgufModel,
-  readLocalModelsMeta,
-  writeLocalModelsMeta,
-  updateModelMetadata,
-  applyLocalModelsToOpenMemory,
-  buildModelRestartServices,
-  migrateLocalModelsToDataDir,
-  SUGGESTED_SYSTEM_MODELS,
-  SUGGESTED_EMBEDDING_MODELS,
-  LOCAL_EMBEDDING_DIMS,
-  LOCAL_CONTEXT_SIZES,
-  type LocalModelSelection,
-  type ModelRunnerDetection,
-  type SuggestedModel,
-  type HuggingFaceModelInfo,
-  type LocalModelMetadata
+  detectLocalProviders,
+  type LocalProviderDetection
 } from "./model-runner.js";

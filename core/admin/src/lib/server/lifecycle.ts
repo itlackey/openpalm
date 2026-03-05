@@ -9,10 +9,9 @@ import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
-import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, discoverModelOverlay, randomHex } from "./staging.js";
+import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex } from "./staging.js";
 import { refreshCoreAssets, ensureOpenMemoryPatch } from "./core-assets.js";
 import { ensureOpenMemoryConfig } from "./openmemory-config.js";
-import { migrateLocalModelsToDataDir } from "./model-runner.js";
 
 // ── State Factory ──────────────────────────────────────────────────────
 
@@ -32,9 +31,6 @@ export function createState(
   }
 
   const dataDir = resolveDataHome();
-
-  // Migrate local-models.yml from CONFIG_HOME → DATA_HOME if needed
-  migrateLocalModelsToDataDir(configDir, dataDir);
 
   const persistedSecrets = loadPersistedChannelSecrets(dataDir);
   const channelSecrets: Record<string, string> = { ...persistedSecrets };
@@ -138,10 +134,6 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   files.push(...stagedYmls);
-
-  // Include local model overlay if configured
-  const modelOverlay = discoverModelOverlay(state.stateDir);
-  if (modelOverlay) files.push(modelOverlay);
 
   return files;
 }

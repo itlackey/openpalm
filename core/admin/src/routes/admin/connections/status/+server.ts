@@ -2,8 +2,8 @@
  * GET /admin/connections/status — Check if the system LLM connection is configured.
  *
  * Returns { complete: boolean, missing: string[] }.
- * "complete" is true when a system provider is selected and its API key is set
- * (or the provider doesn't need a key, like ollama/lmstudio).
+ * "complete" is true when a provider and system model are set.
+ * API key is never required (optional for all providers).
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -18,8 +18,6 @@ import {
   appendAudit,
   readSecretsEnvFile
 } from "$lib/server/control-plane.js";
-import { PROVIDER_KEY_MAP, NO_KEY_PROVIDERS } from "$lib/provider-constants.js";
-
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authErr = requireAdmin(event, requestId);
@@ -34,18 +32,9 @@ export const GET: RequestHandler = async (event) => {
 
   const provider = (raw.SYSTEM_LLM_PROVIDER ?? raw.GUARDIAN_LLM_PROVIDER ?? "").trim();
   const systemModel = (raw.SYSTEM_LLM_MODEL ?? raw.GUARDIAN_LLM_MODEL ?? "").trim();
-  const baseUrl = (raw.SYSTEM_LLM_BASE_URL ?? "").trim();
 
   if (!provider) {
     missing.push("System LLM provider");
-  } else if (!NO_KEY_PROVIDERS.has(provider)) {
-    // Provider needs an API key — check it (custom baseUrl counts as "no key needed")
-    if (!baseUrl) {
-      const keyVar = PROVIDER_KEY_MAP[provider];
-      if (keyVar && !(raw[keyVar] ?? "").trim()) {
-        missing.push(`${provider} API key`);
-      }
-    }
   }
 
   if (!systemModel) {

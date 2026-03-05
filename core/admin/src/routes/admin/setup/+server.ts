@@ -26,18 +26,7 @@ import {
   resolveConfigForPush,
   pushConfigToOpenMemory,
   provisionOpenMemoryUser,
-  LOCAL_EMBEDDING_DIMS,
-  LOCAL_CONTEXT_SIZES,
-  detectModelRunner,
-  writeLocalModelsCompose,
-  patchSecretsEnvFile,
-  isValidModelName,
-  applyLocalModelsToOpenMemory,
-  downloadAndPackageModel,
-  parseHfRef,
-  updateModelMetadata,
-  type OpenMemoryConfig,
-  type LocalModelSelection
+  type OpenMemoryConfig
 } from "$lib/server/control-plane.js";
 import { PROVIDER_KEY_MAP, EMBEDDING_DIMS } from "$lib/provider-constants.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
@@ -157,25 +146,6 @@ export const POST: RequestHandler = async (event) => {
 
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
-  // ── Validate local model fields BEFORE any writes (transactional) ──
-  const localSystemModel = (body.localSystemModel as string) ?? "";
-  const localEmbeddingModel = (body.localEmbeddingModel as string) ?? "";
-  const localEmbeddingDims = typeof body.localEmbeddingDims === "number"
-    ? body.localEmbeddingDims
-    : (localEmbeddingModel ? (LOCAL_EMBEDDING_DIMS[localEmbeddingModel] ?? 384) : 0);
-
-  if (localSystemModel || localEmbeddingModel) {
-    if (localSystemModel && !isValidModelName(localSystemModel)) {
-      return errorResponse(400, "invalid_model", `Invalid local system model name: "${localSystemModel}"`, {}, requestId);
-    }
-    if (localEmbeddingModel && !isValidModelName(localEmbeddingModel)) {
-      return errorResponse(400, "invalid_model", `Invalid local embedding model name: "${localEmbeddingModel}"`, {}, requestId);
-    }
-    if (localEmbeddingDims && (localEmbeddingDims < 1 || !Number.isInteger(localEmbeddingDims))) {
-      return errorResponse(400, "invalid_dims", "Embedding dimensions must be a positive integer", {}, requestId);
-    }
-  }
-
   // ── All validation passed — persist changes ──
   try {
     ensureXdgDirs();
@@ -201,7 +171,7 @@ export const POST: RequestHandler = async (event) => {
   if (llmProvider && systemModel) {
     const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
       ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
-      : llmApiKey; // raw key if no standard env var
+      : (llmApiKey || "not-needed");
 
     const llmConfig: Record<string, unknown> = {
       model: systemModel,
@@ -240,68 +210,6 @@ export const POST: RequestHandler = async (event) => {
     };
 
     writeOpenMemoryConfig(state.dataDir, omConfig);
-  }
-
-  // ── Local model configuration (Docker Model Runner) ──
-  if (localSystemModel || localEmbeddingModel) {
-
-    const selection: LocalModelSelection = {};
-
-    if (localSystemModel) {
-      selection.systemModel = { model: localSystemModel, contextSize: LOCAL_CONTEXT_SIZES[localSystemModel] };
-    }
-    if (localEmbeddingModel) {
-      selection.embeddingModel = { model: localEmbeddingModel, dimensions: localEmbeddingDims };
-    }
-
-    // Detect Model Runner URL for compose overlay and config updates
-    const detection = await detectModelRunner();
-
-    // Write DATA_HOME/local-models.yml compose overlay
-    writeLocalModelsCompose(state.dataDir, selection, detection.url);
-
-    // Apply local models to secrets.env + OpenMemory config
-    if (detection.available) {
-      // detection.url is base URL without /v1 (e.g. http://host:port/engines)
-      const localSecrets: Record<string, string> = {
-        SYSTEM_LLM_PROVIDER: "openai",
-        SYSTEM_LLM_BASE_URL: detection.url,
-        // OPENAI_BASE_URL is read by the openmemory container as env var fallback
-        OPENAI_BASE_URL: `${detection.url.replace(/\/+$/, "")}/v1`,
-      };
-      if (localSystemModel) {
-        localSecrets.SYSTEM_LLM_MODEL = localSystemModel;
-      }
-      if (localEmbeddingModel) {
-        localSecrets.EMBEDDING_MODEL = localEmbeddingModel;
-        localSecrets.EMBEDDING_DIMS = String(localEmbeddingDims || 384);
-      }
-      patchSecretsEnvFile(state.configDir, localSecrets);
-
-      // Apply local models to OpenMemory config using shared helper
-      const omConfigForLocal = readOpenMemoryConfig(state.dataDir);
-      applyLocalModelsToOpenMemory(omConfigForLocal, selection, detection.url);
-      writeOpenMemoryConfig(state.dataDir, omConfigForLocal);
-    }
-
-    // Fire-and-forget: download GGUF files and package into Docker Model Runner
-    const hfModels = [localSystemModel, localEmbeddingModel].filter(m => m && parseHfRef(m));
-    for (const hfModel of hfModels) {
-      updateModelMetadata(state.dataDir, hfModel, { source: "huggingface", status: "pending" });
-      void (async () => {
-        updateModelMetadata(state.dataDir, hfModel, { status: "downloading" });
-        const result = await downloadAndPackageModel(hfModel, state.dataDir);
-        if (result.error) {
-          updateModelMetadata(state.dataDir, hfModel, { status: "error", error: result.error });
-        } else {
-          updateModelMetadata(state.dataDir, hfModel, {
-            status: "ready",
-            downloadedAt: new Date().toISOString(),
-            error: undefined,
-          });
-        }
-      })();
-    }
   }
 
   // Run install sequence
