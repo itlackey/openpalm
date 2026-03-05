@@ -234,8 +234,9 @@ Manage LLM provider credentials and related configuration stored in
 ### `GET /admin/connections`
 
 Returns current values for all allowed connection keys, with secret API keys
-masked (all but last 4 characters). Non-secret config keys (`GUARDIAN_LLM_PROVIDER`,
-`GUARDIAN_LLM_MODEL`, `OPENMEMORY_OPENAI_BASE_URL`) are returned unmasked.
+masked (all but last 4 characters). Non-secret config keys (`SYSTEM_LLM_PROVIDER`,
+`SYSTEM_LLM_MODEL`, `SYSTEM_LLM_BASE_URL`, `OPENAI_BASE_URL`, `EMBEDDING_MODEL`,
+`EMBEDDING_DIMS`, `OPENMEMORY_USER_ID`) are returned unmasked.
 
 Response:
 
@@ -247,10 +248,13 @@ Response:
     "GROQ_API_KEY": "",
     "MISTRAL_API_KEY": "",
     "GOOGLE_API_KEY": "",
-    "GUARDIAN_LLM_PROVIDER": "openai",
-    "GUARDIAN_LLM_MODEL": "gpt-4o-mini",
-    "OPENMEMORY_OPENAI_BASE_URL": "",
-    "OPENMEMORY_OPENAI_API_KEY": ""
+    "SYSTEM_LLM_PROVIDER": "openai",
+    "SYSTEM_LLM_BASE_URL": "",
+    "SYSTEM_LLM_MODEL": "gpt-4o-mini",
+    "OPENAI_BASE_URL": "",
+    "EMBEDDING_MODEL": "text-embedding-3-small",
+    "EMBEDDING_DIMS": "1536",
+    "OPENMEMORY_USER_ID": "default_user"
   }
 }
 ```
@@ -262,10 +266,13 @@ Allowed keys (`ALLOWED_CONNECTION_KEYS`):
 - `GROQ_API_KEY`
 - `MISTRAL_API_KEY`
 - `GOOGLE_API_KEY`
-- `GUARDIAN_LLM_PROVIDER`
-- `GUARDIAN_LLM_MODEL`
-- `OPENMEMORY_OPENAI_BASE_URL`
-- `OPENMEMORY_OPENAI_API_KEY`
+- `SYSTEM_LLM_PROVIDER`
+- `SYSTEM_LLM_BASE_URL`
+- `SYSTEM_LLM_MODEL`
+- `OPENAI_BASE_URL`
+- `EMBEDDING_MODEL`
+- `EMBEDDING_DIMS`
+- `OPENMEMORY_USER_ID`
 
 ### `POST /admin/connections`
 
@@ -278,14 +285,14 @@ Body:
 ```json
 {
   "OPENAI_API_KEY": "sk-...",
-  "GUARDIAN_LLM_PROVIDER": "anthropic"
+  "SYSTEM_LLM_PROVIDER": "anthropic"
 }
 ```
 
 Response:
 
 ```json
-{ "ok": true, "updated": ["OPENAI_API_KEY", "GUARDIAN_LLM_PROVIDER"] }
+{ "ok": true, "updated": ["OPENAI_API_KEY", "SYSTEM_LLM_PROVIDER"] }
 ```
 
 Error responses:
@@ -295,19 +302,17 @@ Error responses:
 
 ### `GET /admin/connections/status`
 
-Checks whether at least one LLM provider API key is configured. Returns the
-list of required provider keys that are currently empty or absent.
-
-Required provider keys (`REQUIRED_LLM_PROVIDER_KEYS`):
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY`
+Checks whether the system LLM connection is configured. Returns `complete: true`
+when both `SYSTEM_LLM_PROVIDER` and `SYSTEM_LLM_MODEL` are set. API keys are
+never required (optional for all providers).
 
 Response:
 
 ```json
-{ "complete": true, "missing": ["GROQ_API_KEY", "MISTRAL_API_KEY"] }
+{ "complete": true, "missing": [] }
 ```
 
-`complete` is `true` when at least one provider key is set; `false` when all are empty.
+`complete` is `true` when provider and model are set; `false` with `missing` listing what's absent.
 
 ## OpenMemory Configuration
 

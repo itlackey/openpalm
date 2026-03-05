@@ -116,7 +116,7 @@ export const POST: RequestHandler = async (event) => {
   const llmProvider = (body.llmProvider as string) ?? "";
   const llmApiKey = (body.llmApiKey as string) ?? "";
   const llmBaseUrl = (body.llmBaseUrl as string) ?? "";
-  const systemModel = (body.systemModel as string) ?? (body.guardianModel as string) ?? "";
+  const systemModel = (body.systemModel as string) ?? "";
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
@@ -124,14 +124,6 @@ export const POST: RequestHandler = async (event) => {
   if (llmApiKey) {
     const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";
     updates[envVarName] = llmApiKey;
-  }
-
-  // Legacy fallback: accept old openaiApiKey field
-  if (!llmApiKey && typeof body.openaiApiKey === "string" && body.openaiApiKey) {
-    updates.OPENAI_API_KEY = body.openaiApiKey;
-  }
-  if (typeof body.openaiBaseUrl === "string") {
-    updates.OPENAI_BASE_URL = body.openaiBaseUrl;
   }
 
   if (systemModel) {

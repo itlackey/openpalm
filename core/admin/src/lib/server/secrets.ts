@@ -35,10 +35,6 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
   "OPENMEMORY_USER_ID",
-  // Read aliases — kept so existing secrets.env files are recognized
-  "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL",
-  "MEMORY_LLM_MODEL",
 ]);
 
 /**
@@ -62,10 +58,6 @@ export const PLAIN_CONFIG_KEYS = new Set([
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
   "OPENMEMORY_USER_ID",
-  // Read aliases
-  "GUARDIAN_LLM_PROVIDER",
-  "GUARDIAN_LLM_MODEL",
-  "MEMORY_LLM_MODEL",
 ]);
 
 // ── Secrets Management ──────────────────────────────────────────────────

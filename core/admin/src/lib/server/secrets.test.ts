@@ -275,13 +275,6 @@ describe("maskConnectionValue", () => {
     expect(maskConnectionValue("SYSTEM_LLM_MODEL", "gpt-4o-mini")).toBe("gpt-4o-mini");
   });
 
-  test("legacy GUARDIAN_LLM_PROVIDER is returned unmasked", () => {
-    expect(maskConnectionValue("GUARDIAN_LLM_PROVIDER", "anthropic")).toBe("anthropic");
-  });
-
-  test("legacy GUARDIAN_LLM_MODEL is returned unmasked", () => {
-    expect(maskConnectionValue("GUARDIAN_LLM_MODEL", "gpt-4o-mini")).toBe("gpt-4o-mini");
-  });
 });
 
 // ── Connection Key Sets ─────────────────────────────────────────────────
@@ -307,10 +300,10 @@ describe("ALLOWED_CONNECTION_KEYS", () => {
     }
   });
 
-  test("includes legacy read aliases", () => {
-    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_PROVIDER")).toBe(true);
-    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_MODEL")).toBe(true);
-    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_LLM_MODEL")).toBe(true);
+  test("does not include removed legacy keys", () => {
+    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_PROVIDER")).toBe(false);
+    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_MODEL")).toBe(false);
+    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_LLM_MODEL")).toBe(false);
   });
 
   test("does not include obsolete OPENMEMORY_OPENAI_* keys (superseded by JSON config)", () => {

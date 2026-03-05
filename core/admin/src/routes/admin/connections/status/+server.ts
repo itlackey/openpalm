@@ -30,8 +30,8 @@ export const GET: RequestHandler = async (event) => {
   const raw = readSecretsEnvFile(state.configDir);
   const missing: string[] = [];
 
-  const provider = (raw.SYSTEM_LLM_PROVIDER ?? raw.GUARDIAN_LLM_PROVIDER ?? "").trim();
-  const systemModel = (raw.SYSTEM_LLM_MODEL ?? raw.GUARDIAN_LLM_MODEL ?? "").trim();
+  const provider = (raw.SYSTEM_LLM_PROVIDER ?? "").trim();
+  const systemModel = (raw.SYSTEM_LLM_MODEL ?? "").trim();
 
   if (!provider) {
     missing.push("System LLM provider");

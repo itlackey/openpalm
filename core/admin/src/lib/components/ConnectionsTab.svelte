@@ -76,16 +76,13 @@
       const conns = await fetchConnections(token);
 
       // Pre-fill from saved system connection fields
-      const resolvedProvider = conns.SYSTEM_LLM_PROVIDER || conns.GUARDIAN_LLM_PROVIDER || '';
-      if (resolvedProvider) provider = resolvedProvider;
+      if (conns.SYSTEM_LLM_PROVIDER) provider = conns.SYSTEM_LLM_PROVIDER;
       if (conns.SYSTEM_LLM_BASE_URL) {
         baseUrl = conns.SYSTEM_LLM_BASE_URL;
-      } else if (resolvedProvider) {
-        baseUrl = PROVIDER_DEFAULT_URLS[resolvedProvider] ?? '';
+      } else if (conns.SYSTEM_LLM_PROVIDER) {
+        baseUrl = PROVIDER_DEFAULT_URLS[conns.SYSTEM_LLM_PROVIDER] ?? '';
       }
-      // SYSTEM_LLM_MODEL with legacy fallbacks
-      const resolvedModel = conns.SYSTEM_LLM_MODEL || conns.GUARDIAN_LLM_MODEL || conns.MEMORY_LLM_MODEL || '';
-      if (resolvedModel) systemModel = resolvedModel;
+      if (conns.SYSTEM_LLM_MODEL) systemModel = conns.SYSTEM_LLM_MODEL;
       if (conns.EMBEDDING_MODEL) embeddingModel = conns.EMBEDDING_MODEL;
       if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
       if (conns.OPENMEMORY_USER_ID) openmemoryUserId = conns.OPENMEMORY_USER_ID;
