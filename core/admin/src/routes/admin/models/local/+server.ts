@@ -20,7 +20,7 @@ import {
   isValidModelName,
   parseHfRef,
   fetchHuggingFaceModelInfo,
-  downloadHuggingFaceModel,
+  downloadAndPackageModel,
   readLocalModelsMeta,
   writeLocalModelsMeta,
   updateModelMetadata,
@@ -228,7 +228,7 @@ export const POST: RequestHandler = async (event) => {
   for (const hfModel of hfModels) {
     void (async () => {
       updateModelMetadata(state.dataDir, hfModel, { status: "downloading" });
-      const result = await downloadHuggingFaceModel(hfModel, state.dataDir);
+      const result = await downloadAndPackageModel(hfModel, state.dataDir);
       if (result.error) {
         updateModelMetadata(state.dataDir, hfModel, { status: "error", error: result.error });
         logger.warn("HF model download failed", { model: hfModel, error: result.error });

@@ -33,7 +33,7 @@ import {
   patchSecretsEnvFile,
   isValidModelName,
   applyLocalModelsToOpenMemory,
-  downloadHuggingFaceModel,
+  downloadAndPackageModel,
   parseHfRef,
   updateModelMetadata,
   type OpenMemoryConfig,
@@ -284,13 +284,13 @@ export const POST: RequestHandler = async (event) => {
       writeOpenMemoryConfig(state.dataDir, omConfigForLocal);
     }
 
-    // Fire-and-forget: download HF models for cache persistence
+    // Fire-and-forget: download GGUF files and package into Docker Model Runner
     const hfModels = [localSystemModel, localEmbeddingModel].filter(m => m && parseHfRef(m));
     for (const hfModel of hfModels) {
       updateModelMetadata(state.dataDir, hfModel, { source: "huggingface", status: "pending" });
       void (async () => {
         updateModelMetadata(state.dataDir, hfModel, { status: "downloading" });
-        const result = await downloadHuggingFaceModel(hfModel, state.dataDir);
+        const result = await downloadAndPackageModel(hfModel, state.dataDir);
         if (result.error) {
           updateModelMetadata(state.dataDir, hfModel, { status: "error", error: result.error });
         } else {

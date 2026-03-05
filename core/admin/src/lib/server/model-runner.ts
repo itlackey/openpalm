@@ -13,8 +13,9 @@
  * so Guardian and OpenMemory use local models by setting provider="openai"
  * with the Model Runner base URL — no service code changes needed.
  */
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, copyFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, copyFileSync, readdirSync, createWriteStream } from "node:fs";
+import { join, basename } from "node:path";
+import { execFile } from "node:child_process";
 import { createLogger } from "./logger.js";
 import type { OpenMemoryConfig } from "./openmemory-config.js";
 
@@ -66,6 +67,7 @@ export type LocalModelMetadata = {
 // ── Constants ────────────────────────────────────────────────────────────
 
 export const SUGGESTED_SYSTEM_MODELS: SuggestedModel[] = [
+  { id: "hf.co/unsloth/Qwen3.5-4B-GGUF", label: "Qwen 3.5 4B", size: "~2.8 GB", contextSize: 32768 },
   { id: "hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF", label: "Llama 3.2 3B", size: "~2 GB", contextSize: 131072 },
   { id: "hf.co/bartowski/Phi-4-mini-instruct-GGUF", label: "Phi-4 Mini", size: "~2.5 GB", contextSize: 16384 },
   { id: "hf.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF", label: "Mistral 7B", size: "~4 GB", contextSize: 32768 },
@@ -87,6 +89,7 @@ export const LOCAL_CONTEXT_SIZES: Record<string, number> = Object.fromEntries(
 /** Embedding dimensions for known local models (HF + legacy ai/ refs). */
 export const LOCAL_EMBEDDING_DIMS: Record<string, number> = {
   // HuggingFace models (primary)
+  "hf.co/CompendiumLabs/bge-base-en-v1.5-gguf": 768,
   "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF": 768,
   "hf.co/ChristianAzinn/snowflake-arctic-embed-s-gguf": 384,
   "hf.co/leliuga/all-MiniLM-L6-v2-GGUF": 384,
@@ -212,38 +215,140 @@ export async function fetchHuggingFaceModelInfo(modelRef: string): Promise<Huggi
 }
 
 /**
- * Download a GGUF model from HuggingFace to DATA_HOME/models/hf-cache/.
- * Uses @huggingface/hub snapshotDownload for HF-compatible caching.
- *
- * Returns the cache directory path.
+ * Find the best GGUF file URL for a HuggingFace model repo.
+ * Prefers Q4_K_M quantization (good balance of quality/size).
  */
-export async function downloadHuggingFaceModel(
+export async function findGgufFileUrl(modelRef: string): Promise<{ url: string; filename: string } | null> {
+  const parsed = parseHfRef(modelRef);
+  if (!parsed) return null;
+
+  try {
+    const res = await fetch(`https://huggingface.co/api/models/${parsed.repo}/tree/main`, {
+      signal: AbortSignal.timeout(10000),
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+
+    const files = (await res.json()) as { path: string; size: number }[];
+    const ggufFiles = files.filter(f => f.path.endsWith(".gguf"));
+    if (ggufFiles.length === 0) return null;
+
+    // Prefer Q4_K_M, then any Q4, then first available
+    const preferred = ggufFiles.find(f => /Q4_K_M/i.test(f.path))
+      ?? ggufFiles.find(f => /Q4/i.test(f.path))
+      ?? ggufFiles[0];
+
+    return {
+      url: `https://huggingface.co/${parsed.repo}/resolve/main/${preferred.path}`,
+      filename: basename(preferred.path),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Download a GGUF file from a URL to DATA_HOME/models/.
+ * Returns the local file path.
+ */
+export async function downloadGgufFile(
+  url: string,
+  filename: string,
+  dataDir: string,
+): Promise<{ localPath: string; error?: string }> {
+  const modelsDir = join(dataDir, "models");
+  mkdirSync(modelsDir, { recursive: true });
+  const localPath = join(modelsDir, filename);
+
+  if (existsSync(localPath)) {
+    return { localPath };
+  }
+
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    if (!res.ok || !res.body) {
+      return { localPath: "", error: `HTTP ${res.status} downloading ${url}` };
+    }
+
+    const tmpPath = `${localPath}.tmp`;
+    const writer = createWriteStream(tmpPath);
+    // @ts-ignore — Node fetch body is a ReadableStream
+    const reader = res.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        writer.write(value);
+      }
+      writer.end();
+      await new Promise<void>((resolve, reject) => {
+        writer.on("finish", resolve);
+        writer.on("error", reject);
+      });
+    } catch (err) {
+      writer.destroy();
+      try { unlinkSync(tmpPath); } catch { /* ignore */ }
+      throw err;
+    }
+
+    // Atomic rename
+    const { renameSync } = await import("node:fs");
+    renameSync(tmpPath, localPath);
+    return { localPath };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("failed to download GGUF file", { url, error: msg });
+    return { localPath: "", error: msg };
+  }
+}
+
+/**
+ * Package a local GGUF file into Docker Model Runner.
+ * Uses `docker model package --gguf <file> <model-ref>`.
+ */
+export async function packageGgufModel(
+  ggufPath: string,
+  modelRef: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    execFile(
+      "docker",
+      ["model", "package", "--gguf", ggufPath, modelRef],
+      { timeout: 120_000 },
+      (error, _stdout, stderr) => {
+        if (error) {
+          resolve({ ok: false, error: stderr?.toString() || error.message });
+        } else {
+          resolve({ ok: true });
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Download a GGUF model from HuggingFace and package into Docker Model Runner.
+ * Complete flow: find GGUF URL → download to DATA_HOME/models/ → docker model package.
+ */
+export async function downloadAndPackageModel(
   modelRef: string,
   dataDir: string,
 ): Promise<{ localPath: string; error?: string }> {
-  const parsed = parseHfRef(modelRef);
-  if (!parsed) {
-    return { localPath: "", error: "Not a valid HuggingFace model reference" };
+  const ggufInfo = await findGgufFileUrl(modelRef);
+  if (!ggufInfo) {
+    return { localPath: "", error: `No GGUF files found for ${modelRef}` };
   }
 
-  const cacheDir = join(dataDir, "models", "hf-cache");
-  mkdirSync(cacheDir, { recursive: true });
+  const download = await downloadGgufFile(ggufInfo.url, ggufInfo.filename, dataDir);
+  if (download.error) return download;
 
-  try {
-    // Dynamic import to avoid bundling issues in Vite build
-    const { snapshotDownload } = await import("@huggingface/hub");
-
-    const snapshotPath = await snapshotDownload({
-      repo: { type: "model", name: parsed.repo },
-      cacheDir,
-    });
-
-    return { localPath: snapshotPath };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error("failed to download HuggingFace model", { modelRef, error: msg });
-    return { localPath: "", error: msg };
+  const pkg = await packageGgufModel(download.localPath, modelRef);
+  if (!pkg.ok) {
+    return { localPath: download.localPath, error: `Failed to package model: ${pkg.error}` };
   }
+
+  logger.info("downloaded and packaged GGUF model", { modelRef, localPath: download.localPath });
+  return { localPath: download.localPath };
 }
 
 // ── Compose YAML Read/Write ──────────────────────────────────────────────
@@ -545,10 +650,10 @@ export function buildModelRestartServices(
 
 // ── Validation ──────────────────────────────────────────────────────────
 
-/** Validate a model name (must be ai/... or hf.co/..., no whitespace/control chars) */
+/** Validate a model name (must be ai/..., hf.co/..., or huggingface.co/..., no whitespace/control chars) */
 export function isValidModelName(model: string): boolean {
   if (!model || /[\s\x00-\x1f\x7f]/.test(model)) return false;
-  return /^(ai\/|hf\.co\/)[a-zA-Z0-9._:/-]+$/.test(model);
+  return /^(ai\/|hf\.co\/|huggingface\.co\/)[a-zA-Z0-9._:/-]+$/.test(model);
 }
 
 // ── Migration ───────────────────────────────────────────────────────────
