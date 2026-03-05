@@ -28,7 +28,7 @@ import {
   provisionOpenMemoryUser,
   type OpenMemoryConfig
 } from "$lib/server/control-plane.js";
-import { PROVIDER_KEY_MAP, EMBEDDING_DIMS } from "$lib/provider-constants.js";
+import { PROVIDER_KEY_MAP, EMBEDDING_DIMS, mem0ProviderName } from "$lib/provider-constants.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
@@ -195,8 +195,8 @@ export const POST: RequestHandler = async (event) => {
 
     const omConfig: OpenMemoryConfig = {
       mem0: {
-        llm: { provider: llmProvider, config: llmConfig },
-        embedder: { provider: llmProvider, config: embedConfig },
+        llm: { provider: mem0ProviderName(llmProvider), config: llmConfig },
+        embedder: { provider: mem0ProviderName(llmProvider), config: embedConfig },
         vector_store: {
           provider: "qdrant",
           config: {

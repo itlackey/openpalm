@@ -31,7 +31,7 @@ import {
   type OpenMemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
-import { PROVIDER_KEY_MAP, EMBEDDING_DIMS } from "$lib/provider-constants.js";
+import { PROVIDER_KEY_MAP, EMBEDDING_DIMS, mem0ProviderName } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("connections");
@@ -176,8 +176,8 @@ async function handleUnifiedSave(
 
   const omConfig: OpenMemoryConfig = {
     mem0: {
-      llm: { provider, config: llmConfig },
-      embedder: { provider, config: embedConfig },
+      llm: { provider: mem0ProviderName(provider), config: llmConfig },
+      embedder: { provider: mem0ProviderName(provider), config: embedConfig },
       vector_store: {
         provider: "qdrant",
         config: {

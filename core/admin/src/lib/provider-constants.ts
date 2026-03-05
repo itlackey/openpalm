@@ -59,6 +59,15 @@ export const PROVIDER_LABELS: Record<string, string> = {
   "model-runner": "Docker Model Runner",
 };
 
+/**
+ * Map provider name → mem0-compatible provider name.
+ * mem0 doesn't know "model-runner" or "lmstudio" — both speak OpenAI protocol.
+ */
+export function mem0ProviderName(provider: string): string {
+  if (provider === "model-runner" || provider === "lmstudio") return "openai";
+  return provider;
+}
+
 /** Contextual help for local/self-hosted providers. */
 export const LOCAL_PROVIDER_HELP: Record<string, string> = {
   "model-runner": "Add models with: docker model pull ai/model-name",

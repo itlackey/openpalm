@@ -211,9 +211,11 @@ SETUP_RESULT=$(curl -s -X POST http://localhost:8100/admin/setup \
   -d "{
     \"adminToken\": \"dev-admin-token\",
     \"openmemoryUserId\": \"node\",
-    \"localSystemModel\": \"huggingface.co/unsloth/qwen3.5-4b-gguf\",
-    \"localEmbeddingModel\": \"hf.co/CompendiumLabs/bge-base-en-v1.5-gguf\",
-    \"localEmbeddingDims\": 768
+    \"llmProvider\": \"model-runner\",
+    \"llmBaseUrl\": \"http://host.docker.internal:12434/engines\",
+    \"systemModel\": \"huggingface.co/unsloth/qwen3.5-4b-gguf\",
+    \"embeddingModel\": \"hf.co/CompendiumLabs/bge-base-en-v1.5-gguf\",
+    \"embeddingDims\": 768
   }" 2>&1)
 
 SETUP_OK=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "False")
@@ -289,10 +291,10 @@ check_env_val() {
 
 check_env_val "ADMIN_TOKEN" "dev-admin-token"
 check_env_val "OPENMEMORY_USER_ID" "node"
-check_env_val "SYSTEM_LLM_PROVIDER" "openai"
+check_env_val "SYSTEM_LLM_PROVIDER" "model-runner"
 check_env_val "SYSTEM_LLM_MODEL" "huggingface.co/unsloth/qwen3.5-4b-gguf"
-check_env_val "EMBEDDING_MODEL" "hf.co/CompendiumLabs/bge-base-en-v1.5-gguf"
-check_env_val "EMBEDDING_DIMS" "768"
+check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:12434/engines"
+check_env_val "OPENAI_BASE_URL" "http://host.docker.internal:12434/engines/v1"
 
 # ── Step 11: Verify assistant env ────────────────────────────────────
 echo ""
