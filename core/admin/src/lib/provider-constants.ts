@@ -61,10 +61,13 @@ export const PROVIDER_LABELS: Record<string, string> = {
 
 /**
  * Map provider name → mem0-compatible provider name.
- * mem0 doesn't know "model-runner" or "lmstudio" — both speak OpenAI protocol.
+ *
+ * mem0 has a dedicated lmstudio provider that avoids OpenAI-only options such as
+ * json_object response formatting. Docker Model Runner remains OpenAI-protocol.
  */
 export function mem0ProviderName(provider: string): string {
-  if (provider === "model-runner" || provider === "lmstudio") return "openai";
+  if (provider === 'model-runner') return 'openai';
+  if (provider === 'lmstudio') return 'lmstudio';
   return provider;
 }
 
@@ -86,7 +89,13 @@ export function mem0BaseUrlConfig(
     return { key: "ollama_base_url", value: normalized };
   }
   if (mem0Provider === "openai") {
-    return { key: "openai_base_url", value: `${normalized}/v1` };
+    const openAiCompatibleBase = normalized.endsWith('/v1')
+      ? normalized
+      : `${normalized}/v1`;
+    return { key: "openai_base_url", value: openAiCompatibleBase };
+  }
+  if (mem0Provider === 'lmstudio') {
+    return { key: 'openai_base_url', value: normalized };
   }
   return null;
 }

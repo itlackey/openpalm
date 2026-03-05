@@ -88,10 +88,29 @@
       if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
       if (conns.OPENMEMORY_USER_ID) openmemoryUserId = conns.OPENMEMORY_USER_ID;
 
-      // Load custom instructions from OpenMemory config
+      // Load OpenMemory-specific values from persisted config
       try {
         const omData = await fetchOpenMemoryConfig(token);
-        customInstructions = omData.config.openmemory.custom_instructions ?? '';
+        const persistedConfig = omData.config;
+
+        customInstructions = persistedConfig.openmemory.custom_instructions ?? '';
+
+        const persistedEmbedderModel = persistedConfig.mem0.embedder.config.model;
+        if (!embeddingModel && typeof persistedEmbedderModel === 'string' && persistedEmbedderModel) {
+          embeddingModel = persistedEmbedderModel;
+        }
+
+        const persistedEmbeddingDims = persistedConfig.mem0.vector_store.config.embedding_model_dims;
+        if (Number.isFinite(persistedEmbeddingDims) && persistedEmbeddingDims > 0) {
+          embeddingDims = persistedEmbeddingDims;
+        }
+
+        if (!conns.SYSTEM_LLM_PROVIDER) {
+          const persistedProvider = persistedConfig.mem0.llm.provider;
+          if (typeof persistedProvider === 'string' && persistedProvider) {
+            provider = persistedProvider;
+          }
+        }
       } catch {
         // OpenMemory config may not exist yet
       }

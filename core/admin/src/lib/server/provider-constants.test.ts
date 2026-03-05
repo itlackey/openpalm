@@ -2,7 +2,7 @@
  * Tests for provider-constants.ts — shared LLM provider constants.
  *
  * Verifies:
- * 1. mem0ProviderName maps local providers to "openai" and passes cloud names through
+ * 1. mem0ProviderName maps provider names to mem0-compatible values
  * 2. PROVIDER_LABELS has an entry for every provider in LLM_PROVIDERS
  * 3. LOCAL_PROVIDER_HELP has help text for all local providers
  * 4. PROVIDER_DEFAULT_URLS has entries for model-runner and lmstudio
@@ -28,8 +28,8 @@ describe("mem0ProviderName", () => {
     expect(mem0ProviderName("model-runner")).toBe("openai");
   });
 
-  test("maps 'lmstudio' to 'openai'", () => {
-    expect(mem0ProviderName("lmstudio")).toBe("openai");
+  test("maps 'lmstudio' to 'lmstudio'", () => {
+    expect(mem0ProviderName("lmstudio")).toBe("lmstudio");
   });
 
   test("passes 'openai' through unchanged", () => {
@@ -64,6 +64,20 @@ describe("mem0BaseUrlConfig", () => {
     });
   });
 
+
+  test("does not append /v1 when base URL already ends in /v1", () => {
+    expect(mem0BaseUrlConfig("openai", "https://api.openai.com/v1")).toEqual({
+      key: "openai_base_url",
+      value: "https://api.openai.com/v1",
+    });
+  });
+
+  test("uses raw base URL for lmstudio", () => {
+    expect(mem0BaseUrlConfig("lmstudio", "http://host.docker.internal:1234/")).toEqual({
+      key: "openai_base_url",
+      value: "http://host.docker.internal:1234",
+    });
+  });
   test("returns null for empty base url or unsupported provider", () => {
     expect(mem0BaseUrlConfig("anthropic", "")).toBeNull();
     expect(mem0BaseUrlConfig("anthropic", "https://api.anthropic.com")).toBeNull();

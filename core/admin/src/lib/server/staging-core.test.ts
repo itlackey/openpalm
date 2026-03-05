@@ -282,6 +282,35 @@ describe("persistArtifacts", () => {
     expect(content).toContain(`OPENPALM_STATE_HOME=${state.stateDir}`);
   });
 
+  test("replaces OPENPALM_IMAGE_TAG=latest with the app version tag", () => {
+    const dataStackEnvPath = join(state.dataDir, "stack.env");
+    writeFileSync(dataStackEnvPath, [
+      "OPENPALM_IMAGE_NAMESPACE=openpalm",
+      "OPENPALM_IMAGE_TAG=latest",
+      "",
+    ].join("\n"));
+
+    persistArtifacts(state);
+
+    const content = readFileSync(join(state.stateDir, "artifacts", "stack.env"), "utf-8");
+    expect(content).toMatch(/OPENPALM_IMAGE_TAG=v\d+\.\d+\.\d+/);
+    expect(content).not.toContain("OPENPALM_IMAGE_TAG=latest");
+  });
+
+  test("preserves a higher pinned OPENPALM_IMAGE_TAG from DATA_HOME", () => {
+    const dataStackEnvPath = join(state.dataDir, "stack.env");
+    writeFileSync(dataStackEnvPath, [
+      "OPENPALM_IMAGE_NAMESPACE=openpalm",
+      "OPENPALM_IMAGE_TAG=v999.0.0",
+      "",
+    ].join("\n"));
+
+    persistArtifacts(state);
+
+    const content = readFileSync(join(state.stateDir, "artifacts", "stack.env"), "utf-8");
+    expect(content).toContain("OPENPALM_IMAGE_TAG=v999.0.0");
+  });
+
   test("stack.env does NOT contain user secrets (OPENMEMORY_USER_ID, ADMIN_TOKEN)", () => {
     persistArtifacts(state);
 

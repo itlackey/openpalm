@@ -8,7 +8,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { mergeEnvContent } from './env.js';
+import { mergeEnvContent, parseEnvContent } from './env.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { discoverChannels } from "./channels.js";
 import { appendAudit } from "./audit.js";
@@ -121,6 +121,44 @@ function stageCompose(_state: ControlPlaneState): string {
 
 // ── Env Staging ───────────────────────────────────────────────────────
 
+
+function parseSemverTag(tag: string): [number, number, number] | null {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(tag.trim());
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareSemver(a: [number, number, number], b: [number, number, number]): number {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] > b[i]) return 1;
+    if (a[i] < b[i]) return -1;
+  }
+  return 0;
+}
+
+function resolveImageTag(baseStackEnv: string): string {
+  const parsed = parseEnvContent(baseStackEnv);
+  const currentTag = parsed.OPENPALM_IMAGE_TAG?.trim() ?? '';
+
+  const envTag = process.env.OPENPALM_IMAGE_TAG?.trim();
+  const preferredTag = envTag && envTag !== 'latest'
+    ? envTag
+    : DEFAULT_IMAGE_TAG;
+
+  if (!currentTag || currentTag === 'latest') {
+    return preferredTag;
+  }
+
+  const currentVersion = parseSemverTag(currentTag);
+  const preferredVersion = parseSemverTag(preferredTag);
+  if (!currentVersion || !preferredVersion) {
+    return preferredTag;
+  }
+
+  return compareSemver(preferredVersion, currentVersion) >= 0 ? preferredTag : currentTag;
+}
+
+
 /**
  * Stage STATE_HOME/artifacts/secrets.env from CONFIG_HOME/secrets.env.
  *
@@ -185,7 +223,8 @@ function stageStackEnv(state: ControlPlaneState): void {
 
   // Admin-managed dynamic values to merge into the staged file
   const adminManaged: Record<string, string> = {
-    OPENPALM_SETUP_COMPLETE: state.adminToken ? "true" : "false"
+    OPENPALM_SETUP_COMPLETE: state.adminToken ? "true" : "false",
+    OPENPALM_IMAGE_TAG: resolveImageTag(base),
   };
   for (const [ch, secret] of Object.entries(state.channelSecrets)) {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;

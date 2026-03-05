@@ -131,8 +131,10 @@ export const POST: RequestHandler = async (event) => {
     updates[envVarName] = llmApiKey;
   }
 
+  if (llmProvider) {
+    updates.SYSTEM_LLM_PROVIDER = llmProvider;
+  }
   if (systemModel) {
-    updates.SYSTEM_LLM_PROVIDER = llmProvider || "openai";
     updates.SYSTEM_LLM_MODEL = systemModel;
   }
   if (llmBaseUrl) {
@@ -145,6 +147,8 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
+  if (embeddingModel) updates.EMBEDDING_MODEL = embeddingModel;
+  if (embeddingDims) updates.EMBEDDING_DIMS = String(embeddingDims);
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
   // ── All validation passed — persist changes ──
