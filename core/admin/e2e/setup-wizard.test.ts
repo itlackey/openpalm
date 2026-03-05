@@ -20,7 +20,21 @@ async function mockModelsEndpoint(page: import('@playwright/test').Page) {
 }
 
 /**
- * Helper: navigate from step 2 (connect) through "Test Connection" so
+ * Helper: mock the /admin/providers/local endpoint so the provider step
+ * does not make real network calls for local provider detection.
+ */
+async function mockLocalProvidersEndpoint(page: import('@playwright/test').Page) {
+	await page.route('**/admin/providers/local', (route) => {
+		return route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ providers: [] })
+		});
+	});
+}
+
+/**
+ * Helper: navigate from step 2 (provider) through "Test Connection" so
  * the Next button becomes enabled. Uses ollama (no API key required).
  */
 async function completeConnectStep(page: import('@playwright/test').Page) {
@@ -51,6 +65,7 @@ test.describe('Setup Wizard', () => {
 
 	test('wizard navigates through all 4 steps', async ({ page }) => {
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 		await page.goto('/setup');
 
 		// Step 1: Admin Token
@@ -58,9 +73,9 @@ test.describe('Setup Wizard', () => {
 		await page.locator('#admin-token').fill('my-secure-token');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 2: System LLM Connection
-		await expect(page.getByTestId('step-connect')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('System LLM Connection');
+		// Step 2: Provider
+		await expect(page.getByTestId('step-provider')).toBeVisible();
+		await expect(page.locator('h2')).toHaveText('LLM Provider');
 		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 
@@ -68,8 +83,7 @@ test.describe('Setup Wizard', () => {
 		await expect(page.getByTestId('step-models')).toBeVisible();
 		await expect(page.locator('h2')).toHaveText('Select Models');
 		// Verify model selects are populated
-		await expect(page.locator('#guardian-model')).toBeVisible();
-		await expect(page.locator('#memory-model')).toBeVisible();
+		await expect(page.locator('#system-model')).toBeVisible();
 		await expect(page.locator('#embedding-model')).toBeVisible();
 		// OpenMemory user ID is pre-populated from server-detected userId
 		const userIdValue = await page.locator('#openmemory-user-id').inputValue();
@@ -82,20 +96,21 @@ test.describe('Setup Wizard', () => {
 		await expect(page.locator('h2')).toHaveText('Review & Install');
 		// Admin token just says "Set"
 		await expect(page.getByText('Set').first()).toBeVisible();
-		// Provider shows "ollama"
-		await expect(page.getByText('ollama')).toBeVisible();
+		// Provider shows label (e.g., "Ollama" not "ollama")
+		await expect(page.getByText('Ollama')).toBeVisible();
 		// User ID
 		await expect(page.getByText('alice')).toBeVisible();
 	});
 
 	test('back button navigation works through all steps', async ({ page }) => {
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 		await page.goto('/setup');
 
 		// Step 1 -> 2
 		await page.locator('#admin-token').fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByTestId('step-connect')).toBeVisible();
+		await expect(page.getByTestId('step-provider')).toBeVisible();
 
 		// Test connection so Next is enabled
 		await completeConnectStep(page);
@@ -113,7 +128,7 @@ test.describe('Setup Wizard', () => {
 		await expect(page.getByTestId('step-models')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.getByTestId('step-connect')).toBeVisible();
+		await expect(page.getByTestId('step-provider')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Back' }).click();
 		await expect(page.getByTestId('step-token')).toBeVisible();
@@ -123,6 +138,7 @@ test.describe('Setup Wizard', () => {
 		let postDone = false;
 
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -177,6 +193,7 @@ test.describe('Setup Wizard', () => {
 		let postDone = false;
 
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -213,7 +230,7 @@ test.describe('Setup Wizard', () => {
 		await page.locator('#admin-token').fill('secret-token-abc');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 2: Connect — fill openai API key and test connection
+		// Step 2: Provider — fill openai API key and test connection
 		await page.locator('#llm-api-key').fill('sk-test');
 		await page.getByRole('button', { name: 'Test Connection' }).click();
 		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
@@ -229,6 +246,10 @@ test.describe('Setup Wizard', () => {
 		expect(postedBody.adminToken).toBe('secret-token-abc');
 		expect(postedBody.llmApiKey).toBe('sk-test');
 		expect(postedBody.llmProvider).toBe('openai');
+		expect(postedBody.systemModel).toBeTruthy();
+		expect(postedBody.embeddingModel).toBeTruthy();
+		expect(postedBody.embeddingDims).toBeTruthy();
+		expect(postedBody.openmemoryUserId).toBeTruthy();
 		expect(postHeaders['x-admin-token']).toBeTruthy();
 	});
 
@@ -261,6 +282,7 @@ test.describe('Setup Wizard', () => {
 		let postSucceeded = false;
 
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -320,6 +342,7 @@ test.describe('Setup Wizard', () => {
 
 	test('Docker unavailable returns error to UI', async ({ page }) => {
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
@@ -351,6 +374,7 @@ test.describe('Setup Wizard', () => {
 
 	test('Docker Compose failure returns error to UI', async ({ page }) => {
 		await mockModelsEndpoint(page);
+		await mockLocalProvidersEndpoint(page);
 
 		await page.route('**/admin/setup', (route) => {
 			if (route.request().method() === 'POST') {
