@@ -83,6 +83,8 @@ services:
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       HOME: /home/opencode
+      USER: opencode
+      LOGNAME: opencode
       OPENPALM_ADMIN_API_URL: http://admin:8100
       OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       OPENMEMORY_API_URL: http://openmemory:8765

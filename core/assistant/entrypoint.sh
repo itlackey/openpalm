@@ -8,22 +8,6 @@ ENABLE_SSH="${OPENCODE_ENABLE_SSH:-0}"
 # (the container may run as an arbitrary UID via OPENPALM_UID)
 mkdir -p /home/opencode/.cache /home/opencode/.config 2>/dev/null || true
 
-# Support arbitrary UIDs (e.g. macOS where user UID ≠ 1000).
-# If the current UID has no /etc/passwd entry, add one so tools like
-# 'whoami', 'git', and 'gh' can resolve a username.
-if ! getent passwd "$(id -u)" >/dev/null 2>&1; then
-	if printf 'opencode:x:%d:%d:OpenCode:/home/opencode:/bin/bash\n' \
-		"$(id -u)" "$(id -g)" >> /etc/passwd 2>/dev/null; then
-		: # entry added successfully
-	else
-		echo "opencode-entrypoint: warning: could not add UID $(id -u) to /etc/passwd; whoami/git/gh may fail" >&2
-	fi
-fi
-
-export HOME=/home/opencode
-export USER="${USER:-opencode}"
-export LOGNAME="${LOGNAME:-opencode}"
-
 if [ "$ENABLE_SSH" = "1" ] || [ "$ENABLE_SSH" = "true" ]; then
 	mkdir -p /var/run/sshd /home/opencode/.ssh
 	chown -R node:node /home/opencode/.ssh

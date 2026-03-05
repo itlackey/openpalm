@@ -26,11 +26,7 @@ RUN mkdir -p /home/opencode/.cache /home/opencode/.config /work \
     && chown node:node /home/opencode /home/opencode/.cache /home/opencode/.config /work \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
-    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config \
-    # Allow entrypoint to register an arbitrary runtime UID in /etc/passwd.
-    # This is a standard Docker pattern for OpenShift/arbitrary-UID compatibility.
-    # The files are isolated inside the container image so host security is unaffected.
-    && chmod a+w /etc/passwd /etc/group
+    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
 
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
