@@ -6,6 +6,14 @@
     fetchProviderModels,
     saveSystemConnection
   } from '$lib/api.js';
+  import {
+    LLM_PROVIDERS,
+    PROVIDER_DEFAULT_URLS,
+    PROVIDER_KEY_MAP,
+    EMBEDDING_DIMS,
+    PROVIDER_LABELS,
+    LOCAL_PROVIDER_HELP
+  } from '$lib/provider-constants.js';
 
   interface Props {
     connections: Record<string, string>;
@@ -15,49 +23,11 @@
 
   let { connections, loading, onRefresh }: Props = $props();
 
-  // ── Provider Constants (duplicated from server to avoid import) ────
-  const LLM_PROVIDERS = [
-    'openai', 'anthropic', 'ollama', 'groq', 'together',
-    'mistral', 'deepseek', 'xai', 'lmstudio'
-  ];
-
-  const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-    openai: 'https://api.openai.com',
-    groq: 'https://api.groq.com/openai',
-    mistral: 'https://api.mistral.ai',
-    together: 'https://api.together.xyz',
-    deepseek: 'https://api.deepseek.com',
-    xai: 'https://api.x.ai',
-    lmstudio: 'http://host.docker.internal:1234',
-    ollama: 'http://host.docker.internal:11434',
-  };
-
-  const PROVIDER_KEY_MAP: Record<string, string> = {
-    openai: 'OPENAI_API_KEY',
-    anthropic: 'ANTHROPIC_API_KEY',
-    groq: 'GROQ_API_KEY',
-    mistral: 'MISTRAL_API_KEY',
-    google: 'GOOGLE_API_KEY',
-  };
-
-  const NO_KEY_PROVIDERS = new Set(['ollama', 'lmstudio']);
-
-  const EMBEDDING_DIMS: Record<string, number> = {
-    'openai/text-embedding-3-small': 1536,
-    'openai/text-embedding-3-large': 3072,
-    'openai/text-embedding-ada-002': 1536,
-    'ollama/nomic-embed-text': 768,
-    'ollama/mxbai-embed-large': 1024,
-    'ollama/all-minilm': 384,
-    'ollama/snowflake-arctic-embed': 1024,
-  };
-
   // ── Form State ────────────────────────────────────────────────────
   let provider = $state('openai');
   let apiKey = $state('');
   let baseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
-  let guardianModel = $state('');
-  let memoryModel = $state('');
+  let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
   let openmemoryUserId = $state('default_user');
@@ -83,8 +53,13 @@
   // ── Loaded flag ───────────────────────────────────────────────────
   let loaded = $state(false);
 
+  // ── Toast State ──────────────────────────────────────────────
+  let toastVisible = $state(false);
+  let toastMessage = $state('');
+
   // ── Derived ───────────────────────────────────────────────────────
-  let needsApiKey = $derived(!NO_KEY_PROVIDERS.has(provider));
+  let isLocalProvider = $derived(['ollama', 'lmstudio', 'model-runner'].includes(provider));
+  let canTestWithoutCredentials = $derived(provider === 'anthropic');
 
   let maskedCurrentKey = $derived.by(() => {
     const envVar = PROVIDER_KEY_MAP[provider];
@@ -100,6 +75,7 @@
 
     try {
       const conns = await fetchConnections(token);
+
       // Pre-fill from saved system connection fields
       if (conns.SYSTEM_LLM_PROVIDER) provider = conns.SYSTEM_LLM_PROVIDER;
       if (conns.SYSTEM_LLM_BASE_URL) {
@@ -107,8 +83,7 @@
       } else if (conns.SYSTEM_LLM_PROVIDER) {
         baseUrl = PROVIDER_DEFAULT_URLS[conns.SYSTEM_LLM_PROVIDER] ?? '';
       }
-      if (conns.GUARDIAN_LLM_MODEL) guardianModel = conns.GUARDIAN_LLM_MODEL;
-      if (conns.MEMORY_LLM_MODEL) memoryModel = conns.MEMORY_LLM_MODEL;
+      if (conns.SYSTEM_LLM_MODEL) systemModel = conns.SYSTEM_LLM_MODEL;
       if (conns.EMBEDDING_MODEL) embeddingModel = conns.EMBEDDING_MODEL;
       if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
       if (conns.OPENMEMORY_USER_ID) openmemoryUserId = conns.OPENMEMORY_USER_ID;
@@ -168,13 +143,19 @@
         modelListError = result.error;
         return;
       }
-      modelList = result.models ?? [];
+      const apiModels = result.models ?? [];
+
+      // Merge API results with any currently-configured models so dropdowns
+      // don't lose the user's selection (models may still be pulling).
+      const merged = new Set(apiModels);
+      if (systemModel) merged.add(systemModel);
+      if (embeddingModel) merged.add(embeddingModel);
+      modelList = [...merged].sort();
       connectionTested = true;
 
       // Pre-select models if not already set
       if (modelList.length > 0) {
-        if (!guardianModel) guardianModel = modelList[0];
-        if (!memoryModel) memoryModel = modelList[0];
+        if (!systemModel) systemModel = modelList[0];
         if (!embeddingModel) {
           const embedCandidate = modelList.find(m =>
             m.includes('embed') || m.includes('ada')
@@ -209,8 +190,7 @@
         provider,
         apiKey,
         baseUrl,
-        guardianModel,
-        memoryModel,
+        systemModel,
         embeddingModel,
         embeddingDims,
         openmemoryUserId,
@@ -278,6 +258,8 @@
     e.preventDefault();
     void handleSave();
   }
+
+
 </script>
 
 <section class="connections-tab" aria-label="Connections configuration">
@@ -405,30 +387,31 @@
                 onchange={(e) => handleProviderChange(e.currentTarget.value)}
               >
                 {#each LLM_PROVIDERS as p}
-                  <option value={p}>{p}</option>
+                  <option value={p}>{PROVIDER_LABELS[p] ?? p}</option>
                 {/each}
               </select>
             </div>
 
-            {#if needsApiKey}
-              <div class="form-field">
-                <label for="conn-api-key" class="form-label">
-                  API Key
-                  {#if maskedCurrentKey}
-                    <span class="current-value">Current: {maskedCurrentKey}</span>
-                  {/if}
-                </label>
-                <input
-                  id="conn-api-key"
-                  type="password"
-                  class="form-input"
-                  bind:value={apiKey}
-                  placeholder={provider === 'openai' ? 'sk-...' : 'Enter API key'}
-                  autocomplete="off"
-                />
-                <span class="field-hint">Leave blank to keep the current key.</span>
-              </div>
-            {/if}
+            <div class="form-field">
+              <label for="conn-api-key" class="form-label">
+                API Key
+                {#if isLocalProvider}
+                  <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span>
+                {/if}
+                {#if maskedCurrentKey}
+                  <span class="current-value">Current: {maskedCurrentKey}</span>
+                {/if}
+              </label>
+              <input
+                id="conn-api-key"
+                type="password"
+                class="form-input"
+                bind:value={apiKey}
+                placeholder={provider === 'openai' ? 'sk-...' : 'Enter API key'}
+                autocomplete="off"
+              />
+              <span class="field-hint">Leave blank to keep the current key.</span>
+            </div>
 
             <div class="form-field">
               <label for="conn-base-url" class="form-label">Base URL</label>
@@ -449,6 +432,9 @@
                   Leave default unless using a custom endpoint.
                 {/if}
               </span>
+              {#if LOCAL_PROVIDER_HELP[provider]}
+                <p class="field-hint" style="margin-top: var(--space-1);">{LOCAL_PROVIDER_HELP[provider]}</p>
+              {/if}
             </div>
 
           </div>
@@ -459,7 +445,7 @@
               class="btn btn-outline"
               type="button"
               onclick={() => void testConnection()}
-              disabled={modelListLoading || (needsApiKey && !apiKey.trim() && !maskedCurrentKey)}
+              disabled={modelListLoading || (!isLocalProvider && !canTestWithoutCredentials && !apiKey.trim() && !maskedCurrentKey && !baseUrl)}
             >
               {#if modelListLoading}
                 <span class="spinner"></span>
@@ -474,7 +460,7 @@
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
-                Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.
+                Connected{modelList.length > 0 ? ` — ${modelList.length} model${modelList.length !== 1 ? 's' : ''} found.` : '.'}
               </span>
             {/if}
             {#if modelListError}
@@ -486,31 +472,17 @@
           <div class="form-grid model-grid">
 
             <div class="form-field">
-              <label for="conn-guardian-model" class="form-label">Guardian Model</label>
+              <label for="conn-system-model" class="form-label">System Model</label>
               {#if modelList.length > 0}
-                <select id="conn-guardian-model" class="form-input" bind:value={guardianModel}>
+                <select id="conn-system-model" class="form-input" bind:value={systemModel}>
                   {#each modelList as m}
                     <option value={m}>{m}</option>
                   {/each}
                 </select>
               {:else}
-                <input id="conn-guardian-model" type="text" class="form-input" bind:value={guardianModel} placeholder="gpt-4o-mini" />
+                <input id="conn-system-model" type="text" class="form-input" bind:value={systemModel} placeholder="gpt-4o-mini" />
               {/if}
-              <span class="field-hint">Used for message routing and safety decisions.</span>
-            </div>
-
-            <div class="form-field">
-              <label for="conn-memory-model" class="form-label">Memory Model</label>
-              {#if modelList.length > 0}
-                <select id="conn-memory-model" class="form-input" bind:value={memoryModel}>
-                  {#each modelList as m}
-                    <option value={m}>{m}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input id="conn-memory-model" type="text" class="form-input" bind:value={memoryModel} placeholder="gpt-4o-mini" />
-              {/if}
-              <span class="field-hint">Used by OpenMemory for memory reasoning.</span>
+              <span class="field-hint">Used for message routing, safety, and memory reasoning.</span>
             </div>
 
             <div class="form-field">

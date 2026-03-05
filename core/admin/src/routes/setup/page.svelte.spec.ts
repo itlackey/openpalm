@@ -54,7 +54,7 @@ describe('/setup page', () => {
 		const step1 = page.getByRole('button', { name: 'Step 1: Admin Token' });
 		await expect.element(step1).toBeInTheDocument();
 
-		const step2 = page.getByRole('button', { name: 'Step 2: System LLM Connection' });
+		const step2 = page.getByRole('button', { name: 'Step 2: Provider' });
 		await expect.element(step2).toBeInTheDocument();
 
 		guard.expectNoErrors();

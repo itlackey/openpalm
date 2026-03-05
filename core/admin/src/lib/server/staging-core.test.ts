@@ -282,6 +282,17 @@ describe("persistArtifacts", () => {
     expect(content).toContain(`OPENPALM_STATE_HOME=${state.stateDir}`);
   });
 
+  test("stack.env does NOT contain user secrets (OPENMEMORY_USER_ID, ADMIN_TOKEN)", () => {
+    persistArtifacts(state);
+
+    const stackEnvPath = join(state.stateDir, "artifacts", "stack.env");
+    const content = readFileSync(stackEnvPath, "utf-8");
+    // User secrets belong in secrets.env, not stack.env.
+    // Having them in both causes precedence bugs with Docker Compose --env-file.
+    expect(content).not.toContain("OPENMEMORY_USER_ID=");
+    expect(content).not.toContain("ADMIN_TOKEN=");
+  });
+
   test("stages channel yml files from CONFIG to STATE", () => {
     seedConfigChannels(state.configDir, [
       { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" }

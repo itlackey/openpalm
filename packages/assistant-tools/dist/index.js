@@ -32,6 +32,7 @@ async function searchMemories(query, opts) {
   const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : opts.size ?? 10;
   const data = await pluginMemoryFetch("/api/v1/memories/filter", {
     method: "POST",
+    timeoutMs: opts?.timeoutMs,
     body: JSON.stringify({
       user_id: USER_ID,
       search_query: query,
@@ -67,11 +68,11 @@ async function addMemory(text, meta) {
   });
   return data?.id ?? null;
 }
-async function getMemoryStats() {
-  return pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(USER_ID)}`, { timeoutMs: 3000 });
+async function getMemoryStats(timeoutMs = 3000) {
+  return pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(USER_ID)}`, { timeoutMs });
 }
-async function isMemoryAvailable() {
-  return await getMemoryStats() !== null;
+async function isMemoryAvailable(timeoutMs) {
+  return await getMemoryStats(timeoutMs) !== null;
 }
 function formatMemoriesForContext(memories, heading) {
   if (memories.length === 0)
@@ -161,6 +162,7 @@ var EXTRACTION_COOLDOWN_MS = 60000;
 var MIN_IDLE_COUNT_FOR_EXTRACTION = 2;
 var REFLEXION_SESSION_INTERVAL = 10;
 var REFLEXION_EPISODE_THRESHOLD = 5;
+var REFLEXION_DEFAULT_CONFIDENCE = 0.5;
 function buildExtractionPrompt(state) {
   return `[SYSTEM: Memory Extraction]
 
@@ -194,7 +196,7 @@ Review these past session episodes for project "${project}" and extract higher-l
 ${episodeList}
 
 For each insight, call memory-add with metadata:
-  memory-add({ text: "insight statement", metadata: '{"category":"semantic or procedural","source":"reflexion","project":"${project}","confidence":"0.5"}' })
+  memory-add({ text: "insight statement", metadata: '{"category":"semantic or procedural","source":"reflexion","project":"${project}","confidence":${REFLEXION_DEFAULT_CONFIDENCE}}' })
 
 Rules:
 - Only extract genuinely novel insights not already captured as individual memories
@@ -215,23 +217,24 @@ var MemoryContextPlugin = async (ctx) => {
         startedAt: new Date().toISOString(),
         contextInjected: false,
         idleCount: 0,
-        lastExtractionAt: 0,
-        extractedThisSession: []
+        lastExtractionAt: 0
       });
-      if (!await isMemoryAvailable())
+      const stats = await getMemoryStats();
+      if (!stats)
         return;
-      const [semanticMems, proceduralMems, episodicMems, stats] = await Promise.all([
+      const episodicQuery = project !== "unknown" ? `${project} recent sessions outcomes results` : "recent sessions outcomes results";
+      const [semanticMems, proceduralMems, episodicMems] = await Promise.all([
         searchMemories("user preferences project context conventions decisions", { size: 10, category: "semantic" }),
         searchMemories("procedures workflows patterns how to", {
           size: 5,
           category: "procedural"
         }),
-        searchMemories("recent sessions outcomes results", {
+        searchMemories(episodicQuery, {
           size: 5,
           category: "episodic"
-        }),
-        getMemoryStats()
+        })
       ]);
+      const reflexionEpisodes = project !== "unknown" ? episodicMems.filter((m) => !m.metadata?.project || m.metadata.project === project) : episodicMems;
       let projectMems = [];
       if (project !== "unknown") {
         projectMems = await searchMemories(`${project} project specific context`, { size: 5 });
@@ -286,10 +289,10 @@ var MemoryContextPlugin = async (ctx) => {
         } catch {}
       }
       sessionsSinceReflexion++;
-      if (sessionsSinceReflexion >= REFLEXION_SESSION_INTERVAL && episodicMems.length >= REFLEXION_EPISODE_THRESHOLD && typeof client?.session?.prompt === "function") {
+      if (sessionsSinceReflexion >= REFLEXION_SESSION_INTERVAL && reflexionEpisodes.length >= REFLEXION_EPISODE_THRESHOLD && typeof client?.session?.prompt === "function") {
         sessionsSinceReflexion = 0;
         try {
-          const prompt = buildReflexionPrompt(episodicMems, project);
+          const prompt = buildReflexionPrompt(reflexionEpisodes, project);
           await client.session.prompt({
             path: { id: sessionId },
             body: { parts: [{ type: "text", text: prompt }] }
@@ -329,7 +332,7 @@ var MemoryContextPlugin = async (ctx) => {
         return;
       if (state.idleCount >= MIN_IDLE_COUNT_FOR_EXTRACTION) {
         if (await isMemoryAvailable()) {
-          const summary = `Session in project "${state.project}" started ${state.startedAt}. ` + `${state.extractedThisSession.length} learnings extracted across ` + `${state.idleCount} exchanges.`;
+          const summary = `Session in project "${state.project}" started ${state.startedAt}. ` + `Automated memory extraction was run across ${state.idleCount} exchanges.`;
           await addMemory(summary, {
             category: "episodic",
             source: "auto-extract",
@@ -354,7 +357,9 @@ var MemoryContextPlugin = async (ctx) => {
       ];
       if (!proceduralPrefixes.some((p) => toolName.startsWith(p)))
         return;
-      const memories = await searchMemories(`procedure for ${toolName.replace(/_/g, " ")} operations`, { size: 3, category: "procedural" });
+      if (!await isMemoryAvailable(1200))
+        return;
+      const memories = await searchMemories(`procedure for ${toolName.replace(/_/g, " ")} operations`, { size: 3, category: "procedural", timeoutMs: 1200 });
       if (memories.length === 0)
         return;
       const guidance = formatMemoriesForContext(memories, `### Relevant Procedures for ${toolName}`);
@@ -365,13 +370,16 @@ var MemoryContextPlugin = async (ctx) => {
     "experimental.session.compacting": async (_input, output) => {
       const sessionId = _input?.session?.id ?? _input?.properties?.sessionId ?? "unknown";
       const state = sessions.get(sessionId);
-      const [semanticMems, proceduralMems, stats] = await Promise.all([
-        searchMemories("user preferences project context important decisions", { size: 10, category: "semantic" }),
+      const stats = await getMemoryStats(1500);
+      if (!stats)
+        return;
+      const [semanticMems, proceduralMems] = await Promise.all([
+        searchMemories("user preferences project context important decisions", { size: 10, category: "semantic", timeoutMs: 1500 }),
         searchMemories("procedures patterns workflows", {
           size: 5,
-          category: "procedural"
-        }),
-        getMemoryStats()
+          category: "procedural",
+          timeoutMs: 1500
+        })
       ]);
       const lines = ["## OpenMemory Context (Compaction)"];
       if (stats) {
@@ -392,11 +400,16 @@ var MemoryContextPlugin = async (ctx) => {
         lines.push("### Session State");
         lines.push(`- Project: ${state.project}`);
         lines.push(`- Session started: ${state.startedAt}`);
-        lines.push(`- Memories extracted this session: ${state.extractedThisSession.length}`);
+        lines.push(`- Automated extraction idle count: ${state.idleCount}`);
       }
       lines.push("");
       lines.push("### Memory Instructions");
       lines.push("You have access to OpenMemory tools. Use `memory-search` to find relevant context. " + "Important learnings are automatically extracted. Use `memory-add` for anything the auto-extraction might miss. " + "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).");
+      if (!output)
+        return;
+      if (!output.context) {
+        output.context = [];
+      }
       output.context.push(lines.join(`
 `));
     },
@@ -13033,9 +13046,9 @@ var get2 = tool({
   }
 });
 var set2 = tool({
-  description: "Update one or more LLM provider connection keys in secrets.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, GUARDIAN_LLM_PROVIDER, GUARDIAN_LLM_MODEL, OPENMEMORY_OPENAI_BASE_URL, OPENMEMORY_OPENAI_API_KEY. Never log or echo the actual key values.",
+  description: "Update one or more LLM provider connection keys in secrets.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, SYSTEM_LLM_PROVIDER, SYSTEM_LLM_BASE_URL, SYSTEM_LLM_MODEL, OPENAI_BASE_URL, EMBEDDING_MODEL, EMBEDDING_DIMS, OPENMEMORY_USER_ID. Never log or echo the actual key values.",
   args: {
-    patches: tool.schema.string().describe(`JSON object of key-value pairs to update, e.g. '{"OPENAI_API_KEY":"sk-...","GUARDIAN_LLM_PROVIDER":"anthropic"}'`)
+    patches: tool.schema.string().describe(`JSON object of key-value pairs to update, e.g. '{"OPENAI_API_KEY":"sk-...","SYSTEM_LLM_PROVIDER":"anthropic"}'`)
   },
   async execute(args) {
     let body;
@@ -13051,7 +13064,7 @@ var set2 = tool({
   }
 });
 var status = tool({
-  description: "Check whether required LLM provider API keys are configured. Returns { complete: boolean, missing: string[] }. Use this before operations that depend on external LLM APIs.",
+  description: "Check whether the system LLM connection is configured (provider and model set). Returns { complete: boolean, missing: string[] }. API keys are optional for all providers.",
   async execute() {
     return adminFetch("/admin/connections/status");
   }

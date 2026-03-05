@@ -59,7 +59,7 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.4",
+      "version": "0.7.5",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },

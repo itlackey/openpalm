@@ -100,6 +100,7 @@ export {
   fetchProviderModels,
   checkQdrantDimensions,
   resetQdrantCollection,
+  provisionOpenMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
@@ -121,3 +122,9 @@ export {
   normalizeCaller,
   isAllowedAction
 } from "./lifecycle.js";
+
+// ── model-runner.ts ──────────────────────────────────────────────────
+export {
+  detectLocalProviders,
+  type LocalProviderDetection
+} from "./model-runner.js";

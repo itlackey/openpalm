@@ -649,3 +649,4 @@ describe("Automation file staging", () => {
     expect(first).toBe(second);
   });
 });
+

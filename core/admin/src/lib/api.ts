@@ -314,3 +314,23 @@ export async function registryRefresh(token: string): Promise<void> {
     throw new Error(text);
   }
 }
+
+
+// ── Local Providers ────────────────────────────────────────────────────
+
+export type LocalProviderDetection = {
+  provider: string;
+  url: string;
+  available: boolean;
+};
+
+export async function fetchLocalProviders(token: string): Promise<{ providers: LocalProviderDetection[] }> {
+  const res = await get('/admin/providers/local', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    return { providers: [] };
+  }
+  return (await res.json()) as { providers: LocalProviderDetection[] };
+}

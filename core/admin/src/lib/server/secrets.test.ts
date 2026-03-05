@@ -271,33 +271,39 @@ describe("maskConnectionValue", () => {
     }
   });
 
-  test("GUARDIAN_LLM_PROVIDER is returned unmasked", () => {
-    expect(maskConnectionValue("GUARDIAN_LLM_PROVIDER", "anthropic")).toBe("anthropic");
+  test("SYSTEM_LLM_MODEL is returned unmasked", () => {
+    expect(maskConnectionValue("SYSTEM_LLM_MODEL", "gpt-4o-mini")).toBe("gpt-4o-mini");
   });
 
-  test("GUARDIAN_LLM_MODEL is returned unmasked", () => {
-    expect(maskConnectionValue("GUARDIAN_LLM_MODEL", "gpt-4o-mini")).toBe(
-      "gpt-4o-mini"
-    );
-  });
 });
 
 // ── Connection Key Sets ─────────────────────────────────────────────────
 
 describe("ALLOWED_CONNECTION_KEYS", () => {
-  test("includes all keys from api-spec.md", () => {
+  test("includes all standard connection keys", () => {
     const expectedKeys = [
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
       "GROQ_API_KEY",
       "MISTRAL_API_KEY",
       "GOOGLE_API_KEY",
-      "GUARDIAN_LLM_PROVIDER",
-      "GUARDIAN_LLM_MODEL"
+      "SYSTEM_LLM_PROVIDER",
+      "SYSTEM_LLM_BASE_URL",
+      "SYSTEM_LLM_MODEL",
+      "OPENAI_BASE_URL",
+      "EMBEDDING_MODEL",
+      "EMBEDDING_DIMS",
+      "OPENMEMORY_USER_ID",
     ];
     for (const key of expectedKeys) {
       expect(ALLOWED_CONNECTION_KEYS.has(key)).toBe(true);
     }
+  });
+
+  test("does not include removed legacy keys", () => {
+    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_PROVIDER")).toBe(false);
+    expect(ALLOWED_CONNECTION_KEYS.has("GUARDIAN_LLM_MODEL")).toBe(false);
+    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_LLM_MODEL")).toBe(false);
   });
 
   test("does not include obsolete OPENMEMORY_OPENAI_* keys (superseded by JSON config)", () => {

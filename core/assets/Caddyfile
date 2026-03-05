@@ -21,6 +21,20 @@
 		reverse_proxy assistant:4096
 	}
 
+	# ── OpenMemory admin API (must precede UI catch-all) ─────────────
+	handle /admin/openmemory/config {
+		import lan_only
+		reverse_proxy admin:8100
+	}
+	handle /admin/openmemory/models {
+		import lan_only
+		reverse_proxy admin:8100
+	}
+	handle /admin/openmemory/reset-collection {
+		import lan_only
+		reverse_proxy admin:8100
+	}
+
 	# ── OpenMemory UI (specific — must precede /admin/* catch-all) ────
 	handle_path /admin/openmemory/* {
 		import lan_only
@@ -40,5 +54,11 @@
 	# ── Guardian ─────────────────────────────────────────────────────
 	handle_path /guardian/* {
 		reverse_proxy guardian:8080
+	}
+
+	# ── Admin UI catch-all (SvelteKit pages + assets) ────────────────
+	handle {
+		import lan_only
+		reverse_proxy admin:8100
 	}
 }

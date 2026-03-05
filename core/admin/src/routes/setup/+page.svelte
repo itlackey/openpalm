@@ -1,6 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { untrack } from 'svelte';
+  import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS } from '$lib/provider-constants.js';
+  import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
 
   interface Props {
@@ -10,53 +12,33 @@
   let { data }: Props = $props();
 
   // ── Wizard state ────────────────────────────────────────────────────────
-  type WizardStep = 'token' | 'connect' | 'models' | 'review';
+  type WizardStep = 'token' | 'provider' | 'models' | 'review';
   let step: WizardStep = $state('token');
   let setupComplete = $state(false);
   let loading = $state(true);
 
-  // ── Provider constants (duplicated from server to avoid import) ────────
-  const LLM_PROVIDERS = [
-    'openai', 'anthropic', 'ollama', 'groq', 'together',
-    'mistral', 'deepseek', 'xai', 'lmstudio'
-  ];
-
-  const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-    openai: 'https://api.openai.com',
-    groq: 'https://api.groq.com/openai',
-    mistral: 'https://api.mistral.ai',
-    together: 'https://api.together.xyz',
-    deepseek: 'https://api.deepseek.com',
-    xai: 'https://api.x.ai',
-    lmstudio: 'http://host.docker.internal:1234',
-    ollama: 'http://host.docker.internal:11434',
-  };
-
-  // Providers that don't need an API key
-  const NO_KEY_PROVIDERS = new Set(['ollama', 'lmstudio']);
-
-  const EMBEDDING_DIMS: Record<string, number> = {
-    'openai/text-embedding-3-small': 1536,
-    'openai/text-embedding-3-large': 3072,
-    'openai/text-embedding-ada-002': 1536,
-    'ollama/nomic-embed-text': 768,
-    'ollama/mxbai-embed-large': 1024,
-    'ollama/all-minilm': 384,
-    'ollama/snowflake-arctic-embed': 1024,
-  };
+  // Step ordering helpers
+  const STEP_ORDER: WizardStep[] = ['token', 'provider', 'models', 'review'];
+  function isAfter(a: WizardStep, b: WizardStep): boolean {
+    return STEP_ORDER.indexOf(a) > STEP_ORDER.indexOf(b);
+  }
 
   // ── Form fields ─────────────────────────────────────────────────────────
   let adminToken = $state('');
   let setupSessionToken = $state(untrack(() => data.setupToken ?? ''));
 
-  // Step 2 — Connect
+  // Step 2 — Provider (unified: cloud + local detection)
   let llmProvider = $state('openai');
   let llmApiKey = $state('');
   let llmBaseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
 
+  // Step 2 — Provider (unified: cloud + local detection)
+  let detectedProviders: LocalProviderDetection[] = $state([]);
+  let detectingProviders = $state(false);
+  let providersDetected = $state(false);
+
   // Step 3 — Models
-  let guardianModel = $state('');
-  let memoryModel = $state('');
+  let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
   let openmemoryUserId = $state(untrack(() => data.detectedUserId ?? 'default_user'));
@@ -91,11 +73,13 @@
 
   function handleProviderChange(newProvider: string): void {
     llmProvider = newProvider;
-    // Auto-fill base URL if current URL is a provider default or empty
-    if (!llmBaseUrl || Object.values(PROVIDER_DEFAULT_URLS).includes(llmBaseUrl)) {
+    // Auto-fill base URL from detected provider or defaults
+    const detected = detectedProviders.find(p => p.provider === newProvider && p.available);
+    if (detected) {
+      llmBaseUrl = detected.url;
+    } else if (!llmBaseUrl || Object.values(PROVIDER_DEFAULT_URLS).includes(llmBaseUrl)) {
       llmBaseUrl = PROVIDER_DEFAULT_URLS[newProvider] ?? '';
     }
-    // Reset connection state for new provider
     connectionTested = false;
     modelList = [];
     connectError = '';
@@ -115,10 +99,27 @@
   let maskedApiKey = $derived(
     llmApiKey
       ? llmApiKey.slice(0, 3) + '...' + llmApiKey.slice(-4)
-      : NO_KEY_PROVIDERS.has(llmProvider) ? '(not required)' : '(not set)'
+      : '(not set)'
   );
 
-  let needsApiKey = $derived(!NO_KEY_PROVIDERS.has(llmProvider));
+  // ── Local Provider detection ──────────────────────────────────────────
+
+  async function detectLocalProviders(): Promise<void> {
+    detectingProviders = true;
+    try {
+      const res = await fetch('/admin/providers/local', {
+        headers: buildHeaders(setupSessionToken)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        detectedProviders = data.providers ?? [];
+      }
+    } catch {
+      // Detection failed — continue with cloud providers only
+    }
+    detectingProviders = false;
+    providersDetected = true;
+  }
 
   // ── Test Connection handler ──────────────────────────────────────────
 
@@ -149,13 +150,19 @@
         connectError = result.error;
         return;
       }
-      modelList = result.models ?? [];
+      const apiModels: string[] = result.models ?? [];
+
+      // Merge API results with any currently-configured models so dropdowns
+      // don't lose the user's selection (models may still be pulling).
+      const merged = new Set<string>(apiModels);
+      if (systemModel) merged.add(systemModel);
+      if (embeddingModel) merged.add(embeddingModel);
+      modelList = [...merged].sort();
       connectionTested = true;
 
       // Pre-select first model for each role if not already set
       if (modelList.length > 0) {
-        if (!guardianModel) guardianModel = modelList[0];
-        if (!memoryModel) memoryModel = modelList[0];
+        if (!systemModel) systemModel = modelList[0];
         if (!embeddingModel) {
           // Try to find an embedding model
           const embedCandidate = modelList.find(m =>
@@ -189,11 +196,10 @@
           llmProvider,
           llmApiKey,
           llmBaseUrl,
-          guardianModel,
-          memoryModel,
+          systemModel,
           embeddingModel,
           embeddingDims,
-          openmemoryUserId
+          openmemoryUserId,
         })
       });
       if (!res.ok) {
@@ -265,40 +271,13 @@
 
       <!-- Step indicators -->
       <nav class="step-indicators" aria-label="Wizard steps">
-        <button
-          class="step-dot"
-          class:active={step === 'token'}
-          class:completed={step !== 'token'}
-          onclick={() => { step = 'token'; }}
-          aria-label="Step 1: Admin Token"
-          aria-current={step === 'token' ? 'step' : undefined}
-        >1</button>
-        <span class="step-line" class:active={step !== 'token'}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'connect'}
-          class:completed={step === 'models' || step === 'review'}
-          onclick={() => { if (step === 'models' || step === 'review') step = 'connect'; }}
-          aria-label="Step 2: System LLM Connection"
-          aria-current={step === 'connect' ? 'step' : undefined}
-        >2</button>
-        <span class="step-line" class:active={step === 'models' || step === 'review'}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'models'}
-          class:completed={step === 'review'}
-          onclick={() => { if (step === 'review') step = 'models'; }}
-          aria-label="Step 3: Models"
-          aria-current={step === 'models' ? 'step' : undefined}
-        >3</button>
-        <span class="step-line" class:active={step === 'review'}></span>
-        <button
-          class="step-dot"
-          class:active={step === 'review'}
-          aria-label="Step 4: Review & Install"
-          aria-current={step === 'review' ? 'step' : undefined}
-          disabled
-        >4</button>
+        <button class="step-dot" class:active={step === 'token'} class:completed={isAfter(step, 'token')} onclick={() => { step = 'token'; }} aria-label="Step 1: Admin Token" aria-current={step === 'token' ? 'step' : undefined}>1</button>
+        <span class="step-line" class:active={isAfter(step, 'token')}></span>
+        <button class="step-dot" class:active={step === 'provider'} class:completed={isAfter(step, 'provider')} onclick={() => { if (isAfter(step, 'provider')) { step = 'provider'; void detectLocalProviders(); } }} aria-label="Step 2: Provider" aria-current={step === 'provider' ? 'step' : undefined}>2</button>
+        <span class="step-line" class:active={isAfter(step, 'provider')}></span>
+        <button class="step-dot" class:active={step === 'models'} class:completed={isAfter(step, 'models')} onclick={() => { if (isAfter(step, 'models')) step = 'models'; }} aria-label="Step 3: Models" aria-current={step === 'models' ? 'step' : undefined}>3</button>
+        <span class="step-line" class:active={isAfter(step, 'models')}></span>
+        <button class="step-dot" class:active={step === 'review'} aria-label="Step 4: Review & Install" aria-current={step === 'review' ? 'step' : undefined} disabled>4</button>
       </nav>
 
       <!-- Step 1: Admin Token -->
@@ -325,17 +304,42 @@
                 return;
               }
               tokenError = '';
-              step = 'connect';
+              step = 'provider';
+              void detectLocalProviders();
             }}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: System LLM Connection -->
-      {#if step === 'connect'}
-        <div class="step-content" data-testid="step-connect">
-          <h2>System LLM Connection</h2>
-          <p class="step-description">Connect to an LLM provider for memory, embeddings, and guardian routing.</p>
+      <!-- Step 2: LLM Provider -->
+      {#if step === 'provider'}
+        <div class="step-content" data-testid="step-provider">
+          <h2>LLM Provider</h2>
+          <p class="step-description">Choose your LLM provider. Local providers are auto-detected.</p>
+
+          {#if detectingProviders}
+            <div class="loading-state" style="justify-content: flex-start; padding: var(--space-4) 0;">
+              <span class="spinner"></span>
+              <span style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-left: var(--space-2);">Detecting local providers...</span>
+            </div>
+          {/if}
+
+          {#if providersDetected}
+            {#each detectedProviders.filter(p => p.available) as dp}
+              <button
+                class="provider-option"
+                class:selected={llmProvider === dp.provider}
+                type="button"
+                onclick={() => handleProviderChange(dp.provider)}
+              >
+                <span class="provider-option-status">
+                  <span class="status-dot status-dot--ok"></span>
+                </span>
+                <span class="provider-option-label">{PROVIDER_LABELS[dp.provider] ?? dp.provider}</span>
+                <span class="provider-option-hint">Detected</span>
+              </button>
+            {/each}
+          {/if}
 
           <div class="field-group">
             <label for="llm-provider">Provider</label>
@@ -345,22 +349,20 @@
               onchange={(e) => handleProviderChange(e.currentTarget.value)}
             >
               {#each LLM_PROVIDERS as p}
-                <option value={p}>{p}</option>
+                <option value={p}>{PROVIDER_LABELS[p] ?? p}</option>
               {/each}
             </select>
           </div>
 
-          {#if needsApiKey}
-            <div class="field-group">
-              <label for="llm-api-key">API Key</label>
-              <input
-                id="llm-api-key"
-                type="password"
-                bind:value={llmApiKey}
-                placeholder={llmProvider === 'openai' ? 'sk-...' : 'Enter API key'}
-              />
-            </div>
-          {/if}
+          <div class="field-group">
+            <label for="llm-api-key">API Key <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span></label>
+            <input
+              id="llm-api-key"
+              type="password"
+              bind:value={llmApiKey}
+              placeholder="Enter API key (optional for local providers)"
+            />
+          </div>
 
           <div class="field-group">
             <label for="llm-base-url">Base URL</label>
@@ -370,15 +372,11 @@
               bind:value={llmBaseUrl}
               placeholder="Provider base URL"
             />
-            <p class="field-hint">
-              {#if llmProvider === 'ollama'}
-                Default: <code>http://host.docker.internal:11434</code>
-              {:else if llmProvider === 'lmstudio'}
-                Default: <code>http://host.docker.internal:1234</code>
-              {:else}
-                Leave default unless using a custom endpoint.
-              {/if}
-            </p>
+            {#if LOCAL_PROVIDER_HELP[llmProvider]}
+              <p class="field-hint">{LOCAL_PROVIDER_HELP[llmProvider]}</p>
+            {:else}
+              <p class="field-hint">Leave default unless using a custom endpoint.</p>
+            {/if}
           </div>
 
           {#if connectError}
@@ -400,7 +398,7 @@
             <button
               class="btn btn-outline"
               onclick={() => void testConnection()}
-              disabled={testingConnection || (needsApiKey && !llmApiKey.trim())}
+              disabled={testingConnection}
             >
               {#if testingConnection}
                 <span class="spinner"></span>
@@ -412,7 +410,7 @@
             <button
               class="btn btn-primary"
               disabled={!connectionTested}
-              onclick={() => (step = 'models')}
+              onclick={() => { step = 'models'; }}
             >Next</button>
           </div>
         </div>
@@ -425,23 +423,13 @@
           <p class="step-description">Choose which models to use for each role.</p>
 
           <div class="field-group">
-            <label for="guardian-model">Guardian Model</label>
-            <select id="guardian-model" bind:value={guardianModel}>
+            <label for="system-model">System Model</label>
+            <select id="system-model" bind:value={systemModel}>
               {#each modelList as m}
                 <option value={m}>{m}</option>
               {/each}
             </select>
-            <p class="field-hint">Used for message routing and safety decisions.</p>
-          </div>
-
-          <div class="field-group">
-            <label for="memory-model">Memory Model</label>
-            <select id="memory-model" bind:value={memoryModel}>
-              {#each modelList as m}
-                <option value={m}>{m}</option>
-              {/each}
-            </select>
-            <p class="field-hint">Used by OpenMemory for memory reasoning (mem0 LLM).</p>
+            <p class="field-hint">Used for message routing, safety, and memory reasoning.</p>
           </div>
 
           <div class="field-group">
@@ -460,29 +448,18 @@
 
           <div class="field-group">
             <label for="embedding-dims">Embedding Dimensions</label>
-            <input
-              id="embedding-dims"
-              type="number"
-              bind:value={embeddingDims}
-              min="1"
-              step="1"
-            />
+            <input id="embedding-dims" type="number" bind:value={embeddingDims} min="1" step="1" />
             <p class="field-hint">Auto-filled for known models. Edit if using a custom model.</p>
           </div>
 
           <div class="field-group">
             <label for="openmemory-user-id">OpenMemory User ID</label>
-            <input
-              id="openmemory-user-id"
-              type="text"
-              bind:value={openmemoryUserId}
-              placeholder="default_user"
-            />
+            <input id="openmemory-user-id" type="text" bind:value={openmemoryUserId} placeholder="default_user" />
             <p class="field-hint">Identifies the memory owner. Use a unique name if running multiple instances.</p>
           </div>
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'connect')}>Back</button>
+            <button class="btn btn-secondary" onclick={() => (step = 'provider')}>Back</button>
             <button class="btn btn-primary" onclick={() => (step = 'review')}>Next</button>
           </div>
         </div>
@@ -499,7 +476,7 @@
             </div>
             <div class="review-item">
               <span class="review-label">LLM Provider</span>
-              <span class="review-value">{llmProvider}</span>
+              <span class="review-value">{PROVIDER_LABELS[llmProvider] ?? llmProvider}</span>
             </div>
             <div class="review-item">
               <span class="review-label">API Key</span>
@@ -510,12 +487,8 @@
               <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
             </div>
             <div class="review-item">
-              <span class="review-label">Guardian Model</span>
-              <span class="review-value mono">{guardianModel}</span>
-            </div>
-            <div class="review-item">
-              <span class="review-label">Memory Model</span>
-              <span class="review-value mono">{memoryModel}</span>
+              <span class="review-label">System Model</span>
+              <span class="review-value mono">{systemModel}</span>
             </div>
             <div class="review-item">
               <span class="review-label">Embedding Model</span>
@@ -722,6 +695,38 @@
     margin: 0 0 var(--space-2);
     color: var(--color-danger);
     font-size: var(--text-sm);
+  }
+
+  /* ── Info Banner ────────────────────────────────────────────────────── */
+  .info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-4);
+  }
+
+  .info-banner p {
+    margin: 0;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-size: inherit;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .link-btn:hover {
+    color: var(--color-primary-hover);
   }
 
   /* ── Connection Success ──────────────────────────────────────────────── */
@@ -932,5 +937,54 @@
     .review-value {
       text-align: left;
     }
+  }
+
+  /* ── Provider Option Buttons ─────────────────────────────────────────── */
+  .provider-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
+    transition: all var(--transition-fast);
+  }
+
+  .provider-option:hover {
+    border-color: var(--color-primary);
+    background: var(--color-bg-secondary);
+  }
+
+  .provider-option.selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary-subtle, rgba(80, 200, 120, 0.08));
+  }
+
+  .provider-option-status {
+    display: flex;
+    align-items: center;
+  }
+
+  .status-dot--ok {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-success);
+  }
+
+  .provider-option-label {
+    flex: 1;
+    font-weight: var(--font-medium);
+  }
+
+  .provider-option-hint {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
   }
 </style>

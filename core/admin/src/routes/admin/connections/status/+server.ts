@@ -2,8 +2,8 @@
  * GET /admin/connections/status — Check if the system LLM connection is configured.
  *
  * Returns { complete: boolean, missing: string[] }.
- * "complete" is true when a system provider is selected and its API key is set
- * (or the provider doesn't need a key, like ollama/lmstudio).
+ * "complete" is true when a provider and system model are set.
+ * API key is never required (optional for all providers).
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -18,18 +18,6 @@ import {
   appendAudit,
   readSecretsEnvFile
 } from "$lib/server/control-plane.js";
-
-/** Map provider → env var for API key. */
-const PROVIDER_KEY_MAP: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  groq: "GROQ_API_KEY",
-  mistral: "MISTRAL_API_KEY",
-  google: "GOOGLE_API_KEY",
-};
-
-const NO_KEY_PROVIDERS = new Set(["ollama", "lmstudio"]);
-
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const authErr = requireAdmin(event, requestId);
@@ -43,20 +31,14 @@ export const GET: RequestHandler = async (event) => {
   const missing: string[] = [];
 
   const provider = (raw.SYSTEM_LLM_PROVIDER ?? "").trim();
+  const systemModel = (raw.SYSTEM_LLM_MODEL ?? "").trim();
 
   if (!provider) {
-    // No system provider configured yet
     missing.push("System LLM provider");
-  } else if (!NO_KEY_PROVIDERS.has(provider)) {
-    // Provider needs an API key — check it
-    const keyVar = PROVIDER_KEY_MAP[provider];
-    if (keyVar && !(raw[keyVar] ?? "").trim()) {
-      missing.push(`${provider} API key`);
-    }
   }
 
-  if (!(raw.GUARDIAN_LLM_MODEL ?? "").trim()) {
-    missing.push("Guardian model");
+  if (!systemModel) {
+    missing.push("System model");
   }
 
   const complete = missing.length === 0;

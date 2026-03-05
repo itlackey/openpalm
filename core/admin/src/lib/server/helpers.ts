@@ -6,8 +6,9 @@ import { timingSafeEqual } from "node:crypto";
 import { getState } from "./state.js";
 import { normalizeCaller, type CallerType } from "./control-plane.js";
 
-function safeTokenCompare(a: string, b: string): boolean {
+export function safeTokenCompare(a: string, b: string): boolean {
   if (typeof a !== "string" || typeof b !== "string") return false;
+  if (!a || !b) return false;
   const aBuf = Buffer.from(a);
   const bBuf = Buffer.from(b);
   if (aBuf.length !== bBuf.length) return false;

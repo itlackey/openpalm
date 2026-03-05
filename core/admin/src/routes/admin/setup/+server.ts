@@ -4,7 +4,8 @@ import {
   errorResponse,
   requireAdmin,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  safeTokenCompare
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -20,29 +21,25 @@ import {
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  CORE_SERVICES,
   writeOpenMemoryConfig,
   readOpenMemoryConfig,
   resolveConfigForPush,
   pushConfigToOpenMemory,
-  EMBEDDING_DIMS,
+  provisionOpenMemoryUser,
   type OpenMemoryConfig
 } from "$lib/server/control-plane.js";
+import {
+  PROVIDER_KEY_MAP,
+  EMBEDDING_DIMS,
+  mem0ProviderName,
+  mem0BaseUrlConfig
+} from "$lib/provider-constants.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
-import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("setup");
-
-function safeTokenCompare(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
-}
 
 /**
  * GET /admin/setup — no auth required.
@@ -124,42 +121,33 @@ export const POST: RequestHandler = async (event) => {
   const llmProvider = (body.llmProvider as string) ?? "";
   const llmApiKey = (body.llmApiKey as string) ?? "";
   const llmBaseUrl = (body.llmBaseUrl as string) ?? "";
-  const guardianModel = (body.guardianModel as string) ?? "";
-  const memoryModel = (body.memoryModel as string) ?? "";
+  const systemModel = (body.systemModel as string) ?? "";
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
-
-  // Map provider → env var name for the API key
-  const PROVIDER_KEY_MAP: Record<string, string> = {
-    openai: "OPENAI_API_KEY",
-    anthropic: "ANTHROPIC_API_KEY",
-    groq: "GROQ_API_KEY",
-    mistral: "MISTRAL_API_KEY",
-    google: "GOOGLE_API_KEY",
-  };
 
   if (llmApiKey) {
     const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";
     updates[envVarName] = llmApiKey;
   }
 
-  // Legacy fallback: accept old openaiApiKey field
-  if (!llmApiKey && typeof body.openaiApiKey === "string" && body.openaiApiKey) {
-    updates.OPENAI_API_KEY = body.openaiApiKey;
+  if (systemModel) {
+    updates.SYSTEM_LLM_PROVIDER = llmProvider || "openai";
+    updates.SYSTEM_LLM_MODEL = systemModel;
   }
-  if (typeof body.openaiBaseUrl === "string") {
-    updates.OPENAI_BASE_URL = body.openaiBaseUrl;
-  }
-
-  if (guardianModel) {
-    updates.GUARDIAN_LLM_PROVIDER = llmProvider || "openai";
-    updates.GUARDIAN_LLM_MODEL = guardianModel;
+  if (llmBaseUrl) {
+    updates.SYSTEM_LLM_BASE_URL = llmBaseUrl;
+    const mem0Url = mem0BaseUrlConfig(llmProvider, llmBaseUrl);
+    if (mem0Url?.key === "openai_base_url") {
+      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+      // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
+      updates.OPENAI_BASE_URL = mem0Url.value;
+    }
   }
 
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
-  // Ensure directories and secrets.env exist before updating
+  // ── All validation passed — persist changes ──
   try {
     ensureXdgDirs();
     ensureSecrets(state);
@@ -181,18 +169,19 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Build and persist OpenMemory config from wizard selections
-  if (llmProvider && memoryModel) {
+  if (llmProvider && systemModel) {
     const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
       ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
-      : llmApiKey; // raw key if no standard env var
+      : (llmApiKey || "not-needed");
 
     const llmConfig: Record<string, unknown> = {
-      model: memoryModel,
+      model: systemModel,
       temperature: 0.1,
       max_tokens: 2000,
       api_key: apiKeyEnvRef,
     };
-    if (llmBaseUrl.trim()) llmConfig.base_url = llmBaseUrl.trim();
+    const mem0BaseUrl = mem0BaseUrlConfig(llmProvider, llmBaseUrl);
+    if (mem0BaseUrl) llmConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
     // Embedding provider — for now same provider as LLM
     const embedApiKeyRef = apiKeyEnvRef;
@@ -200,7 +189,7 @@ export const POST: RequestHandler = async (event) => {
       model: embeddingModel || "text-embedding-3-small",
       api_key: embedApiKeyRef,
     };
-    if (llmBaseUrl.trim()) embedConfig.base_url = llmBaseUrl.trim();
+    if (mem0BaseUrl) embedConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
     // Resolve embedding dimensions
     const lookupKey = `${llmProvider}/${embeddingModel}`;
@@ -208,8 +197,8 @@ export const POST: RequestHandler = async (event) => {
 
     const omConfig: OpenMemoryConfig = {
       mem0: {
-        llm: { provider: llmProvider, config: llmConfig },
-        embedder: { provider: llmProvider, config: embedConfig },
+        llm: { provider: mem0ProviderName(llmProvider), config: llmConfig },
+        embedder: { provider: mem0ProviderName(llmProvider), config: embedConfig },
         vector_store: {
           provider: "qdrant",
           config: {
@@ -266,11 +255,12 @@ export const POST: RequestHandler = async (event) => {
   const dockerResult = await composeUp(state.stateDir, {
     files: buildComposeFileList(state),
     envFiles: buildEnvFiles(state),
-    services: buildManagedServices(state)
+    services: buildManagedServices(state),
+    forceRecreate: true,
   });
 
   const started = [
-    ...CORE_SERVICES,
+    ...buildManagedServices(state),
     ...channelNames.map((name) => `channel-${name}`)
   ];
 
@@ -296,7 +286,7 @@ export const POST: RequestHandler = async (event) => {
     );
   }
 
-  // Fire-and-forget: push resolved OpenMemory config to the running container.
+  // Fire-and-forget: push resolved OpenMemory config and provision user.
   // OpenMemory may take time to start, so retry with delays.
   void (async () => {
     const config = readOpenMemoryConfig(state.dataDir);
@@ -307,6 +297,8 @@ export const POST: RequestHandler = async (event) => {
       const result = await pushConfigToOpenMemory(resolved);
       if (result.ok) {
         logger.info("pushed OpenMemory config after setup install", { attempt });
+        // Provision the user so memory-add doesn't get "User not found"
+        await provisionOpenMemoryUser(openmemoryUserId);
         return;
       }
       if (attempt < maxAttempts) {

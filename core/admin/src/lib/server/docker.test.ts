@@ -22,12 +22,16 @@ vi.mock("node:child_process", () => ({
   execFile: execFileMock
 }));
 
-// docker.ts also imports existsSync; provide a passthrough so other
-// exports keep working without pulling in the real fs module.
+// docker.ts also imports existsSync and readFileSync; mock existsSync but
+// pass through readFileSync so parseEnvFile works with real files.
 const existsSyncMock = vi.fn((_path: string) => false);
-vi.mock("node:fs", () => ({
-  existsSync: (path: string) => existsSyncMock(path)
-}));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  return {
+    existsSync: (path: string) => existsSyncMock(path),
+    readFileSync: real.readFileSync,
+  };
+});
 
 // Helper: make execFile resolve successfully
 function mockExecSuccess(stdout = "", stderr = ""): void {
@@ -228,6 +232,53 @@ describe("composeUp", () => {
     const args = capturedArgs();
     expect(args).toContain("/a/compose.yml");
     expect(args).toContain("/b/overlay.yml");
+  });
+
+  test("includes --force-recreate when forceRecreate is true", async () => {
+    existsSyncMock.mockReturnValue(true);
+    mockExecSuccess();
+
+    const { composeUp } = await import("./docker.js");
+    await composeUp("/state", { forceRecreate: true });
+
+    const args = capturedArgs();
+    expect(args).toContain("--force-recreate");
+    // Should appear after "up" and "-d"
+    const upIdx = args.indexOf("up");
+    const forceIdx = args.indexOf("--force-recreate");
+    expect(forceIdx).toBeGreaterThan(upIdx);
+  });
+
+  test("omits --force-recreate by default", async () => {
+    existsSyncMock.mockReturnValue(true);
+    mockExecSuccess();
+
+    const { composeUp } = await import("./docker.js");
+    await composeUp("/state");
+
+    const args = capturedArgs();
+    expect(args).not.toContain("--force-recreate");
+  });
+
+  test("merges env file values into process env for compose", async () => {
+    // Create a real env file on disk (existsSyncMock only controls docker.ts internal checks)
+    const tmpEnvFile = `/tmp/docker-test-${Date.now()}.env`;
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    realFs.writeFileSync(tmpEnvFile, "ADMIN_TOKEN=fresh-token\nOPENMEMORY_USER_ID=alice\n");
+
+    existsSyncMock.mockReturnValue(true);
+    mockExecSuccess();
+
+    const { composeUp } = await import("./docker.js");
+    await composeUp("/state", { envFiles: [tmpEnvFile] });
+
+    // The env passed to execFile should contain the env file values
+    const call = execFileMock.mock.calls[0];
+    const opts = call[2] as { env: Record<string, string> };
+    expect(opts.env.ADMIN_TOKEN).toBe("fresh-token");
+    expect(opts.env.OPENMEMORY_USER_ID).toBe("alice");
+
+    realFs.unlinkSync(tmpEnvFile);
   });
 });
 

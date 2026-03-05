@@ -135,6 +135,17 @@ describe("buildComposeFileList", () => {
     expect(files).toHaveLength(2);
     expect(files[1]).toContain("chat.yml");
   });
+
+  test("does not include local-models.yml overlay (removed)", () => {
+    const state = makeTestState();
+    trackDir(state.stateDir);
+    trackDir(state.configDir);
+    trackDir(state.dataDir);
+
+    const files = buildComposeFileList(state);
+    expect(files).toHaveLength(1); // just core compose
+    expect(files.some((f) => f.includes("local-models.yml"))).toBe(false);
+  });
 });
 
 // ── createState (exercises private loaders) ─────────────────────────────

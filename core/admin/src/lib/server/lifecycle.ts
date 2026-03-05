@@ -134,6 +134,7 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
   const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   files.push(...stagedYmls);
+
   return files;
 }
 

@@ -28,22 +28,18 @@ import {
   resolveConfigForPush,
   pushConfigToOpenMemory,
   checkQdrantDimensions,
-  EMBEDDING_DIMS,
   type OpenMemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
+import {
+  PROVIDER_KEY_MAP,
+  EMBEDDING_DIMS,
+  mem0ProviderName,
+  mem0BaseUrlConfig
+} from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
 
 const logger = createLogger("connections");
-
-/** Map provider name → env var for the API key. */
-const PROVIDER_KEY_MAP: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  groq: "GROQ_API_KEY",
-  mistral: "MISTRAL_API_KEY",
-  google: "GOOGLE_API_KEY",
-};
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -124,8 +120,7 @@ async function handleUnifiedSave(
   const provider = body.provider as string;
   const apiKey = (body.apiKey as string) ?? "";
   const baseUrl = (body.baseUrl as string) ?? "";
-  const guardianModel = (body.guardianModel as string) ?? "";
-  const memoryModel = (body.memoryModel as string) ?? "";
+  const systemModel = (body.systemModel as string) ?? "";
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
@@ -140,11 +135,17 @@ async function handleUnifiedSave(
     patches[envVarName] = apiKey;
   }
 
-  patches.GUARDIAN_LLM_PROVIDER = provider;
-  if (guardianModel) patches.GUARDIAN_LLM_MODEL = guardianModel;
   patches.SYSTEM_LLM_PROVIDER = provider;
-  if (baseUrl) patches.SYSTEM_LLM_BASE_URL = baseUrl;
-  if (memoryModel) patches.MEMORY_LLM_MODEL = memoryModel;
+  if (baseUrl) {
+    patches.SYSTEM_LLM_BASE_URL = baseUrl;
+    const mem0Url = mem0BaseUrlConfig(provider, baseUrl);
+    if (mem0Url?.key === "openai_base_url") {
+      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+      // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
+      patches.OPENAI_BASE_URL = mem0Url.value;
+    }
+  }
+  if (systemModel) patches.SYSTEM_LLM_MODEL = systemModel;
   if (embeddingModel) patches.EMBEDDING_MODEL = embeddingModel;
   if (embeddingDims) patches.EMBEDDING_DIMS = String(embeddingDims);
   patches.OPENMEMORY_USER_ID = openmemoryUserId;
@@ -163,29 +164,30 @@ async function handleUnifiedSave(
   // 2. Build and write OpenMemory config
   const apiKeyEnvRef = PROVIDER_KEY_MAP[provider]
     ? `env:${PROVIDER_KEY_MAP[provider]}`
-    : apiKey;
+    : (apiKey || "not-needed");
 
   const llmConfig: Record<string, unknown> = {
-    model: memoryModel,
+    model: systemModel,
     temperature: 0.1,
     max_tokens: 2000,
     api_key: apiKeyEnvRef,
   };
-  if (baseUrl.trim()) llmConfig.base_url = baseUrl.trim();
+  const mem0BaseUrl = mem0BaseUrlConfig(provider, baseUrl);
+  if (mem0BaseUrl) llmConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
   const embedConfig: Record<string, unknown> = {
     model: embeddingModel || "text-embedding-3-small",
     api_key: apiKeyEnvRef,
   };
-  if (baseUrl.trim()) embedConfig.base_url = baseUrl.trim();
+  if (mem0BaseUrl) embedConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
   const lookupKey = `${provider}/${embeddingModel}`;
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
   const omConfig: OpenMemoryConfig = {
     mem0: {
-      llm: { provider, config: llmConfig },
-      embedder: { provider, config: embedConfig },
+      llm: { provider: mem0ProviderName(provider), config: llmConfig },
+      embedder: { provider: mem0ProviderName(provider), config: embedConfig },
       vector_store: {
         provider: "qdrant",
         config: {

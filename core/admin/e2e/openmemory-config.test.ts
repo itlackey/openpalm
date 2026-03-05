@@ -63,8 +63,7 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 						SYSTEM_LLM_PROVIDER: 'openai',
 						SYSTEM_LLM_BASE_URL: 'https://api.openai.com',
 						OPENAI_API_KEY: 'sk-****1234',
-						GUARDIAN_LLM_MODEL: 'gpt-4o-mini',
-						MEMORY_LLM_MODEL: 'gpt-4o-mini',
+						SYSTEM_LLM_MODEL: 'gpt-4o-mini',
 						EMBEDDING_MODEL: 'text-embedding-3-small',
 						EMBEDDING_DIMS: '1536',
 						OPENMEMORY_USER_ID: 'default_user'
@@ -97,7 +96,7 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 					},
 					runtimeConfig: null,
 					providers: {
-						llm: ['openai', 'anthropic', 'ollama', 'groq', 'together', 'mistral', 'deepseek', 'xai', 'lmstudio'],
+						llm: ['openai', 'anthropic', 'ollama', 'groq', 'together', 'mistral', 'deepseek', 'xai', 'lmstudio', 'model-runner'],
 						embed: ['openai', 'ollama', 'huggingface', 'lmstudio']
 					},
 					embeddingDims: { 'openai/text-embedding-3-small': 1536, 'ollama/nomic-embed-text': 768 }
@@ -133,14 +132,13 @@ test.describe('Connections Tab UI', () => {
 		// Verify form controls are present
 		await expect(page.locator('#conn-provider')).toBeVisible();
 		await expect(page.locator('#conn-base-url')).toBeVisible();
-		await expect(page.locator('#conn-guardian-model')).toBeVisible();
-		await expect(page.locator('#conn-memory-model')).toBeVisible();
+		await expect(page.locator('#conn-system-model')).toBeVisible();
 		await expect(page.locator('#conn-embedding-model')).toBeVisible();
 		await expect(page.locator('#conn-embedding-dims')).toBeVisible();
 		await expect(page.locator('#conn-om-user-id')).toBeVisible();
 
 		// Verify loaded values from mocked connections
-		await expect(page.locator('#conn-guardian-model')).toHaveValue('gpt-4o-mini');
+		await expect(page.locator('#conn-system-model')).toHaveValue('gpt-4o-mini');
 		await expect(page.locator('#conn-embedding-model')).toHaveValue('text-embedding-3-small');
 	});
 
@@ -167,8 +165,7 @@ test.describe('Connections Tab UI', () => {
 						connections: {
 							SYSTEM_LLM_PROVIDER: 'openai',
 							OPENAI_API_KEY: 'sk-****1234',
-							GUARDIAN_LLM_MODEL: 'gpt-4o-mini',
-							MEMORY_LLM_MODEL: 'gpt-4o-mini',
+							SYSTEM_LLM_MODEL: 'gpt-4o-mini',
 							EMBEDDING_MODEL: 'text-embedding-3-small',
 							EMBEDDING_DIMS: '1536'
 						}
@@ -182,7 +179,7 @@ test.describe('Connections Tab UI', () => {
 
 		// Change provider to ollama
 		await page.locator('#conn-provider').selectOption('ollama');
-		await page.locator('#conn-guardian-model').fill('llama3');
+		await page.locator('#conn-system-model').fill('llama3');
 
 		// Save
 		await page.getByRole('button', { name: 'Save' }).click();
@@ -193,7 +190,7 @@ test.describe('Connections Tab UI', () => {
 		// Verify the posted payload
 		expect(savedPayload).not.toBeNull();
 		expect((savedPayload as Record<string, unknown>).provider).toBe('ollama');
-		expect((savedPayload as Record<string, unknown>).guardianModel).toBe('llama3');
+		expect((savedPayload as Record<string, unknown>).systemModel).toBe('llama3');
 	});
 
 	test('embedding model field hint warns about collection reset', async ({ page }) => {
@@ -422,8 +419,8 @@ test.describe('Connection Test & Model Selection UI', () => {
 		// The provider should be pre-filled with openai
 		await expect(page.locator('#conn-provider')).toHaveValue('openai');
 
-		// Guardian model should be visible (text input since no models loaded yet)
-		await expect(page.locator('#conn-guardian-model')).toBeVisible();
+		// System model should be visible (text input since no models loaded yet)
+		await expect(page.locator('#conn-system-model')).toBeVisible();
 	});
 
 	test('Test Connection shows error when provider is unreachable', async ({ page }) => {
