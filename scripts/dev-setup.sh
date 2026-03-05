@@ -48,6 +48,7 @@ COMPOSE_SRC="$ROOT_DIR/core/assets/docker-compose.yml"
 COMPOSE_CORE_DEST="$DATA_DIR/docker-compose.yml"
 ENV_SRC="$ROOT_DIR/core/assets/secrets.env"
 ENV_DEST="$DEV_ROOT/config/secrets.env"
+SECRETS_ENV_DEST="$STATE_DIR/artifacts/secrets.env"
 STACK_ENV_DATA="$DATA_DIR/stack.env"
 STACK_ENV_DEST="$STATE_DIR/artifacts/stack.env"
 mkdir -p "$CONFIG_DIR" "$CHANNELS_DIR" "$DEV_ROOT/config/automations" \
@@ -73,13 +74,16 @@ fi
 cp "$COMPOSE_CORE_DEST" "$STATE_DIR/artifacts/docker-compose.yml"
 cp "$CADDY_CORE_DEST" "$STATE_DIR/artifacts/Caddyfile"
 # Ensure secrets.env exists (compose requires it even if empty)
-touch "$STATE_DIR/artifacts/secrets.env"
+touch "$SECRETS_ENV_DEST"
 
 if [[ $seed_env -eq 1 ]]; then
 	# ── User secrets (CONFIG_HOME) ─────────────────────────────────────
 	# Only contains ADMIN_TOKEN and LLM provider keys. No paths or infra config.
 	if [[ ! -f "$ENV_DEST" || $force -eq 1 ]]; then
 		cp "$ENV_SRC" "$ENV_DEST"
+	fi
+	if [[ -f "$ENV_DEST" ]]; then
+		cp "$ENV_DEST" "$SECRETS_ENV_DEST"
 	fi
 
 	# ── System stack config (STATE_HOME/artifacts/stack.env) ──────────

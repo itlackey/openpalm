@@ -18,6 +18,7 @@ import {
   LOCAL_PROVIDER_HELP,
   EMBEDDING_DIMS,
   mem0ProviderName,
+  mem0BaseUrlConfig,
 } from "$lib/provider-constants.js";
 
 // ── mem0ProviderName ──────────────────────────────────────────────────────
@@ -45,6 +46,27 @@ describe("mem0ProviderName", () => {
 
   test("passes unknown provider names through unchanged", () => {
     expect(mem0ProviderName("some-future-provider")).toBe("some-future-provider");
+  });
+});
+
+describe("mem0BaseUrlConfig", () => {
+  test("uses ollama_base_url for ollama without /v1 suffix", () => {
+    expect(mem0BaseUrlConfig("ollama", "http://localhost:11434/")).toEqual({
+      key: "ollama_base_url",
+      value: "http://localhost:11434",
+    });
+  });
+
+  test("uses openai_base_url for openai-compatible providers with /v1 suffix", () => {
+    expect(mem0BaseUrlConfig("model-runner", "http://model-runner.docker.internal/engines")).toEqual({
+      key: "openai_base_url",
+      value: "http://model-runner.docker.internal/engines/v1",
+    });
+  });
+
+  test("returns null for empty base url or unsupported provider", () => {
+    expect(mem0BaseUrlConfig("anthropic", "")).toBeNull();
+    expect(mem0BaseUrlConfig("anthropic", "https://api.anthropic.com")).toBeNull();
   });
 });
 
