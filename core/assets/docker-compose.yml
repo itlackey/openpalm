@@ -48,6 +48,7 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/memory.py:/usr/src/openmemory/app/utils/memory.py:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/routers-memories.py:/usr/src/openmemory/app/routers/memories.py:ro
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]

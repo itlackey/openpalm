@@ -21,12 +21,16 @@ RUN apt-get update \
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path
 ENV PATH="/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /work \
-    && chmod 777 /home/opencode /home/opencode/.cache \
-    && chown node:node /home/opencode /home/opencode/.cache /work \
+RUN mkdir -p /home/opencode/.cache /home/opencode/.config /work \
+    && chmod 777 /home/opencode /home/opencode/.cache /home/opencode/.config \
+    && chown node:node /home/opencode /home/opencode/.cache /home/opencode/.config /work \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
-    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config
+    && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config \
+    # Allow entrypoint to register an arbitrary runtime UID in /etc/passwd.
+    # This is a standard Docker pattern for OpenShift/arbitrary-UID compatibility.
+    # The files are isolated inside the container image so host security is unaffected.
+    && chmod a+w /etc/passwd /etc/group
 
 COPY core/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

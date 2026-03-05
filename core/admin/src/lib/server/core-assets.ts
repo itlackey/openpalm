@@ -16,6 +16,8 @@ import caddyfileAsset from "$assets/Caddyfile?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import openmemoryMemoryPyAsset from "$assets/openmemory-memory.py?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
+import openmemoryRouterMemoriesPyAsset from "$assets/openmemory-routers-memories.py?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
 import opencodeConfigAsset from "$assets/opencode.jsonc?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import agentsMdAsset from "$assets/AGENTS.md?raw";
@@ -106,6 +108,33 @@ export function ensureOpenMemoryPatch(): string {
   return path;
 }
 
+// ── OpenMemory routers/memories.py patch (DATA_HOME) ──────────────────
+
+function openMemoryRouterPatchPath(): string {
+  return `${resolveDataHome()}/openmemory/routers-memories.py`;
+}
+
+/**
+ * Ensure the patched routers/memories.py exists in DATA_HOME/openmemory/.
+ * The OpenMemory compose service bind-mounts this file over the upstream
+ * router so the REST API auto-creates users on first access (instead of
+ * returning 404 "User not found" for unprovisioned user IDs).
+ */
+export function ensureOpenMemoryRouterPatch(): string {
+  const path = openMemoryRouterPatchPath();
+  mkdirSync(dirname(path), { recursive: true });
+  if (!existsSync(path)) {
+    writeFileSync(path, openmemoryRouterMemoriesPyAsset);
+  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(openmemoryRouterMemoriesPyAsset)) {
+    const backupDir = join(dirname(path), "backups");
+    mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    copyFileSync(path, join(backupDir, `routers-memories.${ts}.py`));
+    writeFileSync(path, openmemoryRouterMemoriesPyAsset);
+  }
+  return path;
+}
+
 // ── Core Compose (DATA_HOME source of truth) ──────────────────────────
 
 function coreComposePath(): string {
@@ -192,6 +221,7 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
   { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
   { dataRelPath: "openmemory/memory.py", githubFilename: "openmemory-memory.py" },
+  { dataRelPath: "openmemory/routers-memories.py", githubFilename: "openmemory-routers-memories.py" },
   { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
   { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" }
 ];

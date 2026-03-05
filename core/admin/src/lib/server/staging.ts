@@ -33,6 +33,7 @@ export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   ensureOpenMemoryPatch,
+  ensureOpenMemoryRouterPatch,
   refreshCoreAssets
 } from "./core-assets.js";
 

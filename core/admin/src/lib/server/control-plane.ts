@@ -78,6 +78,7 @@ export {
   readCoreCompose,
   ensureOpenCodeSystemConfig,
   ensureOpenMemoryPatch,
+  ensureOpenMemoryRouterPatch,
   stagedEnvFile,
   stagedStackEnvFile,
   buildEnvFiles,
