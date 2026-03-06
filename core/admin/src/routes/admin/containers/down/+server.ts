@@ -10,10 +10,14 @@ import {
 import { getState } from "$lib/server/state.js";
 import { isAllowedService, appendAudit, buildComposeFileList, buildEnvFiles } from "$lib/server/control-plane.js";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
+import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
+
+const logger = createLogger("containers-down");
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  logger.info("container stop request", { requestId });
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 

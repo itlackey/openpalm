@@ -21,10 +21,14 @@ import {
   CORE_SERVICES
 } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
+import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
+
+const logger = createLogger("install");
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  logger.info("install request received", { requestId });
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
@@ -33,6 +37,7 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   // 1. Create XDG directories
+  logger.info("ensuring XDG directories and seeding config", { requestId });
   ensureXdgDirs();
 
   // 2. Seed starter OpenCode config (opencode.json + tools/plugins/skills dirs)
@@ -60,9 +65,11 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // 6. Run docker compose up with core + all channel overlays
+  logger.info("checking Docker availability", { requestId });
   const dockerCheck = await checkDocker();
   let dockerResult = null;
   if (dockerCheck.ok) {
+    logger.info("starting compose up", { requestId, channels: channelNames });
     dockerResult = await composeUp(state.stateDir, {
       files: buildComposeFileList(state),
       envFiles: buildEnvFiles(state),
@@ -88,6 +95,8 @@ export const POST: RequestHandler = async (event) => {
     ...CORE_SERVICES,
     ...channelNames.map((name) => `channel-${name}`)
   ];
+
+  logger.info("install completed", { requestId, started, dockerAvailable: dockerCheck.ok, composeOk: dockerResult?.ok ?? null });
 
   return jsonResponse(
     200,

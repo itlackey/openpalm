@@ -37,12 +37,12 @@ describe('/setup page', () => {
 		guard.expectNoErrors();
 	});
 
-	it('should show step 1 (Admin Token) on initial render', async () => {
+	it('should show step 1 (Welcome) on initial render', async () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
-		const tokenLabel = page.getByText('Choose an admin token');
-		await expect.element(tokenLabel).toBeInTheDocument();
+		const welcomeHeading = page.getByRole('heading', { name: 'Welcome' });
+		await expect.element(welcomeHeading).toBeInTheDocument();
 
 		guard.expectNoErrors();
 	});
@@ -64,8 +64,8 @@ describe('/setup page', () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
-		const tokenInput = page.getByLabelText('Choose an admin token');
-		await tokenInput.fill('token');
+		await page.getByLabelText('Your Name').fill('Alice');
+		await page.getByLabelText('Admin Token').fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
 
 		expect(window.location.search).toContain('screen=connection-type');

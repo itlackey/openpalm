@@ -44,9 +44,16 @@ import {
   isWizardProviderInScope,
   validateWizardCapabilitiesInput,
 } from '$lib/setup-wizard/scope.js';
-import { composeUp, checkDocker } from "$lib/server/docker.js";
+import { composeUp, composePullService, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
+import {
+  initDeployStatus,
+  markImageReady,
+  markAllImagesReady,
+  markAllRunning,
+  markDeployError,
+} from "$lib/server/deploy-tracker.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("setup");
@@ -59,6 +66,7 @@ const logger = createLogger("setup");
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  logger.info("setup status check", { requestId });
   const state = getState();
   const keys = readSecretsKeys(state.configDir);
 
@@ -81,7 +89,9 @@ export const GET: RequestHandler = async (event) => {
         OPENMEMORY_USER_ID: keys.OPENMEMORY_USER_ID === true,
         GROQ_API_KEY: keys.GROQ_API_KEY === true,
         MISTRAL_API_KEY: keys.MISTRAL_API_KEY === true,
-        GOOGLE_API_KEY: keys.GOOGLE_API_KEY === true
+        GOOGLE_API_KEY: keys.GOOGLE_API_KEY === true,
+        OWNER_NAME: keys.OWNER_NAME === true,
+        OWNER_EMAIL: keys.OWNER_EMAIL === true,
       }
     },
     requestId
@@ -119,6 +129,8 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const callerType = getCallerType(event);
+  logger.info("setup install request received", { requestId, setupComplete });
+
   const body = await parseJsonBody(event.request);
   if (!body) {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
@@ -132,6 +144,12 @@ export const POST: RequestHandler = async (event) => {
   if (typeof body.adminToken === "string" && body.adminToken) {
     updates.ADMIN_TOKEN = body.adminToken;
   }
+
+  // ── Owner identity fields ──
+  const ownerName = typeof body.ownerName === "string" ? body.ownerName.trim() : "";
+  const ownerEmail = typeof body.ownerEmail === "string" ? body.ownerEmail.trim() : "";
+  if (ownerName) updates.OWNER_NAME = ownerName;
+  if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
   // ── System LLM connection fields (new wizard) ──
   let llmProvider = typeof body.llmProvider === "string" ? body.llmProvider : "";
@@ -202,12 +220,14 @@ export const POST: RequestHandler = async (event) => {
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
   // ── All validation passed — persist changes ──
+  logger.info("persisting setup config", { requestId, provider: llmProvider, systemModel, embeddingModel });
   try {
     ensureXdgDirs();
     ensureSecrets(state);
     ensureConnectionProfilesStore(state.configDir);
     updateSecretsEnv(state, updates);
   } catch (err) {
+    logger.error("failed to update secrets.env", { requestId, error: String(err) });
     return errorResponse(
       500,
       "config_save_failed",
@@ -275,7 +295,8 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  // Check Docker and run compose up
+  // Check Docker before starting background deploy
+  logger.info("checking Docker availability", { requestId });
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
     appendAudit(
@@ -292,44 +313,82 @@ export const POST: RequestHandler = async (event) => {
     );
   }
 
-  const dockerResult = await composeUp(state.stateDir, {
-    files: buildComposeFileList(state),
-    envFiles: buildEnvFiles(state),
-    services: buildManagedServices(state),
-    forceRecreate: true,
-  });
-
+  // Build the list of services that will be deployed
+  const managedServices = buildManagedServices(state);
   const started = [
-    ...buildManagedServices(state),
+    ...managedServices,
     ...channelNames.map((name) => `channel-${name}`)
   ];
 
-  appendAudit(
-    state, "setup", "setup.install",
-    {
-      dockerAvailable: true,
-      composeResult: dockerResult.ok,
-      channels: channelNames,
-      ...(migrationFlags.annotateAudit ? { compatibilityMode } : {}),
-    },
-    dockerResult.ok,
-    requestId,
-    callerType
+  // Friendly labels for the deploy progress UI
+  const SERVICE_LABELS: Record<string, string> = {
+    caddy: "Caddy (reverse proxy)",
+    openmemory: "OpenMemory",
+    assistant: "Assistant",
+    guardian: "Guardian",
+    ollama: "Ollama",
+  };
+
+  // Initialize per-service deploy tracking
+  initDeployStatus(
+    managedServices.map((s) => ({
+      service: s,
+      label: SERVICE_LABELS[s] ?? s,
+    }))
   );
 
-  if (!dockerResult.ok) {
-    return errorResponse(
-      502,
-      "compose_failed",
-      `Docker Compose failed to start services: ${dockerResult.stderr}`,
-      { stderr: dockerResult.stderr },
-      requestId
-    );
-  }
-
-  // Fire-and-forget: push resolved OpenMemory config and provision user.
-  // OpenMemory may take time to start, so retry with delays.
+  // Fire-and-forget: pull images per-service, then compose up, then push config.
   void (async () => {
+    const composeFiles = buildComposeFileList(state);
+    const envFiles = buildEnvFiles(state);
+
+    // Pull images one service at a time so the UI can show per-service progress
+    for (const service of managedServices) {
+      const pullResult = await composePullService(state.stateDir, service, {
+        files: composeFiles,
+        envFiles,
+      });
+      if (pullResult.ok) {
+        markImageReady(service);
+      } else {
+        // Image might already be cached locally — mark ready and let compose up handle errors
+        logger.warn("pull returned non-zero for service, continuing", { service, stderr: pullResult.stderr });
+        markImageReady(service);
+      }
+    }
+
+    markAllImagesReady();
+
+    // Start all services
+    const dockerResult = await composeUp(state.stateDir, {
+      files: composeFiles,
+      envFiles,
+      services: managedServices,
+      forceRecreate: true,
+    });
+
+    appendAudit(
+      state, "setup", "setup.install",
+      {
+        dockerAvailable: true,
+        composeResult: dockerResult.ok,
+        channels: channelNames,
+        ...(migrationFlags.annotateAudit ? { compatibilityMode } : {}),
+      },
+      dockerResult.ok,
+      requestId,
+      callerType
+    );
+
+    if (!dockerResult.ok) {
+      logger.error("compose failed during setup", { requestId, stderr: dockerResult.stderr });
+      markDeployError(`Docker Compose failed: ${dockerResult.stderr}`);
+      return;
+    }
+
+    markAllRunning();
+
+    // Push OpenMemory config with retries (container may take time to start)
     const config = readOpenMemoryConfig(state.dataDir);
     const resolved = resolveConfigForPush(config, state.configDir);
     const maxAttempts = 5;
@@ -338,7 +397,6 @@ export const POST: RequestHandler = async (event) => {
       const result = await pushConfigToOpenMemory(resolved);
       if (result.ok) {
         logger.info("pushed OpenMemory config after setup install", { attempt });
-        // Provision the user so memory-add doesn't get "User not found"
         await provisionOpenMemoryUser(openmemoryUserId);
         return;
       }
@@ -353,13 +411,15 @@ export const POST: RequestHandler = async (event) => {
     }
   })();
 
+  logger.info("setup deploy started in background", { requestId, started });
+
   return jsonResponse(
     200,
     {
       ok: true,
+      async: true,
       started,
       dockerAvailable: true,
-      composeResult: { ok: true, stderr: dockerResult.stderr }
     },
     requestId
   );

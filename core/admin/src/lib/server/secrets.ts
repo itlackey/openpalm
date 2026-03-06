@@ -35,6 +35,8 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
   "OPENMEMORY_USER_ID",
+  "OWNER_NAME",
+  "OWNER_EMAIL",
 ]);
 
 /**
@@ -58,6 +60,8 @@ export const PLAIN_CONFIG_KEYS = new Set([
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
   "OPENMEMORY_USER_ID",
+  "OWNER_NAME",
+  "OWNER_EMAIL",
 ]);
 
 // ── Secrets Management ──────────────────────────────────────────────────
@@ -95,6 +99,10 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("");
   secretLines.push("# OpenMemory");
   secretLines.push(`OPENMEMORY_USER_ID=${process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
+  secretLines.push("");
+  secretLines.push("# Owner");
+  secretLines.push(`OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);
+  secretLines.push(`OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`);
   writeFileSync(secretsPath, secretLines.join("\n") + "\n");
 }
 

@@ -399,6 +399,28 @@ export async function caddyReload(
 }
 
 /**
+ * Pull image for a single service.
+ */
+export async function composePullService(
+  stateDir: string,
+  service: string,
+  options: { files?: string[]; envFiles?: string[] } = {}
+): Promise<DockerResult> {
+  const args = [
+    "compose",
+    ...composeFileArgs(stateDir, options.files),
+    "--project-name",
+    "openpalm"
+  ];
+
+  pushEnvFileArgs(args, options.envFiles);
+
+  args.push("pull", service);
+
+  return run(args, stateDir, 300_000);
+}
+
+/**
  * Pull latest images for all services.
  */
 export async function composePull(

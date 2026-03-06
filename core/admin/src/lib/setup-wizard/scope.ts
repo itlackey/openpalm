@@ -29,17 +29,6 @@ export const WIZARD_CAPABILITIES = [
 
 export type WizardCapability = (typeof WIZARD_CAPABILITIES)[number];
 
-export const WIZARD_CANONICAL_COPY_SOURCE = '.plans/connections/model-setup-wizard-ui-copy-deck.md' as const;
-
-export const WIZARD_SCOPE_DECISION_BLOCK = [
-  '## Scope Decision (v1)',
-  '- Connection types in scope: `openai_compatible_remote` and `openai_compatible_local`.',
-  '- `ollama_native` is deferred and not required for v1 delivery.',
-  '- Required capabilities: LLM and embeddings.',
-  '- Optional capabilities: reranking, TTS, and STT.',
-  `- Canonical UX copy source: \`${WIZARD_CANONICAL_COPY_SOURCE}\`.`,
-].join('\n');
-
 export const WIZARD_PROVIDER_KIND_MAP = {
   openai: 'openai_compatible_remote',
   groq: 'openai_compatible_remote',

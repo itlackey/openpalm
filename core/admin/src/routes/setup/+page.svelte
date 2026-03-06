@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto, replaceState } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
   import { SETUP_WIZARD_COPY } from '$lib/setup-wizard/copy.js';
   import { mapModelDiscoveryError } from '$lib/model-discovery.js';
@@ -31,6 +31,8 @@
   let loading = $state(true);
 
   // ── Form fields ─────────────────────────────────────────────────────────
+  let ownerName = $state('');
+  let ownerEmail = $state('');
   let adminToken = $state('');
   let setupSessionToken = $state(setupToken);
 
@@ -72,6 +74,20 @@
   let installing = $state(false);
   let installError = $state('');
   let startedServices: string[] = $state([]);
+
+  // ── Deploy progress state ─────────────────────────────────────────────
+  type ServiceDeployInfo = {
+    service: string;
+    label: string;
+    imageReady: boolean;
+    containerRunning: boolean;
+    error?: string;
+  };
+  let deployPhase: 'pulling' | 'starting' | 'ready' | 'error' | null = $state(null);
+  let deployMessage = $state('');
+  let deployServices: ServiceDeployInfo[] = $state([]);
+  let deployError = $state('');
+  let deployPollTimer: ReturnType<typeof setInterval> | null = null;
 
   // ── Validation ──────────────────────────────────────────────────────────
   let tokenError = $state('');
@@ -201,7 +217,79 @@
     providersDetected = true;
   }
 
-  // ── Enable Ollama handler ─────────────────────────────────────────────
+  // ── Enable Ollama handler (async with polling) ──────────────────────
+
+  let ollamaPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  function stopOllamaPolling(): void {
+    if (ollamaPollTimer) {
+      clearInterval(ollamaPollTimer);
+      ollamaPollTimer = null;
+    }
+  }
+
+  function applyOllamaResult(result: Record<string, unknown>): void {
+    ollamaEnabled = true;
+    llmProvider = 'ollama';
+    llmBaseUrl = (result.ollamaUrl as string) ?? 'http://ollama:11434';
+    connectionTested = true;
+
+    // Pre-populate model list with the pulled defaults
+    const pulledModels: string[] = [];
+    const failedModels: string[] = [];
+    const models = result.models as Record<string, { ok: boolean }> | undefined;
+    if (models) {
+      for (const [name, status] of Object.entries(models)) {
+        if (status.ok) {
+          pulledModels.push(name);
+        } else {
+          failedModels.push(name);
+        }
+      }
+    }
+    if (pulledModels.length > 0) {
+      modelList = pulledModels.sort();
+      systemModel = (result.defaultChatModel as string) ?? OLLAMA_DEFAULT_MODELS.chat;
+      embeddingModel = (result.defaultEmbeddingModel as string) ?? OLLAMA_DEFAULT_MODELS.embedding;
+      const dimsKey = `ollama/${embeddingModel}`;
+      embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
+    }
+    if (failedModels.length > 0) {
+      ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually.`;
+    }
+  }
+
+  async function pollOllamaStatus(): Promise<void> {
+    try {
+      const res = await fetch('/admin/setup/ollama', {
+        headers: buildHeaders(setupSessionToken)
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (!data.active) return;
+
+      // Update progress message
+      ollamaEnableProgress = data.message ?? 'Enabling Ollama...';
+
+      if (data.phase === 'done') {
+        stopOllamaPolling();
+        applyOllamaResult(data);
+        enablingOllama = false;
+        ollamaEnableProgress = '';
+
+        // Auto-set step 3 values and skip to step 4 (review)
+        goToScreen('review');
+      } else if (data.phase === 'error') {
+        stopOllamaPolling();
+        ollamaEnableError = data.message ?? 'Ollama enable failed.';
+        enablingOllama = false;
+        ollamaEnableProgress = '';
+      }
+    } catch {
+      // Network error during poll — keep trying
+    }
+  }
 
   async function enableOllama(): Promise<void> {
     if (enablingOllama) return;
@@ -221,47 +309,19 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         ollamaEnableError = data.message ?? `Failed to enable Ollama (HTTP ${res.status})`;
+        enablingOllama = false;
+        ollamaEnableProgress = '';
         return;
       }
 
       const result = await res.json();
-      ollamaEnabled = true;
-      llmProvider = 'ollama';
-      llmBaseUrl = result.ollamaUrl ?? 'http://ollama:11434';
+      ollamaEnableProgress = result.message ?? 'Enabling Ollama in background...';
 
-      // Ollama is reachable — mark connection as tested regardless of model pull status
-      connectionTested = true;
-
-      // Pre-populate model list with the pulled defaults
-      const pulledModels: string[] = [];
-      const failedModels: string[] = [];
-      if (result.models) {
-        for (const [name, status] of Object.entries(result.models)) {
-          if ((status as { ok: boolean }).ok) {
-            pulledModels.push(name);
-          } else {
-            failedModels.push(name);
-          }
-        }
-      }
-      if (pulledModels.length > 0) {
-        modelList = pulledModels.sort();
-        systemModel = result.defaultChatModel ?? OLLAMA_DEFAULT_MODELS.chat;
-        embeddingModel = result.defaultEmbeddingModel ?? OLLAMA_DEFAULT_MODELS.embedding;
-        // Set dims for nomic-embed-text
-        const dimsKey = `ollama/${embeddingModel}`;
-        embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
-      }
-      if (failedModels.length > 0) {
-        ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually or use "Test Connection" to retry.`;
-      }
-
-      // Re-detect local providers to show Ollama as detected
-      await detectLocalProviders();
-
+      // Start polling every 3 seconds
+      stopOllamaPolling();
+      ollamaPollTimer = setInterval(() => void pollOllamaStatus(), 3000);
     } catch {
       ollamaEnableError = 'Network error — unable to reach admin API.';
-    } finally {
       enablingOllama = false;
       ollamaEnableProgress = '';
     }
@@ -339,6 +399,8 @@
         },
         body: JSON.stringify({
           adminToken,
+          ownerName,
+          ownerEmail,
           llmProvider,
           llmApiKey,
           llmBaseUrl,
@@ -352,17 +414,67 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         installError = data.message ?? `Install failed (HTTP ${res.status})`;
+        installing = false;
         return;
       }
       const data = await res.json();
       startedServices = data.started ?? [];
-      await goto('/');
+
+      // Transition to the deploying screen and start polling
+      goToScreen('deploying');
+      startDeployPolling();
     } catch {
       installError = 'Network error — unable to reach admin API.';
-    } finally {
       installing = false;
     }
   }
+
+  // ── Deploy status polling ─────────────────────────────────────────────
+
+  function startDeployPolling(): void {
+    stopDeployPolling();
+    void pollDeployStatus();
+    deployPollTimer = setInterval(() => void pollDeployStatus(), 2000);
+  }
+
+  function stopDeployPolling(): void {
+    if (deployPollTimer) {
+      clearInterval(deployPollTimer);
+      deployPollTimer = null;
+    }
+  }
+
+  async function pollDeployStatus(): Promise<void> {
+    try {
+      const res = await fetch('/admin/setup/deploy-status', {
+        headers: buildHeaders(setupSessionToken)
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (!data.active) return;
+
+      deployPhase = data.phase;
+      deployMessage = data.message ?? '';
+      deployServices = data.services ?? [];
+
+      if (data.phase === 'ready') {
+        stopDeployPolling();
+        installing = false;
+      } else if (data.phase === 'error') {
+        stopDeployPolling();
+        deployError = data.error ?? data.message ?? 'Deployment failed.';
+        installing = false;
+      }
+    } catch {
+      // Network error — keep polling
+    }
+  }
+
+  onDestroy(() => {
+    stopDeployPolling();
+    stopOllamaPolling();
+  });
 
   loading = false;
 </script>
@@ -413,22 +525,45 @@
     <WizardShell title={SETUP_WIZARD_COPY.wizardHeaderTitle} subtitle={SETUP_WIZARD_COPY.wizardHeaderSubtitle}>
 
       <!-- Step indicators -->
-      <nav class="step-indicators" aria-label="Wizard steps">
-        <button class="step-dot" class:active={screen === 'token'} class:completed={isAfterScreen(screen, 'token')} onclick={() => goToScreen('token')} aria-label="Step 1: Admin Token" aria-current={screen === 'token' ? 'step' : undefined}>1</button>
-        <span class="step-line" class:active={isAfterScreen(screen, 'token')}></span>
-        <button class="step-dot" class:active={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'} class:completed={isAfterScreen(screen, 'connection-type')} onclick={() => { if (isAfterScreen(screen, 'connection-type')) goToScreen('connection-type'); }} aria-label="Step 2: Connection" aria-current={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider' ? 'step' : undefined}>2</button>
-        <span class="step-line" class:active={isAfterScreen(screen, 'connection-type')}></span>
-        <button class="step-dot" class:active={screen === 'models'} class:completed={isAfterScreen(screen, 'models')} onclick={() => { if (isAfterScreen(screen, 'models')) goToScreen('models'); }} aria-label="Step 3: Models" aria-current={screen === 'models' ? 'step' : undefined}>3</button>
-        <span class="step-line" class:active={isAfterScreen(screen, 'models')}></span>
-        <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled>4</button>
-      </nav>
+      {#if screen !== 'deploying'}
+        <nav class="step-indicators" aria-label="Wizard steps">
+          <button class="step-dot" class:active={screen === 'token'} class:completed={isAfterScreen(screen, 'token')} onclick={() => goToScreen('token')} aria-label="Step 1: Admin Token" aria-current={screen === 'token' ? 'step' : undefined}>1</button>
+          <span class="step-line" class:active={isAfterScreen(screen, 'token')}></span>
+          <button class="step-dot" class:active={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'} class:completed={isAfterScreen(screen, 'connection-type')} onclick={() => { if (isAfterScreen(screen, 'connection-type')) goToScreen('connection-type'); }} aria-label="Step 2: Connection" aria-current={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider' ? 'step' : undefined}>2</button>
+          <span class="step-line" class:active={isAfterScreen(screen, 'connection-type')}></span>
+          <button class="step-dot" class:active={screen === 'models'} class:completed={isAfterScreen(screen, 'models')} onclick={() => { if (isAfterScreen(screen, 'models')) goToScreen('models'); }} aria-label="Step 3: Models" aria-current={screen === 'models' ? 'step' : undefined}>3</button>
+          <span class="step-line" class:active={isAfterScreen(screen, 'models')}></span>
+          <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled>4</button>
+        </nav>
+      {/if}
 
-      <!-- Step 1: Admin Token -->
+      <!-- Step 1: Welcome — Name, Email & Admin Token -->
       {#if screen === 'token'}
         <div class="step-content" data-testid="step-token">
-          <h2>Admin Token</h2>
+          <h2>Welcome</h2>
+          <p class="step-description">Tell us a bit about yourself and set a secure admin token.</p>
           <div class="field-group">
-            <label for="admin-token">Choose an admin token</label>
+            <label for="owner-name">Your Name</label>
+            <input
+              id="owner-name"
+              type="text"
+              bind:value={ownerName}
+              placeholder="Jane Doe"
+            />
+            <p class="field-hint">Used as the default OpenMemory user ID.</p>
+          </div>
+          <div class="field-group">
+            <label for="owner-email">Email</label>
+            <input
+              id="owner-email"
+              type="email"
+              bind:value={ownerEmail}
+              placeholder="jane@example.com"
+            />
+            <p class="field-hint">For account identification. Not shared externally.</p>
+          </div>
+          <div class="field-group">
+            <label for="admin-token">Admin Token</label>
             <input
               id="admin-token"
               type="password"
@@ -442,11 +577,19 @@
           {/if}
           <div class="step-actions">
             <button class="btn btn-primary" onclick={() => {
+              if (!ownerName.trim()) {
+                tokenError = 'Name is required.';
+                return;
+              }
               if (!adminToken.trim()) {
                 tokenError = 'Admin token is required.';
                 return;
               }
               tokenError = '';
+              // Use name as the default OpenMemory user ID
+              if (!openmemoryUserId || openmemoryUserId === detectedUserId || openmemoryUserId === 'default_user') {
+                openmemoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
+              }
               goToScreen('connection-type');
             }}>Next</button>
           </div>
@@ -727,7 +870,7 @@
           <div class="field-group">
             <label for="openmemory-user-id">OpenMemory User ID</label>
             <input id="openmemory-user-id" type="text" bind:value={openmemoryUserId} placeholder="default_user" />
-            <p class="field-hint">Identifies the memory owner. Use a unique name if running multiple instances.</p>
+            <p class="field-hint">Derived from your name. Edit if running multiple instances.</p>
           </div>
 
           <div class="step-actions">
@@ -742,6 +885,16 @@
         <div class="step-content" data-testid="step-review">
           <h2>Review & Install</h2>
           <div class="review-grid">
+            <div class="review-item">
+              <span class="review-label">Name</span>
+              <span class="review-value">{ownerName || '(not set)'}</span>
+            </div>
+            {#if ownerEmail}
+              <div class="review-item">
+                <span class="review-label">Email</span>
+                <span class="review-value">{ownerEmail}</span>
+              </div>
+            {/if}
             <div class="review-item">
               <span class="review-label">Admin Token</span>
               <span class="review-value mono">Set</span>
@@ -800,8 +953,85 @@
             </button>
           </div>
 
-          {#if installing}
-            <p class="install-progress">Pulling container images and starting services...</p>
+        </div>
+      {/if}
+
+      <!-- Step 5: Deploying (loading screen with per-service progress) -->
+      {#if screen === 'deploying'}
+        <div class="step-content" data-testid="step-deploying">
+          <div class="deploy-header">
+            <h2>Setting Up Your Stack</h2>
+            <p class="step-description">
+              {#if deployPhase === 'pulling'}
+                Pulling container images...
+              {:else if deployPhase === 'starting'}
+                Starting services...
+              {:else if deployPhase === 'ready'}
+                All services are up and running.
+              {:else if deployPhase === 'error'}
+                Deployment encountered an error.
+              {:else}
+                Preparing deployment...
+              {/if}
+            </p>
+          </div>
+
+          <div class="deploy-services">
+            {#each deployServices as svc}
+              <div class="deploy-service-row">
+                <div class="deploy-service-indicator">
+                  {#if svc.containerRunning}
+                    <span class="deploy-check" aria-label="Running">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </span>
+                  {:else if svc.imageReady}
+                    <span class="deploy-check" aria-label="Image ready">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </span>
+                  {:else}
+                    <span class="deploy-spinner" aria-label="Downloading">
+                      <span class="spinner"></span>
+                    </span>
+                  {/if}
+                </div>
+                <div class="deploy-service-info">
+                  <span class="deploy-service-name">{svc.label}</span>
+                  <span class="deploy-service-status">
+                    {#if svc.containerRunning}
+                      Running
+                    {:else if svc.imageReady}
+                      Image ready
+                    {:else}
+                      Pulling image...
+                    {/if}
+                  </span>
+                </div>
+                <div class="deploy-service-bar">
+                  <div
+                    class="deploy-bar-fill"
+                    class:indeterminate={!svc.imageReady}
+                    class:complete={svc.imageReady}
+                  ></div>
+                </div>
+              </div>
+            {/each}
+          </div>
+
+          {#if deployPhase === 'error'}
+            <p class="install-error" role="alert">{deployError}</p>
+            <div class="step-actions">
+              <button class="btn btn-secondary" onclick={() => { goToScreen('review'); installing = false; }}>Back to Review</button>
+            </div>
+          {/if}
+
+          {#if deployPhase === 'ready'}
+            <div class="deploy-done">
+              <a href="/" class="btn btn-primary console-link">Go to Console</a>
+            </div>
           {/if}
         </div>
       {/if}
@@ -1155,13 +1385,6 @@
     font-size: var(--text-sm);
   }
 
-  .install-progress {
-    margin-top: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    text-align: center;
-  }
-
   /* ── Done State ──────────────────────────────────────────────────────── */
   .done-state {
     text-align: center;
@@ -1349,5 +1572,125 @@
   .provider-option-hint {
     font-size: var(--text-xs);
     color: var(--color-text-tertiary);
+  }
+
+  /* ── Deploy Progress Screen ───────────────────────────────────────────── */
+  .deploy-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .deploy-services {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+  }
+
+  .deploy-service-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 120px;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .deploy-service-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .deploy-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .deploy-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .deploy-service-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .deploy-service-name {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+  }
+
+  .deploy-service-status {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+  }
+
+  .deploy-service-bar {
+    height: 6px;
+    background: var(--color-bg-secondary);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .deploy-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: all 0.4s ease;
+  }
+
+  .deploy-bar-fill.indeterminate {
+    width: 40%;
+    background: var(--color-primary);
+    animation: indeterminate-bar 1.5s ease-in-out infinite;
+  }
+
+  .deploy-bar-fill.complete {
+    width: 100%;
+    background: var(--color-success);
+    animation: none;
+  }
+
+  @keyframes indeterminate-bar {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(150%);
+    }
+    100% {
+      transform: translateX(-100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .deploy-bar-fill.indeterminate {
+      animation: none;
+      width: 100%;
+      opacity: 0.5;
+    }
+  }
+
+  .deploy-done {
+    text-align: center;
+    margin-top: var(--space-4);
+  }
+
+  @media (max-width: 480px) {
+    .deploy-service-row {
+      grid-template-columns: 28px 1fr;
+    }
+
+    .deploy-service-bar {
+      display: none;
+    }
   }
 </style>
