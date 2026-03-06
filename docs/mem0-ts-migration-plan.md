@@ -1,6 +1,13 @@
 # Plan: Replace openmemory Python container with mem0-ts in admin app
 
-## Context
+> **SUPERSEDED** — This plan was written when the openmemory container still used
+> the upstream vendor code (~3000 lines, SQLAlchemy ORM, MCP SSE). That code has
+> since been replaced with a lightweight FastAPI wrapper (~310 lines) around the
+> mem0 Python SDK in `core/memory-api/`. The current implementation is lean enough
+> that the complexity/risk tradeoff of migrating to mem0-ts no longer makes sense
+> in the near term. Kept here for historical context.
+
+## Context (original)
 
 The stack runs a Python FastAPI container (`openmemory`) wrapping the mem0 Python SDK + embedded Qdrant + SQLAlchemy/SQLite. This adds ~200MB of memory, a ~2min build step, and a whole Python runtime to the stack.
 

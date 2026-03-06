@@ -330,8 +330,7 @@ After completing all steps, your host should have:
 ├── stack.env                        # System config (source of truth)
 ├── docker-compose.yml               # Core compose (source of truth)
 ├── openmemory/
-│   ├── default_config.json
-│   └── memory.py
+│   └── default_config.json
 ├── assistant/
 ├── guardian/
 ├── automations/

@@ -103,11 +103,12 @@ into STATE_HOME/artifacts/channels before Caddy reload.
 The source-of-truth core Caddyfile is `DATA_HOME/caddy/Caddyfile` and is
 system-managed by admin logic.
 
-### OpenMemory MCP
+### OpenMemory
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
 | `$DATA_HOME/openmemory` | `/data` | rw | Memory service data |
+| `$DATA_HOME/openmemory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
 
 ### Assistant (OpenCode Runtime)
 
@@ -163,7 +164,7 @@ See the Automations section below for file format and configuration.
 
 | Network | Services | Purpose |
 |---------|----------|---------|
-| `assistant_net` | caddy, openmemory, openmemory-ui, assistant, guardian, admin | Internal service mesh |
+| `assistant_net` | caddy, openmemory, assistant, guardian, admin | Internal service mesh |
 | `channel_lan` | caddy, guardian, channel services | LAN-restricted channel access |
 | `channel_public` | caddy, guardian, channel services | Publicly accessible channels |
 

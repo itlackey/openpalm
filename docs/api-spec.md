@@ -60,7 +60,7 @@ Response:
 ```json
 {
   "ok": true,
-  "started": ["caddy", "openmemory", "openmemory-ui", "assistant", "guardian", "admin", "channel-chat"],
+  "started": ["caddy", "openmemory", "assistant", "guardian", "admin", "channel-chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" },
   "artifactsDir": "/home/user/.local/state/openpalm/artifacts"
@@ -135,7 +135,7 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `openmemory`, `openmemory-ui`, `admin`, `caddy`
+  `assistant`, `guardian`, `openmemory`, `admin`, `caddy`
 - Allowed channel services: `channel-*` only if a matching staged
   `STATE_HOME/artifacts/channels/<name>.yml` exists.
 
@@ -490,7 +490,7 @@ error semantics as their `/admin/connections/*` counterparts.
 
 Manage the OpenMemory (mem0) LLM and embedding provider configuration stored
 at `DATA_HOME/openmemory/default_config.json`. Changes are persisted to disk
-and optionally pushed to the running OpenMemory container via its REST API.
+and pushed to the running OpenMemory container via its REST API (`PUT /api/v1/config/`).
 
 ### `GET /admin/openmemory/config`
 

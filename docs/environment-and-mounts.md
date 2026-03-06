@@ -53,13 +53,16 @@ STATE_HOME.
 The source-of-truth core Caddyfile is system-managed at
 `$DATA_HOME/caddy/Caddyfile` and staged to `$STATE_HOME/artifacts/Caddyfile` during apply.
 
-### 2.2 OpenMemory MCP
+### 2.2 OpenMemory
 
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
 | `$DATA_HOME/openmemory` | `/data` | rw | Memory service persistent data |
+| `$DATA_HOME/openmemory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
 
-OpenMemory uses embedded Qdrant (file-based) and SQLite — all data is stored within `$DATA_HOME/openmemory/`.
+OpenMemory is a lightweight FastAPI wrapper around the mem0 Python SDK. It uses
+embedded Qdrant (file-based) for vector storage — all data is stored within
+`$DATA_HOME/openmemory/`.
 
 ### 2.3 Assistant (OpenCode Runtime)
 
@@ -231,21 +234,16 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `MISTRAL_API_KEY` | pass-through | Mistral provider key |
 | `GOOGLE_API_KEY` | pass-through | Google AI provider key |
 
-### 4.4 OpenMemory MCP
+### 4.4 OpenMemory
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
-| `DATABASE_URL` | `sqlite:////data/openmemory.db` | SQLite database path (absolute, inside container) |
+| `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
 
-OpenMemory uses embedded Qdrant (configured via `default_config.json` with `path: "/data/qdrant"`) and SQLite for metadata. No external database servers needed.
-
-### 4.5 OpenMemory UI
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8765` | OpenMemory API URL for dashboard |
-| `NEXT_PUBLIC_USER_ID` | `default_user` | User ID shown in dashboard |
+OpenMemory uses the mem0 Python SDK with embedded Qdrant (configured via
+`default_config.json` with `path: "/data/qdrant"`) for vector storage. No
+external database servers needed.
 
 ---
 
@@ -271,8 +269,6 @@ You never set these in `CONFIG_HOME/secrets.env`.
 | `OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | `127.0.0.1` | compose default |
 | `OPENPALM_ASSISTANT_SSH_PORT` | `2222` | compose default |
 | `OPENPALM_OPENMEMORY_BIND_ADDRESS` | `127.0.0.1` | compose default |
-| `OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS` | `127.0.0.1` | compose default |
-| `OPENMEMORY_DASHBOARD_API_URL` | `http://localhost:8765` | admin process env (overridable) |
 | `OPENMEMORY_USER_ID` | `default_user` | admin process env (overridable) |
 
 Overridable values can be customized by setting the variable in the admin container's
@@ -299,7 +295,7 @@ Never generated or defaulted by OpenPalm.
 
 | Network | Services | Purpose |
 |---|---|---|
-| `assistant_net` | caddy, openmemory, openmemory-ui, assistant, guardian, admin | Internal service mesh |
+| `assistant_net` | caddy, openmemory, assistant, guardian, admin | Internal service mesh |
 | `channel_lan` | caddy, guardian, channel services | LAN-restricted channel access |
 | `channel_public` | caddy, guardian, channel services | Publicly accessible channels |
 
@@ -314,7 +310,6 @@ Never generated or defaulted by OpenPalm.
 | Assistant | 4096 | `$OPENPALM_ASSISTANT_BIND_ADDRESS` | 4096 |
 | Assistant SSH | 22 | `$OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | 2222 |
 | OpenMemory API | 8765 | `$OPENPALM_OPENMEMORY_BIND_ADDRESS` | 8765 |
-| OpenMemory UI | 3000 | `$OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS` | 3001 |
 
 ---
 
