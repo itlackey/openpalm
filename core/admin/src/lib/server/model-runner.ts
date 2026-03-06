@@ -45,6 +45,11 @@ const LOCAL_PROVIDER_PROBES: { provider: string; probes: { url: string; baseUrl:
     provider: "ollama",
     probes: [
       {
+        // In-stack Ollama (compose service on assistant_net)
+        url: "http://ollama:11434/api/tags",
+        baseUrl: "http://ollama:11434",
+      },
+      {
         url: "http://host.docker.internal:11434/api/tags",
         baseUrl: "http://host.docker.internal:11434",
       },

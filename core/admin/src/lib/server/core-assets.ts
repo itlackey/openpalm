@@ -19,6 +19,8 @@ import openmemoryMemoryPyAsset from "$assets/openmemory-memory.py?raw";
 import opencodeConfigAsset from "$assets/opencode.jsonc?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import agentsMdAsset from "$assets/AGENTS.md?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import ollamaComposeAsset from "$assets/ollama.yml?raw";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -139,6 +141,36 @@ export function readCoreCompose(): string {
   return readFileSync(path, "utf-8");
 }
 
+// ── Ollama Compose Overlay (DATA_HOME source of truth) ──────────────
+
+function ollamaComposePath(): string {
+  return `${resolveDataHome()}/ollama.yml`;
+}
+
+/**
+ * Ensure the Ollama compose overlay exists in DATA_HOME.
+ * Seeds/updates from the bundled asset, same pattern as core compose.
+ */
+export function ensureOllamaCompose(): string {
+  const path = ollamaComposePath();
+  mkdirSync(dirname(path), { recursive: true });
+  if (!existsSync(path)) {
+    writeFileSync(path, ollamaComposeAsset);
+  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(ollamaComposeAsset)) {
+    const backupDir = join(dirname(path), "backups");
+    mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    copyFileSync(path, join(backupDir, `ollama.${ts}.yml`));
+    writeFileSync(path, ollamaComposeAsset);
+  }
+  return path;
+}
+
+export function readOllamaCompose(): string {
+  const path = ensureOllamaCompose();
+  return readFileSync(path, "utf-8");
+}
+
 // ── OpenCode System Config (DATA_HOME source of truth) ──────────────
 
 /**
@@ -193,7 +225,8 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
   { dataRelPath: "openmemory/memory.py", githubFilename: "openmemory-memory.py" },
   { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
-  { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" }
+  { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" },
+  { dataRelPath: "ollama.yml", githubFilename: "ollama.yml" }
 ];
 
 /**

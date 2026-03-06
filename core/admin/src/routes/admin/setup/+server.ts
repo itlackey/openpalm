@@ -32,7 +32,8 @@ import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
   mem0ProviderName,
-  mem0BaseUrlConfig
+  mem0BaseUrlConfig,
+  OLLAMA_INSTACK_URL
 } from "$lib/provider-constants.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
@@ -125,6 +126,12 @@ export const POST: RequestHandler = async (event) => {
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
+  const ollamaEnabled = body.ollamaEnabled === true;
+
+  // When Ollama runs in-stack, override base URL to use Docker network name
+  const effectiveBaseUrl = (ollamaEnabled && llmProvider === "ollama")
+    ? OLLAMA_INSTACK_URL
+    : llmBaseUrl;
 
   if (llmApiKey) {
     const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";
@@ -135,9 +142,9 @@ export const POST: RequestHandler = async (event) => {
     updates.SYSTEM_LLM_PROVIDER = llmProvider || "openai";
     updates.SYSTEM_LLM_MODEL = systemModel;
   }
-  if (llmBaseUrl) {
-    updates.SYSTEM_LLM_BASE_URL = llmBaseUrl;
-    const mem0Url = mem0BaseUrlConfig(llmProvider, llmBaseUrl);
+  if (effectiveBaseUrl) {
+    updates.SYSTEM_LLM_BASE_URL = effectiveBaseUrl;
+    const mem0Url = mem0BaseUrlConfig(llmProvider, effectiveBaseUrl);
     if (mem0Url?.key === "openai_base_url") {
       // OPENAI_BASE_URL is read by the openmemory container as env var fallback
       // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
@@ -180,7 +187,7 @@ export const POST: RequestHandler = async (event) => {
       max_tokens: 2000,
       api_key: apiKeyEnvRef,
     };
-    const mem0BaseUrl = mem0BaseUrlConfig(llmProvider, llmBaseUrl);
+    const mem0BaseUrl = mem0BaseUrlConfig(llmProvider, effectiveBaseUrl);
     if (mem0BaseUrl) llmConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
 
     // Embedding provider — for now same provider as LLM

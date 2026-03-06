@@ -9,7 +9,7 @@ import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
-import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex } from "./staging.js";
+import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled } from "./staging.js";
 import { refreshCoreAssets, ensureOpenMemoryPatch } from "./core-assets.js";
 import { ensureOpenMemoryConfig } from "./openmemory-config.js";
 
@@ -127,11 +127,18 @@ export async function applyUpgrade(state: ControlPlaneState): Promise<{
 // ── Compose File List Builder ────────────────────────────────────────────
 
 /**
- * Build the full list of compose files: core compose + all staged channel overlays.
+ * Build the full list of compose files: core compose + Ollama overlay (if enabled) + channel overlays.
  * Uses staged .yml files from STATE_HOME/artifacts/channels/ — never reads from CONFIG_HOME at runtime.
  */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
   const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
+
+  // Include Ollama overlay when enabled
+  if (isOllamaEnabled(state)) {
+    const ollamaYml = `${state.stateDir}/artifacts/ollama.yml`;
+    files.push(ollamaYml);
+  }
+
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   files.push(...stagedYmls);
 
@@ -153,6 +160,12 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
  */
 export function buildManagedServices(state: ControlPlaneState): string[] {
   const services: string[] = CORE_SERVICES.filter((s) => s !== "admin");
+
+  // Include Ollama when enabled
+  if (isOllamaEnabled(state)) {
+    services.push("ollama");
+  }
+
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   for (const p of stagedYmls) {
     const filename = p.split("/").pop() ?? "";
