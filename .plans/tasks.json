@@ -1,0 +1,528 @@
+[
+  {
+    "id": "R01",
+    "title": "Lock v1 scope and canonical spec sources",
+    "description": "Align docs and code guardrails to enforce remote/local OpenAI-compatible v1 scope.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 24 },
+      { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 41 },
+      { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 83 },
+      { "file": "core/admin/src/routes/setup/+page.svelte", "line": 49 },
+      { "file": "core/admin/src/routes/admin/connections/+server.ts", "line": 116 }
+    ],
+    "subtasks": [
+      {
+        "id": "R01-1",
+        "description": "Add identical v1 scope decision sections to PRD, UX spec, and canonical copy deck.",
+        "status": "completed",
+        "references": [
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 24 },
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 25 },
+          { "file": ".plans/connections/model-setup-wizard-prd.md", "line": 6 },
+          { "file": ".plans/connections/model-setup-wizard-ux-spec.md", "line": 3 }
+        ]
+      },
+      {
+        "id": "R01-2",
+        "description": "Mark duplicate plan artifacts as reference-only and document deferred ollama_native content.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 28 },
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 30 },
+          { "file": ".plans/connections/deck.md", "line": 1 },
+          { "file": ".plans/connections/wizard.md", "line": 1 }
+        ]
+      },
+      {
+        "id": "R01-3",
+        "description": "Create setup-wizard scope constants and enforce kind/capability validation in setup and connections routes.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 42 },
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 48 },
+          { "file": "core/admin/src/routes/admin/setup/+server.ts", "line": 124 },
+          { "file": "core/admin/src/routes/admin/setup/models/+server.ts", "line": 24 }
+        ]
+      },
+      {
+        "id": "R01-4",
+        "description": "Add canonical copy module, scope drift validation script, and related tests/docs checks.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 60 },
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 84 },
+          { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 71 },
+          { "file": "core/admin/src/lib/setup-wizard/copy.ts", "line": 1 },
+          { "file": "scripts/validate-wizard-scope-docs.mjs", "line": 1 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R02",
+    "title": "Introduce canonical connection and assignment schema",
+    "description": "Replace singleton payload contracts with typed Connection Profile plus Assignments models.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-02-canonical-schema.md", "line": 29 },
+      { "file": ".plans/recommendation-02-canonical-schema.md", "line": 34 },
+      { "file": ".plans/recommendation-02-canonical-schema.md", "line": 63 },
+      { "file": "core/admin/src/lib/server/types.ts", "line": 1 },
+      { "file": "core/admin/src/lib/api.ts", "line": 176 }
+    ],
+    "subtasks": [
+      {
+        "id": "R02-1",
+        "description": "Define backend canonical types and schema narrowing helpers for profiles and capability assignments.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 29 },
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 40 },
+          { "file": "core/admin/src/lib/server/types.ts", "line": 1 },
+          { "file": "core/admin/src/lib/server/helpers.ts", "line": 82 }
+        ]
+      },
+      {
+        "id": "R02-2",
+        "description": "Add transport-safe DTOs and refactor /admin/connections handlers to canonical request and response shapes.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 35 },
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 64 },
+          { "file": "core/admin/src/routes/admin/connections/+server.ts", "line": 44 }
+        ]
+      },
+      {
+        "id": "R02-3",
+        "description": "Migrate frontend types and API client methods with a temporary compatibility adapter.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 47 },
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 56 },
+          { "file": "core/admin/src/lib/types.ts", "line": 106 },
+          { "file": "core/admin/src/lib/components/ConnectionsTab.svelte", "line": 19 }
+        ]
+      },
+      {
+        "id": "R02-4",
+        "description": "Update API docs and add backend, route, and setup UI contract tests for canonical schema adoption.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 77 },
+          { "file": ".plans/recommendation-02-canonical-schema.md", "line": 89 },
+          { "file": "docs/api-spec.md", "line": 249 },
+          { "file": "core/admin/src/lib/server/secrets.test.ts", "line": 274 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R03",
+    "title": "Implement persistent multi-connection storage",
+    "description": "Persist canonical profiles in CONFIG_HOME JSON while preserving secrets.env compatibility keys.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-03-persistent-storage.md", "line": 12 },
+      { "file": ".plans/recommendation-03-persistent-storage.md", "line": 23 },
+      { "file": ".plans/recommendation-03-persistent-storage.md", "line": 49 },
+      { "file": "core/admin/src/lib/server/paths.ts", "line": 46 },
+      { "file": "core/admin/src/lib/server/secrets.ts", "line": 25 }
+    ],
+    "subtasks": [
+      {
+        "id": "R03-1",
+        "description": "Create connection-profiles storage module with ensure/read/write/migrate and strict runtime validation.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 23 },
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 28 },
+          { "file": "core/admin/src/lib/server/connection-profiles.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R03-2",
+        "description": "Add non-destructive bootstrap wiring and connections directory creation in XDG paths.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 32 },
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 33 },
+          { "file": "core/admin/src/routes/admin/setup/+server.ts", "line": 162 }
+        ]
+      },
+      {
+        "id": "R03-3",
+        "description": "Implement first-read migration from legacy singleton env keys and retain legacy keys after migration.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 42 },
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 46 },
+          { "file": "core/admin/src/lib/server/secrets.ts", "line": 31 }
+        ]
+      },
+      {
+        "id": "R03-4",
+        "description": "Integrate storage into setup and connections routes, then add docs and compatibility test coverage.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 49 },
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 56 },
+          { "file": ".plans/recommendation-03-persistent-storage.md", "line": 66 },
+          { "file": "core/admin/src/routes/admin/connections/+server.ts", "line": 44 },
+          { "file": "docs/directory-structure.md", "line": 38 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R04",
+    "title": "Deliver admin CRUD and assignment APIs",
+    "description": "Add profile CRUD and assignment endpoints with setup-token variants and stable error/audit behavior.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 24 },
+      { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 39 },
+      { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 112 },
+      { "file": "core/admin/src/routes/admin/connections/+server.ts", "line": 64 },
+      { "file": "core/admin/src/lib/server/helpers.ts", "line": 34 }
+    ],
+    "subtasks": [
+      {
+        "id": "R04-1",
+        "description": "Implement connection profile store operations and assignment save service with schema validation.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 55 },
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 70 },
+          { "file": "core/admin/src/lib/server/connection-profiles.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R04-2",
+        "description": "Add /admin/connections/profiles CRUD and /admin/connections/assignments routes with deterministic 400/404/409 handling.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 24 },
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 79 },
+          { "file": "core/admin/src/routes/admin/connections/profiles/+server.ts", "line": 1 },
+          { "file": "core/admin/src/routes/admin/connections/assignments/+server.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R04-3",
+        "description": "Add setup-auth route variants and a shared admin-or-setup-token helper without changing existing requireAdmin paths.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 40 },
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 90 },
+          { "file": "core/admin/src/lib/server/helpers.ts", "line": 54 },
+          { "file": "core/admin/src/routes/admin/setup/models/+server.ts", "line": 31 }
+        ]
+      },
+      {
+        "id": "R04-4",
+        "description": "Extend API spec, audit action coverage, and service/route regression tests for new and legacy endpoints.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 100 },
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 123 },
+          { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 146 },
+          { "file": "docs/api-spec.md", "line": 249 },
+          { "file": "core/admin/src/lib/server/audit.ts", "line": 17 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R05",
+    "title": "Refactor setup UI to 7-screen wizard",
+    "description": "Replace singleton 4-step setup flow with componentized connection-first wizard UX.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 22 },
+      { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 55 },
+      { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 89 },
+      { "file": "core/admin/src/routes/setup/+page.svelte", "line": 16 },
+      { "file": "core/admin/src/routes/setup/page.svelte.spec.ts", "line": 50 }
+    ],
+    "subtasks": [
+      {
+        "id": "R05-1",
+        "description": "Replace route step state with seven URL-synced screens and semantic progress navigation.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 38 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 46 },
+          { "file": "core/admin/src/routes/setup/+page.svelte", "line": 380 }
+        ]
+      },
+      {
+        "id": "R05-2",
+        "description": "Split setup route into wizard screen components plus reusable ConnectionPicker and ModelSelector.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 55 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 63 },
+          { "file": "core/admin/src/lib/components/setup-wizard/WizardShell.svelte", "line": 1 }
+        ]
+      },
+      {
+        "id": "R05-3",
+        "description": "Introduce setup wizard draft state module with deterministic transitions and carry-forward defaults.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 77 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 92 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 99 },
+          { "file": "core/admin/src/lib/setup-wizard/state.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R05-4",
+        "description": "Apply canonical copy and accessibility/validation requirements, then update setup UI tests and viewport QA checks.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 105 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 118 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 141 },
+          { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 161 },
+          { "file": "core/admin/src/lib/setup-wizard/copy.ts", "line": 1 },
+          { "file": "core/admin/src/routes/setup/page.svelte.spec.ts", "line": 25 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R06",
+    "title": "Normalize validation and model discovery behavior",
+    "description": "Classify model-fetch failures and enforce blocking versus non-blocking setup validation rules.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 21 },
+      { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 37 },
+      { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 65 },
+      { "file": "core/admin/src/lib/server/openmemory-config.ts", "line": 79 },
+      { "file": "core/admin/src/routes/admin/setup/models/+server.ts", "line": 2 }
+    ],
+    "subtasks": [
+      {
+        "id": "R06-1",
+        "description": "Refactor model discovery service to return normalized ok and recoverable_error categories with reason codes.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 21 },
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 25 },
+          { "file": "core/admin/src/lib/server/openmemory-config.ts", "line": 79 }
+        ]
+      },
+      {
+        "id": "R06-2",
+        "description": "Keep setup/admin model routes aligned to shared discovery behavior while preserving auth mode differences.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 29 },
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 31 },
+          { "file": "core/admin/src/routes/admin/openmemory/models/+server.ts", "line": 2 }
+        ]
+      },
+      {
+        "id": "R06-3",
+        "description": "Implement field-level setup validation and remove connectionTested hard gating from navigation.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 38 },
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 47 },
+          { "file": "core/admin/src/routes/setup/+page.svelte", "line": 538 }
+        ]
+      },
+      {
+        "id": "R06-4",
+        "description": "Add manual model entry fallback and copy-exact error mapping tests across setup and connections UIs.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 55 },
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 66 },
+          { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 75 },
+          { "file": "core/admin/src/lib/components/ConnectionsTab.svelte", "line": 127 },
+          { "file": "core/admin/src/routes/setup/page.svelte.spec.ts", "line": 40 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R07",
+    "title": "Build deterministic mapping and export generation",
+    "description": "Generate stable OpenCode and Mem0 mappings from canonical assignments and connections.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 26 },
+      { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 32 },
+      { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 79 },
+      { "file": "core/admin/src/routes/admin/setup/+server.ts", "line": 181 },
+      { "file": "core/admin/src/lib/server/openmemory-config.ts", "line": 187 }
+    ],
+    "subtasks": [
+      {
+        "id": "R07-1",
+        "description": "Define explicit mapper input and output types for OpenCode and Mem0 export payloads.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 26 },
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 28 },
+          { "file": "core/admin/src/lib/server/connection-mapping.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R07-2",
+        "description": "Implement pure buildOpenCodeMapping and buildMem0Mapping transforms with stable optional field omission.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 33 },
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 44 },
+          { "file": "core/admin/src/lib/server/provider-constants.ts", "line": 66 }
+        ]
+      },
+      {
+        "id": "R07-3",
+        "description": "Replace inline mapping in setup and connections save flows and preserve push sequencing.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 49 },
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 52 },
+          { "file": "core/admin/src/routes/admin/connections/+server.ts", "line": 190 }
+        ]
+      },
+      {
+        "id": "R07-4",
+        "description": "Finalize validation, fallback policy, and determinism regression tests including mixed-connection fixtures.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 60 },
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 68 },
+          { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 110 },
+          { "file": "core/admin/src/lib/server/openmemory-config.test.ts", "line": 444 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R08",
+    "title": "Roll out migration and backward compatibility layer",
+    "description": "Ship staged legacy compatibility flags, dual-write behavior, and safe fallback recovery.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 25 },
+      { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 46 },
+      { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 106 },
+      { "file": "core/admin/src/routes/admin/connections/+server.ts", "line": 78 },
+      { "file": "core/admin/src/lib/server/setup-status.ts", "line": 23 }
+    ],
+    "subtasks": [
+      {
+        "id": "R08-1",
+        "description": "Add migration feature flags and wire compatibility mode annotations into connection audit events.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 25 },
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 30 },
+          { "file": "core/admin/src/lib/server/connection-migration-flags.ts", "line": 1 },
+          { "file": "core/admin/src/lib/server/audit.ts", "line": 8 }
+        ]
+      },
+      {
+        "id": "R08-2",
+        "description": "Implement lazy hydration precedence and idempotent non-destructive migration from legacy env values.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 34 },
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 42 },
+          { "file": "core/admin/src/lib/server/connection-profiles.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R08-3",
+        "description": "Implement dual-read and dual-write window for /admin/connections and setup POST compatibility.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 46 },
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 54 },
+          { "file": "core/admin/src/routes/admin/setup/+server.ts", "line": 118 }
+        ]
+      },
+      {
+        "id": "R08-4",
+        "description": "Add migration, route, and setup-token semantic tests plus observability and failure-recovery instrumentation.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 78 },
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 93 },
+          { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 115 },
+          { "file": "core/admin/src/lib/server/connection-migration.test.ts", "line": 1 },
+          { "file": "core/admin/src/routes/setup/page.server.test.ts", "line": 52 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R09",
+    "title": "Execute test plan and acceptance gates",
+    "description": "Update unit, integration, component, and e2e coverage and enforce CI command gates.",
+    "status": "pending",
+    "references": [
+      { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 27 },
+      { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 40 },
+      { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 101 },
+      { "file": "core/admin/src/routes/setup/page.svelte.spec.ts", "line": 19 },
+      { "file": "core/admin/e2e/setup-wizard.test.ts", "line": 69 }
+    ],
+    "subtasks": [
+      {
+        "id": "R09-1",
+        "description": "Extend mapping and model-discovery unit tests for new provider and error-shape permutations.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 31 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 32 },
+          { "file": "core/admin/src/lib/server/provider-constants.test.ts", "line": 52 },
+          { "file": "core/admin/src/lib/server/openmemory-config.test.ts", "line": 375 }
+        ]
+      },
+      {
+        "id": "R09-2",
+        "description": "Add admin route integration tests for connections save paths, auth gating, assignments, and mapping outputs.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 44 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 50 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 54 },
+          { "file": "core/admin/src/routes/admin/connections/+server.test.ts", "line": 1 },
+          { "file": "core/admin/src/routes/admin/setup/models/+server.test.ts", "line": 1 }
+        ]
+      },
+      {
+        "id": "R09-3",
+        "description": "Update setup component and e2e tests to the 7-screen flow with revised payload assertions.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 65 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 78 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 81 },
+          { "file": "core/admin/src/routes/setup/page.svelte.spec.ts", "line": 50 },
+          { "file": "core/admin/e2e/setup-wizard.test.ts", "line": 253 }
+        ]
+      },
+      {
+        "id": "R09-4",
+        "description": "Run and gate required check, unit, e2e, and guardian test commands in CI sequence.",
+        "status": "pending",
+        "references": [
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 105 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 107 },
+          { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 108 },
+          { "file": "AGENTS.md", "line": 183 },
+          { "file": "docs/code-quality-principles.md", "line": 71 }
+        ]
+      }
+    ]
+  }
+]
