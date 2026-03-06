@@ -91,6 +91,18 @@ export function mem0BaseUrlConfig(
   return null;
 }
 
+/** Default models to pull when enabling Ollama from the wizard. */
+export const OLLAMA_DEFAULT_MODELS = {
+  chat: "qwen3:0.6b",
+  embedding: "nomic-embed-text",
+} as const;
+
+/**
+ * Base URL for Ollama when running as an in-stack compose service.
+ * Uses Docker network name instead of host.docker.internal.
+ */
+export const OLLAMA_INSTACK_URL = "http://ollama:11434";
+
 /** Contextual help for local/self-hosted providers. */
 export const LOCAL_PROVIDER_HELP: Record<string, string> = {
   "model-runner": "Add models with: docker model pull ai/model-name",

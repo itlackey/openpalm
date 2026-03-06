@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { untrack } from 'svelte';
-  import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS } from '$lib/provider-constants.js';
+  import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
   import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
 
@@ -27,15 +27,28 @@
   let adminToken = $state('');
   let setupSessionToken = $state(untrack(() => data.setupToken ?? ''));
 
+  // Step 2 — Connection Type picker
+  type ConnectionType = 'cloud' | 'local' | null;
+  let connectionType: ConnectionType = $state(null);
+
   // Step 2 — Provider (unified: cloud + local detection)
   let llmProvider = $state('openai');
   let llmApiKey = $state('');
   let llmBaseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
 
-  // Step 2 — Provider (unified: cloud + local detection)
+  // Cloud provider quick-picks
+  const CLOUD_PROVIDERS = ['openai', 'groq', 'together', 'mistral', 'deepseek', 'xai', 'anthropic'] as const;
+
+  // Local provider detection
   let detectedProviders: LocalProviderDetection[] = $state([]);
   let detectingProviders = $state(false);
   let providersDetected = $state(false);
+
+  // Ollama enable state
+  let ollamaEnabled = $state(false);
+  let enablingOllama = $state(false);
+  let ollamaEnableError = $state('');
+  let ollamaEnableProgress = $state('');
 
   // Step 3 — Models
   let systemModel = $state('');
@@ -67,6 +80,26 @@
       'x-request-id': crypto.randomUUID(),
       ...(token ? { 'x-admin-token': token } : {})
     };
+  }
+
+  // ── Connection Type selection ──────────────────────────────────────────
+
+  function selectConnectionType(type: ConnectionType): void {
+    connectionType = type;
+    connectionTested = false;
+    modelList = [];
+    connectError = '';
+
+    if (type === 'cloud') {
+      llmProvider = 'openai';
+      llmBaseUrl = PROVIDER_DEFAULT_URLS['openai'] ?? '';
+      llmApiKey = '';
+    } else if (type === 'local') {
+      llmProvider = 'ollama';
+      llmBaseUrl = PROVIDER_DEFAULT_URLS['ollama'] ?? '';
+      llmApiKey = '';
+      void detectLocalProviders();
+    }
   }
 
   // ── Event handlers for provider/model changes ─────────────────────────
@@ -113,12 +146,84 @@
       if (res.ok) {
         const data = await res.json();
         detectedProviders = data.providers ?? [];
+
+        // If Ollama was detected, auto-select it
+        const ollamaDetected = detectedProviders.find(p => p.provider === 'ollama' && p.available);
+        if (ollamaDetected) {
+          handleProviderChange('ollama');
+        }
       }
     } catch {
-      // Detection failed — continue with cloud providers only
+      // Detection failed — continue with manual config
     }
     detectingProviders = false;
     providersDetected = true;
+  }
+
+  // ── Enable Ollama handler ─────────────────────────────────────────────
+
+  async function enableOllama(): Promise<void> {
+    if (enablingOllama) return;
+    enablingOllama = true;
+    ollamaEnableError = '';
+    ollamaEnableProgress = 'Adding Ollama to the stack...';
+
+    try {
+      const res = await fetch('/admin/setup/ollama', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...buildHeaders(setupSessionToken)
+        }
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        ollamaEnableError = data.message ?? `Failed to enable Ollama (HTTP ${res.status})`;
+        return;
+      }
+
+      const result = await res.json();
+      ollamaEnabled = true;
+      llmProvider = 'ollama';
+      llmBaseUrl = result.ollamaUrl ?? 'http://ollama:11434';
+
+      // Ollama is reachable — mark connection as tested regardless of model pull status
+      connectionTested = true;
+
+      // Pre-populate model list with the pulled defaults
+      const pulledModels: string[] = [];
+      const failedModels: string[] = [];
+      if (result.models) {
+        for (const [name, status] of Object.entries(result.models)) {
+          if ((status as { ok: boolean }).ok) {
+            pulledModels.push(name);
+          } else {
+            failedModels.push(name);
+          }
+        }
+      }
+      if (pulledModels.length > 0) {
+        modelList = pulledModels.sort();
+        systemModel = result.defaultChatModel ?? OLLAMA_DEFAULT_MODELS.chat;
+        embeddingModel = result.defaultEmbeddingModel ?? OLLAMA_DEFAULT_MODELS.embedding;
+        // Set dims for nomic-embed-text
+        const dimsKey = `ollama/${embeddingModel}`;
+        embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
+      }
+      if (failedModels.length > 0) {
+        ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually or use "Test Connection" to retry.`;
+      }
+
+      // Re-detect local providers to show Ollama as detected
+      await detectLocalProviders();
+
+    } catch {
+      ollamaEnableError = 'Network error — unable to reach admin API.';
+    } finally {
+      enablingOllama = false;
+      ollamaEnableProgress = '';
+    }
   }
 
   // ── Test Connection handler ──────────────────────────────────────────
@@ -200,6 +305,7 @@
           embeddingModel,
           embeddingDims,
           openmemoryUserId,
+          ollamaEnabled,
         })
       });
       if (!res.ok) {
@@ -273,7 +379,7 @@
       <nav class="step-indicators" aria-label="Wizard steps">
         <button class="step-dot" class:active={step === 'token'} class:completed={isAfter(step, 'token')} onclick={() => { step = 'token'; }} aria-label="Step 1: Admin Token" aria-current={step === 'token' ? 'step' : undefined}>1</button>
         <span class="step-line" class:active={isAfter(step, 'token')}></span>
-        <button class="step-dot" class:active={step === 'provider'} class:completed={isAfter(step, 'provider')} onclick={() => { if (isAfter(step, 'provider')) { step = 'provider'; void detectLocalProviders(); } }} aria-label="Step 2: Provider" aria-current={step === 'provider' ? 'step' : undefined}>2</button>
+        <button class="step-dot" class:active={step === 'provider'} class:completed={isAfter(step, 'provider')} onclick={() => { if (isAfter(step, 'provider')) { step = 'provider'; } }} aria-label="Step 2: Connection" aria-current={step === 'provider' ? 'step' : undefined}>2</button>
         <span class="step-line" class:active={isAfter(step, 'provider')}></span>
         <button class="step-dot" class:active={step === 'models'} class:completed={isAfter(step, 'models')} onclick={() => { if (isAfter(step, 'models')) step = 'models'; }} aria-label="Step 3: Models" aria-current={step === 'models' ? 'step' : undefined}>3</button>
         <span class="step-line" class:active={isAfter(step, 'models')}></span>
@@ -305,114 +411,274 @@
               }
               tokenError = '';
               step = 'provider';
-              void detectLocalProviders();
             }}>Next</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: LLM Provider -->
+      <!-- Step 2: LLM Connection -->
       {#if step === 'provider'}
         <div class="step-content" data-testid="step-provider">
-          <h2>LLM Provider</h2>
-          <p class="step-description">Choose your LLM provider. Local providers are auto-detected.</p>
 
-          {#if detectingProviders}
-            <div class="loading-state" style="justify-content: flex-start; padding: var(--space-4) 0;">
-              <span class="spinner"></span>
-              <span style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-left: var(--space-2);">Detecting local providers...</span>
-            </div>
-          {/if}
+          <!-- Sub-step 2a: Connection type picker (shown when no type selected) -->
+          {#if connectionType === null}
+            <h2>Connection Type</h2>
+            <p class="step-description">How do you want to connect to an LLM?</p>
 
-          {#if providersDetected}
-            {#each detectedProviders.filter(p => p.available) as dp}
-              <button
-                class="provider-option"
-                class:selected={llmProvider === dp.provider}
-                type="button"
-                onclick={() => handleProviderChange(dp.provider)}
-              >
-                <span class="provider-option-status">
-                  <span class="status-dot status-dot--ok"></span>
-                </span>
-                <span class="provider-option-label">{PROVIDER_LABELS[dp.provider] ?? dp.provider}</span>
-                <span class="provider-option-hint">Detected</span>
-              </button>
-            {/each}
-          {/if}
-
-          <div class="field-group">
-            <label for="llm-provider">Provider</label>
-            <select
-              id="llm-provider"
-              value={llmProvider}
-              onchange={(e) => handleProviderChange(e.currentTarget.value)}
-            >
-              {#each LLM_PROVIDERS as p}
-                <option value={p}>{PROVIDER_LABELS[p] ?? p}</option>
-              {/each}
-            </select>
-          </div>
-
-          <div class="field-group">
-            <label for="llm-api-key">API Key <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span></label>
-            <input
-              id="llm-api-key"
-              type="password"
-              bind:value={llmApiKey}
-              placeholder="Enter API key (optional for local providers)"
-            />
-          </div>
-
-          <div class="field-group">
-            <label for="llm-base-url">Base URL</label>
-            <input
-              id="llm-base-url"
-              type="url"
-              bind:value={llmBaseUrl}
-              placeholder="Provider base URL"
-            />
-            {#if LOCAL_PROVIDER_HELP[llmProvider]}
-              <p class="field-hint">{LOCAL_PROVIDER_HELP[llmProvider]}</p>
-            {:else}
-              <p class="field-hint">Leave default unless using a custom endpoint.</p>
-            {/if}
-          </div>
-
-          {#if connectError}
-            <p class="field-error" role="alert">{connectError}</p>
-          {/if}
-
-          {#if connectionTested}
-            <div class="connection-success" role="status">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              <span>Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.</span>
-            </div>
-          {/if}
-
-          <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
             <button
-              class="btn btn-outline"
-              onclick={() => void testConnection()}
-              disabled={testingConnection}
+              class="connection-type-card"
+              type="button"
+              onclick={() => selectConnectionType('cloud')}
             >
-              {#if testingConnection}
-                <span class="spinner"></span>
-                Testing...
-              {:else}
-                Test Connection
-              {/if}
+              <div class="connection-type-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+                </svg>
+              </div>
+              <div class="connection-type-text">
+                <span class="connection-type-label">OpenAI-Compatible (Remote)</span>
+                <span class="connection-type-desc">API key + optional custom base URL. Works with OpenAI, Groq, Together, OpenRouter, and more.</span>
+              </div>
             </button>
+
             <button
-              class="btn btn-primary"
-              disabled={!connectionTested}
-              onclick={() => { step = 'models'; }}
-            >Next</button>
-          </div>
+              class="connection-type-card"
+              type="button"
+              onclick={() => selectConnectionType('local')}
+            >
+              <div class="connection-type-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="2" width="20" height="8" rx="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" />
+                  <circle cx="6" cy="6" r="1" />
+                  <circle cx="6" cy="18" r="1" />
+                </svg>
+              </div>
+              <div class="connection-type-text">
+                <span class="connection-type-label">Local (Ollama / LM Studio)</span>
+                <span class="connection-type-desc">Run models on your own hardware. No API key needed. We can set up Ollama for you.</span>
+              </div>
+            </button>
+
+            <div class="step-actions">
+              <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
+            </div>
+
+          <!-- Sub-step 2b: Cloud provider details -->
+          {:else if connectionType === 'cloud'}
+            <h2>Cloud Provider</h2>
+            <p class="step-description">Pick a provider or enter custom connection details.</p>
+
+            <!-- Quick-pick provider buttons -->
+            <div class="provider-quick-picks">
+              {#each CLOUD_PROVIDERS as p}
+                <button
+                  class="provider-chip"
+                  class:selected={llmProvider === p}
+                  type="button"
+                  onclick={() => handleProviderChange(p)}
+                >
+                  {PROVIDER_LABELS[p] ?? p}
+                </button>
+              {/each}
+            </div>
+
+            <div class="field-group">
+              <label for="llm-api-key">API Key</label>
+              <input
+                id="llm-api-key"
+                type="password"
+                bind:value={llmApiKey}
+                placeholder="Enter your API key"
+              />
+            </div>
+
+            <div class="field-group">
+              <label for="llm-base-url">Base URL <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span></label>
+              <input
+                id="llm-base-url"
+                type="url"
+                bind:value={llmBaseUrl}
+                placeholder="Provider base URL"
+              />
+              <p class="field-hint">Leave default unless using a custom endpoint or proxy.</p>
+            </div>
+
+            {#if connectError}
+              <p class="field-error" role="alert">{connectError}</p>
+            {/if}
+
+            {#if connectionTested}
+              <div class="connection-success" role="status">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <span>Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.</span>
+              </div>
+            {/if}
+
+            <div class="step-actions">
+              <button class="btn btn-secondary" onclick={() => { connectionType = null; }}>Back</button>
+              <button
+                class="btn btn-outline"
+                onclick={() => void testConnection()}
+                disabled={testingConnection}
+              >
+                {#if testingConnection}
+                  <span class="spinner"></span>
+                  Testing...
+                {:else}
+                  Test Connection
+                {/if}
+              </button>
+              <button
+                class="btn btn-primary"
+                disabled={!connectionTested}
+                onclick={() => { step = 'models'; }}
+              >Next</button>
+            </div>
+
+          <!-- Sub-step 2b: Local provider details -->
+          {:else if connectionType === 'local'}
+            <h2>Local Provider</h2>
+            <p class="step-description">Connect to a local LLM running on your machine.</p>
+
+            {#if detectingProviders}
+              <div class="loading-state" style="justify-content: flex-start; padding: var(--space-4) 0;">
+                <span class="spinner"></span>
+                <span style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-left: var(--space-2);">Detecting local providers...</span>
+              </div>
+            {/if}
+
+            {#if providersDetected}
+              <!-- Show detected providers -->
+              {#each detectedProviders.filter(p => p.available) as dp}
+                <button
+                  class="provider-option"
+                  class:selected={llmProvider === dp.provider}
+                  type="button"
+                  onclick={() => handleProviderChange(dp.provider)}
+                >
+                  <span class="provider-option-status">
+                    <span class="status-dot status-dot--ok"></span>
+                  </span>
+                  <span class="provider-option-label">{PROVIDER_LABELS[dp.provider] ?? dp.provider}</span>
+                  <span class="provider-option-hint">Detected at {dp.url}</span>
+                </button>
+              {/each}
+
+              <!-- Enable Ollama button (only if not already detected) -->
+              {#if !detectedProviders.some(p => p.provider === 'ollama' && p.available) && !ollamaEnabled}
+                <div class="enable-ollama-section">
+                  <div class="enable-ollama-info">
+                    <p class="enable-ollama-title">Ollama not detected</p>
+                    <p class="enable-ollama-desc">
+                      We can add Ollama to your stack and pull two small default models
+                      ({OLLAMA_DEFAULT_MODELS.chat} + {OLLAMA_DEFAULT_MODELS.embedding}).
+                    </p>
+                  </div>
+
+                  {#if ollamaEnableError}
+                    <p class="field-error" role="alert">{ollamaEnableError}</p>
+                  {/if}
+
+                  {#if enablingOllama}
+                    <div class="ollama-progress">
+                      <span class="spinner"></span>
+                      <span>{ollamaEnableProgress}</span>
+                    </div>
+                  {:else}
+                    <button
+                      class="btn btn-outline enable-ollama-btn"
+                      type="button"
+                      onclick={() => void enableOllama()}
+                    >
+                      Enable Ollama
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+
+              {#if ollamaEnabled}
+                <div class="connection-success" role="status">
+                  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  <span>Ollama enabled — default models pulled.</span>
+                </div>
+              {/if}
+
+              <!-- Show provider selector for non-detected local providers -->
+              {#if !detectedProviders.some(p => p.available)}
+                <div class="field-group">
+                  <label for="local-provider">Provider</label>
+                  <select
+                    id="local-provider"
+                    value={llmProvider}
+                    onchange={(e) => handleProviderChange(e.currentTarget.value)}
+                  >
+                    <option value="ollama">Ollama</option>
+                    <option value="lmstudio">LM Studio</option>
+                    <option value="model-runner">Docker Model Runner</option>
+                  </select>
+                </div>
+              {/if}
+            {/if}
+
+            <div class="field-group">
+              <label for="llm-base-url-local">Base URL</label>
+              <input
+                id="llm-base-url-local"
+                type="url"
+                bind:value={llmBaseUrl}
+                placeholder="Provider base URL"
+              />
+              {#if LOCAL_PROVIDER_HELP[llmProvider]}
+                <p class="field-hint">{LOCAL_PROVIDER_HELP[llmProvider]}</p>
+              {:else}
+                <p class="field-hint">Auto-detected from your running provider.</p>
+              {/if}
+            </div>
+
+            {#if connectError}
+              <p class="field-error" role="alert">{connectError}</p>
+            {/if}
+
+            {#if connectionTested && !ollamaEnabled}
+              <div class="connection-success" role="status">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <span>Connected — {modelList.length} model{modelList.length !== 1 ? 's' : ''} found.</span>
+              </div>
+            {/if}
+
+            <div class="step-actions">
+              <button class="btn btn-secondary" onclick={() => { connectionType = null; }}>Back</button>
+              {#if !ollamaEnabled}
+                <button
+                  class="btn btn-outline"
+                  onclick={() => void testConnection()}
+                  disabled={testingConnection}
+                >
+                  {#if testingConnection}
+                    <span class="spinner"></span>
+                    Testing...
+                  {:else}
+                    Test Connection
+                  {/if}
+                </button>
+              {/if}
+              <button
+                class="btn btn-primary"
+                disabled={!connectionTested}
+                onclick={() => { step = 'models'; }}
+              >Next</button>
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -475,17 +741,25 @@
               <span class="review-value mono">Set</span>
             </div>
             <div class="review-item">
-              <span class="review-label">LLM Provider</span>
-              <span class="review-value">{PROVIDER_LABELS[llmProvider] ?? llmProvider}</span>
+              <span class="review-label">Connection</span>
+              <span class="review-value">{connectionType === 'local' ? 'Local' : 'Cloud'} — {PROVIDER_LABELS[llmProvider] ?? llmProvider}</span>
             </div>
-            <div class="review-item">
-              <span class="review-label">API Key</span>
-              <span class="review-value mono">{maskedApiKey}</span>
-            </div>
+            {#if llmApiKey}
+              <div class="review-item">
+                <span class="review-label">API Key</span>
+                <span class="review-value mono">{maskedApiKey}</span>
+              </div>
+            {/if}
             <div class="review-item">
               <span class="review-label">Base URL</span>
               <span class="review-value mono">{llmBaseUrl || '(default)'}</span>
             </div>
+            {#if ollamaEnabled}
+              <div class="review-item">
+                <span class="review-label">Ollama</span>
+                <span class="review-value">Enabled (in-stack)</span>
+              </div>
+            {/if}
             <div class="review-item">
               <span class="review-label">System Model</span>
               <span class="review-value mono">{systemModel}</span>
@@ -697,36 +971,126 @@
     font-size: var(--text-sm);
   }
 
-  /* ── Info Banner ────────────────────────────────────────────────────── */
-  .info-banner {
+  /* ── Connection Type Cards ───────────────────────────────────────────── */
+  .connection-type-card {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-bg-secondary);
+    gap: var(--space-4);
+    width: 100%;
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-bg);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: var(--space-3);
+    transition: all var(--transition-fast);
+  }
+
+  .connection-type-card:hover {
+    border-color: var(--color-primary);
+    background: var(--color-bg-secondary);
+  }
+
+  .connection-type-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    color: var(--color-primary);
+  }
+
+  .connection-type-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .connection-type-label {
     font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+
+  .connection-type-desc {
+    font-size: var(--text-xs);
     color: var(--color-text-secondary);
+    line-height: 1.4;
+  }
+
+  /* ── Provider Quick Picks ────────────────────────────────────────────── */
+  .provider-quick-picks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
     margin-bottom: var(--space-4);
   }
 
-  .info-banner p {
-    margin: 0;
-  }
-
-  .link-btn {
-    background: none;
-    border: none;
-    color: var(--color-primary);
+  .provider-chip {
+    padding: 6px 14px;
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: var(--color-bg);
+    color: var(--color-text);
     cursor: pointer;
-    font-size: inherit;
-    padding: 0;
-    text-decoration: underline;
+    transition: all var(--transition-fast);
   }
 
-  .link-btn:hover {
-    color: var(--color-primary-hover);
+  .provider-chip:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .provider-chip.selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: #000;
+  }
+
+  /* ── Enable Ollama Section ───────────────────────────────────────────── */
+  .enable-ollama-section {
+    padding: var(--space-4);
+    background: var(--color-bg-secondary);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+  }
+
+  .enable-ollama-info {
+    margin-bottom: var(--space-3);
+  }
+
+  .enable-ollama-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+    margin: 0 0 var(--space-1);
+  }
+
+  .enable-ollama-desc {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .enable-ollama-btn {
+    width: 100%;
+  }
+
+  .ollama-progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    padding: var(--space-2) 0;
   }
 
   /* ── Connection Success ──────────────────────────────────────────────── */

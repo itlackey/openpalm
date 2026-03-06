@@ -150,6 +150,24 @@ describe("isAllowedService", () => {
     expect(isAllowedService("unknown-service")).toBe(false);
     expect(isAllowedService("nginx")).toBe(false);
   });
+
+  test("allows ollama when staged ollama.yml exists", () => {
+    const stateDir = trackDir(makeTempDir());
+    const artifactsDir = join(stateDir, "artifacts");
+    mkdirSync(artifactsDir, { recursive: true });
+    writeFileSync(join(artifactsDir, "ollama.yml"), "services:\n  ollama:\n    image: ollama/ollama\n");
+
+    expect(isAllowedService("ollama", stateDir)).toBe(true);
+  });
+
+  test("rejects ollama when staged ollama.yml does not exist", () => {
+    const stateDir = trackDir(makeTempDir());
+    expect(isAllowedService("ollama", stateDir)).toBe(false);
+  });
+
+  test("rejects ollama without stateDir", () => {
+    expect(isAllowedService("ollama")).toBe(false);
+  });
 });
 
 describe("isValidChannel", () => {

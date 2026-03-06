@@ -17,6 +17,7 @@ import { parseAutomationYaml } from "./scheduler.js";
 import {
   readCoreCaddyfile,
   readCoreCompose,
+  readOllamaCompose,
   PUBLIC_ACCESS_IMPORT,
   LAN_ONLY_IMPORT
 } from "./core-assets.js";
@@ -31,6 +32,8 @@ export {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
+  ensureOllamaCompose,
+  readOllamaCompose,
   ensureOpenCodeSystemConfig,
   ensureOpenMemoryPatch,
   refreshCoreAssets
@@ -44,6 +47,20 @@ export function sha256(content: string): string {
 
 export function randomHex(bytes: number): string {
   return randomBytes(bytes).toString("hex");
+}
+
+// ── Ollama State ─────────────────────────────────────────────────────
+
+/**
+ * Check whether Ollama is enabled in the stack by reading the
+ * OPENPALM_OLLAMA_ENABLED flag from DATA_HOME/stack.env.
+ */
+export function isOllamaEnabled(state: ControlPlaneState): boolean {
+  const stackEnvPath = `${state.dataDir}/stack.env`;
+  if (!existsSync(stackEnvPath)) return false;
+  const content = readFileSync(stackEnvPath, "utf-8");
+  const match = content.match(/^OPENPALM_OLLAMA_ENABLED=(.+)$/m);
+  return match?.[1]?.trim().toLowerCase() === "true";
 }
 
 // ── Caddyfile Staging ─────────────────────────────────────────────────
@@ -394,6 +411,11 @@ export function persistArtifacts(state: ControlPlaneState): void {
   // Core artifacts → STATE_HOME
   writeFileSync(`${artifactDir}/docker-compose.yml`, state.artifacts.compose);
   writeFileSync(`${artifactDir}/Caddyfile`, state.artifacts.caddyfile);
+
+  // Stage Ollama overlay if enabled (so buildComposeFileList can reference it)
+  if (isOllamaEnabled(state)) {
+    writeFileSync(`${artifactDir}/ollama.yml`, readOllamaCompose());
+  }
 
   // Ensure every discovered channel has a secret before staging stack.env
   const allChannels = discoverChannels(state.configDir);
