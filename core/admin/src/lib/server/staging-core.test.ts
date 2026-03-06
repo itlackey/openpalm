@@ -4,7 +4,7 @@
  *
  * Core-asset tests (Caddyfile, compose, access scope) live in core-assets.test.ts.
  */
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import {
   mkdirSync,
   writeFileSync,
@@ -25,6 +25,14 @@ import {
 import { makeTempDir, makeTestState, trackDir, registerCleanup, seedConfigChannels } from "./test-helpers.js";
 
 registerCleanup();
+
+function restoreEnvVar(key: string, original: string | undefined): void {
+  if (original === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = original;
+  }
+}
 
 // ── Pure Utility Functions ──────────────────────────────────────────────
 
@@ -219,8 +227,10 @@ describe("buildEnvFiles", () => {
 
 describe("persistArtifacts", () => {
   let state: ReturnType<typeof makeTestState>;
+  let originalEnvTag: string | undefined;
 
   beforeEach(() => {
+    originalEnvTag = process.env.OPENPALM_IMAGE_TAG;
     state = makeTestState();
     trackDir(state.stateDir);
     trackDir(state.configDir);
@@ -233,6 +243,10 @@ describe("persistArtifacts", () => {
     mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.stateDir, "artifacts", "channels"), { recursive: true });
     mkdirSync(join(state.dataDir, "caddy"), { recursive: true });
+  });
+
+  afterEach(() => {
+    restoreEnvVar("OPENPALM_IMAGE_TAG", originalEnvTag);
   });
 
   test("writes compose and caddyfile to STATE_HOME", () => {
@@ -309,6 +323,35 @@ describe("persistArtifacts", () => {
 
     const content = readFileSync(join(state.stateDir, "artifacts", "stack.env"), "utf-8");
     expect(content).toContain("OPENPALM_IMAGE_TAG=v999.0.0");
+  });
+
+  test("preserves a non-semver pinned OPENPALM_IMAGE_TAG from DATA_HOME when no override is set", () => {
+    const dataStackEnvPath = join(state.dataDir, "stack.env");
+    writeFileSync(dataStackEnvPath, [
+      "OPENPALM_IMAGE_NAMESPACE=openpalm",
+      "OPENPALM_IMAGE_TAG=sha-abc123",
+      "",
+    ].join("\n"));
+
+    persistArtifacts(state);
+
+    const content = readFileSync(join(state.stateDir, "artifacts", "stack.env"), "utf-8");
+    expect(content).toContain("OPENPALM_IMAGE_TAG=sha-abc123");
+  });
+
+  test("applies explicit OPENPALM_IMAGE_TAG env override even when a pinned tag exists", () => {
+    process.env.OPENPALM_IMAGE_TAG = "custom-tag";
+
+    const dataStackEnvPath = join(state.dataDir, "stack.env");
+    writeFileSync(dataStackEnvPath, [
+      "OPENPALM_IMAGE_NAMESPACE=openpalm",
+      "OPENPALM_IMAGE_TAG=v1.2.3",
+      "",
+    ].join("\n"));
+
+    persistArtifacts(state);
+    const content = readFileSync(join(state.stateDir, "artifacts", "stack.env"), "utf-8");
+    expect(content).toContain("OPENPALM_IMAGE_TAG=custom-tag");
   });
 
   test("stack.env does NOT contain user secrets (OPENMEMORY_USER_ID, ADMIN_TOKEN)", () => {

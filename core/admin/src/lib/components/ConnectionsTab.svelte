@@ -14,6 +14,7 @@
     PROVIDER_LABELS,
     LOCAL_PROVIDER_HELP
   } from '$lib/provider-constants.js';
+  import type { PartialOpenMemoryConfig } from '$lib/types.js';
 
   interface Props {
     connections: Record<string, string>;
@@ -30,6 +31,7 @@
   let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
+  let embeddingDimsLoaded = false;
   let openmemoryUserId = $state('default_user');
   let customInstructions = $state('');
 
@@ -49,6 +51,12 @@
   let dimensionMismatch = $state(false);
   let resetting = $state(false);
   let resetSuccess = $state(false);
+
+  function isPartialOpenMemoryConfig(value: unknown): value is PartialOpenMemoryConfig {
+    if (!value || typeof value !== 'object') return false;
+    const maybe = value as Record<string, unknown>;
+    return "mem0" in maybe || "openmemory" in maybe;
+  }
 
   // ── Loaded flag ───────────────────────────────────────────────────
   let loaded = $state(false);
@@ -85,30 +93,44 @@
       }
       if (conns.SYSTEM_LLM_MODEL) systemModel = conns.SYSTEM_LLM_MODEL;
       if (conns.EMBEDDING_MODEL) embeddingModel = conns.EMBEDDING_MODEL;
-      if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
+      if (conns.EMBEDDING_DIMS) {
+        embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
+        embeddingDimsLoaded = true;
+      }
       if (conns.OPENMEMORY_USER_ID) openmemoryUserId = conns.OPENMEMORY_USER_ID;
 
       // Load OpenMemory-specific values from persisted config
       try {
         const omData = await fetchOpenMemoryConfig(token);
-        const persistedConfig = omData.config;
+        const persistedConfig = omData?.config;
 
-        customInstructions = persistedConfig.openmemory.custom_instructions ?? '';
+        if (isPartialOpenMemoryConfig(persistedConfig)) {
+          const config = persistedConfig;
 
-        const persistedEmbedderModel = persistedConfig.mem0.embedder.config.model;
-        if (!embeddingModel && typeof persistedEmbedderModel === 'string' && persistedEmbedderModel) {
-          embeddingModel = persistedEmbedderModel;
-        }
+          customInstructions = config.openmemory?.custom_instructions ?? '';
 
-        const persistedEmbeddingDims = persistedConfig.mem0.vector_store.config.embedding_model_dims;
-        if (Number.isFinite(persistedEmbeddingDims) && persistedEmbeddingDims > 0) {
-          embeddingDims = persistedEmbeddingDims;
-        }
+          const persistedEmbedderModel = config.mem0?.embedder?.config?.model;
+          if (!embeddingModel && typeof persistedEmbedderModel === 'string' && persistedEmbedderModel) {
+            embeddingModel = persistedEmbedderModel;
+          }
 
-        if (!conns.SYSTEM_LLM_PROVIDER) {
-          const persistedProvider = persistedConfig.mem0.llm.provider;
-          if (typeof persistedProvider === 'string' && persistedProvider) {
-            provider = persistedProvider;
+          const persistedEmbeddingDims = config.mem0?.vector_store?.config?.embedding_model_dims;
+          // Keep values sourced from the current connections/env; only hydrate from persisted config when none were loaded.
+          if (
+            !embeddingDimsLoaded &&
+            typeof persistedEmbeddingDims === 'number' &&
+            Number.isFinite(persistedEmbeddingDims) &&
+            persistedEmbeddingDims > 0
+          ) {
+            embeddingDims = persistedEmbeddingDims;
+            embeddingDimsLoaded = true;
+          }
+
+          if (!conns.SYSTEM_LLM_PROVIDER) {
+            const persistedProvider = config.mem0?.llm?.provider;
+            if (typeof persistedProvider === 'string' && persistedProvider) {
+              provider = persistedProvider;
+            }
           }
         }
       } catch {

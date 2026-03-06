@@ -40,6 +40,7 @@ import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("setup");
+const DEFAULT_SYSTEM_LLM_PROVIDER = "openai";
 
 /**
  * GET /admin/setup — no auth required.
@@ -118,13 +119,16 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // ── System LLM connection fields (new wizard) ──
-  const llmProvider = (body.llmProvider as string) ?? "";
+  const requestedProvider = (body.llmProvider as string) ?? "";
   const llmApiKey = (body.llmApiKey as string) ?? "";
   const llmBaseUrl = (body.llmBaseUrl as string) ?? "";
   const systemModel = (body.systemModel as string) ?? "";
   const embeddingModel = (body.embeddingModel as string) ?? "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
+  // Default behavior: if a system model is supplied without an explicit provider,
+  // assume an OpenAI-compatible provider so the model value is not orphaned.
+  const llmProvider = requestedProvider || (systemModel ? DEFAULT_SYSTEM_LLM_PROVIDER : "");
 
   if (llmApiKey) {
     const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";
