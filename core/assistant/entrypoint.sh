@@ -122,6 +122,10 @@ start_opencode() {
   cd /work
 
   if [ "$(id -u)" = "0" ]; then
+    if ! command -v gosu >/dev/null 2>&1; then
+      echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
+      exit 1
+    fi
     exec gosu "$TARGET_UID:$TARGET_GID" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 
