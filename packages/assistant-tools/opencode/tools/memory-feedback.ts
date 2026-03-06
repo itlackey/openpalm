@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { memoryFetch, USER_ID } from "./lib.ts";
+import { memoryFetch, memoryResponseHasError, USER_ID } from "./lib.ts";
 
 const STACK_USER_ID = "openpalm";
 const GLOBAL_USER_ID = "global";
@@ -40,6 +40,13 @@ export default tool({
       .describe("Optional session/run identifier"),
   },
   async execute(args) {
+    if (args.sentiment !== "positive" && args.sentiment !== "negative") {
+      return JSON.stringify({
+        error: true,
+        message: "Invalid sentiment. Expected 'positive' or 'negative'.",
+      });
+    }
+
     const payload = {
       memory_id: args.memory_id,
       user_id: resolveUserId(args.scope),
@@ -57,13 +64,13 @@ export default tool({
         body: JSON.stringify(payload),
       },
     );
-    if (result.includes('"error":true')) {
+    if (memoryResponseHasError(result)) {
       result = await memoryFetch("/api/v1/feedback", {
         method: "POST",
         body: JSON.stringify(payload),
       });
     }
-    if (result.includes('"error":true')) {
+    if (memoryResponseHasError(result)) {
       result = await memoryFetch("/api/v2/feedback", {
         method: "POST",
         body: JSON.stringify(payload),

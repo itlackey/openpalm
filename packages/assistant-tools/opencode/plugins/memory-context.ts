@@ -69,7 +69,7 @@ function buildExtractionPrompt(state: SessionState): string {
   return `[SYSTEM: Memory Extraction]
 
 Review the conversation so far and extract up to 5 important NEW learnings worth long-term memory.
-Act as a memory editor: output a JSON array only (no prose) where each item has:
+Build a JSON array internally (do not print it) where each item has:
 - "scope": "personal" | "stack" | "global"
 - "category": "semantic" | "procedural" | "episodic"
 - "text": string (single atomic memory)
@@ -92,12 +92,15 @@ Rules:
   - global: cross-user universal rules (rare)
 - Add expiration_days for hacks/workarounds/environment-specific facts
 
-If nothing is worth storing, return [].
-After returning JSON, call memory-add once per object using:
+Do not print explanatory prose.
+Use that internal JSON array to call memory-add once per object:
 memory-add({
   text: "<text>",
   metadata: "{\"scope\":\"<scope>\",\"category\":\"<category>\",\"source\":\"auto-extract\",\"confidence\":<confidence>,\"keywords\":[...],\"expiration_days\":<expiration_days>,\"session_id\":\"${state.sessionId}\",\"project\":\"${state.project}\",\"agent_id\":\"${state.agentId}\",\"app_id\":\"${state.appId}\",\"run_id\":\"${state.sessionId}\"}"
-})`;
+})
+
+If nothing is worth storing, respond with "Nothing to extract." and do not call tools.
+If tool calling is unavailable, return only the JSON array and nothing else.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +171,15 @@ function isProjectCodeTool(toolName: string): boolean {
   return codePrefixes.some((prefix) => toolName.startsWith(prefix));
 }
 
+function isToolResultFailure(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  const record = result as Record<string, unknown>;
+  if ("error" in record && Boolean(record.error)) return true;
+  if ("ok" in record && record.ok === false) return true;
+  if ("success" in record && record.success === false) return true;
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin export
 // ---------------------------------------------------------------------------
@@ -205,7 +217,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
       if (!stats) return;
 
       // Policy-based retrieval: personal + project + stack + global
-      const [personalSemantic, personalProcedural, projectMems, stackSemantic, stackProcedural, globalProcedural, reflexionEpisodes] =
+      const [personalSemantic, personalProcedural, projectMems, stackSemantic, stackProcedural, globalProcedural, projectEpisodic] =
         await Promise.all([
           searchMemories(
             "user preferences project context conventions decisions",
@@ -329,12 +341,12 @@ export const MemoryContextPlugin = async (ctx: any) => {
       sessionsSinceReflexion++;
       if (
         sessionsSinceReflexion >= REFLEXION_SESSION_INTERVAL &&
-        reflexionEpisodes.length >= REFLEXION_EPISODE_THRESHOLD &&
+        projectEpisodic.length >= REFLEXION_EPISODE_THRESHOLD &&
         typeof client?.session?.prompt === "function"
       ) {
         sessionsSinceReflexion = 0;
         try {
-          const prompt = buildReflexionPrompt(reflexionEpisodes, project);
+          const prompt = buildReflexionPrompt(projectEpisodic, project);
           await client.session.prompt({
             path: { id: sessionId },
             body: { parts: [{ type: "text", text: prompt }] },
@@ -489,11 +501,11 @@ export const MemoryContextPlugin = async (ctx: any) => {
       const pending = pendingToolFeedback.get(feedbackKey(sessionId, toolName));
       if (!pending || pending.memoryIds.length === 0) return;
 
+      const result = output?.result ?? input?.result;
       const failed = Boolean(
         output?.error ||
         input?.error ||
-        input?.result?.error ||
-        output?.result?.error,
+        isToolResultFailure(result),
       );
       const reason = failed
         ? `Tool ${toolName} failed after memory injection`

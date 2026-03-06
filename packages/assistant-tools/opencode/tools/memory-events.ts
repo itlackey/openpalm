@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { memoryFetch } from "./lib.ts";
+import { memoryFetch, memoryResponseHasError } from "./lib.ts";
 
 export default tool({
   description:
@@ -11,7 +11,7 @@ export default tool({
     let result = await memoryFetch(
       `/api/v1/events/${encodeURIComponent(args.event_id)}`,
     );
-    if (result.includes('"error":true')) {
+    if (memoryResponseHasError(result)) {
       result = await memoryFetch(
         `/api/v2/events/${encodeURIComponent(args.event_id)}`,
       );

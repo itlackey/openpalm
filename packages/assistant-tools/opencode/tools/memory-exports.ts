@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { memoryFetch, USER_ID } from "./lib.ts";
+import { memoryFetch, memoryResponseHasError, USER_ID } from "./lib.ts";
 
 const STACK_USER_ID = "openpalm";
 const GLOBAL_USER_ID = "global";
@@ -42,7 +42,7 @@ export const create = tool({
       method: "POST",
       body: JSON.stringify(payload),
     });
-    if (result.includes('"error":true')) {
+    if (memoryResponseHasError(result)) {
       result = await memoryFetch("/api/v2/exports", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -67,7 +67,7 @@ export const get = tool({
     let result = await memoryFetch(
       `/api/v1/exports/${encodeURIComponent(args.export_id)}?user_id=${encodeURIComponent(userId)}`,
     );
-    if (result.includes('"error":true')) {
+    if (memoryResponseHasError(result)) {
       result = await memoryFetch(
         `/api/v2/exports/${encodeURIComponent(args.export_id)}?user_id=${encodeURIComponent(userId)}`,
       );

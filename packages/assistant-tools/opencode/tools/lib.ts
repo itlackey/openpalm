@@ -164,3 +164,12 @@ export async function memoryFetch(path: string, options?: RequestInit): Promise<
     return JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) });
   }
 }
+
+export function memoryResponseHasError(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown };
+    return parsed?.error === true;
+  } catch {
+    return false;
+  }
+}

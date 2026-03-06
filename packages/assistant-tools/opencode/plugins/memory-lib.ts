@@ -61,7 +61,7 @@ export interface MemoryMetadata {
 export interface MemoryItem {
   id: string;
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at?: string;
   app_name?: string;
 }
@@ -77,7 +77,7 @@ export interface MemoryItem {
 export async function pluginMemoryFetch(
   path: string,
   options?: RequestInit & { timeoutMs?: number },
-): Promise<any | null> {
+): Promise<unknown | null> {
   try {
     const { timeoutMs, ...rest } = options ?? {};
     const res = await fetch(`${OPENMEMORY_URL}${path}`, {
@@ -129,7 +129,7 @@ export async function searchMemories(
       },
     }),
   });
-  const v2items = (v2data?.items ?? v2data?.results) as MemoryItem[] | undefined;
+  const v2items = readItems(v2data);
   if (v2items) {
     return postFilterMemories(v2items, opts);
   }
@@ -139,7 +139,7 @@ export async function searchMemories(
     timeoutMs: opts?.timeoutMs,
     body: JSON.stringify(commonSearchBody),
   });
-  const items: MemoryItem[] = data?.items ?? [];
+  const items = readItems(data) ?? [];
   return postFilterMemories(items, opts);
 }
 
@@ -173,7 +173,9 @@ export async function addMemory(
       infer: true,
     }),
   });
-  return data?.id ?? null;
+  const dataRecord = asRecord(data);
+  const id = dataRecord?.id;
+  return typeof id === 'string' ? id : null;
 }
 
 /** Quick stats: total memories and app count. */
@@ -182,10 +184,22 @@ export async function getMemoryStats(timeoutMs = 3_000): Promise<{
   total_apps: number;
 } | null> {
   const identity = resolveMemoryIdentity();
-  return pluginMemoryFetch(
+  const stats = await pluginMemoryFetch(
     `/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`,
     { timeoutMs },
   );
+  const statsRecord = asRecord(stats);
+  if (
+    statsRecord &&
+    typeof statsRecord.total_memories === 'number' &&
+    typeof statsRecord.total_apps === 'number'
+  ) {
+    return {
+      total_memories: statsRecord.total_memories,
+      total_apps: statsRecord.total_apps,
+    };
+  }
+  return null;
 }
 
 /** Returns true if the OpenMemory service is reachable. */
@@ -247,7 +261,8 @@ export async function createMemoryExport(
       timeoutMs: 10_000,
       body: JSON.stringify(payload),
     });
-    if (result) return result as Record<string, unknown>;
+    const resultRecord = asRecord(result);
+    if (resultRecord) return resultRecord;
   }
   return null;
 }
@@ -263,7 +278,8 @@ export async function getMemoryExport(
       `${endpoint}/${encodeURIComponent(exportId)}?user_id=${encodeURIComponent(identity.userId)}`,
       { timeoutMs: 5_000 },
     );
-    if (result) return result as Record<string, unknown>;
+    const resultRecord = asRecord(result);
+    if (resultRecord) return resultRecord;
   }
   return null;
 }
@@ -277,7 +293,8 @@ export async function getMemoryEvent(
       `${endpoint}/${encodeURIComponent(eventId)}`,
       { timeoutMs: 5_000 },
     );
-    if (result) return result as Record<string, unknown>;
+    const resultRecord = asRecord(result);
+    if (resultRecord) return resultRecord;
   }
   return null;
 }
@@ -304,8 +321,10 @@ export function formatMemoriesForContext(
 function deriveDefaultAppId(): string {
   const envAppId = process.env.OPENMEMORY_APP_ID?.trim();
   if (envAppId) return envAppId;
-  const cwd = process.cwd();
-  const name = basename(cwd || '') || 'openpalm';
+  const cwd = process.cwd().trim();
+  if (!cwd) return 'openpalm';
+  const name = basename(cwd);
+  if (!name || name === '.' || name === '/') return 'openpalm';
   return name.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-');
 }
 
@@ -349,7 +368,7 @@ function postFilterMemories(
   return items.slice(0, opts?.size ?? 10);
 }
 
-function isHighSignalMemory(metadata: Record<string, any> | undefined): boolean {
+function isHighSignalMemory(metadata: Record<string, unknown> | undefined): boolean {
   if (!metadata) return false;
   if (metadata.pinned === true || metadata.immutable === true) return true;
   if (typeof metadata.confidence === 'number' && metadata.confidence >= 0.85) {
@@ -378,8 +397,39 @@ async function getMemoryStatsWithIdentity(
   total_apps: number;
 } | null> {
   const identity = resolveMemoryIdentity(identityInput);
-  return pluginMemoryFetch(
+  const stats = await pluginMemoryFetch(
     `/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`,
     { timeoutMs },
   );
+  const statsRecord = asRecord(stats);
+  if (
+    statsRecord &&
+    typeof statsRecord.total_memories === 'number' &&
+    typeof statsRecord.total_apps === 'number'
+  ) {
+    return {
+      total_memories: statsRecord.total_memories,
+      total_apps: statsRecord.total_apps,
+    };
+  }
+  return null;
+}
+
+function readItems(data: unknown): MemoryItem[] | undefined {
+  const record = asRecord(data);
+  if (!record) return undefined;
+  const items = record.items ?? record.results;
+  if (!Array.isArray(items)) return undefined;
+  return items.filter((item): item is MemoryItem => {
+    if (!item || typeof item !== 'object') return false;
+    const maybeItem = item as Record<string, unknown>;
+    return typeof maybeItem.id === 'string' && typeof maybeItem.content === 'string';
+  });
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object') {
+    return value as Record<string, unknown>;
+  }
+  return null;
 }
