@@ -154,26 +154,30 @@ export function readConnectionProfilesDocumentWithOptions(
     return legacy;
   }
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
-    if (isValidConnectionDocument(parsed)) {
-      if (options.preferLegacyRead && legacy.profiles[0]?.provider && legacy.assignments.llm.model) {
-        if (options.hydrateFromLegacy) {
-          writeConnectionProfilesDocument(configDir, legacy);
-        }
-        return legacy;
-      }
-      return parsed;
-    }
-    if (onInvalid === 'throw') {
-      throw new Error('connections/profiles.json is invalid: expected CanonicalConnectionsDocument v1');
-    }
+    parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
   } catch {
     if (onInvalid === 'throw') {
       throw new Error('connections/profiles.json is invalid JSON or schema');
     }
+    // Fall back to legacy document when JSON is invalid and onInvalid !== 'throw'
+    writeConnectionProfilesDocument(configDir, legacy);
+    return legacy;
   }
 
+  if (isValidConnectionDocument(parsed)) {
+    if (options.preferLegacyRead && legacy.profiles[0]?.provider && legacy.assignments.llm.model) {
+      if (options.hydrateFromLegacy) {
+        writeConnectionProfilesDocument(configDir, legacy);
+      }
+      return legacy;
+    }
+    return parsed;
+  }
+  if (onInvalid === 'throw') {
+    throw new Error('connections/profiles.json is invalid: expected CanonicalConnectionsDocument v1');
+  }
   writeConnectionProfilesDocument(configDir, legacy);
   return legacy;
 }
