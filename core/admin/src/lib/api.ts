@@ -8,7 +8,9 @@ import type {
   OpenMemoryConfigSaveResult,
   SystemConnectionPayload,
   SystemConnectionSaveResult,
-  RegistryResponse
+  RegistryResponse,
+  ConnectionsResponseDto,
+  SaveConnectionsDtoPayload,
 } from './types.js';
 
 const apiBase = '';
@@ -176,15 +178,43 @@ export async function fetchConnectionStatus(
 export async function fetchConnections(
   token: string
 ): Promise<Record<string, string>> {
+  const dto = await fetchConnectionsDto(token);
+  return dto.connections;
+}
+
+export async function fetchConnectionsDto(
+  token: string
+): Promise<ConnectionsResponseDto> {
   const res = await get('/admin/connections', token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    return {};
+    return {
+      profiles: [],
+      assignments: {
+        llm: { connectionId: '', model: '' },
+        embeddings: { connectionId: '', model: '' },
+      },
+      connections: {},
+    };
   }
-  const data = (await res.json()) as { connections: Record<string, string> };
-  return data.connections;
+  const data = (await res.json()) as Partial<ConnectionsResponseDto> & { connections?: Record<string, string> };
+  if (!data.profiles || !data.assignments) {
+    return {
+      profiles: [],
+      assignments: {
+        llm: { connectionId: '', model: '' },
+        embeddings: { connectionId: '', model: '' },
+      },
+      connections: data.connections ?? {},
+    };
+  }
+  return {
+    profiles: data.profiles,
+    assignments: data.assignments,
+    connections: data.connections ?? {},
+  };
 }
 
 export async function fetchChannels(token: string): Promise<ChannelsResponse> {
@@ -231,7 +261,7 @@ export async function fetchProviderModels(
   provider: string,
   apiKeyRef: string,
   baseUrl?: string
-): Promise<{ models: string[]; error?: string }> {
+): Promise<{ models: string[]; status?: 'ok' | 'recoverable_error'; reason?: string; error?: string }> {
   const res = await post(
     '/admin/openmemory/models',
     { provider, apiKeyRef, baseUrl: baseUrl ?? '' },
@@ -241,16 +271,48 @@ export async function fetchProviderModels(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    return { models: [], error: `HTTP ${res.status}` };
+    return { models: [], status: 'recoverable_error', reason: 'provider_http', error: `HTTP ${res.status}` };
   }
-  return (await res.json()) as { models: string[]; error?: string };
+  return (await res.json()) as { models: string[]; status?: 'ok' | 'recoverable_error'; reason?: string; error?: string };
 }
 
 export async function saveSystemConnection(
   token: string,
   payload: SystemConnectionPayload
 ): Promise<SystemConnectionSaveResult> {
-  const res = await post('/admin/connections', payload, token);
+  const dtoPayload: SaveConnectionsDtoPayload = {
+    profiles: [
+      {
+        id: 'primary',
+        name: 'Primary connection',
+        kind: payload.provider === 'ollama' || payload.provider === 'lmstudio' || payload.provider === 'model-runner'
+          ? 'openai_compatible_local'
+          : 'openai_compatible_remote',
+        provider: payload.provider,
+        baseUrl: payload.baseUrl,
+        auth: {
+          mode: payload.apiKey ? 'api_key' : 'none',
+        },
+      },
+    ],
+    assignments: {
+      llm: {
+        connectionId: 'primary',
+        model: payload.systemModel,
+      },
+      embeddings: {
+        connectionId: 'primary',
+        model: payload.embeddingModel,
+        embeddingDims: payload.embeddingDims,
+      },
+    },
+    apiKey: payload.apiKey,
+    openmemoryUserId: payload.openmemoryUserId,
+    customInstructions: payload.customInstructions,
+    capabilities: ['llm', 'embeddings'],
+  };
+
+  const res = await post('/admin/connections', dtoPayload, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }

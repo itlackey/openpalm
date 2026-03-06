@@ -40,6 +40,7 @@ async function mockLocalProvidersEndpoint(page: import('@playwright/test').Page)
 async function completeConnectStep(page: import('@playwright/test').Page) {
 	// Sub-step 2a: pick "OpenAI-Compatible (Remote)" connection type
 	await page.getByRole('button', { name: /OpenAI-Compatible/ }).click();
+	await page.locator('#llm-api-key').fill('sk-test');
 
 	// Sub-step 2b: test connection (default provider is openai)
 	await page.getByRole('button', { name: 'Test Connection' }).click();

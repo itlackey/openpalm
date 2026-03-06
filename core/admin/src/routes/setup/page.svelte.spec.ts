@@ -59,4 +59,17 @@ describe('/setup page', () => {
 
 		guard.expectNoErrors();
 	});
+
+	it('syncs current screen into URL query params', async () => {
+		guard = useConsoleGuard();
+		render(Page, { props: { data: mockData } });
+
+		const tokenInput = page.getByLabelText('Choose an admin token');
+		await tokenInput.fill('token');
+		await page.getByRole('button', { name: 'Next' }).click();
+
+		expect(window.location.search).toContain('screen=connection-type');
+
+		guard.expectNoErrors();
+	});
 });

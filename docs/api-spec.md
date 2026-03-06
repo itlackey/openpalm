@@ -248,15 +248,40 @@ Manage LLM provider credentials and related configuration stored in
 
 ### `GET /admin/connections`
 
-Returns current values for all allowed connection keys, with secret API keys
-masked (all but last 4 characters). Non-secret config keys (`SYSTEM_LLM_PROVIDER`,
-`SYSTEM_LLM_MODEL`, `SYSTEM_LLM_BASE_URL`, `OPENAI_BASE_URL`, `EMBEDDING_MODEL`,
-`EMBEDDING_DIMS`, `OPENMEMORY_USER_ID`) are returned unmasked.
+Returns the canonical v1 DTO plus a compatibility `connections` map.
+
+- `profiles` contains canonical connection profiles (`openai_compatible_remote` or `openai_compatible_local`).
+- `assignments` contains canonical required-capability assignments (`llm`, `embeddings`).
+- `connections` preserves the legacy masked key/value response for existing clients.
 
 Response:
 
 ```json
 {
+  "profiles": [
+    {
+      "id": "primary",
+      "name": "Primary connection",
+      "kind": "openai_compatible_remote",
+      "provider": "openai",
+      "baseUrl": "https://api.openai.com",
+      "auth": {
+        "mode": "api_key",
+        "apiKeySecretRef": "env:OPENAI_API_KEY"
+      }
+    }
+  ],
+  "assignments": {
+    "llm": {
+      "connectionId": "primary",
+      "model": "gpt-4.1-mini"
+    },
+    "embeddings": {
+      "connectionId": "primary",
+      "model": "text-embedding-3-small",
+      "embeddingDims": 1536
+    }
+  },
   "connections": {
     "OPENAI_API_KEY": "*********************1234",
     "ANTHROPIC_API_KEY": "",
@@ -291,11 +316,42 @@ Allowed keys (`ALLOWED_CONNECTION_KEYS`):
 
 ### `POST /admin/connections`
 
+Supports two payload shapes:
+
+1) **Canonical DTO (preferred)**
+
+```json
+{
+  "profiles": [
+    {
+      "id": "primary",
+      "name": "Primary connection",
+      "kind": "openai_compatible_remote",
+      "provider": "openai",
+      "baseUrl": "https://api.openai.com",
+      "auth": { "mode": "api_key" }
+    }
+  ],
+  "assignments": {
+    "llm": { "connectionId": "primary", "model": "gpt-4.1-mini" },
+    "embeddings": {
+      "connectionId": "primary",
+      "model": "text-embedding-3-small",
+      "embeddingDims": 1536
+    }
+  },
+  "apiKey": "sk-...",
+  "openmemoryUserId": "default_user",
+  "customInstructions": "",
+  "capabilities": ["llm", "embeddings"]
+}
+```
+
+2) **Legacy key patch (compatibility)**
+
 Patches one or more allowed keys into `CONFIG_HOME/secrets.env`. Keys not in
 `ALLOWED_CONNECTION_KEYS` are silently ignored. Existing keys outside the
 allowed set are preserved.
-
-Body:
 
 ```json
 {
@@ -304,7 +360,19 @@ Body:
 }
 ```
 
-Response:
+Response (canonical and unified save paths):
+
+```json
+{
+  "ok": true,
+  "pushed": true,
+  "pushError": null,
+  "dimensionWarning": null,
+  "dimensionMismatch": false
+}
+```
+
+Response (legacy key patch path):
 
 ```json
 { "ok": true, "updated": ["OPENAI_API_KEY", "SYSTEM_LLM_PROVIDER"] }
@@ -328,6 +396,95 @@ Response:
 ```
 
 `complete` is `true` when provider and model are set; `false` with `missing` listing what's absent.
+
+### `GET /admin/connections/profiles`
+
+Returns canonical connection profiles from `CONFIG_HOME/connections/profiles.json`.
+
+```json
+{
+  "profiles": [
+    {
+      "id": "primary",
+      "name": "Primary connection",
+      "kind": "openai_compatible_remote",
+      "provider": "openai",
+      "baseUrl": "https://api.openai.com",
+      "auth": {
+        "mode": "api_key",
+        "apiKeySecretRef": "env:OPENAI_API_KEY"
+      }
+    }
+  ]
+}
+```
+
+### `POST /admin/connections/profiles`
+
+Create a profile.
+
+```json
+{
+  "profile": {
+    "id": "local-lmstudio",
+    "name": "LM Studio",
+    "kind": "openai_compatible_local",
+    "provider": "lmstudio",
+    "baseUrl": "http://host.docker.internal:1234",
+    "auth": { "mode": "none" }
+  }
+}
+```
+
+### `PUT /admin/connections/profiles`
+
+Update an existing profile by id.
+
+### `DELETE /admin/connections/profiles`
+
+Delete by id:
+
+```json
+{ "id": "local-lmstudio" }
+```
+
+Error responses:
+
+- `400 bad_request` — malformed profile payload.
+- `404 not_found` — profile id not found.
+- `409 conflict` — duplicate create or profile currently referenced by assignments.
+
+### `GET /admin/connections/assignments`
+
+Returns canonical capability assignments:
+
+```json
+{
+  "assignments": {
+    "llm": { "connectionId": "primary", "model": "gpt-4.1-mini" },
+    "embeddings": {
+      "connectionId": "primary",
+      "model": "text-embedding-3-small",
+      "embeddingDims": 1536
+    }
+  }
+}
+```
+
+### `POST /admin/connections/assignments`
+
+Save canonical assignments. If any `connectionId` does not exist in profiles,
+returns `409 conflict`.
+
+### Setup-token route variants
+
+During setup (or with admin token), the same handlers are available at:
+
+- `GET/POST/PUT/DELETE /admin/setup/connections/profiles`
+- `GET/POST /admin/setup/connections/assignments`
+
+These routes use setup-token compatible auth and preserve the same payload and
+error semantics as their `/admin/connections/*` counterparts.
 
 ## OpenMemory Configuration
 

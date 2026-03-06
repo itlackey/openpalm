@@ -70,7 +70,20 @@ export function resolveApiKey(apiKeyRef: string, configDir: string): string {
 
 // ── Provider Model Listing ──────────────────────────────────────────────
 
-export type ProviderModelsResult = { models: string[]; error?: string };
+export type ModelDiscoveryReason =
+  | 'none'
+  | 'provider_static'
+  | 'provider_http'
+  | 'missing_base_url'
+  | 'timeout'
+  | 'network';
+
+export type ProviderModelsResult = {
+  models: string[];
+  status: 'ok' | 'recoverable_error';
+  reason: ModelDiscoveryReason;
+  error?: string;
+};
 
 /**
  * Fetch available models from a provider's API.
@@ -85,7 +98,7 @@ export async function fetchProviderModels(
   try {
     // Anthropic: no listing API — return static list
     if (provider === "anthropic") {
-      return { models: [...ANTHROPIC_MODELS] };
+      return { models: [...ANTHROPIC_MODELS], status: 'ok', reason: 'provider_static' };
     }
 
     const resolvedKey = resolveApiKey(apiKeyRef, configDir);
@@ -96,17 +109,27 @@ export async function fetchProviderModels(
       const url = `${base.replace(/\/+$/, "")}/api/tags`;
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) {
-        return { models: [], error: `Ollama API returned ${res.status}` };
+        return {
+          models: [],
+          status: 'recoverable_error',
+          reason: 'provider_http',
+          error: `Ollama API returned ${res.status}`,
+        };
       }
       const data = (await res.json()) as { models?: { name: string }[] };
       const models = (data.models ?? []).map((m) => m.name).sort();
-      return { models };
+      return { models, status: 'ok', reason: 'none' };
     }
 
     // OpenAI-compatible providers
     const base = baseUrl?.trim() || PROVIDER_DEFAULT_URLS[provider] || "";
     if (!base) {
-      return { models: [], error: `No base URL configured for provider "${provider}"` };
+      return {
+        models: [],
+        status: 'recoverable_error',
+        reason: 'missing_base_url',
+        error: `No base URL configured for provider "${provider}"`,
+      };
     }
     const url = `${base.replace(/\/+$/, "")}/v1/models`;
 
@@ -117,17 +140,27 @@ export async function fetchProviderModels(
 
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (!res.ok) {
-      return { models: [], error: `Provider API returned ${res.status}` };
+      return {
+        models: [],
+        status: 'recoverable_error',
+        reason: 'provider_http',
+        error: `Provider API returned ${res.status}`,
+      };
     }
     const data = (await res.json()) as { data?: { id: string }[] };
     const models = (data.data ?? []).map((m) => m.id).sort();
-    return { models };
+    return { models, status: 'ok', reason: 'none' };
   } catch (err) {
     const message =
       err instanceof Error && err.name === "TimeoutError"
         ? "Request timed out after 5s"
         : String(err);
-    return { models: [], error: message };
+    return {
+      models: [],
+      status: 'recoverable_error',
+      reason: err instanceof Error && err.name === 'TimeoutError' ? 'timeout' : 'network',
+      error: message,
+    };
   }
 }
 

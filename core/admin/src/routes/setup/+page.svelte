@@ -1,7 +1,18 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
   import { SETUP_WIZARD_COPY } from '$lib/setup-wizard/copy.js';
+  import { mapModelDiscoveryError } from '$lib/model-discovery.js';
+  import WizardShell from '$lib/components/setup-wizard/WizardShell.svelte';
+  import ConnectionPicker from '$lib/components/setup-wizard/ConnectionPicker.svelte';
+  import ModelSelector from '$lib/components/setup-wizard/ModelSelector.svelte';
+  import {
+    createInitialDraft,
+    isAfterScreen,
+    parseWizardScreen,
+    type WizardScreen,
+  } from '$lib/setup-wizard/state.js';
   import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
 
@@ -14,16 +25,10 @@
   const { setupToken = '', detectedUserId = 'default_user' } = data;
 
   // ── Wizard state ────────────────────────────────────────────────────────
-  type WizardStep = 'token' | 'provider' | 'models' | 'review';
-  let step: WizardStep = $state('token');
+  const initialDraft = createInitialDraft(detectedUserId);
+  let screen: WizardScreen = $state(initialDraft.screen);
   let setupComplete = $state(false);
   let loading = $state(true);
-
-  // Step ordering helpers
-  const STEP_ORDER: WizardStep[] = ['token', 'provider', 'models', 'review'];
-  function isAfter(a: WizardStep, b: WizardStep): boolean {
-    return STEP_ORDER.indexOf(a) > STEP_ORDER.indexOf(b);
-  }
 
   // ── Form fields ─────────────────────────────────────────────────────────
   let adminToken = $state('');
@@ -31,12 +36,12 @@
 
   // Step 2 — Connection Type picker
   type ConnectionType = 'cloud' | 'local' | null;
-  let connectionType: ConnectionType = $state(null);
+  let connectionType: ConnectionType = $state(initialDraft.connectionType);
 
   // Step 2 — Provider (unified: cloud + local detection)
-  let llmProvider = $state('openai');
-  let llmApiKey = $state('');
-  let llmBaseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
+  let llmProvider = $state(initialDraft.llmProvider);
+  let llmApiKey = $state(initialDraft.llmApiKey);
+  let llmBaseUrl = $state(initialDraft.llmBaseUrl || (PROVIDER_DEFAULT_URLS['openai'] ?? ''));
 
   // Cloud provider quick-picks
   const CLOUD_PROVIDERS = ['openai', 'groq', 'together', 'mistral', 'deepseek', 'xai', 'anthropic'] as const;
@@ -53,10 +58,10 @@
   let ollamaEnableProgress = $state('');
 
   // Step 3 — Models
-  let systemModel = $state('');
-  let embeddingModel = $state('');
-  let embeddingDims = $state(1536);
-  let openmemoryUserId = $state(detectedUserId);
+  let systemModel = $state(initialDraft.systemModel);
+  let embeddingModel = $state(initialDraft.embeddingModel);
+  let embeddingDims = $state(initialDraft.embeddingDims);
+  let openmemoryUserId = $state(initialDraft.openmemoryUserId);
 
   // Model list state
   let modelList: string[] = $state([]);
@@ -74,6 +79,17 @@
   let testingConnection = $state(false);
   let connectionTested = $state(false);
 
+  function validateProviderFields(): string {
+    if (!llmProvider) return 'Select a provider before continuing.';
+    if (connectionType === 'cloud' && !llmApiKey.trim() && llmProvider !== 'anthropic') {
+      return 'API key is required for cloud providers.';
+    }
+    if (connectionType === 'local' && !llmBaseUrl.trim()) {
+      return 'Base URL is required for local providers.';
+    }
+    return '';
+  }
+
   // ── API helpers ─────────────────────────────────────────────────────────
 
   function buildHeaders(token = ''): HeadersInit {
@@ -83,6 +99,27 @@
       ...(token ? { 'x-admin-token': token } : {})
     };
   }
+
+  function goToScreen(next: WizardScreen): void {
+    screen = next;
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('screen', next);
+    try {
+      replaceState(url, {});
+    } catch {
+      window.history.replaceState({}, '', url);
+    }
+  }
+
+  onMount(() => {
+    const parsed = parseWizardScreen(new URL(window.location.href).searchParams.get('screen'));
+    if (parsed) {
+      screen = parsed;
+      if (parsed === 'cloud-provider') connectionType = 'cloud';
+      if (parsed === 'local-provider') connectionType = 'local';
+    }
+  });
 
   // ── Connection Type selection ──────────────────────────────────────────
 
@@ -96,11 +133,13 @@
       llmProvider = 'openai';
       llmBaseUrl = PROVIDER_DEFAULT_URLS['openai'] ?? '';
       llmApiKey = '';
+      goToScreen('cloud-provider');
     } else if (type === 'local') {
       llmProvider = 'ollama';
       llmBaseUrl = PROVIDER_DEFAULT_URLS['ollama'] ?? '';
       llmApiKey = '';
       void detectLocalProviders();
+      goToScreen('local-provider');
     }
   }
 
@@ -254,7 +293,7 @@
       }
       const result = await res.json();
       if (result.error) {
-        connectError = result.error;
+        connectError = mapModelDiscoveryError(result);
         return;
       }
       const apiModels: string[] = result.models ?? [];
@@ -371,25 +410,21 @@
 {:else}
   <!-- Wizard -->
   <main class="setup-page" aria-label="Setup wizard">
-    <section class="wizard-card">
-      <div class="wizard-header">
-        <h1>{SETUP_WIZARD_COPY.wizardHeaderTitle}</h1>
-        <p class="wizard-subtitle">{SETUP_WIZARD_COPY.wizardHeaderSubtitle}</p>
-      </div>
+    <WizardShell title={SETUP_WIZARD_COPY.wizardHeaderTitle} subtitle={SETUP_WIZARD_COPY.wizardHeaderSubtitle}>
 
       <!-- Step indicators -->
       <nav class="step-indicators" aria-label="Wizard steps">
-        <button class="step-dot" class:active={step === 'token'} class:completed={isAfter(step, 'token')} onclick={() => { step = 'token'; }} aria-label="Step 1: Admin Token" aria-current={step === 'token' ? 'step' : undefined}>1</button>
-        <span class="step-line" class:active={isAfter(step, 'token')}></span>
-        <button class="step-dot" class:active={step === 'provider'} class:completed={isAfter(step, 'provider')} onclick={() => { if (isAfter(step, 'provider')) { step = 'provider'; } }} aria-label="Step 2: Connection" aria-current={step === 'provider' ? 'step' : undefined}>2</button>
-        <span class="step-line" class:active={isAfter(step, 'provider')}></span>
-        <button class="step-dot" class:active={step === 'models'} class:completed={isAfter(step, 'models')} onclick={() => { if (isAfter(step, 'models')) step = 'models'; }} aria-label="Step 3: Models" aria-current={step === 'models' ? 'step' : undefined}>3</button>
-        <span class="step-line" class:active={isAfter(step, 'models')}></span>
-        <button class="step-dot" class:active={step === 'review'} aria-label="Step 4: Review & Install" aria-current={step === 'review' ? 'step' : undefined} disabled>4</button>
+        <button class="step-dot" class:active={screen === 'token'} class:completed={isAfterScreen(screen, 'token')} onclick={() => goToScreen('token')} aria-label="Step 1: Admin Token" aria-current={screen === 'token' ? 'step' : undefined}>1</button>
+        <span class="step-line" class:active={isAfterScreen(screen, 'token')}></span>
+        <button class="step-dot" class:active={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'} class:completed={isAfterScreen(screen, 'connection-type')} onclick={() => { if (isAfterScreen(screen, 'connection-type')) goToScreen('connection-type'); }} aria-label="Step 2: Connection" aria-current={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider' ? 'step' : undefined}>2</button>
+        <span class="step-line" class:active={isAfterScreen(screen, 'connection-type')}></span>
+        <button class="step-dot" class:active={screen === 'models'} class:completed={isAfterScreen(screen, 'models')} onclick={() => { if (isAfterScreen(screen, 'models')) goToScreen('models'); }} aria-label="Step 3: Models" aria-current={screen === 'models' ? 'step' : undefined}>3</button>
+        <span class="step-line" class:active={isAfterScreen(screen, 'models')}></span>
+        <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled>4</button>
       </nav>
 
       <!-- Step 1: Admin Token -->
-      {#if step === 'token'}
+      {#if screen === 'token'}
         <div class="step-content" data-testid="step-token">
           <h2>Admin Token</h2>
           <div class="field-group">
@@ -412,62 +447,29 @@
                 return;
               }
               tokenError = '';
-              step = 'provider';
+              goToScreen('connection-type');
             }}>Next</button>
           </div>
         </div>
       {/if}
 
       <!-- Step 2: LLM Connection -->
-      {#if step === 'provider'}
+      {#if screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'}
         <div class="step-content" data-testid="step-provider">
 
           <!-- Sub-step 2a: Connection type picker (shown when no type selected) -->
-          {#if connectionType === null}
+          {#if screen === 'connection-type'}
             <h2>Connection Type</h2>
             <p class="step-description">{SETUP_WIZARD_COPY.connectionTypePrompt}</p>
 
-            <button
-              class="connection-type-card"
-              type="button"
-              onclick={() => selectConnectionType('cloud')}
-            >
-              <div class="connection-type-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-                </svg>
-              </div>
-              <div class="connection-type-text">
-                <span class="connection-type-label">OpenAI-Compatible (Remote)</span>
-                <span class="connection-type-desc">API key + optional custom base URL. Works with OpenAI, Groq, Together, OpenRouter, and more.</span>
-              </div>
-            </button>
-
-            <button
-              class="connection-type-card"
-              type="button"
-              onclick={() => selectConnectionType('local')}
-            >
-              <div class="connection-type-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="2" width="20" height="8" rx="2" />
-                  <rect x="2" y="14" width="20" height="8" rx="2" />
-                  <circle cx="6" cy="6" r="1" />
-                  <circle cx="6" cy="18" r="1" />
-                </svg>
-              </div>
-              <div class="connection-type-text">
-                <span class="connection-type-label">Local (Ollama / LM Studio)</span>
-                <span class="connection-type-desc">Run models on your own hardware. No API key needed. We can set up Ollama for you.</span>
-              </div>
-            </button>
+            <ConnectionPicker onSelectCloud={() => selectConnectionType('cloud')} onSelectLocal={() => selectConnectionType('local')} />
 
             <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => (step = 'token')}>Back</button>
+              <button class="btn btn-secondary" onclick={() => goToScreen('token')}>Back</button>
             </div>
 
           <!-- Sub-step 2b: Cloud provider details -->
-          {:else if connectionType === 'cloud'}
+          {:else if screen === 'cloud-provider'}
             <h2>Cloud Provider</h2>
             <p class="step-description">Pick a provider or enter custom connection details.</p>
 
@@ -521,7 +523,7 @@
             {/if}
 
             <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => { connectionType = null; }}>Back</button>
+              <button class="btn btn-secondary" onclick={() => { connectionType = null; goToScreen('connection-type'); }}>Back</button>
               <button
                 class="btn btn-outline"
                 onclick={() => void testConnection()}
@@ -536,13 +538,20 @@
               </button>
               <button
                 class="btn btn-primary"
-                disabled={!connectionTested}
-                onclick={() => { step = 'models'; }}
+                disabled={testingConnection}
+                onclick={() => {
+                  const validationError = validateProviderFields();
+                  if (validationError) {
+                    connectError = validationError;
+                    return;
+                  }
+                  goToScreen('models');
+                }}
               >Next</button>
             </div>
 
           <!-- Sub-step 2b: Local provider details -->
-          {:else if connectionType === 'local'}
+          {:else if screen === 'local-provider'}
             <h2>Local Provider</h2>
             <p class="step-description">Connect to a local LLM running on your machine.</p>
 
@@ -659,7 +668,7 @@
             {/if}
 
             <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => { connectionType = null; }}>Back</button>
+              <button class="btn btn-secondary" onclick={() => { connectionType = null; goToScreen('connection-type'); }}>Back</button>
               {#if !ollamaEnabled}
                 <button
                   class="btn btn-outline"
@@ -676,8 +685,15 @@
               {/if}
               <button
                 class="btn btn-primary"
-                disabled={!connectionTested}
-                onclick={() => { step = 'models'; }}
+                disabled={testingConnection}
+                onclick={() => {
+                  const validationError = validateProviderFields();
+                  if (validationError) {
+                    connectError = validationError;
+                    return;
+                  }
+                  goToScreen('models');
+                }}
               >Next</button>
             </div>
           {/if}
@@ -685,32 +701,20 @@
       {/if}
 
       <!-- Step 3: Models -->
-      {#if step === 'models'}
+      {#if screen === 'models'}
         <div class="step-content" data-testid="step-models">
           <h2>{SETUP_WIZARD_COPY.selectModelsTitle}</h2>
           <p class="step-description">{SETUP_WIZARD_COPY.selectModelsDescription}</p>
 
           <div class="field-group">
             <label for="system-model">System Model</label>
-            <select id="system-model" bind:value={systemModel}>
-              {#each modelList as m}
-                <option value={m}>{m}</option>
-              {/each}
-            </select>
+            <ModelSelector id="system-model" bind:value={systemModel} options={modelList} placeholder="gpt-4o-mini" />
             <p class="field-hint">Used for message routing, safety, and memory reasoning.</p>
           </div>
 
           <div class="field-group">
             <label for="embedding-model">Embedding Model</label>
-            <select
-              id="embedding-model"
-              value={embeddingModel}
-              onchange={(e) => handleEmbeddingModelChange(e.currentTarget.value)}
-            >
-              {#each modelList as m}
-                <option value={m}>{m}</option>
-              {/each}
-            </select>
+            <ModelSelector id="embedding-model" bind:value={embeddingModel} options={modelList} placeholder="text-embedding-3-small" onChange={handleEmbeddingModelChange} />
             <p class="field-hint">Used for memory vector embeddings. Changing this later requires a collection reset.</p>
           </div>
 
@@ -727,14 +731,14 @@
           </div>
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'provider')}>Back</button>
-            <button class="btn btn-primary" onclick={() => (step = 'review')}>Next</button>
+            <button class="btn btn-secondary" onclick={() => goToScreen(connectionType === 'local' ? 'local-provider' : 'cloud-provider')}>Back</button>
+            <button class="btn btn-primary" onclick={() => goToScreen('review')}>Next</button>
           </div>
         </div>
       {/if}
 
       <!-- Step 4: Review & Install -->
-      {#if step === 'review'}
+      {#if screen === 'review' || screen === 'install'}
         <div class="step-content" data-testid="step-review">
           <h2>Review & Install</h2>
           <div class="review-grid">
@@ -785,7 +789,7 @@
           {/if}
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => (step = 'models')} disabled={installing}>Back</button>
+            <button class="btn btn-secondary" onclick={() => goToScreen('models')} disabled={installing}>Back</button>
             <button class="btn btn-primary" onclick={handleInstall} disabled={installing}>
               {#if installing}
                 <span class="spinner"></span>
@@ -801,7 +805,7 @@
           {/if}
         </div>
       {/if}
-    </section>
+    </WizardShell>
   </main>
 {/if}
 
@@ -836,17 +840,17 @@
     padding: var(--space-8);
   }
 
-  .wizard-header {
+  :global(.wizard-header) {
     margin-bottom: var(--space-6);
   }
 
-  .wizard-header h1 {
+  :global(.wizard-header h1) {
     font-size: var(--text-2xl);
     font-weight: var(--font-bold);
     color: var(--color-text);
   }
 
-  .wizard-subtitle {
+  :global(.wizard-subtitle) {
     margin-top: var(--space-1);
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
@@ -967,7 +971,7 @@
   }
 
   /* ── Connection Type Cards ───────────────────────────────────────────── */
-  .connection-type-card {
+  :global(.connection-type-card) {
     display: flex;
     align-items: flex-start;
     gap: var(--space-4);
@@ -982,12 +986,12 @@
     transition: all var(--transition-fast);
   }
 
-  .connection-type-card:hover {
+  :global(.connection-type-card:hover) {
     border-color: var(--color-primary);
     background: var(--color-bg-secondary);
   }
 
-  .connection-type-icon {
+  :global(.connection-type-icon) {
     flex-shrink: 0;
     width: 40px;
     height: 40px;
@@ -999,19 +1003,19 @@
     color: var(--color-primary);
   }
 
-  .connection-type-text {
+  :global(.connection-type-text) {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
   }
 
-  .connection-type-label {
+  :global(.connection-type-label) {
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--color-text);
   }
 
-  .connection-type-desc {
+  :global(.connection-type-desc) {
     font-size: var(--text-xs);
     color: var(--color-text-secondary);
     line-height: 1.4;

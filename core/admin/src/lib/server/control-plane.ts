@@ -20,12 +20,30 @@ export type {
   CoreServiceName,
   AccessScope,
   CallerType,
+  ConnectionKind,
+  ConnectionAuthMode,
+  CanonicalConnectionProfile,
+  RequiredCapability,
+  OptionalCapability,
+  Capability,
+  LlmAssignment,
+  EmbeddingsAssignment,
+  RerankerAssignment,
+  TtsAssignment,
+  SttAssignment,
+  CapabilityAssignments,
+  CanonicalConnectionsDocument,
   ChannelInfo,
   AuditEntry,
   ArtifactMeta,
   ControlPlaneState
 } from "./types.js";
-export { CORE_SERVICES } from "./types.js";
+export {
+  CORE_SERVICES,
+  CONNECTION_KINDS,
+  REQUIRED_CAPABILITIES,
+  OPTIONAL_CAPABILITIES,
+} from "./types.js";
 
 // ── paths.ts ──────────────────────────────────────────────────────────
 export { ensureXdgDirs } from "./paths.js";
@@ -127,8 +145,43 @@ export {
   isAllowedAction
 } from "./lifecycle.js";
 
+// ── connection-profiles.ts ────────────────────────────────────────────
+export {
+  getConnectionProfilesDir,
+  getConnectionProfilesPath,
+  readConnectionProfilesDocument,
+  readConnectionProfilesDocumentWithOptions,
+  writeConnectionProfilesDocument,
+  ensureConnectionProfilesStore,
+  writePrimaryConnectionProfile,
+  listConnectionProfiles,
+  getCapabilityAssignments,
+  createConnectionProfile,
+  updateConnectionProfile,
+  deleteConnectionProfile,
+  saveCapabilityAssignments,
+} from './connection-profiles.js';
+
 // ── model-runner.ts ──────────────────────────────────────────────────
 export {
   detectLocalProviders,
   type LocalProviderDetection
 } from "./model-runner.js";
+
+// ── connection-mapping.ts ─────────────────────────────────────────────
+export {
+  buildOpenCodeMapping,
+  buildMem0Mapping,
+  type OpenCodeConnectionMappingInput,
+  type OpenCodeConnectionMapping,
+  type Mem0ConnectionMappingInput,
+  type Mem0ConnectionMapping,
+} from './connection-mapping.js';
+
+// ── connection-migration-flags.ts ─────────────────────────────────────
+export {
+  readConnectionMigrationFlags,
+  detectConnectionCompatibilityMode,
+  type ConnectionMigrationFlags,
+  type ConnectionCompatibilityMode,
+} from './connection-migration-flags.js';

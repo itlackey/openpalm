@@ -5,7 +5,9 @@ import {
   requireAdmin,
   getCallerType,
   parseJsonBody,
-  safeTokenCompare
+  safeTokenCompare,
+  parseCanonicalConnectionProfile,
+  parseCapabilityAssignments,
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -15,6 +17,8 @@ import {
   ensureOpenCodeSystemConfig,
   ensureOpenMemoryPatch,
   ensureSecrets,
+  ensureConnectionProfilesStore,
+  writePrimaryConnectionProfile,
   applyInstall,
   appendAudit,
   discoverStagedChannelYmls,
@@ -26,15 +30,20 @@ import {
   resolveConfigForPush,
   pushConfigToOpenMemory,
   provisionOpenMemoryUser,
-  type OpenMemoryConfig
+  buildMem0Mapping,
+  readConnectionMigrationFlags,
+  detectConnectionCompatibilityMode,
 } from "$lib/server/control-plane.js";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
-  mem0ProviderName,
   mem0BaseUrlConfig,
   OLLAMA_INSTACK_URL
 } from "$lib/provider-constants.js";
+import {
+  isWizardProviderInScope,
+  validateWizardCapabilitiesInput,
+} from '$lib/setup-wizard/scope.js';
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
@@ -115,6 +124,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
   }
 
+  const migrationFlags = readConnectionMigrationFlags();
+  const compatibilityMode = detectConnectionCompatibilityMode(body);
+
   // Build update map from request body
   const updates: Record<string, string> = {};
   if (typeof body.adminToken === "string" && body.adminToken) {
@@ -122,14 +134,46 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // ── System LLM connection fields (new wizard) ──
-  const llmProvider = typeof body.llmProvider === "string" ? body.llmProvider : "";
-  const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey : "";
-  const llmBaseUrl = typeof body.llmBaseUrl === "string" ? body.llmBaseUrl : "";
-  const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
-  const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
-  const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
+  let llmProvider = typeof body.llmProvider === "string" ? body.llmProvider : "";
+  const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey : (typeof body.apiKey === 'string' ? body.apiKey : '');
+  let llmBaseUrl = typeof body.llmBaseUrl === "string" ? body.llmBaseUrl : "";
+  let systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
+  let embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
+  let embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
   const ollamaEnabled = body.ollamaEnabled === true;
+
+  if (Array.isArray(body.profiles) && typeof body.assignments === 'object' && body.assignments !== null) {
+    const profileParsed = parseCanonicalConnectionProfile(body.profiles[0]);
+    if (!profileParsed.ok) {
+      return errorResponse(400, 'bad_request', profileParsed.message, {}, requestId);
+    }
+    const assignmentParsed = parseCapabilityAssignments(body.assignments);
+    if (!assignmentParsed.ok) {
+      return errorResponse(400, 'bad_request', assignmentParsed.message, {}, requestId);
+    }
+
+    llmProvider = profileParsed.value.provider;
+    llmBaseUrl = profileParsed.value.baseUrl;
+    systemModel = assignmentParsed.value.llm.model;
+    embeddingModel = assignmentParsed.value.embeddings.model;
+    embeddingDims = assignmentParsed.value.embeddings.embeddingDims ?? 0;
+  }
+
+  if (llmProvider && !isWizardProviderInScope(llmProvider)) {
+    return errorResponse(
+      400,
+      'bad_request',
+      `Provider \"${llmProvider}\" is outside setup wizard v1 scope`,
+      {},
+      requestId
+    );
+  }
+
+  const capabilitiesValidation = validateWizardCapabilitiesInput(body.capabilities);
+  if (!capabilitiesValidation.ok) {
+    return errorResponse(400, 'bad_request', capabilitiesValidation.message, {}, requestId);
+  }
 
   // When Ollama runs in-stack, override base URL to use Docker network name
   const effectiveBaseUrl = (ollamaEnabled && llmProvider === "ollama")
@@ -161,6 +205,7 @@ export const POST: RequestHandler = async (event) => {
   try {
     ensureXdgDirs();
     ensureSecrets(state);
+    ensureConnectionProfilesStore(state.configDir);
     updateSecretsEnv(state, updates);
   } catch (err) {
     return errorResponse(
@@ -184,44 +229,29 @@ export const POST: RequestHandler = async (event) => {
       ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
       : (llmApiKey || "not-needed");
 
-    const llmConfig: Record<string, unknown> = {
-      model: systemModel,
-      temperature: 0.1,
-      max_tokens: 2000,
-      api_key: apiKeyEnvRef,
-    };
-    const mem0BaseUrl = mem0BaseUrlConfig(llmProvider, effectiveBaseUrl);
-    if (mem0BaseUrl) llmConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
-
-    // Embedding provider — for now same provider as LLM
-    const embedApiKeyRef = apiKeyEnvRef;
-    const embedConfig: Record<string, unknown> = {
-      model: embeddingModel || "text-embedding-3-small",
-      api_key: embedApiKeyRef,
-    };
-    if (mem0BaseUrl) embedConfig[mem0BaseUrl.key] = mem0BaseUrl.value;
-
     // Resolve embedding dimensions
     const lookupKey = `${llmProvider}/${embeddingModel}`;
     const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
-    const omConfig: OpenMemoryConfig = {
-      mem0: {
-        llm: { provider: mem0ProviderName(llmProvider), config: llmConfig },
-        embedder: { provider: mem0ProviderName(llmProvider), config: embedConfig },
-        vector_store: {
-          provider: "qdrant",
-          config: {
-            collection_name: "openmemory",
-            path: "/data/qdrant",
-            embedding_model_dims: resolvedDims,
-          },
-        },
-      },
-      openmemory: { custom_instructions: "" },
-    };
+    const omConfig = buildMem0Mapping({
+      provider: llmProvider,
+      baseUrl: effectiveBaseUrl,
+      systemModel,
+      embeddingModel: embeddingModel || 'text-embedding-3-small',
+      embeddingDims: resolvedDims,
+      apiKeyRef: apiKeyEnvRef,
+      customInstructions: '',
+    });
 
     writeOpenMemoryConfig(state.dataDir, omConfig);
+
+    writePrimaryConnectionProfile(state.configDir, {
+      provider: llmProvider,
+      baseUrl: effectiveBaseUrl,
+      systemModel,
+      embeddingModel: embeddingModel || 'text-embedding-3-small',
+      embeddingDims: resolvedDims,
+    });
   }
 
   // Run install sequence
@@ -279,7 +309,8 @@ export const POST: RequestHandler = async (event) => {
     {
       dockerAvailable: true,
       composeResult: dockerResult.ok,
-      channels: channelNames
+      channels: channelNames,
+      ...(migrationFlags.annotateAudit ? { compatibilityMode } : {}),
     },
     dockerResult.ok,
     requestId,

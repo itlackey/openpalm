@@ -178,7 +178,7 @@
     "id": "R04",
     "title": "Deliver admin CRUD and assignment APIs",
     "description": "Add profile CRUD and assignment endpoints with setup-token variants and stable error/audit behavior.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 24 },
       { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 39 },
@@ -190,7 +190,7 @@
       {
         "id": "R04-1",
         "description": "Implement connection profile store operations and assignment save service with schema validation.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 55 },
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 70 },
@@ -200,7 +200,7 @@
       {
         "id": "R04-2",
         "description": "Add /admin/connections/profiles CRUD and /admin/connections/assignments routes with deterministic 400/404/409 handling.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 24 },
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 79 },
@@ -211,7 +211,7 @@
       {
         "id": "R04-3",
         "description": "Add setup-auth route variants and a shared admin-or-setup-token helper without changing existing requireAdmin paths.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 40 },
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 90 },
@@ -222,7 +222,7 @@
       {
         "id": "R04-4",
         "description": "Extend API spec, audit action coverage, and service/route regression tests for new and legacy endpoints.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 100 },
           { "file": ".plans/recommendation-04-admin-api-crud.md", "line": 123 },
@@ -237,7 +237,7 @@
     "id": "R05",
     "title": "Refactor setup UI to 7-screen wizard",
     "description": "Replace singleton 4-step setup flow with componentized connection-first wizard UX.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 22 },
       { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 55 },
@@ -249,7 +249,7 @@
       {
         "id": "R05-1",
         "description": "Replace route step state with seven URL-synced screens and semantic progress navigation.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 38 },
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 46 },
@@ -259,7 +259,7 @@
       {
         "id": "R05-2",
         "description": "Split setup route into wizard screen components plus reusable ConnectionPicker and ModelSelector.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 55 },
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 63 },
@@ -269,7 +269,7 @@
       {
         "id": "R05-3",
         "description": "Introduce setup wizard draft state module with deterministic transitions and carry-forward defaults.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 77 },
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 92 },
@@ -280,7 +280,7 @@
       {
         "id": "R05-4",
         "description": "Apply canonical copy and accessibility/validation requirements, then update setup UI tests and viewport QA checks.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 105 },
           { "file": ".plans/recommendation-05-setup-wizard-ui-refactor.md", "line": 118 },
@@ -296,7 +296,7 @@
     "id": "R06",
     "title": "Normalize validation and model discovery behavior",
     "description": "Classify model-fetch failures and enforce blocking versus non-blocking setup validation rules.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 21 },
       { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 37 },
@@ -308,7 +308,7 @@
       {
         "id": "R06-1",
         "description": "Refactor model discovery service to return normalized ok and recoverable_error categories with reason codes.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 21 },
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 25 },
@@ -318,7 +318,7 @@
       {
         "id": "R06-2",
         "description": "Keep setup/admin model routes aligned to shared discovery behavior while preserving auth mode differences.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 29 },
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 31 },
@@ -328,7 +328,7 @@
       {
         "id": "R06-3",
         "description": "Implement field-level setup validation and remove connectionTested hard gating from navigation.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 38 },
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 47 },
@@ -338,7 +338,7 @@
       {
         "id": "R06-4",
         "description": "Add manual model entry fallback and copy-exact error mapping tests across setup and connections UIs.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 55 },
           { "file": ".plans/recommendation-06-validation-and-model-discovery.md", "line": 66 },
@@ -353,7 +353,7 @@
     "id": "R07",
     "title": "Build deterministic mapping and export generation",
     "description": "Generate stable OpenCode and Mem0 mappings from canonical assignments and connections.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 26 },
       { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 32 },
@@ -365,7 +365,7 @@
       {
         "id": "R07-1",
         "description": "Define explicit mapper input and output types for OpenCode and Mem0 export payloads.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 26 },
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 28 },
@@ -375,7 +375,7 @@
       {
         "id": "R07-2",
         "description": "Implement pure buildOpenCodeMapping and buildMem0Mapping transforms with stable optional field omission.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 33 },
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 44 },
@@ -385,7 +385,7 @@
       {
         "id": "R07-3",
         "description": "Replace inline mapping in setup and connections save flows and preserve push sequencing.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 49 },
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 52 },
@@ -395,7 +395,7 @@
       {
         "id": "R07-4",
         "description": "Finalize validation, fallback policy, and determinism regression tests including mixed-connection fixtures.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 60 },
           { "file": ".plans/recommendation-07-mapping-and-export-generation.md", "line": 68 },
@@ -409,7 +409,7 @@
     "id": "R08",
     "title": "Roll out migration and backward compatibility layer",
     "description": "Ship staged legacy compatibility flags, dual-write behavior, and safe fallback recovery.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 25 },
       { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 46 },
@@ -421,7 +421,7 @@
       {
         "id": "R08-1",
         "description": "Add migration feature flags and wire compatibility mode annotations into connection audit events.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 25 },
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 30 },
@@ -432,7 +432,7 @@
       {
         "id": "R08-2",
         "description": "Implement lazy hydration precedence and idempotent non-destructive migration from legacy env values.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 34 },
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 42 },
@@ -442,7 +442,7 @@
       {
         "id": "R08-3",
         "description": "Implement dual-read and dual-write window for /admin/connections and setup POST compatibility.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 46 },
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 54 },
@@ -452,7 +452,7 @@
       {
         "id": "R08-4",
         "description": "Add migration, route, and setup-token semantic tests plus observability and failure-recovery instrumentation.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 78 },
           { "file": ".plans/recommendation-08-migration-and-backward-compat.md", "line": 93 },
@@ -467,7 +467,7 @@
     "id": "R09",
     "title": "Execute test plan and acceptance gates",
     "description": "Update unit, integration, component, and e2e coverage and enforce CI command gates.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 27 },
       { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 40 },
@@ -479,7 +479,7 @@
       {
         "id": "R09-1",
         "description": "Extend mapping and model-discovery unit tests for new provider and error-shape permutations.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 31 },
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 32 },
@@ -490,7 +490,7 @@
       {
         "id": "R09-2",
         "description": "Add admin route integration tests for connections save paths, auth gating, assignments, and mapping outputs.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 44 },
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 50 },
@@ -502,7 +502,7 @@
       {
         "id": "R09-3",
         "description": "Update setup component and e2e tests to the 7-screen flow with revised payload assertions.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 65 },
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 78 },
@@ -514,7 +514,7 @@
       {
         "id": "R09-4",
         "description": "Run and gate required check, unit, e2e, and guardian test commands in CI sequence.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 105 },
           { "file": ".plans/recommendation-09-test-plan-and-acceptance-gates.md", "line": 107 },

@@ -162,6 +162,11 @@ test.describe('Connections Tab UI', () => {
 					status: 200,
 					contentType: 'application/json',
 					body: JSON.stringify({
+						profiles: [],
+						assignments: {
+							llm: { connectionId: 'primary', model: 'gpt-4o-mini' },
+							embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 }
+						},
 						connections: {
 							SYSTEM_LLM_PROVIDER: 'openai',
 							OPENAI_API_KEY: 'sk-****1234',
@@ -189,8 +194,17 @@ test.describe('Connections Tab UI', () => {
 
 		// Verify the posted payload
 		expect(savedPayload).not.toBeNull();
-		expect((savedPayload as Record<string, unknown>).provider).toBe('ollama');
-		expect((savedPayload as Record<string, unknown>).systemModel).toBe('llama3');
+		if (!savedPayload) {
+			throw new Error('Expected /admin/connections payload to be captured');
+		}
+		const payload = savedPayload as unknown as {
+			profiles: Array<Record<string, unknown>>;
+			assignments: { llm: { model: string } };
+		};
+		expect(Array.isArray(payload.profiles)).toBe(true);
+		expect(payload.profiles[0]?.provider).toBe('ollama');
+		expect(payload.assignments?.llm).toBeTruthy();
+		expect(payload.assignments.llm.model).toBe('llama3');
 	});
 
 	test('embedding model field hint warns about collection reset', async ({ page }) => {
@@ -430,7 +444,7 @@ test.describe('Connection Test & Model Selection UI', () => {
 			route.fulfill({
 				status: 200,
 				contentType: 'application/json',
-				body: JSON.stringify({ models: [], error: 'Connection refused' })
+				body: JSON.stringify({ models: [], status: 'recoverable_error', reason: 'network', error: 'Connection refused' })
 			})
 		);
 
@@ -440,7 +454,7 @@ test.describe('Connection Test & Model Selection UI', () => {
 		await page.getByRole('button', { name: 'Test Connection' }).click();
 
 		// Wait for error to appear
-		await expect(page.getByText('Connection refused')).toBeVisible({ timeout: 5000 });
+		await expect(page.getByText('Network error — unable to reach admin API.')).toBeVisible({ timeout: 5000 });
 	});
 
 	test('Test Connection populates model dropdowns', async ({ page }) => {

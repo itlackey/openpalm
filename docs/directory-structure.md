@@ -37,6 +37,8 @@ The admin assembles runtime artifacts in STATE_HOME.
 ```
 CONFIG_HOME (~/.config/openpalm/)
 ├── secrets.env              # User secrets only: ADMIN_TOKEN and LLM provider keys
+├── connections/             # Canonical connection profile storage (user-editable JSON)
+│   └── profiles.json        # Canonical profiles + assignments (v1 schema)
 ├── channels/                # Installed channel definitions (populated via admin API or manually)
 │   ├── <name>.yml           # Compose overlay for channel-<name> (installed from registry or manually added)
 │   └── <name>.caddy         # Caddy route (optional — installed alongside .yml)
