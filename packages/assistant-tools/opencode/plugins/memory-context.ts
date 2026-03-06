@@ -61,6 +61,8 @@ const MIN_IDLE_COUNT_FOR_EXTRACTION = 2;
 const REFLEXION_SESSION_INTERVAL = 10;
 const REFLEXION_EPISODE_THRESHOLD = 5;
 const REFLEXION_DEFAULT_CONFIDENCE = 0.5;
+const INCLUDE_STACK_MEMORY =
+  (process.env.OPENMEMORY_INCLUDE_STACK_MEMORY ?? 'true').toLowerCase() !== 'false';
 const INCLUDE_GLOBAL_PROCEDURAL =
   (process.env.OPENMEMORY_INCLUDE_GLOBAL_PROCEDURAL ?? '').toLowerCase() === 'true';
 
@@ -242,16 +244,20 @@ export const MemoryContextPlugin = async (ctx: any) => {
               ...getSessionIdentity(sessionState, sessionId, "personal"),
             })
             : Promise.resolve([] as MemoryItem[]),
-          searchMemories("openpalm platform runtime conventions", {
-            size: 5,
-            category: "semantic",
-            ...getSessionIdentity(sessionState, sessionId, "stack"),
-          }),
-          searchMemories("openpalm operations procedures workflows", {
-            size: 5,
-            category: "procedural",
-            ...getSessionIdentity(sessionState, sessionId, "stack"),
-          }),
+          INCLUDE_STACK_MEMORY
+            ? searchMemories("openpalm platform runtime conventions", {
+              size: 5,
+              category: "semantic",
+              ...getSessionIdentity(sessionState, sessionId, "stack"),
+            })
+            : Promise.resolve([] as MemoryItem[]),
+          INCLUDE_STACK_MEMORY
+            ? searchMemories("openpalm operations procedures workflows", {
+              size: 5,
+              category: "procedural",
+              ...getSessionIdentity(sessionState, sessionId, "stack"),
+            })
+            : Promise.resolve([] as MemoryItem[]),
           INCLUDE_GLOBAL_PROCEDURAL
             ? searchMemories("global procedural rules", {
               size: 3,
