@@ -21,7 +21,7 @@ OpenPalm uses three host directories following the [XDG Base Directory Specifica
 | Tier | Default | Purpose |
 |------|---------|---------|
 | **CONFIG_HOME** | `~/.config/openpalm` | User-editable: secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `~/.local/share/openpalm` | Opaque service data (openmemory, assistant, etc.) |
+| **DATA_HOME** | `~/.local/share/openpalm` | Admin/service-managed data (openmemory, stack.env, caddy, assistant home, etc.) |
 | **STATE_HOME** | `~/.local/state/openpalm` | Assembled runtime artifacts, audit logs |
 | **WORK_DIR** | `~/openpalm` | Assistant working directory |
 

@@ -128,7 +128,7 @@ All of those paths write the same files:
 | `automations/` | Scheduled automations — see [Managing OpenPalm](managing-openpalm.md#automations) |
 | `opencode/` | OpenCode extensions — tools, plugins, skills, and config |
 
-You never need to touch the other two directories (`DATA_HOME` for service data, `STATE_HOME` for assembled runtime). See [directory-structure.md](directory-structure.md) for the complete layout.
+You normally do not need to touch the other two directories directly. `DATA_HOME` is managed by the admin and services (stack.env, caddy, openmemory, etc.); `STATE_HOME` is the assembled runtime assembled by the admin. See [directory-structure.md](directory-structure.md) for the complete layout.
 
 ### XDG path defaults
 

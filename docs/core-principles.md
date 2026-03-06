@@ -51,10 +51,12 @@ Minimum required subtrees:
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-**Exception (system-managed policy):** `DATA_HOME/caddy/Caddyfile` and
-`DATA_HOME/docker-compose.yml` are treated as system-owned policy state (source
-of truth for base Caddy access rules and core compose definition, respectively).
-Admin seeds these files from bundled assets if missing.
+**Write policy:** DATA_HOME is admin- and service-writable. Containers own their
+durable runtime data (openmemory, guardian, caddy TLS/config, opencode data).
+The admin manages system-policy files directly: `DATA_HOME/caddy/Caddyfile`,
+`DATA_HOME/stack.env`, and `DATA_HOME/automations/`. The assistant must not write
+to DATA_HOME directly — it interacts with the stack exclusively through the admin
+API, which mediates all DATA_HOME mutations on the assistant's behalf.
 
 ### 3) State (assembled runtime)
 
@@ -91,7 +93,7 @@ To guarantee lifecycle operations never clobber user configuration:
 
 * **CONFIG_HOME is user-owned and persistently authoritative.** Automatic lifecycle sync only seeds missing defaults and never overwrites existing user files. Explicit mutation paths — user direct edits, admin UI/API config actions, authenticated/allowlisted assistant calls to admin API on user request — may create/update/remove files as requested. (See Config section above for the full allowed-writers rule.)
 * **STATE_HOME is system-writable.** The admin freely overwrites files here when assembling the runtime (install, update, access-scope changes).
-* **DATA_HOME is mostly service-writable.** Containers own durable data; the admin manages `DATA_HOME/caddy/Caddyfile` and `DATA_HOME/docker-compose.yml` as system policy state. ([Freedesktop Specifications][2])
+* **DATA_HOME is admin- and service-writable.** Containers own durable data; the admin manages system-policy files (`DATA_HOME/caddy/Caddyfile`, `DATA_HOME/stack.env`, `DATA_HOME/automations/`) directly. The assistant may not write to DATA_HOME directly — it must go through the admin API. ([Freedesktop Specifications][2])
 
 ### E) Host authority rule for mounts
 

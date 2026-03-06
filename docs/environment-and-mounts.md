@@ -21,7 +21,7 @@ They follow the [XDG Base Directory Specification](https://specifications.freede
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User-editable: secrets.env, channels/, opencode extensions |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Opaque service data (openmemory, assistant home, etc.) |
+| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin/service-managed data (openmemory, stack.env, caddy, assistant home, etc.) |
 | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime, audit logs |
 | `OPENPALM_WORK_DIR` | `$HOME/openpalm` | Assistant working directory mounted at /work |
 
@@ -118,13 +118,14 @@ If not set, it defaults to `/var/run/docker.sock`.
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
 | `$CONFIG_HOME` | `$CONFIG_HOME` (same path) | rw | Channel source files, secrets, extensions |
-| `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Pre-create DATA_HOME subdirs, ensure ownership |
+| `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Manage system-policy files (stack.env, caddy/Caddyfile, automations/), pre-create subdirs |
 | `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs |
 
 The admin is the sole orchestrator. It connects to Docker via the socket proxy
 (HTTP over the internal network) and mounts CONFIG_HOME, DATA_HOME, and
-STATE_HOME. The DATA_HOME mount allows the admin to pre-create subdirectories
-with correct ownership before other services start.
+STATE_HOME. The DATA_HOME mount allows the admin to manage system-policy files
+(`stack.env`, `caddy/Caddyfile`, `automations/`), pre-create subdirectories
+with correct ownership, and seed missing defaults before other services start.
 
 The admin container starts as root for scheduled automation setup, then
 drops privileges to the target UID/GID (`$OPENPALM_UID:$OPENPALM_GID`,

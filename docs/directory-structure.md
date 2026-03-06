@@ -10,14 +10,14 @@ to organize host-side files into three tiers. Each tier has a clear owner
 
 ```
 ~/.config/openpalm/         CONFIG_HOME  — user-editable
-~/.local/share/openpalm/    DATA_HOME    — opaque service data
+~/.local/share/openpalm/    DATA_HOME    — admin/service-managed data
 ~/.local/state/openpalm/    STATE_HOME   — assembled runtime
 ```
 
 | Tier | Env Variable | Default | Owner | Purpose |
 |------|-------------|---------|-------|---------|
 | **CONFIG_HOME** | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User | Secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Services | OpenMemory, assistant home, guardian, caddy data |
+| **DATA_HOME** | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin + Services | OpenMemory, assistant home, guardian, caddy data, stack.env |
 | **STATE_HOME** | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Admin | Assembled runtime, audit logs |
 
 **CONFIG_HOME is the user-owned persistent source of truth** and the primary touchpoint for user-managed config.
@@ -26,8 +26,9 @@ and assistant-triggered admin API config actions that are authenticated,
 allowlisted, and executed on user request. Automatic lifecycle sync
 (install/update/startup apply/setup reruns/upgrades) is non-destructive:
 it may seed missing defaults but must not overwrite existing user files.
-The other two tiers are opaque — services write persistent data to DATA_HOME
-and the admin assembles runtime artifacts in STATE_HOME.
+Services write their durable runtime data to DATA_HOME; the admin also manages
+system-policy files there (`stack.env`, `caddy/Caddyfile`, `automations/`).
+The admin assembles runtime artifacts in STATE_HOME.
 
 ---
 
@@ -145,8 +146,9 @@ environment variables directly (useful for dev/test without a secrets file).
 The admin accesses Docker via the socket proxy (HTTP over `admin_docker_net`).
 It mounts CONFIG_HOME, DATA_HOME, and STATE_HOME using identical
 host-to-container paths, and uses `process.env.OPENPALM_*` to resolve paths
-at runtime. The DATA_HOME mount allows the admin to pre-create subdirectories
-with correct ownership before other services start.
+at runtime. The DATA_HOME mount allows the admin to manage system-policy files
+(`stack.env`, `caddy/Caddyfile`, `automations/`), pre-create subdirectories
+with correct ownership, and seed missing defaults before other services start.
 
 Scheduled automations run in-process on the admin container using the
 Croner scheduler. Staged YAML automation files from `STATE_HOME/automations/`
@@ -179,7 +181,8 @@ All runtime configuration is split into two staged env files in `STATE_HOME/arti
 
 The source of truth is `DATA_HOME/stack.env`, seeded by `setup.sh` (or
 `scripts/dev-setup.sh --seed-env` in dev). Contains host-detected infrastructure
-config that the admin never overwrites:
+config. The admin reads, merges, and updates this file on each apply — it is
+system-managed and not intended for direct user editing:
 
 - **XDG paths:** `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_WORK_DIR`
 - **User/Group:** `OPENPALM_UID`, `OPENPALM_GID` (auto-detected from host)
