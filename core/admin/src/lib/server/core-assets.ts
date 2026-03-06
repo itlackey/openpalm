@@ -79,11 +79,10 @@ export function setCoreCaddyAccessScope(scope: "host" | "lan"): { ok: true } | {
   return { ok: true };
 }
 
-// ── OpenMemory patch (DATA_HOME) — no-op ────────────────────────────────
-// The lightweight memory container uses mem0 SDK directly; no patched
-// memory.py is needed. Retained as a no-op so existing call sites compile.
+// ── OpenMemory data directory (DATA_HOME) ───────────────────────────────
+// Ensure the openmemory data directory exists. Returns the directory path.
 
-export function ensureOpenMemoryPatch(): string {
+export function ensureOpenMemoryDir(): string {
   const dir = `${resolveDataHome()}/openmemory`;
   mkdirSync(dir, { recursive: true });
   return dir;

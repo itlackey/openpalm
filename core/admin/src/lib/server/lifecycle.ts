@@ -11,7 +11,7 @@ import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled } from "./staging.js";
-import { refreshCoreAssets, ensureOpenMemoryPatch } from "./core-assets.js";
+import { refreshCoreAssets, ensureOpenMemoryDir } from "./core-assets.js";
 import { ensureOpenMemoryConfig } from "./openmemory-config.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -76,7 +76,7 @@ export function applyInstall(state: ControlPlaneState): void {
     state.services[service] = "running";
   }
   ensureOpenMemoryConfig(state.dataDir);
-  ensureOpenMemoryPatch();
+  ensureOpenMemoryDir();
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
 }
@@ -88,7 +88,7 @@ export function applyUpdate(state: ControlPlaneState): { restarted: string[] } {
       restarted.push(name);
     }
   }
-  ensureOpenMemoryPatch();
+  ensureOpenMemoryDir();
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
   return { restarted };
@@ -169,7 +169,7 @@ export async function applyUpgrade(state: ControlPlaneState): Promise<{
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
-  ensureOpenMemoryPatch();
+  ensureOpenMemoryDir();
 
   const restarted: string[] = [];
   for (const [name, status] of Object.entries(state.services)) {

@@ -35,7 +35,7 @@ export {
   ensureOllamaCompose,
   readOllamaCompose,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryPatch,
+  ensureOpenMemoryDir,
   refreshCoreAssets
 } from "./core-assets.js";
 

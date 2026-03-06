@@ -5,6 +5,7 @@ Exposes only the REST endpoints consumed by the assistant tools.
 Uses Qdrant file-based storage (embedded) and mem0's built-in LLM fact extraction.
 """
 
+import asyncio
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,7 @@ CONFIG_PATH = os.environ.get("OPENMEMORY_CONFIG_PATH", "/app/default_config.json
 DATA_DIR = os.environ.get("OPENMEMORY_DATA_DIR", "/data")
 
 _memory: Memory | None = None
+_memory_lock = asyncio.Lock()
 
 
 def _load_config() -> dict:
@@ -49,19 +51,24 @@ def _load_config() -> dict:
     return config
 
 
-def get_memory() -> Memory:
-    """Lazy-init Memory singleton from config file."""
+async def get_memory() -> Memory:
+    """Lazy-init Memory singleton from config file, guarded by asyncio.Lock."""
     global _memory
-    if _memory is None:
-        config = _load_config()
-        _memory = Memory.from_config(config) if config else Memory()
+    if _memory is not None:
+        return _memory
+    async with _memory_lock:
+        # Double-check after acquiring the lock
+        if _memory is None:
+            config = _load_config()
+            _memory = Memory.from_config(config) if config else Memory()
     return _memory
 
 
-def reset_memory() -> None:
+async def reset_memory() -> None:
     """Discard the current Memory instance so it reinitializes on next call."""
     global _memory
-    _memory = None
+    async with _memory_lock:
+        _memory = None
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +151,7 @@ def _normalize_memory(item: dict) -> dict:
 
 @app.post("/api/v1/memories/")
 async def add_memories(body: AddRequest):
-    m = get_memory()
+    m = await get_memory()
     result = m.add(
         body.text,
         user_id=body.user_id,
@@ -159,7 +166,7 @@ async def add_memories(body: AddRequest):
 
 @app.post("/api/v1/memories/filter")
 async def filter_memories(body: FilterRequest):
-    m = get_memory()
+    m = await get_memory()
     if body.search_query:
         results = m.search(
             body.search_query,
@@ -183,7 +190,7 @@ async def filter_memories(body: FilterRequest):
 
 @app.post("/api/v2/memories/search")
 async def search_memories_v2(body: SearchRequest):
-    m = get_memory()
+    m = await get_memory()
     query = body.query or body.search_query or ""
     if not query:
         raise HTTPException(status_code=400, detail="query is required")
@@ -202,7 +209,7 @@ async def search_memories_v2(body: SearchRequest):
 
 @app.get("/api/v1/memories/{memory_id}")
 async def get_memory_by_id(memory_id: str):
-    m = get_memory()
+    m = await get_memory()
     try:
         result = m.get(memory_id)
     except Exception:
@@ -214,7 +221,7 @@ async def get_memory_by_id(memory_id: str):
 
 @app.put("/api/v1/memories/{memory_id}")
 async def update_memory_by_id(memory_id: str, body: UpdateRequest):
-    m = get_memory()
+    m = await get_memory()
     try:
         result = m.update(memory_id, body.data)
     except Exception as e:
@@ -224,7 +231,7 @@ async def update_memory_by_id(memory_id: str, body: UpdateRequest):
 
 @app.delete("/api/v1/memories/")
 async def delete_memories(body: DeleteRequest):
-    m = get_memory()
+    m = await get_memory()
     if body.memory_id:
         m.delete(body.memory_id)
         return {"status": "ok", "deleted": body.memory_id}
@@ -236,20 +243,28 @@ async def delete_memories(body: DeleteRequest):
 
 @app.get("/api/v1/stats/")
 async def get_stats(user_id: str = "default_user"):
-    m = get_memory()
-    # NOTE: mem0 SDK does not expose a count-only API, so we fetch all
-    # memories and count them in Python.  The limit caps the upper bound
-    # to avoid unbounded memory usage; callers that exceed this will see
-    # a capped count (the dashboard only needs an approximate number).
-    all_memories = m.get_all(user_id=user_id, limit=10000)
+    m = await get_memory()
+    # NOTE: mem0 SDK does not expose a count-only API, so we fetch a
+    # bounded sample of memories and count them in Python. The limit caps
+    # the upper bound to avoid unbounded memory usage; callers that exceed
+    # this will see a capped, approximate count.
+    limit = 10000
+    all_memories = m.get_all(user_id=user_id, limit=limit)
     items = all_memories.get("results", all_memories) if isinstance(all_memories, dict) else all_memories
     count = len(items) if isinstance(items, list) else 0
-    return {"total_memories": count, "total_apps": 1}
+    is_capped = isinstance(items, list) and count >= limit
+    return {
+        "total_memories": count,
+        "total_apps": 1,
+        "approximate": True,
+        "max_sampled": limit,
+        "capped": is_capped,
+    }
 
 
 @app.post("/api/v1/memories/{memory_id}/feedback")
 async def memory_feedback(memory_id: str, body: FeedbackRequest):
-    m = get_memory()
+    m = await get_memory()
     try:
         existing = m.get(memory_id)
     except Exception:
@@ -316,13 +331,22 @@ async def get_config():
     return {}
 
 
+# Keys allowed at the top level of the mem0 config object.
+_ALLOWED_MEM0_KEYS = {"llm", "embedder", "vector_store", "history_db_path", "version"}
+# Keys allowed inside an llm/embedder section.
+_ALLOWED_SECTION_KEYS = {"provider", "config"}
+
+
 def _validate_config_structure(config: dict) -> dict:
     """
-    Basic structural validation for the mem0 configuration.
+    Validate and sanitize the mem0 configuration.
 
     Accepts either:
     - {"mem0": {...}} where the inner value is the mem0 config, or
     - a top-level mem0-style config dict.
+
+    Unknown keys are stripped to prevent injection of unexpected fields
+    that could be interpreted by future code or the mem0 SDK.
     """
     if not isinstance(config, dict):
         raise HTTPException(status_code=400, detail="Config payload must be a JSON object.")
@@ -335,6 +359,11 @@ def _validate_config_structure(config: dict) -> dict:
     else:
         mem0_cfg = config
 
+    # Strip unknown top-level keys from the mem0 config
+    unknown = set(mem0_cfg.keys()) - _ALLOWED_MEM0_KEYS
+    for key in unknown:
+        del mem0_cfg[key]
+
     # Validate optional llm and embedder sections if present
     for section in ("llm", "embedder"):
         section_cfg = mem0_cfg.get(section)
@@ -344,6 +373,10 @@ def _validate_config_structure(config: dict) -> dict:
                 detail=f"'{section}' section must be an object when provided.",
             )
         if isinstance(section_cfg, dict):
+            # Strip unknown keys from section
+            section_unknown = set(section_cfg.keys()) - _ALLOWED_SECTION_KEYS
+            for key in section_unknown:
+                del section_cfg[key]
             inner_cfg = section_cfg.get("config")
             if inner_cfg is not None and not isinstance(inner_cfg, dict):
                 raise HTTPException(
@@ -359,7 +392,10 @@ def _validate_config_structure(config: dict) -> dict:
             detail="'history_db_path' must be a string when provided.",
         )
 
-    return config
+    # Return only the sanitized {"mem0": ...} envelope
+    if "mem0" in config:
+        return {"mem0": mem0_cfg}
+    return mem0_cfg
 
 
 @app.put("/api/v1/config/")
@@ -370,7 +406,7 @@ async def put_config(config: dict):
     with open(CONFIG_PATH, "w") as f:
         json.dump(validated_config, f, indent=2)
         f.write("\n")
-    reset_memory()
+    await reset_memory()
     return {"status": "ok"}
 
 
