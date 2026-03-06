@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { version } from '$app/environment';
+
   interface Props {
-    version: string;
     channelAccess: 'host' | 'lan' | 'custom';
     onLogout: () => void;
   }
 
-  let { version, channelAccess, onLogout }: Props = $props();
+  let { channelAccess, onLogout }: Props = $props();
 </script>
 
 <nav class="navbar" aria-label="Main navigation">
