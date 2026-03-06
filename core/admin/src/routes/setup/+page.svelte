@@ -9,6 +9,8 @@
   }
 
   let { data }: Props = $props();
+  // svelte-ignore state_referenced_locally
+  const { setupToken = '', detectedUserId = 'default_user' } = data;
 
   // ── Wizard state ────────────────────────────────────────────────────────
   type WizardStep = 'token' | 'provider' | 'models' | 'review';
@@ -24,7 +26,7 @@
 
   // ── Form fields ─────────────────────────────────────────────────────────
   let adminToken = $state('');
-  let setupSessionToken = $state(data.setupToken ?? '');
+  let setupSessionToken = $state(setupToken);
 
   // Step 2 — Connection Type picker
   type ConnectionType = 'cloud' | 'local' | null;
@@ -53,7 +55,7 @@
   let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
-  let openmemoryUserId = $state(data.detectedUserId ?? 'default_user');
+  let openmemoryUserId = $state(detectedUserId);
 
   // Model list state
   let modelList: string[] = $state([]);
@@ -956,13 +958,6 @@
     color: var(--color-text-tertiary);
   }
 
-  .field-hint code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--color-bg-tertiary);
-    padding: 1px 4px;
-    border-radius: 3px;
-  }
 
   .field-error {
     margin: 0 0 var(--space-2);
