@@ -100,11 +100,12 @@ async function waitForOllama(
 async function runOllamaEnableBackground(requestId: string): Promise<void> {
   const state = getState();
   const ollamaUrl = "http://ollama:11434";
+  const task = ollamaTask!;
 
   try {
     // 1. Enable Ollama in stack.env
-    ollamaTask!.phase = "starting";
-    ollamaTask!.message = "Configuring Ollama in compose stack...";
+    task.phase = "starting";
+    task.message = "Configuring Ollama in compose stack...";
     logger.info("enabling Ollama in stack.env", { requestId });
 
     ensureXdgDirs();
@@ -138,52 +139,52 @@ async function runOllamaEnableBackground(requestId: string): Promise<void> {
     });
 
     if (!composeResult.ok) {
-      ollamaTask!.phase = "error";
-      ollamaTask!.message = `Failed to start Ollama: ${composeResult.stderr}`;
+      task.phase = "error";
+      task.message = `Failed to start Ollama: ${composeResult.stderr}`;
       logger.error("compose failed for Ollama", { requestId, stderr: composeResult.stderr });
       return;
     }
 
     // 5. Wait for Ollama to become healthy
-    ollamaTask!.phase = "waiting";
-    ollamaTask!.message = "Waiting for Ollama to become healthy...";
+    task.phase = "waiting";
+    task.message = "Waiting for Ollama to become healthy...";
     logger.info("waiting for Ollama to become healthy", { requestId });
 
     const healthy = await waitForOllama(ollamaUrl);
     if (!healthy) {
-      ollamaTask!.phase = "error";
-      ollamaTask!.message = "Ollama started but did not become healthy in time.";
+      task.phase = "error";
+      task.message = "Ollama started but did not become healthy in time.";
       logger.error("Ollama health check timed out", { requestId });
       return;
     }
 
     // 6. Pull default models
-    ollamaTask!.phase = "pulling";
-    ollamaTask!.message = `Pulling default models (${OLLAMA_DEFAULT_MODELS.chat}, ${OLLAMA_DEFAULT_MODELS.embedding})...`;
-    ollamaTask!.ollamaUrl = ollamaUrl;
+    task.phase = "pulling";
+    task.message = `Pulling default models (${OLLAMA_DEFAULT_MODELS.chat}, ${OLLAMA_DEFAULT_MODELS.embedding})...`;
+    task.ollamaUrl = ollamaUrl;
 
     logger.info("pulling default Ollama chat model", { model: OLLAMA_DEFAULT_MODELS.chat });
-    ollamaTask!.models[OLLAMA_DEFAULT_MODELS.chat] = await pullOllamaModel(
+    task.models[OLLAMA_DEFAULT_MODELS.chat] = await pullOllamaModel(
       ollamaUrl,
       OLLAMA_DEFAULT_MODELS.chat
     );
 
     logger.info("pulling default Ollama embedding model", { model: OLLAMA_DEFAULT_MODELS.embedding });
-    ollamaTask!.models[OLLAMA_DEFAULT_MODELS.embedding] = await pullOllamaModel(
+    task.models[OLLAMA_DEFAULT_MODELS.embedding] = await pullOllamaModel(
       ollamaUrl,
       OLLAMA_DEFAULT_MODELS.embedding
     );
 
-    ollamaTask!.allModelsPulled = Object.values(ollamaTask!.models).every((r) => r.ok);
-    ollamaTask!.defaultChatModel = OLLAMA_DEFAULT_MODELS.chat;
-    ollamaTask!.defaultEmbeddingModel = OLLAMA_DEFAULT_MODELS.embedding;
-    ollamaTask!.phase = "done";
-    ollamaTask!.message = "Ollama enabled and models pulled.";
-    logger.info("Ollama background enable completed", { requestId, allPulled: ollamaTask!.allModelsPulled });
+    task.allModelsPulled = Object.values(task.models).every((r) => r.ok);
+    task.defaultChatModel = OLLAMA_DEFAULT_MODELS.chat;
+    task.defaultEmbeddingModel = OLLAMA_DEFAULT_MODELS.embedding;
+    task.phase = "done";
+    task.message = "Ollama enabled and models pulled.";
+    logger.info("Ollama background enable completed", { requestId, allPulled: task.allModelsPulled });
   } catch (err) {
-    ollamaTask!.phase = "error";
-    ollamaTask!.message = err instanceof Error ? err.message : String(err);
-    logger.error("Ollama background enable failed", { requestId, error: ollamaTask!.message });
+    task.phase = "error";
+    task.message = err instanceof Error ? err.message : String(err);
+    logger.error("Ollama background enable failed", { requestId, error: task.message });
   }
 }
 
