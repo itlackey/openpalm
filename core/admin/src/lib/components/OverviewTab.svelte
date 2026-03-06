@@ -207,7 +207,7 @@
           </span>
         </button>
 
-        <a class="action-item" href="http://localhost:4096" target="_blank" rel="noopener noreferrer">
+        <a class="action-item" href="/admin/opencode/" target="_blank" rel="noopener noreferrer">
           <span class="action-icon action-icon--blue">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -225,7 +225,7 @@
           </span>
         </a>
 
-        <a class="action-item" href="http://localhost:3001" target="_blank" rel="noopener noreferrer">
+        <a class="action-item" href="/admin/openmemory/" target="_blank" rel="noopener noreferrer">
           <span class="action-icon action-icon--amber">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2a10 10 0 1 0 10 10" />

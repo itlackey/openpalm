@@ -78,13 +78,13 @@ export function getCallerType(event: RequestEvent): CallerType {
   return normalizeCaller(event.request.headers.get("x-requested-by"));
 }
 
-/** Parse JSON body safely */
+/** Parse JSON body safely — returns null on parse failure */
 export async function parseJsonBody(
   request: Request
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, unknown> | null> {
   try {
     return (await request.json()) as Record<string, unknown>;
   } catch {
-    return {};
+    return null;
   }
 }

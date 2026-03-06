@@ -111,6 +111,9 @@ export const POST: RequestHandler = async (event) => {
 
   const callerType = getCallerType(event);
   const body = await parseJsonBody(event.request);
+  if (!body) {
+    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
+  }
 
   // Build update map from request body
   const updates: Record<string, string> = {};
@@ -119,13 +122,13 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // ── System LLM connection fields (new wizard) ──
-  const llmProvider = (body.llmProvider as string) ?? "";
-  const llmApiKey = (body.llmApiKey as string) ?? "";
-  const llmBaseUrl = (body.llmBaseUrl as string) ?? "";
-  const systemModel = (body.systemModel as string) ?? "";
-  const embeddingModel = (body.embeddingModel as string) ?? "";
+  const llmProvider = typeof body.llmProvider === "string" ? body.llmProvider : "";
+  const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey : "";
+  const llmBaseUrl = typeof body.llmBaseUrl === "string" ? body.llmBaseUrl : "";
+  const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
+  const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
-  const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
+  const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
   const ollamaEnabled = body.ollamaEnabled === true;
 
   // When Ollama runs in-stack, override base URL to use Docker network name

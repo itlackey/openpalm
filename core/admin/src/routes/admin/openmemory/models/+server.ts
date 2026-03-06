@@ -34,9 +34,12 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const body = await parseJsonBody(event.request);
+  if (!body) {
+    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
+  }
   const provider = body.provider as string | undefined;
   const apiKeyRef = body.apiKeyRef as string | undefined;
-  const baseUrl = (body.baseUrl as string | undefined) ?? "";
+  const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";
 
   if (!provider || !VALID_PROVIDERS.has(provider)) {
     return errorResponse(400, "bad_request", `Invalid provider: ${provider ?? "(none)"}`, {}, requestId);

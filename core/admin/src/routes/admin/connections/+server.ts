@@ -71,6 +71,9 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const body = await parseJsonBody(event.request);
+  if (!body) {
+    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
+  }
 
   // ── Unified system connection save (has `provider` key) ───────────
   if (typeof body.provider === "string") {
@@ -117,14 +120,14 @@ async function handleUnifiedSave(
   callerType: CallerType,
   requestId: string
 ): Promise<Response> {
-  const provider = body.provider as string;
-  const apiKey = (body.apiKey as string) ?? "";
-  const baseUrl = (body.baseUrl as string) ?? "";
-  const systemModel = (body.systemModel as string) ?? "";
-  const embeddingModel = (body.embeddingModel as string) ?? "";
+  const provider = body.provider as string; // already validated typeof === "string" by caller
+  const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
+  const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";
+  const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
+  const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
-  const openmemoryUserId = (body.openmemoryUserId as string) ?? "default_user";
-  const customInstructions = (body.customInstructions as string) ?? "";
+  const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
+  const customInstructions = typeof body.customInstructions === "string" ? body.customInstructions : "";
 
   // 1. Build secrets.env patches
   const patches: Record<string, string> = {};

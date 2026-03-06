@@ -34,11 +34,14 @@ async function mockLocalProvidersEndpoint(page: import('@playwright/test').Page)
 }
 
 /**
- * Helper: navigate from step 2 (provider) through "Test Connection" so
- * the Next button becomes enabled. Uses ollama (no API key required).
+ * Helper: navigate from step 2 connection-type picker through "Test Connection"
+ * so the Next button becomes enabled. Selects the cloud path with openai provider.
  */
 async function completeConnectStep(page: import('@playwright/test').Page) {
-	await page.locator('#llm-provider').selectOption('ollama');
+	// Sub-step 2a: pick "OpenAI-Compatible (Remote)" connection type
+	await page.getByRole('button', { name: /OpenAI-Compatible/ }).click();
+
+	// Sub-step 2b: test connection (default provider is openai)
 	await page.getByRole('button', { name: 'Test Connection' }).click();
 	await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
 }
@@ -73,9 +76,9 @@ test.describe('Setup Wizard', () => {
 		await page.locator('#admin-token').fill('my-secure-token');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 2: Provider
+		// Step 2: Connection
 		await expect(page.getByTestId('step-provider')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('LLM Provider');
+		await expect(page.locator('h2')).toHaveText('Connection Type');
 		await completeConnectStep(page);
 		await page.getByRole('button', { name: 'Next' }).click();
 
@@ -96,8 +99,8 @@ test.describe('Setup Wizard', () => {
 		await expect(page.locator('h2')).toHaveText('Review & Install');
 		// Admin token just says "Set"
 		await expect(page.getByText('Set').first()).toBeVisible();
-		// Provider shows label (e.g., "Ollama" not "ollama")
-		await expect(page.getByText('Ollama')).toBeVisible();
+		// Provider shows label (e.g., "Cloud — OpenAI")
+		await expect(page.getByText('Cloud — OpenAI')).toBeVisible();
 		// User ID
 		await expect(page.getByText('alice')).toBeVisible();
 	});
@@ -123,13 +126,16 @@ test.describe('Setup Wizard', () => {
 		await page.getByRole('button', { name: 'Next' }).click();
 		await expect(page.getByTestId('step-review')).toBeVisible();
 
-		// Go back: 4 -> 3 -> 2 -> 1
+		// Go back: 4 -> 3 -> 2b (cloud details) -> 2a (connection type) -> 1
 		await page.getByRole('button', { name: 'Back' }).click();
 		await expect(page.getByTestId('step-models')).toBeVisible();
 
 		await page.getByRole('button', { name: 'Back' }).click();
 		await expect(page.getByTestId('step-provider')).toBeVisible();
-
+		// Now on cloud sub-step; Back goes to connection-type picker
+		await page.getByRole('button', { name: 'Back' }).click();
+		await expect(page.locator('h2')).toHaveText('Connection Type');
+		// Back from connection-type picker goes to step 1
 		await page.getByRole('button', { name: 'Back' }).click();
 		await expect(page.getByTestId('step-token')).toBeVisible();
 	});
@@ -230,7 +236,8 @@ test.describe('Setup Wizard', () => {
 		await page.locator('#admin-token').fill('secret-token-abc');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 2: Provider — fill openai API key and test connection
+		// Step 2: Connection — select cloud, fill API key, test connection
+		await page.getByRole('button', { name: /OpenAI-Compatible/ }).click();
 		await page.locator('#llm-api-key').fill('sk-test');
 		await page.getByRole('button', { name: 'Test Connection' }).click();
 		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });

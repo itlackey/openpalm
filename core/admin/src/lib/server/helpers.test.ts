@@ -8,7 +8,7 @@
  * 4. requireAdmin enforces timing-safe token comparison (security invariant)
  * 5. getActor derives actor from auth state, not caller-controlled headers
  * 6. getCallerType normalizes x-requested-by header
- * 7. parseJsonBody returns parsed JSON or empty object on failure
+ * 7. parseJsonBody returns parsed JSON or null on failure
  */
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import {
@@ -227,22 +227,22 @@ describe("parseJsonBody", () => {
     expect(result).toEqual({ key: "value" });
   });
 
-  test("returns empty object for invalid JSON", async () => {
+  test("returns null for invalid JSON", async () => {
     const req = new Request("http://localhost", {
       method: "POST",
       body: "not json",
       headers: { "content-type": "text/plain" }
     });
     const result = await parseJsonBody(req);
-    expect(result).toEqual({});
+    expect(result).toBeNull();
   });
 
-  test("returns empty object for empty body", async () => {
+  test("returns null for empty body", async () => {
     const req = new Request("http://localhost", {
       method: "POST",
       body: ""
     });
     const result = await parseJsonBody(req);
-    expect(result).toEqual({});
+    expect(result).toBeNull();
   });
 });

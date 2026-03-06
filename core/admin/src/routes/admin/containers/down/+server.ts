@@ -21,7 +21,10 @@ export const POST: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
   const body = await parseJsonBody(event.request);
-  const service = String(body.service ?? "");
+  if (!body) {
+    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
+  }
+  const service = typeof body.service === "string" ? body.service : "";
 
   if (!isAllowedService(service, state.stateDir)) {
     appendAudit(state, actor, "containers.down", { service }, false, requestId, callerType);

@@ -50,7 +50,10 @@ export const POST: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   const body = await parseJsonBody(event.request);
-  const scope = String(body.scope ?? "");
+  if (!body) {
+    return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
+  }
+  const scope = typeof body.scope === "string" ? body.scope : "";
 
   if (scope !== "host" && scope !== "lan") {
     appendAudit(state, actor, "accessScope.set", { scope }, false, requestId, callerType);

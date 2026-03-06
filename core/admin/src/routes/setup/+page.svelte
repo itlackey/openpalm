@@ -1,6 +1,5 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { untrack } from 'svelte';
   import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
   import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
@@ -25,7 +24,7 @@
 
   // ── Form fields ─────────────────────────────────────────────────────────
   let adminToken = $state('');
-  let setupSessionToken = $state(untrack(() => data.setupToken ?? ''));
+  let setupSessionToken = $state(data.setupToken ?? '');
 
   // Step 2 — Connection Type picker
   type ConnectionType = 'cloud' | 'local' | null;
@@ -54,7 +53,7 @@
   let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
-  let openmemoryUserId = $state(untrack(() => data.detectedUserId ?? 'default_user'));
+  let openmemoryUserId = $state(data.detectedUserId ?? 'default_user');
 
   // Model list state
   let modelList: string[] = $state([]);
