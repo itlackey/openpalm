@@ -280,11 +280,39 @@ async def memory_feedback(memory_id: str, body: FeedbackRequest):
 # Config management (called by admin)
 # ---------------------------------------------------------------------------
 
+
+def _redact_api_keys(obj: Any) -> Any:
+    """
+    Recursively redact literal API keys from a config object.
+
+    Any field named "api_key" whose value is a string not starting with "env:"
+    is replaced with a redacted placeholder. This prevents accidental exposure
+    of secrets via the config inspection endpoint while still showing structure.
+    """
+    if isinstance(obj, dict):
+        redacted: Dict[Any, Any] = {}
+        for key, value in obj.items():
+            if (
+                isinstance(key, str)
+                and key == "api_key"
+                and isinstance(value, str)
+                and not value.startswith("env:")
+            ):
+                redacted[key] = "***REDACTED***"
+            else:
+                redacted[key] = _redact_api_keys(value)
+        return redacted
+    if isinstance(obj, list):
+        return [_redact_api_keys(item) for item in obj]
+    return obj
+
+
 @app.get("/api/v1/config/")
 async def get_config():
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH) as f:
-            return json.load(f)
+            raw_config = json.load(f)
+        return _redact_api_keys(raw_config)
     return {}
 
 
