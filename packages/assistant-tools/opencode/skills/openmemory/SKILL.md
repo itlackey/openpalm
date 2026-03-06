@@ -19,7 +19,6 @@ OpenMemory runs as a service in the OpenPalm stack:
 | Service | Port | Role |
 |---------|------|------|
 | `openmemory` | 8765 | FastAPI server with embedded Qdrant (vectors) + SQLite (metadata) |
-| `openmemory-ui` | 3001 | Dashboard for browsing/managing memories |
 
 The assistant connects to `http://openmemory:8765` via REST API.
 
