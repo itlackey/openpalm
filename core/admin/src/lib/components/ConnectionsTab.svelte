@@ -6,6 +6,7 @@
     fetchProviderModels,
     saveSystemConnection
   } from '$lib/api.js';
+  import { mapModelDiscoveryError } from '$lib/model-discovery.js';
   import {
     LLM_PROVIDERS,
     PROVIDER_DEFAULT_URLS,
@@ -140,7 +141,7 @@
 
       const result = await fetchProviderModels(token, provider, apiKeyRef, baseUrl);
       if (result.error) {
-        modelListError = result.error;
+        modelListError = mapModelDiscoveryError(result);
         return;
       }
       const apiModels = result.models ?? [];

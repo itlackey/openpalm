@@ -51,6 +51,9 @@ Both scripts read env files from `.dev/state/artifacts/`.
 # Type check the admin UI
 bun run admin:check
 
+# Validate setup wizard scope docs stay aligned
+bun run docs:check:wizard-scope
+
 # Non-admin tests (sdk, guardian, channels, cli)
 bun run test
 
@@ -99,6 +102,7 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run dev:setup` | Seed `.dev/` dirs and configs |
 | `bun run dev:stack` | Start dev stack (pull images) |
 | `bun run dev:build` | Start dev stack (build from source) |
+| `bun run docs:check:wizard-scope` | Validate wizard scope/copy docs consistency |
 | `bun run test` | All non-admin tests |
 | `bun run check` | admin:check + sdk:test |
 

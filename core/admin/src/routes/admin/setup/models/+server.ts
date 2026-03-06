@@ -12,40 +12,49 @@ import {
   errorResponse,
   getRequestId,
   parseJsonBody,
-  safeTokenCompare
+  requireAdminOrSetupToken,
 } from "$lib/server/helpers.js";
 import {
   fetchProviderModels,
   LLM_PROVIDERS,
   EMBED_PROVIDERS
 } from "$lib/server/control-plane.js";
-import { isSetupComplete } from "$lib/server/setup-status.js";
+import {
+  isWizardCapability,
+  isWizardProviderInScope,
+} from '$lib/setup-wizard/scope.js';
 
 const VALID_PROVIDERS = new Set<string>([...LLM_PROVIDERS, ...EMBED_PROVIDERS]);
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const state = getState();
-  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
-
-  // Auth: accept either setup token (first-run) or admin token (post-setup)
-  const token = event.request.headers.get("x-admin-token") ?? "";
-  const validSetupToken = !setupComplete && safeTokenCompare(token, state.setupToken);
-  const validAdminToken = setupComplete && safeTokenCompare(token, state.adminToken);
-  if (!validSetupToken && !validAdminToken) {
-    return errorResponse(401, "unauthorized", "Missing or invalid token", {}, requestId);
-  }
+  const authError = requireAdminOrSetupToken(event, requestId);
+  if (authError) return authError;
 
   const body = await parseJsonBody(event.request);
   if (!body) {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
   }
   const provider = body.provider as string | undefined;
+  const capability = typeof body.capability === 'string' ? body.capability : undefined;
   const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
   const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl : "";
 
   if (!provider || !VALID_PROVIDERS.has(provider)) {
     return errorResponse(400, "bad_request", `Invalid provider: ${provider ?? "(none)"}`, {}, requestId);
+  }
+  if (!isWizardProviderInScope(provider)) {
+    return errorResponse(
+      400,
+      'bad_request',
+      `Provider \"${provider}\" is outside setup wizard v1 scope`,
+      {},
+      requestId
+    );
+  }
+  if (capability && !isWizardCapability(capability)) {
+    return errorResponse(400, 'bad_request', `Invalid capability: ${capability}`, {}, requestId);
   }
 
   // Pass raw API key directly (not an env: reference)

@@ -114,6 +114,46 @@ export type SystemConnectionPayload = {
   customInstructions: string;
 };
 
+export type CanonicalConnectionProfileDto = {
+  id: string;
+  name: string;
+  kind: 'openai_compatible_remote' | 'openai_compatible_local';
+  provider: string;
+  baseUrl: string;
+  auth: {
+    mode: 'api_key' | 'none';
+    apiKeySecretRef?: string;
+  };
+};
+
+export type CanonicalAssignmentsDto = {
+  llm: {
+    connectionId: string;
+    model: string;
+    smallModel?: string;
+  };
+  embeddings: {
+    connectionId: string;
+    model: string;
+    embeddingDims?: number;
+  };
+};
+
+export type ConnectionsResponseDto = {
+  profiles: CanonicalConnectionProfileDto[];
+  assignments: CanonicalAssignmentsDto;
+  connections: Record<string, string>;
+};
+
+export type SaveConnectionsDtoPayload = {
+  profiles: CanonicalConnectionProfileDto[];
+  assignments: CanonicalAssignmentsDto;
+  openmemoryUserId?: string;
+  customInstructions?: string;
+  apiKey?: string;
+  capabilities?: string[];
+};
+
 export type SystemConnectionSaveResult = {
   ok: boolean;
   pushed: boolean;

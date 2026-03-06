@@ -290,6 +290,8 @@ describe("fetchProviderModels", () => {
     expect(result.models.length).toBeGreaterThan(0);
     expect(result.models).toContain("claude-opus-4-20250514");
     expect(result.models).toContain("claude-sonnet-4-20250514");
+    expect(result.status).toBe('ok');
+    expect(result.reason).toBe('provider_static');
     expect(result.error).toBeUndefined();
   });
 
@@ -312,6 +314,8 @@ describe("fetchProviderModels", () => {
 
     const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
     expect(result.models).toEqual(["llama3:latest", "qwen2.5:14b"]);
+    expect(result.status).toBe('ok');
+    expect(result.reason).toBe('none');
     expect(result.error).toBeUndefined();
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:11434/api/tags",
@@ -369,6 +373,8 @@ describe("fetchProviderModels", () => {
 
     const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
     expect(result.models).toEqual([]);
+    expect(result.status).toBe('recoverable_error');
+    expect(result.reason).toBe('provider_http');
     expect(result.error).toContain("500");
   });
 
@@ -378,6 +384,8 @@ describe("fetchProviderModels", () => {
 
     const result = await fetchProviderModels("openai", "bad-key", "", configDir);
     expect(result.models).toEqual([]);
+    expect(result.status).toBe('recoverable_error');
+    expect(result.reason).toBe('provider_http');
     expect(result.error).toContain("401");
   });
 
@@ -385,6 +393,8 @@ describe("fetchProviderModels", () => {
     const configDir = trackDir(makeTempDir());
     const result = await fetchProviderModels("unknown-provider", "", "", configDir);
     expect(result.models).toEqual([]);
+    expect(result.status).toBe('recoverable_error');
+    expect(result.reason).toBe('missing_base_url');
     expect(result.error).toContain("No base URL");
   });
 
@@ -394,6 +404,8 @@ describe("fetchProviderModels", () => {
 
     const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
     expect(result.models).toEqual([]);
+    expect(result.status).toBe('recoverable_error');
+    expect(result.reason).toBe('network');
     expect(result.error).toContain("Connection refused");
   });
 
@@ -404,6 +416,8 @@ describe("fetchProviderModels", () => {
 
     const result = await fetchProviderModels("ollama", "", "http://localhost:11434", configDir);
     expect(result.models).toEqual([]);
+    expect(result.status).toBe('recoverable_error');
+    expect(result.reason).toBe('timeout');
     expect(result.error).toContain("timed out");
   });
 

@@ -47,6 +47,7 @@ export function ensureXdgDirs(): void {
     // CONFIG_HOME — user-editable
     configHome,
     `${configHome}/channels`,
+    `${configHome}/connections`,
     `${configHome}/assistant`,
     `${configHome}/automations`,
 
