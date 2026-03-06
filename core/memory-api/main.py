@@ -268,7 +268,7 @@ async def memory_feedback(memory_id: str, body: FeedbackRequest):
 
     # mem0 update expects the memory text; we keep it unchanged
     content = existing.get("memory", existing.get("content", ""))
-    m.update(memory_id, content)
+    m.update(memory_id, content, metadata=metadata)
     return {"status": "ok"}
 
 
