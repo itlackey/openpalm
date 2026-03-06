@@ -140,22 +140,29 @@ function resolveImageTag(baseStackEnv: string): string {
   const parsed = parseEnvContent(baseStackEnv);
   const currentTag = parsed.OPENPALM_IMAGE_TAG?.trim() ?? '';
 
-  const envTag = process.env.OPENPALM_IMAGE_TAG?.trim();
-  const preferredTag = envTag && envTag !== 'latest'
-    ? envTag
-    : DEFAULT_IMAGE_TAG;
+  const envTagRaw = process.env.OPENPALM_IMAGE_TAG;
+  const envTag = envTagRaw?.trim();
+  const envOverrideTag = envTag && envTag !== 'latest' ? envTag : null;
+
+  const preferredTag = envOverrideTag ?? DEFAULT_IMAGE_TAG;
 
   if (!currentTag || currentTag === 'latest') {
     return preferredTag;
   }
 
+  // Apply an explicit override even when tags are non-semver (e.g., git SHA).
+  if (envOverrideTag) {
+    return envOverrideTag;
+  }
+
   const currentVersion = parseSemverTag(currentTag);
   const preferredVersion = parseSemverTag(preferredTag);
-  if (!currentVersion || !preferredVersion) {
+
+  if (currentVersion && preferredVersion && compareSemver(preferredVersion, currentVersion) >= 0) {
     return preferredTag;
   }
 
-  return compareSemver(preferredVersion, currentVersion) >= 0 ? preferredTag : currentTag;
+  return currentTag;
 }
 
 

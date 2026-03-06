@@ -103,6 +103,15 @@ export type OpenMemoryConfigSaveResult = {
   dimensionMismatch?: boolean;
 };
 
+export type PartialOpenMemoryConfig = {
+  openmemory?: Partial<OpenMemoryConfig["openmemory"]>;
+  mem0?: {
+    llm?: Partial<OpenMemoryConfig["mem0"]["llm"]>;
+    embedder?: { config?: { model?: string } };
+    vector_store?: { config?: { embedding_model_dims?: number } };
+  };
+};
+
 export type SystemConnectionPayload = {
   provider: string;
   apiKey: string;
