@@ -37,7 +37,7 @@
       {
         "id": "R01-3",
         "description": "Create setup-wizard scope constants and enforce kind/capability validation in setup and connections routes.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 42 },
           { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 48 },
@@ -63,7 +63,7 @@
     "id": "R02",
     "title": "Introduce canonical connection and assignment schema",
     "description": "Replace singleton payload contracts with typed Connection Profile plus Assignments models.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-02-canonical-schema.md", "line": 29 },
       { "file": ".plans/recommendation-02-canonical-schema.md", "line": 34 },
@@ -75,7 +75,7 @@
       {
         "id": "R02-1",
         "description": "Define backend canonical types and schema narrowing helpers for profiles and capability assignments.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 29 },
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 40 },
@@ -86,7 +86,7 @@
       {
         "id": "R02-2",
         "description": "Add transport-safe DTOs and refactor /admin/connections handlers to canonical request and response shapes.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 35 },
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 64 },
@@ -96,7 +96,7 @@
       {
         "id": "R02-3",
         "description": "Migrate frontend types and API client methods with a temporary compatibility adapter.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 47 },
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 56 },
@@ -107,7 +107,7 @@
       {
         "id": "R02-4",
         "description": "Update API docs and add backend, route, and setup UI contract tests for canonical schema adoption.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 77 },
           { "file": ".plans/recommendation-02-canonical-schema.md", "line": 89 },
@@ -121,7 +121,7 @@
     "id": "R03",
     "title": "Implement persistent multi-connection storage",
     "description": "Persist canonical profiles in CONFIG_HOME JSON while preserving secrets.env compatibility keys.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-03-persistent-storage.md", "line": 12 },
       { "file": ".plans/recommendation-03-persistent-storage.md", "line": 23 },
@@ -133,7 +133,7 @@
       {
         "id": "R03-1",
         "description": "Create connection-profiles storage module with ensure/read/write/migrate and strict runtime validation.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 23 },
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 28 },
@@ -143,7 +143,7 @@
       {
         "id": "R03-2",
         "description": "Add non-destructive bootstrap wiring and connections directory creation in XDG paths.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 32 },
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 33 },
@@ -153,7 +153,7 @@
       {
         "id": "R03-3",
         "description": "Implement first-read migration from legacy singleton env keys and retain legacy keys after migration.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 42 },
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 46 },
@@ -163,7 +163,7 @@
       {
         "id": "R03-4",
         "description": "Integrate storage into setup and connections routes, then add docs and compatibility test coverage.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 49 },
           { "file": ".plans/recommendation-03-persistent-storage.md", "line": 56 },

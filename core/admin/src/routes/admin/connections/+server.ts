@@ -16,12 +16,16 @@ import {
   getRequestId,
   getActor,
   getCallerType,
-  parseJsonBody
+  parseJsonBody,
+  parseCanonicalConnectionProfile,
+  parseCapabilityAssignments,
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
   readSecretsEnvFile,
   patchSecretsEnvFile,
+  readConnectionProfilesDocument,
+  writePrimaryConnectionProfile,
   ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
   writeOpenMemoryConfig,
@@ -38,6 +42,10 @@ import {
   mem0BaseUrlConfig
 } from "$lib/provider-constants.js";
 import { createLogger } from "$lib/server/logger.js";
+import {
+  isWizardProviderInScope,
+  validateWizardCapabilitiesInput,
+} from '$lib/setup-wizard/scope.js';
 
 const logger = createLogger("connections");
 
@@ -57,8 +65,14 @@ export const GET: RequestHandler = async (event) => {
     connections[key] = maskConnectionValue(key, value);
   }
 
+  const canonical = readConnectionProfilesDocument(state.configDir);
+
   appendAudit(state, actor, "connections.get", {}, true, requestId, callerType);
-  return jsonResponse(200, { connections }, requestId);
+  return jsonResponse(200, {
+    profiles: canonical.profiles,
+    assignments: canonical.assignments,
+    connections,
+  }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -80,10 +94,24 @@ export const POST: RequestHandler = async (event) => {
     return handleUnifiedSave(body, state, actor, callerType, requestId);
   }
 
+  // ── Canonical DTO payload (profiles + assignments) ─────────────────
+  if (Array.isArray(body.profiles) && typeof body.assignments === 'object' && body.assignments !== null) {
+    return handleCanonicalDtoSave(body, state, actor, callerType, requestId);
+  }
+
   // ── Legacy: patch individual keys ──────────────────────────────────
   const patches: Record<string, string> = {};
   for (const [key, value] of Object.entries(body)) {
     if (ALLOWED_CONNECTION_KEYS.has(key) && typeof value === "string") {
+      if (key === 'SYSTEM_LLM_PROVIDER' && value && !isWizardProviderInScope(value)) {
+        return errorResponse(
+          400,
+          'bad_request',
+          `Provider "${value}" is outside setup wizard v1 scope`,
+          {},
+          requestId
+        );
+      }
       patches[key] = value;
     }
   }
@@ -94,6 +122,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     patchSecretsEnvFile(state.configDir, patches);
+    readConnectionProfilesDocument(state.configDir);
   } catch (err) {
     appendAudit(
       state, actor, "connections.patch",
@@ -128,6 +157,21 @@ async function handleUnifiedSave(
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
   const customInstructions = typeof body.customInstructions === "string" ? body.customInstructions : "";
+
+  if (!isWizardProviderInScope(provider)) {
+    return errorResponse(
+      400,
+      'bad_request',
+      `Provider \"${provider}\" is outside setup wizard v1 scope`,
+      {},
+      requestId
+    );
+  }
+
+  const capabilitiesValidation = validateWizardCapabilitiesInput(body.capabilities);
+  if (!capabilitiesValidation.ok) {
+    return errorResponse(400, 'bad_request', capabilitiesValidation.message, {}, requestId);
+  }
 
   // 1. Build secrets.env patches
   const patches: Record<string, string> = {};
@@ -214,6 +258,14 @@ async function handleUnifiedSave(
 
   writeOpenMemoryConfig(state.dataDir, omConfig);
 
+  writePrimaryConnectionProfile(state.configDir, {
+    provider,
+    baseUrl,
+    systemModel,
+    embeddingModel: embeddingModel || 'text-embedding-3-small',
+    embeddingDims: resolvedDims,
+  });
+
   // 3. Push resolved config to running container
   let pushed = false;
   let pushError: string | undefined;
@@ -241,4 +293,54 @@ async function handleUnifiedSave(
     dimensionWarning,
     dimensionMismatch,
   }, requestId);
+}
+
+async function handleCanonicalDtoSave(
+  body: Record<string, unknown>,
+  state: ReturnType<typeof getState>,
+  actor: string,
+  callerType: CallerType,
+  requestId: string
+): Promise<Response> {
+  const profiles = body.profiles;
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    return errorResponse(400, 'bad_request', 'profiles must include at least one profile', {}, requestId);
+  }
+
+  const profileResult = parseCanonicalConnectionProfile(profiles[0]);
+  if (!profileResult.ok) {
+    return errorResponse(400, 'bad_request', profileResult.message, {}, requestId);
+  }
+
+  const assignmentsResult = parseCapabilityAssignments(body.assignments);
+  if (!assignmentsResult.ok) {
+    return errorResponse(400, 'bad_request', assignmentsResult.message, {}, requestId);
+  }
+
+  const providerValue = (profiles[0] as Record<string, unknown>).provider;
+  const profileProvider = typeof providerValue === 'string' ? providerValue : '';
+  if (!profileProvider || !isWizardProviderInScope(profileProvider)) {
+    return errorResponse(400, 'bad_request', 'profiles[0].provider is required and must be in wizard scope', {}, requestId);
+  }
+
+  const profile = profileResult.value;
+  const assignments = assignmentsResult.value;
+
+  return handleUnifiedSave(
+    {
+      provider: profileProvider,
+      apiKey: typeof body.apiKey === 'string' ? body.apiKey : '',
+      baseUrl: profile.baseUrl,
+      systemModel: assignments.llm.model,
+      embeddingModel: assignments.embeddings.model,
+      embeddingDims: assignments.embeddings.embeddingDims ?? 0,
+      openmemoryUserId: typeof body.openmemoryUserId === 'string' ? body.openmemoryUserId : 'default_user',
+      customInstructions: typeof body.customInstructions === 'string' ? body.customInstructions : '',
+      capabilities: body.capabilities,
+    },
+    state,
+    actor,
+    callerType,
+    requestId
+  );
 }
