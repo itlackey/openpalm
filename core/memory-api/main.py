@@ -284,11 +284,59 @@ async def get_config():
     return {}
 
 
+def _validate_config_structure(config: dict) -> dict:
+    """
+    Basic structural validation for the mem0 configuration.
+
+    Accepts either:
+    - {"mem0": {...}} where the inner value is the mem0 config, or
+    - a top-level mem0-style config dict.
+    """
+    if not isinstance(config, dict):
+        raise HTTPException(status_code=400, detail="Config payload must be a JSON object.")
+
+    # Determine the mem0 configuration object
+    if "mem0" in config:
+        mem0_cfg = config["mem0"]
+        if not isinstance(mem0_cfg, dict):
+            raise HTTPException(status_code=400, detail="The 'mem0' field must be an object.")
+    else:
+        mem0_cfg = config
+
+    # Validate optional llm and embedder sections if present
+    for section in ("llm", "embedder"):
+        section_cfg = mem0_cfg.get(section)
+        if section_cfg is not None and not isinstance(section_cfg, dict):
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{section}' section must be an object when provided.",
+            )
+        if isinstance(section_cfg, dict):
+            inner_cfg = section_cfg.get("config")
+            if inner_cfg is not None and not isinstance(inner_cfg, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"'{section}.config' must be an object when provided.",
+                )
+
+    # If provided, history_db_path should be a string
+    history_db_path = mem0_cfg.get("history_db_path")
+    if history_db_path is not None and not isinstance(history_db_path, str):
+        raise HTTPException(
+            status_code=400,
+            detail="'history_db_path' must be a string when provided.",
+        )
+
+    return config
+
+
 @app.put("/api/v1/config/")
 async def put_config(config: dict):
+    # Validate structure before persisting
+    validated_config = _validate_config_structure(config)
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+        json.dump(validated_config, f, indent=2)
         f.write("\n")
     reset_memory()
     return {"status": "ok"}
