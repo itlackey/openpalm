@@ -4,7 +4,8 @@
  * State factory, apply* lifecycle transitions, compose file list builders,
  * and caller/action validation.
  */
-import { parseEnvFile } from './env.js';
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
@@ -12,6 +13,9 @@ import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex } from "./staging.js";
 import { refreshCoreAssets, ensureOpenMemoryPatch } from "./core-assets.js";
 import { ensureOpenMemoryConfig } from "./openmemory-config.js";
+
+const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 // ── State Factory ──────────────────────────────────────────────────────
 
@@ -101,6 +105,62 @@ export function applyUninstall(state: ControlPlaneState): { stopped: string[] } 
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
   return { stopped };
+}
+
+type DockerTagEntry = { name?: unknown };
+type DockerTagsResponse = { results?: unknown };
+
+function resolveNewestDockerTag(payload: unknown): string | null {
+  const results = (payload as DockerTagsResponse)?.results;
+  if (!Array.isArray(results)) return null;
+
+  let fallback: string | null = null;
+  for (const entry of results as DockerTagEntry[]) {
+    const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+    if (!name || name === "latest") continue;
+    if (SEMVER_TAG_RE.test(name)) return name;
+    if (!fallback) fallback = name;
+  }
+  return fallback;
+}
+
+export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): Promise<{
+  namespace: string;
+  tag: string;
+}> {
+  const stackEnvPath = `${state.dataDir}/stack.env`;
+  const parsed = parseEnvFile(stackEnvPath);
+  const namespace = (parsed.OPENPALM_IMAGE_NAMESPACE ?? process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
+
+  if (!IMAGE_NAMESPACE_RE.test(namespace)) {
+    throw new Error(`Invalid image namespace in stack.env: ${namespace}`);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://registry.hub.docker.com/v2/repositories/${namespace}/admin/tags?page_size=25&ordering=last_updated`,
+      { headers: { Accept: "application/json" } }
+    );
+  } catch (e) {
+    throw new Error(`Failed to query Docker tags: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Docker tag lookup failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const latestTag = resolveNewestDockerTag(payload);
+  if (!latestTag) {
+    throw new Error("No usable Docker image tag found");
+  }
+
+  const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
+  const updatedContent = mergeEnvContent(currentContent, { OPENPALM_IMAGE_TAG: latestTag }, { uncomment: true });
+  writeFileSync(stackEnvPath, updatedContent);
+
+  return { namespace, tag: latestTag };
 }
 
 export async function applyUpgrade(state: ControlPlaneState): Promise<{

@@ -9,6 +9,7 @@ import {
 import { getState } from "$lib/server/state.js";
 import {
   applyUpgrade,
+  updateStackEnvToLatestImageTag,
   appendAudit,
   ensureXdgDirs,
   ensureOpenCodeConfig,
@@ -36,6 +37,16 @@ export const POST: RequestHandler = async (event) => {
   ensureOpenCodeSystemConfig();
   ensureOpenMemoryPatch();
   ensureSecrets(state);
+
+  let imageTag = "";
+  try {
+    const tagResult = await updateStackEnvToLatestImageTag(state);
+    imageTag = tagResult.tag;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    appendAudit(state, actor, "upgrade", { result: "error", reason: "image_tag_update_failed", message: msg }, false, requestId, callerType);
+    return errorResponse(502, "image_tag_update_failed", "Failed to update stack.env with the latest image tag", { message: msg }, requestId);
+  }
 
   // 1. Download fresh assets, back up changed files, stage artifacts
   let upgradeResult;
@@ -71,6 +82,7 @@ export const POST: RequestHandler = async (event) => {
 
   appendAudit(state, actor, "upgrade", {
     result: "ok",
+    imageTag,
     assetsUpdated: upgradeResult.updated,
     backupDir: upgradeResult.backupDir,
     restarted: upgradeResult.restarted
@@ -78,6 +90,7 @@ export const POST: RequestHandler = async (event) => {
 
   return jsonResponse(200, {
     ok: true,
+    imageTag,
     backupDir: upgradeResult.backupDir,
     assetsUpdated: upgradeResult.updated,
     restarted: upgradeResult.restarted
