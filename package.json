@@ -38,6 +38,7 @@
     "dev:setup": "./scripts/dev-setup.sh --seed-env",
     "dev:stack": "docker compose -f .dev/state/artifacts/docker-compose.yml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up -d",
     "dev:build": "docker compose --project-directory . -f core/assets/docker-compose.yml -f compose.dev.yaml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up --build -d",
+    "docs:check:wizard-scope": "node scripts/validate-wizard-scope-docs.mjs",
     "test": "bun test packages/channels-sdk packages/channel-chat packages/channel-api packages/channel-discord core/cli core/guardian/",
     "check": "bun run admin:check && bun run sdk:test"
   },

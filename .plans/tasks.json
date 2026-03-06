@@ -3,7 +3,7 @@
     "id": "R01",
     "title": "Lock v1 scope and canonical spec sources",
     "description": "Align docs and code guardrails to enforce remote/local OpenAI-compatible v1 scope.",
-    "status": "pending",
+    "status": "completed",
     "references": [
       { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 24 },
       { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 41 },
@@ -48,7 +48,7 @@
       {
         "id": "R01-4",
         "description": "Add canonical copy module, scope drift validation script, and related tests/docs checks.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 60 },
           { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 84 },

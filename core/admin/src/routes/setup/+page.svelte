@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
+  import { SETUP_WIZARD_COPY } from '$lib/setup-wizard/copy.js';
   import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
 
@@ -372,8 +373,8 @@
   <main class="setup-page" aria-label="Setup wizard">
     <section class="wizard-card">
       <div class="wizard-header">
-        <h1>OpenPalm Setup Wizard</h1>
-        <p class="wizard-subtitle">Configure your OpenPalm stack in a few steps.</p>
+        <h1>{SETUP_WIZARD_COPY.wizardHeaderTitle}</h1>
+        <p class="wizard-subtitle">{SETUP_WIZARD_COPY.wizardHeaderSubtitle}</p>
       </div>
 
       <!-- Step indicators -->
@@ -424,7 +425,7 @@
           <!-- Sub-step 2a: Connection type picker (shown when no type selected) -->
           {#if connectionType === null}
             <h2>Connection Type</h2>
-            <p class="step-description">How do you want to connect to an LLM?</p>
+            <p class="step-description">{SETUP_WIZARD_COPY.connectionTypePrompt}</p>
 
             <button
               class="connection-type-card"
@@ -686,8 +687,8 @@
       <!-- Step 3: Models -->
       {#if step === 'models'}
         <div class="step-content" data-testid="step-models">
-          <h2>Select Models</h2>
-          <p class="step-description">Choose which models to use for each role.</p>
+          <h2>{SETUP_WIZARD_COPY.selectModelsTitle}</h2>
+          <p class="step-description">{SETUP_WIZARD_COPY.selectModelsDescription}</p>
 
           <div class="field-group">
             <label for="system-model">System Model</label>
