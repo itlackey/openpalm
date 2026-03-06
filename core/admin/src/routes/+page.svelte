@@ -59,6 +59,7 @@
   let artifactType: 'compose' | 'caddyfile' | null = $state(null);
   let containerData: ContainerListResponse | null = $state(null);
   let containerError = $state('');
+  let containersLastUpdated: string | null = $state(null);
   let automationsData: AutomationsResponse | null = $state(null);
   let automationsError = $state('');
   let selectedContainerId: string | null = $state(null);
@@ -94,15 +95,6 @@
     }
   }
 
-  // Start polling when authenticated, stop when locked out
-  $effect(() => {
-    if (!authLocked) {
-      startContainerPolling();
-    } else {
-      stopContainerPolling();
-    }
-  });
-
   onDestroy(() => {
     stopContainerPolling();
   });
@@ -125,6 +117,7 @@
   }
 
   function handleLogout(): void {
+    stopContainerPolling();
     clearToken();
     tokenStored = false;
     authLocked = true;
@@ -135,18 +128,19 @@
     artifacts = '';
     artifactType = null;
     containerData = null;
+    containersLastUpdated = null;
     selectedContainerId = null;
   }
 
-  async function handleAuthSuccess(token: string): Promise<void> {
-    if (authLoading) return;
+  async function handleAuthSuccess(token: string): Promise<boolean> {
+    if (authLoading) return false;
     authLoading = true;
     authError = '';
     try {
       const result = await validateToken(token);
       if (!result.allowed) {
         applyInvalidTokenState();
-        return;
+        return false;
       }
       storeToken(token);
       tokenStored = true;
@@ -154,13 +148,16 @@
       authError = '';
       adminStatus = '';
       // Auto-hydrate key data on login so the UI shows meaningful state immediately
+      startContainerPolling();
       await loadHealth();
       void loadContainers();
       void loadAutomations();
       void loadChannels();
       void checkConnectionStatus();
+      return true;
     } catch {
       authError = 'Unable to reach admin API.';
+      return false;
     } finally {
       authLoading = false;
     }
@@ -236,6 +233,9 @@
       }
     }
     containersLoading = false;
+    if (containerData) {
+      containersLastUpdated = new Date().toLocaleTimeString();
+    }
   }
 
   async function loadArtifacts(type: 'compose' | 'caddyfile'): Promise<void> {
@@ -535,6 +535,7 @@
         authLocked = false;
         authError = '';
         adminStatus = '';
+        startContainerPolling();
         // Auto-hydrate key data so tabs show meaningful state without manual refresh
         void loadHealth();
         void loadContainers();
@@ -598,6 +599,7 @@
         onStop={(id) => handleContainerAction('stop', id)}
         onRestart={(id) => handleContainerAction('restart', id)}
         onRefresh={loadContainers}
+        lastUpdated={containersLastUpdated}
       />
     {:else if activeTab === 'artifacts'}
       <ArtifactsTab

@@ -1,6 +1,6 @@
 <script lang="ts">
   interface Props {
-    onSuccess: (token: string) => void;
+    onSuccess: (token: string) => Promise<boolean>;
     loading: boolean;
     error: string;
   }
@@ -10,25 +10,19 @@
   let tokenInput = $state('');
   let showToken = $state(false);
   let tokenInputEl: HTMLInputElement | undefined = $state();
-  let prevError = $state('');
 
-  // Refocus the token input when an auth error appears
-  $effect(() => {
-    if (error && error !== prevError) {
-      prevError = error;
-      tokenInputEl?.focus();
-      tokenInputEl?.select();
-    }
-  });
-
-  function handleSubmit(e: Event): void {
+  async function handleSubmit(e: Event): Promise<void> {
     e.preventDefault();
     const token = tokenInput.trim();
     if (!token || loading) {
       tokenInputEl?.focus();
       return;
     }
-    onSuccess(token);
+    const ok = await onSuccess(token);
+    if (!ok) {
+      tokenInputEl?.focus();
+      tokenInputEl?.select();
+    }
   }
 </script>
 

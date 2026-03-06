@@ -13,6 +13,7 @@
     onStop: (id: string) => void;
     onRestart: (id: string) => void;
     onRefresh: () => void;
+    lastUpdated: string | null;
   }
 
   let {
@@ -25,7 +26,8 @@
     onStart,
     onStop,
     onRestart,
-    onRefresh
+    onRefresh,
+    lastUpdated
   }: Props = $props();
 
   /** Merge both data sources into a unified ServiceEntry list */
@@ -69,13 +71,6 @@
 
   let hasEntries = $derived(serviceEntries.length > 0);
 
-  let lastUpdated: string | null = $state(null);
-
-  $effect(() => {
-    if (!loading && containerData !== null) {
-      lastUpdated = new Date().toLocaleTimeString();
-    }
-  });
 </script>
 
 <div class="panel" role="tabpanel">
