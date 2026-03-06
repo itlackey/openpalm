@@ -27,8 +27,8 @@ services:
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [assistant_net, channel_lan, channel_public]
 
-  # ── OpenMemory MCP ─────────────────────────────────────────────────
-  # Uses embedded Qdrant (file-based) and SQLite — no external database servers needed.
+  # ── OpenMemory ─────────────────────────────────────────────────────
+  # Lightweight FastAPI wrapping mem0 SDK with embedded Qdrant (file-based).
   openmemory:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-api:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -41,7 +41,6 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}
-      DATABASE_URL: sqlite:////data/openmemory.db
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
