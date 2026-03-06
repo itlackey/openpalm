@@ -7,7 +7,8 @@ export type WizardScreen =
   | 'local-provider'
   | 'models'
   | 'review'
-  | 'install';
+  | 'install'
+  | 'deploying';
 
 export const WIZARD_SCREEN_ORDER: WizardScreen[] = [
   'token',
@@ -17,6 +18,7 @@ export const WIZARD_SCREEN_ORDER: WizardScreen[] = [
   'models',
   'review',
   'install',
+  'deploying',
 ];
 
 export type SetupWizardDraft = {
