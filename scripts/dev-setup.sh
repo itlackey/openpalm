@@ -35,6 +35,12 @@ for arg in "$@"; do
 done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# ── Init submodules (openmemory source for dev builds) ──────────
+if [ -f "$ROOT_DIR/.gitmodules" ]; then
+	git -C "$ROOT_DIR" submodule update --init --depth 1
+fi
+
 DEV_ROOT="$ROOT_DIR/.dev"
 
 CONFIG_DIR="$DEV_ROOT/config/assistant"
@@ -185,14 +191,6 @@ if [ ! -f "$DATA_DIR/openmemory/default_config.json" ]; then
   }
 }
 OMEOF
-fi
-
-# ── Seed OpenMemory patched memory.py ─────────────────────────────────────
-# The upstream openmemory-mcp image hardcodes host-based Qdrant config.
-# This patched memory.py reads vector_store config from default_config.json,
-# enabling embedded (file-based) Qdrant via the `path` key.
-if [[ ! -f "$DATA_DIR/openmemory/memory.py" || $force -eq 1 ]]; then
-	cp "$ROOT_DIR/core/assets/openmemory-memory.py" "$DATA_DIR/openmemory/memory.py"
 fi
 
 if [[ $EUID -ne 0 ]]; then

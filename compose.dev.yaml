@@ -40,3 +40,15 @@ services:
       context: .
       dockerfile: core/channel/Dockerfile
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+
+  openmemory:
+    build:
+      context: .
+      dockerfile: core/memory-api/Dockerfile
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-api:${OPENPALM_IMAGE_TAG:-latest}
+
+  openmemory-ui:
+    build:
+      context: .
+      dockerfile: core/memory-ui/Dockerfile
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-ui:${OPENPALM_IMAGE_TAG:-latest}

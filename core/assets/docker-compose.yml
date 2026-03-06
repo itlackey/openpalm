@@ -30,7 +30,7 @@ services:
   # ── OpenMemory MCP ─────────────────────────────────────────────────
   # Uses embedded Qdrant (file-based) and SQLite — no external database servers needed.
   openmemory:
-    image: mem0/openmemory-mcp:latest@sha256:b665d382a94fdc18c7bb84a647d4bebdc98d9e7fc1146fc5e559ca7f5f7f9211
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-api:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     extra_hosts:
@@ -47,7 +47,6 @@ services:
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/memory.py:/usr/src/openmemory/app/utils/memory.py:ro
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
@@ -57,7 +56,7 @@ services:
 
   # ── OpenMemory UI ──────────────────────────────────────────────────
   openmemory-ui:
-    image: mem0/openmemory-ui:latest@sha256:c4b9578335a5cad2866f69d836476dde8ab30cdc6c181702c91a4c094cd29a2b
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-ui:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}
