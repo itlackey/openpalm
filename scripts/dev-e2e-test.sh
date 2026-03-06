@@ -251,8 +251,8 @@ for svc in admin openmemory assistant guardian docker-socket-proxy; do
   fi
 done
 
-# Caddy and openmemory-ui don't have healthchecks — check if running
-for svc in caddy openmemory-ui; do
+# Caddy doesn't have a healthcheck — check if running
+for svc in caddy; do
   status=$(docker inspect --format '{{.State.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
   if [ "$status" = "running" ]; then
     pass "$svc is running"

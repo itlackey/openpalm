@@ -238,14 +238,13 @@ describe("CORE_SERVICES", () => {
   test("includes all expected services", () => {
     expect(CORE_SERVICES).toContain("caddy");
     expect(CORE_SERVICES).toContain("openmemory");
-    expect(CORE_SERVICES).toContain("openmemory-ui");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
     expect(CORE_SERVICES).toContain("admin");
   });
 
-  test("has exactly 6 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(6);
+  test("has exactly 5 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(5);
   });
 });
 

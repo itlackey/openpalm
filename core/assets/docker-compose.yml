@@ -54,20 +54,6 @@ services:
       timeout: 10s
       retries: 5
 
-  # ── OpenMemory UI ──────────────────────────────────────────────────
-  openmemory-ui:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-ui:${OPENPALM_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}
-      NEXT_PUBLIC_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
-    ports:
-      - "${OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS:-127.0.0.1}:3001:3000"
-    networks: [assistant_net]
-    depends_on:
-      openmemory:
-        condition: service_healthy
-
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}

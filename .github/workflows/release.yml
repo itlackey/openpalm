@@ -142,8 +142,6 @@ jobs:
             image: openpalm/assistant
           - dockerfile: core/memory-api/Dockerfile
             image: openpalm/memory-api
-          - dockerfile: core/memory-ui/Dockerfile
-            image: openpalm/memory-ui
 
     steps:
       - name: Checkout
@@ -283,7 +281,6 @@ jobs:
             | [openpalm/channel](https://hub.docker.com/r/openpalm/channel) | `docker pull openpalm/channel:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/memory-api](https://hub.docker.com/r/openpalm/memory-api) | `docker pull openpalm/memory-api:v${{ needs.prepare-tag.outputs.version }}` |
-            | [openpalm/memory-ui](https://hub.docker.com/r/openpalm/memory-ui) | `docker pull openpalm/memory-ui:v${{ needs.prepare-tag.outputs.version }}` |
 
             ## npm Packages
 

@@ -35,12 +35,6 @@
 		reverse_proxy admin:8100
 	}
 
-	# ── OpenMemory UI (specific — must precede /admin/* catch-all) ────
-	handle_path /admin/openmemory/* {
-		import lan_only
-		reverse_proxy openmemory-ui:3000
-	}
-
 	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────
 	handle /admin/* {
 		import lan_only
