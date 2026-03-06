@@ -19,6 +19,8 @@ import {
   setCoreCaddyAccessScope,
   ensureCoreCompose,
   readCoreCompose,
+  ensureOllamaCompose,
+  readOllamaCompose,
   ensureOpenCodeSystemConfig,
   refreshCoreAssets
 } from "./core-assets.js";
@@ -196,6 +198,59 @@ describe("ensureCoreCompose / readCoreCompose", () => {
   });
 });
 
+// ── Ollama Compose Overlay (DATA_HOME source of truth) ──────────────────
+
+describe("ensureOllamaCompose / readOllamaCompose", () => {
+  const origEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    origEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_DATA_HOME = trackDir(makeTempDir());
+  });
+
+  afterEach(() => {
+    process.env.OPENPALM_DATA_HOME = origEnv.OPENPALM_DATA_HOME;
+  });
+
+  test("ensureOllamaCompose creates ollama.yml if missing", () => {
+    const path = ensureOllamaCompose();
+    expect(existsSync(path)).toBe(true);
+    expect(path).toContain("ollama.yml");
+  });
+
+  test("ensureOllamaCompose is idempotent", () => {
+    const path1 = ensureOllamaCompose();
+    const content1 = readFileSync(path1, "utf-8");
+    const path2 = ensureOllamaCompose();
+    const content2 = readFileSync(path2, "utf-8");
+    expect(content1).toBe(content2);
+  });
+
+  test("ensureOllamaCompose overwrites stale file and creates backup", () => {
+    const dataHome = process.env.OPENPALM_DATA_HOME!;
+    mkdirSync(dataHome, { recursive: true });
+    const staleContent = "# stale ollama compose\nservices: {}";
+    writeFileSync(join(dataHome, "ollama.yml"), staleContent);
+
+    const path = ensureOllamaCompose();
+    const content = readFileSync(path, "utf-8");
+    expect(content).not.toBe(staleContent);
+
+    // Verify backup was created
+    const backupDir = join(dataHome, "backups");
+    expect(existsSync(backupDir)).toBe(true);
+    const backups = readdirSync(backupDir).filter(f => f.startsWith("ollama."));
+    expect(backups.length).toBe(1);
+    expect(readFileSync(join(backupDir, backups[0]), "utf-8")).toBe(staleContent);
+  });
+
+  test("readOllamaCompose returns file content", () => {
+    const content = readOllamaCompose();
+    expect(content).toBeTruthy();
+    expect(typeof content).toBe("string");
+  });
+});
+
 // ── ensureOpenCodeSystemConfig ────────────────────────────────────────────
 
 describe("ensureOpenCodeSystemConfig", () => {
@@ -306,6 +361,9 @@ describe("refreshCoreAssets", () => {
       if (url.includes("AGENTS.md")) {
         return new Response("# OpenCode Agents\n", { status: 200 });
       }
+      if (url.includes("ollama.yml")) {
+        return new Response("services:\n  ollama:\n    image: ollama/ollama\n", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
@@ -315,6 +373,7 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("openmemory/memory.py");
     expect(result.updated).toContain("assistant/opencode.jsonc");
     expect(result.updated).toContain("assistant/AGENTS.md");
+    expect(result.updated).toContain("ollama.yml");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
@@ -322,6 +381,7 @@ describe("refreshCoreAssets", () => {
     expect(existsSync(join(dataHome, "openmemory/memory.py"))).toBe(true);
     expect(existsSync(join(dataHome, "assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(dataHome, "assistant/AGENTS.md"))).toBe(true);
+    expect(existsSync(join(dataHome, "ollama.yml"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -335,6 +395,7 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(dataHome, "assistant"), { recursive: true });
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), "old-opencode-content");
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), "old-agents-content");
+    writeFileSync(join(dataHome, "ollama.yml"), "old-ollama-content");
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
@@ -353,11 +414,14 @@ describe("refreshCoreAssets", () => {
       if (url.includes("AGENTS.md")) {
         return new Response("new-agents-content", { status: 200 });
       }
+      if (url.includes("ollama.yml")) {
+        return new Response("new-ollama-content", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(5);
+    expect(result.updated).toHaveLength(6);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -371,6 +435,8 @@ describe("refreshCoreAssets", () => {
     expect(backupOpencode).toBe("old-opencode-content");
     const backupAgents = readFileSync(join(result.backupDir!, "assistant/AGENTS.md"), "utf-8");
     expect(backupAgents).toBe("old-agents-content");
+    const backupOllama = readFileSync(join(result.backupDir!, "ollama.yml"), "utf-8");
+    expect(backupOllama).toBe("old-ollama-content");
 
     // Verify new content written
     expect(readFileSync(join(dataHome, "docker-compose.yml"), "utf-8")).toBe("new-compose-content");
@@ -378,6 +444,7 @@ describe("refreshCoreAssets", () => {
     expect(readFileSync(join(dataHome, "openmemory/memory.py"), "utf-8")).toBe("new-memory-content");
     expect(readFileSync(join(dataHome, "assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
     expect(readFileSync(join(dataHome, "assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
+    expect(readFileSync(join(dataHome, "ollama.yml"), "utf-8")).toBe("new-ollama-content");
   });
 
   test("skips assets with identical content", async () => {
@@ -392,6 +459,7 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(dataHome, "assistant"), { recursive: true });
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), content);
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), content);
+    writeFileSync(join(dataHome, "ollama.yml"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });

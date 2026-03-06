@@ -52,12 +52,16 @@ export function discoverChannels(configDir: string): ChannelInfo[] {
 
 /**
  * Check if a service name is allowed. Core services are always allowed.
+ * Ollama is allowed when its compose overlay is staged.
  * Channel services (channel-*) are allowed if a corresponding staged .yml exists
  * in STATE_HOME/artifacts/channels/.
  */
 export function isAllowedService(value: string, stateDir?: string): boolean {
   if (!value || !value.trim() || value !== value.toLowerCase()) return false;
   if ((CORE_SERVICES as string[]).includes(value)) return true;
+  if (value === "ollama" && stateDir) {
+    return existsSync(`${stateDir}/artifacts/ollama.yml`);
+  }
   if (value.startsWith("channel-")) {
     const ch = value.slice("channel-".length);
     if (!isValidChannelName(ch)) return false;

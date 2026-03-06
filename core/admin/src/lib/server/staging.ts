@@ -16,6 +16,7 @@ import { parseAutomationYaml } from "./scheduler.js";
 import {
   readCoreCaddyfile,
   readCoreCompose,
+  readOllamaCompose,
   PUBLIC_ACCESS_IMPORT,
   LAN_ONLY_IMPORT
 } from "./core-assets.js";

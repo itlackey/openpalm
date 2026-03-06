@@ -21,8 +21,7 @@ import { isSetupComplete } from "$lib/server/setup-status.js";
 import { ensureOllamaCompose } from "$lib/server/core-assets.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import {
-  buildComposeFileList,
-  buildManagedServices
+  buildComposeFileList
 } from "$lib/server/lifecycle.js";
 import {
   ensureXdgDirs,

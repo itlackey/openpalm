@@ -188,21 +188,31 @@
       llmProvider = 'ollama';
       llmBaseUrl = result.ollamaUrl ?? 'http://ollama:11434';
 
+      // Ollama is reachable — mark connection as tested regardless of model pull status
+      connectionTested = true;
+
       // Pre-populate model list with the pulled defaults
       const pulledModels: string[] = [];
+      const failedModels: string[] = [];
       if (result.models) {
         for (const [name, status] of Object.entries(result.models)) {
-          if ((status as { ok: boolean }).ok) pulledModels.push(name);
+          if ((status as { ok: boolean }).ok) {
+            pulledModels.push(name);
+          } else {
+            failedModels.push(name);
+          }
         }
       }
       if (pulledModels.length > 0) {
         modelList = pulledModels.sort();
-        connectionTested = true;
         systemModel = result.defaultChatModel ?? OLLAMA_DEFAULT_MODELS.chat;
         embeddingModel = result.defaultEmbeddingModel ?? OLLAMA_DEFAULT_MODELS.embedding;
         // Set dims for nomic-embed-text
         const dimsKey = `ollama/${embeddingModel}`;
         embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
+      }
+      if (failedModels.length > 0) {
+        ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually or use "Test Connection" to retry.`;
       }
 
       // Re-detect local providers to show Ollama as detected
