@@ -4,8 +4,8 @@ OpenCode plugin that registers all tools, hooks, and skills for the OpenPalm ass
 
 ## What it provides
 
-- **30+ tools** — admin operations (containers, channels, lifecycle, config, connections, artifacts, automations, audit) and memory operations (search, add, update, delete, list, stats, apps)
-- **Memory hooks** — `MemoryContextPlugin` injects relevant memories during session compaction and exports OpenMemory env vars
+- **30+ tools** — admin operations (containers, channels, lifecycle, config, connections, artifacts, automations, audit) and memory operations (search, add, update, delete, list, stats, apps, feedback, exports, events)
+- **Memory hooks** — `MemoryContextPlugin` injects scoped memories (personal/project/stack/global), feeds back outcomes, and exports OpenMemory env vars
 - **Skills** — reference guides for admin API and OpenMemory usage (`opencode/skills/`)
 
 ## Structure

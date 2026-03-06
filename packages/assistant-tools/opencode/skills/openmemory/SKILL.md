@@ -35,6 +35,10 @@ The assistant connects to `http://openmemory:8765` via REST API.
 | `memory-get` | **Inspect a memory** — get full details by UUID including categories and metadata. |
 | `memory-update` | **Correct a memory** — update content when facts change. |
 | `memory-delete` | **Remove memories** — delete by UUID when information is wrong or user asks to forget. |
+| `memory-feedback` | **Reinforce/demote memory quality** — submit positive/negative outcomes for injected memories. |
+| `memory-exports_create` | **Create export job** — start a snapshot/audit export pipeline. |
+| `memory-exports_get` | **Inspect export job** — fetch export status/details by export id. |
+| `memory-events_get` | **Poll async event** — check completion state for async memory operations. |
 
 ### Memory Management
 
@@ -120,8 +124,11 @@ Write memories as clear, self-contained statements that will make sense out of c
 The `memory-context` plugin provides full lifecycle automation:
 
 ### On Session Start (`session.created`)
-- Retrieves relevant semantic, procedural, and episodic memories in parallel
-- Injects project-specific context if the working directory is identified
+- Retrieves scoped memories in parallel:
+  - personal semantic + procedural
+  - project/app scoped context (`app_id`)
+  - stack semantic + procedural (`user_id=openpalm`)
+  - optional global procedures (`user_id=global`)
 - Runs a daily memory hygiene check (detects duplicates and stale entries)
 - Triggers cross-session reflexion when enough episodes have accumulated (every ~10 sessions)
 
@@ -132,11 +139,16 @@ The `memory-context` plugin provides full lifecycle automation:
 - Transparently acknowledges key learnings to the user
 
 ### Before Tool Execution (`tool.execute.before`)
-- For admin operation tools, searches for relevant procedural memories
-- Injects past procedures and patterns as guidance before the tool runs
+- For admin operation tools, retrieves stack procedural memory only (`user_id=openpalm`)
+- For project/code tools, retrieves personal procedural + project-scoped memory
+- Captures injected memory ids to drive post-tool outcome feedback
+
+### After Tool Execution (`tool.execute.after`)
+- Emits positive feedback when execution succeeds
+- Emits negative feedback with a short reason when execution fails
 
 ### On Compaction (`experimental.session.compacting`)
-- Injects categorised memories (semantic + procedural) into the compaction context
+- Injects only high-signal memories (pinned/immutable/high-confidence/positive-feedback-biased)
 - Preserves session state metadata so context survives window resets
 
 ### On Session End (`session.deleted`)

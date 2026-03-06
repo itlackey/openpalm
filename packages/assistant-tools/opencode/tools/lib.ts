@@ -1,7 +1,10 @@
+import { GLOBAL_USER_ID, STACK_USER_ID } from "../plugins/memory-lib.ts";
+
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
 const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || "";
 const OPENMEMORY_URL = process.env.OPENMEMORY_API_URL || "http://openmemory:8765";
 export const USER_ID = process.env.OPENMEMORY_USER_ID || "default_user";
+export { GLOBAL_USER_ID, STACK_USER_ID };
 
 let userProvisionPromise: Promise<void> | null = null;
 
@@ -163,4 +166,19 @@ export async function memoryFetch(path: string, options?: RequestInit): Promise<
   } catch (err) {
     return JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) });
   }
+}
+
+export function memoryResponseHasError(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown };
+    return parsed?.error === true;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveMemoryScopeUserId(scope?: string): string {
+  if (scope === "stack") return STACK_USER_ID;
+  if (scope === "global") return GLOBAL_USER_ID;
+  return USER_ID;
 }
