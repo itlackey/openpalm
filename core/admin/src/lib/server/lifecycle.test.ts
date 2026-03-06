@@ -2,10 +2,11 @@
  * Tests for lifecycle.ts — state factory, lifecycle helpers, compose builders,
  * caller/action validation.
  */
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   mkdirSync,
   writeFileSync,
+  readFileSync,
   existsSync
 } from "node:fs";
 import { join } from "node:path";
@@ -15,6 +16,7 @@ import {
   applyInstall,
   applyUpdate,
   applyUninstall,
+  updateStackEnvToLatestImageTag,
   buildComposeFileList,
   normalizeCaller,
   isAllowedAction
@@ -318,5 +320,52 @@ describe("applyUninstall", () => {
     for (const status of Object.values(state.services)) {
       expect(status).toBe("stopped");
     }
+  });
+});
+
+describe("updateStackEnvToLatestImageTag", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("updates OPENPALM_IMAGE_TAG in DATA_HOME/stack.env", async () => {
+    const state = makeTestState();
+    trackDir(state.stateDir);
+    trackDir(state.configDir);
+    trackDir(state.dataDir);
+    mkdirSync(state.dataDir, { recursive: true });
+    writeFileSync(
+      join(state.dataDir, "stack.env"),
+      "OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.1.0\n"
+    );
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [{ name: "latest" }, { name: "v0.7.7" }, { name: "v0.7.6" }]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await updateStackEnvToLatestImageTag(state);
+    const updated = readFileSync(join(state.dataDir, "stack.env"), "utf-8");
+
+    expect(result.namespace).toBe("openpalm");
+    expect(result.tag).toBe("v0.7.7");
+    expect(updated).toContain("OPENPALM_IMAGE_TAG=v0.7.7");
+  });
+
+  test("throws when docker tag lookup fails", async () => {
+    const state = makeTestState();
+    trackDir(state.stateDir);
+    trackDir(state.configDir);
+    trackDir(state.dataDir);
+    mkdirSync(state.dataDir, { recursive: true });
+    writeFileSync(join(state.dataDir, "stack.env"), "OPENPALM_IMAGE_NAMESPACE=openpalm\n");
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("bad gateway", { status: 502 }));
+
+    await expect(updateStackEnvToLatestImageTag(state)).rejects.toThrow("Docker tag lookup failed");
   });
 });
