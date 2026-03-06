@@ -37,7 +37,7 @@ services:
       - "host.docker.internal:host-gateway"
       - "model-runner.docker.internal:host-gateway"
     environment:
-      HOME: /data
+      OPENMEMORY_DATA_DIR: /data
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}

@@ -21,7 +21,7 @@ app = FastAPI(title="OpenPalm Memory API")
 # ---------------------------------------------------------------------------
 
 CONFIG_PATH = os.environ.get("OPENMEMORY_CONFIG_PATH", "/app/default_config.json")
-DATA_DIR = os.environ.get("HOME", "/data")
+DATA_DIR = os.environ.get("OPENMEMORY_DATA_DIR", "/data")
 
 _memory: Memory | None = None
 
@@ -237,7 +237,11 @@ async def delete_memories(body: DeleteRequest):
 @app.get("/api/v1/stats/")
 async def get_stats(user_id: str = "default_user"):
     m = get_memory()
-    all_memories = m.get_all(user_id=user_id)
+    # NOTE: mem0 SDK does not expose a count-only API, so we fetch all
+    # memories and count them in Python.  The limit caps the upper bound
+    # to avoid unbounded memory usage; callers that exceed this will see
+    # a capped count (the dashboard only needs an approximate number).
+    all_memories = m.get_all(user_id=user_id, limit=10000)
     items = all_memories.get("results", all_memories) if isinstance(all_memories, dict) else all_memories
     count = len(items) if isinstance(items, list) else 0
     return {"total_memories": count, "total_apps": 1}

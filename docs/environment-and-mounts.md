@@ -238,6 +238,7 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `OPENMEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
 | `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
 

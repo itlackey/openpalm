@@ -65,7 +65,7 @@ The `"env:OPENAI_API_KEY"` syntax tells the app to read the actual key from the
 ```bash
 export OPENAI_API_KEY="sk-..."           # or your compatible key
 export OPENMEMORY_CONFIG_PATH="./default_config.json"
-export HOME="./data"                     # Qdrant + history DB land here
+export OPENMEMORY_DATA_DIR="./data"      # Qdrant + history DB land here
 
 uvicorn main:app --host 0.0.0.0 --port 8765 --reload
 ```
@@ -237,7 +237,7 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENMEMORY_CONFIG_PATH` | `/app/default_config.json` | Path to the mem0 config JSON |
-| `HOME` | `/data` | Base directory for Qdrant data and history DB |
+| `OPENMEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
 | `OPENAI_API_KEY` | — | API key (resolved from `env:OPENAI_API_KEY` in config) |
 | `OPENAI_BASE_URL` | — | Custom base URL for OpenAI-compatible providers |
 | `OPENMEMORY_OPENAI_API_KEY` | — | Override API key (takes precedence if set in config) |
@@ -250,7 +250,7 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
   multi-tenant ACL.
 - **mem0 SDK** — handles LLM fact extraction, embedding generation, and Qdrant
   vector operations. The API is a thin HTTP adapter.
-- **Qdrant embedded** — stores vectors in files under `$HOME/`. No separate
+- **Qdrant embedded** — stores vectors in files under `$OPENMEMORY_DATA_DIR/`. No separate
   Qdrant server needed.
 - **Lazy init** — the `Memory` instance is created on first request, not at
   import time. This allows the config file to be mounted after the process
@@ -272,7 +272,7 @@ to a valid file or mount it at `/app/default_config.json`.
 
 **Embedding dimension mismatch** — If you switch embedding models after data
 already exists, Qdrant will reject new vectors. Delete the data directory
-(`$HOME/`) or use the admin's "Reset Collection" feature.
+(`$OPENMEMORY_DATA_DIR/`) or use the admin's "Reset Collection" feature.
 
 **Slow first request** — The first request initializes the mem0 `Memory`
 instance, which loads the Qdrant collection. Subsequent requests are fast.
