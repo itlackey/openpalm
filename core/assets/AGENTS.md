@@ -27,11 +27,13 @@ You have a persistent memory layer (OpenMemory) backed by a vector database. Use
 Memory is your most powerful capability. It is now **automated** — context is retrieved at session start, learnings are extracted after each interaction, and memory hygiene runs daily.
 
 ### Automated Memory (Active)
-- **Session start**: Relevant semantic, episodic, and procedural memories are automatically retrieved and injected as context
+- **Session start**: Scoped memories are automatically retrieved and injected (personal + project/app + stack, optional global)
 - **After each response**: Learnings are automatically extracted from the conversation and stored with appropriate categories
-- **Before admin operations**: Relevant procedural memories are injected as guidance
+- **Before tool execution**: Admin tools get stack procedures; project/code tools get personal + project procedures
+- **After tool execution**: Injected memories receive positive/negative feedback based on outcomes
 - **Session end**: An episodic summary is stored for cross-session learning
 - **Cross-session reflexion**: After enough sessions (~10), patterns are synthesised into higher-level insights
+- **Compaction**: Only high-signal memories are injected to keep compacted context stable
 - **Daily hygiene**: Duplicate and stale memories are flagged for your review
 
 ### Manual Memory Operations
@@ -39,6 +41,7 @@ You can still use memory tools directly for targeted operations the auto-extract
 - Use `memory-search` with descriptive natural-language queries for deeper context
 - Use `memory-add` with metadata to store specific learnings: `{"category":"semantic|episodic|procedural"}`
 - Use `memory-update` when facts change and `memory-delete` for incorrect information
+- Use `memory-feedback`, `memory-exports_*`, and `memory-events_get` for quality signals and export/event workflows
 
 ### Memory Categories
 When adding memories manually, include a category in the metadata:

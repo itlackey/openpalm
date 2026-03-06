@@ -13,14 +13,19 @@
  * semantic, episodic, and procedural knowledge across sessions.
  */
 
+import { basename } from "node:path";
 import {
+  type MemoryIdentity,
   type MemoryItem,
+  DEFAULT_AGENT_ID,
+  DEFAULT_APP_ID,
   OPENMEMORY_URL,
   USER_ID,
   addMemory,
   formatMemoriesForContext,
   getMemoryStats,
   isMemoryAvailable,
+  sendMemoryFeedback,
   searchMemories,
 } from "./memory-lib.ts";
 import { runQuickHygiene, buildHygienePrompt } from "./memory-hygiene.ts";
@@ -32,6 +37,8 @@ import { runQuickHygiene, buildHygienePrompt } from "./memory-hygiene.ts";
 interface SessionState {
   sessionId: string;
   project: string;
+  agentId: string;
+  appId: string;
   startedAt: string;
   contextInjected: boolean;
   idleCount: number;
@@ -39,6 +46,10 @@ interface SessionState {
 }
 
 const sessions = new Map<string, SessionState>();
+const pendingToolFeedback = new Map<
+  string,
+  { memoryIds: string[]; identity: MemoryIdentity }
+>();
 
 // Module-level throttles
 let lastHygieneRunAt = 0;
@@ -57,25 +68,36 @@ const REFLEXION_DEFAULT_CONFIDENCE = 0.5;
 function buildExtractionPrompt(state: SessionState): string {
   return `[SYSTEM: Memory Extraction]
 
-Review the conversation so far and extract any important NEW information worth remembering long-term. For each item, call memory-add with the text and appropriate metadata JSON string.
+Review the conversation so far and extract up to 5 important NEW learnings worth long-term memory.
+Act as a memory editor: output a JSON array only (no prose) where each item has:
+- "scope": "personal" | "stack" | "global"
+- "category": "semantic" | "procedural" | "episodic"
+- "text": string (single atomic memory)
+- "confidence": number from 0.0 to 1.0
+- "keywords": string[]
+- "expiration_days": number | null
 
-Categories (use as the "category" field in metadata):
-- "semantic" — general facts, user preferences, project decisions, technical knowledge
-- "episodic" — specific events or outcomes from this session (what happened, results, errors)
-- "procedural" — procedures, workflows, multi-step patterns that worked (how-to knowledge)
-
-For each learning, call memory-add like this:
-  memory-add({ text: "clear standalone statement", metadata: '{"category":"semantic","source":"auto-extract","session_id":"${state.sessionId}","project":"${state.project}"}' })
+Identity context for this run:
+- agent_id: "${state.agentId}"
+- app_id: "${state.appId}"
+- run_id: "${state.sessionId}"
 
 Rules:
-- Only genuinely NEW information not already in memory
-- Write each memory as a clear, self-contained statement
-- Never store secrets, API keys, passwords, or tokens
-- Skip ephemeral details (current git branch, temp file paths)
-- Prefer quality over quantity — one precise statement over five vague ones
-- After storing memories, briefly acknowledge what you learned (e.g. "Noted for future sessions: ...")
+- Keep entries reusable and standalone ("do X because Y"), not session logs
+- Never include secrets, tokens, credentials, or raw logs
+- Discard transient one-off details
+- Use scope carefully:
+  - personal: user preferences and project conventions
+  - stack: OpenPalm runtime/admin/container/platform behavior
+  - global: cross-user universal rules (rare)
+- Add expiration_days for hacks/workarounds/environment-specific facts
 
-If nothing worth remembering was discussed, respond with "Nothing to extract." and no tool calls.`;
+If nothing is worth storing, return [].
+After returning JSON, call memory-add once per object using:
+memory-add({
+  text: "<text>",
+  metadata: "{\"scope\":\"<scope>\",\"category\":\"<category>\",\"source\":\"auto-extract\",\"confidence\":<confidence>,\"keywords\":[...],\"expiration_days\":<expiration_days>,\"session_id\":\"${state.sessionId}\",\"project\":\"${state.project}\",\"agent_id\":\"${state.agentId}\",\"app_id\":\"${state.appId}\",\"run_id\":\"${state.sessionId}\"}"
+})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +126,48 @@ Rules:
 If no new insights emerge, respond with "No new insights." and no tool calls.`;
 }
 
+function normaliseIdValue(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+}
+
+function deriveAppId(project: string): string {
+  if (!project || project === "unknown") return DEFAULT_APP_ID;
+  return normaliseIdValue(basename(project));
+}
+
+function getSessionIdentity(
+  state: SessionState | undefined,
+  sessionId: string,
+  scope: "personal" | "stack" | "global",
+): MemoryIdentity {
+  return {
+    scope,
+    agentId: state?.agentId ?? DEFAULT_AGENT_ID,
+    appId: state?.appId ?? DEFAULT_APP_ID,
+    runId: sessionId,
+  };
+}
+
+function feedbackKey(sessionId: string, toolName: string): string {
+  return `${sessionId}::${toolName}`;
+}
+
+function isProjectCodeTool(toolName: string): boolean {
+  const codePrefixes = [
+    "bash",
+    "view",
+    "rg",
+    "glob",
+    "task",
+    "search_code_subagent",
+    "apply_patch",
+    "read_bash",
+    "write_bash",
+    "code_review",
+  ];
+  return codePrefixes.some((prefix) => toolName.startsWith(prefix));
+}
+
 // ---------------------------------------------------------------------------
 // Plugin export
 // ---------------------------------------------------------------------------
@@ -120,11 +184,16 @@ export const MemoryContextPlugin = async (ctx: any) => {
         input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
       const project: string =
         input?.project?.name ?? ctx?.project?.name ?? ctx?.directory ?? "unknown";
+      const agentId: string =
+        input?.agent?.name ?? ctx?.agent?.name ?? DEFAULT_AGENT_ID;
+      const appId = deriveAppId(project);
 
       // Initialise session state
       sessions.set(sessionId, {
         sessionId,
         project,
+        agentId,
+        appId,
         startedAt: new Date().toISOString(),
         contextInjected: false,
         idleCount: 0,
@@ -135,42 +204,47 @@ export const MemoryContextPlugin = async (ctx: any) => {
       const stats = await getMemoryStats();
       if (!stats) return;
 
-      const episodicQuery =
-        project !== "unknown"
-          ? `${project} recent sessions outcomes results`
-          : "recent sessions outcomes results";
-
-      // Parallel retrieval: semantic + procedural + episodic
-      const [semanticMems, proceduralMems, episodicMems] =
+      // Policy-based retrieval: personal + project + stack + global
+      const [personalSemantic, personalProcedural, projectMems, stackSemantic, stackProcedural, globalProcedural, reflexionEpisodes] =
         await Promise.all([
           searchMemories(
             "user preferences project context conventions decisions",
-            { size: 10, category: "semantic" },
+            {
+              size: 10,
+              category: "semantic",
+              ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
+            },
           ),
           searchMemories("procedures workflows patterns how to", {
             size: 5,
             category: "procedural",
+            ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
           }),
-          searchMemories(episodicQuery, {
+          searchMemories(`${project} project conventions coding patterns`, {
             size: 5,
+            ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
+          }),
+          searchMemories("openpalm platform runtime conventions", {
+            size: 5,
+            category: "semantic",
+            ...getSessionIdentity(sessions.get(sessionId), sessionId, "stack"),
+          }),
+          searchMemories("openpalm operations procedures workflows", {
+            size: 5,
+            category: "procedural",
+            ...getSessionIdentity(sessions.get(sessionId), sessionId, "stack"),
+          }),
+          searchMemories("global procedural rules", {
+            size: 3,
+            category: "procedural",
+            ...getSessionIdentity(sessions.get(sessionId), sessionId, "global"),
+          }),
+          searchMemories(`${project} recent sessions outcomes results`, {
+            size: 8,
             category: "episodic",
+            ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
           }),
         ]);
-      const reflexionEpisodes =
-        project !== "unknown"
-          ? episodicMems.filter(
-            (m) => !m.metadata?.project || m.metadata.project === project,
-          )
-          : episodicMems;
-
-      // Project-scoped search (conditional)
-      let projectMems: MemoryItem[] = [];
-      if (project !== "unknown") {
-        projectMems = await searchMemories(
-          `${project} project specific context`,
-          { size: 5 },
-        );
-      }
 
       // Build context block
       const lines: string[] = ["## OpenMemory — Session Context"];
@@ -181,30 +255,38 @@ export const MemoryContextPlugin = async (ctx: any) => {
       }
       lines.push("");
 
-      if (semanticMems.length > 0) {
-        lines.push("### Known Facts & Preferences");
-        lines.push(formatMemoriesForContext(semanticMems));
+      if (personalSemantic.length > 0) {
+        lines.push("### Personal Facts & Preferences");
+        lines.push(formatMemoriesForContext(personalSemantic));
         lines.push("");
       }
 
-      if (proceduralMems.length > 0) {
-        lines.push("### Learned Procedures");
-        lines.push(
-          "These are patterns and workflows learned from past sessions:",
-        );
-        lines.push(formatMemoriesForContext(proceduralMems));
-        lines.push("");
-      }
-
-      if (episodicMems.length > 0) {
-        lines.push("### Recent Session History");
-        lines.push(formatMemoriesForContext(episodicMems));
+      if (personalProcedural.length > 0) {
+        lines.push("### Personal Procedures");
+        lines.push(formatMemoriesForContext(personalProcedural));
         lines.push("");
       }
 
       if (projectMems.length > 0) {
-        lines.push(`### Project Context (${project})`);
+        lines.push(`### Project Context (${appId})`);
         lines.push(formatMemoriesForContext(projectMems));
+        lines.push("");
+      }
+
+      if (stackSemantic.length > 0 || stackProcedural.length > 0) {
+        lines.push("### OpenPalm Stack Memory");
+        if (stackSemantic.length > 0) {
+          lines.push(formatMemoriesForContext(stackSemantic));
+        }
+        if (stackProcedural.length > 0) {
+          lines.push(formatMemoriesForContext(stackProcedural));
+        }
+        lines.push("");
+      }
+
+      if (globalProcedural.length > 0) {
+        lines.push("### Global Procedures");
+        lines.push(formatMemoriesForContext(globalProcedural));
         lines.push("");
       }
 
@@ -323,11 +405,16 @@ export const MemoryContextPlugin = async (ctx: any) => {
             project: state.project,
             confidence: 0.8,
             created_by_hook: "session.deleted",
-          });
+          }, getSessionIdentity(state, sessionId, "personal"));
         }
       }
 
       sessions.delete(sessionId);
+      for (const key of pendingToolFeedback.keys()) {
+        if (key.startsWith(`${sessionId}::`)) {
+          pendingToolFeedback.delete(key);
+        }
+      }
     },
 
     // ------------------------------------------------------------------
@@ -336,30 +423,90 @@ export const MemoryContextPlugin = async (ctx: any) => {
     "tool.execute.before": async (input: any, output: any) => {
       const toolName: string | undefined = input?.tool?.name;
       if (!toolName) return;
+      const sessionId: string =
+        input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+      const state = sessions.get(sessionId);
 
-      // Only inject for admin-operation tools where past procedures matter
-      const proceduralPrefixes = [
-        "admin-lifecycle",
-        "admin-containers",
-        "admin-channels",
-        "admin-config",
-      ];
-      if (!proceduralPrefixes.some((p) => toolName.startsWith(p))) return;
+      if (toolName.startsWith("memory-")) return;
       if (!(await isMemoryAvailable(1_200))) return;
 
-      const memories = await searchMemories(
-        `procedure for ${toolName.replace(/_/g, " ")} operations`,
-        { size: 3, category: "procedural", timeoutMs: 1_200 },
+      const isAdminTool = toolName.startsWith("admin-");
+      if (!isAdminTool && !isProjectCodeTool(toolName)) return;
+      const adminIdentity = getSessionIdentity(state, sessionId, "stack");
+      const personalIdentity = getSessionIdentity(state, sessionId, "personal");
+      const [stackProcedural, personalProcedural, projectScoped] = isAdminTool
+        ? await Promise.all([
+          searchMemories(
+            `openpalm procedure for ${toolName.replace(/_/g, " ")} operations`,
+            {
+              size: 4,
+              category: "procedural",
+              timeoutMs: 1_200,
+              ...adminIdentity,
+            },
+          ),
+          Promise.resolve([] as MemoryItem[]),
+          Promise.resolve([] as MemoryItem[]),
+        ])
+        : await Promise.all([
+          Promise.resolve([] as MemoryItem[]),
+          searchMemories(`preferred workflow for ${toolName.replace(/_/g, " ")}`, {
+            size: 3,
+            category: "procedural",
+            timeoutMs: 1_200,
+            ...personalIdentity,
+          }),
+          searchMemories(`${state?.appId ?? DEFAULT_APP_ID} project patterns for ${toolName}`, {
+            size: 3,
+            timeoutMs: 1_200,
+            ...personalIdentity,
+          }),
+        ]);
+      const memories = [...stackProcedural, ...personalProcedural, ...projectScoped];
+      const uniqueMemories = memories.filter(
+        (memory, index, arr) => arr.findIndex((m) => m.id === memory.id) === index,
       );
-      if (memories.length === 0) return;
+      if (uniqueMemories.length === 0) return;
 
       const guidance = formatMemoriesForContext(
-        memories,
+        uniqueMemories,
         `### Relevant Procedures for ${toolName}`,
       );
       if (output?.context) {
         output.context.push(guidance);
       }
+      pendingToolFeedback.set(feedbackKey(sessionId, toolName), {
+        memoryIds: uniqueMemories.map((memory) => memory.id),
+        identity: isAdminTool ? adminIdentity : personalIdentity,
+      });
+    },
+
+    "tool.execute.after": async (input: any, output: any) => {
+      const toolName: string | undefined = input?.tool?.name;
+      if (!toolName) return;
+      const sessionId: string =
+        input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+      const pending = pendingToolFeedback.get(feedbackKey(sessionId, toolName));
+      if (!pending || pending.memoryIds.length === 0) return;
+
+      const failed = Boolean(
+        output?.error ||
+        input?.error ||
+        input?.result?.error ||
+        output?.result?.error,
+      );
+      const reason = failed
+        ? `Tool ${toolName} failed after memory injection`
+        : `Tool ${toolName} succeeded using injected memory`;
+      await Promise.all(
+        pending.memoryIds.map((memoryId) =>
+          sendMemoryFeedback(memoryId, !failed, reason, {
+            ...pending.identity,
+            runId: sessionId,
+          })
+        ),
+      );
+      pendingToolFeedback.delete(feedbackKey(sessionId, toolName));
     },
 
     // ------------------------------------------------------------------
@@ -372,15 +519,30 @@ export const MemoryContextPlugin = async (ctx: any) => {
 
       const stats = await getMemoryStats(1_500);
       if (!stats) return;
-      const [semanticMems, proceduralMems] = await Promise.all([
+      const [semanticMems, proceduralMems, stackProcedural] = await Promise.all([
         searchMemories(
           "user preferences project context important decisions",
-          { size: 10, category: "semantic", timeoutMs: 1_500 },
+          {
+            size: 8,
+            category: "semantic",
+            timeoutMs: 1_500,
+            highSignalOnly: true,
+            ...getSessionIdentity(state, sessionId, "personal"),
+          },
         ),
         searchMemories("procedures patterns workflows", {
           size: 5,
           category: "procedural",
           timeoutMs: 1_500,
+          highSignalOnly: true,
+          ...getSessionIdentity(state, sessionId, "personal"),
+        }),
+        searchMemories("openpalm stack procedures", {
+          size: 5,
+          category: "procedural",
+          timeoutMs: 1_500,
+          highSignalOnly: true,
+          ...getSessionIdentity(state, sessionId, "stack"),
         }),
       ]);
 
@@ -401,6 +563,12 @@ export const MemoryContextPlugin = async (ctx: any) => {
         lines.push("");
         lines.push("### Learned Procedures");
         lines.push(formatMemoriesForContext(proceduralMems));
+      }
+
+      if (stackProcedural.length > 0) {
+        lines.push("");
+        lines.push("### OpenPalm Stack Procedures");
+        lines.push(formatMemoriesForContext(stackProcedural));
       }
 
       if (state) {
