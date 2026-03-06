@@ -18,10 +18,11 @@ OpenMemory runs as a service in the OpenPalm stack:
 
 | Service | Port | Role |
 |---------|------|------|
-| `openmemory` | 8765 | FastAPI server with embedded Qdrant (vectors) + SQLite (metadata) |
-| `openmemory-ui` | 3001 | Dashboard for browsing/managing memories |
+| `openmemory` | 8765 | Lightweight FastAPI wrapper around the mem0 Python SDK with embedded Qdrant (file-based vectors) |
 
-The assistant connects to `http://openmemory:8765` via REST API.
+The assistant connects to `http://openmemory:8765` via REST API. The service
+wraps the mem0 SDK directly — no upstream openmemory code, no MCP SSE,
+no SQLAlchemy ORM. Configuration is read from `/app/default_config.json`.
 
 ## Available Tools
 

@@ -11,109 +11,16 @@ let userProvisionPromise: Promise<void> | null = null;
 type ProvisionResult = { ok: true } | { ok: false; error: string };
 
 async function provisionOpenMemoryUser(userId: string): Promise<ProvisionResult> {
-  const appName = 'openpalm-assistant';
-  const sseController = new AbortController();
-  const timeout = setTimeout(() => sseController.abort(), 10_000);
-
   try {
-    const sseRes = await fetch(
-      `${OPENMEMORY_URL}/mcp/${appName}/sse/${encodeURIComponent(userId)}`,
-      { signal: sseController.signal },
-    ).catch(() => null);
-
-    if (!sseRes || !sseRes.ok || !sseRes.body) {
-      clearTimeout(timeout);
-      return { ok: false, error: sseRes ? `SSE HTTP ${sseRes.status}` : 'SSE connection failed' };
-    }
-
-    const reader = sseRes.body.getReader();
-    const decoder = new TextDecoder();
-    let sseBuffer = '';
-
-    const readNextEvent = async (timeoutMs = 5_000): Promise<{ event: string; data: string } | null> => {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        const remaining = Math.max(deadline - Date.now(), 100);
-        const timeoutRace = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), remaining),
-        );
-        const chunk = await Promise.race([reader.read(), timeoutRace]);
-        if (!chunk || (chunk as { done: boolean }).done) return null;
-        sseBuffer += decoder.decode((chunk as { value: Uint8Array }).value, { stream: true });
-        const eventMatch = sseBuffer.match(/event:\s*(\S+)\r?\n(?:data:\s*(.*)\r?\n)?\r?\n/);
-        if (eventMatch) {
-          sseBuffer = sseBuffer.slice((eventMatch.index ?? 0) + eventMatch[0].length);
-          return { event: eventMatch[1], data: eventMatch[2] || '' };
-        }
-      }
-      return null;
-    };
-
-    const endpointEvt = await readNextEvent(5_000);
-    if (!endpointEvt || endpointEvt.event !== 'endpoint' || !endpointEvt.data) {
-      clearTimeout(timeout);
-      sseController.abort();
-      return { ok: false, error: 'No endpoint event received from SSE' };
-    }
-
-    const messagesUrl = `${OPENMEMORY_URL}${endpointEvt.data}`;
-
-    await fetch(messagesUrl, {
+    const res = await fetch(`${OPENMEMORY_URL}/api/v1/users`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2024-11-05',
-          capabilities: {},
-          clientInfo: { name: appName, version: '1.0.0' },
-        },
-      }),
-    }).catch(() => null);
-
-    await readNextEvent(5_000);
-
-    await fetch(messagesUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'notifications/initialized',
-      }),
-    }).catch(() => null);
-
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    await fetch(messagesUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'tools/call',
-        params: {
-          name: 'add_memories',
-          arguments: {
-            text: `User ${userId} account provisioned by assistant-tools.`,
-          },
-        },
-      }),
-    }).catch(() => null);
-
-    await readNextEvent(8_000);
-
-    clearTimeout(timeout);
-    sseController.abort();
-    return { ok: true };
-  } catch (err) {
-    clearTimeout(timeout);
-    sseController.abort();
-    if (err instanceof Error && err.name === 'AbortError') {
-      return { ok: true };
-    }
-    return { ok: false, error: String(err) };
+      body: JSON.stringify({ user_id: userId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false, error: 'User provision failed' };
   }
 }
 

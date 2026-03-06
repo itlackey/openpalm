@@ -97,7 +97,7 @@ export {
   ensureOllamaCompose,
   readOllamaCompose,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryPatch,
+  ensureOpenMemoryDir,
   isOllamaEnabled,
   stagedEnvFile,
   stagedStackEnvFile,

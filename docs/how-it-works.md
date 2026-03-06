@@ -109,9 +109,9 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **OpenMemory** — memory MCP server with embedded Qdrant and SQLite; gives the assistant
-  persistent memory across conversations
-- **OpenMemory UI** — dashboard at `/admin/openmemory/`
+- **OpenMemory** — lightweight FastAPI wrapper around the mem0 Python SDK with
+  embedded Qdrant (file-based) vector storage; gives the assistant persistent
+  memory across conversations
 
 ---
 

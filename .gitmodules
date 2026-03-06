@@ -1,0 +1,3 @@
+[submodule "vendor/mem0"]
+	path = vendor/mem0
+	url = https://github.com/mem0ai/mem0.git

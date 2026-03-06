@@ -340,9 +340,6 @@ function Download-Assets {
   Download-Asset 'docker-compose.yml' (Join-Path $LocalDataHome 'docker-compose.yml')
   Download-Asset 'Caddyfile' (Join-Path $LocalDataHome 'caddy/Caddyfile')
 
-  # Seed patched memory.py for OpenMemory embedded Qdrant support
-  Download-Asset 'openmemory-memory.py' (Join-Path $LocalDataHome 'openmemory/memory.py')
-
   Copy-Item -LiteralPath (Join-Path $LocalDataHome 'docker-compose.yml') -Destination (Join-Path $LocalStateHome 'artifacts/docker-compose.yml') -Force
   Copy-Item -LiteralPath (Join-Path $LocalDataHome 'caddy/Caddyfile') -Destination (Join-Path $LocalStateHome 'artifacts/Caddyfile') -Force
 }

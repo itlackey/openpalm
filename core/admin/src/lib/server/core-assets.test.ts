@@ -352,9 +352,6 @@ describe("refreshCoreAssets", () => {
       if (url.includes("Caddyfile")) {
         return new Response(":8080 {\n  respond 200\n}\n", { status: 200 });
       }
-      if (url.includes("openmemory-memory.py")) {
-        return new Response("# patched memory.py\n", { status: 200 });
-      }
       if (url.includes("opencode.jsonc")) {
         return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
       }
@@ -370,7 +367,6 @@ describe("refreshCoreAssets", () => {
     const result = await refreshCoreAssets();
     expect(result.updated).toContain("docker-compose.yml");
     expect(result.updated).toContain("caddy/Caddyfile");
-    expect(result.updated).toContain("openmemory/memory.py");
     expect(result.updated).toContain("assistant/opencode.jsonc");
     expect(result.updated).toContain("assistant/AGENTS.md");
     expect(result.updated).toContain("ollama.yml");
@@ -378,7 +374,6 @@ describe("refreshCoreAssets", () => {
 
     expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
     expect(existsSync(join(dataHome, "caddy/Caddyfile"))).toBe(true);
-    expect(existsSync(join(dataHome, "openmemory/memory.py"))).toBe(true);
     expect(existsSync(join(dataHome, "assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(dataHome, "assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(dataHome, "ollama.yml"))).toBe(true);
@@ -390,8 +385,6 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "docker-compose.yml"), "old-compose-content");
     mkdirSync(join(dataHome, "caddy"), { recursive: true });
     writeFileSync(join(dataHome, "caddy/Caddyfile"), "old-caddy-content");
-    mkdirSync(join(dataHome, "openmemory"), { recursive: true });
-    writeFileSync(join(dataHome, "openmemory/memory.py"), "old-memory-content");
     mkdirSync(join(dataHome, "assistant"), { recursive: true });
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), "old-opencode-content");
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), "old-agents-content");
@@ -404,9 +397,6 @@ describe("refreshCoreAssets", () => {
       }
       if (url.includes("Caddyfile")) {
         return new Response("new-caddy-content", { status: 200 });
-      }
-      if (url.includes("openmemory-memory.py")) {
-        return new Response("new-memory-content", { status: 200 });
       }
       if (url.includes("opencode.jsonc")) {
         return new Response("new-opencode-content", { status: 200 });
@@ -421,7 +411,7 @@ describe("refreshCoreAssets", () => {
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(6);
+    expect(result.updated).toHaveLength(5);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -429,8 +419,6 @@ describe("refreshCoreAssets", () => {
     expect(backupCompose).toBe("old-compose-content");
     const backupCaddy = readFileSync(join(result.backupDir!, "caddy/Caddyfile"), "utf-8");
     expect(backupCaddy).toBe("old-caddy-content");
-    const backupMemory = readFileSync(join(result.backupDir!, "openmemory/memory.py"), "utf-8");
-    expect(backupMemory).toBe("old-memory-content");
     const backupOpencode = readFileSync(join(result.backupDir!, "assistant/opencode.jsonc"), "utf-8");
     expect(backupOpencode).toBe("old-opencode-content");
     const backupAgents = readFileSync(join(result.backupDir!, "assistant/AGENTS.md"), "utf-8");
@@ -441,7 +429,6 @@ describe("refreshCoreAssets", () => {
     // Verify new content written
     expect(readFileSync(join(dataHome, "docker-compose.yml"), "utf-8")).toBe("new-compose-content");
     expect(readFileSync(join(dataHome, "caddy/Caddyfile"), "utf-8")).toBe("new-caddy-content");
-    expect(readFileSync(join(dataHome, "openmemory/memory.py"), "utf-8")).toBe("new-memory-content");
     expect(readFileSync(join(dataHome, "assistant/opencode.jsonc"), "utf-8")).toBe("new-opencode-content");
     expect(readFileSync(join(dataHome, "assistant/AGENTS.md"), "utf-8")).toBe("new-agents-content");
     expect(readFileSync(join(dataHome, "ollama.yml"), "utf-8")).toBe("new-ollama-content");

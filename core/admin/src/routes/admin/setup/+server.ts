@@ -15,7 +15,7 @@ import {
   ensureXdgDirs,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryPatch,
+  ensureOpenMemoryDir,
   ensureSecrets,
   ensureConnectionProfilesStore,
   writePrimaryConnectionProfile,
@@ -257,7 +257,7 @@ export const POST: RequestHandler = async (event) => {
   // Run install sequence
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureOpenMemoryPatch();
+  ensureOpenMemoryDir();
   applyInstall(state);
 
   // Discover staged channels and register them

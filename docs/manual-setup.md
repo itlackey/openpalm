@@ -230,19 +230,6 @@ cat > ~/.local/share/openpalm/openmemory/default_config.json << 'EOF'
 EOF
 ```
 
-You also need the patched `memory.py` that enables embedded Qdrant support:
-
-```bash
-cp core/assets/openmemory-memory.py ~/.local/share/openpalm/openmemory/memory.py
-```
-
-If you don't have a local clone, download it:
-
-```bash
-curl -fsSL "https://raw.githubusercontent.com/itlackey/openpalm/main/core/assets/openmemory-memory.py" \
-  -o ~/.local/share/openpalm/openmemory/memory.py
-```
-
 ---
 
 ## 7. Set file ownership
@@ -343,8 +330,7 @@ After completing all steps, your host should have:
 ├── stack.env                        # System config (source of truth)
 ├── docker-compose.yml               # Core compose (source of truth)
 ├── openmemory/
-│   ├── default_config.json
-│   └── memory.py
+│   └── default_config.json
 ├── assistant/
 ├── guardian/
 ├── automations/

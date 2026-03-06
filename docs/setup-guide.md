@@ -108,8 +108,8 @@ Once the wizard completes, your stack is running. Here's where everything lives:
 |---|---|
 | `http://localhost/` | Admin dashboard (via Caddy) |
 | `http://localhost/opencode/` | OpenCode assistant UI |
-| `http://localhost/openmemory/` | OpenMemory dashboard |
 | `http://localhost:8100/` | Admin API (direct, no proxy) |
+| `http://localhost:8765/docs` | OpenMemory API docs |
 
 All ports are localhost-bound by default. Nothing is publicly exposed unless you explicitly change the access scope.
 

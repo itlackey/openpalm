@@ -251,16 +251,14 @@ for svc in admin openmemory assistant guardian docker-socket-proxy; do
   fi
 done
 
-# Caddy and openmemory-ui don't have healthchecks — check if running
-for svc in caddy openmemory-ui; do
-  status=$(docker inspect --format '{{.State.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
-  if [ "$status" = "running" ]; then
-    pass "$svc is running"
-  else
-    fail "$svc status: $status"
-    ALL_HEALTHY=false
-  fi
-done
+# Caddy doesn't have a healthcheck — check if running
+status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
+if [ "$status" = "running" ]; then
+  pass "caddy is running"
+else
+  fail "caddy status: $status"
+  ALL_HEALTHY=false
+fi
 
 # ── Step 9: Check for root-owned files ───────────────────────────────
 echo ""

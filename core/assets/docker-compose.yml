@@ -27,47 +27,31 @@ services:
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [assistant_net, channel_lan, channel_public]
 
-  # ── OpenMemory MCP ─────────────────────────────────────────────────
-  # Uses embedded Qdrant (file-based) and SQLite — no external database servers needed.
+  # ── OpenMemory ─────────────────────────────────────────────────────
+  # Lightweight FastAPI wrapping mem0 SDK with embedded Qdrant (file-based).
   openmemory:
-    image: mem0/openmemory-mcp:latest@sha256:b665d382a94fdc18c7bb84a647d4bebdc98d9e7fc1146fc5e559ca7f5f7f9211
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-api:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "model-runner.docker.internal:host-gateway"
     environment:
-      HOME: /data
+      OPENMEMORY_DATA_DIR: /data
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}
-      DATABASE_URL: sqlite:////data/openmemory.db
     ports:
       - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/memory.py:/usr/src/openmemory/app/utils/memory.py:ro
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
       interval: 15s
       timeout: 10s
       retries: 5
-
-  # ── OpenMemory UI ──────────────────────────────────────────────────
-  openmemory-ui:
-    image: mem0/openmemory-ui:latest@sha256:c4b9578335a5cad2866f69d836476dde8ab30cdc6c181702c91a4c094cd29a2b
-    restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ${OPENMEMORY_DASHBOARD_API_URL:-http://localhost:8765}
-      NEXT_PUBLIC_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
-    ports:
-      - "${OPENPALM_OPENMEMORY_DASHBOARD_BIND_ADDRESS:-127.0.0.1}:3001:3000"
-    networks: [assistant_net]
-    depends_on:
-      openmemory:
-        condition: service_healthy
 
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:

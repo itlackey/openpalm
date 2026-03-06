@@ -140,12 +140,15 @@ jobs:
             image: openpalm/channel
           - dockerfile: core/assistant/Dockerfile
             image: openpalm/assistant
+          - dockerfile: core/memory-api/Dockerfile
+            image: openpalm/memory-api
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-tag.outputs.tag }}
+          submodules: true
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -277,6 +280,7 @@ jobs:
             | [openpalm/guardian](https://hub.docker.com/r/openpalm/guardian) | `docker pull openpalm/guardian:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/channel](https://hub.docker.com/r/openpalm/channel) | `docker pull openpalm/channel:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/memory-api](https://hub.docker.com/r/openpalm/memory-api) | `docker pull openpalm/memory-api:v${{ needs.prepare-tag.outputs.version }}` |
 
             ## npm Packages
 

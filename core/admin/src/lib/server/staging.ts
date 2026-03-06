@@ -35,7 +35,7 @@ export {
   ensureOllamaCompose,
   readOllamaCompose,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryPatch,
+  ensureOpenMemoryDir,
   refreshCoreAssets
 } from "./core-assets.js";
 
@@ -255,9 +255,6 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
     "# ── Networking ──────────────────────────────────────────────────────",
     `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
     `OPENPALM_INGRESS_PORT=${process.env.OPENPALM_INGRESS_PORT ?? "8080"}`,
-    "",
-    "# ── OpenMemory ──────────────────────────────────────────────────────",
-    `OPENMEMORY_DASHBOARD_API_URL=${process.env.OPENMEMORY_DASHBOARD_API_URL ?? "http://localhost:8765"}`,
     "",
     "# ── Channel HMAC Secrets ────────────────────────────────────────────",
     ""
