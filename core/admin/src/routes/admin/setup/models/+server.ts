@@ -23,11 +23,14 @@ import {
   isWizardCapability,
   isWizardProviderInScope,
 } from '$lib/setup-wizard/scope.js';
+import { createLogger } from "$lib/server/logger.js";
 
+const logger = createLogger("setup-models");
 const VALID_PROVIDERS = new Set<string>([...LLM_PROVIDERS, ...EMBED_PROVIDERS]);
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  logger.info("model discovery request received", { requestId });
   const state = getState();
   const authError = requireAdminOrSetupToken(event, requestId);
   if (authError) return authError;
@@ -58,7 +61,9 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Pass raw API key directly (not an env: reference)
+  logger.info("fetching models from provider", { requestId, provider, baseUrl: baseUrl || "(default)" });
   const result = await fetchProviderModels(provider, apiKey, baseUrl, state.configDir);
+  logger.info("model discovery completed", { requestId, provider, modelCount: result.models?.length ?? 0 });
 
   return jsonResponse(200, result, requestId);
 };

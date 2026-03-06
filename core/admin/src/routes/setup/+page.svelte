@@ -31,6 +31,8 @@
   let loading = $state(true);
 
   // ── Form fields ─────────────────────────────────────────────────────────
+  let ownerName = $state('');
+  let ownerEmail = $state('');
   let adminToken = $state('');
   let setupSessionToken = $state(setupToken);
 
@@ -201,7 +203,79 @@
     providersDetected = true;
   }
 
-  // ── Enable Ollama handler ─────────────────────────────────────────────
+  // ── Enable Ollama handler (async with polling) ──────────────────────
+
+  let ollamaPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  function stopOllamaPolling(): void {
+    if (ollamaPollTimer) {
+      clearInterval(ollamaPollTimer);
+      ollamaPollTimer = null;
+    }
+  }
+
+  function applyOllamaResult(result: Record<string, unknown>): void {
+    ollamaEnabled = true;
+    llmProvider = 'ollama';
+    llmBaseUrl = (result.ollamaUrl as string) ?? 'http://ollama:11434';
+    connectionTested = true;
+
+    // Pre-populate model list with the pulled defaults
+    const pulledModels: string[] = [];
+    const failedModels: string[] = [];
+    const models = result.models as Record<string, { ok: boolean }> | undefined;
+    if (models) {
+      for (const [name, status] of Object.entries(models)) {
+        if (status.ok) {
+          pulledModels.push(name);
+        } else {
+          failedModels.push(name);
+        }
+      }
+    }
+    if (pulledModels.length > 0) {
+      modelList = pulledModels.sort();
+      systemModel = (result.defaultChatModel as string) ?? OLLAMA_DEFAULT_MODELS.chat;
+      embeddingModel = (result.defaultEmbeddingModel as string) ?? OLLAMA_DEFAULT_MODELS.embedding;
+      const dimsKey = `ollama/${embeddingModel}`;
+      embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
+    }
+    if (failedModels.length > 0) {
+      ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually.`;
+    }
+  }
+
+  async function pollOllamaStatus(): Promise<void> {
+    try {
+      const res = await fetch('/admin/setup/ollama', {
+        headers: buildHeaders(setupSessionToken)
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (!data.active) return;
+
+      // Update progress message
+      ollamaEnableProgress = data.message ?? 'Enabling Ollama...';
+
+      if (data.phase === 'done') {
+        stopOllamaPolling();
+        applyOllamaResult(data);
+        enablingOllama = false;
+        ollamaEnableProgress = '';
+
+        // Auto-set step 3 values and skip to step 4 (review)
+        goToScreen('review');
+      } else if (data.phase === 'error') {
+        stopOllamaPolling();
+        ollamaEnableError = data.message ?? 'Ollama enable failed.';
+        enablingOllama = false;
+        ollamaEnableProgress = '';
+      }
+    } catch {
+      // Network error during poll — keep trying
+    }
+  }
 
   async function enableOllama(): Promise<void> {
     if (enablingOllama) return;
@@ -221,47 +295,19 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         ollamaEnableError = data.message ?? `Failed to enable Ollama (HTTP ${res.status})`;
+        enablingOllama = false;
+        ollamaEnableProgress = '';
         return;
       }
 
       const result = await res.json();
-      ollamaEnabled = true;
-      llmProvider = 'ollama';
-      llmBaseUrl = result.ollamaUrl ?? 'http://ollama:11434';
+      ollamaEnableProgress = result.message ?? 'Enabling Ollama in background...';
 
-      // Ollama is reachable — mark connection as tested regardless of model pull status
-      connectionTested = true;
-
-      // Pre-populate model list with the pulled defaults
-      const pulledModels: string[] = [];
-      const failedModels: string[] = [];
-      if (result.models) {
-        for (const [name, status] of Object.entries(result.models)) {
-          if ((status as { ok: boolean }).ok) {
-            pulledModels.push(name);
-          } else {
-            failedModels.push(name);
-          }
-        }
-      }
-      if (pulledModels.length > 0) {
-        modelList = pulledModels.sort();
-        systemModel = result.defaultChatModel ?? OLLAMA_DEFAULT_MODELS.chat;
-        embeddingModel = result.defaultEmbeddingModel ?? OLLAMA_DEFAULT_MODELS.embedding;
-        // Set dims for nomic-embed-text
-        const dimsKey = `ollama/${embeddingModel}`;
-        embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
-      }
-      if (failedModels.length > 0) {
-        ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually or use "Test Connection" to retry.`;
-      }
-
-      // Re-detect local providers to show Ollama as detected
-      await detectLocalProviders();
-
+      // Start polling every 3 seconds
+      stopOllamaPolling();
+      ollamaPollTimer = setInterval(() => void pollOllamaStatus(), 3000);
     } catch {
       ollamaEnableError = 'Network error — unable to reach admin API.';
-    } finally {
       enablingOllama = false;
       ollamaEnableProgress = '';
     }
@@ -339,6 +385,8 @@
         },
         body: JSON.stringify({
           adminToken,
+          ownerName,
+          ownerEmail,
           llmProvider,
           llmApiKey,
           llmBaseUrl,
@@ -423,12 +471,33 @@
         <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled>4</button>
       </nav>
 
-      <!-- Step 1: Admin Token -->
+      <!-- Step 1: Welcome — Name, Email & Admin Token -->
       {#if screen === 'token'}
         <div class="step-content" data-testid="step-token">
-          <h2>Admin Token</h2>
+          <h2>Welcome</h2>
+          <p class="step-description">Tell us a bit about yourself and set a secure admin token.</p>
           <div class="field-group">
-            <label for="admin-token">Choose an admin token</label>
+            <label for="owner-name">Your Name</label>
+            <input
+              id="owner-name"
+              type="text"
+              bind:value={ownerName}
+              placeholder="Jane Doe"
+            />
+            <p class="field-hint">Used as the default OpenMemory user ID.</p>
+          </div>
+          <div class="field-group">
+            <label for="owner-email">Email</label>
+            <input
+              id="owner-email"
+              type="email"
+              bind:value={ownerEmail}
+              placeholder="jane@example.com"
+            />
+            <p class="field-hint">For account identification. Not shared externally.</p>
+          </div>
+          <div class="field-group">
+            <label for="admin-token">Admin Token</label>
             <input
               id="admin-token"
               type="password"
@@ -442,11 +511,19 @@
           {/if}
           <div class="step-actions">
             <button class="btn btn-primary" onclick={() => {
+              if (!ownerName.trim()) {
+                tokenError = 'Name is required.';
+                return;
+              }
               if (!adminToken.trim()) {
                 tokenError = 'Admin token is required.';
                 return;
               }
               tokenError = '';
+              // Use name as the default OpenMemory user ID
+              if (!openmemoryUserId || openmemoryUserId === detectedUserId || openmemoryUserId === 'default_user') {
+                openmemoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
+              }
               goToScreen('connection-type');
             }}>Next</button>
           </div>
@@ -727,7 +804,7 @@
           <div class="field-group">
             <label for="openmemory-user-id">OpenMemory User ID</label>
             <input id="openmemory-user-id" type="text" bind:value={openmemoryUserId} placeholder="default_user" />
-            <p class="field-hint">Identifies the memory owner. Use a unique name if running multiple instances.</p>
+            <p class="field-hint">Derived from your name. Edit if running multiple instances.</p>
           </div>
 
           <div class="step-actions">
@@ -742,6 +819,16 @@
         <div class="step-content" data-testid="step-review">
           <h2>Review & Install</h2>
           <div class="review-grid">
+            <div class="review-item">
+              <span class="review-label">Name</span>
+              <span class="review-value">{ownerName || '(not set)'}</span>
+            </div>
+            {#if ownerEmail}
+              <div class="review-item">
+                <span class="review-label">Email</span>
+                <span class="review-value">{ownerEmail}</span>
+              </div>
+            {/if}
             <div class="review-item">
               <span class="review-label">Admin Token</span>
               <span class="review-value mono">Set</span>

@@ -59,6 +59,7 @@ const logger = createLogger("setup");
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  logger.info("setup status check", { requestId });
   const state = getState();
   const keys = readSecretsKeys(state.configDir);
 
@@ -81,7 +82,9 @@ export const GET: RequestHandler = async (event) => {
         OPENMEMORY_USER_ID: keys.OPENMEMORY_USER_ID === true,
         GROQ_API_KEY: keys.GROQ_API_KEY === true,
         MISTRAL_API_KEY: keys.MISTRAL_API_KEY === true,
-        GOOGLE_API_KEY: keys.GOOGLE_API_KEY === true
+        GOOGLE_API_KEY: keys.GOOGLE_API_KEY === true,
+        OWNER_NAME: keys.OWNER_NAME === true,
+        OWNER_EMAIL: keys.OWNER_EMAIL === true,
       }
     },
     requestId
@@ -119,6 +122,8 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const callerType = getCallerType(event);
+  logger.info("setup install request received", { requestId, setupComplete });
+
   const body = await parseJsonBody(event.request);
   if (!body) {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
@@ -132,6 +137,12 @@ export const POST: RequestHandler = async (event) => {
   if (typeof body.adminToken === "string" && body.adminToken) {
     updates.ADMIN_TOKEN = body.adminToken;
   }
+
+  // ── Owner identity fields ──
+  const ownerName = typeof body.ownerName === "string" ? body.ownerName.trim() : "";
+  const ownerEmail = typeof body.ownerEmail === "string" ? body.ownerEmail.trim() : "";
+  if (ownerName) updates.OWNER_NAME = ownerName;
+  if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
   // ── System LLM connection fields (new wizard) ──
   let llmProvider = typeof body.llmProvider === "string" ? body.llmProvider : "";
@@ -202,12 +213,14 @@ export const POST: RequestHandler = async (event) => {
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
   // ── All validation passed — persist changes ──
+  logger.info("persisting setup config", { requestId, provider: llmProvider, systemModel, embeddingModel });
   try {
     ensureXdgDirs();
     ensureSecrets(state);
     ensureConnectionProfilesStore(state.configDir);
     updateSecretsEnv(state, updates);
   } catch (err) {
+    logger.error("failed to update secrets.env", { requestId, error: String(err) });
     return errorResponse(
       500,
       "config_save_failed",
@@ -276,6 +289,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   // Check Docker and run compose up
+  logger.info("checking Docker and running compose up", { requestId });
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
     appendAudit(
@@ -318,6 +332,7 @@ export const POST: RequestHandler = async (event) => {
   );
 
   if (!dockerResult.ok) {
+    logger.error("compose failed during setup", { requestId, stderr: dockerResult.stderr });
     return errorResponse(
       502,
       "compose_failed",
@@ -352,6 +367,8 @@ export const POST: RequestHandler = async (event) => {
       }
     }
   })();
+
+  logger.info("setup install completed", { requestId, started });
 
   return jsonResponse(
     200,
