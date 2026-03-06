@@ -1385,13 +1385,6 @@
     font-size: var(--text-sm);
   }
 
-  .install-progress {
-    margin-top: var(--space-3);
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    text-align: center;
-  }
-
   /* ── Done State ──────────────────────────────────────────────────────── */
   .done-state {
     text-align: center;

@@ -14,9 +14,8 @@ import {
   jsonResponse,
   errorResponse,
   getRequestId,
-  safeTokenCompare
+  requireAdminOrSetupToken,
 } from "$lib/server/helpers.js";
-import { isSetupComplete } from "$lib/server/setup-status.js";
 import { ensureOllamaCompose } from "$lib/server/core-assets.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import {
@@ -47,6 +46,11 @@ type OllamaTaskStatus = {
 };
 
 let ollamaTask: OllamaTaskStatus | null = null;
+
+/** Clear stale task state so GET stops returning active: true. */
+function clearOllamaTask(): void {
+  ollamaTask = null;
+}
 
 /** Pull a model from Ollama via its HTTP API. */
 async function pullOllamaModel(
@@ -188,36 +192,25 @@ async function runOllamaEnableBackground(requestId: string): Promise<void> {
   }
 }
 
-function authenticateRequest(event: Parameters<RequestHandler>[0], requestId: string): Response | null {
-  const state = getState();
-  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
-  const token = event.request.headers.get("x-admin-token") ?? "";
-  const validSetupToken =
-    !setupComplete && safeTokenCompare(token, state.setupToken);
-  const validAdminToken =
-    setupComplete && safeTokenCompare(token, state.adminToken);
-  if (!validSetupToken && !validAdminToken) {
-    return errorResponse(401, "unauthorized", "Missing or invalid token", {}, requestId);
-  }
-  return null;
-}
 
 /**
  * GET /admin/setup/ollama — Poll background task status.
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = authenticateRequest(event, requestId);
+  const authError = requireAdminOrSetupToken(event, requestId);
   if (authError) return authError;
 
   if (!ollamaTask) {
     return jsonResponse(200, { active: false }, requestId);
   }
 
-  return jsonResponse(
+  const isTerminal = ollamaTask.phase === "done" || ollamaTask.phase === "error";
+
+  const response = jsonResponse(
     200,
     {
-      active: true,
+      active: !isTerminal,
       phase: ollamaTask.phase,
       message: ollamaTask.message,
       ollamaUrl: ollamaTask.ollamaUrl,
@@ -228,6 +221,13 @@ export const GET: RequestHandler = async (event) => {
     },
     requestId
   );
+
+  // Clear stale state after the client has consumed the terminal result
+  if (isTerminal) {
+    clearOllamaTask();
+  }
+
+  return response;
 };
 
 /**
@@ -240,7 +240,7 @@ export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   logger.info("ollama enable request received", { requestId });
 
-  const authError = authenticateRequest(event, requestId);
+  const authError = requireAdminOrSetupToken(event, requestId);
   if (authError) return authError;
 
   // If a task is already running, return its current status
