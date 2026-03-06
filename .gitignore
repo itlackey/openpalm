@@ -18,6 +18,5 @@ test-results/.last-run.json
 .private
 .vscode/
 .opencode/
-.plans/
 core/cli/dist/
 package-lock.json

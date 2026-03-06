@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  WIZARD_CANONICAL_COPY_SOURCE,
   WIZARD_CONNECTION_KINDS,
   WIZARD_REQUIRED_CAPABILITIES,
   WIZARD_OPTIONAL_CAPABILITIES,
-  WIZARD_SCOPE_DECISION_BLOCK,
   getWizardConnectionKindForProvider,
   isWizardCapability,
   isWizardProviderInScope,
@@ -22,13 +20,6 @@ describe('setup wizard v1 scope', () => {
   it('defines required and optional capabilities per scope decision', () => {
     expect(WIZARD_REQUIRED_CAPABILITIES).toEqual(['llm', 'embeddings']);
     expect(WIZARD_OPTIONAL_CAPABILITIES).toEqual(['reranking', 'tts', 'stt']);
-  });
-
-  it('keeps canonical source and decision block aligned', () => {
-    expect(WIZARD_CANONICAL_COPY_SOURCE).toBe('.plans/connections/model-setup-wizard-ui-copy-deck.md');
-    expect(WIZARD_SCOPE_DECISION_BLOCK).toContain(
-      '- Canonical UX copy source: `.plans/connections/model-setup-wizard-ui-copy-deck.md`.',
-    );
   });
 
   it('accepts only v1 in-scope providers', () => {
