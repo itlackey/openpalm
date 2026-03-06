@@ -126,7 +126,7 @@ Docker stack). Full request/response shapes are visible in the Swagger UI at
 | `GET` | `/api/v1/stats/` | Memory count for a user |
 | `POST` | `/api/v1/memories/{id}/feedback` | Submit positive/negative feedback |
 | `GET` | `/api/v1/config/` | Read current config |
-| `PUT` | `/api/v1/config/` | Write config and reinitialize Memory |
+| `PUT` | `/api/v1/config/` | Write config (validated) and reinitialize Memory |
 | `POST` | `/api/v1/users` | No-op user provisioning |
 | `GET` | `/health` | Health check |
 
@@ -211,7 +211,24 @@ curl -s -X PUT "$BASE/api/v1/config/" \
   }'
 ```
 
-This writes the config to disk and reinitializes the Memory instance.
+The endpoint validates the config structure before persisting — it checks that
+`mem0`, `llm`, `embedder`, their inner `config` objects, and `history_db_path`
+are the expected types. Invalid payloads return `400`. On success it writes the
+config to disk and reinitializes the Memory instance.
+
+### Feedback
+
+```bash
+# Submit positive feedback on a memory
+curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
+  -H "content-type: application/json" \
+  -d '{"value": 1, "reason": "accurate", "user_id": "dev"}' \
+  | python3 -m json.tool
+# → {"status":"ok"}
+
+# Feedback updates metadata counters (positive_feedback_count,
+# negative_feedback_count, feedback_score) persisted via mem0 update.
+```
 
 ---
 
@@ -238,9 +255,12 @@ This writes the config to disk and reinitializes the Memory instance.
 - **Lazy init** — the `Memory` instance is created on first request, not at
   import time. This allows the config file to be mounted after the process
   starts.
-- **Config reload** — `PUT /api/v1/config/` writes the file and calls
-  `reset_memory()`, which discards the singleton so it reinitializes on the
-  next request.
+- **Config reload** — `PUT /api/v1/config/` validates the payload structure,
+  writes the file, and calls `reset_memory()`, which discards the singleton so
+  it reinitializes on the next request.
+- **Feedback persistence** — the feedback endpoint updates metadata counters
+  (`positive_feedback_count`, `negative_feedback_count`, `feedback_score`) and
+  persists them via `m.update()` with the `metadata` parameter.
 
 ---
 
