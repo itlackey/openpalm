@@ -558,7 +558,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar {channelAccess} onLogout={handleLogout} />
+  <Navbar onLogout={handleLogout} />
 
   <main>
     <ConnectionBanner missing={connectionsMissing} onNavigate={() => handleTabSelect('connections')} />

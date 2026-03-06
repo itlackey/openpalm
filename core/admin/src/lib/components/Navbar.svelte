@@ -2,11 +2,10 @@
   import { version } from '$app/environment';
 
   interface Props {
-    channelAccess: 'host' | 'lan' | 'custom';
     onLogout: () => void;
   }
 
-  let { channelAccess, onLogout }: Props = $props();
+  let { onLogout }: Props = $props();
 </script>
 
 <nav class="navbar" aria-label="Main navigation">

@@ -12,6 +12,7 @@ import {
   existsSync
 } from "node:fs";
 import { join } from "node:path";
+import adminPkg from "../../../package.json" with { type: "json" };
 
 import {
   sha256,
@@ -280,6 +281,7 @@ describe("persistArtifacts", () => {
     expect(content).toContain(`OPENPALM_CONFIG_HOME=${state.configDir}`);
     expect(content).toContain(`OPENPALM_DATA_HOME=${state.dataDir}`);
     expect(content).toContain(`OPENPALM_STATE_HOME=${state.stateDir}`);
+    expect(content).toContain(`OPENPALM_IMAGE_TAG=v${adminPkg.version}`);
   });
 
   test("stack.env does NOT contain user secrets (OPENMEMORY_USER_ID, ADMIN_TOKEN)", () => {
