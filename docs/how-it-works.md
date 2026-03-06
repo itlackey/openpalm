@@ -65,6 +65,8 @@ Responsibilities:
 - Runs `docker compose` for all lifecycle operations (install, update, up, down,
   restart)
 - Exposes an authenticated API used by the CLI, the browser UI, and the assistant
+- Applies explicit config mutations to `CONFIG_HOME` (for example, connections or
+  channel install/uninstall) when requested through authorized UI/API actions
 - Runs scheduled automations — user-defined files from CONFIG_HOME/automations/
 - Writes the audit log
 - Discovers installed channels by scanning `CONFIG_HOME/channels/`, then stages
@@ -180,11 +182,21 @@ openpalm install   →   POST /admin/install
 restarting the admin container syncs your latest config changes into the
 running stack.
 
+Automatic lifecycle operations (install/update/startup/apply/setup reruns/upgrades)
+are non-destructive for existing user config files in `CONFIG_HOME`; they only seed
+missing defaults.
+
 ---
 
 ## File Assembly Model
 
 OpenPalm doesn't generate config by filling in templates. It copies whole files.
+
+`CONFIG_HOME` is user-owned and persistent. Allowed writers are:
+- You, by editing files directly
+- The admin via explicit UI/API config actions
+- The assistant, only when you request it and it uses authenticated,
+  allowlisted admin API actions
 
 ```
 CONFIG_HOME/channels/chat.yml   ──copy──▶  STATE_HOME/artifacts/channels/chat.yml

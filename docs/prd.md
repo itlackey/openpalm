@@ -31,12 +31,15 @@ Channel services are added via compose overlays and staged into
 
 ## Filesystem model
 
-- `CONFIG_HOME`: user-editable sources (`secrets.env`, `channels/`, `assistant/`).
+- `CONFIG_HOME`: user-owned persistent source of truth (`secrets.env`, `channels/`, `assistant/`).
+  Allowed writers: user direct edits; explicit admin UI/API config actions;
+  assistant calls via authenticated/allowlisted admin APIs on user request.
 - `DATA_HOME`: persistent service data and source-of-truth `stack.env`.
 - `STATE_HOME`: assembled runtime (`artifacts/`, staged channels, audit).
 
 Admin startup runs an idempotent auto-apply that stages artifacts from CONFIG +
-bundled assets into STATE.
+bundled assets into STATE. Lifecycle apply/install/update is non-destructive
+for existing user config files and only seeds missing defaults.
 
 ## Secrets model
 

@@ -5,6 +5,13 @@ This directory contains the static infrastructure configuration for OpenPalm. Th
 1. **Standalone** — Copy to a directory, create a `.env` or `secrets.env`, run `docker compose up`.
 2. **Admin-managed** — The admin service bundles channel definitions from `registry/` at build time as a catalog. Channels are installed on demand via `POST /admin/channels/install`, which copies files to `CONFIG_HOME/channels/`. Channels can also be added manually by dropping files into the same directory.
 
+`CONFIG_HOME` is the user-owned persistent source of truth. Automatic lifecycle
+operations are non-destructive for existing user config files and only seed
+missing defaults. Allowed writers: user direct edits; explicit admin UI/API
+config actions; authenticated, allowlisted assistant calls on user request.
+See [docs/core-principles.md](../../docs/core-principles.md) for the full
+filesystem contract.
+
 ## File Layout
 
 ```
@@ -154,7 +161,7 @@ Or add channels manually without rebuilding the container:
 
 1. Place `my-channel.yml` (and optional `my-channel.caddy`) in `$OPENPALM_CONFIG_HOME/channels/`
 2. No manual channel secret is required; admin generates and stages it
-3. The admin's install/update endpoint will discover the new channel automatically
+3. Lifecycle apply/install/update discovers the new channel without overwriting existing user files in `CONFIG_HOME`
 4. No code changes or container rebuilds required
 
 The admin scans `CONFIG_HOME/channels/` at runtime to discover all `.yml` files and includes them in the docker compose command.

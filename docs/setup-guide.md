@@ -36,12 +36,12 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 
 1. Checks your system for Docker, Docker Compose, curl, and openssl
 2. Creates the XDG directory tree and downloads core assets (compose file, Caddyfile)
-3. Generates an admin token (or lets you set your own) and seeds `secrets.env`
+3. Generates an admin token (or lets you set your own) and seeds missing default config files
 4. Pulls and starts the admin service, then opens the setup wizard in your browser
 5. The wizard walks you through connecting your AI provider and choosing channels
 6. When you finish the wizard, the full stack starts automatically
 
-No config files to edit. No code to clone. Your secrets are never overwritten on subsequent runs.
+No code to clone. You can run fully from the UI if you want, and edit files directly any time. Existing user config files in `CONFIG_HOME` are never overwritten on subsequent runs; only missing defaults are seeded.
 
 ### Installer options
 
@@ -77,7 +77,7 @@ irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 |
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-The installer re-downloads core assets and restarts the admin service. Your secrets, channels, and data are preserved — `CONFIG_HOME/secrets.env` is never overwritten.
+The installer re-downloads core assets and restarts the admin service. Your config, channels, and data are preserved — automatic lifecycle operations never overwrite existing user files in `CONFIG_HOME` (they may seed missing defaults).
 
 To pull the latest container images without re-running setup:
 
@@ -115,7 +115,11 @@ All ports are localhost-bound by default. Nothing is publicly exposed unless you
 
 ### Your files
 
-All user-editable files live under `CONFIG_HOME` (default `~/.config/openpalm`):
+`CONFIG_HOME` (default `~/.config/openpalm`) is your persistent source of truth.
+Allowed writers are: direct edits, explicit admin UI/API config actions, and
+authenticated assistant API actions on user request. See
+[core-principles.md](core-principles.md) for the full filesystem contract.
+All of those paths write the same files:
 
 | Path | Purpose |
 |---|---|
@@ -143,7 +147,7 @@ You never need to touch the other two directories (`DATA_HOME` for service data,
 1. Edit `~/.config/openpalm/secrets.env`
 2. Restart admin: `docker compose restart admin`
 
-Or use the Connections page in the admin UI — no file editing required.
+Or use the Connections page in the admin UI, or ask the assistant to perform the same authenticated config update through the admin API.
 
 **Add a channel:**
 Install from the registry via the admin UI, or manually drop a `.yml` (and optional `.caddy`) into `~/.config/openpalm/channels/` and restart admin.

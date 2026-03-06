@@ -25,8 +25,10 @@ They follow the [XDG Base Directory Specification](https://specifications.freede
 | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime, audit logs |
 | `OPENPALM_WORK_DIR` | `$HOME/openpalm` | Assistant working directory mounted at /work |
 
-CONFIG_HOME is the single user touchpoint. See
-[directory-structure.md](./directory-structure.md) for the full tree.
+CONFIG_HOME is the user-owned persistent source of truth. See
+[directory-structure.md](./directory-structure.md) for the full allowed-writers
+policy and tier layout. See [core-principles.md](./core-principles.md) for the
+authoritative filesystem contract.
 
 ---
 
@@ -151,6 +153,11 @@ the admin stages user config + system assets into STATE_HOME, then runs
 compose operations and service reload/restarts from STATE_HOME. The admin also
 runs apply automatically on application startup, so restarting the admin
 container syncs latest configuration into runtime state when the app starts.
+
+This automatic apply path is lifecycle sync, not config mutation: it does
+not overwrite existing user configuration files in CONFIG_HOME. CONFIG_HOME
+writes occur only through explicit user-intent actions (see
+[core-principles.md](./core-principles.md) for the allowed-writers rule).
 
 **User-managed** (`CONFIG_HOME/secrets.env` → staged to `STATE_HOME/artifacts/secrets.env`):
 

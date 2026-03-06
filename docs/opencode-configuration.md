@@ -8,6 +8,10 @@ assistant service.
 
 ## Overview
 
+`CONFIG_HOME` is the user-owned persistent source of truth for all OpenCode
+user extensions. See [core-principles.md](./core-principles.md) for the
+full allowed-writers policy and filesystem contract.
+
 OpenCode supports a layered configuration model. OpenPalm uses three layers:
 
 1. **User config** — persisted on the host at
@@ -214,7 +218,7 @@ Users can add their own tools, plugins, or skills without rebuilding the image.
 **Host path:** `$OPENPALM_CONFIG_HOME/assistant/`
 **Container path:** `/home/opencode/.config/opencode/`
 
-This directory lives under CONFIG_HOME — the single user touchpoint for all
+This directory lives under CONFIG_HOME — the user-owned persistent source of truth for all
 editable configuration. It is bind-mounted into the assistant container at the
 standard OpenCode user config path.
 

@@ -20,10 +20,14 @@ to organize host-side files into three tiers. Each tier has a clear owner
 | **DATA_HOME** | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Services | OpenMemory, assistant home, guardian, caddy data |
 | **STATE_HOME** | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Admin | Assembled runtime, audit logs |
 
-**CONFIG_HOME is the single user touchpoint.** Users edit files here: add
-channels, manage secrets, drop in OpenCode extensions. The other two tiers are
-opaque — services write persistent data to DATA_HOME and the admin assembles
-runtime artifacts in STATE_HOME.
+**CONFIG_HOME is the user-owned persistent source of truth** and the primary touchpoint for user-managed config.
+Allowed writers are: direct user edits; explicit admin UI/API config actions;
+and assistant-triggered admin API config actions that are authenticated,
+allowlisted, and executed on user request. Automatic lifecycle sync
+(install/update/startup apply/setup reruns/upgrades) is non-destructive:
+it may seed missing defaults but must not overwrite existing user files.
+The other two tiers are opaque — services write persistent data to DATA_HOME
+and the admin assembles runtime artifacts in STATE_HOME.
 
 ---
 
@@ -242,6 +246,13 @@ into runtime state:
 The admin automatically runs apply during application startup. Restarting the
 admin container syncs the latest source configuration into runtime state when
 the app starts.
+
+Automatic lifecycle apply is a non-destructive sync for CONFIG_HOME: it stages
+from current source files and may seed missing defaults, but it does not
+overwrite existing user configuration files. Explicit config mutations in
+CONFIG_HOME happen only through explicit user-intent actions — direct edits,
+admin UI/API config actions, or authenticated/allowlisted assistant calls via
+admin API. (See [core-principles.md](./core-principles.md) for the full policy.)
 
 Until apply runs, edits in `CONFIG_HOME` are source-of-truth inputs but are not
 active runtime configuration.

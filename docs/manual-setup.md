@@ -25,6 +25,13 @@ OpenPalm uses three host directories following the [XDG Base Directory Specifica
 | **STATE_HOME** | `~/.local/state/openpalm` | Assembled runtime artifacts, audit logs |
 | **WORK_DIR** | `~/openpalm` | Assistant working directory |
 
+`CONFIG_HOME` is the user-owned persistent source of truth. Allowed writers are:
+user direct edits, explicit admin UI/API config actions, and assistant actions
+through authenticated/allowlisted admin APIs on user request. Automatic
+lifecycle operations are non-destructive for existing user config files and
+only seed missing defaults. See [core-principles.md](core-principles.md) for
+the full filesystem contract.
+
 The rest of this guide uses the defaults. Substitute your own paths if needed.
 
 See [directory-structure.md](directory-structure.md) for the full tree and rationale.
@@ -290,6 +297,9 @@ When the admin container starts, it automatically runs an **apply** that:
 3. Merges infrastructure config into `stack.env`
 4. Runs `docker compose up -d` against staged files
 5. Reloads Caddy with staged routes
+
+This startup apply does not overwrite existing user files in `CONFIG_HOME`; it
+only seeds missing defaults and restages runtime artifacts.
 
 After the first apply, the admin manages `stack.env` and `STATE_HOME` — you only need to edit files in `CONFIG_HOME` and restart the admin (or call the apply API) to pick up changes. See [directory-structure.md](directory-structure.md) for the full staging flow.
 
