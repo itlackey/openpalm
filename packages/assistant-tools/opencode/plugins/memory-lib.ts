@@ -156,8 +156,8 @@ export async function addMemory(
     confidence: meta?.confidence ?? 0.7,
     access_count: 0,
     last_accessed: new Date().toISOString(),
-    scope: identityInput?.scope ?? meta?.scope ?? 'personal',
     ...meta,
+    scope: identityInput?.scope ?? meta?.scope ?? 'personal',
   };
   const data = await pluginMemoryFetch('/api/v1/memories/', {
     method: 'POST',
@@ -183,23 +183,7 @@ export async function getMemoryStats(timeoutMs = 3_000): Promise<{
   total_memories: number;
   total_apps: number;
 } | null> {
-  const identity = resolveMemoryIdentity();
-  const stats = await pluginMemoryFetch(
-    `/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`,
-    { timeoutMs },
-  );
-  const statsRecord = asRecord(stats);
-  if (
-    statsRecord &&
-    typeof statsRecord.total_memories === 'number' &&
-    typeof statsRecord.total_apps === 'number'
-  ) {
-    return {
-      total_memories: statsRecord.total_memories,
-      total_apps: statsRecord.total_apps,
-    };
-  }
-  return null;
+  return getMemoryStatsWithIdentity(timeoutMs);
 }
 
 /** Returns true if the OpenMemory service is reachable. */

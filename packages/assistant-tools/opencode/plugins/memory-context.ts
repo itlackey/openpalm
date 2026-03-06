@@ -5,7 +5,8 @@
  *   session.created   — retrieve relevant memories and inject as initial context
  *   session.idle       — extract learnings from the conversation via LLM
  *   session.deleted    — store episodic session summary, clean up state
- *   tool.execute.before — inject procedural memory for admin operations
+ *   tool.execute.before — inject scoped procedural memory for admin/project tools
+ *   tool.execute.after — emit outcome feedback for injected memories
  *   experimental.session.compacting — inject categorised memories into compaction
  *   shell.env          — expose OPENMEMORY env vars to child processes
  *
@@ -60,6 +61,8 @@ const MIN_IDLE_COUNT_FOR_EXTRACTION = 2;
 const REFLEXION_SESSION_INTERVAL = 10;
 const REFLEXION_EPISODE_THRESHOLD = 5;
 const REFLEXION_DEFAULT_CONFIDENCE = 0.5;
+const INCLUDE_GLOBAL_PROCEDURAL =
+  (process.env.OPENMEMORY_INCLUDE_GLOBAL_PROCEDURAL ?? '').toLowerCase() === 'true';
 
 // ---------------------------------------------------------------------------
 // Extraction prompt builder
@@ -211,6 +214,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
         idleCount: 0,
         lastExtractionAt: 0,
       });
+      const sessionState = sessions.get(sessionId);
 
       // Graceful degradation: fetch stats once and bail out if unavailable
       const stats = await getMemoryStats();
@@ -224,38 +228,44 @@ export const MemoryContextPlugin = async (ctx: any) => {
             {
               size: 10,
               category: "semantic",
-              ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
+              ...getSessionIdentity(sessionState, sessionId, "personal"),
             },
           ),
           searchMemories("procedures workflows patterns how to", {
             size: 5,
             category: "procedural",
-            ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
+            ...getSessionIdentity(sessionState, sessionId, "personal"),
           }),
-          searchMemories(`${project} project conventions coding patterns`, {
-            size: 5,
-            ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
-          }),
+          project !== "unknown"
+            ? searchMemories(`${project} project conventions coding patterns`, {
+              size: 5,
+              ...getSessionIdentity(sessionState, sessionId, "personal"),
+            })
+            : Promise.resolve([] as MemoryItem[]),
           searchMemories("openpalm platform runtime conventions", {
             size: 5,
             category: "semantic",
-            ...getSessionIdentity(sessions.get(sessionId), sessionId, "stack"),
+            ...getSessionIdentity(sessionState, sessionId, "stack"),
           }),
           searchMemories("openpalm operations procedures workflows", {
             size: 5,
             category: "procedural",
-            ...getSessionIdentity(sessions.get(sessionId), sessionId, "stack"),
+            ...getSessionIdentity(sessionState, sessionId, "stack"),
           }),
-          searchMemories("global procedural rules", {
-            size: 3,
-            category: "procedural",
-            ...getSessionIdentity(sessions.get(sessionId), sessionId, "global"),
-          }),
-          searchMemories(`${project} recent sessions outcomes results`, {
-            size: 8,
-            category: "episodic",
-            ...getSessionIdentity(sessions.get(sessionId), sessionId, "personal"),
-          }),
+          INCLUDE_GLOBAL_PROCEDURAL
+            ? searchMemories("global procedural rules", {
+              size: 3,
+              category: "procedural",
+              ...getSessionIdentity(sessionState, sessionId, "global"),
+            })
+            : Promise.resolve([] as MemoryItem[]),
+          project !== "unknown"
+            ? searchMemories(`${project} recent sessions outcomes results`, {
+              size: 8,
+              category: "episodic",
+              ...getSessionIdentity(sessionState, sessionId, "personal"),
+            })
+            : Promise.resolve([] as MemoryItem[]),
         ]);
 
       // Build context block
@@ -440,7 +450,6 @@ export const MemoryContextPlugin = async (ctx: any) => {
       const state = sessions.get(sessionId);
 
       if (toolName.startsWith("memory-")) return;
-      if (!(await isMemoryAvailable(1_200))) return;
 
       const isAdminTool = toolName.startsWith("admin-");
       if (!isAdminTool && !isProjectCodeTool(toolName)) return;

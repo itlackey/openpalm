@@ -1,14 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { memoryFetch, memoryResponseHasError, USER_ID } from "./lib.ts";
-
-const STACK_USER_ID = "openpalm";
-const GLOBAL_USER_ID = "global";
-
-function resolveUserId(scope?: string): string {
-  if (scope === "stack") return STACK_USER_ID;
-  if (scope === "global") return GLOBAL_USER_ID;
-  return USER_ID;
-}
+import { memoryFetch, memoryResponseHasError, resolveMemoryScopeUserId } from "./lib.ts";
 
 export const create = tool({
   description:
@@ -33,7 +24,7 @@ export const create = tool({
   },
   async execute(args) {
     const payload = {
-      user_id: resolveUserId(args.scope),
+      user_id: resolveMemoryScopeUserId(args.scope),
       agent_id: args.agent_id || "openpalm",
       app_id: args.app_id || "openpalm",
       ...(args.run_id ? { run_id: args.run_id } : {}),
@@ -63,7 +54,7 @@ export const get = tool({
       .describe("Memory scope to map to a deterministic user_id"),
   },
   async execute(args) {
-    const userId = resolveUserId(args.scope);
+    const userId = resolveMemoryScopeUserId(args.scope);
     let result = await memoryFetch(
       `/api/v1/exports/${encodeURIComponent(args.export_id)}?user_id=${encodeURIComponent(userId)}`,
     );

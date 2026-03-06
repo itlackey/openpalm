@@ -1,14 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
-import { memoryFetch, memoryResponseHasError, USER_ID } from "./lib.ts";
-
-const STACK_USER_ID = "openpalm";
-const GLOBAL_USER_ID = "global";
-
-function resolveUserId(scope?: string): string {
-  if (scope === "stack") return STACK_USER_ID;
-  if (scope === "global") return GLOBAL_USER_ID;
-  return USER_ID;
-}
+import { memoryFetch, memoryResponseHasError, resolveMemoryScopeUserId } from "./lib.ts";
 
 export default tool({
   description:
@@ -17,7 +8,9 @@ export default tool({
     memory_id: tool.schema.string().uuid().describe("The UUID of the memory"),
     sentiment: tool.schema
       .string()
-      .describe("Whether the memory helped or hurt the outcome"),
+      .describe(
+        "Feedback sentiment: 'positive' if the memory helped the outcome, 'negative' if it hurt the outcome",
+      ),
     reason: tool.schema
       .string()
       .optional()
@@ -49,7 +42,7 @@ export default tool({
 
     const payload = {
       memory_id: args.memory_id,
-      user_id: resolveUserId(args.scope),
+      user_id: resolveMemoryScopeUserId(args.scope),
       agent_id: args.agent_id || "openpalm",
       app_id: args.app_id || "openpalm",
       ...(args.run_id ? { run_id: args.run_id } : {}),
@@ -58,7 +51,7 @@ export default tool({
     };
 
     let result = await memoryFetch(
-      `/api/v1/memories/${args.memory_id}/feedback`,
+      `/api/v1/memories/${encodeURIComponent(args.memory_id)}/feedback`,
       {
         method: "POST",
         body: JSON.stringify(payload),
