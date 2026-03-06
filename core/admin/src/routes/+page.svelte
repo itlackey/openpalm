@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { version } from '$app/environment';
   import ConnectionBanner from '$lib/components/ConnectionBanner.svelte';
   import Navbar from '$lib/components/Navbar.svelte';
   import AuthGate from '$lib/components/AuthGate.svelte';
@@ -559,7 +558,7 @@
 {#if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
-  <Navbar {version} {channelAccess} onLogout={handleLogout} />
+  <Navbar onLogout={handleLogout} />
 
   <main>
     <ConnectionBanner missing={connectionsMissing} onNavigate={() => handleTabSelect('connections')} />
