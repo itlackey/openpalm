@@ -26,7 +26,7 @@
       {
         "id": "R01-2",
         "description": "Mark duplicate plan artifacts as reference-only and document deferred ollama_native content.",
-        "status": "pending",
+        "status": "completed",
         "references": [
           { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 28 },
           { "file": ".plans/recommendation-01-v1-scope-and-spec-alignment.md", "line": 30 },
