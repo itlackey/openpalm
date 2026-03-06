@@ -58,11 +58,6 @@ jobs:
             fi
 
             TAG="v${VERSION}"
-
-            # Always move the tag to the current HEAD (handles reruns where the
-            # tag exists but points to an old commit that predates recent changes).
-            git tag -fa "${TAG}" -m "Release ${TAG}"
-            git push --force origin "${TAG}"
           fi
 
           VERSION="${TAG#v}"
@@ -78,6 +73,55 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump package.json versions
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          CURRENT=$(jq -r .version package.json)
+          if [ "${CURRENT}" = "${VERSION}" ]; then
+            echo "Versions already at ${VERSION}, skipping bump."
+            exit 0
+          fi
+
+          # Determine target branch for the version commit
+          if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="${DEFAULT_BRANCH}"
+          fi
+
+          # Ensure we are on the branch (tag pushes detach HEAD)
+          git checkout "${BRANCH}"
+          git pull --ff-only origin "${BRANCH}"
+
+          for pkg in package.json core/admin/package.json core/guardian/package.json core/cli/package.json; do
+            jq --arg v "${VERSION}" '.version = $v' "${pkg}" > "${pkg}.tmp" && mv "${pkg}.tmp" "${pkg}"
+            echo "Bumped ${pkg} to ${VERSION}"
+          done
+
+          git add package.json core/*/package.json
+          git commit -m "chore: bump version to ${VERSION}"
+          git push origin "${BRANCH}"
+
+      - name: Create and push tag
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="${DEFAULT_BRANCH}"
+          fi
+
+          # Point tag at the latest commit (which includes the version bump)
+          git checkout "${BRANCH}"
+          git tag -fa "${TAG}" -m "Release ${TAG}"
+          git push --force origin "${TAG}"
 
   push-images:
     name: Build and push Docker images
