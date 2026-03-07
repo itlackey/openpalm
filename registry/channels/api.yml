@@ -6,6 +6,7 @@ services:
     environment:
       PORT: "8182"
       GUARDIAN_URL: http://guardian:8080
+      CHANNEL_NAME: "API"
       CHANNEL_PACKAGE: "@openpalm/channel-api"
       CHANNEL_API_SECRET: ${CHANNEL_API_SECRET}
     networks: [channel_lan]

@@ -59,7 +59,7 @@ Use `bun run admin:test` to run both unit + e2e together (builds automatically).
 
 ```bash
 # 1. Start the dev stack
-bun run dev:build          # or bun run dev:stack for pre-built images
+bun run dev:build          # to rebuild images
 
 # 2. Run stack-dependent Playwright tests
 cd core/admin && RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token npx playwright test

@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8181"
+      CHANNEL_NAME: "Chat"
       GUARDIAN_URL: http://guardian:8080
       CHANNEL_PACKAGE: "@openpalm/channel-chat"
       CHANNEL_CHAT_SECRET: ${CHANNEL_CHAT_SECRET}
