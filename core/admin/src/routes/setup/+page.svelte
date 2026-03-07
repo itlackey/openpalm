@@ -11,6 +11,8 @@
     createInitialDraft,
     createConnectionDraft,
     isAfterScreen,
+    isAtOrAfterScreen,
+    maxScreen,
     parseWizardScreen,
     type WizardScreen,
     type WizardConnectionDraft,
@@ -29,6 +31,7 @@
   // ── Wizard state ────────────────────────────────────────────────────────
   const initialDraft = createInitialDraft(detectedUserId);
   let screen: WizardScreen = $state(initialDraft.screen);
+  let furthestScreen: WizardScreen = $state(initialDraft.screen);
   let setupComplete = $state(false);
   let loading = $state(true);
 
@@ -97,6 +100,19 @@
   let connectError = $state('');
   let testingConnection = $state(false);
 
+  // ── Auto-test debounce ────────────────────────────────────────────────
+  let autoTestTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleAutoTest(): void {
+    if (autoTestTimer) clearTimeout(autoTestTimer);
+    autoTestTimer = setTimeout(() => {
+      if (editingConnection && !editingConnection.tested && !testingConnection) {
+        const err = validateConnectionFields();
+        if (!err) void testConnection();
+      }
+    }, 800);
+  }
+
   // ── Derived helpers ─────────────────────────────────────────────────────
 
   function getConnectionById(id: string): WizardConnectionDraft | undefined {
@@ -137,6 +153,7 @@
 
   function goToScreen(next: WizardScreen): void {
     screen = next;
+    furthestScreen = maxScreen(furthestScreen, next);
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     url.searchParams.set('screen', next);
@@ -150,7 +167,14 @@
   onMount(() => {
     const parsed = parseWizardScreen(new URL(window.location.href).searchParams.get('screen'));
     if (parsed) {
-      screen = parsed;
+      // If restoring a screen that requires state but we have none, reset to token
+      const needsState = ['cloud-provider', 'local-provider', 'models', 'review', 'install'];
+      if (needsState.includes(parsed) && connections.length === 0) {
+        screen = 'token';
+      } else {
+        screen = parsed;
+        furthestScreen = maxScreen(furthestScreen, parsed);
+      }
     }
   });
 
@@ -207,6 +231,10 @@
     };
     connections = connections.map((c, i) => i === idx ? updated : c);
     connectError = '';
+    // Auto-test detected local providers immediately
+    if (detected?.available) {
+      scheduleAutoTest();
+    }
   }
 
   function updateEditingField(field: keyof WizardConnectionDraft, value: string): void {
@@ -337,12 +365,12 @@
         applyOllamaResult(data);
         enablingOllama = false;
         ollamaEnableProgress = '';
-        // Set assignments and skip to review
+        // Set assignments and go to models for review
         if (editingConnection) {
           llmConnectionId = editingConnection.id;
           embeddingConnectionId = editingConnection.id;
         }
-        goToScreen('review');
+        finalizeConnection();
       } else if (data.phase === 'error') {
         stopOllamaPolling();
         ollamaEnableError = data.message ?? 'Ollama enable failed.';
@@ -550,6 +578,7 @@
   onDestroy(() => {
     stopDeployPolling();
     stopOllamaPolling();
+    if (autoTestTimer) clearTimeout(autoTestTimer);
   });
 
   loading = false;
@@ -598,13 +627,22 @@
 
       {#if screen !== 'deploying'}
         <nav class="step-indicators" aria-label="Wizard steps">
-          <button class="step-dot" class:active={screen === 'token'} class:completed={isAfterScreen(screen, 'token')} onclick={() => goToScreen('token')} aria-label="Step 1: Admin Token" aria-current={screen === 'token' ? 'step' : undefined}>1</button>
-          <span class="step-line" class:active={isAfterScreen(screen, 'token')}></span>
-          <button class="step-dot" class:active={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'} class:completed={isAfterScreen(screen, 'connection-type')} onclick={() => { if (isAfterScreen(screen, 'connection-type')) goToScreen('connection-type'); }} aria-label="Step 2: Connection" aria-current={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider' ? 'step' : undefined}>2</button>
-          <span class="step-line" class:active={isAfterScreen(screen, 'connection-type')}></span>
-          <button class="step-dot" class:active={screen === 'models'} class:completed={isAfterScreen(screen, 'models')} onclick={() => { if (isAfterScreen(screen, 'models')) goToScreen('models'); }} aria-label="Step 3: Models" aria-current={screen === 'models' ? 'step' : undefined}>3</button>
-          <span class="step-line" class:active={isAfterScreen(screen, 'models')}></span>
-          <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled>4</button>
+          <button class="step-dot" class:active={screen === 'token'} class:completed={isAfterScreen(furthestScreen, 'token')} onclick={() => goToScreen('token')} aria-label="Step 1: Admin Token" aria-current={screen === 'token' ? 'step' : undefined}>{#if isAfterScreen(furthestScreen, 'token')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}1{/if}</button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'token')}></span>
+          <button class="step-dot" class:active={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'} class:completed={isAfterScreen(furthestScreen, 'local-provider')} onclick={() => {
+            if (connections.length > 0) {
+              editingConnectionIndex = 0;
+              addingNewConnection = false;
+              const conn = connections[0];
+              goToScreen(conn.connectionType === 'local' ? 'local-provider' : 'cloud-provider');
+            } else {
+              goToScreen('connection-type');
+            }
+          }} disabled={!isAfterScreen(furthestScreen, 'token')} aria-label="Step 2: Connection" aria-current={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider' ? 'step' : undefined}>{#if isAfterScreen(furthestScreen, 'local-provider')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}2{/if}</button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'local-provider')}></span>
+          <button class="step-dot" class:active={screen === 'models'} class:completed={isAfterScreen(furthestScreen, 'models')} onclick={() => goToScreen('models')} disabled={!isAtOrAfterScreen(furthestScreen, 'models')} aria-label="Step 3: Models" aria-current={screen === 'models' ? 'step' : undefined}>{#if isAfterScreen(furthestScreen, 'models')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}3{/if}</button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'models')}></span>
+          <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled={!isAtOrAfterScreen(furthestScreen, 'review')} onclick={() => goToScreen('review')}>4</button>
         </nav>
       {/if}
 
@@ -635,6 +673,7 @@
             <button class="btn btn-primary" onclick={() => {
               if (!ownerName.trim()) { tokenError = 'Name is required.'; return; }
               if (!adminToken.trim()) { tokenError = 'Admin token is required.'; return; }
+              if (adminToken.trim().length < 8) { tokenError = 'Admin token must be at least 8 characters.'; return; }
               tokenError = '';
               if (!memoryUserId || memoryUserId === detectedUserId || memoryUserId === 'default_user') {
                 memoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
@@ -689,7 +728,7 @@
             </div>
             <div class="field-group">
               <label for="llm-api-key">API Key</label>
-              <input id="llm-api-key" type="password" value={editingConnection.apiKey} oninput={(e) => updateEditingField('apiKey', e.currentTarget.value)} placeholder="Enter your API key" />
+              <input id="llm-api-key" type="password" value={editingConnection.apiKey} oninput={(e) => { updateEditingField('apiKey', e.currentTarget.value); scheduleAutoTest(); }} placeholder="Enter your API key" />
             </div>
             <div class="field-group">
               <label for="llm-base-url">Base URL <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span></label>
@@ -855,15 +894,13 @@
             <p class="field-hint">Auto-filled for known models. Edit if using a custom model.</p>
           </div>
 
-          <div class="field-group">
-            <label for="memory-user-id">Memory User ID</label>
-            <input id="memory-user-id" type="text" bind:value={memoryUserId} placeholder="default_user" />
-            <p class="field-hint">Derived from your name. Edit if running multiple instances.</p>
-          </div>
-
           <button class="btn-link add-connection-link" type="button" onclick={() => startNewConnection()}>
             {connections.length === 1 ? SETUP_WIZARD_COPY.differentEmbeddingProvider : SETUP_WIZARD_COPY.addAnotherConnection}
           </button>
+
+          {#if connectError}
+            <p class="field-error" role="alert">{connectError}</p>
+          {/if}
 
           <div class="step-actions">
             <button class="btn btn-secondary" onclick={() => {
@@ -871,7 +908,12 @@
               const lastConn = connections[connections.length - 1];
               goToScreen(lastConn?.connectionType === 'local' ? 'local-provider' : 'cloud-provider');
             }}>Back</button>
-            <button class="btn btn-primary" onclick={() => goToScreen('review')}>Next</button>
+            <button class="btn btn-primary" onclick={() => {
+              if (!llmModel.trim()) { connectError = 'System model is required.'; return; }
+              if (!embeddingModel.trim()) { connectError = 'Embedding model is required.'; return; }
+              connectError = '';
+              goToScreen('review');
+            }}>Next</button>
           </div>
         </div>
       {/if}
@@ -881,6 +923,10 @@
         <div class="step-content" data-testid="step-review">
           <h2>Review & Install</h2>
           <div class="review-grid">
+            <div class="review-section-header">
+              <span>Account</span>
+              <button class="review-edit-btn" onclick={() => goToScreen('token')} type="button">Edit</button>
+            </div>
             <div class="review-item">
               <span class="review-label">Name</span>
               <span class="review-value">{ownerName || '(not set)'}</span>
@@ -890,9 +936,22 @@
             {/if}
             <div class="review-item"><span class="review-label">Admin Token</span><span class="review-value mono">Set</span></div>
 
+            <div class="review-section-header">
+              <span>Connection</span>
+              <button class="review-edit-btn" onclick={() => {
+                if (connections.length > 0) {
+                  editingConnectionIndex = 0;
+                  addingNewConnection = false;
+                  const conn = connections[0];
+                  goToScreen(conn.connectionType === 'local' ? 'local-provider' : 'cloud-provider');
+                } else {
+                  goToScreen('connection-type');
+                }
+              }} type="button">Edit</button>
+            </div>
             {#each connections as conn, i}
               <div class="review-item">
-                <span class="review-label">Connection{connections.length > 1 ? ` ${i + 1}` : ''}</span>
+                <span class="review-label">Provider{connections.length > 1 ? ` ${i + 1}` : ''}</span>
                 <span class="review-value">{conn.connectionType === 'local' ? 'Local' : 'Cloud'} — {conn.name || (PROVIDER_LABELS[conn.provider] ?? conn.provider)}</span>
               </div>
               {#if conn.apiKey}
@@ -913,13 +972,17 @@
               <div class="review-item"><span class="review-label">Ollama</span><span class="review-value">Enabled (in-stack)</span></div>
             {/if}
 
+            <div class="review-section-header">
+              <span>Models</span>
+              <button class="review-edit-btn" onclick={() => goToScreen('models')} type="button">Edit</button>
+            </div>
             <div class="review-item">
               <span class="review-label">System Model</span>
-              <span class="review-value mono">{llmModel}{connections.length > 1 && llmConnection ? ` (${llmConnection.name})` : ''}</span>
+              <span class="review-value mono">{llmModel || '—'}{connections.length > 1 && llmConnection ? ` (${llmConnection.name})` : ''}</span>
             </div>
             <div class="review-item">
               <span class="review-label">Embedding Model</span>
-              <span class="review-value mono">{embeddingModel}{connections.length > 1 && embConnection ? ` (${embConnection.name})` : ''}</span>
+              <span class="review-value mono">{embeddingModel || '—'}{connections.length > 1 && embConnection ? ` (${embConnection.name})` : ''}</span>
             </div>
             <div class="review-item"><span class="review-label">Embedding Dimensions</span><span class="review-value mono">{embeddingDims}</span></div>
             <div class="review-item"><span class="review-label">Memory User ID</span><span class="review-value">{memoryUserId}</span></div>
@@ -976,7 +1039,7 @@
           {#if deployPhase === 'error'}
             <p class="install-error" role="alert">{deployError}</p>
             <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => { goToScreen('review'); installing = false; }}>Back to Review</button>
+              <button class="btn btn-secondary" onclick={() => { deployPhase = null; deployError = ''; deployServices = []; deployMessage = ''; installing = false; goToScreen('review'); }}>Back to Review</button>
             </div>
           {/if}
           {#if deployPhase === 'ready'}
@@ -994,51 +1057,61 @@
     max-width: none;
     margin: 0;
     display: grid;
+    place-items: center;
     padding: var(--space-6);
-    background: var(--color-bg-secondary);
-    align-content: start;
+    background:
+      radial-gradient(ellipse 80% 60% at 15% 10%, rgba(255, 157, 0, 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 85% 90%, rgba(99, 102, 241, 0.05) 0%, transparent 55%),
+      #f8f9fb;
+    position: relative;
+    overflow: hidden;
+  }
+  .setup-page::before {
+    content: '';
+    position: absolute;
+    bottom: -40px;
+    left: -40px;
+    width: 320px;
+    height: 320px;
     background-image: url('/wizard.png');
     background-size: contain;
-    background-position: bottom left;
     background-repeat: no-repeat;
-    padding: var(--space-4);
-    border-radius: var(--radius-md);
+    opacity: 0.18;
+    pointer-events: none;
+    z-index: 0;
   }
   .wizard-card {
-    width: stretch;
-    max-width: 560px;
-    height: min-content;
-    place-self: center;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    width: 100%;
+    max-width: 520px;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 16px 40px -8px rgba(0, 0, 0, 0.1);
     padding: var(--space-8);
+    position: relative;
+    z-index: 1;
   }
-  :global(.wizard-header) { margin-bottom: var(--space-6); }
-  :global(.wizard-header h1) { font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text); }
-  :global(.wizard-subtitle) { margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-text-secondary); }
   .loading-state { display: flex; justify-content: center; padding: var(--space-8); }
-  .step-indicators { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: var(--space-6); }
-  .step-dot { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--color-border); background: var(--color-bg); color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: var(--font-semibold); display: flex; align-items: center; justify-content: center; cursor: default; transition: all var(--transition-fast); }
-  .step-dot.active { border-color: var(--color-primary); background: var(--color-primary); color: #000; }
+  .step-indicators { display: flex; align-items: center; margin-bottom: var(--space-6); padding: var(--space-2) 0; gap: 0; }
+  .step-dot { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--color-border-hover, #adb5bd); background: var(--color-bg); color: var(--color-text-secondary); font-size: var(--text-sm); font-weight: var(--font-bold); display: flex; align-items: center; justify-content: center; cursor: default; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; z-index: 1; }
+  .step-dot:not(:disabled):not(.active):not(.completed) { cursor: pointer; }
+  .step-dot:disabled { opacity: 0.5; cursor: not-allowed; }
+  .step-dot.active { border-color: var(--color-primary); background: var(--color-primary); color: #000; transform: scale(1.1); box-shadow: 0 0 0 4px rgba(255, 157, 0, 0.15), 0 0 0 8px rgba(255, 157, 0, 0.05); }
   .step-dot.completed { border-color: var(--color-success); background: var(--color-success); color: #fff; cursor: pointer; }
-  .step-line { width: 36px; height: 2px; background: var(--color-border); transition: background var(--transition-fast); }
+  .step-dot.completed:hover { box-shadow: 0 0 0 4px rgba(64, 192, 87, 0.15); }
+  .step-line { flex: 1; min-width: var(--space-4); height: 2px; background: var(--color-border); transition: background 0.4s ease; }
   .step-line.active { background: var(--color-success); }
-  .step-content h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text); margin-bottom: var(--space-2); }
-  .step-description { font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4); }
-  .field-group { margin-bottom: var(--space-4); }
-  .field-group label { display: block; font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-secondary); margin-bottom: var(--space-1); }
-  .field-group input, .field-group select { width: 100%; height: 40px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0 12px; background: var(--color-bg); color: var(--color-text); font-size: var(--text-sm); }
-  .field-group input:focus, .field-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-subtle); }
-  .field-hint { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
-  .field-error { margin: 0 0 var(--space-2); color: var(--color-danger); font-size: var(--text-sm); }
-  :global(.connection-type-card) { display: flex; align-items: flex-start; gap: var(--space-4); width: 100%; padding: var(--space-4) var(--space-5); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; text-align: left; margin-bottom: var(--space-3); transition: all var(--transition-fast); }
-  :global(.connection-type-card:hover) { border-color: var(--color-primary); background: var(--color-bg-secondary); }
-  :global(.connection-type-icon) { flex-shrink: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--color-bg-secondary); border-radius: var(--radius-md); color: var(--color-primary); }
-  :global(.connection-type-text) { display: flex; flex-direction: column; gap: var(--space-1); }
-  :global(.connection-type-label) { font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); }
-  :global(.connection-type-desc) { font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.4; }
+  .step-content h2 { font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--color-text); margin-bottom: var(--space-2); letter-spacing: -0.01em; }
+  .step-description { font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-6); line-height: 1.5; }
+  .field-group { margin-bottom: var(--space-5); }
+  .field-group label { display: block; font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text); margin-bottom: var(--space-2); }
+  .field-group input, .field-group select { width: 100%; height: 44px; border: 1.5px solid var(--color-border); border-radius: var(--radius-lg); padding: 0 14px; background: var(--color-bg); color: var(--color-text); font-size: var(--text-base); transition: all 0.2s ease; }
+  .field-group input::placeholder { color: var(--color-text-tertiary); }
+  .field-group input:hover, .field-group select:hover { border-color: var(--color-border-hover); }
+  .field-group input:focus, .field-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-subtle); }
+  .field-hint { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.5; }
+  .field-error { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); color: #dc2626; font-size: var(--text-sm); font-weight: var(--font-medium); }
+  /* connection-type-card styles live in ConnectionPicker.svelte (scoped) */
   .provider-quick-picks { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
   .provider-chip { padding: 6px 14px; font-size: var(--text-xs); font-weight: var(--font-medium); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-bg); color: var(--color-text); cursor: pointer; transition: all var(--transition-fast); }
   .provider-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
@@ -1058,12 +1131,18 @@
   .btn-link { background: none; border: none; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; padding: var(--space-2) 0; text-decoration: underline; text-underline-offset: 2px; }
   .btn-link:hover { color: var(--color-primary-hover); }
   .add-connection-link { display: block; margin-bottom: var(--space-2); }
-  .step-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
-  .review-grid { display: grid; gap: var(--space-3); background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); }
-  .review-item { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
-  .review-label { font-size: var(--text-sm); color: var(--color-text-secondary); flex-shrink: 0; }
-  .review-value { font-size: var(--text-sm); color: var(--color-text); text-align: right; word-break: break-all; }
-  .review-value.mono { font-family: var(--font-mono); }
+  .step-content { display: flex; flex-direction: column; flex: 1; }
+  .step-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: auto; padding-top: var(--space-5); border-top: 1px solid var(--color-border); }
+  .review-grid { display: flex; flex-direction: column; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: var(--space-2); }
+  .review-section-header { display: flex; justify-content: space-between; align-items: center; padding: 8px var(--space-4); background: rgba(0, 0, 0, 0.04); font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--color-border); }
+  .review-edit-btn { background: none; border: none; color: var(--color-primary); font-size: var(--text-xs); font-weight: var(--font-medium); cursor: pointer; padding: 2px 8px; border-radius: var(--radius-md); transition: all 0.15s ease; text-transform: none; letter-spacing: normal; }
+  .review-edit-btn:hover { background: var(--color-primary-subtle); color: var(--color-primary-hover); }
+  .review-item { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); padding: 10px var(--space-4); border-bottom: 1px solid var(--color-border); }
+  .review-item:last-child { border-bottom: none; }
+  .review-item:nth-child(even) { background: rgba(0, 0, 0, 0.03); }
+  .review-label { font-size: var(--text-sm); color: var(--color-text-secondary); flex-shrink: 0; min-width: 140px; }
+  .review-value { font-size: var(--text-sm); color: var(--color-text); text-align: right; word-break: break-all; font-weight: var(--font-medium); }
+  .review-value.mono { font-family: var(--font-mono); font-size: 0.8rem; }
   .install-error { margin-top: var(--space-3); color: var(--color-danger); font-size: var(--text-sm); }
   .done-state { text-align: center; padding: var(--space-4) 0; }
   .done-icon { display: inline-block; margin-bottom: var(--space-4); }
@@ -1072,14 +1151,15 @@
   .service-list { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; margin-bottom: var(--space-6); }
   .service-list li { font-size: var(--text-xs); font-family: var(--font-mono); background: var(--color-success-bg); color: var(--color-success); border: 1px solid var(--color-success-border); padding: 2px 10px; border-radius: var(--radius-full); }
   .console-link { display: inline-flex; text-decoration: none; }
-  .btn { display: inline-flex; align-items: center; gap: var(--space-2); padding: 8px 20px; font-family: var(--font-sans); font-size: var(--text-sm); font-weight: var(--font-semibold); line-height: 1.4; border: 1px solid transparent; border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); white-space: nowrap; justify-content: center; }
-  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-  .btn-primary { background: var(--color-primary); color: #000; border-color: var(--color-primary); }
-  .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
-  .btn-secondary { background: var(--color-bg); color: var(--color-text); border-color: var(--color-border); }
-  .btn-secondary:hover:not(:disabled) { background: var(--color-bg-secondary); border-color: var(--color-border-hover); }
+  .btn { display: inline-flex; align-items: center; gap: var(--space-2); padding: 10px 24px; font-family: var(--font-sans); font-size: var(--text-sm); font-weight: var(--font-bold); line-height: 1.4; border: 1.5px solid transparent; border-radius: var(--radius-lg); cursor: pointer; transition: all 0.2s ease; white-space: nowrap; justify-content: center; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--color-primary); color: #1a1a1a; border-color: transparent; border-radius: var(--radius-full); padding: 11px 32px; box-shadow: 0 1px 3px rgba(255, 157, 0, 0.3), 0 4px 12px rgba(255, 157, 0, 0.2); }
+  .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); box-shadow: 0 2px 6px rgba(255, 157, 0, 0.4), 0 8px 20px rgba(255, 157, 0, 0.25); transform: translateY(-2px); }
+  .btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: 0 1px 4px rgba(255, 157, 0, 0.2); transition-duration: 0.1s; }
+  .btn-secondary { background: var(--color-bg); color: var(--color-text); border-color: var(--color-border-hover, #adb5bd); border-radius: var(--radius-full); }
+  .btn-secondary:hover:not(:disabled) { background: var(--color-bg-secondary); border-color: var(--color-text-secondary); color: var(--color-text); }
   .btn-outline { background: transparent; color: var(--color-primary); border-color: var(--color-primary); }
-  .btn-outline:hover:not(:disabled) { background: var(--color-primary-subtle, rgba(80, 200, 120, 0.08)); }
+  .btn-outline:hover:not(:disabled) { background: var(--color-primary-subtle); }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

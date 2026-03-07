@@ -85,6 +85,14 @@ export function isAfterScreen(current: WizardScreen, target: WizardScreen): bool
   return WIZARD_SCREEN_ORDER.indexOf(current) > WIZARD_SCREEN_ORDER.indexOf(target);
 }
 
+export function isAtOrAfterScreen(current: WizardScreen, target: WizardScreen): boolean {
+  return WIZARD_SCREEN_ORDER.indexOf(current) >= WIZARD_SCREEN_ORDER.indexOf(target);
+}
+
+export function maxScreen(a: WizardScreen, b: WizardScreen): WizardScreen {
+  return WIZARD_SCREEN_ORDER.indexOf(a) >= WIZARD_SCREEN_ORDER.indexOf(b) ? a : b;
+}
+
 export function nextScreen(screen: WizardScreen): WizardScreen {
   const index = WIZARD_SCREEN_ORDER.indexOf(screen);
   if (index < 0 || index === WIZARD_SCREEN_ORDER.length - 1) return screen;
