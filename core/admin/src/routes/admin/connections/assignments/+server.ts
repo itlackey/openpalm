@@ -22,7 +22,13 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const assignments = getCapabilityAssignments(state.configDir);
+  let assignments;
+  try {
+    assignments = getCapabilityAssignments(state.configDir);
+  } catch {
+    // No profiles.json yet — return empty defaults
+    assignments = { llm: { connectionId: '', model: '' }, embeddings: { connectionId: '', model: '' } };
+  }
   appendAudit(state, getActor(event), 'connections.assignments.get', {}, true, requestId, getCallerType(event));
   return jsonResponse(200, { assignments }, requestId);
 };

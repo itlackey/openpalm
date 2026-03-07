@@ -169,6 +169,9 @@ export const POST: RequestHandler = async (event) => {
     const apiKey = typeof c.apiKey === 'string' ? c.apiKey : '';
 
     if (!id) return errorResponse(400, "bad_request", `connections[${i}].id is required`, {}, requestId);
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      return errorResponse(400, "bad_request", `connections[${i}].id contains invalid characters (allowed: A-Z, a-z, 0-9, _, -)`, {}, requestId);
+    }
     if (!provider) return errorResponse(400, "bad_request", `connections[${i}].provider is required`, {}, requestId);
     if (!isWizardProviderInScope(provider)) {
       return errorResponse(400, "bad_request", `connections[${i}].provider "${provider}" is outside wizard scope`, {}, requestId);
@@ -221,6 +224,9 @@ export const POST: RequestHandler = async (event) => {
   if (!connectionIds.has(embConnectionId)) {
     return errorResponse(400, "bad_request", `assignments.embeddings.connectionId "${embConnectionId}" does not match any connection`, {}, requestId);
   }
+  if (embDims !== 0 && (!Number.isInteger(embDims) || embDims < 1)) {
+    return errorResponse(400, "bad_request", "assignments.embeddings.embeddingDims must be a positive integer", {}, requestId);
+  }
 
   const parsedAssignments: SetupAssignments = {
     llm: { connectionId: llmConnectionId, model: llmModel, ...(llmSmallModel ? { smallModel: llmSmallModel } : {}) },
@@ -236,21 +242,26 @@ export const POST: RequestHandler = async (event) => {
     return c;
   });
 
-  // ── Build secrets.env updates ─────────────────────────────────────────
+  // ── Build connectionId → envVarName map (single source of truth) ─────
 
-  // Track which env var names have been used (for duplicate provider handling)
-  const usedEnvVars = new Set<string>();
+  const connEnvVarMap = new Map<string, string>();
+  const claimedEnvVars = new Set<string>();
 
   for (const conn of effectiveConnections) {
-    if (!conn.apiKey) continue;
-
     let envVarName = PROVIDER_KEY_MAP[conn.provider] ?? "OPENAI_API_KEY";
-    if (usedEnvVars.has(envVarName)) {
+    if (claimedEnvVars.has(envVarName)) {
       // Second connection with same provider — use namespaced var
       envVarName = `${envVarName}_${conn.id}`;
     }
-    usedEnvVars.add(envVarName);
-    updates[envVarName] = conn.apiKey;
+    claimedEnvVars.add(envVarName);
+    connEnvVarMap.set(conn.id, envVarName);
+  }
+
+  // ── Build secrets.env updates ─────────────────────────────────────────
+
+  for (const conn of effectiveConnections) {
+    if (!conn.apiKey) continue;
+    updates[connEnvVarMap.get(conn.id)!] = conn.apiKey;
   }
 
   // Set SYSTEM_LLM_* from the LLM connection for env-level consumers
@@ -291,13 +302,11 @@ export const POST: RequestHandler = async (event) => {
 
   const embConnection = effectiveConnections.find((c) => c.id === embConnectionId)!;
 
-  const llmApiKeyEnvRef = PROVIDER_KEY_MAP[llmConnection.provider]
-    ? `env:${PROVIDER_KEY_MAP[llmConnection.provider]}`
-    : (llmConnection.apiKey || "not-needed");
+  const llmEnvVar = connEnvVarMap.get(llmConnection.id)!;
+  const llmApiKeyEnvRef = llmConnection.apiKey ? `env:${llmEnvVar}` : "not-needed";
 
-  const embApiKeyEnvRef = PROVIDER_KEY_MAP[embConnection.provider]
-    ? `env:${PROVIDER_KEY_MAP[embConnection.provider]}`
-    : (embConnection.apiKey || "not-needed");
+  const embEnvVar = connEnvVarMap.get(embConnection.id)!;
+  const embApiKeyEnvRef = embConnection.apiKey ? `env:${embEnvVar}` : "not-needed";
 
   const embLookupKey = `${embConnection.provider}/${embModel}`;
   const resolvedDims = embDims || EMBEDDING_DIMS[embLookupKey] || 1536;
@@ -321,35 +330,15 @@ export const POST: RequestHandler = async (event) => {
 
   writeOpenMemoryConfig(state.dataDir, omConfig);
 
-  // Build env var map for connection profiles
-  const envVarTracker = new Map<string, string>();
-  for (const conn of effectiveConnections) {
-    let envVarName = PROVIDER_KEY_MAP[conn.provider] ?? "OPENAI_API_KEY";
-    if (envVarTracker.has(envVarName) && envVarTracker.get(envVarName) !== conn.id) {
-      envVarName = `${envVarName}_${conn.id}`;
-    }
-    envVarTracker.set(envVarName, conn.id);
-  }
-
   // Build profiles input for writeConnectionsDocument
-  const profilesInput = effectiveConnections.map((conn) => {
-    let envVarName = PROVIDER_KEY_MAP[conn.provider] ?? "OPENAI_API_KEY";
-    // Check if this env var was claimed by a different connection
-    for (const [varName, connId] of envVarTracker.entries()) {
-      if (connId === conn.id) {
-        envVarName = varName;
-        break;
-      }
-    }
-    return {
-      id: conn.id,
-      name: conn.name,
-      provider: conn.provider,
-      baseUrl: conn.baseUrl,
-      hasApiKey: Boolean(conn.apiKey),
-      apiKeyEnvVar: envVarName,
-    };
-  });
+  const profilesInput = effectiveConnections.map((conn) => ({
+    id: conn.id,
+    name: conn.name,
+    provider: conn.provider,
+    baseUrl: conn.baseUrl,
+    hasApiKey: Boolean(conn.apiKey),
+    apiKeyEnvVar: connEnvVarMap.get(conn.id)!,
+  }));
 
   writeConnectionsDocument(state.configDir, {
     profiles: profilesInput,

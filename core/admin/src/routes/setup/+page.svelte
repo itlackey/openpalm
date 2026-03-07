@@ -237,25 +237,6 @@
     goToScreen('models');
   }
 
-  function removeConnection(id: string): void {
-    connections = connections.filter(c => c.id !== id);
-    if (llmConnectionId === id && connections.length > 0) {
-      llmConnectionId = connections[0].id;
-    }
-    if (embeddingConnectionId === id && connections.length > 0) {
-      embeddingConnectionId = connections[0].id;
-    }
-  }
-
-  function editConnection(index: number): void {
-    editingConnectionIndex = index;
-    const conn = connections[index];
-    if (conn.connectionType === 'cloud') {
-      goToScreen('cloud-provider');
-    } else {
-      goToScreen('local-provider');
-    }
-  }
 
   // ── Embedding model change handler ──────────────────────────────────────
 

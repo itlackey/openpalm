@@ -129,6 +129,18 @@ export function writeConnectionsDocument(
   configDir: string,
   input: WriteConnectionsInput
 ): CanonicalConnectionsDocument {
+  if (input.profiles.length === 0) {
+    throw new Error('writeConnectionsDocument: profiles must not be empty');
+  }
+
+  const profileIds = new Set(input.profiles.map((p) => p.id));
+  if (!profileIds.has(input.assignments.llm.connectionId)) {
+    throw new Error(`writeConnectionsDocument: llm.connectionId "${input.assignments.llm.connectionId}" not found in profiles`);
+  }
+  if (!profileIds.has(input.assignments.embeddings.connectionId)) {
+    throw new Error(`writeConnectionsDocument: embeddings.connectionId "${input.assignments.embeddings.connectionId}" not found in profiles`);
+  }
+
   const document: CanonicalConnectionsDocument = {
     version: 1,
     profiles: input.profiles.map((p) => ({
