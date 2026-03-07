@@ -21,7 +21,7 @@ They follow the [XDG Base Directory Specification](https://specifications.freede
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User-editable: secrets.env, channels/, opencode extensions |
-| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin/service-managed data (openmemory, stack.env, caddy, assistant home, etc.) |
+| `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin/service-managed data (memory, stack.env, caddy, assistant home, etc.) |
 | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Assembled runtime, audit logs |
 | `OPENPALM_WORK_DIR` | `$HOME/openpalm` | Assistant working directory mounted at /work |
 
@@ -53,16 +53,16 @@ STATE_HOME.
 The source-of-truth core Caddyfile is system-managed at
 `$DATA_HOME/caddy/Caddyfile` and staged to `$STATE_HOME/artifacts/Caddyfile` during apply.
 
-### 2.2 OpenMemory
+### 2.2 Memory
 
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
-| `$DATA_HOME/openmemory` | `/data` | rw | Memory service persistent data |
-| `$DATA_HOME/openmemory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
+| `$DATA_HOME/memory` | `/data` | rw | Memory service persistent data |
+| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
 
-OpenMemory is a lightweight FastAPI wrapper around the mem0 Python SDK. It uses
+Memory is a lightweight FastAPI wrapper around the mem0 Python SDK. It uses
 embedded Qdrant (file-based) for vector storage — all data is stored within
-`$DATA_HOME/openmemory/`.
+`$DATA_HOME/memory/`.
 
 ### 2.3 Assistant (OpenCode Runtime)
 
@@ -144,7 +144,7 @@ configuration details.
 Runtime configuration is split into two staged files in `STATE_HOME/artifacts/`:
 
 - **`stack.env`** — ALL system-managed config. Source of truth is `DATA_HOME/stack.env` (seeded by setup.sh). Contains:
-  - Infrastructure: paths, UID/GID, Docker socket, image namespace/tag, networking, OpenMemory URLs
+  - Infrastructure: paths, UID/GID, Docker socket, image namespace/tag, networking, Memory URLs
   - Channel HMAC keys: `CHANNEL_<NAME>_SECRET` (generated per channel, persisted in `DATA_HOME/stack.env`)
 - **`secrets.env`** — a staged copy of `CONFIG_HOME/secrets.env`. By convention contains `ADMIN_TOKEN` and LLM provider keys; copied as-is.
 
@@ -168,7 +168,7 @@ writes occur only through explicit user-intent actions (see
 | Secret | Consumed By | Purpose |
 |---|---|---|
 | `ADMIN_TOKEN` | admin, guardian, assistant | Admin API authentication |
-| `OPENAI_API_KEY` | assistant, openmemory | OpenAI API key (optional) |
+| `OPENAI_API_KEY` | assistant, memory | OpenAI API key (optional) |
 | `ANTHROPIC_API_KEY` | assistant | Anthropic API key (optional) |
 | `GROQ_API_KEY` | assistant | Groq API key (optional) |
 | `MISTRAL_API_KEY` | assistant | Mistral API key (optional) |
@@ -224,8 +224,8 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `HOME` | `/home/opencode` | User home directory |
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |
 | `OPENPALM_ADMIN_TOKEN` | from secrets.env | Bearer token for Admin API |
-| `OPENMEMORY_API_URL` | `http://openmemory:8765` | OpenMemory service URL |
-| `OPENMEMORY_USER_ID` | `default_user` | User identifier for memory (entrypoint auto-falls back to runtime username when left as default) |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL |
+| `MEMORY_USER_ID` | `default_user` | User identifier for memory (entrypoint auto-falls back to runtime username when left as default) |
 | `OPENPALM_UID` | `${OPENPALM_UID:-1000}` | Target runtime UID used by assistant entrypoint before dropping privileges |
 | `OPENPALM_GID` | `${OPENPALM_GID:-1000}` | Target runtime GID used by assistant entrypoint before dropping privileges |
 | `OPENAI_API_KEY` | pass-through | OpenAI provider key |
@@ -234,15 +234,15 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `MISTRAL_API_KEY` | pass-through | Mistral provider key |
 | `GOOGLE_API_KEY` | pass-through | Google AI provider key |
 
-### 4.4 OpenMemory
+### 4.4 Memory
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENMEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
+| `MEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
 | `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
 
-OpenMemory uses the mem0 Python SDK with embedded Qdrant (configured via
+Memory uses the mem0 Python SDK with embedded Qdrant (configured via
 `default_config.json` with `path: "/data/qdrant"`) for vector storage. No
 external database servers needed.
 
@@ -269,8 +269,8 @@ You never set these in `CONFIG_HOME/secrets.env`.
 | `OPENPALM_ASSISTANT_BIND_ADDRESS` | `127.0.0.1` | compose default |
 | `OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | `127.0.0.1` | compose default |
 | `OPENPALM_ASSISTANT_SSH_PORT` | `2222` | compose default |
-| `OPENPALM_OPENMEMORY_BIND_ADDRESS` | `127.0.0.1` | compose default |
-| `OPENMEMORY_USER_ID` | `default_user` | admin process env (overridable) |
+| `OPENPALM_MEMORY_BIND_ADDRESS` | `127.0.0.1` | compose default |
+| `MEMORY_USER_ID` | `default_user` | admin process env (overridable) |
 
 Overridable values can be customized by setting the variable in the admin container's
 environment before startup (e.g. via docker-compose.yml `environment:` override).
@@ -284,7 +284,7 @@ Never generated or defaulted by OpenPalm.
 
 | Variable | Consumed By | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | assistant, openmemory | OpenAI API (also used for embeddings) |
+| `OPENAI_API_KEY` | assistant, memory | OpenAI API (also used for embeddings) |
 | `ANTHROPIC_API_KEY` | assistant | Anthropic LLM provider |
 | `GROQ_API_KEY` | assistant | Groq LLM provider |
 | `MISTRAL_API_KEY` | assistant | Mistral LLM provider |
@@ -296,7 +296,7 @@ Never generated or defaulted by OpenPalm.
 
 | Network | Services | Purpose |
 |---|---|---|
-| `assistant_net` | caddy, openmemory, assistant, guardian, admin | Internal service mesh |
+| `assistant_net` | caddy, memory, assistant, guardian, admin | Internal service mesh |
 | `channel_lan` | caddy, guardian, channel services | LAN-restricted channel access |
 | `channel_public` | caddy, guardian, channel services | Publicly accessible channels |
 
@@ -310,7 +310,7 @@ Never generated or defaulted by OpenPalm.
 | Admin | 8100 | `127.0.0.1` (fixed) | 8100 |
 | Assistant | 4096 | `$OPENPALM_ASSISTANT_BIND_ADDRESS` | 4096 |
 | Assistant SSH | 22 | `$OPENPALM_ASSISTANT_SSH_BIND_ADDRESS` | 2222 |
-| OpenMemory API | 8765 | `$OPENPALM_OPENMEMORY_BIND_ADDRESS` | 8765 |
+| Memory API | 8765 | `$OPENPALM_MEMORY_BIND_ADDRESS` | 8765 |
 
 ---
 

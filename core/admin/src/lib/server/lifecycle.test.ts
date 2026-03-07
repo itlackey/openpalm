@@ -237,7 +237,7 @@ describe("createState", () => {
 describe("CORE_SERVICES", () => {
   test("includes all expected services", () => {
     expect(CORE_SERVICES).toContain("caddy");
-    expect(CORE_SERVICES).toContain("openmemory");
+    expect(CORE_SERVICES).toContain("memory");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
     expect(CORE_SERVICES).toContain("admin");
@@ -283,7 +283,7 @@ describe("applyUpdate", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
-    state.services = { admin: "running", guardian: "running", openmemory: "stopped" };
+    state.services = { admin: "running", guardian: "running", memory: "stopped" };
 
     mkdirSync(join(state.configDir, "channels"), { recursive: true });
     mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
@@ -294,7 +294,7 @@ describe("applyUpdate", () => {
     const result = applyUpdate(state);
     expect(result.restarted).toContain("admin");
     expect(result.restarted).toContain("guardian");
-    expect(result.restarted).not.toContain("openmemory");
+    expect(result.restarted).not.toContain("memory");
   });
 });
 

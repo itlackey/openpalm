@@ -8,7 +8,7 @@
 #
 # Directory model:
 #   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, assistant/
-#   DATA_HOME   (~/.local/share/openpalm) — opaque service data (openmemory, etc.)
+#   DATA_HOME   (~/.local/share/openpalm) — opaque service data (memory, etc.)
 #   STATE_HOME  (~/.local/state/openpalm) — generated artifacts, audit logs
 
 services:
@@ -27,25 +27,25 @@ services:
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [assistant_net, channel_lan, channel_public]
 
-  # ── OpenMemory ─────────────────────────────────────────────────────
+  # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight FastAPI wrapping mem0 SDK with embedded Qdrant (file-based).
-  openmemory:
-    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory-api:${OPENPALM_IMAGE_TAG:-latest}
+  memory:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "model-runner.docker.internal:host-gateway"
     environment:
-      OPENMEMORY_DATA_DIR: /data
+      MEMORY_DATA_DIR: /data
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      OPENMEMORY_OPENAI_API_KEY: ${OPENMEMORY_OPENAI_API_KEY:-}
+      MEMORY_OPENAI_API_KEY: ${MEMORY_OPENAI_API_KEY:-}
     ports:
-      - "${OPENPALM_OPENMEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
+      - "${OPENPALM_MEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory:/data
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/openmemory/default_config.json:/app/default_config.json:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory:/data
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json:ro
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
@@ -68,8 +68,8 @@ services:
       HOME: /home/opencode
       OPENPALM_ADMIN_API_URL: http://admin:8100
       OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:-}
-      OPENMEMORY_API_URL: http://openmemory:8765
-      OPENMEMORY_USER_ID: ${OPENMEMORY_USER_ID:-default_user}
+      MEMORY_API_URL: http://memory:8765
+      MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       OPENPALM_UID: ${OPENPALM_UID:-1000}
       OPENPALM_GID: ${OPENPALM_GID:-1000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -90,7 +90,7 @@ services:
     working_dir: /work
     networks: [assistant_net]
     depends_on:
-      openmemory:
+      memory:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/4096' || exit 1"]

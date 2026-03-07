@@ -12,7 +12,7 @@ import {
   ensureXdgDirs,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryDir,
+  ensureMemoryDir,
   ensureSecrets,
   discoverStagedChannelYmls,
   buildComposeFileList,
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async (event) => {
   // 2. Seed starter OpenCode config (opencode.json + tools/plugins/skills dirs)
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureOpenMemoryDir();
+  ensureMemoryDir();
 
   // 3. Write consolidated secrets file
   ensureSecrets(state);

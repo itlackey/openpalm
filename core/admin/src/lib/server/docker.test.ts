@@ -264,7 +264,7 @@ describe("composeUp", () => {
     // Create a real env file on disk (existsSyncMock only controls docker.ts internal checks)
     const tmpEnvFile = `/tmp/docker-test-${Date.now()}.env`;
     const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    realFs.writeFileSync(tmpEnvFile, "ADMIN_TOKEN=fresh-token\nOPENMEMORY_USER_ID=alice\n");
+    realFs.writeFileSync(tmpEnvFile, "ADMIN_TOKEN=fresh-token\nMEMORY_USER_ID=alice\n");
 
     existsSyncMock.mockReturnValue(true);
     mockExecSuccess();
@@ -276,7 +276,7 @@ describe("composeUp", () => {
     const call = execFileMock.mock.calls[0];
     const opts = call[2] as { env: Record<string, string> };
     expect(opts.env.ADMIN_TOKEN).toBe("fresh-token");
-    expect(opts.env.OPENMEMORY_USER_ID).toBe("alice");
+    expect(opts.env.MEMORY_USER_ID).toBe("alice");
 
     realFs.unlinkSync(tmpEnvFile);
   });
@@ -357,11 +357,11 @@ describe("composeStop", () => {
     mockExecSuccess();
 
     const { composeStop } = await import("./docker.js");
-    await composeStop("/state", ["openmemory"]);
+    await composeStop("/state", ["memory"]);
 
     const args = capturedArgs();
     expect(args).toContain("stop");
-    expect(args).toContain("openmemory");
+    expect(args).toContain("memory");
   });
 });
 

@@ -284,7 +284,7 @@ function Create-Directories {
     (Join-Path $LocalConfigHome 'channels'),
     (Join-Path $LocalConfigHome 'opencode'),
     $LocalDataHome,
-    (Join-Path $LocalDataHome 'openmemory'),
+    (Join-Path $LocalDataHome 'memory'),
     (Join-Path $LocalDataHome 'assistant'),
     (Join-Path $LocalDataHome 'guardian'),
     (Join-Path $LocalDataHome 'caddy'),
@@ -405,8 +405,8 @@ OPENAI_BASE_URL=
 # MISTRAL_API_KEY=
 # GOOGLE_API_KEY=
 
-# OpenMemory
-OPENMEMORY_USER_ID=$detectedUser
+# Memory
+MEMORY_USER_ID=$detectedUser
 "@ | Set-Content -LiteralPath $secretsPath -Encoding UTF8
 
   Ok 'Generated secrets.env (admin token will be set by setup wizard)'

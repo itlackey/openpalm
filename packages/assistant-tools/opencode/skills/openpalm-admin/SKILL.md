@@ -14,7 +14,7 @@ OpenPalm runs as a Docker Compose stack with these services:
 | Service | Role |
 |---------|------|
 | **caddy** | Reverse proxy, TLS termination, access control |
-| **openmemory** | Memory service — lightweight mem0 SDK wrapper with embedded Qdrant |
+| **memory** | Memory service — lightweight mem0 SDK wrapper with embedded Qdrant |
 | **assistant** | This OpenCode instance (you) |
 | **guardian** | Message routing with HMAC verification |
 | **admin** | Control plane API (protects Docker socket) |
@@ -62,7 +62,7 @@ Heavy operations that affect the entire stack:
 - `upgrade` = download fresh assets from upstream, back up changed files, pull latest Docker images, and recreate all containers. Use this to apply upstream updates without a full reinstall.
 
 ### `health-check`
-Quick health probe of core services (guardian, openmemory, admin).
+Quick health probe of core services (guardian, memory, admin).
 
 ## Guidelines
 

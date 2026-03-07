@@ -15,24 +15,10 @@
 }
 
 :80 {
-	# ── OpenCode UI (specific — must precede /admin/* catch-all) ──────
-	handle_path /admin/opencode/* {
+	# ── OpenCode UI ──────────────────────────────────────────────────
+	handle_path /opencode/* {
 		import lan_only
 		reverse_proxy assistant:4096
-	}
-
-	# ── OpenMemory admin API (must precede UI catch-all) ─────────────
-	handle /admin/openmemory/config {
-		import lan_only
-		reverse_proxy admin:8100
-	}
-	handle /admin/openmemory/models {
-		import lan_only
-		reverse_proxy admin:8100
-	}
-	handle /admin/openmemory/reset-collection {
-		import lan_only
-		reverse_proxy admin:8100
 	}
 
 	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────

@@ -1,9 +1,10 @@
 /**
- * POST /admin/openmemory/reset-collection — Delete the embedded Qdrant data
- * so OpenMemory recreates the collection with the correct embedding dimensions.
+ * POST /admin/memory/reset-collection — Delete the embedded Qdrant data
+ * so the memory service recreates the collection with the correct embedding
+ * dimensions.
  *
  * Admin-only. This is a destructive operation that deletes all stored memories.
- * The OpenMemory container must be restarted afterwards.
+ * The memory container must be restarted afterwards.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -17,7 +18,7 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  readOpenMemoryConfig,
+  readMemoryConfig,
   resetQdrantCollection
 } from "$lib/server/control-plane.js";
 
@@ -30,13 +31,13 @@ export const POST: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const config = readOpenMemoryConfig(state.dataDir);
+  const config = readMemoryConfig(state.dataDir);
   const collectionName = config.mem0.vector_store.config.collection_name;
 
   const result = resetQdrantCollection(state.dataDir);
 
   appendAudit(
-    state, actor, "openmemory.collection.reset",
+    state, actor, "memory.collection.reset",
     { collection: collectionName, ok: result.ok, error: result.error },
     result.ok, requestId, callerType
   );

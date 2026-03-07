@@ -14,7 +14,7 @@ import {
   ensureXdgDirs,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryDir,
+  ensureMemoryDir,
   ensureSecrets,
   buildComposeFileList,
   buildEnvFiles,
@@ -39,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
   ensureXdgDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureOpenMemoryDir();
+  ensureMemoryDir();
   ensureSecrets(state);
 
   let imageTag = "";

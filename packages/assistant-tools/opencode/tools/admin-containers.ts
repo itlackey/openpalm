@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
-const VALID_SERVICES = "caddy, openmemory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
+const VALID_SERVICES = "caddy, memory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
 
 export const list = tool({
   description: "List all OpenPalm containers and their current status (running/stopped/healthy)",

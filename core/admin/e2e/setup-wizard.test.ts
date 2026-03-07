@@ -70,7 +70,7 @@ async function mockDeployStatusReady(page: import('@playwright/test').Page) {
 				message: 'All services are up and running.',
 				services: [
 					{ service: 'caddy', label: 'Caddy', imageReady: true, containerRunning: true },
-					{ service: 'openmemory', label: 'OpenMemory', imageReady: true, containerRunning: true },
+					{ service: 'memory', label: 'Memory', imageReady: true, containerRunning: true },
 				],
 			})
 		});
@@ -123,10 +123,10 @@ test.describe('Setup Wizard', () => {
 		// Verify model selects are populated
 		await expect(page.locator('#system-model')).toBeVisible();
 		await expect(page.locator('#embedding-model')).toBeVisible();
-		// OpenMemory user ID is pre-populated from server-detected userId
-		const userIdValue = await page.locator('#openmemory-user-id').inputValue();
+		// Memory user ID is pre-populated from server-detected userId
+		const userIdValue = await page.locator('#memory-user-id').inputValue();
 		expect(userIdValue.length).toBeGreaterThan(0);
-		await page.locator('#openmemory-user-id').fill('alice');
+		await page.locator('#memory-user-id').fill('alice');
 		await page.getByRole('button', { name: 'Next' }).click();
 
 		// Step 4: Review & Install
@@ -187,7 +187,7 @@ test.describe('Setup Wizard', () => {
 					body: JSON.stringify({
 						ok: true,
 						async: true,
-						started: ['caddy', 'openmemory', 'admin'],
+						started: ['caddy', 'memory', 'admin'],
 						dockerAvailable: true,
 					})
 				});
@@ -268,7 +268,7 @@ test.describe('Setup Wizard', () => {
 		expect(postedBody.systemModel).toBeTruthy();
 		expect(postedBody.embeddingModel).toBeTruthy();
 		expect(postedBody.embeddingDims).toBeTruthy();
-		expect(postedBody.openmemoryUserId).toBeTruthy();
+		expect(postedBody.memoryUserId).toBeTruthy();
 		expect(postHeaders['x-admin-token']).toBeTruthy();
 	});
 
@@ -391,7 +391,7 @@ test.describe('Setup Wizard', () => {
 					body: JSON.stringify({
 						ok: true,
 						async: true,
-						started: ['caddy', 'openmemory'],
+						started: ['caddy', 'memory'],
 						dockerAvailable: true,
 					})
 				});
@@ -411,7 +411,7 @@ test.describe('Setup Wizard', () => {
 					error: 'Docker Compose failed: port 5432 already in use',
 					services: [
 						{ service: 'caddy', label: 'Caddy', imageReady: true, containerRunning: false },
-						{ service: 'openmemory', label: 'OpenMemory', imageReady: true, containerRunning: false },
+						{ service: 'memory', label: 'Memory', imageReady: true, containerRunning: false },
 					],
 				})
 			});

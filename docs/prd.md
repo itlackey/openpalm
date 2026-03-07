@@ -20,8 +20,8 @@ OpenPalm delivers a local-first AI platform with a strict control plane:
 Core services:
 
 - `caddy`
-- `openmemory`
-- `openmemory-ui`
+- `memory`
+- `memory-ui`
 - `assistant`
 - `guardian`
 - `admin`

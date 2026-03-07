@@ -3,7 +3,7 @@ import { memoryFetch } from "./lib.ts";
 
 export const list = tool({
   description:
-    "List all apps (memory sources/clients) registered in OpenMemory with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
+    "List all apps (memory sources/clients) registered in the memory service with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
   async execute() {
     return memoryFetch("/api/v1/apps/?page=1&page_size=50");
   },

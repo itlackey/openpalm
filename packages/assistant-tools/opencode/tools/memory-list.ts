@@ -3,7 +3,7 @@ import { memoryFetch, USER_ID } from "./lib.ts";
 
 export default tool({
   description:
-    "List all memories stored in OpenMemory with filtering and pagination. Use this to browse the full memory store, filter by app or category, or review what has been remembered.",
+    "List all memories stored in the memory service with filtering and pagination. Use this to browse the full memory store, filter by app or category, or review what has been remembered.",
   args: {
     page: tool.schema.number().optional().describe("Page number (default: 1)"),
     size: tool.schema.number().optional().describe("Results per page (default: 20, max: 100)"),

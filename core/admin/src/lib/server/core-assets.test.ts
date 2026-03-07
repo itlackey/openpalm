@@ -441,8 +441,8 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "docker-compose.yml"), content);
     mkdirSync(join(dataHome, "caddy"), { recursive: true });
     writeFileSync(join(dataHome, "caddy/Caddyfile"), content);
-    mkdirSync(join(dataHome, "openmemory"), { recursive: true });
-    writeFileSync(join(dataHome, "openmemory/memory.py"), content);
+    mkdirSync(join(dataHome, "memory"), { recursive: true });
+    writeFileSync(join(dataHome, "memory/memory.py"), content);
     mkdirSync(join(dataHome, "assistant"), { recursive: true });
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), content);
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), content);

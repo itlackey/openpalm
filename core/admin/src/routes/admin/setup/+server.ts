@@ -13,7 +13,7 @@ import {
   ensureXdgDirs,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryDir,
+  ensureMemoryDir,
   ensureSecrets,
   ensureConnectionProfilesStore,
   writeConnectionsDocument,
@@ -23,11 +23,11 @@ import {
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  writeOpenMemoryConfig,
-  readOpenMemoryConfig,
+  writeMemoryConfig,
+  readMemoryConfig,
   resolveConfigForPush,
-  pushConfigToOpenMemory,
-  provisionOpenMemoryUser,
+  pushConfigToMemory,
+  provisionMemoryUser,
   buildMem0Mapping,
 } from "$lib/server/control-plane.js";
 import {
@@ -80,7 +80,7 @@ export const GET: RequestHandler = async (event) => {
       configured: {
         OPENAI_API_KEY: keys.OPENAI_API_KEY === true,
         OPENAI_BASE_URL: keys.OPENAI_BASE_URL === true,
-        OPENMEMORY_USER_ID: keys.OPENMEMORY_USER_ID === true,
+        MEMORY_USER_ID: keys.MEMORY_USER_ID === true,
         GROQ_API_KEY: keys.GROQ_API_KEY === true,
         MISTRAL_API_KEY: keys.MISTRAL_API_KEY === true,
         GOOGLE_API_KEY: keys.GOOGLE_API_KEY === true,
@@ -147,7 +147,7 @@ export const POST: RequestHandler = async (event) => {
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
-  const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
+  const memoryUserId = typeof body.memoryUserId === "string" ? body.memoryUserId : "default_user";
   const ollamaEnabled = body.ollamaEnabled === true;
 
   // ── Parse connections array ───────────────────────────────────────────
@@ -272,7 +272,7 @@ export const POST: RequestHandler = async (event) => {
     updates.SYSTEM_LLM_BASE_URL = llmConnection.baseUrl;
   }
 
-  updates.OPENMEMORY_USER_ID = openmemoryUserId;
+  updates.MEMORY_USER_ID = memoryUserId;
 
   // ── Persist ───────────────────────────────────────────────────────────
 
@@ -298,7 +298,7 @@ export const POST: RequestHandler = async (event) => {
     state.adminToken = updates.ADMIN_TOKEN;
   }
 
-  // ── Build and persist OpenMemory config ───────────────────────────────
+  // ── Build and persist Memory config ───────────────────────────────
 
   const embConnection = effectiveConnections.find((c) => c.id === embConnectionId)!;
 
@@ -328,7 +328,7 @@ export const POST: RequestHandler = async (event) => {
     customInstructions: '',
   });
 
-  writeOpenMemoryConfig(state.dataDir, omConfig);
+  writeMemoryConfig(state.dataDir, omConfig);
 
   // Build profiles input for writeConnectionsDocument
   const profilesInput = effectiveConnections.map((conn) => ({
@@ -356,7 +356,7 @@ export const POST: RequestHandler = async (event) => {
 
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureOpenMemoryDir();
+  ensureMemoryDir();
   applyInstall(state);
 
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
@@ -398,7 +398,7 @@ export const POST: RequestHandler = async (event) => {
 
   const SERVICE_LABELS: Record<string, string> = {
     caddy: "Caddy (reverse proxy)",
-    openmemory: "OpenMemory",
+    memory: "Memory",
     assistant: "Assistant",
     guardian: "Guardian",
     ollama: "Ollama",
@@ -457,21 +457,21 @@ export const POST: RequestHandler = async (event) => {
 
     markAllRunning();
 
-    const config = readOpenMemoryConfig(state.dataDir);
+    const config = readMemoryConfig(state.dataDir);
     const resolved = resolveConfigForPush(config, state.configDir);
     const maxAttempts = 5;
     const delayMs = 10_000;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const result = await pushConfigToOpenMemory(resolved);
+      const result = await pushConfigToMemory(resolved);
       if (result.ok) {
-        logger.info("pushed OpenMemory config after setup install", { attempt });
-        await provisionOpenMemoryUser(openmemoryUserId);
+        logger.info("pushed Memory config after setup install", { attempt });
+        await provisionMemoryUser(memoryUserId);
         return;
       }
       if (attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, delayMs));
       } else {
-        logger.warn("failed to push OpenMemory config after setup install", {
+        logger.warn("failed to push Memory config after setup install", {
           attempts: maxAttempts,
           error: result.error
         });

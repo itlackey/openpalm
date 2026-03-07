@@ -1,6 +1,6 @@
 ---
-name: openmemory
-description: OpenMemory integration guide — compound memory, automatic context retrieval, and memory management for the OpenPalm assistant
+name: memory
+description: Memory integration guide — compound memory, automatic context retrieval, and memory management for the OpenPalm assistant
 license: MIT
 compatibility: opencode
 metadata:
@@ -10,19 +10,19 @@ metadata:
 
 ## What This Skill Does
 
-This skill teaches you how to use OpenMemory — the persistent, semantic memory layer that makes you smarter over time. OpenMemory stores facts, preferences, decisions, and context that persist across sessions. You should actively use memory to provide better, more personalized assistance.
+This skill teaches you how to use the memory service — the persistent, semantic memory layer that makes you smarter over time. It stores facts, preferences, decisions, and context that persist across sessions. You should actively use memory to provide better, more personalized assistance.
 
 ## Architecture
 
-OpenMemory runs as a service in the OpenPalm stack:
+The memory service runs in the OpenPalm stack:
 
 | Service | Port | Role |
 |---------|------|------|
-| `openmemory` | 8765 | Lightweight FastAPI wrapper around the mem0 Python SDK with embedded Qdrant (file-based vectors) |
+| `memory` | 8765 | Lightweight FastAPI wrapper around the mem0 Python SDK with embedded Qdrant (file-based vectors) |
 
-The assistant connects to `http://openmemory:8765` via REST API. The service
-wraps the mem0 SDK directly — no upstream openmemory code, no MCP SSE,
-no SQLAlchemy ORM. Configuration is read from `/app/default_config.json`.
+The assistant connects to `http://memory:8765` via REST API. The service
+wraps the mem0 SDK directly — no MCP SSE, no SQLAlchemy ORM.
+Configuration is read from `/app/default_config.json`.
 
 ## Available Tools
 
@@ -157,7 +157,7 @@ The `memory-context` plugin provides full lifecycle automation:
 - Cleans up per-session tracking state
 
 ### Shell Environment
-- Ensures `OPENMEMORY_API_URL` and `OPENMEMORY_USER_ID` are available to child processes
+- Ensures `MEMORY_API_URL` and `MEMORY_USER_ID` are available to child processes
 
 ## Memory Categories
 
@@ -166,7 +166,7 @@ All memories are tagged with a category in their metadata:
 | Category | Tag | What to Store | Examples |
 |----------|-----|--------------|----------|
 | **Semantic** | `[semantic]` | Facts, preferences, knowledge | "User prefers Bun over npm" |
-| **Episodic** | `[episodic]` | Session events, outcomes, errors | "Restarted openmemory to fix dimension mismatch" |
+| **Episodic** | `[episodic]` | Session events, outcomes, errors | "Restarted memory service to fix dimension mismatch" |
 | **Procedural** | `[procedural]` | Workflows, patterns, how-tos | "When adding a channel: check registry, install, verify health" |
 
 ### Confidence Scoring

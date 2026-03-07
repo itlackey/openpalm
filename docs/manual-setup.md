@@ -21,7 +21,7 @@ OpenPalm uses three host directories following the [XDG Base Directory Specifica
 | Tier | Default | Purpose |
 |------|---------|---------|
 | **CONFIG_HOME** | `~/.config/openpalm` | User-editable: secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `~/.local/share/openpalm` | Admin/service-managed data (openmemory, stack.env, caddy, assistant home, etc.) |
+| **DATA_HOME** | `~/.local/share/openpalm` | Admin/service-managed data (memory, stack.env, caddy, assistant home, etc.) |
 | **STATE_HOME** | `~/.local/state/openpalm` | Assembled runtime artifacts, audit logs |
 | **WORK_DIR** | `~/openpalm` | Assistant working directory |
 
@@ -47,7 +47,7 @@ mkdir -p ~/.config/openpalm/automations
 mkdir -p ~/.config/openpalm/opencode/{tools,plugins,skills}
 
 # DATA_HOME
-mkdir -p ~/.local/share/openpalm/openmemory
+mkdir -p ~/.local/share/openpalm/memory
 mkdir -p ~/.local/share/openpalm/assistant
 mkdir -p ~/.local/share/openpalm/guardian
 mkdir -p ~/.local/share/openpalm/caddy/{data,config}
@@ -115,7 +115,7 @@ OPENAI_API_KEY=
 # MISTRAL_API_KEY=
 # GOOGLE_API_KEY=
 
-OPENMEMORY_USER_ID=default_user
+MEMORY_USER_ID=default_user
 EOF
 ```
 
@@ -166,9 +166,9 @@ OPENPALM_IMAGE_TAG=latest
 OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1
 OPENPALM_INGRESS_PORT=8080
 
-# ── OpenMemory ──────────────────────────────────────────────────────
-OPENMEMORY_DASHBOARD_API_URL=http://localhost:8765
-OPENMEMORY_USER_ID=default_user
+# ── Memory ──────────────────────────────────────────────────────
+MEMORY_DASHBOARD_API_URL=http://localhost:8765
+MEMORY_USER_ID=default_user
 
 EOF
 ```
@@ -190,12 +190,12 @@ cp ~/.local/share/openpalm/stack.env ~/.local/state/openpalm/artifacts/stack.env
 
 ---
 
-## 6. Seed OpenMemory config (optional)
+## 6. Seed Memory config (optional)
 
-OpenMemory needs a default config file if you want memory features:
+Memory needs a default config file if you want memory features:
 
 ```bash
-cat > ~/.local/share/openpalm/openmemory/default_config.json << 'EOF'
+cat > ~/.local/share/openpalm/memory/default_config.json << 'EOF'
 {
   "mem0": {
     "llm": {
@@ -217,13 +217,13 @@ cat > ~/.local/share/openpalm/openmemory/default_config.json << 'EOF'
     "vector_store": {
       "provider": "qdrant",
       "config": {
-        "collection_name": "openmemory",
+        "collection_name": "memory",
         "path": "/data/qdrant",
         "embedding_model_dims": 1536
       }
     }
   },
-  "openmemory": {
+  "memory": {
     "custom_instructions": ""
   }
 }
@@ -329,7 +329,7 @@ After completing all steps, your host should have:
 ~/.local/share/openpalm/             # DATA_HOME
 ├── stack.env                        # System config (source of truth)
 ├── docker-compose.yml               # Core compose (source of truth)
-├── openmemory/
+├── memory/
 │   └── default_config.json
 ├── assistant/
 ├── guardian/

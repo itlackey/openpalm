@@ -79,11 +79,11 @@ export function setCoreCaddyAccessScope(scope: "host" | "lan"): { ok: true } | {
   return { ok: true };
 }
 
-// ── OpenMemory data directory (DATA_HOME) ───────────────────────────────
-// Ensure the openmemory data directory exists. Returns the directory path.
+// ── Memory data directory (DATA_HOME) ────────────────────────────────────
+// Ensure the memory data directory exists. Returns the directory path.
 
-export function ensureOpenMemoryDir(): string {
-  const dir = `${resolveDataHome()}/openmemory`;
+export function ensureMemoryDir(): string {
+  const dir = `${resolveDataHome()}/memory`;
   mkdirSync(dir, { recursive: true });
   return dir;
 }

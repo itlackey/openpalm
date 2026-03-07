@@ -1,5 +1,5 @@
 /**
- * Shared memory library for the OpenMemory plugin layer.
+ * Shared memory library for the memory plugin layer.
  *
  * Centralizes types, constants, and helpers used by memory-context.ts
  * and memory-hygiene.ts.  The tools in opencode/tools/ continue to use
@@ -13,14 +13,14 @@ import { basename } from 'node:path';
 // Constants
 // ---------------------------------------------------------------------------
 
-export const OPENMEMORY_URL =
-  process.env.OPENMEMORY_API_URL || 'http://openmemory:8765';
+export const MEMORY_URL =
+  process.env.MEMORY_API_URL || 'http://memory:8765';
 export const USER_ID =
-  process.env.OPENMEMORY_USER_ID || 'default_user';
+  process.env.MEMORY_USER_ID || 'default_user';
 export const STACK_USER_ID = 'openpalm';
 export const GLOBAL_USER_ID = 'global';
 export const APP_NAME = 'openpalm-assistant';
-export const DEFAULT_AGENT_ID = process.env.OPENMEMORY_AGENT_ID || 'openpalm';
+export const DEFAULT_AGENT_ID = process.env.MEMORY_AGENT_ID || 'openpalm';
 export const DEFAULT_APP_ID = deriveDefaultAppId();
 
 // ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ export interface MemoryItem {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch from the OpenMemory API.  Returns parsed JSON on success or
+ * Fetch from the Memory API.  Returns parsed JSON on success or
  * `null` on any error — hooks must never throw.
  */
 export async function pluginMemoryFetch(
@@ -80,7 +80,7 @@ export async function pluginMemoryFetch(
 ): Promise<unknown | null> {
   try {
     const { timeoutMs, ...rest } = options ?? {};
-    const res = await fetch(`${OPENMEMORY_URL}${path}`, {
+    const res = await fetch(`${MEMORY_URL}${path}`, {
       ...rest,
       headers: { 'content-type': 'application/json', ...rest?.headers },
       signal: rest?.signal ?? AbortSignal.timeout(timeoutMs ?? 5_000),
@@ -186,7 +186,7 @@ export async function getMemoryStats(timeoutMs = 3_000): Promise<{
   return getMemoryStatsWithIdentity(timeoutMs);
 }
 
-/** Returns true if the OpenMemory service is reachable. */
+/** Returns true if the memory service is reachable. */
 export async function isMemoryAvailable(
   timeoutMs?: number,
   identity?: MemoryIdentity,
@@ -303,7 +303,7 @@ export function formatMemoriesForContext(
 }
 
 function deriveDefaultAppId(): string {
-  const envAppId = process.env.OPENMEMORY_APP_ID?.trim();
+  const envAppId = process.env.MEMORY_APP_ID?.trim();
   if (envAppId) return envAppId;
   const cwd = process.cwd().trim();
   if (!cwd) return 'openpalm';

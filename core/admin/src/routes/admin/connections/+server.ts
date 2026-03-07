@@ -28,12 +28,12 @@ import {
   writeConnectionsDocument,
   ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
-  writeOpenMemoryConfig,
+  writeMemoryConfig,
   resolveConfigForPush,
-  pushConfigToOpenMemory,
+  pushConfigToMemory,
   checkQdrantDimensions,
   buildMem0Mapping,
-  type OpenMemoryConfig,
+  type MemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
 import {
@@ -160,7 +160,7 @@ async function handleUnifiedSave(
   const systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
   const embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
   const embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
-  const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
+  const memoryUserId = typeof body.memoryUserId === "string" ? body.memoryUserId : "default_user";
   const customInstructions = typeof body.customInstructions === "string" ? body.customInstructions : "";
 
   if (!isWizardProviderInScope(provider)) {
@@ -192,7 +192,7 @@ async function handleUnifiedSave(
     patches.SYSTEM_LLM_BASE_URL = baseUrl;
     const mem0Url = mem0BaseUrlConfig(provider, baseUrl);
     if (mem0Url?.key === "openai_base_url") {
-      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
+      // OPENAI_BASE_URL is read by the memory container as env var fallback
       // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
       patches.OPENAI_BASE_URL = mem0Url.value;
     }
@@ -200,7 +200,7 @@ async function handleUnifiedSave(
   if (systemModel) patches.SYSTEM_LLM_MODEL = systemModel;
   if (embeddingModel) patches.EMBEDDING_MODEL = embeddingModel;
   if (embeddingDims) patches.EMBEDDING_DIMS = String(embeddingDims);
-  patches.OPENMEMORY_USER_ID = openmemoryUserId;
+  patches.MEMORY_USER_ID = memoryUserId;
 
   try {
     patchSecretsEnvFile(state.configDir, patches);
@@ -213,7 +213,7 @@ async function handleUnifiedSave(
     return errorResponse(500, "internal_error", "Failed to update secrets.env", {}, requestId);
   }
 
-  // 2. Build and write OpenMemory config
+  // 2. Build and write Memory config
   const apiKeyEnvRef = PROVIDER_KEY_MAP[provider]
     ? `env:${PROVIDER_KEY_MAP[provider]}`
     : (apiKey || "not-needed");
@@ -221,7 +221,7 @@ async function handleUnifiedSave(
   const lookupKey = `${provider}/${embeddingModel}`;
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
-  const omConfig: OpenMemoryConfig = buildMem0Mapping({
+  const omConfig: MemoryConfig = buildMem0Mapping({
     llm: {
       provider,
       baseUrl,
@@ -247,7 +247,7 @@ async function handleUnifiedSave(
     dimensionWarning = `Embedding dimensions changed: current ${dimResult.currentDims}, config expects ${dimResult.expectedDims}. Reset the memory collection to apply.`;
   }
 
-  writeOpenMemoryConfig(state.dataDir, omConfig);
+  writeMemoryConfig(state.dataDir, omConfig);
 
   const envVarName = PROVIDER_KEY_MAP[provider] ?? "OPENAI_API_KEY";
   writeConnectionsDocument(state.configDir, {
@@ -274,7 +274,7 @@ async function handleUnifiedSave(
   let pushError: string | undefined;
   try {
     const resolved = resolveConfigForPush(omConfig, state.configDir);
-    const pushResult = await pushConfigToOpenMemory(resolved);
+    const pushResult = await pushConfigToMemory(resolved);
     pushed = pushResult.ok;
     if (!pushResult.ok) pushError = pushResult.error;
   } catch (err) {
@@ -337,7 +337,7 @@ async function handleCanonicalDtoSave(
       systemModel: assignments.llm.model,
       embeddingModel: assignments.embeddings.model,
       embeddingDims: assignments.embeddings.embeddingDims ?? 0,
-      openmemoryUserId: typeof body.openmemoryUserId === 'string' ? body.openmemoryUserId : 'default_user',
+      memoryUserId: typeof body.memoryUserId === 'string' ? body.memoryUserId : 'default_user',
       customInstructions: typeof body.customInstructions === 'string' ? body.customInstructions : '',
       capabilities: body.capabilities,
     },

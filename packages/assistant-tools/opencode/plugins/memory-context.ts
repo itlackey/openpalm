@@ -1,5 +1,5 @@
 /**
- * OpenMemory Context Plugin — Automated Learning & Memory Management
+ * Memory Context Plugin — Automated Learning & Memory Management
  *
  * Lifecycle hooks:
  *   session.created   — retrieve relevant memories and inject as initial context
@@ -8,7 +8,7 @@
  *   tool.execute.before — inject scoped procedural memory for admin/project tools
  *   tool.execute.after — emit outcome feedback for injected memories
  *   experimental.session.compacting — inject categorised memories into compaction
- *   shell.env          — expose OPENMEMORY env vars to child processes
+ *   shell.env          — expose MEMORY env vars to child processes
  *
  * Enables "compound memory" — the assistant improves over time by accumulating
  * semantic, episodic, and procedural knowledge across sessions.
@@ -20,7 +20,7 @@ import {
   type MemoryItem,
   DEFAULT_AGENT_ID,
   DEFAULT_APP_ID,
-  OPENMEMORY_URL,
+  MEMORY_URL,
   USER_ID,
   addMemory,
   formatMemoriesForContext,
@@ -62,9 +62,9 @@ const REFLEXION_SESSION_INTERVAL = 10;
 const REFLEXION_EPISODE_THRESHOLD = 5;
 const REFLEXION_DEFAULT_CONFIDENCE = 0.5;
 const INCLUDE_STACK_MEMORY =
-  (process.env.OPENMEMORY_INCLUDE_STACK_MEMORY ?? 'true').toLowerCase() !== 'false';
+  (process.env.MEMORY_INCLUDE_STACK_MEMORY ?? 'true').toLowerCase() !== 'false';
 const INCLUDE_GLOBAL_PROCEDURAL =
-  (process.env.OPENMEMORY_INCLUDE_GLOBAL_PROCEDURAL ?? '').toLowerCase() === 'true';
+  (process.env.MEMORY_INCLUDE_GLOBAL_PROCEDURAL ?? '').toLowerCase() === 'true';
 
 // ---------------------------------------------------------------------------
 // Extraction prompt builder
@@ -275,7 +275,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
         ]);
 
       // Build context block
-      const lines: string[] = ["## OpenMemory — Session Context"];
+      const lines: string[] = ["## Memory — Session Context"];
       if (stats) {
         lines.push(
           `Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`,
@@ -320,7 +320,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
 
       lines.push("### Memory Instructions");
       lines.push(
-        "You have access to OpenMemory tools. Use `memory-search` to find additional context. " +
+        "You have access to memory tools. Use `memory-search` to find additional context. " +
           "Important learnings from this session will be automatically extracted and stored. " +
           "Use `memory-add` explicitly for anything the auto-extraction might miss.",
       );
@@ -573,7 +573,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
         }),
       ]);
 
-      const lines = ["## OpenMemory Context (Compaction)"];
+      const lines = ["## Memory Context (Compaction)"];
       if (stats) {
         lines.push(
           `Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`,
@@ -609,7 +609,7 @@ export const MemoryContextPlugin = async (ctx: any) => {
       lines.push("");
       lines.push("### Memory Instructions");
       lines.push(
-        "You have access to OpenMemory tools. Use `memory-search` to find relevant context. " +
+        "You have access to memory tools. Use `memory-search` to find relevant context. " +
           "Important learnings are automatically extracted. Use `memory-add` for anything the auto-extraction might miss. " +
           "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).",
       );
@@ -625,8 +625,8 @@ export const MemoryContextPlugin = async (ctx: any) => {
     // shell.env — environment variable injection (unchanged)
     // ------------------------------------------------------------------
     "shell.env": async (_input: any, output: any) => {
-      output.env.OPENMEMORY_API_URL = OPENMEMORY_URL;
-      output.env.OPENMEMORY_USER_ID = USER_ID;
+      output.env.MEMORY_API_URL = MEMORY_URL;
+      output.env.MEMORY_USER_ID = USER_ID;
     },
   };
 };

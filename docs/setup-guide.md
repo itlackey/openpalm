@@ -109,7 +109,7 @@ Once the wizard completes, your stack is running. Here's where everything lives:
 | `http://localhost/` | Admin dashboard (via Caddy) |
 | `http://localhost/opencode/` | OpenCode assistant UI |
 | `http://localhost:8100/` | Admin API (direct, no proxy) |
-| `http://localhost:8765/docs` | OpenMemory API docs |
+| `http://localhost:8765/docs` | Memory API docs |
 
 All ports are localhost-bound by default. Nothing is publicly exposed unless you explicitly change the access scope.
 
@@ -128,7 +128,7 @@ All of those paths write the same files:
 | `automations/` | Scheduled automations — see [Managing OpenPalm](managing-openpalm.md#automations) |
 | `opencode/` | OpenCode extensions — tools, plugins, skills, and config |
 
-You normally do not need to touch the other two directories directly. `DATA_HOME` is managed by the admin and services (stack.env, caddy, openmemory, etc.); `STATE_HOME` is the assembled runtime assembled by the admin. See [directory-structure.md](directory-structure.md) for the complete layout.
+You normally do not need to touch the other two directories directly. `DATA_HOME` is managed by the admin and services (stack.env, caddy, memory, etc.); `STATE_HOME` is the assembled runtime assembled by the admin. See [directory-structure.md](directory-structure.md) for the complete layout.
 
 ### XDG path defaults
 
