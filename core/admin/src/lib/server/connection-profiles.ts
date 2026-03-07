@@ -6,7 +6,6 @@ import type {
   CanonicalConnectionsDocument,
   ConnectionKind,
 } from './types.js';
-import { readSecretsEnvFile } from './secrets.js';
 
 const CONNECTIONS_DIRNAME = 'connections';
 const CONNECTION_PROFILES_FILENAME = 'profiles.json';
@@ -27,48 +26,7 @@ function normalizeConnectionKind(provider: string): ConnectionKind {
     : 'openai_compatible_remote';
 }
 
-function hasApiKeyForProvider(provider: string, secrets: Record<string, string>): boolean {
-  const envKey = PROVIDER_KEY_MAP[provider] ?? 'OPENAI_API_KEY';
-  return Boolean(secrets[envKey]);
-}
-
-function buildLegacyDocumentFromSecrets(configDir: string): CanonicalConnectionsDocument {
-  const secrets = readSecretsEnvFile(configDir);
-  const provider = secrets.SYSTEM_LLM_PROVIDER || 'openai';
-  const model = secrets.SYSTEM_LLM_MODEL || '';
-  const embeddingModel = secrets.EMBEDDING_MODEL || '';
-  const embeddingDims = Number(secrets.EMBEDDING_DIMS || '0');
-  const apiKeyEnv = PROVIDER_KEY_MAP[provider] ?? 'OPENAI_API_KEY';
-  const hasApiKey = hasApiKeyForProvider(provider, secrets);
-
-  return {
-    version: 1,
-    profiles: [
-      {
-        id: 'primary',
-        name: 'Primary connection',
-        kind: normalizeConnectionKind(provider),
-        provider,
-        baseUrl: secrets.SYSTEM_LLM_BASE_URL || '',
-        auth: {
-          mode: hasApiKey ? 'api_key' : 'none',
-          ...(hasApiKey ? { apiKeySecretRef: `env:${apiKeyEnv}` } : {}),
-        },
-      },
-    ],
-    assignments: {
-      llm: {
-        connectionId: 'primary',
-        model,
-      },
-      embeddings: {
-        connectionId: 'primary',
-        model: embeddingModel,
-        ...(Number.isInteger(embeddingDims) && embeddingDims > 0 ? { embeddingDims } : {}),
-      },
-    },
-  };
-}
+// ── Validation helpers ──────────────────────────────────────────────────
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -115,6 +73,8 @@ function isValidConnectionDocument(value: unknown): value is CanonicalConnection
   return true;
 }
 
+// ── Read / Write ────────────────────────────────────────────────────────
+
 export function writeConnectionProfilesDocument(
   configDir: string,
   document: CanonicalConnectionsDocument
@@ -128,75 +88,68 @@ export function writeConnectionProfilesDocument(
 }
 
 export function readConnectionProfilesDocument(configDir: string): CanonicalConnectionsDocument {
-  return readConnectionProfilesDocumentWithOptions(configDir, {
-    preferLegacyRead: false,
-    hydrateFromLegacy: false,
-    onInvalid: 'throw',
-  });
-}
-
-type ReadConnectionProfilesOptions = {
-  preferLegacyRead?: boolean;
-  hydrateFromLegacy?: boolean;
-  onInvalid?: 'throw' | 'migrate';
-};
-
-export function readConnectionProfilesDocumentWithOptions(
-  configDir: string,
-  options: ReadConnectionProfilesOptions
-): CanonicalConnectionsDocument {
   const path = getConnectionProfilesPath(configDir);
-  const legacy = buildLegacyDocumentFromSecrets(configDir);
-  const onInvalid = options.onInvalid ?? 'throw';
-
   if (!existsSync(path)) {
-    writeConnectionProfilesDocument(configDir, legacy);
-    return legacy;
+    throw new Error('connections/profiles.json does not exist');
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
   } catch {
-    if (onInvalid === 'throw') {
-      throw new Error('connections/profiles.json is invalid JSON or schema');
-    }
-    // Fall back to legacy document when JSON is invalid and onInvalid !== 'throw'
-    writeConnectionProfilesDocument(configDir, legacy);
-    return legacy;
+    throw new Error('connections/profiles.json is invalid JSON');
   }
 
-  if (isValidConnectionDocument(parsed)) {
-    if (options.preferLegacyRead && legacy.profiles[0]?.provider && legacy.assignments.llm.model) {
-      if (options.hydrateFromLegacy) {
-        writeConnectionProfilesDocument(configDir, legacy);
-      }
-      return legacy;
-    }
-    return parsed;
-  }
-  if (onInvalid === 'throw') {
+  if (!isValidConnectionDocument(parsed)) {
     throw new Error('connections/profiles.json is invalid: expected CanonicalConnectionsDocument v1');
   }
-  writeConnectionProfilesDocument(configDir, legacy);
-  return legacy;
+
+  return parsed;
 }
 
 export function ensureConnectionProfilesStore(configDir: string): void {
   mkdirSync(getConnectionProfilesDir(configDir), { recursive: true });
-  if (!existsSync(getConnectionProfilesPath(configDir))) {
-    const migrated = buildLegacyDocumentFromSecrets(configDir);
-    writeConnectionProfilesDocument(configDir, migrated);
-  }
 }
 
-type PrimaryConnectionInput = {
-  provider: string;
-  baseUrl: string;
-  systemModel: string;
-  embeddingModel: string;
-  embeddingDims?: number;
+// ── Multi-connection write ──────────────────────────────────────────────
+
+export type WriteConnectionsInput = {
+  profiles: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    baseUrl: string;
+    hasApiKey: boolean;
+    apiKeyEnvVar: string;
+  }>;
+  assignments: CapabilityAssignments;
 };
+
+export function writeConnectionsDocument(
+  configDir: string,
+  input: WriteConnectionsInput
+): CanonicalConnectionsDocument {
+  const document: CanonicalConnectionsDocument = {
+    version: 1,
+    profiles: input.profiles.map((p) => ({
+      id: p.id,
+      name: p.name,
+      kind: normalizeConnectionKind(p.provider),
+      provider: p.provider,
+      baseUrl: p.baseUrl,
+      auth: {
+        mode: p.hasApiKey ? 'api_key' as const : 'none' as const,
+        ...(p.hasApiKey ? { apiKeySecretRef: `env:${p.apiKeyEnvVar}` } : {}),
+      },
+    })),
+    assignments: input.assignments,
+  };
+
+  writeConnectionProfilesDocument(configDir, document);
+  return document;
+}
+
+// ── CRUD operations ─────────────────────────────────────────────────────
 
 type MutationResult<T> =
   | { ok: true; value: T }
@@ -252,57 +205,12 @@ function validateAssignments(
   return { ok: true, value: assignments };
 }
 
-export function writePrimaryConnectionProfile(
-  configDir: string,
-  input: PrimaryConnectionInput
-): CanonicalConnectionsDocument {
-  const secrets = readSecretsEnvFile(configDir);
-  const provider = input.provider;
-  const envKey = PROVIDER_KEY_MAP[provider] ?? 'OPENAI_API_KEY';
-  const hasApiKey = hasApiKeyForProvider(provider, secrets);
-
-  const document: CanonicalConnectionsDocument = {
-    version: 1,
-    profiles: [
-      {
-        id: 'primary',
-        name: 'Primary connection',
-        kind: normalizeConnectionKind(provider),
-        provider,
-        baseUrl: input.baseUrl,
-        auth: {
-          mode: hasApiKey ? 'api_key' : 'none',
-          ...(hasApiKey ? { apiKeySecretRef: `env:${envKey}` } : {}),
-        },
-      },
-    ],
-    assignments: {
-      llm: {
-        connectionId: 'primary',
-        model: input.systemModel,
-      },
-      embeddings: {
-        connectionId: 'primary',
-        model: input.embeddingModel,
-        ...(input.embeddingDims && input.embeddingDims > 0 ? { embeddingDims: input.embeddingDims } : {}),
-      },
-    },
-  };
-
-  writeConnectionProfilesDocument(configDir, document);
-  return document;
-}
-
 export function listConnectionProfiles(configDir: string): CanonicalConnectionProfile[] {
-  return readConnectionProfilesDocumentWithOptions(configDir, {
-    onInvalid: 'migrate',
-  }).profiles;
+  return readConnectionProfilesDocument(configDir).profiles;
 }
 
 export function getCapabilityAssignments(configDir: string): CapabilityAssignments {
-  return readConnectionProfilesDocumentWithOptions(configDir, {
-    onInvalid: 'migrate',
-  }).assignments;
+  return readConnectionProfilesDocument(configDir).assignments;
 }
 
 export function createConnectionProfile(
@@ -312,9 +220,7 @@ export function createConnectionProfile(
   const validated = validateProfile(profile);
   if (!validated.ok) return validated;
 
-  const document = readConnectionProfilesDocumentWithOptions(configDir, {
-    onInvalid: 'migrate',
-  });
+  const document = readConnectionProfilesDocument(configDir);
   if (document.profiles.some((existing) => existing.id === profile.id)) {
     return { ok: false, status: 409, message: `profile already exists: ${profile.id}` };
   }
@@ -334,9 +240,7 @@ export function updateConnectionProfile(
   const validated = validateProfile(profile);
   if (!validated.ok) return validated;
 
-  const document = readConnectionProfilesDocumentWithOptions(configDir, {
-    onInvalid: 'migrate',
-  });
+  const document = readConnectionProfilesDocument(configDir);
   const index = document.profiles.findIndex((existing) => existing.id === profile.id);
   if (index < 0) {
     return { ok: false, status: 404, message: `profile not found: ${profile.id}` };
@@ -356,9 +260,7 @@ export function deleteConnectionProfile(
     return { ok: false, status: 400, message: 'profile id is required' };
   }
 
-  const document = readConnectionProfilesDocumentWithOptions(configDir, {
-    onInvalid: 'migrate',
-  });
+  const document = readConnectionProfilesDocument(configDir);
   const existing = document.profiles.find((profile) => profile.id === id);
   if (!existing) {
     return { ok: false, status: 404, message: `profile not found: ${id}` };
@@ -378,9 +280,7 @@ export function saveCapabilityAssignments(
   configDir: string,
   assignments: CapabilityAssignments
 ): MutationResult<CapabilityAssignments> {
-  const document = readConnectionProfilesDocumentWithOptions(configDir, {
-    onInvalid: 'migrate',
-  });
+  const document = readConnectionProfilesDocument(configDir);
   const profileIds = new Set(document.profiles.map((profile) => profile.id));
   const validated = validateAssignments(assignments, profileIds);
   if (!validated.ok) return validated;

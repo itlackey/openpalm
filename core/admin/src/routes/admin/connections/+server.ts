@@ -25,8 +25,7 @@ import {
   readSecretsEnvFile,
   patchSecretsEnvFile,
   readConnectionProfilesDocument,
-  readConnectionProfilesDocumentWithOptions,
-  writePrimaryConnectionProfile,
+  writeConnectionsDocument,
   ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
   writeOpenMemoryConfig,
@@ -34,8 +33,6 @@ import {
   pushConfigToOpenMemory,
   checkQdrantDimensions,
   buildMem0Mapping,
-  readConnectionMigrationFlags,
-  detectConnectionCompatibilityMode,
   type OpenMemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
@@ -68,22 +65,15 @@ export const GET: RequestHandler = async (event) => {
     connections[key] = maskConnectionValue(key, value);
   }
 
-  const migrationFlags = readConnectionMigrationFlags();
-  const canonical = migrationFlags.dualRead
-    ? readConnectionProfilesDocumentWithOptions(state.configDir, {
-        preferLegacyRead: migrationFlags.preferLegacyRead,
-        hydrateFromLegacy: migrationFlags.enabled,
-      })
-    : readConnectionProfilesDocument(state.configDir);
+  let canonical;
+  try {
+    canonical = readConnectionProfilesDocument(state.configDir);
+  } catch {
+    // No profiles.json yet — return empty
+    canonical = { profiles: [], assignments: { llm: { connectionId: '', model: '' }, embeddings: { connectionId: '', model: '' } } };
+  }
 
-  appendAudit(state, actor, "connections.get", {
-    migration: migrationFlags.annotateAudit
-      ? {
-          mode: migrationFlags.preferLegacyRead ? 'legacy_preferred' : 'canonical_preferred',
-          dualRead: migrationFlags.dualRead,
-        }
-      : {},
-  }, true, requestId, callerType);
+  appendAudit(state, actor, "connections.get", {}, true, requestId, callerType);
   return jsonResponse(200, {
     profiles: canonical.profiles,
     assignments: canonical.assignments,
@@ -105,17 +95,14 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
   }
 
-  const migrationFlags = readConnectionMigrationFlags();
-  const compatibilityMode = detectConnectionCompatibilityMode(body);
-
   // ── Unified system connection save (has `provider` key) ───────────
   if (typeof body.provider === "string") {
-    return handleUnifiedSave(body, state, actor, callerType, requestId, compatibilityMode, migrationFlags);
+    return handleUnifiedSave(body, state, actor, callerType, requestId);
   }
 
   // ── Canonical DTO payload (profiles + assignments) ─────────────────
   if (Array.isArray(body.profiles) && typeof body.assignments === 'object' && body.assignments !== null) {
-    return handleCanonicalDtoSave(body, state, actor, callerType, requestId, compatibilityMode, migrationFlags);
+    return handleCanonicalDtoSave(body, state, actor, callerType, requestId);
   }
 
   // ── Legacy: patch individual keys ──────────────────────────────────
@@ -141,7 +128,6 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     patchSecretsEnvFile(state.configDir, patches);
-    readConnectionProfilesDocument(state.configDir);
   } catch (err) {
     appendAudit(
       state, actor, "connections.patch",
@@ -153,10 +139,7 @@ export const POST: RequestHandler = async (event) => {
 
   appendAudit(
     state, actor, "connections.patch",
-    {
-      keys: Object.keys(patches),
-      ...(migrationFlags.annotateAudit ? { compatibilityMode } : {}),
-    },
+    { keys: Object.keys(patches) },
     true, requestId, callerType
   );
   return jsonResponse(200, { ok: true, updated: Object.keys(patches) }, requestId);
@@ -170,8 +153,6 @@ async function handleUnifiedSave(
   actor: string,
   callerType: CallerType,
   requestId: string,
-  compatibilityMode: string,
-  migrationFlags: ReturnType<typeof readConnectionMigrationFlags>
 ): Promise<Response> {
   const provider = body.provider as string; // already validated typeof === "string" by caller
   const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
@@ -241,12 +222,19 @@ async function handleUnifiedSave(
   const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
 
   const omConfig: OpenMemoryConfig = buildMem0Mapping({
-    provider,
-    baseUrl,
-    systemModel,
-    embeddingModel: embeddingModel || 'text-embedding-3-small',
+    llm: {
+      provider,
+      baseUrl,
+      model: systemModel,
+      apiKeyRef: apiKeyEnvRef,
+    },
+    embedder: {
+      provider,
+      baseUrl,
+      model: embeddingModel || 'text-embedding-3-small',
+      apiKeyRef: apiKeyEnvRef,
+    },
     embeddingDims: resolvedDims,
-    apiKeyRef: apiKeyEnvRef,
     customInstructions,
   });
 
@@ -261,12 +249,24 @@ async function handleUnifiedSave(
 
   writeOpenMemoryConfig(state.dataDir, omConfig);
 
-  writePrimaryConnectionProfile(state.configDir, {
-    provider,
-    baseUrl,
-    systemModel,
-    embeddingModel: embeddingModel || 'text-embedding-3-small',
-    embeddingDims: resolvedDims,
+  const envVarName = PROVIDER_KEY_MAP[provider] ?? "OPENAI_API_KEY";
+  writeConnectionsDocument(state.configDir, {
+    profiles: [{
+      id: 'primary',
+      name: provider,
+      provider,
+      baseUrl,
+      hasApiKey: Boolean(apiKey),
+      apiKeyEnvVar: envVarName,
+    }],
+    assignments: {
+      llm: { connectionId: 'primary', model: systemModel },
+      embeddings: {
+        connectionId: 'primary',
+        model: embeddingModel || 'text-embedding-3-small',
+        embeddingDims: resolvedDims,
+      },
+    },
   });
 
   // 3. Push resolved config to running container
@@ -283,12 +283,7 @@ async function handleUnifiedSave(
 
   appendAudit(
     state, actor, "connections.unified",
-    {
-      provider,
-      pushed,
-      dimensionMismatch,
-      ...(migrationFlags.annotateAudit ? { compatibilityMode } : {}),
-    },
+    { provider, pushed, dimensionMismatch },
     true, requestId, callerType
   );
 
@@ -309,8 +304,6 @@ async function handleCanonicalDtoSave(
   actor: string,
   callerType: CallerType,
   requestId: string,
-  compatibilityMode: string,
-  migrationFlags: ReturnType<typeof readConnectionMigrationFlags>
 ): Promise<Response> {
   const profiles = body.profiles;
   if (!Array.isArray(profiles) || profiles.length === 0) {
@@ -352,7 +345,5 @@ async function handleCanonicalDtoSave(
     actor,
     callerType,
     requestId,
-    compatibilityMode,
-    migrationFlags
   );
 }

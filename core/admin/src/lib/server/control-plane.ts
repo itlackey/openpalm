@@ -150,16 +150,16 @@ export {
   getConnectionProfilesDir,
   getConnectionProfilesPath,
   readConnectionProfilesDocument,
-  readConnectionProfilesDocumentWithOptions,
   writeConnectionProfilesDocument,
+  writeConnectionsDocument,
   ensureConnectionProfilesStore,
-  writePrimaryConnectionProfile,
   listConnectionProfiles,
   getCapabilityAssignments,
   createConnectionProfile,
   updateConnectionProfile,
   deleteConnectionProfile,
   saveCapabilityAssignments,
+  type WriteConnectionsInput,
 } from './connection-profiles.js';
 
 // ── model-runner.ts ──────────────────────────────────────────────────
