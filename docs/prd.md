@@ -21,7 +21,6 @@ Core services:
 
 - `caddy`
 - `memory`
-- `memory-ui`
 - `assistant`
 - `guardian`
 - `admin`

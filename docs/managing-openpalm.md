@@ -355,7 +355,7 @@ docker compose restart admin   # triggers apply
 |---|---|
 | `http://localhost:8100/admin` | Admin UI (direct) |
 | `http://localhost:8080/admin` | Admin UI via Caddy |
-| `http://localhost:8080/admin/opencode` | OpenCode assistant UI |
+| `http://localhost:8080/opencode` | OpenCode assistant UI |
 | `http://localhost:8765` | Memory API (direct) |
 | `http://localhost:8765/docs` | Memory API docs (Swagger UI) |
 

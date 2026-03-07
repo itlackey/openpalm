@@ -90,7 +90,13 @@ export function ensureMemoryDir(): string {
 
   // Migrate legacy directory if it exists and new one doesn't
   if (!existsSync(dir) && existsSync(legacyDir)) {
-    renameSync(legacyDir, dir);
+    try {
+      renameSync(legacyDir, dir);
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[core-assets] Failed to migrate ${legacyDir} to ${dir} (${code}): ${message}`);
+    }
   }
 
   mkdirSync(dir, { recursive: true });
