@@ -189,9 +189,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "assignments object is required", {}, requestId);
   }
 
-  const assignments = body.assignments as Record<string, unknown>;
-  const llmAssignment = assignments.llm;
-  const embAssignment = assignments.embeddings;
+  const rawAssignments = body.assignments as Record<string, unknown>;
+  const llmAssignment = rawAssignments.llm;
+  const embAssignment = rawAssignments.embeddings;
 
   if (typeof llmAssignment !== 'object' || llmAssignment === null) {
     return errorResponse(400, "bad_request", "assignments.llm is required", {}, requestId);
@@ -222,7 +222,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", `assignments.embeddings.connectionId "${embConnectionId}" does not match any connection`, {}, requestId);
   }
 
-  const assignments: SetupAssignments = {
+  const parsedAssignments: SetupAssignments = {
     llm: { connectionId: llmConnectionId, model: llmModel, ...(llmSmallModel ? { smallModel: llmSmallModel } : {}) },
     embeddings: { connectionId: embConnectionId, model: embModel, ...(embDims > 0 ? { embeddingDims: embDims } : {}) },
   };
@@ -354,10 +354,10 @@ export const POST: RequestHandler = async (event) => {
   writeConnectionsDocument(state.configDir, {
     profiles: profilesInput,
     assignments: {
-      llm: assignments.llm,
+      llm: parsedAssignments.llm,
       embeddings: {
-        connectionId: assignments.embeddings.connectionId,
-        model: assignments.embeddings.model,
+        connectionId: parsedAssignments.embeddings.connectionId,
+        model: parsedAssignments.embeddings.model,
         embeddingDims: resolvedDims,
       },
     },
