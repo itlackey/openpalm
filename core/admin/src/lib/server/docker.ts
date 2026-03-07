@@ -127,6 +127,16 @@ function pushEnvFileArgs(args: string[], envFiles?: string[]): void {
 }
 
 /**
+ * Build the common prefix args for all docker compose commands:
+ *   docker compose -f <file> ... --project-name openpalm [--env-file ...]
+ */
+function buildComposeArgs(stateDir: string, options: { files?: string[]; envFiles?: string[] } = {}): string[] {
+  const args = ["compose", ...composeFileArgs(stateDir, options.files), "--project-name", "openpalm"];
+  pushEnvFileArgs(args, options.envFiles);
+  return args;
+}
+
+/**
  * Run `docker compose up -d` with the generated compose file(s).
  * Pass `files` to merge multiple compose overlays (e.g. core + channel files).
  */
@@ -150,14 +160,7 @@ export async function composeUp(
     };
   }
 
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
+  const args = buildComposeArgs(stateDir, options);
 
   if (options.profiles) {
     for (const p of options.profiles) {
@@ -208,15 +211,7 @@ export async function composeDown(
     };
   }
 
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("down");
 
   if (options.removeVolumes) {
@@ -244,15 +239,7 @@ export async function composeRestart(
     };
   }
 
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("restart", ...services);
 
   return run(args, stateDir);
@@ -266,15 +253,7 @@ export async function composeStop(
   services: string[],
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("stop", ...services);
 
   return run(args, stateDir);
@@ -288,15 +267,7 @@ export async function composeStart(
   services: string[],
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   // Use up -d for specific services to ensure they're created
   args.push("up", "-d", ...services);
 
@@ -325,15 +296,7 @@ export async function composePs(
     );
   }
 
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("ps", "--format", "json");
 
   return run(args, stateDir);
@@ -348,15 +311,7 @@ export async function composeLogs(
   tail = 100,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("logs", "--tail", String(tail));
 
   if (services && services.length > 0) {
@@ -374,15 +329,7 @@ export async function caddyReload(
   stateDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push(
     "exec",
     "-T",
@@ -406,15 +353,7 @@ export async function composePullService(
   service: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("pull", service);
 
   return run(args, stateDir, 300_000);
@@ -427,15 +366,7 @@ export async function composePull(
   stateDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = [
-    "compose",
-    ...composeFileArgs(stateDir, options.files),
-    "--project-name",
-    "openpalm"
-  ];
-
-  pushEnvFileArgs(args, options.envFiles);
-
+  const args = buildComposeArgs(stateDir, options);
   args.push("pull");
 
   return run(args, stateDir, 300_000);

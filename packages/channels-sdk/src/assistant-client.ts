@@ -35,39 +35,32 @@ function buildAuthHeader(username: string, password: string): string {
   return `Basic ${encoded}`;
 }
 
-/**
- * Create a one-shot assistant session client.
- *
- * Usage:
- *   const answer = await askAssistant(opts, title, prompt);
- */
-export async function askAssistant(
-  opts: AssistantClientOptions,
-  title: string,
-  prompt: string,
-): Promise<string> {
-  const {
-    baseUrl,
-    username = "opencode",
-    password,
-    createTimeoutMs = 10_000,
-    messageTimeoutMs = 120_000,
-  } = opts;
-
+function buildHeaders(opts: AssistantClientOptions): Record<string, string> {
+  const { username = "opencode", password } = opts;
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (password) {
     headers["authorization"] = buildAuthHeader(username, password);
   }
+  return headers;
+}
 
-  // Step 1: Create a session
-  const createCtrl = new AbortController();
-  const createTimer = setTimeout(() => createCtrl.abort(), createTimeoutMs);
-  let sessionId: string;
+/**
+ * Create a new assistant session. Returns the session ID.
+ */
+export async function createSession(
+  opts: AssistantClientOptions,
+  title: string,
+): Promise<string> {
+  const { baseUrl, createTimeoutMs = 10_000 } = opts;
+  const headers = buildHeaders(opts);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), createTimeoutMs);
   try {
     const resp = await fetch(`${baseUrl}/session`, {
       method: "POST",
       headers,
-      signal: createCtrl.signal,
+      signal: ctrl.signal,
       body: JSON.stringify({ title }),
     });
     if (!resp.ok) {
@@ -75,22 +68,34 @@ export async function askAssistant(
       throw new Error(`assistant POST /session ${resp.status}: ${body}`);
     }
     const session = (await resp.json()) as SessionCreateResponse;
-    sessionId = session.id;
+    const sessionId = session.id;
     if (typeof sessionId !== "string" || !SESSION_ID_RE.test(sessionId)) {
       throw new Error("Invalid session ID from assistant");
     }
+    return sessionId;
   } finally {
-    clearTimeout(createTimer);
+    clearTimeout(timer);
   }
+}
 
-  // Step 2: Send the prompt and wait for response
-  const msgCtrl = new AbortController();
-  const msgTimer = setTimeout(() => msgCtrl.abort(), messageTimeoutMs);
+/**
+ * Send a message to an existing assistant session. Returns the answer text.
+ */
+export async function sendMessage(
+  opts: AssistantClientOptions,
+  sessionId: string,
+  prompt: string,
+): Promise<string> {
+  const { baseUrl, messageTimeoutMs = 120_000 } = opts;
+  const headers = buildHeaders(opts);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), messageTimeoutMs);
   try {
     const resp = await fetch(`${baseUrl}/session/${sessionId}/message`, {
       method: "POST",
       headers,
-      signal: msgCtrl.signal,
+      signal: ctrl.signal,
       body: JSON.stringify({
         parts: [{ type: "text", text: prompt }],
       }),
@@ -103,7 +108,6 @@ export async function askAssistant(
     }
     const data = (await resp.json()) as MessageResponse;
 
-    // Extract text from response parts
     const texts: string[] = [];
     for (const part of data.parts ?? []) {
       if (part.type === "text" && part.text) {
@@ -112,6 +116,21 @@ export async function askAssistant(
     }
     return texts.join("\n") || "(no response)";
   } finally {
-    clearTimeout(msgTimer);
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Create a one-shot assistant session client.
+ *
+ * Usage:
+ *   const answer = await askAssistant(opts, title, prompt);
+ */
+export async function askAssistant(
+  opts: AssistantClientOptions,
+  title: string,
+  prompt: string,
+): Promise<string> {
+  const sessionId = await createSession(opts, title);
+  return sendMessage(opts, sessionId, prompt);
 }

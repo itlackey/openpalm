@@ -71,40 +71,40 @@ function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
 
 // ── Lifecycle Helpers ──────────────────────────────────────────────────
 
-export function applyInstall(state: ControlPlaneState): void {
-  for (const service of CORE_SERVICES) {
-    state.services[service] = "running";
+function reconcileCore(
+  state: ControlPlaneState,
+  opts: { activateServices?: boolean; deactivateServices?: boolean; seedMemoryConfig?: boolean },
+): string[] {
+  if (opts.activateServices) {
+    for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir();
-  ensureMemoryConfig(state.dataDir);
+  if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
+
+  const active: string[] = [];
+  for (const [name, status] of Object.entries(state.services)) {
+    if (status === "running") active.push(name);
+  }
+
+  if (opts.deactivateServices) {
+    for (const name of Object.keys(state.services)) state.services[name] = "stopped";
+  }
+
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
+  return active;
+}
+
+export function applyInstall(state: ControlPlaneState): void {
+  reconcileCore(state, { activateServices: true, seedMemoryConfig: true });
 }
 
 export function applyUpdate(state: ControlPlaneState): { restarted: string[] } {
-  const restarted: string[] = [];
-  for (const [name, status] of Object.entries(state.services)) {
-    if (status === "running") {
-      restarted.push(name);
-    }
-  }
-  ensureMemoryDir();
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
-  return { restarted };
+  return { restarted: reconcileCore(state, {}) };
 }
 
 export function applyUninstall(state: ControlPlaneState): { stopped: string[] } {
-  const stopped: string[] = [];
-  for (const [name, status] of Object.entries(state.services)) {
-    if (status === "running") {
-      stopped.push(name);
-    }
-    state.services[name] = "stopped";
-  }
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
-  return { stopped };
+  return { stopped: reconcileCore(state, { deactivateServices: true }) };
 }
 
 type DockerTagEntry = { name?: unknown };
@@ -169,18 +169,7 @@ export async function applyUpgrade(state: ControlPlaneState): Promise<{
   restarted: string[];
 }> {
   const { backupDir, updated } = await refreshCoreAssets();
-  ensureMemoryDir();
-
-  const restarted: string[] = [];
-  for (const [name, status] of Object.entries(state.services)) {
-    if (status === "running") {
-      restarted.push(name);
-    }
-  }
-
-  state.artifacts = stageArtifacts(state);
-  persistArtifacts(state);
-
+  const restarted = reconcileCore(state, {});
   return { backupDir, updated, restarted };
 }
 

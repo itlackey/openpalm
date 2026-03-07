@@ -46,7 +46,7 @@ function parseChannelSecrets(content: string): Record<string, string> {
 
 // Cache for file-based secrets to avoid reading on every request
 let secretsCache: { mtime: number; loadedAt: number; secrets: Record<string, string> } | null = null;
-const SECRETS_CACHE_TTL_MS = 5_000;
+const SECRETS_CACHE_TTL_MS = Number(Bun.env.GUARDIAN_SECRETS_CACHE_TTL_MS ?? 30_000);
 
 async function loadChannelSecrets(): Promise<Record<string, string>> {
   if (SECRETS_PATH) {
@@ -141,21 +141,61 @@ function audit(event: Record<string, unknown>) {
 // ── Assistant client ────────────────────────────────────────────────────
 // Uses the shared assistant HTTP client from @openpalm/channels-sdk.
 
-import { askAssistant as askAssistantShared } from "@openpalm/channels-sdk/assistant-client";
+import {
+  createSession,
+  sendMessage,
+} from "@openpalm/channels-sdk/assistant-client";
+import type { AssistantClientOptions } from "@openpalm/channels-sdk/assistant-client";
 
 const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 120_000);
+const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 
-async function askAssistant(message: string, userId: string, channel: string) {
-  return askAssistantShared(
-    {
-      baseUrl: ASSISTANT_URL,
-      username: Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode",
-      password: Bun.env.OPENCODE_SERVER_PASSWORD,
-      messageTimeoutMs: MESSAGE_TIMEOUT,
-    },
-    `${channel}/${userId}`,
-    message,
-  );
+const sessionCache = new Map<string, { sessionId: string; lastUsed: number }>();
+
+// Periodic cleanup of expired sessions
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of sessionCache) {
+    if (now - entry.lastUsed > SESSION_TTL_MS) sessionCache.delete(key);
+  }
+}, 5 * 60_000);
+
+function clientOpts(): AssistantClientOptions {
+  return {
+    baseUrl: ASSISTANT_URL,
+    username: Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode",
+    password: Bun.env.OPENCODE_SERVER_PASSWORD,
+    messageTimeoutMs: MESSAGE_TIMEOUT,
+  };
+}
+
+async function askAssistant(
+  message: string,
+  userId: string,
+  channel: string,
+): Promise<{ answer: string; sessionId: string }> {
+  const cacheKey = `${channel}:${userId}`;
+  const opts = clientOpts();
+  const cached = sessionCache.get(cacheKey);
+
+  // Try reusing cached session
+  if (cached && Date.now() - cached.lastUsed < SESSION_TTL_MS) {
+    try {
+      const answer = await sendMessage(opts, cached.sessionId, message);
+      cached.lastUsed = Date.now();
+      return { answer, sessionId: cached.sessionId };
+    } catch {
+      // Session expired or invalid — fall through to create new one
+      sessionCache.delete(cacheKey);
+    }
+  }
+
+  // Create new session
+  const title = `${channel}/${userId}`;
+  const sessionId = await createSession(opts, title);
+  const answer = await sendMessage(opts, sessionId, message);
+  sessionCache.set(cacheKey, { sessionId, lastUsed: Date.now() });
+  return { answer, sessionId };
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────
@@ -197,11 +237,9 @@ Bun.serve({
         return json(429, { error: ERROR_CODES.RATE_LIMITED, requestId: rid });
       }
 
-      const sessionId = crypto.randomUUID();
-      audit({ requestId: rid, sessionId, action: "inbound", status: "ok", channel: payload.channel, userId: payload.userId });
-
       try {
-        const answer = await askAssistant(payload.text, payload.userId, payload.channel);
+        const { answer, sessionId } = await askAssistant(payload.text, payload.userId, payload.channel);
+        audit({ requestId: rid, sessionId, action: "inbound", status: "ok", channel: payload.channel, userId: payload.userId });
         return json(200, { requestId: rid, sessionId, answer, userId: payload.userId });
       } catch (err) {
         audit({ requestId: rid, action: "forward", status: "error", error: String(err) });
