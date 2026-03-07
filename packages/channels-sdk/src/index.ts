@@ -27,3 +27,9 @@ export { signPayload, verifySignature } from "./crypto.ts";
 
 // ── Logger ───────────────────────────────────────────────────────────────
 export { createLogger, type LogLevel } from "./logger.ts";
+
+// ── Utilities ────────────────────────────────────────────────────────────
+export { constantTimeEqual, asRecord, extractChatText } from "./utils.ts";
+
+// ── Assistant client ─────────────────────────────────────────────────────
+export { askAssistant, type AssistantClientOptions } from "./assistant-client.ts";

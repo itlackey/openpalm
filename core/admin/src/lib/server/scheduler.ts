@@ -16,6 +16,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "./logger.js";
+import { askAssistant } from "@openpalm/channels-sdk/assistant-client";
 
 const logger = createLogger("scheduler");
 
@@ -330,83 +331,24 @@ function executeShellAction(action: AutomationAction): Promise<void> {
 
 /**
  * Execute an assistant action — creates an OpenCode session and sends the
- * prompt. Uses the same two-step pattern as the guardian: POST /session then
- * POST /session/:id/message.
- *
- * TODO: The HTTP client logic below (auth header, session create, session-ID
- * validation) duplicates the guardian's `askAssistant` implementation. Extract
- * a shared helper module and reuse it here and in the guardian to prevent drift.
+ * prompt. Uses the shared assistant client from @openpalm/channels-sdk.
  */
 async function executeAssistantAction(action: AutomationAction): Promise<void> {
   if (!action.content) {
     throw new Error("assistant action requires a non-empty 'content' field");
   }
 
-  const baseUrl = process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
-  const password = process.env.OPENCODE_SERVER_PASSWORD;
-  const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
-  const authHeader = password
-    ? `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
-    : undefined;
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (authHeader) headers["authorization"] = authHeader;
-
-  const timeout = action.timeout ?? 120_000;
-
-  // Step 1: Create a session
-  const createCtrl = new AbortController();
-  const createTimer = setTimeout(() => createCtrl.abort(), 10_000);
-  let sessionId: string;
-  try {
-    const resp = await fetch(`${baseUrl}/session`, {
-      method: "POST",
-      headers,
-      signal: createCtrl.signal,
-      body: JSON.stringify({ title: `automation/${action.agent ?? "default"}` })
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(`assistant POST /session ${resp.status}: ${body}`);
-    }
-    const session = (await resp.json()) as { id: string };
-    sessionId = session.id;
-    if (typeof sessionId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
-      throw new Error("Invalid session ID from assistant");
-    }
-  } finally {
-    clearTimeout(createTimer);
-  }
-
-  // Step 2: Send the prompt and wait for response
-  const msgCtrl = new AbortController();
-  const msgTimer = setTimeout(() => msgCtrl.abort(), timeout);
-  try {
-    const resp = await fetch(`${baseUrl}/session/${sessionId}/message`, {
-      method: "POST",
-      headers,
-      signal: msgCtrl.signal,
-      body: JSON.stringify({
-        parts: [{ type: "text", text: action.content }]
-      })
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(
-        `assistant POST /session/${sessionId}/message ${resp.status}: ${body}`
-      );
-    }
-    // Drain/cancel the response body so the underlying connection can be
-    // reused and resources are freed (fire-and-forget — we don't need the body).
-    try {
-      await resp.body?.cancel();
-    } catch {
-      // Ignore cancellation errors; they don't affect the automation outcome.
-    }
-    logger.info("assistant action completed", { sessionId });
-  } finally {
-    clearTimeout(msgTimer);
-  }
+  await askAssistant(
+    {
+      baseUrl: process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096",
+      username: process.env.OPENCODE_SERVER_USERNAME ?? "opencode",
+      password: process.env.OPENCODE_SERVER_PASSWORD,
+      messageTimeoutMs: action.timeout ?? 120_000,
+    },
+    `automation/${action.agent ?? "default"}`,
+    action.content,
+  );
+  logger.info("assistant action completed");
 }
 
 /** Dispatch to the correct action executor. */
