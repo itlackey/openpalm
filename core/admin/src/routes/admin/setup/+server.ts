@@ -189,8 +189,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "assignments object is required", {}, requestId);
   }
 
-  const llmAssignment = body.assignments.llm;
-  const embAssignment = body.assignments.embeddings;
+  const assignments = body.assignments as Record<string, unknown>;
+  const llmAssignment = assignments.llm;
+  const embAssignment = assignments.embeddings;
 
   if (typeof llmAssignment !== 'object' || llmAssignment === null) {
     return errorResponse(400, "bad_request", "assignments.llm is required", {}, requestId);
@@ -199,12 +200,14 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "assignments.embeddings is required", {}, requestId);
   }
 
-  const llmConnectionId = typeof llmAssignment.connectionId === 'string' ? llmAssignment.connectionId : '';
-  const llmModel = typeof llmAssignment.model === 'string' ? llmAssignment.model : '';
-  const llmSmallModel = typeof llmAssignment.smallModel === 'string' ? llmAssignment.smallModel : '';
-  const embConnectionId = typeof embAssignment.connectionId === 'string' ? embAssignment.connectionId : '';
-  const embModel = typeof embAssignment.model === 'string' ? embAssignment.model : '';
-  const embDims = typeof embAssignment.embeddingDims === 'number' ? embAssignment.embeddingDims : 0;
+  const llm = llmAssignment as Record<string, unknown>;
+  const emb = embAssignment as Record<string, unknown>;
+  const llmConnectionId = typeof llm.connectionId === 'string' ? llm.connectionId : '';
+  const llmModel = typeof llm.model === 'string' ? llm.model : '';
+  const llmSmallModel = typeof llm.smallModel === 'string' ? llm.smallModel : '';
+  const embConnectionId = typeof emb.connectionId === 'string' ? emb.connectionId : '';
+  const embModel = typeof emb.model === 'string' ? emb.model : '';
+  const embDims = typeof emb.embeddingDims === 'number' ? emb.embeddingDims : 0;
 
   if (!llmConnectionId || !llmModel) {
     return errorResponse(400, "bad_request", "assignments.llm requires connectionId and model", {}, requestId);
