@@ -8,6 +8,9 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renam
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { resolveDataHome } from "./paths.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger("core-assets");
 
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import coreComposeAsset from "$assets/docker-compose.yml?raw";
@@ -95,7 +98,7 @@ export function ensureMemoryDir(): string {
     } catch (error) {
       const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[core-assets] Failed to migrate ${legacyDir} to ${dir} (${code}): ${message}`);
+      logger.warn("failed to migrate legacy memory dir", { legacyDir, dir, code, message });
     }
   }
 

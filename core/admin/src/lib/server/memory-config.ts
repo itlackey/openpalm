@@ -40,8 +40,10 @@ export const EMBED_PROVIDERS = [
   "openai", "ollama", "huggingface", "lmstudio"
 ] as const;
 
-/** Static model list for Anthropic (no listing API available). */
+/** Static model list for Anthropic (no listing API available). Keep current with new releases. */
 const ANTHROPIC_MODELS = [
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
   "claude-opus-4-20250514",
   "claude-sonnet-4-20250514",
   "claude-haiku-4-5-20251001",

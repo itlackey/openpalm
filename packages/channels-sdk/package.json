@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/channels-sdk",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "type": "module",
   "license": "CC-BY-4.0",
   "repository": {
@@ -16,6 +16,8 @@
     "./channel-sdk": "./src/channel-sdk.ts",
     "./channel-entrypoint": "./src/channel-entrypoint.ts",
     "./crypto": "./src/crypto.ts",
-    "./logger": "./src/logger.ts"
+    "./logger": "./src/logger.ts",
+    "./utils": "./src/utils.ts",
+    "./assistant-client": "./src/assistant-client.ts"
   }
 }

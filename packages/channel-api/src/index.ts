@@ -12,7 +12,7 @@
  *   GET  /health                — Health check
  */
 
-import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";
+import { BaseChannel, type HandleResult, constantTimeEqual, asRecord, extractChatText } from "@openpalm/channels-sdk";
 
 // ── Error helpers ────────────────────────────────────────────────────────
 
@@ -22,45 +22,6 @@ function openAIError(message: string, type = "invalid_request_error") {
 
 function anthropicError(message: string, type = "invalid_request_error") {
   return { type: "error", error: { type, message } };
-}
-
-// ── Parsing helpers ──────────────────────────────────────────────────────
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-/** Constant-time string comparison (XOR loop, same pattern as channels-sdk crypto.ts). */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
-
-/**
- * Extracts the last user message text from an OpenAI or Anthropic messages array.
- * Supports both plain string content and content-block arrays.
- */
-function extractChatText(messages: unknown): string | null {
-  if (!Array.isArray(messages)) return null;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const record = asRecord(messages[i]);
-    if (!record || record.role !== "user") continue;
-    if (typeof record.content === "string" && record.content.trim()) return record.content;
-    if (Array.isArray(record.content)) {
-      const parts: string[] = [];
-      for (const part of record.content) {
-        const p = asRecord(part);
-        if (p?.type === "text" && typeof p.text === "string" && p.text.trim()) parts.push(p.text);
-      }
-      if (parts.length) return parts.join("\n");
-    }
-  }
-  return null;
 }
 
 // ── Channel ──────────────────────────────────────────────────────────────
@@ -83,7 +44,7 @@ export default class ApiChannel extends BaseChannel {
     const match = authHeader.trim().match(/^Bearer\s+(\S+)\s*$/i);
     const token = match?.[1] ?? "";
     if (!token) return false;
-    return safeEqual(token, this.apiKey);
+    return constantTimeEqual(token, this.apiKey);
   }
 
   /** Validate Anthropic-style x-api-key auth. Returns true if authorized. */
@@ -91,7 +52,7 @@ export default class ApiChannel extends BaseChannel {
     if (!this.apiKey) return true;
     const apiKey = req.headers.get("x-api-key")?.trim();
     if (!apiKey) return false;
-    return safeEqual(apiKey, this.apiKey);
+    return constantTimeEqual(apiKey, this.apiKey);
   }
 
   // ── Routing ──────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ const logger = createLogger("guardian");
 
 const PORT = Number(Bun.env.PORT ?? 8080);
 const ASSISTANT_URL = Bun.env.OPENPALM_ASSISTANT_URL ?? "http://assistant:4096";
-const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/app/data/audit.log";
+const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/app/audit/guardian-audit.log";
 const SECRETS_PATH = Bun.env.GUARDIAN_SECRETS_PATH;
 
 // ── Channel secrets ─────────────────────────────────────────────────────
@@ -44,11 +44,24 @@ function parseChannelSecrets(content: string): Record<string, string> {
   return secrets;
 }
 
+// Cache for file-based secrets to avoid reading on every request
+let secretsCache: { mtime: number; loadedAt: number; secrets: Record<string, string> } | null = null;
+const SECRETS_CACHE_TTL_MS = 5_000;
+
 async function loadChannelSecrets(): Promise<Record<string, string>> {
   if (SECRETS_PATH) {
     try {
-      const content = await Bun.file(SECRETS_PATH).text();
-      return parseChannelSecrets(content);
+      const file = Bun.file(SECRETS_PATH);
+      const mtime = file.lastModified;
+      if (secretsCache
+        && secretsCache.mtime === mtime
+        && Date.now() - secretsCache.loadedAt < SECRETS_CACHE_TTL_MS) {
+        return secretsCache.secrets;
+      }
+      const content = await file.text();
+      const secrets = parseChannelSecrets(content);
+      secretsCache = { mtime, loadedAt: Date.now(), secrets };
+      return secrets;
     } catch {
       logger.warn("secrets_file_unreadable", { path: SECRETS_PATH });
       return {};
@@ -126,77 +139,23 @@ function audit(event: Record<string, unknown>) {
 }
 
 // ── Assistant client ────────────────────────────────────────────────────
-// Uses the OpenCode Server API:
-//   1. POST /session        → create session → { id }
-//   2. POST /session/:id/message → send message → { info, parts }
+// Uses the shared assistant HTTP client from @openpalm/channels-sdk.
 
-const ASSISTANT_AUTH = Bun.env.OPENCODE_SERVER_PASSWORD
-  ? `Basic ${btoa(`${Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode"}:${Bun.env.OPENCODE_SERVER_PASSWORD}`)}`
-  : undefined;
+import { askAssistant as askAssistantShared } from "@openpalm/channels-sdk/assistant-client";
 
-// Longer timeout for message — LLM inference can be slow
 const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 120_000);
 
-function assistantHeaders(): Record<string, string> {
-  const h: Record<string, string> = { "content-type": "application/json" };
-  if (ASSISTANT_AUTH) h["authorization"] = ASSISTANT_AUTH;
-  return h;
-}
-
 async function askAssistant(message: string, userId: string, channel: string) {
-  // Step 1: Create a session
-  const createCtrl = new AbortController();
-  const createTimer = setTimeout(() => createCtrl.abort(), 10_000);
-  let ocSessionId: string;
-  try {
-    const resp = await fetch(`${ASSISTANT_URL}/session`, {
-      method: "POST",
-      headers: assistantHeaders(),
-      signal: createCtrl.signal,
-      body: JSON.stringify({ title: `${channel}/${userId}` }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(`assistant POST /session ${resp.status}: ${body}`);
-    }
-    const session = await resp.json() as { id: string };
-    ocSessionId = session.id;
-    if (!/^[a-zA-Z0-9_-]+$/.test(ocSessionId)) {
-      throw new Error("Invalid session ID from assistant");
-    }
-  } finally {
-    clearTimeout(createTimer);
-  }
-
-  // Step 2: Send the user message and wait for response
-  const msgCtrl = new AbortController();
-  const msgTimer = setTimeout(() => msgCtrl.abort(), MESSAGE_TIMEOUT);
-  try {
-    const resp = await fetch(`${ASSISTANT_URL}/session/${ocSessionId}/message`, {
-      method: "POST",
-      headers: assistantHeaders(),
-      signal: msgCtrl.signal,
-      body: JSON.stringify({
-        parts: [{ type: "text", text: message }],
-      }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(`assistant POST /session/${ocSessionId}/message ${resp.status}: ${body}`);
-    }
-    const data = await resp.json() as { info: unknown; parts: Array<{ type: string; text?: string; content?: string }> };
-
-    // Extract text from response parts
-    const texts: string[] = [];
-    for (const part of data.parts ?? []) {
-      if (part.type === "text" && part.text) {
-        texts.push(part.text);
-      }
-    }
-    return texts.join("\n") || "(no response)";
-  } finally {
-    clearTimeout(msgTimer);
-  }
+  return askAssistantShared(
+    {
+      baseUrl: ASSISTANT_URL,
+      username: Bun.env.OPENCODE_SERVER_USERNAME ?? "opencode",
+      password: Bun.env.OPENCODE_SERVER_PASSWORD,
+      messageTimeoutMs: MESSAGE_TIMEOUT,
+    },
+    `${channel}/${userId}`,
+    message,
+  );
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────

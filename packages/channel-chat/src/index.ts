@@ -9,32 +9,7 @@
  *   - GET  /health
  */
 
-import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function asRecord(v: unknown): Record<string, unknown> | null {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
-  return v as Record<string, unknown>;
-}
-
-function extractChatText(messages: unknown): string | null {
-  if (!Array.isArray(messages)) return null;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = asRecord(messages[i]);
-    if (!m || m.role !== "user") continue;
-    if (typeof m.content === "string" && m.content.trim()) return m.content;
-    if (Array.isArray(m.content)) {
-      const texts: string[] = [];
-      for (const p of m.content) {
-        const part = asRecord(p);
-        if (part?.type === "text" && typeof part.text === "string") texts.push(part.text);
-      }
-      if (texts.length) return texts.join("\n");
-    }
-  }
-  return null;
-}
+import { BaseChannel, type HandleResult, constantTimeEqual, extractChatText } from "@openpalm/channels-sdk";
 
 // ── Channel ──────────────────────────────────────────────────────────────
 
@@ -60,7 +35,18 @@ export default class ChatChannel extends BaseChannel {
 
     // Auth check for OpenAI-format endpoints
     if ((isChatCompletions || isCompletions) && this.apiKey) {
-      if (req.headers.get("authorization") !== `Bearer ${this.apiKey}`) {
+      const authHeader = req.headers.get("authorization") ?? "";
+      const match = authHeader.trim().match(/^Bearer\s+(\S+)\s*$/i);
+      const token = match?.[1] ?? "";
+      if (!token || !constantTimeEqual(token, this.apiKey)) {
+        return this.json(401, { error: { message: "Unauthorized" } });
+      }
+    }
+
+    // Auth check for Anthropic endpoint
+    if (isAnthropicMsg && this.apiKey) {
+      const xApiKey = req.headers.get("x-api-key")?.trim() ?? "";
+      if (!xApiKey || !constantTimeEqual(xApiKey, this.apiKey)) {
         return this.json(401, { error: { message: "Unauthorized" } });
       }
     }
