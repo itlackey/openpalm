@@ -30,8 +30,9 @@ interface MessageResponse {
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 function buildAuthHeader(username: string, password: string): string {
-  // Works in both Node 18+ (global btoa) and Bun
-  return `Basic ${btoa(`${username}:${password}`)}`;
+  const credentials = `${username}:${password}`;
+  const encoded = Buffer.from(credentials, "utf8").toString("base64");
+  return `Basic ${encoded}`;
 }
 
 /**

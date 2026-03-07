@@ -16,7 +16,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@openpalm/channels-sdk": "^0.7.3",
+    "@openpalm/channels-sdk": "^0.8.0",
     "croner": "^9.0.0",
     "yaml": "^2.8.0"
   },
