@@ -531,9 +531,9 @@
           <div class="form-grid">
 
             <div class="form-field">
-              <label for="conn-om-user-id" class="form-label">Memory User ID</label>
+              <label for="conn-memory-user-id" class="form-label">Memory User ID</label>
               <input
-                id="conn-om-user-id"
+                id="conn-memory-user-id"
                 type="text"
                 class="form-input"
                 bind:value={memoryUserId}

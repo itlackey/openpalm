@@ -98,7 +98,7 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push(`GOOGLE_API_KEY=${process.env.GOOGLE_API_KEY ?? ""}`);
   secretLines.push("");
   secretLines.push("# Memory");
-  secretLines.push(`MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? "default_user"}`);
+  secretLines.push(`MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
   secretLines.push("");
   secretLines.push("# Owner");
   secretLines.push(`OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);

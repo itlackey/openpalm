@@ -46,9 +46,8 @@ The front door. Receives all HTTP traffic on `:8080` and routes it:
 
 | Path | Destination | Default access |
 |------|-------------|----------------|
+| `/opencode/*` | Assistant UI (OpenCode) | LAN only |
 | `/admin/*` | Admin UI + API | LAN only |
-| `/admin/opencode/*` | Assistant UI | LAN only |
-| `/admin/memory/*` | Memory dashboard | LAN only |
 | `/guardian/*` | Guardian | Unrestricted (Guardian enforces its own auth) |
 | channel routes | Channel adapters | LAN only by default |
 

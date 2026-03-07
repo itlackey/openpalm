@@ -75,8 +75,8 @@ export function applyInstall(state: ControlPlaneState): void {
   for (const service of CORE_SERVICES) {
     state.services[service] = "running";
   }
-  ensureMemoryConfig(state.dataDir);
   ensureMemoryDir();
+  ensureMemoryConfig(state.dataDir);
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
 }
