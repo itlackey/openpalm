@@ -243,7 +243,6 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
 | `MEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
 | `OPENAI_API_KEY` | — | API key (resolved from `env:OPENAI_API_KEY` in config) |
 | `OPENAI_BASE_URL` | — | Custom base URL for OpenAI-compatible providers |
-| `MEMORY_OPENAI_API_KEY` | — | Override API key (takes precedence if set in config) |
 
 ---
 

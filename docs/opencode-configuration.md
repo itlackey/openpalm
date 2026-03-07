@@ -160,7 +160,7 @@ These call the Admin API at `$OPENPALM_ADMIN_API_URL` using
 
 ### Memory Tools
 
-These call the Memory MCP service at `$MEMORY_API_URL`.
+These call the Memory API service at `$MEMORY_API_URL`.
 
 | Tool | Purpose |
 |---|---|

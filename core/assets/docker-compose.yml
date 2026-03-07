@@ -40,7 +40,6 @@ services:
       MEMORY_DATA_DIR: /data
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      MEMORY_OPENAI_API_KEY: ${MEMORY_OPENAI_API_KEY:-}
     ports:
       - "${OPENPALM_MEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
