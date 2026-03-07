@@ -3,9 +3,9 @@ import type {
   ContainerListResponse,
   AutomationsResponse,
   ChannelsResponse,
-  OpenMemoryConfig,
-  OpenMemoryConfigResponse,
-  OpenMemoryConfigSaveResult,
+  MemoryConfig,
+  MemoryConfigResponse,
+  MemoryConfigSaveResult,
   SystemConnectionPayload,
   SystemConnectionSaveResult,
   RegistryResponse,
@@ -229,31 +229,31 @@ export async function fetchChannels(token: string): Promise<ChannelsResponse> {
   return (await res.json()) as ChannelsResponse;
 }
 
-export async function fetchOpenMemoryConfig(
+export async function fetchMemoryConfig(
   token: string
-): Promise<OpenMemoryConfigResponse> {
-  const res = await get('/admin/openmemory/config', token);
+): Promise<MemoryConfigResponse> {
+  const res = await get('/admin/memory/config', token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
     throw new Error(await res.text());
   }
-  return (await res.json()) as OpenMemoryConfigResponse;
+  return (await res.json()) as MemoryConfigResponse;
 }
 
-export async function saveOpenMemoryConfig(
+export async function saveMemoryConfig(
   token: string,
-  config: OpenMemoryConfig
-): Promise<OpenMemoryConfigSaveResult> {
-  const res = await post('/admin/openmemory/config', config, token);
+  config: MemoryConfig
+): Promise<MemoryConfigSaveResult> {
+  const res = await post('/admin/memory/config', config, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
     throw new Error(await res.text());
   }
-  return (await res.json()) as OpenMemoryConfigSaveResult;
+  return (await res.json()) as MemoryConfigSaveResult;
 }
 
 export async function fetchProviderModels(
@@ -263,7 +263,7 @@ export async function fetchProviderModels(
   baseUrl?: string
 ): Promise<{ models: string[]; status?: 'ok' | 'recoverable_error'; reason?: string; error?: string }> {
   const res = await post(
-    '/admin/openmemory/models',
+    '/admin/memory/models',
     { provider, apiKeyRef, baseUrl: baseUrl ?? '' },
     token
   );
@@ -307,7 +307,7 @@ export async function saveSystemConnection(
       },
     },
     apiKey: payload.apiKey,
-    openmemoryUserId: payload.openmemoryUserId,
+    memoryUserId: payload.memoryUserId,
     customInstructions: payload.customInstructions,
     capabilities: ['llm', 'embeddings'],
   };

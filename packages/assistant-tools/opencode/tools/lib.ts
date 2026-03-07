@@ -2,17 +2,17 @@ import { GLOBAL_USER_ID, STACK_USER_ID } from "../plugins/memory-lib.ts";
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
 const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || "";
-const OPENMEMORY_URL = process.env.OPENMEMORY_API_URL || "http://openmemory:8765";
-export const USER_ID = process.env.OPENMEMORY_USER_ID || "default_user";
+const MEMORY_URL = process.env.MEMORY_API_URL || "http://memory:8765";
+export const USER_ID = process.env.MEMORY_USER_ID || "default_user";
 export { GLOBAL_USER_ID, STACK_USER_ID };
 
 let userProvisionPromise: Promise<void> | null = null;
 
 type ProvisionResult = { ok: true } | { ok: false; error: string };
 
-async function provisionOpenMemoryUser(userId: string): Promise<ProvisionResult> {
+async function provisionMemoryUser(userId: string): Promise<ProvisionResult> {
   try {
-    const res = await fetch(`${OPENMEMORY_URL}/api/v1/users`, {
+    const res = await fetch(`${MEMORY_URL}/api/v1/users`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ user_id: userId }),
@@ -30,9 +30,9 @@ export async function ensureMemoryUserProvisioned(): Promise<void> {
   }
 
   userProvisionPromise = (async () => {
-    const result = await provisionOpenMemoryUser(USER_ID);
+    const result = await provisionMemoryUser(USER_ID);
     if (!result.ok) {
-      console.warn(`[assistant-tools] Unable to pre-provision OpenMemory user '${USER_ID}': ${result.error}`);
+      console.warn(`[assistant-tools] Unable to pre-provision memory user '${USER_ID}': ${result.error}`);
     }
   })();
 
@@ -62,7 +62,7 @@ export async function adminFetch(path: string, options?: RequestInit): Promise<s
 export async function memoryFetch(path: string, options?: RequestInit): Promise<string> {
   try {
     await ensureMemoryUserProvisioned();
-    const res = await fetch(`${OPENMEMORY_URL}${path}`, {
+    const res = await fetch(`${MEMORY_URL}${path}`, {
       ...options,
       headers: { "content-type": "application/json", ...options?.headers },
       signal: options?.signal ?? AbortSignal.timeout(30_000),

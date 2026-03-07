@@ -17,7 +17,7 @@ to organize host-side files into three tiers. Each tier has a clear owner
 | Tier | Env Variable | Default | Owner | Purpose |
 |------|-------------|---------|-------|---------|
 | **CONFIG_HOME** | `OPENPALM_CONFIG_HOME` | `~/.config/openpalm` | User | Secrets, channels, OpenCode extensions |
-| **DATA_HOME** | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin + Services | OpenMemory, assistant home, guardian, caddy data, stack.env |
+| **DATA_HOME** | `OPENPALM_DATA_HOME` | `~/.local/share/openpalm` | Admin + Services | Memory, assistant home, guardian, caddy data, stack.env |
 | **STATE_HOME** | `OPENPALM_STATE_HOME` | `~/.local/state/openpalm` | Admin | Assembled runtime, audit logs |
 
 **CONFIG_HOME is the user-owned persistent source of truth** and the primary touchpoint for user-managed config.
@@ -66,7 +66,7 @@ STATE_HOME (~/.local/state/openpalm/)
 
 DATA_HOME (~/.local/share/openpalm/)
 ├── stack.env                # Source of truth for host-detected infrastructure config
-├── openmemory/              # OpenMemory persistent data (SQLite + embedded Qdrant)
+├── memory/              # Memory persistent data (SQLite + embedded Qdrant)
 ├── assistant/               # System-managed OpenCode config (opencode.jsonc, AGENTS.md)
 ├── opencode/                # OpenCode data directory
 ├── guardian/                 # Guardian runtime data
@@ -103,12 +103,12 @@ into STATE_HOME/artifacts/channels before Caddy reload.
 The source-of-truth core Caddyfile is `DATA_HOME/caddy/Caddyfile` and is
 system-managed by admin logic.
 
-### OpenMemory
+### Memory
 
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
-| `$DATA_HOME/openmemory` | `/data` | rw | Memory service data |
-| `$DATA_HOME/openmemory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
+| `$DATA_HOME/memory` | `/data` | rw | Memory service data |
+| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
 
 ### Assistant (OpenCode Runtime)
 
@@ -164,7 +164,7 @@ See the Automations section below for file format and configuration.
 
 | Network | Services | Purpose |
 |---------|----------|---------|
-| `assistant_net` | caddy, openmemory, assistant, guardian, admin | Internal service mesh |
+| `assistant_net` | caddy, memory, assistant, guardian, admin | Internal service mesh |
 | `channel_lan` | caddy, guardian, channel services | LAN-restricted channel access |
 | `channel_public` | caddy, guardian, channel services | Publicly accessible channels |
 
@@ -192,7 +192,7 @@ system-managed and not intended for direct user editing:
 - **Docker Socket:** `OPENPALM_DOCKER_SOCK` (auto-detected, supports OrbStack/Colima)
 - **Images:** `OPENPALM_IMAGE_NAMESPACE`, `OPENPALM_IMAGE_TAG`
 - **Networking:** `OPENPALM_INGRESS_BIND_ADDRESS`, `OPENPALM_INGRESS_PORT`
-- **OpenMemory:** `OPENMEMORY_DASHBOARD_API_URL`, `OPENMEMORY_USER_ID`
+- **Memory:** `MEMORY_DASHBOARD_API_URL`, `MEMORY_USER_ID`
 - **Channel HMAC keys:** `CHANNEL_<NAME>_SECRET` (auto-generated per channel by admin)
 
 On each apply, the admin reads `DATA_HOME/stack.env`, merges in its dynamic

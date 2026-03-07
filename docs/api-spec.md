@@ -60,7 +60,7 @@ Response:
 ```json
 {
   "ok": true,
-  "started": ["caddy", "openmemory", "assistant", "guardian", "admin", "channel-chat"],
+  "started": ["caddy", "memory", "assistant", "guardian", "admin", "channel-chat"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" },
   "artifactsDir": "/home/user/.local/state/openpalm/artifacts"
@@ -135,7 +135,7 @@ Body:
 Rules:
 
 - Allowed core services:
-  `assistant`, `guardian`, `openmemory`, `admin`, `caddy`
+  `assistant`, `guardian`, `memory`, `admin`, `caddy`
 - Allowed channel services: `channel-*` only if a matching staged
   `STATE_HOME/artifacts/channels/<name>.yml` exists.
 
@@ -294,7 +294,7 @@ Response:
     "OPENAI_BASE_URL": "",
     "EMBEDDING_MODEL": "text-embedding-3-small",
     "EMBEDDING_DIMS": "1536",
-    "OPENMEMORY_USER_ID": "default_user"
+    "MEMORY_USER_ID": "default_user"
   }
 }
 ```
@@ -312,7 +312,7 @@ Allowed keys (`ALLOWED_CONNECTION_KEYS`):
 - `OPENAI_BASE_URL`
 - `EMBEDDING_MODEL`
 - `EMBEDDING_DIMS`
-- `OPENMEMORY_USER_ID`
+- `MEMORY_USER_ID`
 
 ### `POST /admin/connections`
 
@@ -341,7 +341,7 @@ Supports two payload shapes:
     }
   },
   "apiKey": "sk-...",
-  "openmemoryUserId": "default_user",
+  "memoryUserId": "default_user",
   "customInstructions": "",
   "capabilities": ["llm", "embeddings"]
 }
@@ -486,13 +486,13 @@ During setup (or with admin token), the same handlers are available at:
 These routes use setup-token compatible auth and preserve the same payload and
 error semantics as their `/admin/connections/*` counterparts.
 
-## OpenMemory Configuration
+## Memory Configuration
 
-Manage the OpenMemory (mem0) LLM and embedding provider configuration stored
-at `DATA_HOME/openmemory/default_config.json`. Changes are persisted to disk
-and pushed to the running OpenMemory container via its REST API (`PUT /api/v1/config/`).
+Manage the Memory (mem0) LLM and embedding provider configuration stored
+at `DATA_HOME/memory/default_config.json`. Changes are persisted to disk
+and pushed to the running Memory container via its REST API (`PUT /api/v1/config/`).
 
-### `GET /admin/openmemory/config`
+### `GET /admin/memory/config`
 
 Returns the persisted config, the live runtime config (if reachable), provider
 lists, and known embedding dimension mappings.
@@ -505,9 +505,9 @@ Response:
     "mem0": {
       "llm": { "provider": "openai", "config": { "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 2000, "api_key": "env:OPENAI_API_KEY" } },
       "embedder": { "provider": "openai", "config": { "model": "text-embedding-3-small", "api_key": "env:OPENAI_API_KEY" } },
-      "vector_store": { "provider": "qdrant", "config": { "collection_name": "openmemory", "path": "/data/qdrant", "embedding_model_dims": 1536 } }
+      "vector_store": { "provider": "qdrant", "config": { "collection_name": "memory", "path": "/data/qdrant", "embedding_model_dims": 1536 } }
     },
-    "openmemory": { "custom_instructions": "" }
+    "memory": { "custom_instructions": "" }
   },
   "runtimeConfig": null,
   "providers": {
@@ -521,11 +521,11 @@ Response:
 }
 ```
 
-### `POST /admin/openmemory/config`
+### `POST /admin/memory/config`
 
-Saves a full OpenMemory config to disk and pushes it to the running container.
+Saves a full Memory config to disk and pushes it to the running container.
 
-Body: A complete `OpenMemoryConfig` object (same shape as `config` in the GET response).
+Body: A complete `MemoryConfig` object (same shape as `config` in the GET response).
 
 Response:
 
@@ -537,7 +537,7 @@ Error responses:
 
 - `400 bad_request` — Missing or invalid `mem0` structure.
 
-### `POST /admin/openmemory/models`
+### `POST /admin/memory/models`
 
 Proxy endpoint for listing available models from a provider's API. Resolves
 `env:` API key references server-side before making the upstream request.
@@ -583,7 +583,7 @@ Error responses:
 
 ### Ollama Integration Notes
 
-When using Ollama as the LLM or embedding provider with OpenMemory:
+When using Ollama as the LLM or embedding provider with Memory:
 
 1. **Config key**: The Ollama provider expects `ollama_base_url` (not `base_url`)
    in the mem0 config. The admin UI handles this automatically.
@@ -658,7 +658,7 @@ Response:
   "configured": {
     "OPENAI_API_KEY": false,
     "OPENAI_BASE_URL": false,
-    "OPENMEMORY_USER_ID": false,
+    "MEMORY_USER_ID": false,
     "GROQ_API_KEY": false,
     "MISTRAL_API_KEY": false,
     "GOOGLE_API_KEY": false
@@ -683,22 +683,22 @@ Body:
   "systemModel": "gpt-4o-mini",
   "embeddingModel": "text-embedding-3-small",
   "embeddingDims": 1536,
-  "openmemoryUserId": "default_user"
+  "memoryUserId": "default_user"
 }
 ```
 
 All fields except `adminToken` are optional. The endpoint:
 1. Writes credentials to `CONFIG_HOME/secrets.env`
-2. Builds and writes OpenMemory config
+2. Builds and writes Memory config
 3. Runs `docker compose up` to start the stack
-4. Pushes config to OpenMemory and provisions the user (fire-and-forget)
+4. Pushes config to Memory and provisions the user (fire-and-forget)
 
 Response:
 
 ```json
 {
   "ok": true,
-  "started": ["caddy", "openmemory", "assistant", "guardian"],
+  "started": ["caddy", "memory", "assistant", "guardian"],
   "dockerAvailable": true,
   "composeResult": { "ok": true, "stderr": "" }
 }
@@ -707,7 +707,7 @@ Response:
 ### `POST /admin/setup/models`
 
 Proxy endpoint for listing available models during setup. Same behavior as
-`POST /admin/openmemory/models` but accepts the ephemeral setup token for
+`POST /admin/memory/models` but accepts the ephemeral setup token for
 first-run authentication.
 
 ## Local Provider Detection

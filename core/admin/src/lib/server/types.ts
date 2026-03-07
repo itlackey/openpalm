@@ -7,7 +7,7 @@
 export type CoreServiceName =
   | "assistant"
   | "guardian"
-  | "openmemory"
+  | "memory"
   | "admin"
   | "caddy";
 
@@ -131,7 +131,7 @@ export type ControlPlaneState = {
 
 export const CORE_SERVICES: CoreServiceName[] = [
   "caddy",
-  "openmemory",
+  "memory",
   "assistant",
   "guardian",
   "admin"

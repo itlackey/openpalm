@@ -22,7 +22,7 @@ describe("deploy-tracker", () => {
   it("initializes with pulling phase and all services pending", () => {
     initDeployStatus([
       { service: "caddy", label: "Caddy" },
-      { service: "openmemory", label: "OpenMemory" },
+      { service: "memory", label: "Memory" },
     ]);
 
     const status = getDeployStatus();
@@ -41,7 +41,7 @@ describe("deploy-tracker", () => {
   it("markImageReady sets imageReady for the named service", () => {
     initDeployStatus([
       { service: "caddy", label: "Caddy" },
-      { service: "openmemory", label: "OpenMemory" },
+      { service: "memory", label: "Memory" },
     ]);
 
     markImageReady("caddy");
@@ -68,7 +68,7 @@ describe("deploy-tracker", () => {
   it("markAllImagesReady sets all images ready and transitions to starting phase", () => {
     initDeployStatus([
       { service: "caddy", label: "Caddy" },
-      { service: "openmemory", label: "OpenMemory" },
+      { service: "memory", label: "Memory" },
     ]);
 
     markAllImagesReady();
@@ -83,10 +83,10 @@ describe("deploy-tracker", () => {
   it("markContainerRunning sets containerRunning for the named service", () => {
     initDeployStatus([
       { service: "caddy", label: "Caddy" },
-      { service: "openmemory", label: "OpenMemory" },
+      { service: "memory", label: "Memory" },
     ]);
 
-    markContainerRunning("openmemory");
+    markContainerRunning("memory");
 
     const status = getDeployStatus()!;
     expect(status.services[0].containerRunning).toBe(false);
@@ -96,7 +96,7 @@ describe("deploy-tracker", () => {
   it("markAllRunning sets all services as running and transitions to ready", () => {
     initDeployStatus([
       { service: "caddy", label: "Caddy" },
-      { service: "openmemory", label: "OpenMemory" },
+      { service: "memory", label: "Memory" },
     ]);
 
     markAllRunning();

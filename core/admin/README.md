@@ -34,7 +34,7 @@ src/
 │   │   ├── registry-sync.ts  # Remote registry sync
 │   │   ├── scheduler.ts      # Automations cron scheduler
 │   │   ├── setup-status.ts   # First-run setup state
-│   │   ├── openmemory-config.ts # OpenMemory provider/model config
+│   │   ├── memory-config.ts  # Memory provider/model config
 │   │   └── logger.ts         # Structured logger
 │   ├── components/           # Svelte UI components
 │   ├── auth.ts               # Auth utilities

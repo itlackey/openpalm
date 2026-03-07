@@ -36,7 +36,7 @@ done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# ── Init submodules (openmemory source for dev builds) ──────────
+# ── Init submodules (memory source for dev builds) ──────────────
 if [ -f "$ROOT_DIR/.gitmodules" ]; then
 	git -C "$ROOT_DIR" submodule update --init --depth 1
 fi
@@ -61,7 +61,7 @@ mkdir -p "$CONFIG_DIR" "$CHANNELS_DIR" "$DEV_ROOT/config/automations" \
 	"$STATE_DIR/artifacts" "$STATE_DIR/artifacts/channels/public" \
 	"$STATE_DIR/artifacts/channels/lan" \
 	"$STATE_DIR/audit" "$STATE_DIR/automations" "$STATE_DIR/opencode" \
-	"$DATA_DIR/openmemory" \
+	"$DATA_DIR/memory" \
 	"$DATA_DIR/assistant" "$DATA_DIR/assistant/.config/opencode" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
@@ -153,9 +153,9 @@ EOF
 
 fi
 
-# ── Seed OpenMemory default config ──────────────────────────────────────
-if [ ! -f "$DATA_DIR/openmemory/default_config.json" ]; then
-	cat > "$DATA_DIR/openmemory/default_config.json" << 'OMEOF'
+# ── Seed Memory default config ───────────────────────────────────────────
+if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
+	cat > "$DATA_DIR/memory/default_config.json" << 'OMEOF'
 {
   "mem0": {
     "llm": {
@@ -177,13 +177,13 @@ if [ ! -f "$DATA_DIR/openmemory/default_config.json" ]; then
     "vector_store": {
       "provider": "qdrant",
       "config": {
-        "collection_name": "openmemory",
+        "collection_name": "memory",
         "path": "/data/qdrant",
         "embedding_model_dims": 1536
       }
     }
   },
-  "openmemory": {
+  "memory": {
     "custom_instructions": ""
   }
 }

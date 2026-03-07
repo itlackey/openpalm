@@ -57,7 +57,7 @@
   let embeddingConnectionId = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
-  let openmemoryUserId = $state(initialDraft.openmemoryUserId);
+  let memoryUserId = $state(initialDraft.memoryUserId);
 
   // Cloud provider quick-picks
   const CLOUD_PROVIDERS = ['openai', 'groq', 'together', 'mistral', 'deepseek', 'xai', 'anthropic'] as const;
@@ -487,7 +487,7 @@
               embeddingDims,
             },
           },
-          openmemoryUserId,
+          memoryUserId,
           ollamaEnabled,
         })
       });
@@ -616,7 +616,7 @@
           <div class="field-group">
             <label for="owner-name">Your Name</label>
             <input id="owner-name" type="text" bind:value={ownerName} placeholder="Jane Doe" />
-            <p class="field-hint">Used as the default OpenMemory user ID.</p>
+            <p class="field-hint">Used as the default Memory user ID.</p>
           </div>
           <div class="field-group">
             <label for="owner-email">Email</label>
@@ -636,8 +636,8 @@
               if (!ownerName.trim()) { tokenError = 'Name is required.'; return; }
               if (!adminToken.trim()) { tokenError = 'Admin token is required.'; return; }
               tokenError = '';
-              if (!openmemoryUserId || openmemoryUserId === detectedUserId || openmemoryUserId === 'default_user') {
-                openmemoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
+              if (!memoryUserId || memoryUserId === detectedUserId || memoryUserId === 'default_user') {
+                memoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
               }
               startNewConnection();
             }}>Next</button>
@@ -856,8 +856,8 @@
           </div>
 
           <div class="field-group">
-            <label for="openmemory-user-id">OpenMemory User ID</label>
-            <input id="openmemory-user-id" type="text" bind:value={openmemoryUserId} placeholder="default_user" />
+            <label for="memory-user-id">Memory User ID</label>
+            <input id="memory-user-id" type="text" bind:value={memoryUserId} placeholder="default_user" />
             <p class="field-hint">Derived from your name. Edit if running multiple instances.</p>
           </div>
 
@@ -922,7 +922,7 @@
               <span class="review-value mono">{embeddingModel}{connections.length > 1 && embConnection ? ` (${embConnection.name})` : ''}</span>
             </div>
             <div class="review-item"><span class="review-label">Embedding Dimensions</span><span class="review-value mono">{embeddingDims}</span></div>
-            <div class="review-item"><span class="review-label">OpenMemory User ID</span><span class="review-value">{openmemoryUserId}</span></div>
+            <div class="review-item"><span class="review-label">Memory User ID</span><span class="review-value">{memoryUserId}</span></div>
           </div>
 
           {#if installError}<p class="install-error" role="alert">{installError}</p>{/if}

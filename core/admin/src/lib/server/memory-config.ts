@@ -1,9 +1,9 @@
 /**
- * OpenMemory LLM & Embedding configuration management.
+ * Memory LLM & Embedding configuration management.
  *
- * Manages DATA_HOME/openmemory/default_config.json — the mem0 config file
- * that controls which LLM/embedding provider OpenMemory uses. Also provides
- * runtime push/fetch via the OpenMemory REST API at /api/v1/config/.
+ * Manages DATA_HOME/memory/default_config.json — the mem0 config file
+ * that controls which LLM/embedding provider the memory service uses.
+ * Also provides runtime push/fetch via the Memory REST API at /api/v1/config/.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { loadSecretsEnvFile } from "./secrets.js";
@@ -18,7 +18,7 @@ export { LLM_PROVIDERS, EMBEDDING_DIMS, PROVIDER_DEFAULT_URLS };
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-export type OpenMemoryConfig = {
+export type MemoryConfig = {
   mem0: {
     llm: { provider: string; config: Record<string, unknown> };
     embedder: { provider: string; config: Record<string, unknown> };
@@ -31,7 +31,7 @@ export type OpenMemoryConfig = {
       };
     };
   };
-  openmemory: { custom_instructions: string };
+  memory: { custom_instructions: string };
 };
 
 // ── Constants (module-specific) ─────────────────────────────────────────
@@ -166,7 +166,7 @@ export async function fetchProviderModels(
 
 // ── Default Config ───────────────────────────────────────────────────────
 
-export function getDefaultConfig(): OpenMemoryConfig {
+export function getDefaultConfig(): MemoryConfig {
   return {
     mem0: {
       llm: {
@@ -188,61 +188,61 @@ export function getDefaultConfig(): OpenMemoryConfig {
       vector_store: {
         provider: "qdrant",
         config: {
-          collection_name: "openmemory",
+          collection_name: "memory",
           path: "/data/qdrant",
           embedding_model_dims: 1536,
         },
       },
     },
-    openmemory: { custom_instructions: "" },
+    memory: { custom_instructions: "" },
   };
 }
 
 // ── File I/O ─────────────────────────────────────────────────────────────
 
-const CONFIG_FILENAME = "openmemory/default_config.json";
+const CONFIG_FILENAME = "memory/default_config.json";
 
 function configPath(dataDir: string): string {
   return `${dataDir}/${CONFIG_FILENAME}`;
 }
 
-export function readOpenMemoryConfig(dataDir: string): OpenMemoryConfig {
+export function readMemoryConfig(dataDir: string): MemoryConfig {
   const path = configPath(dataDir);
   if (!existsSync(path)) return getDefaultConfig();
   try {
     const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw) as OpenMemoryConfig;
+    return JSON.parse(raw) as MemoryConfig;
   } catch {
     return getDefaultConfig();
   }
 }
 
-export function writeOpenMemoryConfig(
+export function writeMemoryConfig(
   dataDir: string,
-  config: OpenMemoryConfig
+  config: MemoryConfig
 ): void {
   const path = configPath(dataDir);
-  mkdirSync(`${dataDir}/openmemory`, { recursive: true });
+  mkdirSync(`${dataDir}/memory`, { recursive: true });
   writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
 }
 
-export function ensureOpenMemoryConfig(dataDir: string): void {
+export function ensureMemoryConfig(dataDir: string): void {
   const path = configPath(dataDir);
   if (existsSync(path)) return;
-  writeOpenMemoryConfig(dataDir, getDefaultConfig());
+  writeMemoryConfig(dataDir, getDefaultConfig());
 }
 
 // ── Config Resolution ────────────────────────────────────────────────
 
 /**
- * Resolve all `env:VAR` references in an OpenMemoryConfig to their actual
- * values. Used before pushing config to the OpenMemory REST API — the
+ * Resolve all `env:VAR` references in a MemoryConfig to their actual
+ * values. Used before pushing config to the Memory REST API — the
  * container receives real API keys, not env references it cannot resolve.
  */
 export function resolveConfigForPush(
-  config: OpenMemoryConfig,
+  config: MemoryConfig,
   configDir: string
-): OpenMemoryConfig {
+): MemoryConfig {
   const resolved = structuredClone(config);
 
   // Resolve LLM api_key
@@ -274,31 +274,31 @@ export type QdrantDimensionResult = {
 
 /**
  * Compare the persisted config's embedding dimensions against a new config.
- * Since Qdrant runs in embedded mode inside the OpenMemory container,
+ * Since Qdrant runs in embedded mode inside the memory container,
  * we can't query its HTTP API directly. Instead we compare the persisted
  * config (which reflects the collection's actual dimensions) against the
  * incoming config to detect mismatches.
  */
 export function checkQdrantDimensions(
   dataDir: string,
-  newConfig: OpenMemoryConfig
+  newConfig: MemoryConfig
 ): QdrantDimensionResult {
   const expectedDims = newConfig.mem0.vector_store.config.embedding_model_dims;
-  const persisted = readOpenMemoryConfig(dataDir);
+  const persisted = readMemoryConfig(dataDir);
   const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
   return { match: currentDims === expectedDims, currentDims, expectedDims };
 }
 
 /**
- * Delete the embedded Qdrant data directory so OpenMemory recreates the
- * collection with correct dimensions on next startup.
+ * Delete the embedded Qdrant data directory so the memory service recreates
+ * the collection with correct dimensions on next startup.
  *
- * The OpenMemory container must be restarted after this operation.
+ * The memory container must be restarted after this operation.
  */
 export function resetQdrantCollection(
   dataDir: string
 ): { ok: boolean; error?: string } {
-  const qdrantPath = `${dataDir}/openmemory/qdrant`;
+  const qdrantPath = `${dataDir}/memory/qdrant`;
   try {
     if (existsSync(qdrantPath)) {
       rmSync(qdrantPath, { recursive: true, force: true });
@@ -311,13 +311,13 @@ export function resetQdrantCollection(
 
 // ── Runtime API ──────────────────────────────────────────────────────────
 
-const OPENMEMORY_API_BASE = "http://openmemory:8765";
+const MEMORY_API_BASE = "http://memory:8765";
 
-export async function pushConfigToOpenMemory(
-  config: OpenMemoryConfig
+export async function pushConfigToMemory(
+  config: MemoryConfig
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${OPENMEMORY_API_BASE}/api/v1/config/`, {
+    const res = await fetch(`${MEMORY_API_BASE}/api/v1/config/`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(config),
@@ -332,26 +332,26 @@ export async function pushConfigToOpenMemory(
   }
 }
 
-export async function fetchConfigFromOpenMemory(): Promise<OpenMemoryConfig | null> {
+export async function fetchConfigFromMemory(): Promise<MemoryConfig | null> {
   try {
-    const res = await fetch(`${OPENMEMORY_API_BASE}/api/v1/config/`);
+    const res = await fetch(`${MEMORY_API_BASE}/api/v1/config/`);
     if (!res.ok) return null;
-    return (await res.json()) as OpenMemoryConfig;
+    return (await res.json()) as MemoryConfig;
   } catch {
     return null;
   }
 }
 
 /**
- * Provision a user in OpenMemory via simple REST call.
+ * Provision a user in the memory service via simple REST call.
  * The lightweight memory API accepts this as a no-op (mem0 SDK doesn't need
  * explicit user provisioning). This is fire-and-forget; failure is non-fatal.
  */
-export async function provisionOpenMemoryUser(
+export async function provisionMemoryUser(
   userId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${OPENMEMORY_API_BASE}/api/v1/users`, {
+    const res = await fetch(`${MEMORY_API_BASE}/api/v1/users`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ user_id: userId }),

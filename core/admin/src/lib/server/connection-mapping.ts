@@ -1,5 +1,5 @@
 import { mem0BaseUrlConfig, mem0ProviderName } from '../provider-constants.js';
-import type { OpenMemoryConfig } from './openmemory-config.js';
+import type { MemoryConfig } from './memory-config.js';
 
 export type OpenCodeConnectionMappingInput = {
   provider: string;
@@ -33,7 +33,7 @@ export type Mem0ConnectionMappingInput = {
   customInstructions: string;
 };
 
-export type Mem0ConnectionMapping = OpenMemoryConfig;
+export type Mem0ConnectionMapping = MemoryConfig;
 
 export function buildOpenCodeMapping(input: OpenCodeConnectionMappingInput): OpenCodeConnectionMapping {
   const normalizedBaseUrl = input.baseUrl.trim();
@@ -81,13 +81,13 @@ export function buildMem0Mapping(input: Mem0ConnectionMappingInput): Mem0Connect
       vector_store: {
         provider: 'qdrant',
         config: {
-          collection_name: 'openmemory',
+          collection_name: 'memory',
           path: '/data/qdrant',
           embedding_model_dims: input.embeddingDims,
         },
       },
     },
-    openmemory: {
+    memory: {
       custom_instructions: input.customInstructions,
     },
   };

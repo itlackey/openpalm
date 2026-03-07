@@ -2,7 +2,7 @@
   import { getAdminToken } from '$lib/auth.js';
   import {
     fetchConnections,
-    fetchOpenMemoryConfig,
+    fetchMemoryConfig,
     fetchProviderModels,
     saveSystemConnection
   } from '$lib/api.js';
@@ -31,7 +31,7 @@
   let systemModel = $state('');
   let embeddingModel = $state('');
   let embeddingDims = $state(1536);
-  let openmemoryUserId = $state('default_user');
+  let memoryUserId = $state('default_user');
   let customInstructions = $state('');
 
   // ── Model List State ──────────────────────────────────────────────
@@ -87,14 +87,14 @@
       if (conns.SYSTEM_LLM_MODEL) systemModel = conns.SYSTEM_LLM_MODEL;
       if (conns.EMBEDDING_MODEL) embeddingModel = conns.EMBEDDING_MODEL;
       if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
-      if (conns.OPENMEMORY_USER_ID) openmemoryUserId = conns.OPENMEMORY_USER_ID;
+      if (conns.MEMORY_USER_ID) memoryUserId = conns.MEMORY_USER_ID;
 
-      // Load custom instructions from OpenMemory config
+      // Load custom instructions from memory config
       try {
-        const omData = await fetchOpenMemoryConfig(token);
-        customInstructions = omData.config.openmemory.custom_instructions ?? '';
+        const omData = await fetchMemoryConfig(token);
+        customInstructions = omData.config.memory.custom_instructions ?? '';
       } catch {
-        // OpenMemory config may not exist yet
+        // Memory config may not exist yet
       }
 
       loaded = true;
@@ -194,7 +194,7 @@
         systemModel,
         embeddingModel,
         embeddingDims,
-        openmemoryUserId,
+        memoryUserId,
         customInstructions,
       });
 
@@ -203,7 +203,7 @@
         apiKey = '';  // Clear secret after save
 
         if (!result.pushed && result.pushError) {
-          saveError = 'Config saved. Restart OpenMemory to apply changes.';
+          saveError = 'Config saved. Restart memory service to apply changes.';
         }
         if (result.dimensionMismatch) {
           dimensionMismatch = true;
@@ -231,7 +231,7 @@
 
     resetting = true;
     try {
-      const res = await fetch('/admin/openmemory/reset-collection', {
+      const res = await fetch('/admin/memory/reset-collection', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -268,7 +268,7 @@
     <div class="tab-header-text">
       <h2>Connections</h2>
       <p class="tab-subtitle">
-        Configure the system LLM connection used by the Guardian and OpenMemory.
+        Configure the system LLM connection used by the Guardian and Memory.
       </p>
     </div>
     <button
@@ -358,7 +358,7 @@
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
-        <span>Memory collection reset. Restart OpenMemory to recreate it with the new dimensions.</span>
+        <span>Memory collection reset. Restart Memory to recreate it with the new dimensions.</span>
         <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => resetSuccess = false}>
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -373,7 +373,7 @@
         <div class="panel-header">
           <h3>System LLM Connection</h3>
           <p class="section-desc">
-            One connection shared by the Guardian (message routing) and OpenMemory (memory + embeddings).
+            One connection shared by the Guardian (message routing) and Memory (memory + embeddings).
           </p>
         </div>
         <div class="panel-body">
@@ -522,21 +522,21 @@
         </div>
       </section>
 
-      <!-- ── Section 2: OpenMemory Settings ────────────────────────── -->
+      <!-- ── Section 2: Memory Settings ────────────────────────── -->
       <section class="panel connections-section">
         <div class="panel-header">
-          <h3>OpenMemory Settings</h3>
+          <h3>Memory Settings</h3>
         </div>
         <div class="panel-body">
           <div class="form-grid">
 
             <div class="form-field">
-              <label for="conn-om-user-id" class="form-label">OpenMemory User ID</label>
+              <label for="conn-memory-user-id" class="form-label">Memory User ID</label>
               <input
-                id="conn-om-user-id"
+                id="conn-memory-user-id"
                 type="text"
                 class="form-input"
-                bind:value={openmemoryUserId}
+                bind:value={memoryUserId}
                 placeholder="default_user"
                 autocomplete="off"
               />

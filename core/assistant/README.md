@@ -6,7 +6,7 @@ Containerized [OpenCode](https://opencode.ai) instance that is the AI brain of O
 
 - Process messages forwarded by the guardian
 - Call Admin API endpoints to inspect and manage the stack
-- Maintain persistent memory via OpenMemory (embedded Qdrant + SQLite)
+- Maintain persistent memory via the memory service (embedded Qdrant + SQLite)
 - Execute user-defined skills, tools, and plugins
 
 ## Isolation model

@@ -4,7 +4,7 @@
  * Manages DATA_HOME source-of-truth files: Caddyfile and docker-compose.yml.
  * Owns the $assets Vite imports and access scope detection/mutation.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { resolveDataHome } from "./paths.js";
@@ -79,11 +79,26 @@ export function setCoreCaddyAccessScope(scope: "host" | "lan"): { ok: true } | {
   return { ok: true };
 }
 
-// ── OpenMemory data directory (DATA_HOME) ───────────────────────────────
-// Ensure the openmemory data directory exists. Returns the directory path.
+// ── Memory data directory (DATA_HOME) ────────────────────────────────────
+// Ensure the memory data directory exists. Returns the directory path.
+// Migrates legacy DATA_HOME/openmemory/ to DATA_HOME/memory/ on first run.
 
-export function ensureOpenMemoryDir(): string {
-  const dir = `${resolveDataHome()}/openmemory`;
+export function ensureMemoryDir(): string {
+  const dataHome = resolveDataHome();
+  const dir = `${dataHome}/memory`;
+  const legacyDir = `${dataHome}/openmemory`;
+
+  // Migrate legacy directory if it exists and new one doesn't
+  if (!existsSync(dir) && existsSync(legacyDir)) {
+    try {
+      renameSync(legacyDir, dir);
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[core-assets] Failed to migrate ${legacyDir} to ${dir} (${code}): ${message}`);
+    }
+  }
+
   mkdirSync(dir, { recursive: true });
   return dir;
 }

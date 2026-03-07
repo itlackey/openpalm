@@ -1,5 +1,5 @@
 /**
- * POST /admin/openmemory/models — Proxy endpoint for listing provider models.
+ * POST /admin/memory/models — Proxy endpoint for listing provider models.
  *
  * Resolves API key references server-side and fetches available models
  * from the configured provider's API. Returns { models: string[], error?: string }.
@@ -48,7 +48,7 @@ export const POST: RequestHandler = async (event) => {
   const result = await fetchProviderModels(provider, apiKeyRef ?? "", baseUrl, state.configDir);
 
   appendAudit(
-    state, actor, "openmemory.models.list",
+    state, actor, "memory.models.list",
     { provider, modelCount: result.models.length, error: result.error },
     !result.error, requestId, callerType
   );

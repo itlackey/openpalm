@@ -21,8 +21,8 @@ app = FastAPI(title="OpenPalm Memory API")
 # Config
 # ---------------------------------------------------------------------------
 
-CONFIG_PATH = os.environ.get("OPENMEMORY_CONFIG_PATH", "/app/default_config.json")
-DATA_DIR = os.environ.get("OPENMEMORY_DATA_DIR", "/data")
+CONFIG_PATH = os.environ.get("MEMORY_CONFIG_PATH", "/app/default_config.json")
+DATA_DIR = os.environ.get("MEMORY_DATA_DIR", "/data")
 
 _memory: Memory | None = None
 _memory_lock = asyncio.Lock()

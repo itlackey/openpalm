@@ -10,13 +10,13 @@ var __export = (target, all) => {
 };
 
 // opencode/plugins/memory-lib.ts
-var OPENMEMORY_URL = process.env.OPENMEMORY_API_URL || "http://openmemory:8765";
-var USER_ID = process.env.OPENMEMORY_USER_ID || "default_user";
+var MEMORY_URL = process.env.MEMORY_API_URL || "http://memory:8765";
+var USER_ID = process.env.MEMORY_USER_ID || "default_user";
 var APP_NAME = "openpalm-assistant";
 async function pluginMemoryFetch(path, options) {
   try {
     const { timeoutMs, ...rest } = options ?? {};
-    const res = await fetch(`${OPENMEMORY_URL}${path}`, {
+    const res = await fetch(`${MEMORY_URL}${path}`, {
       ...rest,
       headers: { "content-type": "application/json", ...rest?.headers },
       signal: rest?.signal ?? AbortSignal.timeout(timeoutMs ?? 5000)
@@ -239,7 +239,7 @@ var MemoryContextPlugin = async (ctx) => {
       if (project !== "unknown") {
         projectMems = await searchMemories(`${project} project specific context`, { size: 5 });
       }
-      const lines = ["## OpenMemory — Session Context"];
+      const lines = ["## Memory — Session Context"];
       if (stats) {
         lines.push(`Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`);
       }
@@ -266,7 +266,7 @@ var MemoryContextPlugin = async (ctx) => {
         lines.push("");
       }
       lines.push("### Memory Instructions");
-      lines.push("You have access to OpenMemory tools. Use `memory-search` to find additional context. " + "Important learnings from this session will be automatically extracted and stored. " + "Use `memory-add` explicitly for anything the auto-extraction might miss.");
+      lines.push("You have access to Memory tools. Use `memory-search` to find additional context. " + "Important learnings from this session will be automatically extracted and stored. " + "Use `memory-add` explicitly for anything the auto-extraction might miss.");
       if (output?.context) {
         output.context.push(lines.join(`
 `));
@@ -381,7 +381,7 @@ var MemoryContextPlugin = async (ctx) => {
           timeoutMs: 1500
         })
       ]);
-      const lines = ["## OpenMemory Context (Compaction)"];
+      const lines = ["## Memory Context (Compaction)"];
       if (stats) {
         lines.push(`Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`);
       }
@@ -404,7 +404,7 @@ var MemoryContextPlugin = async (ctx) => {
       }
       lines.push("");
       lines.push("### Memory Instructions");
-      lines.push("You have access to OpenMemory tools. Use `memory-search` to find relevant context. " + "Important learnings are automatically extracted. Use `memory-add` for anything the auto-extraction might miss. " + "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).");
+      lines.push("You have access to Memory tools. Use `memory-search` to find relevant context. " + "Important learnings are automatically extracted. Use `memory-add` for anything the auto-extraction might miss. " + "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).");
       if (!output)
         return;
       if (!output.context) {
@@ -414,8 +414,8 @@ var MemoryContextPlugin = async (ctx) => {
 `));
     },
     "shell.env": async (_input, output) => {
-      output.env.OPENMEMORY_API_URL = OPENMEMORY_URL;
-      output.env.OPENMEMORY_USER_ID = USER_ID;
+      output.env.MEMORY_API_URL = MEMORY_URL;
+      output.env.MEMORY_USER_ID = USER_ID;
     }
   };
 };
@@ -12742,14 +12742,14 @@ function tool(input) {
 tool.schema = exports_external;
 // opencode/tools/health-check.ts
 var health_check_default = tool({
-  description: "Check health of core OpenPalm services. Specify comma-separated service names: guardian, openmemory, admin. Defaults to all.",
+  description: "Check health of core OpenPalm services. Specify comma-separated service names: guardian, memory, admin. Defaults to all.",
   args: {
-    services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, openmemory, admin). Defaults to all.")
+    services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, memory, admin). Defaults to all.")
   },
   async execute(args) {
-    const ALL = ["guardian", "openmemory", "admin"];
+    const ALL = ["guardian", "memory", "admin"];
     const targets = args.services ? args.services.split(",").map((s) => s.trim()).filter(Boolean) : ALL;
-    const portMap = { guardian: 8080, openmemory: 8765, admin: 8100 };
+    const portMap = { guardian: 8080, memory: 8765, admin: 8100 };
     const results = {};
     await Promise.all(targets.map(async (svc) => {
       const port = portMap[svc];
@@ -12772,12 +12772,12 @@ var health_check_default = tool({
 // opencode/tools/lib.ts
 var ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
 var ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || "";
-var OPENMEMORY_URL2 = process.env.OPENMEMORY_API_URL || "http://openmemory:8765";
-var USER_ID2 = process.env.OPENMEMORY_USER_ID || "default_user";
+var MEMORY_URL2 = process.env.MEMORY_API_URL || "http://memory:8765";
+var USER_ID2 = process.env.MEMORY_USER_ID || "default_user";
 var userProvisionPromise = null;
-async function provisionOpenMemoryUser(userId) {
+async function provisionMemoryUser(userId) {
   try {
-    const res = await fetch(`${OPENMEMORY_URL2}/api/v1/users`, {
+    const res = await fetch(`${MEMORY_URL2}/api/v1/users`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ user_id: userId }),
@@ -12793,9 +12793,9 @@ async function ensureMemoryUserProvisioned() {
     return userProvisionPromise;
   }
   userProvisionPromise = (async () => {
-    const result = await provisionOpenMemoryUser(USER_ID2);
+    const result = await provisionMemoryUser(USER_ID2);
     if (!result.ok) {
-      console.warn(`[assistant-tools] Unable to pre-provision OpenMemory user '${USER_ID2}': ${result.error}`);
+      console.warn(`[assistant-tools] Unable to pre-provision Memory user '${USER_ID2}': ${result.error}`);
     }
   })();
   await userProvisionPromise;
@@ -12823,7 +12823,7 @@ async function adminFetch(path, options) {
 async function memoryFetch(path, options) {
   try {
     await ensureMemoryUserProvisioned();
-    const res = await fetch(`${OPENMEMORY_URL2}${path}`, {
+    const res = await fetch(`${MEMORY_URL2}${path}`, {
       ...options,
       headers: { "content-type": "application/json", ...options?.headers },
       signal: options?.signal ?? AbortSignal.timeout(30000)
@@ -12851,7 +12851,7 @@ var admin_audit_default = tool({
 
 // opencode/tools/memory-search.ts
 var memory_search_default = tool({
-  description: "Semantically search memories stored in OpenMemory. Use this EVERY TIME a user asks a question, starts a new task, or when you need context about the user's preferences, past decisions, project details, or prior conversations. Returns the most relevant memories ranked by similarity score.",
+  description: "Semantically search memories stored in Memory. Use this EVERY TIME a user asks a question, starts a new task, or when you need context about the user's preferences, past decisions, project details, or prior conversations. Returns the most relevant memories ranked by similarity score.",
   args: {
     query: tool.schema.string().describe("The search query — describe what you're looking for in natural language")
   },
@@ -12866,7 +12866,7 @@ var memory_search_default = tool({
 // opencode/tools/memory-add.ts
 var APP_NAME2 = "openpalm-assistant";
 var memory_add_default = tool({
-  description: "Store a new memory in OpenMemory. Call this when the user shares preferences, makes decisions, provides project context, states facts about themselves or their environment, or when you learn something important that should persist across sessions. The memory system will automatically extract and deduplicate facts. Write memories as clear, standalone statements.",
+  description: "Store a new memory in Memory. Call this when the user shares preferences, makes decisions, provides project context, states facts about themselves or their environment, or when you learn something important that should persist across sessions. The memory system will automatically extract and deduplicate facts. Write memories as clear, standalone statements.",
   args: {
     text: tool.schema.string().describe("The memory content to store. Write as a clear, self-contained statement. Examples: 'User prefers TypeScript over JavaScript', 'Project uses PostgreSQL 18 with Qdrant vector store', 'Deploy target is Docker Compose on Ubuntu 24.04'"),
     metadata: tool.schema.string().optional().describe(`Optional JSON object of key-value metadata. Supports 'category' ('semantic' for facts/preferences, 'episodic' for events/outcomes, 'procedural' for workflows/patterns), 'source', 'project', etc. Example: '{"category":"semantic","project":"openpalm"}'`)
@@ -12946,7 +12946,7 @@ var memory_get_default = tool({
 
 // opencode/tools/memory-list.ts
 var memory_list_default = tool({
-  description: "List all memories stored in OpenMemory with filtering and pagination. Use this to browse the full memory store, filter by app or category, or review what has been remembered.",
+  description: "List all memories stored in Memory with filtering and pagination. Use this to browse the full memory store, filter by app or category, or review what has been remembered.",
   args: {
     page: tool.schema.number().optional().describe("Page number (default: 1)"),
     size: tool.schema.number().optional().describe("Results per page (default: 20, max: 100)"),
@@ -12998,7 +12998,7 @@ var set_access_scope = tool({
 });
 
 // opencode/tools/admin-containers.ts
-var VALID_SERVICES = "caddy, openmemory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
+var VALID_SERVICES = "caddy, memory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
 var list = tool({
   description: "List all OpenPalm containers and their current status (running/stopped/healthy)",
   async execute() {
@@ -13073,7 +13073,7 @@ var get2 = tool({
   }
 });
 var set2 = tool({
-  description: "Update one or more LLM provider connection keys in secrets.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, SYSTEM_LLM_PROVIDER, SYSTEM_LLM_BASE_URL, SYSTEM_LLM_MODEL, OPENAI_BASE_URL, EMBEDDING_MODEL, EMBEDDING_DIMS, OPENMEMORY_USER_ID. Never log or echo the actual key values.",
+  description: "Update one or more LLM provider connection keys in secrets.env. Only allowed keys are accepted: OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GOOGLE_API_KEY, SYSTEM_LLM_PROVIDER, SYSTEM_LLM_BASE_URL, SYSTEM_LLM_MODEL, OPENAI_BASE_URL, EMBEDDING_MODEL, EMBEDDING_DIMS, MEMORY_USER_ID. Never log or echo the actual key values.",
   args: {
     patches: tool.schema.string().describe(`JSON object of key-value pairs to update, e.g. '{"OPENAI_API_KEY":"sk-...","SYSTEM_LLM_PROVIDER":"anthropic"}'`)
   },
@@ -13175,7 +13175,7 @@ var list4 = tool({
 
 // opencode/tools/memory-apps.ts
 var list5 = tool({
-  description: "List all apps (memory sources/clients) registered in OpenMemory with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
+  description: "List all apps (memory sources/clients) registered in Memory with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
   async execute() {
     return memoryFetch("/api/v1/apps/?page=1&page_size=50");
   }

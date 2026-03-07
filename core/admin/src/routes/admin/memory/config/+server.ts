@@ -1,6 +1,6 @@
 /**
- * GET  /admin/openmemory/config — Return persisted + runtime OpenMemory config.
- * POST /admin/openmemory/config — Save config to file and push to runtime API.
+ * GET  /admin/memory/config — Return persisted + runtime memory config.
+ * POST /admin/memory/config — Save config to file and push to runtime API.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -15,16 +15,16 @@ import {
 } from "$lib/server/helpers.js";
 import {
   appendAudit,
-  readOpenMemoryConfig,
-  writeOpenMemoryConfig,
-  pushConfigToOpenMemory,
-  fetchConfigFromOpenMemory,
+  readMemoryConfig,
+  writeMemoryConfig,
+  pushConfigToMemory,
+  fetchConfigFromMemory,
   resolveConfigForPush,
   checkQdrantDimensions,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
-  type OpenMemoryConfig
+  type MemoryConfig
 } from "$lib/server/control-plane.js";
 
 export const GET: RequestHandler = async (event) => {
@@ -36,10 +36,10 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const config = readOpenMemoryConfig(state.dataDir);
-  const runtimeConfig = await fetchConfigFromOpenMemory();
+  const config = readMemoryConfig(state.dataDir);
+  const runtimeConfig = await fetchConfigFromMemory();
 
-  appendAudit(state, actor, "openmemory.config.get", {}, true, requestId, callerType);
+  appendAudit(state, actor, "memory.config.get", {}, true, requestId, callerType);
 
   return jsonResponse(200, {
     config,
@@ -62,10 +62,10 @@ export const POST: RequestHandler = async (event) => {
   if (!body) {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
   }
-  const config = body as unknown as OpenMemoryConfig;
+  const config = body as unknown as MemoryConfig;
 
   if (!config?.mem0?.llm || !config?.mem0?.embedder || !config?.mem0?.vector_store) {
-    return errorResponse(400, "bad_request", "Invalid OpenMemory config structure", {}, requestId);
+    return errorResponse(400, "bad_request", "Invalid memory config structure", {}, requestId);
   }
 
   // Check embedding dimension mismatch BEFORE writing (compare new vs previously-persisted)
@@ -76,10 +76,10 @@ export const POST: RequestHandler = async (event) => {
     : undefined;
 
   try {
-    writeOpenMemoryConfig(state.dataDir, config);
+    writeMemoryConfig(state.dataDir, config);
   } catch (err) {
     appendAudit(
-      state, actor, "openmemory.config.set",
+      state, actor, "memory.config.set",
       { error: String(err) }, false, requestId, callerType
     );
     return errorResponse(500, "internal_error", "Failed to write config file", {}, requestId);
@@ -87,10 +87,10 @@ export const POST: RequestHandler = async (event) => {
 
   // Resolve env: references before pushing to container
   const resolved = resolveConfigForPush(config, state.configDir);
-  const pushResult = await pushConfigToOpenMemory(resolved);
+  const pushResult = await pushConfigToMemory(resolved);
 
   appendAudit(
-    state, actor, "openmemory.config.set",
+    state, actor, "memory.config.set",
     { pushed: pushResult.ok, dimensionMismatch }, true, requestId, callerType
   );
 

@@ -46,9 +46,8 @@ The front door. Receives all HTTP traffic on `:8080` and routes it:
 
 | Path | Destination | Default access |
 |------|-------------|----------------|
+| `/opencode/*` | Assistant UI (OpenCode) | LAN only |
 | `/admin/*` | Admin UI + API | LAN only |
-| `/admin/opencode/*` | Assistant UI | LAN only |
-| `/admin/openmemory/*` | Memory dashboard | LAN only |
 | `/guardian/*` | Guardian | Unrestricted (Guardian enforces its own auth) |
 | channel routes | Channel adapters | LAN only by default |
 
@@ -109,7 +108,7 @@ The runtime image for registry-backed adapters is the unified
 `channel`, built from `core/channel/Dockerfile`.
 
 ### Supporting services
-- **OpenMemory** — lightweight FastAPI wrapper around the mem0 Python SDK with
+- **Memory** — lightweight FastAPI wrapper around the mem0 Python SDK with
   embedded Qdrant (file-based) vector storage; gives the assistant persistent
   memory across conversations
 

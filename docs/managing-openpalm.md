@@ -355,9 +355,9 @@ docker compose restart admin   # triggers apply
 |---|---|
 | `http://localhost:8100/admin` | Admin UI (direct) |
 | `http://localhost:8080/admin` | Admin UI via Caddy |
-| `http://localhost:8080/admin/opencode` | OpenCode assistant UI |
-| `http://localhost:8765` | OpenMemory API (direct) |
-| `http://localhost:8765/docs` | OpenMemory API docs (Swagger UI) |
+| `http://localhost:8080/opencode` | OpenCode assistant UI |
+| `http://localhost:8765` | Memory API (direct) |
+| `http://localhost:8765/docs` | Memory API docs (Swagger UI) |
 
 All ports are `127.0.0.1`-bound by default. Caddy at `:8080` is the main ingress.
 

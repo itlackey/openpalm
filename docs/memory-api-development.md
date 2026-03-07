@@ -2,8 +2,11 @@
 
 The memory API is a lightweight FastAPI application that wraps the
 [mem0 Python SDK](https://github.com/mem0ai/mem0) with embedded Qdrant
-(file-based) vector storage. It lives in `core/memory-api/` and runs as the
-`openmemory` service in the Docker Compose stack.
+(file-based) vector storage. It lives in `core/memory/` and runs as the
+`memory` service in the Docker Compose stack.
+
+> **Note:** The service directory is `core/memory/` but the Docker Compose
+> service name is `memory`.
 
 ---
 
@@ -18,7 +21,7 @@ The memory API is a lightweight FastAPI application that wraps the
 ## Quick Start (outside Docker)
 
 ```bash
-cd core/memory-api
+cd core/memory
 
 # Create a virtual environment
 python3 -m venv .venv
@@ -64,8 +67,8 @@ The `"env:OPENAI_API_KEY"` syntax tells the app to read the actual key from the
 
 ```bash
 export OPENAI_API_KEY="sk-..."           # or your compatible key
-export OPENMEMORY_CONFIG_PATH="./default_config.json"
-export OPENMEMORY_DATA_DIR="./data"      # Qdrant + history DB land here
+export MEMORY_CONFIG_PATH="./default_config.json"
+export MEMORY_DATA_DIR="./data"      # Qdrant + history DB land here
 
 uvicorn main:app --host 0.0.0.0 --port 8765 --reload
 ```
@@ -81,18 +84,18 @@ From the repo root, build and run just the memory API:
 
 ```bash
 docker compose -f core/assets/docker-compose.yml -f compose.dev.yaml \
-  up --build openmemory
+  up --build memory
 ```
 
-This builds the image from `core/memory-api/Dockerfile` and starts the service
-on port 8765. Data is persisted in `$OPENPALM_DATA_HOME/openmemory/`.
+This builds the image from `core/memory/Dockerfile` and starts the service
+on port 8765. Data is persisted in `$OPENPALM_DATA_HOME/memory/`.
 
 ---
 
 ## Project Structure
 
 ```
-core/memory-api/
+core/memory/
 ├── main.py              # Single-file FastAPI app (~310 lines)
 ├── requirements.txt     # Python dependencies
 └── Dockerfile           # Production image (python:3.12-slim)
@@ -236,11 +239,10 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENMEMORY_CONFIG_PATH` | `/app/default_config.json` | Path to the mem0 config JSON |
-| `OPENMEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
+| `MEMORY_CONFIG_PATH` | `/app/default_config.json` | Path to the mem0 config JSON |
+| `MEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
 | `OPENAI_API_KEY` | — | API key (resolved from `env:OPENAI_API_KEY` in config) |
 | `OPENAI_BASE_URL` | — | Custom base URL for OpenAI-compatible providers |
-| `OPENMEMORY_OPENAI_API_KEY` | — | Override API key (takes precedence if set in config) |
 
 ---
 
@@ -250,7 +252,7 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
   multi-tenant ACL.
 - **mem0 SDK** — handles LLM fact extraction, embedding generation, and Qdrant
   vector operations. The API is a thin HTTP adapter.
-- **Qdrant embedded** — stores vectors in files under `$OPENMEMORY_DATA_DIR/`. No separate
+- **Qdrant embedded** — stores vectors in files under `$MEMORY_DATA_DIR/`. No separate
   Qdrant server needed.
 - **Lazy init** — the `Memory` instance is created on first request, not at
   import time. This allows the config file to be mounted after the process
@@ -267,12 +269,12 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
 ## Troubleshooting
 
 **"No config found"** — The app returns empty results if
-`default_config.json` doesn't exist. Make sure `OPENMEMORY_CONFIG_PATH` points
+`default_config.json` doesn't exist. Make sure `MEMORY_CONFIG_PATH` points
 to a valid file or mount it at `/app/default_config.json`.
 
 **Embedding dimension mismatch** — If you switch embedding models after data
 already exists, Qdrant will reject new vectors. Delete the data directory
-(`$OPENMEMORY_DATA_DIR/`) or use the admin's "Reset Collection" feature.
+(`$MEMORY_DATA_DIR/`) or use the admin's "Reset Collection" feature.
 
 **Slow first request** — The first request initializes the mem0 `Memory`
 instance, which loads the Qdrant collection. Subsequent requests are fast.

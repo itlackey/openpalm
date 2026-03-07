@@ -8,7 +8,7 @@
 #   2. No root-owned files in .dev/
 #   3. secrets.env has correct values
 #   4. Assistant container has correct env vars
-#   5. OpenMemory user is provisioned
+#   5. Memory user is provisioned
 #   6. Setup is marked complete
 #
 # Usage:
@@ -57,18 +57,18 @@ echo "=== Step 2: Clean .dev/ state ==="
 echo "# OpenPalm secrets" > .dev/config/secrets.env
 
 # Data — remove everything except models (HF cache)
-rm -f .dev/data/openmemory/default_config.json
-rm -f .dev/data/openmemory/openmemory.db
-rm -f .dev/data/openmemory/memory.py
+rm -f .dev/data/memory/default_config.json
+rm -f .dev/data/memory/memory.db
+rm -f .dev/data/memory/memory.py
 rm -f .dev/data/local-models.json
 rm -f .dev/data/local-models.yml
 rm -f .dev/data/stack.env
 rm -f .dev/data/docker-compose.yml
 rm -rf .dev/data/backups
 
-# Root-owned data from containers (qdrant, caddy, .mem0)
-docker run --rm -v "$ROOT_DIR/.dev/data/openmemory:/c" alpine sh -c \
-  "rm -rf /c/qdrant /c/.mem0" 2>/dev/null || true
+# Root-owned data from containers (qdrant, caddy)
+docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
+  "rm -rf /c/qdrant" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/caddy:/c" alpine sh -c \
   "rm -rf /c/data /c/config" 2>/dev/null || true
 
@@ -210,7 +210,7 @@ SETUP_RESULT=$(curl -s -X POST http://localhost:8100/admin/setup \
   -H "content-type: application/json" \
   -d "{
     \"adminToken\": \"dev-admin-token\",
-    \"openmemoryUserId\": \"node\",
+    \"memoryUserId\": \"node\",
     \"llmProvider\": \"model-runner\",
     \"llmBaseUrl\": \"http://host.docker.internal:12434/engines\",
     \"systemModel\": \"huggingface.co/unsloth/qwen3.5-4b-gguf\",
@@ -241,7 +241,7 @@ echo "  Waiting 30s for containers to stabilize..."
 sleep 30
 
 ALL_HEALTHY=true
-for svc in admin openmemory assistant guardian docker-socket-proxy; do
+for svc in admin memory assistant guardian docker-socket-proxy; do
   status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
   if [ "$status" = "healthy" ]; then
     pass "$svc is healthy"
@@ -288,7 +288,7 @@ check_env_val() {
 }
 
 check_env_val "ADMIN_TOKEN" "dev-admin-token"
-check_env_val "OPENMEMORY_USER_ID" "node"
+check_env_val "MEMORY_USER_ID" "node"
 check_env_val "SYSTEM_LLM_PROVIDER" "model-runner"
 check_env_val "SYSTEM_LLM_MODEL" "huggingface.co/unsloth/qwen3.5-4b-gguf"
 check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:12434/engines"
@@ -310,7 +310,7 @@ check_container_env() {
 }
 
 check_container_env "OPENPALM_ADMIN_TOKEN" "dev-admin-token"
-check_container_env "OPENMEMORY_USER_ID" "node"
+check_container_env "MEMORY_USER_ID" "node"
 
 # OPENAI_BASE_URL should end with /v1
 BASE_URL=$(docker exec openpalm-assistant-1 printenv OPENAI_BASE_URL 2>/dev/null || echo "")
@@ -320,14 +320,14 @@ else
   fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
 fi
 
-# ── Step 12: Verify OpenMemory user provisioned ──────────────────────
+# ── Step 12: Verify Memory user provisioned ──────────────────────
 echo ""
-echo "=== Step 12: Verify OpenMemory user provisioned ==="
+echo "=== Step 12: Verify Memory user provisioned ==="
 
 # Use POST /api/v1/memories/filter (GET /memories/ has an upstream pagination bug)
 OM_STATUS="error"
 for attempt in 1 2 3 4 5 6; do
-  OM_STATUS=$(docker exec openpalm-openmemory-1 python3 -c \
+  OM_STATUS=$(docker exec openpalm-memory-1 python3 -c \
     "import requests; r=requests.post('http://localhost:8765/api/v1/memories/filter', json={'user_id': 'node'}); print(r.status_code)" 2>/dev/null || echo "error")
   if [ "$OM_STATUS" = "200" ]; then
     break
@@ -337,9 +337,9 @@ for attempt in 1 2 3 4 5 6; do
 done
 
 if [ "$OM_STATUS" = "200" ]; then
-  pass "OpenMemory user 'node' is reachable"
+  pass "Memory user 'node' is reachable"
 else
-  fail "OpenMemory not responding for user 'node' (HTTP $OM_STATUS)"
+  fail "Memory not responding for user 'node' (HTTP $OM_STATUS)"
 fi
 
 # ── Step 13: Verify setup marked complete ────────────────────────────
@@ -401,14 +401,14 @@ else
   fail "Assistant did not use memory-search tool. Output: $(echo "$SEARCH_OUTPUT" | tail -3)"
 fi
 
-# ── Step 15: Verify openmemory OPENAI_BASE_URL env ───────────────────
+# ── Step 15: Verify memory OPENAI_BASE_URL env ───────────────────
 echo ""
-echo "=== Step 15: Verify openmemory container env ==="
-OM_BASE_URL=$(docker exec openpalm-openmemory-1 printenv OPENAI_BASE_URL 2>/dev/null || echo "")
+echo "=== Step 15: Verify memory container env ==="
+OM_BASE_URL=$(docker exec openpalm-memory-1 printenv OPENAI_BASE_URL 2>/dev/null || echo "")
 if [ -n "$OM_BASE_URL" ]; then
-  pass "openmemory OPENAI_BASE_URL=$OM_BASE_URL"
+  pass "memory OPENAI_BASE_URL=$OM_BASE_URL"
 else
-  fail "openmemory OPENAI_BASE_URL is empty"
+  fail "memory OPENAI_BASE_URL is empty"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

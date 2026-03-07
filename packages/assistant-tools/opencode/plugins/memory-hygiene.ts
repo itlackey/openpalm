@@ -1,5 +1,5 @@
 /**
- * Memory hygiene — lightweight quality management for OpenMemory.
+ * Memory hygiene — lightweight quality management for the memory service.
  *
  * Called from the session.created hook (at most once per day) to detect
  * near-duplicate and stale memories.  Issues are reported back to the

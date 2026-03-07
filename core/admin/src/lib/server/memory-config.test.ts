@@ -1,5 +1,5 @@
 /**
- * Tests for openmemory-config.ts — OpenMemory LLM & embedding config management.
+ * Tests for memory-config.ts — Memory LLM & embedding config management.
  */
 import { describe, test, expect, vi, afterEach } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
@@ -7,20 +7,20 @@ import { join } from "node:path";
 
 import {
   getDefaultConfig,
-  readOpenMemoryConfig,
-  writeOpenMemoryConfig,
-  ensureOpenMemoryConfig,
+  readMemoryConfig,
+  writeMemoryConfig,
+  ensureMemoryConfig,
   resolveApiKey,
   resolveConfigForPush,
   fetchProviderModels,
   checkQdrantDimensions,
   resetQdrantCollection,
-  provisionOpenMemoryUser,
+  provisionMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
-  type OpenMemoryConfig,
-} from "./openmemory-config.js";
+  type MemoryConfig,
+} from "./memory-config.js";
 import { makeTempDir, trackDir, seedSecretsEnv, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
@@ -88,7 +88,7 @@ describe("getDefaultConfig", () => {
 
   test("returns empty custom instructions", () => {
     const config = getDefaultConfig();
-    expect(config.openmemory.custom_instructions).toBe("");
+    expect(config.memory.custom_instructions).toBe("");
   });
 
   test("returns a fresh copy on each call", () => {
@@ -102,25 +102,25 @@ describe("getDefaultConfig", () => {
 
 // ── File I/O ─────────────────────────────────────────────────────────────
 
-describe("readOpenMemoryConfig", () => {
+describe("readMemoryConfig", () => {
   test("returns default config when file does not exist", () => {
     const dataDir = trackDir(makeTempDir());
-    const config = readOpenMemoryConfig(dataDir);
+    const config = readMemoryConfig(dataDir);
     expect(config).toEqual(getDefaultConfig());
   });
 
   test("reads existing config file", () => {
     const dataDir = trackDir(makeTempDir());
-    const custom: OpenMemoryConfig = {
+    const custom: MemoryConfig = {
       ...getDefaultConfig(),
       mem0: {
         ...getDefaultConfig().mem0,
         llm: { provider: "ollama", config: { model: "llama3" } },
       },
     };
-    writeOpenMemoryConfig(dataDir, custom);
+    writeMemoryConfig(dataDir, custom);
 
-    const result = readOpenMemoryConfig(dataDir);
+    const result = readMemoryConfig(dataDir);
     expect(result.mem0.llm.provider).toBe("ollama");
     expect(result.mem0.llm.config.model).toBe("llama3");
   });
@@ -128,29 +128,29 @@ describe("readOpenMemoryConfig", () => {
   test("returns default config on malformed JSON", () => {
     const dataDir = trackDir(makeTempDir());
     const { mkdirSync, writeFileSync } = require("node:fs");
-    mkdirSync(join(dataDir, "openmemory"), { recursive: true });
+    mkdirSync(join(dataDir, "memory"), { recursive: true });
     writeFileSync(
-      join(dataDir, "openmemory", "default_config.json"),
+      join(dataDir, "memory", "default_config.json"),
       "not valid json {"
     );
 
-    const config = readOpenMemoryConfig(dataDir);
+    const config = readMemoryConfig(dataDir);
     expect(config).toEqual(getDefaultConfig());
   });
 });
 
-describe("writeOpenMemoryConfig", () => {
-  test("creates openmemory directory and writes JSON file", () => {
+describe("writeMemoryConfig", () => {
+  test("creates memory directory and writes JSON file", () => {
     const dataDir = trackDir(makeTempDir());
     const config = getDefaultConfig();
     config.mem0.llm.provider = "anthropic";
 
-    writeOpenMemoryConfig(dataDir, config);
+    writeMemoryConfig(dataDir, config);
 
-    const path = join(dataDir, "openmemory", "default_config.json");
+    const path = join(dataDir, "memory", "default_config.json");
     expect(existsSync(path)).toBe(true);
     const raw = readFileSync(path, "utf-8");
-    const parsed = JSON.parse(raw) as OpenMemoryConfig;
+    const parsed = JSON.parse(raw) as MemoryConfig;
     expect(parsed.mem0.llm.provider).toBe("anthropic");
   });
 
@@ -158,22 +158,22 @@ describe("writeOpenMemoryConfig", () => {
     const dataDir = trackDir(makeTempDir());
     const configA = getDefaultConfig();
     configA.mem0.llm.config.model = "model-a";
-    writeOpenMemoryConfig(dataDir, configA);
+    writeMemoryConfig(dataDir, configA);
 
     const configB = getDefaultConfig();
     configB.mem0.llm.config.model = "model-b";
-    writeOpenMemoryConfig(dataDir, configB);
+    writeMemoryConfig(dataDir, configB);
 
-    const result = readOpenMemoryConfig(dataDir);
+    const result = readMemoryConfig(dataDir);
     expect(result.mem0.llm.config.model).toBe("model-b");
   });
 
   test("writes pretty-printed JSON with trailing newline", () => {
     const dataDir = trackDir(makeTempDir());
-    writeOpenMemoryConfig(dataDir, getDefaultConfig());
+    writeMemoryConfig(dataDir, getDefaultConfig());
 
     const raw = readFileSync(
-      join(dataDir, "openmemory", "default_config.json"),
+      join(dataDir, "memory", "default_config.json"),
       "utf-8"
     );
     expect(raw).toContain("  ");
@@ -181,14 +181,14 @@ describe("writeOpenMemoryConfig", () => {
   });
 });
 
-describe("ensureOpenMemoryConfig", () => {
+describe("ensureMemoryConfig", () => {
   test("creates default config when file does not exist", () => {
     const dataDir = trackDir(makeTempDir());
-    ensureOpenMemoryConfig(dataDir);
+    ensureMemoryConfig(dataDir);
 
-    const path = join(dataDir, "openmemory", "default_config.json");
+    const path = join(dataDir, "memory", "default_config.json");
     expect(existsSync(path)).toBe(true);
-    const config = JSON.parse(readFileSync(path, "utf-8")) as OpenMemoryConfig;
+    const config = JSON.parse(readFileSync(path, "utf-8")) as MemoryConfig;
     expect(config.mem0.llm.provider).toBe("openai");
   });
 
@@ -196,20 +196,20 @@ describe("ensureOpenMemoryConfig", () => {
     const dataDir = trackDir(makeTempDir());
     const custom = getDefaultConfig();
     custom.mem0.llm.provider = "ollama";
-    writeOpenMemoryConfig(dataDir, custom);
+    writeMemoryConfig(dataDir, custom);
 
-    ensureOpenMemoryConfig(dataDir);
+    ensureMemoryConfig(dataDir);
 
-    const result = readOpenMemoryConfig(dataDir);
+    const result = readMemoryConfig(dataDir);
     expect(result.mem0.llm.provider).toBe("ollama");
   });
 
   test("is idempotent — safe to call multiple times", () => {
     const dataDir = trackDir(makeTempDir());
-    ensureOpenMemoryConfig(dataDir);
-    ensureOpenMemoryConfig(dataDir);
+    ensureMemoryConfig(dataDir);
+    ensureMemoryConfig(dataDir);
 
-    const config = readOpenMemoryConfig(dataDir);
+    const config = readMemoryConfig(dataDir);
     expect(config).toEqual(getDefaultConfig());
   });
 });
@@ -529,7 +529,7 @@ describe("checkQdrantDimensions", () => {
   test("returns match=true when dimensions agree", () => {
     const dataDir = trackDir(makeTempDir());
     const persisted = getDefaultConfig();
-    writeOpenMemoryConfig(dataDir, persisted);
+    writeMemoryConfig(dataDir, persisted);
 
     const newConfig = getDefaultConfig();
     const result = checkQdrantDimensions(dataDir, newConfig);
@@ -541,7 +541,7 @@ describe("checkQdrantDimensions", () => {
   test("returns match=false when dimensions differ", () => {
     const dataDir = trackDir(makeTempDir());
     const persisted = getDefaultConfig();
-    writeOpenMemoryConfig(dataDir, persisted);
+    writeMemoryConfig(dataDir, persisted);
 
     const newConfig = getDefaultConfig();
     newConfig.mem0.vector_store.config.embedding_model_dims = 3072;
@@ -565,11 +565,11 @@ describe("resetQdrantCollection", () => {
   test("returns ok=true when qdrant directory exists", () => {
     const dataDir = trackDir(makeTempDir());
     const { mkdirSync } = require("node:fs");
-    mkdirSync(join(dataDir, "openmemory", "qdrant", "collections"), { recursive: true });
+    mkdirSync(join(dataDir, "memory", "qdrant", "collections"), { recursive: true });
 
     const result = resetQdrantCollection(dataDir);
     expect(result.ok).toBe(true);
-    expect(existsSync(join(dataDir, "openmemory", "qdrant"))).toBe(false);
+    expect(existsSync(join(dataDir, "memory", "qdrant"))).toBe(false);
   });
 
   test("returns ok=true when qdrant directory does not exist", () => {
@@ -581,9 +581,9 @@ describe("resetQdrantCollection", () => {
   test("cleans up nested qdrant data", () => {
     const dataDir = trackDir(makeTempDir());
     const { mkdirSync, writeFileSync } = require("node:fs");
-    const qdrantDir = join(dataDir, "openmemory", "qdrant");
-    mkdirSync(join(qdrantDir, "collections", "openmemory"), { recursive: true });
-    writeFileSync(join(qdrantDir, "collections", "openmemory", "data.bin"), "test");
+    const qdrantDir = join(dataDir, "memory", "qdrant");
+    mkdirSync(join(qdrantDir, "collections", "memory"), { recursive: true });
+    writeFileSync(join(qdrantDir, "collections", "memory", "data.bin"), "test");
 
     const result = resetQdrantCollection(dataDir);
     expect(result.ok).toBe(true);
@@ -591,7 +591,7 @@ describe("resetQdrantCollection", () => {
   });
 });
 
-describe("provisionOpenMemoryUser", () => {
+describe("provisionMemoryUser", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -606,7 +606,7 @@ describe("provisionOpenMemoryUser", () => {
     });
     globalThis.fetch = vi.fn(async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
 
-    const result = await provisionOpenMemoryUser("test-user");
+    const result = await provisionMemoryUser("test-user");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("stream failed");
   });
@@ -621,7 +621,7 @@ describe("provisionOpenMemoryUser", () => {
     });
     globalThis.fetch = vi.fn(async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
 
-    const result = await provisionOpenMemoryUser("test-user");
+    const result = await provisionMemoryUser("test-user");
     expect(result).toEqual({ ok: true });
   });
 });

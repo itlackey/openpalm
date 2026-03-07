@@ -71,7 +71,7 @@ export type ChannelsResponse = {
   available: { name: string; hasRoute: boolean }[];
 };
 
-export type OpenMemoryConfig = {
+export type MemoryConfig = {
   mem0: {
     llm: { provider: string; config: Record<string, unknown> };
     embedder: { provider: string; config: Record<string, unknown> };
@@ -84,17 +84,17 @@ export type OpenMemoryConfig = {
       };
     };
   };
-  openmemory: { custom_instructions: string };
+  memory: { custom_instructions: string };
 };
 
-export type OpenMemoryConfigResponse = {
-  config: OpenMemoryConfig;
-  runtimeConfig: OpenMemoryConfig | null;
+export type MemoryConfigResponse = {
+  config: MemoryConfig;
+  runtimeConfig: MemoryConfig | null;
   providers: { llm: string[]; embed: string[] };
   embeddingDims: Record<string, number>;
 };
 
-export type OpenMemoryConfigSaveResult = {
+export type MemoryConfigSaveResult = {
   ok: boolean;
   persisted: boolean;
   pushed: boolean;
@@ -110,7 +110,7 @@ export type SystemConnectionPayload = {
   systemModel: string;
   embeddingModel: string;
   embeddingDims: number;
-  openmemoryUserId: string;
+  memoryUserId: string;
   customInstructions: string;
 };
 
@@ -148,7 +148,7 @@ export type ConnectionsResponseDto = {
 export type SaveConnectionsDtoPayload = {
   profiles: CanonicalConnectionProfileDto[];
   assignments: CanonicalAssignmentsDto;
-  openmemoryUserId?: string;
+  memoryUserId?: string;
   customInstructions?: string;
   apiKey?: string;
   capabilities?: string[];

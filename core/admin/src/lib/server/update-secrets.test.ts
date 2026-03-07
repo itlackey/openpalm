@@ -154,13 +154,13 @@ describe("updateSecretsEnv", () => {
     updateSecretsEnv(state, {
       OPENAI_API_KEY: "sk-openai",
       GROQ_API_KEY: "gsk-groq",
-      OPENMEMORY_USER_ID: "alice"
+      MEMORY_USER_ID: "alice"
     });
 
     const result = readSecrets(configDir);
     expect(result).toContain("OPENAI_API_KEY=sk-openai");
     expect(result).toContain("GROQ_API_KEY=gsk-groq");
-    expect(result).toContain("OPENMEMORY_USER_ID=alice");
+    expect(result).toContain("MEMORY_USER_ID=alice");
     expect(result).toContain("ADMIN_TOKEN=token");
   });
 

@@ -267,7 +267,7 @@ create_directories() {
 
 		# DATA_HOME — persistent service data
 		"$DATA_HOME"
-		"$DATA_HOME/openmemory"
+		"$DATA_HOME/memory"
 		"$DATA_HOME/assistant"
 		"$DATA_HOME/guardian"
 		"$DATA_HOME/caddy"
@@ -413,7 +413,7 @@ generate_secrets() {
 		return 0
 	fi
 
-	# Detect the current user's login name for OpenMemory user ID
+	# Detect the current user's login name for memory user ID
 	local detected_user="${USER:-${LOGNAME:-}}"
 	if [[ -z "$detected_user" ]]; then
 		detected_user="$(whoami 2>/dev/null || echo "default_user")"
@@ -435,8 +435,8 @@ OPENAI_BASE_URL=
 # MISTRAL_API_KEY=
 # GOOGLE_API_KEY=
 
-# OpenMemory
-OPENMEMORY_USER_ID=${detected_user}
+# Memory
+MEMORY_USER_ID=${detected_user}
 EOF
 
 	ok "Generated secrets.env (admin token will be set by setup wizard)"

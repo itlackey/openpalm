@@ -6,7 +6,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
-import { applyUpdate, appendAudit, ensureSecrets, ensureXdgDirs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureOpenMemoryDir, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
+import { applyUpdate, appendAudit, ensureSecrets, ensureXdgDirs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureMemoryDir, buildComposeFileList, buildEnvFiles, buildManagedServices } from "$lib/server/control-plane.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
 import { createLogger } from "$lib/server/logger.js";
 import type { RequestHandler } from "./$types";
@@ -26,7 +26,7 @@ export const POST: RequestHandler = async (event) => {
   ensureXdgDirs();
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
-  ensureOpenMemoryDir();
+  ensureMemoryDir();
   ensureSecrets(state);
   const result = applyUpdate(state);
   logger.info("update applied, re-running compose", { requestId, restarted: result.restarted });

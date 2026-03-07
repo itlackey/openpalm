@@ -34,7 +34,7 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "OPENAI_BASE_URL",
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
-  "OPENMEMORY_USER_ID",
+  "MEMORY_USER_ID",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
@@ -59,7 +59,7 @@ export const PLAIN_CONFIG_KEYS = new Set([
   "OPENAI_BASE_URL",
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
-  "OPENMEMORY_USER_ID",
+  "MEMORY_USER_ID",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
@@ -97,8 +97,8 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push(`MISTRAL_API_KEY=${process.env.MISTRAL_API_KEY ?? ""}`);
   secretLines.push(`GOOGLE_API_KEY=${process.env.GOOGLE_API_KEY ?? ""}`);
   secretLines.push("");
-  secretLines.push("# OpenMemory");
-  secretLines.push(`OPENMEMORY_USER_ID=${process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
+  secretLines.push("# Memory");
+  secretLines.push(`MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
   secretLines.push("");
   secretLines.push("# Owner");
   secretLines.push(`OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);

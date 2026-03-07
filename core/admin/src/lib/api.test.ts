@@ -88,7 +88,7 @@ describe('api canonical connections DTO adapter', () => {
       systemModel: 'gpt-4.1-mini',
       embeddingModel: 'text-embedding-3-small',
       embeddingDims: 1536,
-      openmemoryUserId: 'default_user',
+      memoryUserId: 'default_user',
       customInstructions: '',
     });
 

@@ -207,7 +207,7 @@
           </span>
         </button>
 
-        <a class="action-item" href="/admin/opencode/" target="_blank" rel="noopener noreferrer">
+        <a class="action-item" href="/opencode/" target="_blank" rel="noopener noreferrer">
           <span class="action-icon action-icon--blue">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -217,24 +217,6 @@
           <div class="action-content">
             <span class="action-title">Open OpenCode UI</span>
             <span class="action-desc">Open the assistant web interface</span>
-          </div>
-          <span class="action-arrow">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </span>
-        </a>
-
-        <a class="action-item" href="/admin/openmemory/" target="_blank" rel="noopener noreferrer">
-          <span class="action-icon action-icon--amber">
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a10 10 0 1 0 10 10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </span>
-          <div class="action-content">
-            <span class="action-title">Open OpenMemory UI</span>
-            <span class="action-desc">Open the memory dashboard</span>
           </div>
           <span class="action-arrow">
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

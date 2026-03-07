@@ -66,7 +66,7 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 						SYSTEM_LLM_MODEL: 'gpt-4o-mini',
 						EMBEDDING_MODEL: 'text-embedding-3-small',
 						EMBEDDING_DIMS: '1536',
-						OPENMEMORY_USER_ID: 'default_user'
+						MEMORY_USER_ID: 'default_user'
 					}
 				})
 			});
@@ -80,7 +80,7 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ setupComplete: true, configured: { adminToken: true } })
 		})
 	);
-	await page.route('**/admin/openmemory/config', (route) => {
+	await page.route('**/admin/memory/config', (route) => {
 		if (route.request().method() === 'GET') {
 			return route.fulfill({
 				status: 200,
@@ -90,9 +90,9 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 						mem0: {
 							llm: { provider: 'openai', config: { model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 2000, api_key: 'env:OPENAI_API_KEY' } },
 							embedder: { provider: 'openai', config: { model: 'text-embedding-3-small', api_key: 'env:OPENAI_API_KEY' } },
-							vector_store: { provider: 'qdrant', config: { collection_name: 'openmemory', path: '/data/qdrant', embedding_model_dims: 1536 } }
+							vector_store: { provider: 'qdrant', config: { collection_name: 'memory', path: '/data/qdrant', embedding_model_dims: 1536 } }
 						},
-						openmemory: { custom_instructions: '' }
+						memory: { custom_instructions: '' }
 					},
 					runtimeConfig: null,
 					providers: {
@@ -126,8 +126,8 @@ test.describe('Connections Tab UI', () => {
 		// Verify the System LLM Connection section is visible
 		await expect(page.getByRole('heading', { name: 'System LLM Connection' })).toBeVisible();
 
-		// Verify OpenMemory Settings section exists
-		await expect(page.getByText('OpenMemory Settings')).toBeVisible();
+		// Verify Memory Settings section exists
+		await expect(page.getByText('Memory Settings')).toBeVisible();
 
 		// Verify form controls are present
 		await expect(page.locator('#conn-provider')).toBeVisible();
@@ -218,9 +218,9 @@ test.describe('Connections Tab UI', () => {
 	});
 });
 
-test.describe('OpenMemory Config API', () => {
-	test('GET /admin/openmemory/config returns config structure', async ({ request }) => {
-		const response = await request.get('/admin/openmemory/config', {
+test.describe('Memory Config API', () => {
+	test('GET /admin/memory/config returns config structure', async ({ request }) => {
+		const response = await request.get('/admin/memory/config', {
 			headers: {
 				'x-admin-token': process.env.ADMIN_TOKEN ?? 'test-token',
 				'x-requested-by': 'test',
@@ -248,7 +248,7 @@ test.describe('OpenMemory Config API', () => {
 		expect(Array.isArray(data.providers.embed)).toBe(true);
 	});
 
-	test('POST /admin/openmemory/config saves and returns result', async ({ request }) => {
+	test('POST /admin/memory/config saves and returns result', async ({ request }) => {
 		const config = {
 			mem0: {
 				llm: {
@@ -272,16 +272,16 @@ test.describe('OpenMemory Config API', () => {
 				vector_store: {
 					provider: 'qdrant',
 					config: {
-						collection_name: 'openmemory',
+						collection_name: 'memory',
 						path: '/data/qdrant',
 						embedding_model_dims: 768
 					}
 				}
 			},
-			openmemory: { custom_instructions: 'Test instructions' }
+			memory: { custom_instructions: 'Test instructions' }
 		};
 
-		const response = await request.post('/admin/openmemory/config', {
+		const response = await request.post('/admin/memory/config', {
 			data: config,
 			headers: {
 				'content-type': 'application/json',
@@ -302,15 +302,15 @@ test.describe('OpenMemory Config API', () => {
 		expect(data).toHaveProperty('pushed');
 	});
 
-	test('GET /admin/openmemory/config requires auth', async ({ request }) => {
-		const response = await request.get('/admin/openmemory/config', {
+	test('GET /admin/memory/config requires auth', async ({ request }) => {
+		const response = await request.get('/admin/memory/config', {
 			headers: { 'x-request-id': crypto.randomUUID() }
 		});
 		expect(response.status()).toBe(401);
 	});
 
-	test('POST /admin/openmemory/config rejects invalid body', async ({ request }) => {
-		const response = await request.post('/admin/openmemory/config', {
+	test('POST /admin/memory/config rejects invalid body', async ({ request }) => {
+		const response = await request.post('/admin/memory/config', {
 			data: { invalid: true },
 			headers: {
 				'content-type': 'application/json',
@@ -328,9 +328,9 @@ test.describe('OpenMemory Config API', () => {
 	});
 });
 
-test.describe('OpenMemory Models API', () => {
-	test('POST /admin/openmemory/models requires auth', async ({ request }) => {
-		const response = await request.post('/admin/openmemory/models', {
+test.describe('Memory Models API', () => {
+	test('POST /admin/memory/models requires auth', async ({ request }) => {
+		const response = await request.post('/admin/memory/models', {
 			data: { provider: 'anthropic', apiKeyRef: '', baseUrl: '' },
 			headers: {
 				'content-type': 'application/json',
@@ -340,8 +340,8 @@ test.describe('OpenMemory Models API', () => {
 		expect(response.status()).toBe(401);
 	});
 
-	test('POST /admin/openmemory/models rejects invalid provider', async ({ request }) => {
-		const response = await request.post('/admin/openmemory/models', {
+	test('POST /admin/memory/models rejects invalid provider', async ({ request }) => {
+		const response = await request.post('/admin/memory/models', {
 			data: { provider: 'invalid-provider', apiKeyRef: '', baseUrl: '' },
 			headers: {
 				'content-type': 'application/json',
@@ -358,8 +358,8 @@ test.describe('OpenMemory Models API', () => {
 		expect(data.error).toBe('bad_request');
 	});
 
-	test('POST /admin/openmemory/models rejects missing provider', async ({ request }) => {
-		const response = await request.post('/admin/openmemory/models', {
+	test('POST /admin/memory/models rejects missing provider', async ({ request }) => {
+		const response = await request.post('/admin/memory/models', {
 			data: { apiKeyRef: '', baseUrl: '' },
 			headers: {
 				'content-type': 'application/json',
@@ -374,8 +374,8 @@ test.describe('OpenMemory Models API', () => {
 		expect(response.status()).toBe(400);
 	});
 
-	test('POST /admin/openmemory/models returns models array for anthropic', async ({ request }) => {
-		const response = await request.post('/admin/openmemory/models', {
+	test('POST /admin/memory/models returns models array for anthropic', async ({ request }) => {
+		const response = await request.post('/admin/memory/models', {
 			data: { provider: 'anthropic', apiKeyRef: '', baseUrl: '' },
 			headers: {
 				'content-type': 'application/json',
@@ -395,8 +395,8 @@ test.describe('OpenMemory Models API', () => {
 		expect(data.error).toBeUndefined();
 	});
 
-	test('POST /admin/openmemory/models returns error for unreachable provider', async ({ request }) => {
-		const response = await request.post('/admin/openmemory/models', {
+	test('POST /admin/memory/models returns error for unreachable provider', async ({ request }) => {
+		const response = await request.post('/admin/memory/models', {
 			data: { provider: 'ollama', apiKeyRef: '', baseUrl: 'http://127.0.0.1:59999' },
 			headers: {
 				'content-type': 'application/json',
@@ -420,7 +420,7 @@ test.describe('Connection Test & Model Selection UI', () => {
 		await setupConsoleMocks(page);
 
 		// Mock the models endpoint
-		await page.route('**/admin/openmemory/models', (route) =>
+		await page.route('**/admin/memory/models', (route) =>
 			route.fulfill({
 				status: 200,
 				contentType: 'application/json',
@@ -440,7 +440,7 @@ test.describe('Connection Test & Model Selection UI', () => {
 	test('Test Connection shows error when provider is unreachable', async ({ page }) => {
 		await setupConsoleMocks(page);
 
-		await page.route('**/admin/openmemory/models', (route) =>
+		await page.route('**/admin/memory/models', (route) =>
 			route.fulfill({
 				status: 200,
 				contentType: 'application/json',
@@ -462,7 +462,7 @@ test.describe('Connection Test & Model Selection UI', () => {
 
 		await setupConsoleMocks(page);
 
-		await page.route('**/admin/openmemory/models', (route) => {
+		await page.route('**/admin/memory/models', (route) => {
 			modelCallCount++;
 			return route.fulfill({
 				status: 200,
@@ -488,13 +488,13 @@ test.describe('Connection Test & Model Selection UI', () => {
 /**
  * Docker stack integration tests — require RUN_DOCKER_STACK_TESTS=1 and a running stack.
  */
-test.describe('OpenMemory Ollama Integration', () => {
+test.describe('Memory Ollama Integration', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-	test('config file is mounted and readable in openmemory container', async ({ request }) => {
-		const response = await request.get('/admin/openmemory/config', {
+	test('config file is mounted and readable in memory container', async ({ request }) => {
+		const response = await request.get('/admin/memory/config', {
 			headers: {
 				'x-admin-token': process.env.ADMIN_TOKEN ?? '',
 				'x-requested-by': 'test',
@@ -508,7 +508,7 @@ test.describe('OpenMemory Ollama Integration', () => {
 		expect(data.config.mem0.embedder.provider).toBeTruthy();
 	});
 
-	test('openmemory accepts Ollama config and connects to endpoint', async ({ request }) => {
+	test('memory accepts Ollama config and connects to endpoint', async ({ request }) => {
 		const ollamaConfig = {
 			mem0: {
 				llm: {
@@ -532,16 +532,16 @@ test.describe('OpenMemory Ollama Integration', () => {
 				vector_store: {
 					provider: 'qdrant',
 					config: {
-						collection_name: 'openmemory',
+						collection_name: 'memory',
 						path: '/data/qdrant',
 						embedding_model_dims: 768
 					}
 				}
 			},
-			openmemory: { custom_instructions: '' }
+			memory: { custom_instructions: '' }
 		};
 
-		const saveRes = await request.post('/admin/openmemory/config', {
+		const saveRes = await request.post('/admin/memory/config', {
 			data: ollamaConfig,
 			headers: {
 				'content-type': 'application/json',
@@ -555,7 +555,7 @@ test.describe('OpenMemory Ollama Integration', () => {
 		expect(saveData.ok).toBe(true);
 		expect(saveData.persisted).toBe(true);
 
-		const readRes = await request.get('/admin/openmemory/config', {
+		const readRes = await request.get('/admin/memory/config', {
 			headers: {
 				'x-admin-token': process.env.ADMIN_TOKEN ?? '',
 				'x-requested-by': 'test',
@@ -578,7 +578,7 @@ test.describe('OpenMemory Ollama Integration', () => {
 		}
 	});
 
-	test('openmemory health check passes with configured provider', async ({ request }) => {
+	test('memory health check passes with configured provider', async ({ request }) => {
 		const healthRes = await request.get('http://localhost:8765/docs').catch(() => null);
 		if (healthRes) {
 			expect(healthRes.ok()).toBeTruthy();

@@ -55,8 +55,13 @@ ensure_home_layout() {
   fi
 }
 
-maybe_set_openmemory_user_id() {
-  if [ -n "${OPENMEMORY_USER_ID:-}" ] && [ "${OPENMEMORY_USER_ID}" != "default_user" ]; then
+maybe_set_memory_user_id() {
+  # Legacy fallback: accept OPENMEMORY_USER_ID from older installs
+  if [ -z "${MEMORY_USER_ID:-}" ] && [ -n "${OPENMEMORY_USER_ID:-}" ]; then
+    export MEMORY_USER_ID="$OPENMEMORY_USER_ID"
+  fi
+
+  if [ -n "${MEMORY_USER_ID:-}" ] && [ "${MEMORY_USER_ID}" != "default_user" ]; then
     return 0
   fi
 
@@ -75,7 +80,7 @@ maybe_set_openmemory_user_id() {
     inferred_user="opencode"
   fi
 
-  export OPENMEMORY_USER_ID="$inferred_user"
+  export MEMORY_USER_ID="$inferred_user"
 }
 
 maybe_enable_ssh() {
@@ -134,6 +139,6 @@ start_opencode() {
 
 ensure_user_mapping
 ensure_home_layout
-maybe_set_openmemory_user_id
+maybe_set_memory_user_id
 maybe_enable_ssh
 start_opencode

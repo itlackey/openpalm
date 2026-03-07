@@ -42,7 +42,7 @@ export type SetupWizardDraft = {
   embeddingConnectionId: string;
   embeddingModel: string;
   embeddingDims: number;
-  openmemoryUserId: string;
+  memoryUserId: string;
 };
 
 export function createConnectionDraft(id?: string): WizardConnectionDraft {
@@ -69,7 +69,7 @@ export function createInitialDraft(detectedUserId: string): SetupWizardDraft {
     embeddingConnectionId: '',
     embeddingModel: '',
     embeddingDims: 1536,
-    openmemoryUserId: detectedUserId || 'default_user',
+    memoryUserId: detectedUserId || 'default_user',
   };
 }
 

@@ -99,8 +99,8 @@ Five non-overlapping mounts, each at a distinct container path:
 | `HOME` | `/home/opencode` | User home for dotfiles, caches, and user config |
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API base URL (used by admin tools) |
 | `OPENPALM_ADMIN_TOKEN` | *(from secrets.env)* | Bearer token for Admin API calls |
-| `OPENMEMORY_API_URL` | `http://openmemory:8765` | OpenMemory service URL (used by memory tools and plugin) |
-| `OPENMEMORY_USER_ID` | `default_user` | User identifier for memory operations |
+| `MEMORY_API_URL` | `http://memory:8765` | Memory service URL (used by memory tools and plugin) |
+| `MEMORY_USER_ID` | `default_user` | User identifier for memory operations |
 
 LLM provider keys are passed through from the host:
 
@@ -160,7 +160,7 @@ These call the Admin API at `$OPENPALM_ADMIN_API_URL` using
 
 ### Memory Tools
 
-These call the OpenMemory MCP service at `$OPENMEMORY_API_URL`.
+These call the Memory API service at `$MEMORY_API_URL`.
 
 | Tool | Purpose |
 |---|---|
@@ -190,11 +190,11 @@ accumulates knowledge over time and recalls it automatically. It hooks into two
 OpenCode lifecycle events:
 
 **`experimental.session.compacting`** — When the context window is compacted,
-the plugin searches OpenMemory for relevant context (user preferences, project
+the plugin searches Memory for relevant context (user preferences, project
 decisions) and injects it into the compaction output so that memories survive
 the context window reset.
 
-**`shell.env`** — Injects `OPENMEMORY_API_URL` and `OPENMEMORY_USER_ID` into
+**`shell.env`** — Injects `MEMORY_API_URL` and `MEMORY_USER_ID` into
 the shell environment so that child processes and tools can resolve the memory
 service.
 
@@ -206,7 +206,7 @@ Skills are markdown reference documents that OpenCode surfaces on demand:
 
 | Skill | File | Purpose |
 |---|---|---|
-| `openmemory` | `skills/openmemory/SKILL.md` | How to use compound memory with OpenMemory |
+| `memory` | `skills/memory/SKILL.md` | How to use compound memory with Memory |
 | `openpalm-admin` | `skills/openpalm-admin/SKILL.md` | Admin API reference for the assistant |
 
 ---

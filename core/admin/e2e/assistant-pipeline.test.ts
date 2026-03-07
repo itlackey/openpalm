@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
 /**
  * Assistant Pipeline Verification Tests
  *
- * Validates the OpenCode server API, OpenMemory CRUD, and the full
+ * Validates the OpenCode server API, Memory CRUD, and the full
  * assistant message pipeline end-to-end. Tests are organized into
  * 4 tiers of graceful degradation:
  *
@@ -18,8 +18,8 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
  */
 
 const OPENCODE_URL = 'http://localhost:4096';
-const OPENMEMORY_URL = 'http://localhost:8765';
-const OPENMEMORY_USER_ID = process.env.OPENMEMORY_USER_ID ?? 'default_user';
+const MEMORY_URL = 'http://localhost:8765';
+const MEMORY_USER_ID = process.env.MEMORY_USER_ID ?? 'default_user';
 const E2E_TAG = 'e2e-test';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
@@ -89,19 +89,19 @@ function extractText(parts: Array<{ type: string; text?: string; content?: strin
 	return texts.join('\n');
 }
 
-/** Search memories via OpenMemory API (mirrors assistant-tools memory-search.ts). */
+/** Search memories via Memory API (mirrors assistant-tools memory-search.ts). */
 async function searchMemories(
 	request: APIRequestContext,
 	query: string
 ): Promise<{ results: Array<{ id: string; memory: string; metadata?: Record<string, unknown> }> }> {
-	const res = await request.post(`${OPENMEMORY_URL}/api/v1/memories/filter`, {
+	const res = await request.post(`${MEMORY_URL}/api/v1/memories/filter`, {
 		headers: { 'content-type': 'application/json' },
-		data: { user_id: OPENMEMORY_USER_ID, search_query: query, page: 1, size: 20 },
+		data: { user_id: MEMORY_USER_ID, search_query: query, page: 1, size: 20 },
 		timeout: 30_000
 	});
 	expect(res.ok(), `POST /api/v1/memories/filter failed: ${res.status()}`).toBeTruthy();
 	const raw = await res.json();
-	// OpenMemory filter API returns { items: [{ id, content, metadata_ }] }
+	// Memory filter API returns { items: [{ id, content, metadata_ }] }
 	// Normalize to { results: [{ id, memory, metadata }] } for test convenience
 	const items = raw.items ?? raw.results ?? [];
 	return {
@@ -113,7 +113,7 @@ async function searchMemories(
 	};
 }
 
-/** Add a memory via OpenMemory API. Returns normalized { results, _status }.
+/** Add a memory via Memory API. Returns normalized { results, _status }.
  *  Retries on null/empty responses (embedding provider may be busy under parallel load). */
 async function addMemory(
 	request: APIRequestContext,
@@ -124,10 +124,10 @@ async function addMemory(
 ): Promise<{ results: Array<{ id: string; memory: string }>; _status: number }> {
 	for (let attempt = 0; attempt <= retries; attempt++) {
 		if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt));
-		const res = await request.post(`${OPENMEMORY_URL}/api/v1/memories/`, {
+		const res = await request.post(`${MEMORY_URL}/api/v1/memories/`, {
 			headers: { 'content-type': 'application/json' },
 			data: {
-				user_id: OPENMEMORY_USER_ID,
+				user_id: MEMORY_USER_ID,
 				text,
 				app: 'openpalm-assistant',
 				metadata: { ...metadata, category: 'semantic', source: E2E_TAG },
@@ -136,7 +136,7 @@ async function addMemory(
 			timeout: 60_000
 		});
 		const raw = await res.json().catch(() => null);
-		// OpenMemory add returns a single object { id, content, ... } or null
+		// Memory add returns a single object { id, content, ... } or null
 		// (null when embedding provider is busy or deduplication triggers)
 		if (raw && typeof raw === 'object' && raw.id) {
 			return { results: [{ id: raw.id, memory: raw.content ?? text }], _status: res.status() };
@@ -148,15 +148,15 @@ async function addMemory(
 	return { results: [], _status: 200 };
 }
 
-/** Delete memories via OpenMemory API (mirrors assistant-tools memory-delete.ts). */
+/** Delete memories via Memory API (mirrors assistant-tools memory-delete.ts). */
 async function deleteMemories(
 	request: APIRequestContext,
 	memoryIds: string[]
 ): Promise<void> {
 	if (memoryIds.length === 0) return;
-	await request.delete(`${OPENMEMORY_URL}/api/v1/memories/`, {
+	await request.delete(`${MEMORY_URL}/api/v1/memories/`, {
 		headers: { 'content-type': 'application/json' },
-		data: { memory_ids: memoryIds, user_id: OPENMEMORY_USER_ID },
+		data: { memory_ids: memoryIds, user_id: MEMORY_USER_ID },
 		timeout: 30_000
 	}).catch(() => {});
 }
@@ -212,20 +212,20 @@ test.describe('OpenCode Session API', () => {
 	});
 });
 
-// ── Group 3: OpenMemory Direct API (no LLM needed) ──────────────────────
+// ── Group 3: Memory Direct API (no LLM needed) ──────────────────────
 
-test.describe('OpenMemory Direct API', () => {
+test.describe('Memory Direct API', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
 	test('docs endpoint responds', async ({ request }) => {
-		const res = await request.get(`${OPENMEMORY_URL}/docs`, { timeout: 10_000 });
+		const res = await request.get(`${MEMORY_URL}/docs`, { timeout: 10_000 });
 		expect(res.ok()).toBeTruthy();
 	});
 
 	test('stats endpoint returns valid response', async ({ request }) => {
 		const res = await request.get(
-			`${OPENMEMORY_URL}/api/v1/stats/?user_id=${OPENMEMORY_USER_ID}`,
+			`${MEMORY_URL}/api/v1/stats/?user_id=${MEMORY_USER_ID}`,
 			{ timeout: 10_000 }
 		);
 		expect(res.ok()).toBeTruthy();
@@ -234,9 +234,9 @@ test.describe('OpenMemory Direct API', () => {
 	});
 });
 
-// ── Group 4: OpenMemory CRUD Cycle (needs embedding provider) ───────────
+// ── Group 4: Memory CRUD Cycle (needs embedding provider) ───────────
 
-test.describe('OpenMemory CRUD Cycle', () => {
+test.describe('Memory CRUD Cycle', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
@@ -338,7 +338,7 @@ test.describe('Memory Integration E2E', () => {
 		expect(text.length).toBeGreaterThan(0);
 	});
 
-	test('memory was stored in OpenMemory', async ({ request }) => {
+	test('memory was stored in Memory', async ({ request }) => {
 		test.setTimeout(60_000);
 
 		if (!sessionId) {
@@ -347,7 +347,7 @@ test.describe('Memory Integration E2E', () => {
 		}
 
 		// Use a unique phrase distinct from the lucky-number prompt in test 10
-		// to avoid OpenMemory's deduplication (which returns null for similar memories).
+		// to avoid Memory's deduplication (which returns null for similar memories).
 		const verifyCanary = `e2e-verify-${canaryNumber}`;
 		const directResult = await addMemory(
 			request,
@@ -362,7 +362,7 @@ test.describe('Memory Integration E2E', () => {
 		const matches = (data.results ?? []).filter(
 			(r) => r.memory.includes(verifyCanary) || r.memory.toLowerCase().includes('verification')
 		);
-		expect(matches.length, `Expected to find verification code "${verifyCanary}" in OpenMemory`).toBeGreaterThan(0);
+		expect(matches.length, `Expected to find verification code "${verifyCanary}" in Memory`).toBeGreaterThan(0);
 		foundMemoryIds = [
 			...directResult.results.map((r) => r.id),
 			...matches.map((r) => r.id)

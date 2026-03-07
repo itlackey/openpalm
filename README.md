@@ -13,7 +13,7 @@ Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your 
 
 - **Simple to run** — a single Docker Compose stack on Linux, macOS, or Windows.
 - **Connect your channels** — web chat and Discord are built in. Add more by dropping files — no code changes.
-- **Long-term memory** — your assistant remembers context across conversations via OpenMemory. Secrets are never stored.
+- **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
 - **Admin dashboard** — manage everything from a browser: services, channels, access control.
 - **Automations** — schedule recurring tasks like updates, health checks, and assistant prompts by dropping a file.
 - **Built for safety** — defense-in-depth security: HMAC-signed messages, guardian validation, assistant isolation, LAN-first by default.
@@ -56,7 +56,7 @@ Connect Discord, a web chat widget, or build your own channel adapter. Each chan
 
 ### It remembers
 
-OpenPalm includes a built-in memory system powered by OpenMemory. Your assistant recalls past conversations, preferences, and context. Secrets are never saved to memory.
+OpenPalm includes a built-in memory system. Your assistant recalls past conversations, preferences, and context. Secrets are never saved to memory.
 
 ### Admin dashboard
 

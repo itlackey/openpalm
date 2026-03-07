@@ -13,13 +13,13 @@ import {
   ensureSecrets,
   ensureOpenCodeConfig,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryDir,
+  ensureMemoryDir,
   stageArtifacts,
   persistArtifacts,
   appendAudit,
-  readOpenMemoryConfig,
+  readMemoryConfig,
   resolveConfigForPush,
-  pushConfigToOpenMemory
+  pushConfigToMemory
 } from "$lib/server/control-plane.js";
 import { startScheduler, stopScheduler } from "$lib/server/scheduler.js";
 
@@ -37,7 +37,7 @@ function runStartupApply(): void {
     ensureSecrets(state);
     ensureOpenCodeConfig();
     ensureOpenCodeSystemConfig();
-    ensureOpenMemoryDir();
+    ensureMemoryDir();
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
 
@@ -76,31 +76,31 @@ function runStartupApply(): void {
 }
 
 /**
- * Push the persisted OpenMemory config to the running container.
- * Retries up to 5 times with 10s delays — OpenMemory may still be starting.
+ * Push the persisted memory config to the running container.
+ * Retries up to 5 times with 10s delays — the memory service may still be starting.
  * Fire-and-forget: failures are logged but don't block admin startup.
  */
-async function pushOpenMemoryConfigOnStartup(): Promise<void> {
+async function pushMemoryConfigOnStartup(): Promise<void> {
   const state = getState();
-  const config = readOpenMemoryConfig(state.dataDir);
+  const config = readMemoryConfig(state.dataDir);
   const resolved = resolveConfigForPush(config, state.configDir);
 
   const maxAttempts = 5;
   const delayMs = 10_000;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const result = await pushConfigToOpenMemory(resolved);
+    const result = await pushConfigToMemory(resolved);
     if (result.ok) {
-      logger.info("pushed OpenMemory config on startup", { attempt });
+      logger.info("pushed memory config on startup", { attempt });
       return;
     }
     if (attempt < maxAttempts) {
-      logger.debug("OpenMemory config push attempt failed, retrying", {
+      logger.debug("memory config push attempt failed, retrying", {
         attempt,
         error: result.error
       });
       await new Promise((r) => setTimeout(r, delayMs));
     } else {
-      logger.warn("failed to push OpenMemory config after all retries", {
+      logger.warn("failed to push memory config after all retries", {
         attempts: maxAttempts,
         error: result.error
       });
@@ -111,8 +111,8 @@ async function pushOpenMemoryConfigOnStartup(): Promise<void> {
 // Run immediately on module load (server startup)
 runStartupApply();
 
-// Fire-and-forget: push OpenMemory config after startup apply
-void pushOpenMemoryConfigOnStartup();
+// Fire-and-forget: push memory config after startup apply
+void pushMemoryConfigOnStartup();
 
 // Graceful shutdown — stop scheduled jobs
 process.on("SIGTERM", () => { stopScheduler(); });

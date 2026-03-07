@@ -97,7 +97,7 @@ export {
   ensureOllamaCompose,
   readOllamaCompose,
   ensureOpenCodeSystemConfig,
-  ensureOpenMemoryDir,
+  ensureMemoryDir,
   isOllamaEnabled,
   stagedEnvFile,
   stagedStackEnvFile,
@@ -109,27 +109,27 @@ export {
   refreshCoreAssets
 } from "./staging.js";
 
-// ── openmemory-config.ts ─────────────────────────────────────────────
+// ── memory-config.ts ─────────────────────────────────────────────────
 export {
-  readOpenMemoryConfig,
-  writeOpenMemoryConfig,
-  ensureOpenMemoryConfig,
-  pushConfigToOpenMemory,
-  fetchConfigFromOpenMemory,
+  readMemoryConfig,
+  writeMemoryConfig,
+  ensureMemoryConfig,
+  pushConfigToMemory,
+  fetchConfigFromMemory,
   resolveApiKey,
   resolveConfigForPush,
   fetchProviderModels,
   checkQdrantDimensions,
   resetQdrantCollection,
-  provisionOpenMemoryUser,
+  provisionMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
   EMBEDDING_DIMS,
   PROVIDER_DEFAULT_URLS,
-  type OpenMemoryConfig,
+  type MemoryConfig,
   type ProviderModelsResult,
   type QdrantDimensionResult
-} from "./openmemory-config.js";
+} from "./memory-config.js";
 
 // ── lifecycle.ts ──────────────────────────────────────────────────────
 export {

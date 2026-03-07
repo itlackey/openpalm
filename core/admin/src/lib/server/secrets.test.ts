@@ -293,7 +293,7 @@ describe("ALLOWED_CONNECTION_KEYS", () => {
       "OPENAI_BASE_URL",
       "EMBEDDING_MODEL",
       "EMBEDDING_DIMS",
-      "OPENMEMORY_USER_ID",
+      "MEMORY_USER_ID",
     ];
     for (const key of expectedKeys) {
       expect(ALLOWED_CONNECTION_KEYS.has(key)).toBe(true);
@@ -306,9 +306,9 @@ describe("ALLOWED_CONNECTION_KEYS", () => {
     expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_LLM_MODEL")).toBe(false);
   });
 
-  test("does not include obsolete OPENMEMORY_OPENAI_* keys (superseded by JSON config)", () => {
-    expect(ALLOWED_CONNECTION_KEYS.has("OPENMEMORY_OPENAI_BASE_URL")).toBe(false);
-    expect(ALLOWED_CONNECTION_KEYS.has("OPENMEMORY_OPENAI_API_KEY")).toBe(false);
+  test("does not include obsolete MEMORY_OPENAI_* keys (superseded by JSON config)", () => {
+    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_OPENAI_BASE_URL")).toBe(false);
+    expect(ALLOWED_CONNECTION_KEYS.has("MEMORY_OPENAI_API_KEY")).toBe(false);
   });
 
   test("does not include ADMIN_TOKEN (security: separate from connection keys)", () => {

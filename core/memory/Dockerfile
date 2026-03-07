@@ -4,14 +4,14 @@
 
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.name="openpalm/memory-api"
+LABEL org.opencontainers.image.name="openpalm/memory"
 
 WORKDIR /app
 
-COPY core/memory-api/requirements.txt .
+COPY core/memory/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY core/memory-api/main.py .
+COPY core/memory/main.py .
 
 EXPOSE 8765
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8765"]
