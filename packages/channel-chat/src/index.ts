@@ -13,6 +13,16 @@ import { BaseChannel, type HandleResult } from "@openpalm/channels-sdk";
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
+/** Constant-time string comparison to prevent timing attacks on API key checks. */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   return v as Record<string, unknown>;
@@ -60,7 +70,18 @@ export default class ChatChannel extends BaseChannel {
 
     // Auth check for OpenAI-format endpoints
     if ((isChatCompletions || isCompletions) && this.apiKey) {
-      if (req.headers.get("authorization") !== `Bearer ${this.apiKey}`) {
+      const authHeader = req.headers.get("authorization") ?? "";
+      const match = authHeader.trim().match(/^Bearer\s+(\S+)\s*$/i);
+      const token = match?.[1] ?? "";
+      if (!token || !safeEqual(token, this.apiKey)) {
+        return this.json(401, { error: { message: "Unauthorized" } });
+      }
+    }
+
+    // Auth check for Anthropic endpoint
+    if (isAnthropicMsg && this.apiKey) {
+      const xApiKey = req.headers.get("x-api-key")?.trim() ?? "";
+      if (!xApiKey || !safeEqual(xApiKey, this.apiKey)) {
         return this.json(401, { error: { message: "Unauthorized" } });
       }
     }

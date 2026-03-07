@@ -661,7 +661,9 @@ Response:
     "MEMORY_USER_ID": false,
     "GROQ_API_KEY": false,
     "MISTRAL_API_KEY": false,
-    "GOOGLE_API_KEY": false
+    "GOOGLE_API_KEY": false,
+    "OWNER_NAME": false,
+    "OWNER_EMAIL": false
   }
 }
 ```
@@ -677,21 +679,43 @@ Body:
 ```json
 {
   "adminToken": "my-secure-token",
-  "llmProvider": "openai",
-  "llmApiKey": "sk-...",
-  "llmBaseUrl": "",
-  "systemModel": "gpt-4o-mini",
-  "embeddingModel": "text-embedding-3-small",
-  "embeddingDims": 1536,
-  "memoryUserId": "default_user"
+  "ownerName": "Jane Doe",
+  "ownerEmail": "jane@example.com",
+  "memoryUserId": "default_user",
+  "ollamaEnabled": false,
+  "connections": [
+    {
+      "id": "openai-1",
+      "name": "OpenAI",
+      "provider": "openai",
+      "baseUrl": "",
+      "apiKey": "sk-..."
+    }
+  ],
+  "assignments": {
+    "llm": {
+      "connectionId": "openai-1",
+      "model": "gpt-4o-mini",
+      "smallModel": ""
+    },
+    "embeddings": {
+      "connectionId": "openai-1",
+      "model": "text-embedding-3-small",
+      "embeddingDims": 1536
+    }
+  }
 }
 ```
 
-All fields except `adminToken` are optional. The endpoint:
+Required fields: `connections` (non-empty array), `assignments.llm` (`connectionId`, `model`),
+`assignments.embeddings` (`connectionId`, `model`). All other fields are optional.
+
+The endpoint:
 1. Writes credentials to `CONFIG_HOME/secrets.env`
-2. Builds and writes Memory config
-3. Runs `docker compose up` to start the stack
-4. Pushes config to Memory and provisions the user (fire-and-forget)
+2. Persists connection profiles and capability assignments
+3. Builds and writes Memory config
+4. Runs `docker compose up` to start the stack
+5. Pushes config to Memory and provisions the user (fire-and-forget)
 
 Response:
 

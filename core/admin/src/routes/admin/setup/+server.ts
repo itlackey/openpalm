@@ -391,10 +391,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const managedServices = buildManagedServices(state);
-  const started = [
-    ...managedServices,
-    ...channelNames.map((name) => `channel-${name}`)
-  ];
+  const started = [...managedServices];
 
   const SERVICE_LABELS: Record<string, string> = {
     caddy: "Caddy (reverse proxy)",

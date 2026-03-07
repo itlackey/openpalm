@@ -74,14 +74,14 @@ Adding a channel requires no code changes — just drop a Docker Compose overlay
 
 ### Automations
 
-Schedule recurring tasks by dropping a `.yaml` file into `~/.config/openpalm/automations/`. OpenPalm ships ready-to-use examples for auto-updating containers, health checks, sending prompts to the assistant, and log cleanup. Browse and install automations from the Registry tab in the admin console, or copy any example from `registry/automations/` to get started. See [`docs/managing-openpalm.md`](docs/managing-openpalm.md#automations) for details.
+Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/automations/`. OpenPalm ships ready-to-use examples for auto-updating containers, health checks, sending prompts to the assistant, and log cleanup. Browse and install automations from the Registry tab in the admin console, or copy any example from `registry/automations/` to get started. See [`docs/managing-openpalm.md`](docs/managing-openpalm.md#automations) for details.
 
 <div>
 
 ## How It Works
 
 <img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
-<p>OpenPalm has defense built into it's core. It has many layers working together to protect your system and your secrets for malicious activity, destructive actions, and other common disasters than can occur with unattended AI assistants.</p>
+<p>OpenPalm has defense built into its core. It has many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
 </div>
 
 - **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
@@ -137,8 +137,8 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 ./scripts/dev-setup.sh --seed-env
 
 cd core/admin
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 Admin UI + API runs on `http://localhost:8100`.

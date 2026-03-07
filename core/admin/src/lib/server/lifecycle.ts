@@ -208,15 +208,11 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 /**
  * Build the list of services that `docker compose up` should manage.
  *
- * Excludes:
- *  - **admin** — the admin cannot safely recreate its own container.
- *  - **docker-socket-proxy** — recreating it severs the `DOCKER_HOST`
- *    TCP connection the admin uses to talk to Docker, causing all
- *    subsequent container operations in the same compose run to fail
- *    ("Cannot connect to the Docker daemon at tcp://docker-socket-proxy:2375").
- *
- * Both services are started by the host-side bootstrap (setup.sh) and
- * must remain running throughout admin-initiated compose operations.
+ * Excludes **admin** — the admin cannot safely recreate its own container.
+ * Note: **docker-socket-proxy** is not in CORE_SERVICES by design, so it
+ * is never included here. Both admin and docker-socket-proxy are started
+ * by the host-side bootstrap (setup.sh) and must remain running throughout
+ * admin-initiated compose operations.
  */
 export function buildManagedServices(state: ControlPlaneState): string[] {
   const services: string[] = CORE_SERVICES.filter((s) => s !== "admin");

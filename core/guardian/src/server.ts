@@ -44,11 +44,22 @@ function parseChannelSecrets(content: string): Record<string, string> {
   return secrets;
 }
 
+// Cache for file-based secrets to avoid reading on every request
+let secretsCache: { mtime: number; secrets: Record<string, string> } | null = null;
+const SECRETS_CACHE_TTL_MS = 5_000;
+
 async function loadChannelSecrets(): Promise<Record<string, string>> {
   if (SECRETS_PATH) {
     try {
-      const content = await Bun.file(SECRETS_PATH).text();
-      return parseChannelSecrets(content);
+      const file = Bun.file(SECRETS_PATH);
+      const mtime = file.lastModified;
+      if (secretsCache && secretsCache.mtime === mtime) {
+        return secretsCache.secrets;
+      }
+      const content = await file.text();
+      const secrets = parseChannelSecrets(content);
+      secretsCache = { mtime, secrets };
+      return secrets;
     } catch {
       logger.warn("secrets_file_unreadable", { path: SECRETS_PATH });
       return {};

@@ -93,7 +93,7 @@ export function mem0BaseUrlConfig(
 
 /** Default models to pull when enabling Ollama from the wizard. */
 export const OLLAMA_DEFAULT_MODELS = {
-  chat: "qwen3:0.6b",
+  chat: "llama3.2:latest",
   embedding: "nomic-embed-text",
 } as const;
 
