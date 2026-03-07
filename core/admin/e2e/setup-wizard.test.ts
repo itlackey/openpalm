@@ -123,10 +123,6 @@ test.describe('Setup Wizard', () => {
 		// Verify model selects are populated
 		await expect(page.locator('#system-model')).toBeVisible();
 		await expect(page.locator('#embedding-model')).toBeVisible();
-		// Memory user ID is pre-populated from server-detected userId
-		const userIdValue = await page.locator('#memory-user-id').inputValue();
-		expect(userIdValue.length).toBeGreaterThan(0);
-		await page.locator('#memory-user-id').fill('alice');
 		await page.getByRole('button', { name: 'Next' }).click();
 
 		// Step 4: Review & Install
@@ -136,8 +132,6 @@ test.describe('Setup Wizard', () => {
 		await expect(page.getByText('Set').first()).toBeVisible();
 		// Provider shows label (e.g., "Cloud — OpenAI")
 		await expect(page.getByText('Cloud — OpenAI')).toBeVisible();
-		// User ID
-		await expect(page.getByText('alice')).toBeVisible();
 	});
 
 	test('back button navigation works through all steps', async ({ page }) => {

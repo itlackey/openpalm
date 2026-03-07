@@ -8,6 +8,13 @@
   }
 
   let { id, value = $bindable(), options, placeholder, onChange }: Props = $props();
+
+  function syncDefault(el: HTMLSelectElement) {
+    if (!value && options.length > 0) {
+      value = options[0];
+      onChange?.(options[0]);
+    }
+  }
 </script>
 
 {#if options.length > 0}
@@ -15,6 +22,7 @@
     class="model-select"
     id={id}
     value={value}
+    use:syncDefault
     onchange={(e) => {
       const next = e.currentTarget.value;
       value = next;

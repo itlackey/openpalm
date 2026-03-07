@@ -592,7 +592,7 @@ describe("executeAction assistant", () => {
         { type: "assistant", content: "hello", timeout: 5000 },
         "test-token"
       )
-    ).rejects.toThrow("assistant POST /session 503");
+    ).rejects.toThrow("OpenCode POST /session 503");
   });
 
   test("throws on message send failure", async () => {
@@ -609,6 +609,6 @@ describe("executeAction assistant", () => {
         { type: "assistant", content: "hello", timeout: 5000 },
         "test-token"
       )
-    ).rejects.toThrow("assistant POST /session/sess1/message 504");
+    ).rejects.toThrow("OpenCode POST /session/sess1/message 504");
   });
 });

@@ -16,7 +16,6 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "./logger.js";
-import { askAssistant } from "@openpalm/channels-sdk/assistant-client";
 
 const logger = createLogger("scheduler");
 
@@ -331,23 +330,47 @@ function executeShellAction(action: AutomationAction): Promise<void> {
 
 /**
  * Execute an assistant action — creates an OpenCode session and sends the
- * prompt. Uses the shared assistant client from @openpalm/channels-sdk.
+ * prompt directly via the OpenCode REST API (no guardian needed).
  */
 async function executeAssistantAction(action: AutomationAction): Promise<void> {
   if (!action.content) {
     throw new Error("assistant action requires a non-empty 'content' field");
   }
 
-  await askAssistant(
-    {
-      baseUrl: process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096",
-      username: process.env.OPENCODE_SERVER_USERNAME ?? "opencode",
-      password: process.env.OPENCODE_SERVER_PASSWORD,
-      messageTimeoutMs: action.timeout ?? 120_000,
-    },
-    `automation/${action.agent ?? "default"}`,
-    action.content,
-  );
+  const baseUrl = process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
+  const password = process.env.OPENCODE_SERVER_PASSWORD;
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (password) {
+    headers["authorization"] = `Basic ${Buffer.from(`opencode:${password}`, "utf8").toString("base64")}`;
+  }
+
+  // Create session
+  const sessionRes = await fetch(`${baseUrl}/session`, {
+    method: "POST",
+    headers,
+    signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify({ title: `automation/${action.agent ?? "default"}` }),
+  });
+  if (!sessionRes.ok) {
+    const body = await sessionRes.text().catch(() => "");
+    throw new Error(`OpenCode POST /session ${sessionRes.status}: ${body}`);
+  }
+  const { id: sessionId } = (await sessionRes.json()) as { id: string };
+  if (typeof sessionId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+    throw new Error("Invalid session ID from assistant");
+  }
+
+  // Send message
+  const msgRes = await fetch(`${baseUrl}/session/${sessionId}/message`, {
+    method: "POST",
+    headers,
+    signal: AbortSignal.timeout(action.timeout ?? 120_000),
+    body: JSON.stringify({ parts: [{ type: "text", text: action.content }] }),
+  });
+  if (!msgRes.ok) {
+    const body = await msgRes.text().catch(() => "");
+    throw new Error(`OpenCode POST /session/${sessionId}/message ${msgRes.status}: ${body}`);
+  }
   logger.info("assistant action completed");
 }
 
