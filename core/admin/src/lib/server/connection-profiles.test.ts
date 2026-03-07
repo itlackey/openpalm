@@ -139,6 +139,35 @@ describe('connection profiles storage', () => {
     expect(deleted.ok).toBe(true);
   });
 
+  test('writeConnectionsDocument rejects empty profiles', () => {
+    const configDir = trackDir(makeTempDir());
+    expect(() => writeConnectionsDocument(configDir, {
+      profiles: [],
+      assignments: {
+        llm: { connectionId: 'x', model: 'y' },
+        embeddings: { connectionId: 'x', model: 'y' },
+      },
+    })).toThrow('profiles must not be empty');
+  });
+
+  test('writeConnectionsDocument rejects dangling assignment connectionIds', () => {
+    const configDir = trackDir(makeTempDir());
+    expect(() => writeConnectionsDocument(configDir, {
+      profiles: [{
+        id: 'primary',
+        name: 'OpenAI',
+        provider: 'openai',
+        baseUrl: '',
+        hasApiKey: true,
+        apiKeyEnvVar: 'OPENAI_API_KEY',
+      }],
+      assignments: {
+        llm: { connectionId: 'missing', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small' },
+      },
+    })).toThrow('llm.connectionId "missing" not found in profiles');
+  });
+
   test('validates assignment save and blocks dangling connection ids', () => {
     const configDir = trackDir(makeTempDir());
 
