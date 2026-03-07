@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/cli",
-  "version": "0.8.0-rc1",
+  "version": "0.8.0-rc2",
   "type": "module",
   "license": "CC-BY-4.0",
   "description": "OpenPalm Bun CLI",

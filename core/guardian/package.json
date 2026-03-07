@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/guardian",
-  "version": "0.8.0-rc1",
+  "version": "0.8.0-rc2",
   "private": true,
   "license": "CC-BY-4.0",
   "type": "module",
