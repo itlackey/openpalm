@@ -66,9 +66,9 @@ rm -f .dev/data/stack.env
 rm -f .dev/data/docker-compose.yml
 rm -rf .dev/data/backups
 
-# Root-owned data from containers (qdrant, caddy, .mem0)
+# Root-owned data from containers (qdrant, caddy)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
-  "rm -rf /c/qdrant /c/.mem0" 2>/dev/null || true
+  "rm -rf /c/qdrant" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/caddy:/c" alpine sh -c \
   "rm -rf /c/data /c/config" 2>/dev/null || true
 

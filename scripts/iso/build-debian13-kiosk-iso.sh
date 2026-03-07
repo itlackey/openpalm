@@ -126,7 +126,7 @@ build_image_cache() {
 
   local images=(
     'docker.io/library/caddy:2'
-    'docker.io/mem0/openmemory-mcp:latest'
+    'docker.io/itlackey/openpalm-memory:latest'
     'ghcr.io/sst/opencode:latest'
     'docker.io/itlackey/openpalm-guardian:latest'
     'docker.io/itlackey/openpalm-admin:latest'
