@@ -25,7 +25,13 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const profiles = listConnectionProfiles(state.configDir);
+  let profiles: CanonicalConnectionProfile[];
+  try {
+    profiles = listConnectionProfiles(state.configDir);
+  } catch {
+    // No profiles.json yet — return empty list
+    profiles = [];
+  }
   appendAudit(state, getActor(event), 'connections.profiles.get', {}, true, requestId, getCallerType(event));
   return jsonResponse(200, { profiles }, requestId);
 };

@@ -4,6 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { getState, resetState } from '$lib/server/state.js';
+import { writeConnectionsDocument } from '$lib/server/connection-profiles.js';
 import { GET, POST } from './+server.js';
 
 function makeTempDir(): string {
@@ -33,6 +34,22 @@ beforeEach(() => {
     join(state.configDir, 'secrets.env'),
     'OPENAI_API_KEY=sk-test\nSYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\nEMBEDDING_MODEL=text-embedding-3-small\nEMBEDDING_DIMS=1536\n'
   );
+
+  // Seed profiles.json so readConnectionProfilesDocument doesn't throw
+  writeConnectionsDocument(state.configDir, {
+    profiles: [{
+      id: 'primary',
+      name: 'OpenAI',
+      provider: 'openai',
+      baseUrl: '',
+      hasApiKey: true,
+      apiKeyEnvVar: 'OPENAI_API_KEY',
+    }],
+    assignments: {
+      llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+      embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+    },
+  });
 });
 
 afterEach(() => {

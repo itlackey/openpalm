@@ -6,8 +6,6 @@ import {
   getCallerType,
   parseJsonBody,
   safeTokenCompare,
-  parseCanonicalConnectionProfile,
-  parseCapabilityAssignments,
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
@@ -18,7 +16,7 @@ import {
   ensureOpenMemoryDir,
   ensureSecrets,
   ensureConnectionProfilesStore,
-  writePrimaryConnectionProfile,
+  writeConnectionsDocument,
   applyInstall,
   appendAudit,
   discoverStagedChannelYmls,
@@ -31,18 +29,14 @@ import {
   pushConfigToOpenMemory,
   provisionOpenMemoryUser,
   buildMem0Mapping,
-  readConnectionMigrationFlags,
-  detectConnectionCompatibilityMode,
 } from "$lib/server/control-plane.js";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
-  mem0BaseUrlConfig,
   OLLAMA_INSTACK_URL
 } from "$lib/provider-constants.js";
 import {
   isWizardProviderInScope,
-  validateWizardCapabilitiesInput,
 } from '$lib/setup-wizard/scope.js';
 import { composeUp, composePullService, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
@@ -98,12 +92,25 @@ export const GET: RequestHandler = async (event) => {
   );
 };
 
+// ── POST body types ──────────────────────────────────────────────────────
+
+type SetupConnection = {
+  id: string;
+  name: string;
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+};
+
+type SetupAssignments = {
+  llm: { connectionId: string; model: string; smallModel?: string };
+  embeddings: { connectionId: string; model: string; embeddingDims?: number };
+};
+
 /**
  * POST /admin/setup
  *
- * Unauthenticated during first-run (ADMIN_TOKEN is empty).
- * Once a token has been set, requires normal admin auth — prevents
- * callers from rotating the token or re-running install without auth.
+ * Accepts multi-profile connections and per-capability assignments.
  */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -111,20 +118,12 @@ export const POST: RequestHandler = async (event) => {
   const setupComplete = isSetupComplete(state.stateDir, state.configDir);
 
   if (setupComplete) {
-    // Setup already completed — require normal admin auth
     const authError = requireAdmin(event, requestId);
     if (authError) return authError;
   } else {
-    // First-run setup requires the ephemeral setup token from GET /admin/setup
     const bootstrapToken = event.request.headers.get("x-admin-token") ?? "";
     if (!safeTokenCompare(bootstrapToken, state.setupToken)) {
-      return errorResponse(
-        401,
-        "unauthorized",
-        "Missing or invalid x-admin-token",
-        {},
-        requestId
-      );
+      return errorResponse(401, "unauthorized", "Missing or invalid x-admin-token", {}, requestId);
     }
   }
 
@@ -136,91 +135,155 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
   }
 
-  const migrationFlags = readConnectionMigrationFlags();
-  const compatibilityMode = detectConnectionCompatibilityMode(body);
+  // ── Parse and validate ────────────────────────────────────────────────
 
-  // Build update map from request body
   const updates: Record<string, string> = {};
   if (typeof body.adminToken === "string" && body.adminToken) {
     updates.ADMIN_TOKEN = body.adminToken;
   }
 
-  // ── Owner identity fields ──
   const ownerName = typeof body.ownerName === "string" ? body.ownerName.trim() : "";
   const ownerEmail = typeof body.ownerEmail === "string" ? body.ownerEmail.trim() : "";
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
-  // ── System LLM connection fields (new wizard) ──
-  let llmProvider = typeof body.llmProvider === "string" ? body.llmProvider : "";
-  const llmApiKey = typeof body.llmApiKey === "string" ? body.llmApiKey : (typeof body.apiKey === 'string' ? body.apiKey : '');
-  let llmBaseUrl = typeof body.llmBaseUrl === "string" ? body.llmBaseUrl : "";
-  let systemModel = typeof body.systemModel === "string" ? body.systemModel : "";
-  let embeddingModel = typeof body.embeddingModel === "string" ? body.embeddingModel : "";
-  let embeddingDims = typeof body.embeddingDims === "number" ? body.embeddingDims : 0;
   const openmemoryUserId = typeof body.openmemoryUserId === "string" ? body.openmemoryUserId : "default_user";
   const ollamaEnabled = body.ollamaEnabled === true;
 
-  if (Array.isArray(body.profiles) && typeof body.assignments === 'object' && body.assignments !== null) {
-    const profileParsed = parseCanonicalConnectionProfile(body.profiles[0]);
-    if (!profileParsed.ok) {
-      return errorResponse(400, 'bad_request', profileParsed.message, {}, requestId);
+  // ── Parse connections array ───────────────────────────────────────────
+
+  if (!Array.isArray(body.connections) || body.connections.length === 0) {
+    return errorResponse(400, "bad_request", "connections array is required and must be non-empty", {}, requestId);
+  }
+
+  const connections: SetupConnection[] = [];
+  for (let i = 0; i < body.connections.length; i++) {
+    const c = body.connections[i];
+    if (typeof c !== 'object' || c === null) {
+      return errorResponse(400, "bad_request", `connections[${i}] must be an object`, {}, requestId);
     }
-    const assignmentParsed = parseCapabilityAssignments(body.assignments);
-    if (!assignmentParsed.ok) {
-      return errorResponse(400, 'bad_request', assignmentParsed.message, {}, requestId);
+    const id = typeof c.id === 'string' ? c.id.trim() : '';
+    const name = typeof c.name === 'string' ? c.name.trim() : '';
+    const provider = typeof c.provider === 'string' ? c.provider.trim() : '';
+    const baseUrl = typeof c.baseUrl === 'string' ? c.baseUrl : '';
+    const apiKey = typeof c.apiKey === 'string' ? c.apiKey : '';
+
+    if (!id) return errorResponse(400, "bad_request", `connections[${i}].id is required`, {}, requestId);
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      return errorResponse(400, "bad_request", `connections[${i}].id contains invalid characters (allowed: A-Z, a-z, 0-9, _, -)`, {}, requestId);
+    }
+    if (!provider) return errorResponse(400, "bad_request", `connections[${i}].provider is required`, {}, requestId);
+    if (!isWizardProviderInScope(provider)) {
+      return errorResponse(400, "bad_request", `connections[${i}].provider "${provider}" is outside wizard scope`, {}, requestId);
     }
 
-    llmProvider = profileParsed.value.provider;
-    llmBaseUrl = profileParsed.value.baseUrl;
-    systemModel = assignmentParsed.value.llm.model;
-    embeddingModel = assignmentParsed.value.embeddings.model;
-    embeddingDims = assignmentParsed.value.embeddings.embeddingDims ?? 0;
+    connections.push({ id, name: name || provider, provider, baseUrl, apiKey });
   }
 
-  if (llmProvider && !isWizardProviderInScope(llmProvider)) {
-    return errorResponse(
-      400,
-      'bad_request',
-      `Provider \"${llmProvider}\" is outside setup wizard v1 scope`,
-      {},
-      requestId
-    );
+  // Check for duplicate IDs
+  const connectionIds = new Set(connections.map((c) => c.id));
+  if (connectionIds.size !== connections.length) {
+    return errorResponse(400, "bad_request", "Duplicate connection IDs found", {}, requestId);
   }
 
-  const capabilitiesValidation = validateWizardCapabilitiesInput(body.capabilities);
-  if (!capabilitiesValidation.ok) {
-    return errorResponse(400, 'bad_request', capabilitiesValidation.message, {}, requestId);
+  // ── Parse assignments ─────────────────────────────────────────────────
+
+  if (typeof body.assignments !== 'object' || body.assignments === null) {
+    return errorResponse(400, "bad_request", "assignments object is required", {}, requestId);
   }
 
-  // When Ollama runs in-stack, override base URL to use Docker network name
-  const effectiveBaseUrl = (ollamaEnabled && llmProvider === "ollama")
-    ? OLLAMA_INSTACK_URL
-    : llmBaseUrl;
+  const rawAssignments = body.assignments as Record<string, unknown>;
+  const llmAssignment = rawAssignments.llm;
+  const embAssignment = rawAssignments.embeddings;
 
-  if (llmApiKey) {
-    const envVarName = PROVIDER_KEY_MAP[llmProvider] ?? "OPENAI_API_KEY";
-    updates[envVarName] = llmApiKey;
+  if (typeof llmAssignment !== 'object' || llmAssignment === null) {
+    return errorResponse(400, "bad_request", "assignments.llm is required", {}, requestId);
+  }
+  if (typeof embAssignment !== 'object' || embAssignment === null) {
+    return errorResponse(400, "bad_request", "assignments.embeddings is required", {}, requestId);
   }
 
-  if (systemModel) {
-    updates.SYSTEM_LLM_PROVIDER = llmProvider || "openai";
-    updates.SYSTEM_LLM_MODEL = systemModel;
+  const llm = llmAssignment as Record<string, unknown>;
+  const emb = embAssignment as Record<string, unknown>;
+  const llmConnectionId = typeof llm.connectionId === 'string' ? llm.connectionId : '';
+  const llmModel = typeof llm.model === 'string' ? llm.model : '';
+  const llmSmallModel = typeof llm.smallModel === 'string' ? llm.smallModel : '';
+  const embConnectionId = typeof emb.connectionId === 'string' ? emb.connectionId : '';
+  const embModel = typeof emb.model === 'string' ? emb.model : '';
+  const embDims = typeof emb.embeddingDims === 'number' ? emb.embeddingDims : 0;
+
+  if (!llmConnectionId || !llmModel) {
+    return errorResponse(400, "bad_request", "assignments.llm requires connectionId and model", {}, requestId);
   }
-  if (effectiveBaseUrl) {
-    updates.SYSTEM_LLM_BASE_URL = effectiveBaseUrl;
-    const mem0Url = mem0BaseUrlConfig(llmProvider, effectiveBaseUrl);
-    if (mem0Url?.key === "openai_base_url") {
-      // OPENAI_BASE_URL is read by the openmemory container as env var fallback
-      // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
-      updates.OPENAI_BASE_URL = mem0Url.value;
+  if (!embConnectionId || !embModel) {
+    return errorResponse(400, "bad_request", "assignments.embeddings requires connectionId and model", {}, requestId);
+  }
+  if (!connectionIds.has(llmConnectionId)) {
+    return errorResponse(400, "bad_request", `assignments.llm.connectionId "${llmConnectionId}" does not match any connection`, {}, requestId);
+  }
+  if (!connectionIds.has(embConnectionId)) {
+    return errorResponse(400, "bad_request", `assignments.embeddings.connectionId "${embConnectionId}" does not match any connection`, {}, requestId);
+  }
+  if (embDims !== 0 && (!Number.isInteger(embDims) || embDims < 1)) {
+    return errorResponse(400, "bad_request", "assignments.embeddings.embeddingDims must be a positive integer", {}, requestId);
+  }
+
+  const parsedAssignments: SetupAssignments = {
+    llm: { connectionId: llmConnectionId, model: llmModel, ...(llmSmallModel ? { smallModel: llmSmallModel } : {}) },
+    embeddings: { connectionId: embConnectionId, model: embModel, ...(embDims > 0 ? { embeddingDims: embDims } : {}) },
+  };
+
+  // ── Resolve effective base URLs (Ollama in-stack override) ────────────
+
+  const effectiveConnections = connections.map((c) => {
+    if (ollamaEnabled && c.provider === "ollama") {
+      return { ...c, baseUrl: OLLAMA_INSTACK_URL };
     }
+    return c;
+  });
+
+  // ── Build connectionId → envVarName map (single source of truth) ─────
+
+  const connEnvVarMap = new Map<string, string>();
+  const claimedEnvVars = new Set<string>();
+
+  for (const conn of effectiveConnections) {
+    let envVarName = PROVIDER_KEY_MAP[conn.provider] ?? "OPENAI_API_KEY";
+    if (claimedEnvVars.has(envVarName)) {
+      // Second connection with same provider — use namespaced var
+      envVarName = `${envVarName}_${conn.id}`;
+    }
+    claimedEnvVars.add(envVarName);
+    connEnvVarMap.set(conn.id, envVarName);
+  }
+
+  // ── Build secrets.env updates ─────────────────────────────────────────
+
+  for (const conn of effectiveConnections) {
+    if (!conn.apiKey) continue;
+    updates[connEnvVarMap.get(conn.id)!] = conn.apiKey;
+  }
+
+  // Set SYSTEM_LLM_* from the LLM connection for env-level consumers
+  const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId)!;
+  updates.SYSTEM_LLM_PROVIDER = llmConnection.provider;
+  updates.SYSTEM_LLM_MODEL = llmModel;
+  if (llmConnection.baseUrl) {
+    updates.SYSTEM_LLM_BASE_URL = llmConnection.baseUrl;
   }
 
   updates.OPENMEMORY_USER_ID = openmemoryUserId;
 
-  // ── All validation passed — persist changes ──
-  logger.info("persisting setup config", { requestId, provider: llmProvider, systemModel, embeddingModel });
+  // ── Persist ───────────────────────────────────────────────────────────
+
+  logger.info("persisting setup config", {
+    requestId,
+    connectionCount: connections.length,
+    llmProvider: llmConnection.provider,
+    llmModel,
+    embModel,
+  });
+
   try {
     ensureXdgDirs();
     ensureSecrets(state);
@@ -228,59 +291,74 @@ export const POST: RequestHandler = async (event) => {
     updateSecretsEnv(state, updates);
   } catch (err) {
     logger.error("failed to update secrets.env", { requestId, error: String(err) });
-    return errorResponse(
-      500,
-      "config_save_failed",
-      `Failed to update secrets.env: ${err instanceof Error ? err.message : String(err)}`,
-      {},
-      requestId
-    );
+    return errorResponse(500, "config_save_failed", `Failed to update secrets.env: ${err instanceof Error ? err.message : String(err)}`, {}, requestId);
   }
 
-  // If admin token was set, update in-memory state so subsequent
-  // authenticated endpoints work immediately
   if (updates.ADMIN_TOKEN) {
     state.adminToken = updates.ADMIN_TOKEN;
   }
 
-  // Build and persist OpenMemory config from wizard selections
-  if (llmProvider && systemModel) {
-    const apiKeyEnvRef = PROVIDER_KEY_MAP[llmProvider]
-      ? `env:${PROVIDER_KEY_MAP[llmProvider]}`
-      : (llmApiKey || "not-needed");
+  // ── Build and persist OpenMemory config ───────────────────────────────
 
-    // Resolve embedding dimensions
-    const lookupKey = `${llmProvider}/${embeddingModel}`;
-    const resolvedDims = embeddingDims || EMBEDDING_DIMS[lookupKey] || 1536;
+  const embConnection = effectiveConnections.find((c) => c.id === embConnectionId)!;
 
-    const omConfig = buildMem0Mapping({
-      provider: llmProvider,
-      baseUrl: effectiveBaseUrl,
-      systemModel,
-      embeddingModel: embeddingModel || 'text-embedding-3-small',
-      embeddingDims: resolvedDims,
-      apiKeyRef: apiKeyEnvRef,
-      customInstructions: '',
-    });
+  const llmEnvVar = connEnvVarMap.get(llmConnection.id)!;
+  const llmApiKeyEnvRef = llmConnection.apiKey ? `env:${llmEnvVar}` : "not-needed";
 
-    writeOpenMemoryConfig(state.dataDir, omConfig);
+  const embEnvVar = connEnvVarMap.get(embConnection.id)!;
+  const embApiKeyEnvRef = embConnection.apiKey ? `env:${embEnvVar}` : "not-needed";
 
-    writePrimaryConnectionProfile(state.configDir, {
-      provider: llmProvider,
-      baseUrl: effectiveBaseUrl,
-      systemModel,
-      embeddingModel: embeddingModel || 'text-embedding-3-small',
-      embeddingDims: resolvedDims,
-    });
-  }
+  const embLookupKey = `${embConnection.provider}/${embModel}`;
+  const resolvedDims = embDims || EMBEDDING_DIMS[embLookupKey] || 1536;
 
-  // Run install sequence
+  const omConfig = buildMem0Mapping({
+    llm: {
+      provider: llmConnection.provider,
+      baseUrl: llmConnection.baseUrl,
+      model: llmModel,
+      apiKeyRef: llmApiKeyEnvRef,
+    },
+    embedder: {
+      provider: embConnection.provider,
+      baseUrl: embConnection.baseUrl,
+      model: embModel || 'text-embedding-3-small',
+      apiKeyRef: embApiKeyEnvRef,
+    },
+    embeddingDims: resolvedDims,
+    customInstructions: '',
+  });
+
+  writeOpenMemoryConfig(state.dataDir, omConfig);
+
+  // Build profiles input for writeConnectionsDocument
+  const profilesInput = effectiveConnections.map((conn) => ({
+    id: conn.id,
+    name: conn.name,
+    provider: conn.provider,
+    baseUrl: conn.baseUrl,
+    hasApiKey: Boolean(conn.apiKey),
+    apiKeyEnvVar: connEnvVarMap.get(conn.id)!,
+  }));
+
+  writeConnectionsDocument(state.configDir, {
+    profiles: profilesInput,
+    assignments: {
+      llm: parsedAssignments.llm,
+      embeddings: {
+        connectionId: parsedAssignments.embeddings.connectionId,
+        model: parsedAssignments.embeddings.model,
+        embeddingDims: resolvedDims,
+      },
+    },
+  });
+
+  // ── Install and deploy ────────────────────────────────────────────────
+
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig();
   ensureOpenMemoryDir();
   applyInstall(state);
 
-  // Discover staged channels and register them
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   const channelNames = stagedYmls
     .map((p) => {
@@ -295,7 +373,6 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  // Check Docker before starting background deploy
   logger.info("checking Docker availability", { requestId });
   const dockerCheck = await checkDocker();
   if (!dockerCheck.ok) {
@@ -313,14 +390,12 @@ export const POST: RequestHandler = async (event) => {
     );
   }
 
-  // Build the list of services that will be deployed
   const managedServices = buildManagedServices(state);
   const started = [
     ...managedServices,
     ...channelNames.map((name) => `channel-${name}`)
   ];
 
-  // Friendly labels for the deploy progress UI
   const SERVICE_LABELS: Record<string, string> = {
     caddy: "Caddy (reverse proxy)",
     openmemory: "OpenMemory",
@@ -329,7 +404,6 @@ export const POST: RequestHandler = async (event) => {
     ollama: "Ollama",
   };
 
-  // Initialize per-service deploy tracking
   initDeployStatus(
     managedServices.map((s) => ({
       service: s,
@@ -337,12 +411,10 @@ export const POST: RequestHandler = async (event) => {
     }))
   );
 
-  // Fire-and-forget: pull images per-service, then compose up, then push config.
   void (async () => {
     const composeFiles = buildComposeFileList(state);
     const envFiles = buildEnvFiles(state);
 
-    // Pull images one service at a time so the UI can show per-service progress
     for (const service of managedServices) {
       const pullResult = await composePullService(state.stateDir, service, {
         files: composeFiles,
@@ -351,7 +423,6 @@ export const POST: RequestHandler = async (event) => {
       if (pullResult.ok) {
         markImageReady(service);
       } else {
-        // Image might already be cached locally — mark ready and let compose up handle errors
         logger.warn("pull returned non-zero for service, continuing", { service, stderr: pullResult.stderr });
         markImageReady(service);
       }
@@ -359,7 +430,6 @@ export const POST: RequestHandler = async (event) => {
 
     markAllImagesReady();
 
-    // Start all services
     const dockerResult = await composeUp(state.stateDir, {
       files: composeFiles,
       envFiles,
@@ -373,7 +443,6 @@ export const POST: RequestHandler = async (event) => {
         dockerAvailable: true,
         composeResult: dockerResult.ok,
         channels: channelNames,
-        ...(migrationFlags.annotateAudit ? { compatibilityMode } : {}),
       },
       dockerResult.ok,
       requestId,
@@ -388,7 +457,6 @@ export const POST: RequestHandler = async (event) => {
 
     markAllRunning();
 
-    // Push OpenMemory config with retries (container may take time to start)
     const config = readOpenMemoryConfig(state.dataDir);
     const resolved = resolveConfigForPush(config, state.configDir);
     const maxAttempts = 5;

@@ -8,122 +8,111 @@ import {
   getCapabilityAssignments,
   getConnectionProfilesPath,
   readConnectionProfilesDocument,
-  readConnectionProfilesDocumentWithOptions,
   saveCapabilityAssignments,
   updateConnectionProfile,
-  writePrimaryConnectionProfile,
+  writeConnectionsDocument,
+  writeConnectionProfilesDocument,
 } from './connection-profiles.js';
-import { makeTempDir, registerCleanup, seedSecretsEnv, trackDir } from './test-helpers.js';
+import { makeTempDir, registerCleanup, trackDir } from './test-helpers.js';
 
 registerCleanup();
 
 describe('connection profiles storage', () => {
-  test('ensures canonical storage file exists in CONFIG_HOME/connections', () => {
+  test('ensures connections directory exists', () => {
     const configDir = trackDir(makeTempDir());
-    seedSecretsEnv(configDir, 'SYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\n');
-
     ensureConnectionProfilesStore(configDir);
-
     const path = getConnectionProfilesPath(configDir);
-    expect(existsSync(path)).toBe(true);
     expect(path).toBe(join(configDir, 'connections', 'profiles.json'));
   });
 
-  test('migrates from legacy singleton env keys on first read', () => {
+  test('readConnectionProfilesDocument throws when file does not exist', () => {
     const configDir = trackDir(makeTempDir());
-    seedSecretsEnv(
-      configDir,
-      [
-        'SYSTEM_LLM_PROVIDER=ollama',
-        'SYSTEM_LLM_BASE_URL=http://host.docker.internal:11434',
-        'SYSTEM_LLM_MODEL=qwen3:0.6b',
-        'EMBEDDING_MODEL=nomic-embed-text',
-        'EMBEDDING_DIMS=768',
-      ].join('\n') + '\n'
-    );
+    ensureConnectionProfilesStore(configDir);
+    expect(() => readConnectionProfilesDocument(configDir)).toThrow('does not exist');
+  });
 
-    const document = readConnectionProfilesDocument(configDir);
+  test('writeConnectionsDocument creates valid canonical document', () => {
+    const configDir = trackDir(makeTempDir());
+    const document = writeConnectionsDocument(configDir, {
+      profiles: [
+        {
+          id: 'primary',
+          name: 'OpenAI',
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com',
+          hasApiKey: true,
+          apiKeyEnvVar: 'OPENAI_API_KEY',
+        },
+      ],
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    });
 
     expect(document.version).toBe(1);
     expect(document.profiles).toHaveLength(1);
-    expect(document.profiles[0].provider).toBe('ollama');
-    expect(document.profiles[0].kind).toBe('openai_compatible_local');
-    expect(document.assignments.llm.model).toBe('qwen3:0.6b');
-    expect(document.assignments.embeddings.model).toBe('nomic-embed-text');
-    expect(document.assignments.embeddings.embeddingDims).toBe(768);
-  });
-
-  test('supports preferLegacyRead hydration without destructive side effects', () => {
-    const configDir = trackDir(makeTempDir());
-    seedSecretsEnv(
-      configDir,
-      [
-        'SYSTEM_LLM_PROVIDER=openai',
-        'SYSTEM_LLM_BASE_URL=https://api.openai.com',
-        'SYSTEM_LLM_MODEL=gpt-4.1-mini',
-        'EMBEDDING_MODEL=text-embedding-3-small',
-        'EMBEDDING_DIMS=1536',
-      ].join('\n') + '\n'
-    );
-
-    ensureConnectionProfilesStore(configDir);
-    const canonical = readConnectionProfilesDocument(configDir);
-    expect(canonical.profiles[0].provider).toBe('openai');
-
-    seedSecretsEnv(
-      configDir,
-      [
-        'SYSTEM_LLM_PROVIDER=ollama',
-        'SYSTEM_LLM_BASE_URL=http://host.docker.internal:11434',
-        'SYSTEM_LLM_MODEL=qwen3:0.6b',
-        'EMBEDDING_MODEL=nomic-embed-text',
-        'EMBEDDING_DIMS=768',
-      ].join('\n') + '\n'
-    );
-
-    const preferred = readConnectionProfilesDocumentWithOptions(configDir, {
-      preferLegacyRead: true,
-      hydrateFromLegacy: true,
-    });
-    expect(preferred.profiles[0].provider).toBe('ollama');
-
-    const hydrated = readConnectionProfilesDocument(configDir);
-    expect(hydrated.profiles[0].provider).toBe('ollama');
-  });
-
-  test('writes primary canonical profile while preserving legacy secrets file', () => {
-    const configDir = trackDir(makeTempDir());
-    seedSecretsEnv(
-      configDir,
-      [
-        'OPENAI_API_KEY=sk-test',
-        'SYSTEM_LLM_PROVIDER=openai',
-        'SYSTEM_LLM_MODEL=gpt-4.1-mini',
-        'EMBEDDING_MODEL=text-embedding-3-small',
-      ].join('\n') + '\n'
-    );
-
-    const document = writePrimaryConnectionProfile(configDir, {
-      provider: 'openai',
-      baseUrl: 'https://api.openai.com',
-      systemModel: 'gpt-4.1-mini',
-      embeddingModel: 'text-embedding-3-small',
-      embeddingDims: 1536,
-    });
-
     expect(document.profiles[0].auth.mode).toBe('api_key');
     expect(document.profiles[0].auth.apiKeySecretRef).toBe('env:OPENAI_API_KEY');
-    expect(readFileSync(join(configDir, 'secrets.env'), 'utf8')).toContain('OPENAI_API_KEY=sk-test');
-    expect(readFileSync(getConnectionProfilesPath(configDir), 'utf8')).toContain('"version": 1');
+    expect(document.assignments.llm.model).toBe('gpt-4.1-mini');
+
+    // File should be readable
+    const read = readConnectionProfilesDocument(configDir);
+    expect(read).toEqual(document);
+  });
+
+  test('writeConnectionsDocument supports multiple profiles', () => {
+    const configDir = trackDir(makeTempDir());
+    const document = writeConnectionsDocument(configDir, {
+      profiles: [
+        {
+          id: 'cloud',
+          name: 'OpenAI',
+          provider: 'openai',
+          baseUrl: '',
+          hasApiKey: true,
+          apiKeyEnvVar: 'OPENAI_API_KEY',
+        },
+        {
+          id: 'local',
+          name: 'Ollama',
+          provider: 'ollama',
+          baseUrl: 'http://ollama:11434',
+          hasApiKey: false,
+          apiKeyEnvVar: '',
+        },
+      ],
+      assignments: {
+        llm: { connectionId: 'local', model: 'llama3.2:3b' },
+        embeddings: { connectionId: 'cloud', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    });
+
+    expect(document.profiles).toHaveLength(2);
+    expect(document.profiles[0].kind).toBe('openai_compatible_remote');
+    expect(document.profiles[1].kind).toBe('openai_compatible_local');
+    expect(document.assignments.llm.connectionId).toBe('local');
+    expect(document.assignments.embeddings.connectionId).toBe('cloud');
   });
 
   test('supports profile CRUD with deterministic conflicts', () => {
     const configDir = trackDir(makeTempDir());
-    seedSecretsEnv(
-      configDir,
-      'SYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\nEMBEDDING_MODEL=text-embedding-3-small\n'
-    );
-    ensureConnectionProfilesStore(configDir);
+
+    // Seed a valid document first
+    writeConnectionsDocument(configDir, {
+      profiles: [{
+        id: 'primary',
+        name: 'OpenAI',
+        provider: 'openai',
+        baseUrl: '',
+        hasApiKey: true,
+        apiKeyEnvVar: 'OPENAI_API_KEY',
+      }],
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    });
 
     const profile = {
       id: 'local-lmstudio',
@@ -150,10 +139,52 @@ describe('connection profiles storage', () => {
     expect(deleted.ok).toBe(true);
   });
 
+  test('writeConnectionsDocument rejects empty profiles', () => {
+    const configDir = trackDir(makeTempDir());
+    expect(() => writeConnectionsDocument(configDir, {
+      profiles: [],
+      assignments: {
+        llm: { connectionId: 'x', model: 'y' },
+        embeddings: { connectionId: 'x', model: 'y' },
+      },
+    })).toThrow('profiles must not be empty');
+  });
+
+  test('writeConnectionsDocument rejects dangling assignment connectionIds', () => {
+    const configDir = trackDir(makeTempDir());
+    expect(() => writeConnectionsDocument(configDir, {
+      profiles: [{
+        id: 'primary',
+        name: 'OpenAI',
+        provider: 'openai',
+        baseUrl: '',
+        hasApiKey: true,
+        apiKeyEnvVar: 'OPENAI_API_KEY',
+      }],
+      assignments: {
+        llm: { connectionId: 'missing', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small' },
+      },
+    })).toThrow('llm.connectionId "missing" not found in profiles');
+  });
+
   test('validates assignment save and blocks dangling connection ids', () => {
     const configDir = trackDir(makeTempDir());
-    seedSecretsEnv(configDir, 'SYSTEM_LLM_PROVIDER=openai\nSYSTEM_LLM_MODEL=gpt-4.1-mini\nEMBEDDING_MODEL=text-embedding-3-small\n');
-    ensureConnectionProfilesStore(configDir);
+
+    writeConnectionsDocument(configDir, {
+      profiles: [{
+        id: 'primary',
+        name: 'OpenAI',
+        provider: 'openai',
+        baseUrl: '',
+        hasApiKey: true,
+        apiKeyEnvVar: 'OPENAI_API_KEY',
+      }],
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    });
 
     const invalid = saveCapabilityAssignments(configDir, {
       llm: { connectionId: 'missing', model: 'gpt-4.1-mini' },

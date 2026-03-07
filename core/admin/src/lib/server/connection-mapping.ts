@@ -17,12 +17,19 @@ export type OpenCodeConnectionMapping = {
 };
 
 export type Mem0ConnectionMappingInput = {
-  provider: string;
-  baseUrl: string;
-  systemModel: string;
-  embeddingModel: string;
+  llm: {
+    provider: string;
+    baseUrl: string;
+    model: string;
+    apiKeyRef: string;
+  };
+  embedder: {
+    provider: string;
+    baseUrl: string;
+    model: string;
+    apiKeyRef: string;
+  };
   embeddingDims: number;
-  apiKeyRef: string;
   customInstructions: string;
 };
 
@@ -40,31 +47,35 @@ export function buildOpenCodeMapping(input: OpenCodeConnectionMappingInput): Ope
 
 export function buildMem0Mapping(input: Mem0ConnectionMappingInput): Mem0ConnectionMapping {
   const llmConfig: Record<string, unknown> = {
-    model: input.systemModel,
+    model: input.llm.model,
     temperature: 0.1,
     max_tokens: 2000,
-    api_key: input.apiKeyRef,
+    api_key: input.llm.apiKeyRef,
   };
+
+  const llmBaseUrlConfig = mem0BaseUrlConfig(input.llm.provider, input.llm.baseUrl);
+  if (llmBaseUrlConfig) {
+    llmConfig[llmBaseUrlConfig.key] = llmBaseUrlConfig.value;
+  }
 
   const embedConfig: Record<string, unknown> = {
-    model: input.embeddingModel,
-    api_key: input.apiKeyRef,
+    model: input.embedder.model,
+    api_key: input.embedder.apiKeyRef,
   };
 
-  const baseUrlConfig = mem0BaseUrlConfig(input.provider, input.baseUrl);
-  if (baseUrlConfig) {
-    llmConfig[baseUrlConfig.key] = baseUrlConfig.value;
-    embedConfig[baseUrlConfig.key] = baseUrlConfig.value;
+  const embedBaseUrlConfig = mem0BaseUrlConfig(input.embedder.provider, input.embedder.baseUrl);
+  if (embedBaseUrlConfig) {
+    embedConfig[embedBaseUrlConfig.key] = embedBaseUrlConfig.value;
   }
 
   return {
     mem0: {
       llm: {
-        provider: mem0ProviderName(input.provider),
+        provider: mem0ProviderName(input.llm.provider),
         config: llmConfig,
       },
       embedder: {
-        provider: mem0ProviderName(input.provider),
+        provider: mem0ProviderName(input.embedder.provider),
         config: embedConfig,
       },
       vector_store: {

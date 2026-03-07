@@ -1,4 +1,4 @@
-export type WizardConnectionType = 'cloud' | 'local' | null;
+export type WizardConnectionType = 'cloud' | 'local';
 
 export type WizardScreen =
   | 'token'
@@ -21,26 +21,52 @@ export const WIZARD_SCREEN_ORDER: WizardScreen[] = [
   'deploying',
 ];
 
+export type WizardConnectionDraft = {
+  id: string;
+  name: string;
+  connectionType: WizardConnectionType;
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  tested: boolean;
+  modelList: string[];
+};
+
 export type SetupWizardDraft = {
   screen: WizardScreen;
-  connectionType: WizardConnectionType;
-  llmProvider: string;
-  llmBaseUrl: string;
-  llmApiKey: string;
-  systemModel: string;
+  connections: WizardConnectionDraft[];
+  editingConnectionIndex: number;
+  llmConnectionId: string;
+  llmModel: string;
+  llmSmallModel: string;
+  embeddingConnectionId: string;
   embeddingModel: string;
   embeddingDims: number;
   openmemoryUserId: string;
 };
 
+export function createConnectionDraft(id?: string): WizardConnectionDraft {
+  return {
+    id: id ?? 'primary',
+    name: '',
+    connectionType: 'cloud',
+    provider: 'openai',
+    baseUrl: '',
+    apiKey: '',
+    tested: false,
+    modelList: [],
+  };
+}
+
 export function createInitialDraft(detectedUserId: string): SetupWizardDraft {
   return {
     screen: 'token',
-    connectionType: null,
-    llmProvider: 'openai',
-    llmBaseUrl: '',
-    llmApiKey: '',
-    systemModel: '',
+    connections: [],
+    editingConnectionIndex: 0,
+    llmConnectionId: '',
+    llmModel: '',
+    llmSmallModel: '',
+    embeddingConnectionId: '',
     embeddingModel: '',
     embeddingDims: 1536,
     openmemoryUserId: detectedUserId || 'default_user',
