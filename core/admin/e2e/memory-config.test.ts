@@ -135,11 +135,11 @@ test.describe('Connections Tab UI', () => {
 		await expect(page.locator('#conn-system-model')).toBeVisible();
 		await expect(page.locator('#conn-embedding-model')).toBeVisible();
 		await expect(page.locator('#conn-embedding-dims')).toBeVisible();
-		await expect(page.locator('#conn-om-user-id')).toBeVisible();
+		await expect(page.locator('#conn-memory-user-id')).toBeVisible();
 
-		// Verify loaded values from mocked connections
-		await expect(page.locator('#conn-system-model')).toHaveValue('gpt-4o-mini');
-		await expect(page.locator('#conn-embedding-model')).toHaveValue('text-embedding-3-small');
+		// Verify loaded values from mocked connections (wait for async load)
+		await expect(page.locator('#conn-system-model')).toHaveValue('gpt-4o-mini', { timeout: 5000 });
+		await expect(page.locator('#conn-embedding-model')).toHaveValue('text-embedding-3-small', { timeout: 5000 });
 	});
 
 	test('saving connection sends correct data', async ({ page }) => {

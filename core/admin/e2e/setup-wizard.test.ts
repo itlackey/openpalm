@@ -252,10 +252,14 @@ test.describe('Setup Wizard', () => {
 		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Step 3: Models → Step 4: Review
+		// Step 3: Models — select system and embedding models
+		await expect(page.getByTestId('step-models')).toBeVisible({ timeout: 5000 });
+		await expect(page.locator('#system-model')).toBeVisible();
+		await page.locator('#system-model').selectOption('llama3');
+		await page.locator('#embedding-model').selectOption('nomic-embed-text');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		// Install
+		// Step 4: Review → Install
 		await page.getByRole('button', { name: 'Install Stack' }).click();
 
 		// Wait for deploying screen to appear (confirms POST was made)
@@ -263,11 +267,18 @@ test.describe('Setup Wizard', () => {
 
 		expect(postedBody.adminToken).toBe('secret-token-abc');
 		expect(postedBody.ownerName).toBe('Alice');
-		expect(postedBody.llmApiKey).toBe('sk-test');
-		expect(postedBody.llmProvider).toBe('openai');
-		expect(postedBody.systemModel).toBeTruthy();
-		expect(postedBody.embeddingModel).toBeTruthy();
-		expect(postedBody.embeddingDims).toBeTruthy();
+		// Connection details are nested in the connections array
+		const connections = postedBody.connections as Array<Record<string, unknown>>;
+		expect(connections).toBeTruthy();
+		expect(connections.length).toBeGreaterThanOrEqual(1);
+		expect(connections[0].apiKey).toBe('sk-test');
+		expect(connections[0].provider).toBe('openai');
+		// Model assignments are nested
+		const assignments = postedBody.assignments as Record<string, Record<string, unknown>>;
+		expect(assignments).toBeTruthy();
+		expect(assignments.llm.model).toBe('llama3');
+		expect(assignments.embeddings.model).toBe('nomic-embed-text');
+		expect(assignments.embeddings.embeddingDims).toBeTruthy();
 		expect(postedBody.memoryUserId).toBeTruthy();
 		expect(postHeaders['x-admin-token']).toBeTruthy();
 	});

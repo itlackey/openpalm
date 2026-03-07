@@ -65,7 +65,7 @@ describe('/setup page', () => {
 		render(Page, { props: { data: mockData } });
 
 		await page.getByLabelText('Your Name').fill('Alice');
-		await page.getByLabelText('Admin Token').fill('token');
+		await page.getByRole('textbox', { name: 'Admin Token' }).fill('token');
 		await page.getByRole('button', { name: 'Next' }).click();
 
 		expect(window.location.search).toContain('screen=connection-type');

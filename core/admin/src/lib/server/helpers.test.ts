@@ -24,7 +24,7 @@ import {
   parseCapabilityAssignments,
 } from "./helpers.js";
 import { getState, resetState } from "./state.js";
-import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ── Mock RequestEvent ───────────────────────────────────────────────────
@@ -182,14 +182,28 @@ describe("requireAdmin", () => {
 describe('requireAdminOrSetupToken', () => {
   test('accepts setup token before setup completion', () => {
     resetState('final-admin-token');
-    const { setupToken, stateDir } = getState();
+    const { setupToken, stateDir, configDir } = getState();
+    // Remove stack.env so OPENPALM_SETUP_COMPLETE marker is absent
     const stackEnvPath = join(stateDir, 'artifacts', 'stack.env');
     if (existsSync(stackEnvPath)) {
       rmSync(stackEnvPath, { force: true });
     }
-    const event = makeEvent({ 'x-admin-token': setupToken });
-    const result = requireAdminOrSetupToken(event as never, 'req-setup');
-    expect(result).toBeNull();
+    // Remove secrets.env so the ADMIN_TOKEN fallback doesn't trigger
+    const secretsPath = join(configDir, 'secrets.env');
+    const savedSecrets = existsSync(secretsPath) ? readFileSync(secretsPath, 'utf8') : null;
+    if (existsSync(secretsPath)) {
+      rmSync(secretsPath, { force: true });
+    }
+    try {
+      const event = makeEvent({ 'x-admin-token': setupToken });
+      const result = requireAdminOrSetupToken(event as never, 'req-setup');
+      expect(result).toBeNull();
+    } finally {
+      // Restore secrets.env
+      if (savedSecrets !== null) {
+        writeFileSync(secretsPath, savedSecrets);
+      }
+    }
   });
 
   test('rejects setup token after setup completion marker exists', async () => {

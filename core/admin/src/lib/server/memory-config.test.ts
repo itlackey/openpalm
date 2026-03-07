@@ -598,28 +598,23 @@ describe("provisionMemoryUser", () => {
     globalThis.fetch = originalFetch;
   });
 
-  test("returns ok=false when stream processing throws a non-abort error", async () => {
-    const stream = new ReadableStream({
-      pull(controller) {
-        controller.error(new Error("stream failed"));
-      },
-    });
-    globalThis.fetch = vi.fn(async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
+  test("returns ok=false when the memory API responds with an error status", async () => {
+    globalThis.fetch = vi.fn(async () => new Response('{"detail":"error"}', { status: 500 })) as unknown as typeof fetch;
 
     const result = await provisionMemoryUser("test-user");
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("stream failed");
   });
 
-  test("treats AbortError as non-fatal", async () => {
-    const abortError = new Error("aborted");
-    abortError.name = "AbortError";
-    const stream = new ReadableStream({
-      pull(controller) {
-        controller.error(abortError);
-      },
-    });
-    globalThis.fetch = vi.fn(async () => new Response(stream, { status: 200 })) as unknown as typeof fetch;
+  test("returns ok=false with error message when fetch throws", async () => {
+    globalThis.fetch = vi.fn(async () => { throw new Error("connection refused"); }) as unknown as typeof fetch;
+
+    const result = await provisionMemoryUser("test-user");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("connection refused");
+  });
+
+  test("returns ok=true when the memory API responds successfully", async () => {
+    globalThis.fetch = vi.fn(async () => new Response('{"status":"ok"}', { status: 200 })) as unknown as typeof fetch;
 
     const result = await provisionMemoryUser("test-user");
     expect(result).toEqual({ ok: true });
