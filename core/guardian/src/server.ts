@@ -45,7 +45,7 @@ function parseChannelSecrets(content: string): Record<string, string> {
 }
 
 // Cache for file-based secrets to avoid reading on every request
-let secretsCache: { mtime: number; secrets: Record<string, string> } | null = null;
+let secretsCache: { mtime: number; loadedAt: number; secrets: Record<string, string> } | null = null;
 const SECRETS_CACHE_TTL_MS = 5_000;
 
 async function loadChannelSecrets(): Promise<Record<string, string>> {
@@ -53,12 +53,14 @@ async function loadChannelSecrets(): Promise<Record<string, string>> {
     try {
       const file = Bun.file(SECRETS_PATH);
       const mtime = file.lastModified;
-      if (secretsCache && secretsCache.mtime === mtime) {
+      if (secretsCache
+        && secretsCache.mtime === mtime
+        && Date.now() - secretsCache.loadedAt < SECRETS_CACHE_TTL_MS) {
         return secretsCache.secrets;
       }
       const content = await file.text();
       const secrets = parseChannelSecrets(content);
-      secretsCache = { mtime, secrets };
+      secretsCache = { mtime, loadedAt: Date.now(), secrets };
       return secrets;
     } catch {
       logger.warn("secrets_file_unreadable", { path: SECRETS_PATH });
