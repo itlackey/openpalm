@@ -40,8 +40,9 @@ export const SETUP_WIZARD_COPY = {
   addConnectionNameLabel: 'Connection name',
   addConnectionNamePlaceholder: 'e.g., "LM Studio local", "Work proxy", "OpenAI Prod"',
   addConnectionBaseUrlLabel: 'Base URL',
-  addConnectionBaseUrlHint: 'Use the full /v1 base URL when available.',
-  addConnectionBaseUrlWarn: "This URL doesn't end with /v1. Many OpenAI-compatible servers expect /v1.",
+  addConnectionBaseUrlHint: 'Enter the server base URL without a trailing /v1 (OpenPalm adds /v1 automatically when needed).',
+  addConnectionBaseUrlWarn:
+    'Including /v1 in this URL may cause errors (for example, /v1/v1). Use the base URL without /v1.',
   addConnectionAuthToggle: 'This endpoint requires an API key',
   addConnectionApiKeyLabel: 'API key',
   addConnectionApiKeyPlaceholder: 'Paste your API key',

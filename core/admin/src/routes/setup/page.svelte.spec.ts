@@ -100,6 +100,15 @@ describe('/setup page — connection-type screen', () => {
     await page.getByRole('button', { name: 'Start' }).click();
   }
 
+  async function createLocalConnection(): Promise<void> {
+    await page.getByTestId('step-connections-hub').getByRole('button', { name: 'Add connection' }).click();
+    await page.getByRole('button', { name: /Local OpenAI-compatible/ }).click();
+    await expect.element(page.getByRole('heading', { name: 'Connection details' })).toBeInTheDocument();
+    await page.getByLabelText('Connection name').fill('Primary local');
+    await page.getByRole('button', { name: 'Save connection' }).click();
+    await expect.element(page.getByRole('heading', { name: 'Connections' })).toBeInTheDocument();
+  }
+
   it('syncs connection-type screen into URL after navigating from connections-hub', async () => {
     guard = useConsoleGuard();
     render(Page, { props: { data: mockData } });
@@ -151,6 +160,37 @@ describe('/setup page — connection-type screen', () => {
 
     const heading = page.getByRole('heading', { name: 'Connections' });
     await expect.element(heading).toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
+
+  it('Back from connection-type removes the first unsaved draft connection', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await advancePastToken();
+    await page.getByTestId('step-connections-hub').getByRole('button', { name: 'Add connection' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await expect.element(page.getByText('No connections yet')).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+
+    guard.expectNoErrors();
+  });
+
+  it('Back from connection-type keeps an existing connection when returning from edit mode', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await advancePastToken();
+    await createLocalConnection();
+
+    await page.getByRole('button', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await expect.element(page.getByRole('list', { name: 'Connections' })).toBeInTheDocument();
+    await expect.element(page.getByText('Primary local')).toBeInTheDocument();
 
     guard.expectNoErrors();
   });

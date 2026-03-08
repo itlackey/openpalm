@@ -158,7 +158,7 @@ describe('/admin/connections/profiles route', () => {
         name: 'New OpenAI',
         kind: 'openai_compatible_remote',
         provider: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
+        baseUrl: 'https://api.openai.com',
         auth: { mode: 'api_key' },
         apiKey: 'sk-new-openai',
       },
@@ -174,6 +174,24 @@ describe('/admin/connections/profiles route', () => {
     };
     expect(body.profile.auth.apiKeySecretRef).toBe('env:OPENAI_API_KEY');
     expect(readFileSync(join(getState().configDir, 'secrets.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-new-openai');
+  });
+
+  test('POST conflict does not update secrets.env from a raw apiKey payload', async () => {
+    const before = readFileSync(join(getState().configDir, 'secrets.env'), 'utf-8');
+    const res = await POST(makeEvent('POST', {
+      profile: {
+        id: 'primary',
+        name: 'OpenAI',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com',
+        auth: { mode: 'api_key' },
+        apiKey: 'sk-should-not-persist',
+      },
+    }));
+
+    expect(res.status).toBe(409);
+    expect(readFileSync(join(getState().configDir, 'secrets.env'), 'utf-8')).toBe(before);
   });
 
   test('PUT returns 404 when updating a non-existent profile', async () => {

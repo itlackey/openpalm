@@ -241,6 +241,25 @@ describe('connection mapping', () => {
     rmSync(configDir, { recursive: true, force: true });
   });
 
+  test('writeOpenCodeProviderConfig leaves an unreadable existing config untouched', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openpalm-connection-mapping-'));
+    const assistantDir = join(configDir, 'assistant');
+    mkdirSync(assistantDir, { recursive: true });
+    const configPath = join(assistantDir, 'opencode.json');
+    writeFileSync(configPath, '{not-json}\n');
+
+    writeOpenCodeProviderConfig(configDir, {
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      smallModel: 'gpt-4.1-mini',
+      options: { baseURL: 'https://api.openai.com' },
+    });
+
+    expect(readFileSync(configPath, 'utf-8')).toBe('{not-json}\n');
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
   test('buildMem0Mapping with two separate connections emits correct per-side baseUrl', () => {
     const mapping = buildMem0Mapping({
       llm: {

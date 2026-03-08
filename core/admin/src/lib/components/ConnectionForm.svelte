@@ -43,16 +43,15 @@
   // ── Validation ───────────────────────────────────────────────────
   let nameError = $state('');
   let baseUrlError = $state('');
+  let apiKeyError = $state('');
 
   // ── Derived ──────────────────────────────────────────────────────
   let isLocal = $derived(kind === 'openai_compatible_local');
   let baseUrlPlaceholder = $derived(
-    isLocal ? 'http://localhost:1234/v1' : 'https://api.example.com/v1'
+    isLocal ? 'http://localhost:1234' : 'https://api.example.com'
   );
   let showV1Warning = $derived(
-    baseUrl.length > 0 &&
-    !baseUrl.endsWith('/v1') &&
-    !baseUrl.endsWith('/v1/')
+    /\/v1\/?$/.test(baseUrl.trim())
   );
 
   // ── Initialize from initial prop ─────────────────────────────────
@@ -75,6 +74,7 @@
       apiKey = '';
       nameError = '';
       baseUrlError = '';
+      apiKeyError = '';
     }
   });
 
@@ -91,9 +91,17 @@
   }
 
   function validate(): boolean {
+    const trimmedApiKey = apiKey.trim();
+    const existingSecretRef = initial?.auth.mode === 'api_key'
+      ? initial.auth.apiKeySecretRef
+      : undefined;
     nameError = name.trim() ? '' : 'Connection name is required.';
-    baseUrlError = isValidHttpUrl(baseUrl) ? '' : 'Enter a valid URL.';
-    return !nameError && !baseUrlError;
+    baseUrlError =
+      baseUrl.trim() === '' || isValidHttpUrl(baseUrl) ? '' : 'Enter a valid URL.';
+    apiKeyError = requiresKey && !trimmedApiKey && !existingSecretRef
+      ? 'API key is required for keyed connections.'
+      : '';
+    return !nameError && !baseUrlError && !apiKeyError;
   }
 
   // ── Submit handler ───────────────────────────────────────────────
@@ -176,9 +184,9 @@
       placeholder={baseUrlPlaceholder}
       autocomplete="off"
     />
-    <span class="field-hint">Include the full path, e.g. <code>https://api.openai.com/v1</code></span>
+    <span class="field-hint">Enter the server base URL without <code>/v1</code>; OpenPalm adds it automatically when needed.</span>
     {#if showV1Warning}
-      <span class="field-warn">URL should end with <code>/v1</code> for most OpenAI-compatible providers.</span>
+      <span class="field-warn">Remove the trailing <code>/v1</code> to avoid generating <code>/v1/v1</code> requests.</span>
     {/if}
     {#if baseUrlError}
       <span class="field-error">{baseUrlError}</span>
@@ -200,6 +208,9 @@
         autocomplete="off"
       />
       <span class="field-hint">Your key will be stored securely.</span>
+      {#if apiKeyError}
+        <span class="field-error">{apiKeyError}</span>
+      {/if}
     {/if}
   </div>
 

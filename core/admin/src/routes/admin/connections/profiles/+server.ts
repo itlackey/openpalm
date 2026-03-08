@@ -22,10 +22,10 @@ import {
 } from '$lib/server/helpers.js';
 
 type ProfileParseResult =
-  | { ok: true; value: CanonicalConnectionProfile }
+  | { ok: true; value: CanonicalConnectionProfile; secretPatch?: Record<string, string> }
   | { ok: false; status: number; message: string };
 
-function normalizeProfilePayload(rawProfile: unknown, configDir: string): ProfileParseResult {
+function normalizeProfilePayload(rawProfile: unknown): ProfileParseResult {
   if (typeof rawProfile !== 'object' || rawProfile === null) {
     return {
       ok: false,
@@ -70,10 +70,6 @@ function normalizeProfilePayload(rawProfile: unknown, configDir: string): Profil
     };
   }
 
-  if (rawApiKey) {
-    patchSecretsEnvFile(configDir, { [secretEnvVar]: rawApiKey });
-  }
-
   const canonicalProfile = {
     ...record,
     auth: {
@@ -87,7 +83,11 @@ function normalizeProfilePayload(rawProfile: unknown, configDir: string): Profil
     return { ok: false, status: 400, message: normalized.message };
   }
 
-  return normalized as ProfileParseResult;
+  return {
+    ok: true,
+    value: normalized.value,
+    ...(rawApiKey ? { secretPatch: { [secretEnvVar]: rawApiKey } } : {}),
+  };
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -120,7 +120,7 @@ export const POST: RequestHandler = async (event) => {
   if (!body) {
     return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
   }
-  const parsed = normalizeProfilePayload(body.profile, state.configDir);
+  const parsed = normalizeProfilePayload(body.profile);
   if (!parsed.ok) {
     return errorResponse(parsed.status, 'bad_request', parsed.message, {}, requestId);
   }
@@ -128,6 +128,9 @@ export const POST: RequestHandler = async (event) => {
   const result = createConnectionProfile(state.configDir, parsed.value as CanonicalConnectionProfile);
   if (!result.ok) {
     return errorResponse(result.status, result.status === 409 ? 'conflict' : 'bad_request', result.message, {}, requestId);
+  }
+  if (parsed.secretPatch) {
+    patchSecretsEnvFile(state.configDir, parsed.secretPatch);
   }
 
   appendAudit(state, actor, 'connections.profiles.create', { id: result.value.id }, true, requestId, callerType);
@@ -147,7 +150,7 @@ export const PUT: RequestHandler = async (event) => {
   if (!body) {
     return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
   }
-  const parsed = normalizeProfilePayload(body.profile, state.configDir);
+  const parsed = normalizeProfilePayload(body.profile);
   if (!parsed.ok) {
     return errorResponse(parsed.status, 'bad_request', parsed.message, {}, requestId);
   }
@@ -155,6 +158,9 @@ export const PUT: RequestHandler = async (event) => {
   const result = updateConnectionProfile(state.configDir, parsed.value as CanonicalConnectionProfile);
   if (!result.ok) {
     return errorResponse(result.status, result.status === 404 ? 'not_found' : 'bad_request', result.message, {}, requestId);
+  }
+  if (parsed.secretPatch) {
+    patchSecretsEnvFile(state.configDir, parsed.secretPatch);
   }
 
   appendAudit(state, actor, 'connections.profiles.update', { id: result.value.id }, true, requestId, callerType);
