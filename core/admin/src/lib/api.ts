@@ -66,6 +66,27 @@ async function del(path: string, body: unknown, token?: string): Promise<Respons
   });
 }
 
+async function readErrorMessage(
+  res: Response,
+  fallback = `Request failed (HTTP ${res.status})`
+): Promise<string> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    const data = (await res.clone().json().catch(() => null)) as
+      | { message?: string; error?: string }
+      | null;
+    if (typeof data?.message === 'string' && data.message) {
+      return data.message;
+    }
+    if (typeof data?.error === 'string' && data.error) {
+      return data.error;
+    }
+  }
+
+  const text = await res.text().catch(() => '');
+  return text || fallback;
+}
+
 export async function fetchHealth(): Promise<{
   admin: HealthPayload | null;
   guardian: HealthPayload | null;
@@ -345,7 +366,7 @@ export async function saveSystemConnection(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as SystemConnectionSaveResult;
 }
@@ -359,7 +380,7 @@ export async function saveConnectionsDto(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as SystemConnectionSaveResult;
 }
@@ -373,7 +394,7 @@ export async function createConnectionProfile(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as { profile: CanonicalConnectionProfileDto };
 }
@@ -390,7 +411,7 @@ export async function updateConnectionProfile(
     throw Object.assign(new Error('Profile not found.'), { status: 404 });
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as { profile: CanonicalConnectionProfileDto };
 }
@@ -410,8 +431,27 @@ export async function deleteConnectionProfile(
     );
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
+}
+
+export async function testConnectionProfile(
+  token: string,
+  draft: { baseUrl: string; apiKey: string; kind: string }
+): Promise<{ ok: boolean; models?: string[]; error?: string; errorCode?: string }> {
+  const res = await post('/admin/connections/test', draft, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `Connection test failed (HTTP ${res.status})`));
+  }
+  return (await res.json()) as {
+    ok: boolean;
+    models?: string[];
+    error?: string;
+    errorCode?: string;
+  };
 }
 
 export async function fetchRegistry(token: string): Promise<RegistryResponse> {
