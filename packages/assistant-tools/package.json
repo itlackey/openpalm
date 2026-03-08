@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/assistant-tools",
-  "version": "0.7.10",
+  "version": "0.7.11",
   "type": "module",
   "license": "CC-BY-4.0",
   "description": "Core OpenPalm assistant extensions for OpenCode",
