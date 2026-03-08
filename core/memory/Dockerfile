@@ -10,21 +10,24 @@ RUN addgroup -g 1000 memory && adduser -u 1000 -G memory -h /home/memory -D memo
 
 WORKDIR /app
 
+# Copy workspace root files needed for bun workspace resolution
+COPY package.json bun.lock ./
+
 # Copy workspace package sources first for better layer caching
 COPY packages/memory/package.json packages/memory/
 COPY packages/memory/src/ packages/memory/src/
 COPY packages/memory/tsconfig.json packages/memory/
 
 # Copy server package
-COPY core/memory/package.json .
-COPY core/memory/src/ src/
+COPY core/memory/package.json core/memory/
+COPY core/memory/src/ core/memory/src/
 
-# Install dependencies
-RUN bun install
+# Install dependencies (workspace resolution requires root package.json + bun.lock)
+RUN bun install --frozen-lockfile || bun install
 
 RUN chown -R memory:memory /app
 
 USER memory
 
 EXPOSE 8765
-CMD ["bun", "run", "src/server.ts"]
+CMD ["bun", "run", "core/memory/src/server.ts"]

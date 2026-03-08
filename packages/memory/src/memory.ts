@@ -285,14 +285,19 @@ export class Memory {
   async deleteAll(opts: { userId?: string } = {}): Promise<void> {
     await this.initialize();
     if (opts.userId) {
-      const [results] = await this.vectorStore.list(
-        { userId: opts.userId },
-        10000,
-      );
-      for (const r of results) {
-        await this.vectorStore.delete(r.id);
-        await this.addHistoryEntry(r.id, (r.payload.data as string) ?? '', null, 'DELETE');
-      }
+      const batchSize = 1000;
+      let deleted: number;
+      do {
+        const [results] = await this.vectorStore.list(
+          { userId: opts.userId },
+          batchSize,
+        );
+        deleted = results.length;
+        for (const r of results) {
+          await this.vectorStore.delete(r.id);
+          await this.addHistoryEntry(r.id, (r.payload.data as string) ?? '', null, 'DELETE');
+        }
+      } while (deleted >= batchSize);
     } else {
       await this.vectorStore.deleteCol();
       await this.historyManager?.reset();

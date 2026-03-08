@@ -11,7 +11,7 @@ import { Database } from 'bun:sqlite';
 /**
  * Create a HistoryManager.
  * @param dbOrPath — A bun:sqlite Database instance (for shared DB) or a file path string.
- *                    If null/undefined, history is disabled and a no-op manager is returned.
+ *                    If null/undefined, returns null (history disabled — callers must handle).
  */
 export function createHistoryManager(dbOrPath: Database | string | null | undefined): HistoryManager | null {
   if (dbOrPath == null) return null;

@@ -148,7 +148,7 @@ function validateConfigStructure(config: Record<string, unknown>): Record<string
     throw new Error("The 'mem0' field must be an object.");
   }
 
-  // Strip unknown top-level keys
+  // Strip unknown top-level keys from mem0 section
   for (const key of Object.keys(mem0Cfg)) {
     if (!ALLOWED_MEM0_KEYS.has(key)) delete mem0Cfg[key];
   }
@@ -162,7 +162,12 @@ function validateConfigStructure(config: Record<string, unknown>): Record<string
     }
   }
 
-  return config.mem0 ? { mem0: mem0Cfg } : mem0Cfg;
+  // Preserve the top-level 'memory' section (contains custom_instructions, etc.)
+  const result: Record<string, unknown> = config.mem0 ? { mem0: mem0Cfg } : { ...mem0Cfg };
+  if (config.memory && typeof config.memory === 'object') {
+    result.memory = config.memory;
+  }
+  return result;
 }
 
 function redactApiKeys(obj: unknown): unknown {
@@ -170,7 +175,7 @@ function redactApiKeys(obj: unknown): unknown {
   if (obj && typeof obj === 'object') {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      if (key === 'api_key' && typeof value === 'string' && !value.startsWith('env:')) {
+      if ((key === 'api_key' || key === 'apiKey') && typeof value === 'string' && !value.startsWith('env:')) {
         result[key] = '***REDACTED***';
       } else {
         result[key] = redactApiKeys(value);
@@ -197,6 +202,9 @@ async function handleRequest(req: Request): Promise<Response> {
     // POST /api/v1/memories/
     if (path === '/api/v1/memories/' && method === 'POST') {
       const body = await readBody(req);
+      if (!body.text || typeof body.text !== 'string' || body.text.trim() === '') {
+        return errorResponse(400, 'text is required and must be a non-empty string');
+      }
       const m = await getMemory();
       const result = await m.add(body.text as string, {
         userId: (body.user_id as string) ?? 'default_user',
@@ -262,6 +270,9 @@ async function handleRequest(req: Request): Promise<Response> {
     if (getMatch && method === 'PUT') {
       const memoryId = decodeURIComponent(getMatch[1]);
       const body = await readBody(req);
+      if (!body.data || typeof body.data !== 'string' || body.data.trim() === '') {
+        return errorResponse(400, 'data is required and must be a non-empty string');
+      }
       const m = await getMemory();
       const result = await m.update(memoryId, body.data as string);
       return json(result);

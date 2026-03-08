@@ -46,7 +46,7 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json:ro
     networks: [assistant_net]
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"await fetch('http://localhost:8765/health')\" || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5

@@ -21,7 +21,12 @@ export class SqliteVecStore implements VectorStore {
   constructor(config: VectorStoreProviderConfig['config']) {
     const dbPath = config.dbPath ?? './memory.db';
     this.dimensions = config.dimensions ?? 1536;
-    this.collectionName = config.collectionName ?? 'memory';
+    const rawName = config.collectionName ?? 'memory';
+    // Validate collection name to prevent SQL injection via table identifiers
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(rawName)) {
+      throw new Error(`Invalid collection name "${rawName}": must be alphanumeric/underscores only`);
+    }
+    this.collectionName = rawName;
     this.tableMeta = `${this.collectionName}_metadata`;
     this.tableVec = `${this.collectionName}_vec`;
 
