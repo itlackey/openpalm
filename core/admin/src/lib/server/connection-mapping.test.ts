@@ -124,4 +124,132 @@ describe('connection mapping', () => {
     expect(mapping.mem0.embedder.config.model).toBe('text-embedding-3-small');
     expect(mapping.mem0.embedder.config).not.toHaveProperty('openai_base_url');
   });
+
+  test('buildOpenCodeMapping includes options.baseURL when baseUrl is non-empty', () => {
+    const mapping = buildOpenCodeMapping({
+      provider: 'lmstudio',
+      baseUrl: 'http://host.docker.internal:1234',
+      systemModel: 'qwen3:8b',
+    });
+
+    expect(mapping.provider).toBe('lmstudio');
+    expect(mapping.model).toBe('qwen3:8b');
+    expect(mapping.smallModel).toBe('qwen3:8b');
+    expect(mapping.options?.baseURL).toBe('http://host.docker.internal:1234');
+  });
+
+  test('buildOpenCodeMapping sets both model and smallModel to systemModel', () => {
+    const mapping = buildOpenCodeMapping({
+      provider: 'openai',
+      baseUrl: '',
+      systemModel: 'gpt-4o',
+    });
+
+    expect(mapping.model).toBe('gpt-4o');
+    expect(mapping.smallModel).toBe('gpt-4o');
+    expect(mapping.options).toBeUndefined();
+  });
+
+  test('buildMem0Mapping with two separate connections emits correct per-side baseUrl', () => {
+    const mapping = buildMem0Mapping({
+      llm: {
+        provider: 'lmstudio',
+        baseUrl: 'http://host.docker.internal:1234',
+        model: 'mistral-7b',
+        apiKeyRef: 'not-needed',
+      },
+      embedder: {
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/',
+        model: 'text-embedding-3-large',
+        apiKeyRef: 'env:OPENAI_API_KEY',
+      },
+      embeddingDims: 3072,
+      customInstructions: 'Be concise.',
+    });
+
+    expect(mapping.mem0.llm.provider).toBe('openai');
+    expect(mapping.mem0.llm.config.openai_base_url).toBe('http://host.docker.internal:1234/v1');
+    expect(mapping.mem0.llm.config.model).toBe('mistral-7b');
+
+    expect(mapping.mem0.embedder.provider).toBe('openai');
+    expect(mapping.mem0.embedder.config.model).toBe('text-embedding-3-large');
+    expect(mapping.mem0.embedder.config.openai_base_url).toBe('https://api.openai.com/v1');
+    expect(mapping.mem0.embedder.config.api_key).toBe('env:OPENAI_API_KEY');
+
+    expect(mapping.mem0.vector_store.config.embedding_model_dims).toBe(3072);
+    expect(mapping.memory.custom_instructions).toBe('Be concise.');
+  });
+
+  test('buildMem0Mapping with two cloud connections on different providers has isolated api_key refs', () => {
+    const mapping = buildMem0Mapping({
+      llm: {
+        provider: 'groq',
+        baseUrl: 'https://api.groq.com/openai',
+        model: 'llama-3.3-70b',
+        apiKeyRef: 'env:GROQ_API_KEY',
+      },
+      embedder: {
+        provider: 'mistral',
+        baseUrl: 'https://api.mistral.ai',
+        model: 'mistral-embed',
+        apiKeyRef: 'env:MISTRAL_API_KEY',
+      },
+      embeddingDims: 1024,
+      customInstructions: '',
+    });
+
+    expect(mapping.mem0.llm.provider).toBe('groq');
+    expect(mapping.mem0.llm.config.api_key).toBe('env:GROQ_API_KEY');
+
+    expect(mapping.mem0.embedder.provider).toBe('mistral');
+    expect(mapping.mem0.embedder.config.api_key).toBe('env:MISTRAL_API_KEY');
+    expect(mapping.mem0.embedder.config.model).toBe('mistral-embed');
+
+    expect(mapping.mem0.embedder.config.api_key).not.toBe('env:GROQ_API_KEY');
+  });
+
+  test('buildMem0Mapping does not set openai_base_url when provider has no URL mapping', () => {
+    const mapping = buildMem0Mapping({
+      llm: {
+        provider: 'anthropic',
+        baseUrl: '',
+        model: 'claude-3-5-sonnet-20241022',
+        apiKeyRef: 'env:ANTHROPIC_API_KEY',
+      },
+      embedder: {
+        provider: 'openai',
+        baseUrl: '',
+        model: 'text-embedding-3-small',
+        apiKeyRef: 'env:OPENAI_API_KEY',
+      },
+      embeddingDims: 1536,
+      customInstructions: '',
+    });
+
+    expect(mapping.mem0.llm.provider).toBe('anthropic');
+    expect(mapping.mem0.llm.config).not.toHaveProperty('openai_base_url');
+    expect(mapping.mem0.embedder.config).not.toHaveProperty('openai_base_url');
+  });
+
+  test('buildMem0Mapping empty customInstructions sets memory.custom_instructions to empty string', () => {
+    const mapping = buildMem0Mapping({
+      llm: {
+        provider: 'openai',
+        baseUrl: '',
+        model: 'gpt-4.1-mini',
+        apiKeyRef: 'env:OPENAI_API_KEY',
+      },
+      embedder: {
+        provider: 'openai',
+        baseUrl: '',
+        model: 'text-embedding-3-small',
+        apiKeyRef: 'env:OPENAI_API_KEY',
+      },
+      embeddingDims: 1536,
+      customInstructions: '',
+    });
+
+    expect(mapping.memory.custom_instructions).toBe('');
+  });
 });

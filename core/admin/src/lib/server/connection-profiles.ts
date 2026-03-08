@@ -53,6 +53,9 @@ function isValidProfile(value: unknown): value is CanonicalConnectionProfile {
 function isValidConnectionDocument(value: unknown): value is CanonicalConnectionsDocument {
   if (!isRecord(value)) return false;
   if (value.version !== 1) return false;
+  // An empty profiles array is structurally invalid: a document must have at least
+  // one connection profile to be usable. assignments reference profile ids, so
+  // an empty profiles array would make all assignment references dangling.
   if (!Array.isArray(value.profiles) || value.profiles.length === 0) return false;
   if (!isRecord(value.assignments)) return false;
 
@@ -108,6 +111,13 @@ export function readConnectionProfilesDocument(configDir: string): CanonicalConn
   return parsed;
 }
 
+/**
+ * Ensures the connections directory exists under CONFIG_HOME.
+ *
+ * Non-destructive: only creates the directory if it does not exist.
+ * Never writes or overwrites `profiles.json` — user-owned profile data
+ * is always preserved.
+ */
 export function ensureConnectionProfilesStore(configDir: string): void {
   mkdirSync(getConnectionProfilesDir(configDir), { recursive: true });
 }

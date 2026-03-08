@@ -631,7 +631,6 @@
       />
     {:else if activeTab === 'connections'}
       <ConnectionsTab
-        connections={connectionsData}
         loading={connectionsLoading}
         onRefresh={loadConnections}
       />

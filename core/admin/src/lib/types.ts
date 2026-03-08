@@ -175,6 +175,20 @@ export type SaveConnectionsDtoPayload = {
   capabilities?: string[];
 };
 
+export type ConnectionProfilePayload = {
+  id: string;
+  name: string;
+  kind: 'openai_compatible_remote' | 'openai_compatible_local';
+  provider: string;
+  baseUrl: string;
+  auth: {
+    mode: 'api_key' | 'none';
+    apiKeySecretRef?: string;
+  };
+  /** Raw API key — stored in secrets.env, not in the profile document. */
+  apiKey?: string;
+};
+
 export type SystemConnectionSaveResult = {
   ok: boolean;
   pushed: boolean;

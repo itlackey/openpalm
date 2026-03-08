@@ -9,6 +9,188 @@ const mockData = {
 	setupToken: 'test_token'
 };
 
+describe('/setup page — step indicators', () => {
+  let guard: ConsoleGuard;
+  afterEach(() => { guard?.cleanup(); });
+
+  it('shows all step indicator buttons', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await expect.element(page.getByRole('button', { name: 'Step 1: Welcome' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Step 2: Connections' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Step 3: Add Connection' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Step 4: Required Models' })).toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
+
+  it('step indicators 2–4 are disabled on initial render', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    const step2 = page.getByRole('button', { name: 'Step 2: Connections' });
+    await expect.element(step2).toBeDisabled();
+
+    const step3 = page.getByRole('button', { name: 'Step 3: Add Connection' });
+    await expect.element(step3).toBeDisabled();
+
+    const step4 = page.getByRole('button', { name: 'Step 4: Required Models' });
+    await expect.element(step4).toBeDisabled();
+
+    guard.expectNoErrors();
+  });
+});
+
+describe('/setup page — Welcome screen validation', () => {
+  let guard: ConsoleGuard;
+  afterEach(() => { guard?.cleanup(); });
+
+  it('shows error when Name is empty on Next click', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await page.getByRole('textbox', { name: 'Admin Token' }).fill('secure-pass');
+    await page.getByRole('button', { name: 'Next' }).click();
+
+    const errorMsg = page.getByRole('alert');
+    await expect.element(errorMsg).toHaveTextContent('Name is required.');
+
+    guard.expectNoErrors();
+  });
+
+  it('shows error when Admin Token is empty on Next click', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await page.getByLabelText('Your Name').fill('Alice');
+    await page.getByRole('button', { name: 'Next' }).click();
+
+    const errorMsg = page.getByRole('alert');
+    await expect.element(errorMsg).toHaveTextContent('Admin token is required.');
+
+    guard.expectNoErrors();
+  });
+
+  it('shows error when Admin Token is shorter than 8 characters', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await page.getByLabelText('Your Name').fill('Alice');
+    await page.getByRole('textbox', { name: 'Admin Token' }).fill('short');
+    await page.getByRole('button', { name: 'Next' }).click();
+
+    const errorMsg = page.getByRole('alert');
+    await expect.element(errorMsg).toHaveTextContent('at least 8 characters');
+
+    guard.expectNoErrors();
+  });
+});
+
+describe('/setup page — connection-type screen', () => {
+  let guard: ConsoleGuard;
+  afterEach(() => { guard?.cleanup(); });
+
+  async function advancePastToken(): Promise<void> {
+    await page.getByLabelText('Your Name').fill('Alice');
+    await page.getByRole('textbox', { name: 'Admin Token' }).fill('token-secure-123');
+    await page.getByRole('button', { name: 'Next' }).click();
+  }
+
+  it('syncs connection-type screen into URL after navigating from connections-hub', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await advancePastToken();
+
+    expect(window.location.search).toContain('screen=connections-hub');
+
+    guard.expectNoErrors();
+  });
+
+  it('shows connection-type screen heading after starting a new connection', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await advancePastToken();
+
+    // Click Add connection to enter connection-type screen
+    await page.getByRole('button', { name: 'Add connection' }).click();
+
+    const heading = page.getByRole('heading', { name: 'Connection details' });
+    await expect.element(heading).toBeInTheDocument();
+
+    expect(window.location.search).toContain('screen=connection-type');
+
+    guard.expectNoErrors();
+  });
+
+  it('shows OpenAI-Compatible and Local Model options on connection-type screen', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await advancePastToken();
+    await page.getByRole('button', { name: 'Add connection' }).click();
+
+    await expect.element(page.getByText('OpenAI-Compatible')).toBeInTheDocument();
+    await expect.element(page.getByText('Local Model')).toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
+
+  it('Back button on connection-type returns to connections-hub screen', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await advancePastToken();
+    await page.getByRole('button', { name: 'Add connection' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    const heading = page.getByRole('heading', { name: 'Connections' });
+    await expect.element(heading).toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
+});
+
+describe('/setup page — models screen URL restoration guard', () => {
+  let guard: ConsoleGuard;
+  afterEach(() => { guard?.cleanup(); });
+
+  it('resets to welcome when models screen is forced via URL with no connections', async () => {
+    guard = useConsoleGuard();
+    window.history.replaceState({}, '', '?screen=models');
+    render(Page, { props: { data: mockData } });
+
+    const heading = page.getByRole('heading', { name: 'Set up your models' });
+    await expect.element(heading).toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
+
+  it('SETUP_WIZARD_COPY.differentEmbeddingProvider matches expected copy', async () => {
+    const { SETUP_WIZARD_COPY } = await import('$lib/setup-wizard/copy.js');
+    expect(SETUP_WIZARD_COPY.differentEmbeddingProvider).toBe('Use a different provider for embeddings?');
+    expect(SETUP_WIZARD_COPY.addAnotherConnection).toBe('Add connection');
+  });
+});
+
+describe('/setup page — review screen URL restoration guard', () => {
+  let guard: ConsoleGuard;
+  afterEach(() => { guard?.cleanup(); });
+
+  it('resets to welcome when review screen is forced via URL with no connections', async () => {
+    guard = useConsoleGuard();
+    window.history.replaceState({}, '', '?screen=review');
+    render(Page, { props: { data: mockData } });
+
+    const heading = page.getByRole('heading', { name: 'Set up your models' });
+    await expect.element(heading).toBeInTheDocument();
+
+    guard.expectNoErrors();
+  });
+});
+
 describe('/setup page', () => {
 	let guard: ConsoleGuard;
 
@@ -22,7 +204,7 @@ describe('/setup page', () => {
 
 		const heading = page.getByRole('heading', { level: 1 });
 		await expect.element(heading).toBeInTheDocument();
-		await expect.element(heading).toHaveTextContent('OpenPalm Setup');
+		await expect.element(heading).toHaveTextContent('OpenPalm Setup Wizard');
 
 		guard.expectNoErrors();
 	});
@@ -37,11 +219,11 @@ describe('/setup page', () => {
 		guard.expectNoErrors();
 	});
 
-	it('should show step 1 (Welcome) on initial render', async () => {
+	it('should show step 1 (welcome) heading on initial render', async () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
-		const welcomeHeading = page.getByRole('heading', { name: 'Welcome' });
+		const welcomeHeading = page.getByRole('heading', { name: 'Set up your models' });
 		await expect.element(welcomeHeading).toBeInTheDocument();
 
 		guard.expectNoErrors();
@@ -51,16 +233,16 @@ describe('/setup page', () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
-		const step1 = page.getByRole('button', { name: 'Step 1: Admin Token' });
+		const step1 = page.getByRole('button', { name: 'Step 1: Welcome' });
 		await expect.element(step1).toBeInTheDocument();
 
-		const step2 = page.getByRole('button', { name: 'Step 2: Connection' });
+		const step2 = page.getByRole('button', { name: 'Step 2: Connections' });
 		await expect.element(step2).toBeInTheDocument();
 
 		guard.expectNoErrors();
 	});
 
-	it('syncs current screen into URL query params', async () => {
+	it('syncs current screen into URL query params after token step', async () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
@@ -68,7 +250,7 @@ describe('/setup page', () => {
 		await page.getByRole('textbox', { name: 'Admin Token' }).fill('token-secure-123');
 		await page.getByRole('button', { name: 'Next' }).click();
 
-		expect(window.location.search).toContain('screen=connection-type');
+		expect(window.location.search).toContain('screen=connections-hub');
 
 		guard.expectNoErrors();
 	});

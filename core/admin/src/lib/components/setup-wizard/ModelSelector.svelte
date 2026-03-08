@@ -34,7 +34,17 @@
     {/each}
   </select>
 {:else}
-  <input class="model-input" id={id} type="text" bind:value placeholder={placeholder} />
+  <input
+    class="model-input"
+    id={id}
+    type="text"
+    value={value}
+    placeholder={placeholder}
+    oninput={(e) => {
+      value = e.currentTarget.value;
+      onChange?.(e.currentTarget.value);
+    }}
+  />
 {/if}
 
 <style>

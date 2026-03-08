@@ -111,4 +111,114 @@ describe('/admin/connections/profiles route', () => {
     const missing = await DELETE(makeEvent('DELETE', { id: 'local-lmstudio' }));
     expect(missing.status).toBe(404);
   });
+
+  test('GET returns empty profiles list when profiles.json does not exist', async () => {
+    const state = getState();
+    const profilesPath = join(state.configDir, 'connections', 'profiles.json');
+    rmSync(profilesPath, { force: true });
+
+    const res = await GET(makeEvent('GET'));
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as { profiles: unknown[] };
+    expect(Array.isArray(body.profiles)).toBe(true);
+    expect(body.profiles).toHaveLength(0);
+  });
+
+  test('POST returns 400 when profile body is missing required fields', async () => {
+    const res = await POST(makeEvent('POST', {
+      profile: {
+        // missing id, name, provider, auth
+      },
+    }));
+    expect(res.status).toBe(400);
+
+    const body = await res.json() as { error: string };
+    expect(typeof body.error).toBe('string');
+  });
+
+  test('POST returns 400 when profile auth.mode is api_key but apiKeySecretRef is missing', async () => {
+    const res = await POST(makeEvent('POST', {
+      profile: {
+        id: 'bad-auth',
+        name: 'Bad Auth',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: '',
+        auth: { mode: 'api_key' }, // missing apiKeySecretRef
+      },
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  test('PUT returns 404 when updating a non-existent profile', async () => {
+    const res = await PUT(makeEvent('PUT', {
+      profile: {
+        id: 'does-not-exist',
+        name: 'Ghost',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: '',
+        auth: { mode: 'api_key', apiKeySecretRef: 'env:OPENAI_API_KEY' },
+      },
+    }));
+    expect(res.status).toBe(404);
+  });
+
+  test('DELETE returns 409 when profile is referenced by an assignment', async () => {
+    const res = await DELETE(makeEvent('DELETE', { id: 'primary' }));
+    expect(res.status).toBe(409);
+
+    const body = await res.json() as { error: string; message: string };
+    expect(body.message).toMatch(/in use/i);
+  });
+
+  test('DELETE returns 404 for an id that was never created', async () => {
+    const res = await DELETE(makeEvent('DELETE', { id: 'never-existed' }));
+    expect(res.status).toBe(404);
+  });
+
+  test('DELETE returns 400 when body has no id field', async () => {
+    const res = await DELETE(makeEvent('DELETE', {}));
+    expect(res.status).toBe(400);
+  });
+
+  test('full create → GET → update → delete lifecycle', async () => {
+    const profile = {
+      id: 'groq-cloud',
+      name: 'Groq',
+      kind: 'openai_compatible_remote',
+      provider: 'groq',
+      baseUrl: 'https://api.groq.com/openai',
+      auth: { mode: 'api_key', apiKeySecretRef: 'env:GROQ_API_KEY' },
+    };
+
+    // Create
+    const created = await POST(makeEvent('POST', { profile }));
+    expect(created.status).toBe(200);
+
+    // GET lists both seeded + new profile
+    const listed = await GET(makeEvent('GET'));
+    expect(listed.status).toBe(200);
+    const listedBody = await listed.json() as { profiles: Array<{ id: string }> };
+    expect(listedBody.profiles.map((p) => p.id)).toContain('groq-cloud');
+
+    // Duplicate POST returns 409
+    const dup = await POST(makeEvent('POST', { profile }));
+    expect(dup.status).toBe(409);
+
+    // Update name
+    const updated = await PUT(makeEvent('PUT', { profile: { ...profile, name: 'Groq (updated)' } }));
+    expect(updated.status).toBe(200);
+    const updatedBody = await updated.json() as { profile: { name: string } };
+    expect(updatedBody.profile.name).toBe('Groq (updated)');
+
+    // Delete
+    const deleted = await DELETE(makeEvent('DELETE', { id: 'groq-cloud' }));
+    expect(deleted.status).toBe(200);
+
+    // Confirm gone
+    const gone = await DELETE(makeEvent('DELETE', { id: 'groq-cloud' }));
+    expect(gone.status).toBe(404);
+  });
 });

@@ -17,3 +17,31 @@ export function mapModelDiscoveryError(result: ModelDiscoveryLike): string {
   }
   return 'Network error — unable to reach admin API.';
 }
+
+export type ConnectionTestErrorCode =
+  | 'unauthorized'
+  | 'not_found'
+  | 'timeout'
+  | 'network'
+  | 'missing_base_url'
+  | 'unknown';
+
+export function mapDiscoveryResultToErrorCode(
+  result: Pick<ModelDiscoveryLike, 'reason' | 'error'>
+): ConnectionTestErrorCode {
+  switch (result.reason) {
+    case 'timeout':          return 'timeout';
+    case 'missing_base_url': return 'missing_base_url';
+    case 'network':          return 'network';
+    case 'provider_http': {
+      // Parse status from the error string produced by fetchProviderModels
+      // e.g. "Provider API returned 401", "Ollama API returned 404"
+      const match = /\b(\d{3})\b/.exec(result.error ?? '');
+      const status = match ? Number(match[1]) : 0;
+      if (status === 401 || status === 403) return 'unauthorized';
+      if (status === 404)                    return 'not_found';
+      return 'unknown';
+    }
+    default: return 'unknown';
+  }
+}

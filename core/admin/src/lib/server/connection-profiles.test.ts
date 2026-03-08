@@ -139,6 +139,36 @@ describe('connection profiles storage', () => {
     expect(deleted.ok).toBe(true);
   });
 
+  test('ensureConnectionProfilesStore does not overwrite existing profiles.json', () => {
+    const configDir = trackDir(makeTempDir());
+
+    // Write a valid document first
+    writeConnectionsDocument(configDir, {
+      profiles: [{
+        id: 'primary',
+        name: 'OpenAI',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com',
+        hasApiKey: true,
+        apiKeyEnvVar: 'OPENAI_API_KEY',
+      }],
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    });
+
+    const profilesPath = getConnectionProfilesPath(configDir);
+    const contentBefore = readFileSync(profilesPath, 'utf8');
+
+    // Call ensureConnectionProfilesStore twice — must be idempotent and non-destructive
+    ensureConnectionProfilesStore(configDir);
+    ensureConnectionProfilesStore(configDir);
+
+    expect(existsSync(profilesPath)).toBe(true);
+    expect(readFileSync(profilesPath, 'utf8')).toBe(contentBefore);
+  });
+
   test('writeConnectionsDocument rejects empty profiles', () => {
     const configDir = trackDir(makeTempDir());
     expect(() => writeConnectionsDocument(configDir, {

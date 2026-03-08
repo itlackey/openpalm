@@ -172,6 +172,9 @@ export {
 export {
   buildOpenCodeMapping,
   buildMem0Mapping,
+  writeOpenCodeProviderConfig,
+  resolveApiKeyRef,
+  buildMem0MappingFromProfiles,
   type OpenCodeConnectionMappingInput,
   type OpenCodeConnectionMapping,
   type Mem0ConnectionMappingInput,

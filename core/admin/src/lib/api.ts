@@ -11,6 +11,8 @@ import type {
   RegistryResponse,
   ConnectionsResponseDto,
   SaveConnectionsDtoPayload,
+  ConnectionProfilePayload,
+  CanonicalConnectionProfileDto,
 } from './types.js';
 
 const apiBase = '';
@@ -35,6 +37,30 @@ async function post(path: string, body: unknown, token?: string): Promise<Respon
   };
   return fetch(`${apiBase}${path}`, {
     method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function put(path: string, body: unknown, token?: string): Promise<Response> {
+  const headers: HeadersInit = {
+    'content-type': 'application/json',
+    ...buildHeaders(token)
+  };
+  return fetch(`${apiBase}${path}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function del(path: string, body: unknown, token?: string): Promise<Response> {
+  const headers: HeadersInit = {
+    'content-type': 'application/json',
+    ...buildHeaders(token)
+  };
+  return fetch(`${apiBase}${path}`, {
+    method: 'DELETE',
     headers,
     body: JSON.stringify(body)
   });
@@ -336,6 +362,56 @@ export async function saveConnectionsDto(
     throw new Error(await res.text());
   }
   return (await res.json()) as SystemConnectionSaveResult;
+}
+
+export async function createConnectionProfile(
+  token: string,
+  profile: ConnectionProfilePayload
+): Promise<{ profile: CanonicalConnectionProfileDto }> {
+  const res = await post('/admin/connections/profiles', { profile }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as { profile: CanonicalConnectionProfileDto };
+}
+
+export async function updateConnectionProfile(
+  token: string,
+  profile: ConnectionProfilePayload
+): Promise<{ profile: CanonicalConnectionProfileDto }> {
+  const res = await put('/admin/connections/profiles', { profile }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Profile not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as { profile: CanonicalConnectionProfileDto };
+}
+
+export async function deleteConnectionProfile(
+  token: string,
+  id: string
+): Promise<void> {
+  const res = await del('/admin/connections/profiles', { id }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 409) {
+    throw Object.assign(
+      new Error('Profile is referenced by assignments and cannot be removed.'),
+      { status: 409 }
+    );
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
 }
 
 export async function fetchRegistry(token: string): Promise<RegistryResponse> {

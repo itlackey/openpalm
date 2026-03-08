@@ -1,457 +1,891 @@
-import { expect, test } from '@playwright/test';
-
 /**
- * Helper: mock the /admin/setup/models endpoint so the "Test Connection"
- * button in step 2 succeeds and populates the model list.
+ * Setup Wizard — E2E tests
+ *
+ * Covers the full 7-screen flow of the current wizard:
+ *   1. Welcome         (name / email / admin token, validation)
+ *   2. Connections Hub (empty state, add/edit/duplicate/remove)
+ *   3. Connection Type (Remote vs Local picker)
+ *   4. Connection Details (presets, API key, base URL, test connection, cancel, save)
+ *   5. Required Models (chat model, embedding model, validation, back/continue)
+ *   6. Optional Add-ons (toggle expand, skip, continue)
+ *   7. Review & Install (all sections, edit links, export downloads, save)
+ *
+ * All network calls that would hit real infrastructure are intercepted with
+ * page.route() mocks so tests run fully offline.
+ *
+ * Test IDs used by the wizard:
+ *   data-testid="step-welcome"              Screen 1
+ *   data-testid="step-connections-hub"      Screen 2
+ *   data-testid="step-connection-type"      Screen 3
+ *   data-testid="step-add-connection-details" Screen 4
+ *   data-testid="step-models"               Screen 5 (inside RequiredModelsScreen)
+ *   data-testid="step-optional-addons"      Screen 6 (inside OptionalAddonsScreen)
+ *   data-testid="step-review"               Screen 7
+ *   data-testid="step-deploying"            Deploy progress screen
  */
-async function mockModelsEndpoint(page: import('@playwright/test').Page) {
-	await page.route('**/admin/setup/models', (route) => {
-		if (route.request().method() === 'POST') {
-			return route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({
-					models: ['llama3', 'llama3:70b', 'nomic-embed-text', 'mistral']
-				})
-			});
-		}
-		return route.continue();
-	});
+
+import { expect, test, type Page } from '@playwright/test';
+
+// ── Shared mocks ──────────────────────────────────────────────────────────────
+
+/** Intercept the local-provider detection call so Screen 4 (local path) is instant. */
+async function mockLocalProviders(page: Page, providers: unknown[] = []) {
+  await page.route('**/admin/providers/local', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ providers }) })
+  );
 }
 
-/**
- * Helper: mock the /admin/providers/local endpoint so the provider step
- * does not make real network calls for local provider detection.
- */
-async function mockLocalProvidersEndpoint(page: import('@playwright/test').Page) {
-	await page.route('**/admin/providers/local', (route) => {
-		return route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({ providers: [] })
-		});
-	});
+/** Intercept connection test to immediately succeed and return a model list. */
+async function mockConnectionTest(page: Page) {
+  await page.route('**/admin/connections/test', (route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, models: ['gpt-4o', 'gpt-4o-mini', 'text-embedding-3-small'] })
+      });
+    }
+    return route.continue();
+  });
 }
 
-/**
- * Helper: navigate from step 2 connection-type picker through "Test Connection"
- * so the Next button becomes enabled. Selects the cloud path with openai provider.
- */
-async function completeConnectStep(page: import('@playwright/test').Page) {
-	// Sub-step 2a: pick "OpenAI-Compatible (Remote)" connection type
-	await page.getByRole('button', { name: /OpenAI-Compatible/ }).click();
-	await page.locator('#llm-api-key').fill('sk-test');
-
-	// Sub-step 2b: test connection (default provider is openai)
-	await page.getByRole('button', { name: 'Test Connection' }).click();
-	await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
+/** Intercept deploy-status to immediately return the "ready" phase. */
+async function mockDeployReady(page: Page) {
+  await page.route('**/admin/setup/deploy-status', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        active: true,
+        phase: 'ready',
+        message: 'All services are up and running.',
+        services: [
+          { service: 'caddy', label: 'Caddy', imageReady: true, containerRunning: true },
+          { service: 'memory', label: 'Memory', imageReady: true, containerRunning: true },
+        ]
+      })
+    })
+  );
 }
 
-/**
- * Helper: fill in step 1 (Welcome) fields and advance to step 2.
- */
-async function completeWelcomeStep(page: import('@playwright/test').Page, opts?: { name?: string; token?: string }) {
-	await page.locator('#owner-name').fill(opts?.name ?? 'Test User');
-	await page.locator('#admin-token').fill(opts?.token ?? 'my-secure-token');
-	await page.getByRole('button', { name: 'Next' }).click();
+/** Intercept the final POST /admin/setup to succeed without Docker. */
+async function mockInstallSuccess(page: Page) {
+  await page.route('**/admin/setup', (route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, async: true, started: ['caddy', 'memory'], dockerAvailable: true })
+      });
+    }
+    return route.continue();
+  });
 }
 
-/**
- * Helper: mock the deploy-status endpoint to immediately report ready.
- */
-async function mockDeployStatusReady(page: import('@playwright/test').Page) {
-	await page.route('**/admin/setup/deploy-status', (route) => {
-		return route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({
-				active: true,
-				phase: 'ready',
-				message: 'All services are up and running.',
-				services: [
-					{ service: 'caddy', label: 'Caddy', imageReady: true, containerRunning: true },
-					{ service: 'memory', label: 'Memory', imageReady: true, containerRunning: true },
-				],
-			})
-		});
-	});
+/** Intercept the export endpoints so downloads succeed with fake JSON. */
+async function mockExports(page: Page) {
+  await page.route('**/admin/connections/export/opencode', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'content-disposition': 'attachment; filename="opencode.json"' },
+      body: JSON.stringify({ model: 'gpt-4o', _nextSteps: [] })
+    })
+  );
+  await page.route('**/admin/connections/export/mem0', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'content-disposition': 'attachment; filename="mem0-config.json"' },
+      body: JSON.stringify({ llm: { provider: 'openai' } })
+    })
+  );
 }
+
+// ── Navigation helpers ────────────────────────────────────────────────────────
+
+/** Fill Screen 1 (Welcome) and click Start. */
+async function completeWelcome(
+  page: Page,
+  opts: { name?: string; email?: string; token?: string } = {}
+) {
+  await page.locator('#owner-name').fill(opts.name ?? 'Test User');
+  if (opts.email) await page.locator('#owner-email').fill(opts.email);
+  await page.locator('#admin-token').fill(opts.token ?? 'supersecrettoken');
+  await page.getByRole('button', { name: 'Start' }).click();
+}
+
+/** From Screen 2 (Connections Hub), add a Remote OpenAI connection and save it. */
+async function addRemoteConnection(page: Page, opts: { name?: string; apiKey?: string } = {}) {
+  // Screen 2 → "Add your first connection" (empty state) or "Add connection" (step-actions)
+  // Scope to the screen container to avoid matching the step-dot nav button "Step 3: Add Connection"
+  const hub = page.getByTestId('step-connections-hub');
+  await hub.getByRole('button', { name: /Add.*connection/i }).first().click();
+  // Screen 3: pick Remote
+  await expect(page.getByTestId('step-connection-type')).toBeVisible();
+  await page.getByRole('button', { name: /Remote OpenAI/i }).click();
+  // Screen 4: connection details
+  await expect(page.getByTestId('step-add-connection-details')).toBeVisible();
+  // Click OpenAI preset chip to pre-fill name + base URL
+  await page.getByRole('button', { name: 'OpenAI' }).first().click();
+  if (opts.name) {
+    await page.locator('#conn-name').fill(opts.name);
+  }
+  await page.locator('#conn-api-key').fill(opts.apiKey ?? 'sk-test-e2e-key');
+  await page.getByRole('button', { name: 'Save connection' }).click();
+  // Should land back on Screen 2 (Connections Hub)
+  await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+}
+
+/** Navigate from Screen 2 through Screen 5 and Screen 6 to Screen 7 (Review). */
+async function navigateToReview(page: Page) {
+  // Screen 2 → Continue (connections already added)
+  await page.getByRole('button', { name: 'Continue' }).click();
+  // Screen 5: Required Models
+  await expect(page.getByTestId('step-models')).toBeVisible();
+  await page.locator('#system-model').fill('gpt-4o');
+  await page.locator('#embedding-model').fill('text-embedding-3-small');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  // Screen 6: Optional Add-ons
+  await expect(page.getByTestId('step-optional-addons')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  // Screen 7: Review
+  await expect(page.getByTestId('step-review')).toBeVisible();
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe('Setup Wizard', () => {
-	test('setup page loads and shows wizard with welcome step', async ({ page }) => {
-		await page.goto('/setup');
-		await expect(page.locator('h1')).toHaveText('OpenPalm Setup Wizard');
-		await expect(page.getByTestId('step-token')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('Welcome');
-	});
 
-	test('welcome step validates required fields', async ({ page }) => {
-		await page.goto('/setup');
-		await expect(page.getByTestId('step-token')).toBeVisible();
+  // ── Screen 1: Welcome ───────────────────────────────────────────────────────
 
-		// Click Next without entering anything — name is required first
-		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.locator('[role="alert"]')).toHaveText('Name is required.');
+  test.describe('Screen 1 — Welcome', () => {
+    test('loads wizard and shows Screen 1', async ({ page }) => {
+      await page.goto('/setup');
+      await expect(page.locator('h1')).toContainText('OpenPalm Setup Wizard');
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+      await expect(page.locator('h2')).toHaveText('Set up your models');
+    });
 
-		// Fill name but not token
-		await page.locator('#owner-name').fill('Test User');
-		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.locator('[role="alert"]')).toHaveText('Admin token is required.');
+    test('Start requires name', async ({ page }) => {
+      await page.goto('/setup');
+      await page.getByRole('button', { name: 'Start' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Name is required.');
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
 
-		// Still on step 1
-		await expect(page.getByTestId('step-token')).toBeVisible();
-	});
+    test('Start requires admin token', async ({ page }) => {
+      await page.goto('/setup');
+      await page.locator('#owner-name').fill('Test User');
+      await page.getByRole('button', { name: 'Start' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Admin token is required.');
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
 
-	test('wizard navigates through all 4 steps', async ({ page }) => {
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
-		await page.goto('/setup');
+    test('Start requires token of at least 8 characters', async ({ page }) => {
+      await page.goto('/setup');
+      await page.locator('#owner-name').fill('Test User');
+      await page.locator('#admin-token').fill('short');
+      await page.getByRole('button', { name: 'Start' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('at least 8 characters');
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
 
-		// Step 1: Welcome
-		await expect(page.getByTestId('step-token')).toBeVisible();
-		await completeWelcomeStep(page);
+    test('Start advances to Screen 2 when form is valid', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+    });
 
-		// Step 2: Connection
-		await expect(page.getByTestId('step-provider')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('Connection Type');
-		await completeConnectStep(page);
-		await page.getByRole('button', { name: 'Next' }).click();
+    test('email field is optional — Start succeeds without it', async ({ page }) => {
+      await page.goto('/setup');
+      await page.locator('#owner-name').fill('No Email User');
+      await page.locator('#admin-token').fill('securetokenok');
+      await page.getByRole('button', { name: 'Start' }).click();
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+    });
+  });
 
-		// Step 3: Select Models
-		await expect(page.getByTestId('step-models')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('Select Models');
-		// Verify model selects are populated
-		await expect(page.locator('#system-model')).toBeVisible();
-		await expect(page.locator('#embedding-model')).toBeVisible();
-		await page.getByRole('button', { name: 'Next' }).click();
+  // ── Screen 2: Connections Hub ───────────────────────────────────────────────
 
-		// Step 4: Review & Install
-		await expect(page.getByTestId('step-review')).toBeVisible();
-		await expect(page.locator('h2')).toHaveText('Review & Install');
-		// Admin token just says "Set"
-		await expect(page.getByText('Set').first()).toBeVisible();
-		// Provider shows label (e.g., "Cloud — OpenAI")
-		await expect(page.getByText('Cloud — OpenAI')).toBeVisible();
-	});
+  test.describe('Screen 2 — Connections Hub', () => {
+    test('shows empty-state CTA when no connections exist', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+      await expect(page.getByText('No connections yet')).toBeVisible();
+      await expect(page.getByRole('button', { name: /Add your first connection/i })).toBeVisible();
+    });
 
-	test('back button navigation works through all steps', async ({ page }) => {
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
-		await page.goto('/setup');
+    test('Continue is disabled until at least one connection is added', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    });
 
-		// Step 1 -> 2
-		await completeWelcomeStep(page);
-		await expect(page.getByTestId('step-provider')).toBeVisible();
+    test('Back returns to Screen 1', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
 
-		// Test connection so Next is enabled
-		await completeConnectStep(page);
+    test('saved connection appears in the list with Edit/Duplicate/Remove', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+      await expect(page.getByText('OpenAI', { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Duplicate' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Remove' })).toBeVisible();
+    });
 
-		// Step 2 -> 3
-		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByTestId('step-models')).toBeVisible();
+    test('Remove deletes the connection and restores empty state', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await page.getByRole('button', { name: 'Remove' }).click();
+      await expect(page.getByText('No connections yet')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    });
 
-		// Step 3 -> 4
-		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByTestId('step-review')).toBeVisible();
+    test('Duplicate opens Screen 4 to edit the copy', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await page.getByRole('button', { name: 'Duplicate' }).click();
+      // Duplicate opens Screen 4 with the copy pre-filled for editing
+      await expect(page.getByTestId('step-add-connection-details')).toBeVisible();
+      // Name should have "(copy)" suffix
+      await expect(page.locator('#conn-name')).toHaveValue(/copy/i);
+    });
 
-		// Go back: 4 -> 3 -> 2b (cloud details) -> 2a (connection type) -> 1
-		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.getByTestId('step-models')).toBeVisible();
+    test('Edit opens Screen 4 with that connection pre-filled', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await page.getByRole('button', { name: 'Edit' }).click();
+      await expect(page.getByTestId('step-add-connection-details')).toBeVisible();
+      // Connection name should be pre-filled (OpenAI preset)
+      await expect(page.locator('#conn-name')).not.toHaveValue('');
+    });
 
-		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.getByTestId('step-provider')).toBeVisible();
-		// Now on cloud sub-step; Back goes to connection-type picker
-		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.locator('h2')).toHaveText('Connection Type');
-		// Back from connection-type picker goes to step 1
-		await page.getByRole('button', { name: 'Back' }).click();
-		await expect(page.getByTestId('step-token')).toBeVisible();
-	});
+    test('Add connection button opens Screen 3', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      // Now use the "Add connection" button (not the empty-state CTA)
+      await page.getByTestId('step-connections-hub').getByRole('button', { name: 'Add connection' }).click();
+      await expect(page.getByTestId('step-connection-type')).toBeVisible();
+    });
+  });
 
-	test('install triggers POST and shows deploying screen', async ({ page }) => {
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
-		await mockDeployStatusReady(page);
+  // ── Screen 3: Connection Type ───────────────────────────────────────────────
 
-		await page.route('**/admin/setup', (route) => {
-			if (route.request().method() === 'POST') {
-				return route.fulfill({
-					status: 200,
-					contentType: 'application/json',
-					body: JSON.stringify({
-						ok: true,
-						async: true,
-						started: ['caddy', 'memory', 'admin'],
-						dockerAvailable: true,
-					})
-				});
-			}
-			return route.continue();
-		});
+  test.describe('Screen 3 — Connection Type', () => {
+    test('shows correct title and two options', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await page.getByTestId('step-connections-hub').getByRole('button', { name: /Add.*connection/i }).first().click();
+      await expect(page.getByTestId('step-connection-type')).toBeVisible();
+      await expect(page.locator('h2')).toHaveText('Add a connection');
+      await expect(page.getByRole('button', { name: /Remote OpenAI/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Local OpenAI/i })).toBeVisible();
+    });
 
-		await page.goto('/setup');
+    test('Back returns to Screen 2', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await page.getByTestId('step-connections-hub').getByRole('button', { name: /Add.*connection/i }).first().click();
+      await expect(page.getByTestId('step-connection-type')).toBeVisible();
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+    });
 
-		// Navigate through wizard
-		await completeWelcomeStep(page, { token: 'my-token' });
-		await completeConnectStep(page);
-		await page.getByRole('button', { name: 'Next' }).click();
-		await page.getByRole('button', { name: 'Next' }).click();
-		await expect(page.getByTestId('step-review')).toBeVisible();
+    test('Remote option advances to Screen 4 with cloud connection type', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await page.getByTestId('step-connections-hub').getByRole('button', { name: /Add.*connection/i }).first().click();
+      await page.getByRole('button', { name: /Remote OpenAI/i }).click();
+      await expect(page.getByTestId('step-add-connection-details')).toBeVisible();
+      // Cloud path shows provider chip picker (e.g., OpenAI, Groq, etc.)
+      await expect(page.getByRole('button', { name: 'OpenAI' }).first()).toBeVisible();
+    });
 
-		// Install
-		await page.getByRole('button', { name: 'Install Stack' }).click();
+    test('Local option advances to Screen 4 with local connection type', async ({ page }) => {
+      await mockLocalProviders(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await page.getByTestId('step-connections-hub').getByRole('button', { name: /Add.*connection/i }).first().click();
+      await page.getByRole('button', { name: /Local OpenAI/i }).click();
+      await expect(page.getByTestId('step-add-connection-details')).toBeVisible();
+      // Local path shows base URL with localhost placeholder
+      await expect(page.locator('#conn-base-url')).toHaveAttribute('placeholder', /localhost/i);
+    });
+  });
 
-		// Should transition to deploying screen
-		await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
+  // ── Screen 4: Connection Details ───────────────────────────────────────────
 
-		// Deploy status mock returns ready, so "Go to Console" should appear
-		await expect(page.getByRole('link', { name: 'Go to Console' })).toBeVisible({ timeout: 10000 });
-	});
+  test.describe('Screen 4 — Connection Details', () => {
+    async function goToScreen4Cloud(page: Page) {
+      await completeWelcome(page);
+      await page.getByTestId('step-connections-hub').getByRole('button', { name: /Add.*connection/i }).first().click();
+      await page.getByRole('button', { name: /Remote OpenAI/i }).click();
+      await expect(page.getByTestId('step-add-connection-details')).toBeVisible();
+    }
 
-	test('POST sends correct fields in request body', async ({ page }) => {
-		let postedBody: Record<string, unknown> = {};
-		let postHeaders: Record<string, string> = {};
+    test('shows correct title and fields', async ({ page }) => {
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      await expect(page.locator('h2')).toHaveText('Connection details');
+      await expect(page.locator('#conn-name')).toBeVisible();
+      await expect(page.locator('#conn-api-key')).toBeVisible();
+      await expect(page.locator('#conn-base-url')).toBeVisible();
+    });
 
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
-		await mockDeployStatusReady(page);
+    test('Save requires a connection name', async ({ page }) => {
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      await page.locator('#conn-name').fill('');
+      await page.getByRole('button', { name: 'Save connection' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Connection name is required.');
+    });
 
-		await page.route('**/admin/setup', (route) => {
-			if (route.request().method() === 'POST') {
-				postedBody = JSON.parse(route.request().postData() ?? '{}');
-				postHeaders = route.request().headers();
-				return route.fulfill({
-					status: 200,
-					contentType: 'application/json',
-					body: JSON.stringify({
-						ok: true,
-						async: true,
-						started: ['admin'],
-						dockerAvailable: true,
-					})
-				});
-			}
-			return route.continue();
-		});
+    test('provider presets fill name and base URL', async ({ page }) => {
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      await page.getByRole('button', { name: 'Groq' }).click();
+      await expect(page.locator('#conn-name')).toHaveValue('Groq');
+      await expect(page.locator('#conn-base-url')).toHaveValue(/groq/i);
+    });
 
-		await page.goto('/setup');
+    test('Cancel returns to Screen 3 (Connection Type); Back from Screen 3 returns to Screen 2', async ({ page }) => {
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      // Cancel on Screen 4 goes back to Screen 3 (Connection Type picker)
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByTestId('step-connection-type')).toBeVisible();
+      // Back on Screen 3 returns to Screen 2 (Connections Hub)
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+    });
 
-		// Step 1: Welcome
-		await completeWelcomeStep(page, { name: 'Alice', token: 'secret-token-abc' });
+    test('Test Connection button calls test endpoint and shows success status', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      await page.getByRole('button', { name: 'OpenAI' }).first().click();
+      await page.locator('#conn-api-key').fill('sk-test-key');
+      await page.getByRole('button', { name: 'Test Connection' }).click();
+      await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
+    });
 
-		// Step 2: Connection — select cloud, fill API key, test connection
-		await page.getByRole('button', { name: /OpenAI-Compatible/ }).click();
-		await page.locator('#llm-api-key').fill('sk-test');
-		await page.getByRole('button', { name: 'Test Connection' }).click();
-		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
-		await page.getByRole('button', { name: 'Next' }).click();
+    test('Test Connection failure shows error alert', async ({ page }) => {
+      await page.route('**/admin/connections/test', (route) => {
+        if (route.request().method() === 'POST') {
+          return route.fulfill({
+            status: 401,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'unauthorized', message: 'Unauthorized. This endpoint may require a valid API key.' })
+          });
+        }
+        return route.continue();
+      });
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      await page.getByRole('button', { name: 'OpenAI' }).first().click();
+      await page.locator('#conn-api-key').fill('sk-bad-key');
+      await page.getByRole('button', { name: 'Test Connection' }).click();
+      await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 5000 });
+    });
 
-		// Step 3: Models — select system and embedding models
-		await expect(page.getByTestId('step-models')).toBeVisible({ timeout: 5000 });
-		await expect(page.locator('#system-model')).toBeVisible();
-		await page.locator('#system-model').selectOption('llama3');
-		await page.locator('#embedding-model').selectOption('nomic-embed-text');
-		await page.getByRole('button', { name: 'Next' }).click();
+    test('URL not ending in /v1 shows warning (non-blocking)', async ({ page }) => {
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      // Clear the preset base URL and type one without /v1
+      await page.locator('#conn-base-url').fill('https://myproxy.example.com');
+      await expect(page.getByText(/doesn't end with \/v1/i)).toBeVisible();
+      // Warning should not block Save (name still needed)
+      await page.locator('#conn-name').fill('My Proxy');
+      await page.locator('#conn-api-key').fill('sk-test');
+      // Should be able to attempt save (may have other validation, but no /v1 block)
+      // Just verify the warning text is there — not an error
+      await expect(page.locator('.field-warn')).toBeVisible();
+    });
 
-		// Step 4: Review → Install
-		await page.getByRole('button', { name: 'Install Stack' }).click();
+    test('Save adds connection and returns to Screen 2', async ({ page }) => {
+      await page.goto('/setup');
+      await goToScreen4Cloud(page);
+      await page.getByRole('button', { name: 'OpenAI' }).first().click();
+      await page.locator('#conn-api-key').fill('sk-test-e2e');
+      await page.getByRole('button', { name: 'Save connection' }).click();
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+      await expect(page.getByText('OpenAI', { exact: true }).first()).toBeVisible();
+    });
+  });
 
-		// Wait for deploying screen to appear (confirms POST was made)
-		await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
+  // ── Screen 5: Required Models ───────────────────────────────────────────────
 
-		expect(postedBody.adminToken).toBe('secret-token-abc');
-		expect(postedBody.ownerName).toBe('Alice');
-		// Connection details are nested in the connections array
-		const connections = postedBody.connections as Array<Record<string, unknown>>;
-		expect(connections).toBeTruthy();
-		expect(connections.length).toBeGreaterThanOrEqual(1);
-		expect(connections[0].apiKey).toBe('sk-test');
-		expect(connections[0].provider).toBe('openai');
-		// Model assignments are nested
-		const assignments = postedBody.assignments as Record<string, Record<string, unknown>>;
-		expect(assignments).toBeTruthy();
-		expect(assignments.llm.model).toBe('llama3');
-		expect(assignments.embeddings.model).toBe('nomic-embed-text');
-		expect(assignments.embeddings.embeddingDims).toBeTruthy();
-		expect(postedBody.memoryUserId).toBeTruthy();
-		expect(postHeaders['x-admin-token']).toBeTruthy();
-	});
+  test.describe('Screen 5 — Required Models', () => {
+    async function goToScreen5(page: Page) {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByTestId('step-models')).toBeVisible();
+    }
 
-	test('setup page is accessible when ADMIN_TOKEN is not set', async ({ page }) => {
-		// With ADMIN_TOKEN unset, the server-side +page.server.ts allows
-		// access (isSetupComplete returns false). The wizard renders.
-		await page.goto('/setup');
-		await expect(page.locator('h1')).toHaveText('OpenPalm Setup Wizard');
-	});
+    test('shows correct title and both model fields', async ({ page }) => {
+      await goToScreen5(page);
+      await expect(page.locator('h2')).toHaveText('Required models');
+      await expect(page.locator('#system-model')).toBeVisible();
+      await expect(page.locator('#embedding-model')).toBeVisible();
+    });
 
-	test('GET /admin/setup API returns booleans, never secret values', async ({ page }) => {
-		// Directly call the API endpoint to verify the response shape
-		const response = await page.request.get('/admin/setup');
-		expect(response.ok()).toBeTruthy();
-		const parsed = await response.json();
+    test('Continue requires chat model', async ({ page }) => {
+      await goToScreen5(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Chat model is required.');
+    });
 
-		// The response has 'configured' with boolean values only
-		expect(parsed).toHaveProperty('configured');
-		for (const val of Object.values(parsed.configured as Record<string, unknown>)) {
-			expect(typeof val).toBe('boolean');
-		}
-		// Must not expose actual secret values
-		expect(parsed).not.toHaveProperty('openaiApiKey');
-		expect(parsed).not.toHaveProperty('openaiBaseUrl');
-		expect(parsed).not.toHaveProperty('adminToken');
-	});
+    test('Continue requires embedding model', async ({ page }) => {
+      await goToScreen5(page);
+      await page.locator('#system-model').fill('gpt-4o');
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Embedding model is required.');
+    });
 
-	test('install error shows error message and allows retry', async ({ page }) => {
-		let callCount = 0;
+    test('Back returns to Screen 2 (Connections Hub)', async ({ page }) => {
+      await goToScreen5(page);
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+    });
 
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
-		await mockDeployStatusReady(page);
+    test('"Use same as Chat model" button copies chat connection to embeddings', async ({ page }) => {
+      await goToScreen5(page);
+      await page.getByRole('button', { name: /Use same as Chat/i }).click();
+      // Connection for embeddings should now match the chat connection
+      const chatConn = await page.locator('#llm-connection').inputValue();
+      const embConn = await page.locator('#emb-connection').inputValue();
+      expect(chatConn).toBe(embConn);
+    });
 
-		await page.route('**/admin/setup', (route) => {
-			if (route.request().method() === 'POST') {
-				callCount++;
-				if (callCount === 1) {
-					return route.fulfill({
-						status: 500,
-						contentType: 'application/json',
-						body: JSON.stringify({
-							error: 'config_save_failed',
-							message: 'Failed to update secrets.env: file locked'
-						})
-					});
-				}
-				return route.fulfill({
-					status: 200,
-					contentType: 'application/json',
-					body: JSON.stringify({
-						ok: true,
-						async: true,
-						started: ['admin'],
-						dockerAvailable: true,
-					})
-				});
-			}
-			return route.continue();
-		});
+    test('Advanced embedding settings expand when toggled', async ({ page }) => {
+      await goToScreen5(page);
+      await page.getByText('Advanced embedding settings').click();
+      await expect(page.getByPlaceholder('1536')).toBeVisible();
+    });
 
-		await page.goto('/setup');
+    test('Continue with valid models advances to Screen 6', async ({ page }) => {
+      await goToScreen5(page);
+      await page.locator('#system-model').fill('gpt-4o');
+      await page.locator('#embedding-model').fill('text-embedding-3-small');
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByTestId('step-optional-addons')).toBeVisible();
+    });
+  });
 
-		// Navigate to review
-		await completeWelcomeStep(page);
-		await completeConnectStep(page);
-		await page.getByRole('button', { name: 'Next' }).click();
-		await page.getByRole('button', { name: 'Next' }).click();
+  // ── Screen 6: Optional Add-ons ─────────────────────────────────────────────
 
-		// First install — should fail and stay on review screen
-		await page.getByRole('button', { name: 'Install Stack' }).click();
-		await expect(page.locator('[role="alert"]')).toContainText('Failed to update secrets.env');
+  test.describe('Screen 6 — Optional Add-ons', () => {
+    async function goToScreen6(page: Page) {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByTestId('step-models')).toBeVisible();
+      await page.locator('#system-model').fill('gpt-4o');
+      await page.locator('#embedding-model').fill('text-embedding-3-small');
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByTestId('step-optional-addons')).toBeVisible();
+    }
 
-		// Retry — should succeed and show deploying screen
-		await page.getByRole('button', { name: 'Install Stack' }).click();
-		await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
-	});
+    test('shows correct title and three toggles', async ({ page }) => {
+      await goToScreen6(page);
+      await expect(page.locator('h2')).toHaveText('Optional add-ons');
+      await expect(page.getByLabel('Enable reranking')).toBeVisible();
+      await expect(page.getByLabel('Enable text-to-speech')).toBeVisible();
+      await expect(page.getByLabel('Enable speech-to-text')).toBeVisible();
+    });
 
-	test('Docker unavailable returns error to UI', async ({ page }) => {
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
+    test('Back returns to Screen 5 (Required Models)', async ({ page }) => {
+      await goToScreen6(page);
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('step-models')).toBeVisible();
+    });
 
-		await page.route('**/admin/setup', (route) => {
-			if (route.request().method() === 'POST') {
-				return route.fulfill({
-					status: 503,
-					contentType: 'application/json',
-					body: JSON.stringify({
-						error: 'docker_unavailable',
-						message: 'Docker is not available. Install or start Docker and retry.'
-					})
-				});
-			}
-			return route.continue();
-		});
+    test('Skip add-ons advances to Screen 7 (Review)', async ({ page }) => {
+      await goToScreen6(page);
+      await page.getByRole('button', { name: 'Skip add-ons' }).click();
+      await expect(page.getByTestId('step-review')).toBeVisible();
+    });
 
-		await page.goto('/setup');
+    test('Continue advances to Screen 7 (Review)', async ({ page }) => {
+      await goToScreen6(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByTestId('step-review')).toBeVisible();
+    });
 
-		// Navigate to review and install
-		await completeWelcomeStep(page);
-		await completeConnectStep(page);
-		await page.getByRole('button', { name: 'Next' }).click();
-		await page.getByRole('button', { name: 'Next' }).click();
-		await page.getByRole('button', { name: 'Install Stack' }).click();
+    test('Enable reranking toggle reveals reranker type field', async ({ page }) => {
+      await goToScreen6(page);
+      await page.getByLabel('Enable reranking').check();
+      // Reranker type options should appear
+      await expect(page.getByText(/Use an LLM to rerank/i)).toBeVisible();
+    });
 
-		// Should show Docker error on review screen (pre-deploy error)
-		await expect(page.locator('[role="alert"]')).toContainText('Docker is not available');
-	});
+    test('Enable text-to-speech toggle reveals TTS fields', async ({ page }) => {
+      await goToScreen6(page);
+      await page.getByLabel('Enable text-to-speech').check();
+      await expect(page.getByText(/Connection/i).first()).toBeVisible();
+    });
 
-	test('Docker Compose failure surfaces on deploying screen', async ({ page }) => {
-		await mockModelsEndpoint(page);
-		await mockLocalProvidersEndpoint(page);
+    test('Enable speech-to-text toggle reveals STT fields', async ({ page }) => {
+      await goToScreen6(page);
+      await page.getByLabel('Enable speech-to-text').check();
+      await expect(page.getByText(/Connection/i).first()).toBeVisible();
+    });
+  });
 
-		// POST succeeds (async deploy starts)
-		await page.route('**/admin/setup', (route) => {
-			if (route.request().method() === 'POST') {
-				return route.fulfill({
-					status: 200,
-					contentType: 'application/json',
-					body: JSON.stringify({
-						ok: true,
-						async: true,
-						started: ['caddy', 'memory'],
-						dockerAvailable: true,
-					})
-				});
-			}
-			return route.continue();
-		});
+  // ── Screen 7: Review & Install ─────────────────────────────────────────────
 
-		// Deploy status reports compose error
-		await page.route('**/admin/setup/deploy-status', (route) => {
-			return route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({
-					active: true,
-					phase: 'error',
-					message: 'Docker Compose failed: port 5432 already in use',
-					error: 'Docker Compose failed: port 5432 already in use',
-					services: [
-						{ service: 'caddy', label: 'Caddy', imageReady: true, containerRunning: false },
-						{ service: 'memory', label: 'Memory', imageReady: true, containerRunning: false },
-					],
-				})
-			});
-		});
+  test.describe('Screen 7 — Review & Install', () => {
+    async function goToScreen7(page: Page) {
+      await mockConnectionTest(page);
+      await mockExports(page);
+      await page.goto('/setup');
+      await completeWelcome(page, { name: 'Test User', email: 'test@example.com', token: 'supersecrettoken' });
+      await addRemoteConnection(page, { apiKey: 'sk-test-e2e' });
+      await navigateToReview(page);
+    }
 
-		await page.goto('/setup');
+    test('shows correct title and all review sections', async ({ page }) => {
+      await goToScreen7(page);
+      await expect(page.locator('h2')).toHaveText('Review your setup');
+      await expect(page.getByText('Account', { exact: true })).toBeVisible();
+      await expect(page.getByText('Connections', { exact: true })).toBeVisible();
+      await expect(page.getByText('Required models', { exact: true })).toBeVisible();
+      await expect(page.getByText('Optional add-ons', { exact: true })).toBeVisible();
+      await expect(page.getByText('Config Exports', { exact: true })).toBeVisible();
+    });
 
-		await completeWelcomeStep(page);
-		await completeConnectStep(page);
-		await page.getByRole('button', { name: 'Next' }).click();
-		await page.getByRole('button', { name: 'Next' }).click();
-		await page.getByRole('button', { name: 'Install Stack' }).click();
+    test('Account section shows entered name, email, and masked token', async ({ page }) => {
+      await goToScreen7(page);
+      await expect(page.getByText('Test User')).toBeVisible();
+      await expect(page.getByText('test@example.com')).toBeVisible();
+      // Admin Token row shows "Set" — scope to the review-item that contains the "Admin Token" label
+      await expect(
+        page.locator('.review-item').filter({ hasText: 'Admin Token' }).locator('.review-value')
+      ).toHaveText('Set');
+    });
 
-		// Should show deploying screen with error
-		await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
-		await expect(page.locator('[role="alert"]')).toContainText('Docker Compose failed');
-	});
+    test('Connections section shows the saved connection', async ({ page }) => {
+      await goToScreen7(page);
+      await expect(page.getByText('Cloud — OpenAI')).toBeVisible();
+      await expect(page.getByText('https://api.openai.com')).toBeVisible();
+    });
 
-	test('setup API reports setupComplete based on server state', async ({ page }) => {
-		// Verify the GET /admin/setup endpoint reflects actual server state.
-		// With OPENPALM_SETUP_COMPLETE=false, setupComplete should be false.
-		const response = await page.request.get('/admin/setup');
-		expect(response.ok()).toBeTruthy();
-		const data = await response.json();
-		expect(data).toHaveProperty('setupComplete');
-		expect(typeof data.setupComplete).toBe('boolean');
-	});
+    test('Required Models section shows chat and embedding models', async ({ page }) => {
+      await goToScreen7(page);
+      await expect(page.getByText('gpt-4o')).toBeVisible();
+      await expect(page.getByText('text-embedding-3-small')).toBeVisible();
+    });
 
-	test('setup endpoint does not require authentication on first run', async ({ page }) => {
-		// GET /admin/setup is accessible without x-admin-token
-		const response = await page.request.get('/admin/setup');
-		expect(response.ok()).toBeTruthy();
+    test('Optional Add-ons section shows "None configured" when skipped', async ({ page }) => {
+      await goToScreen7(page);
+      await expect(page.getByText('None configured')).toBeVisible();
+    });
 
-		// The setup wizard page renders without authentication
-		await page.goto('/setup');
-		await expect(page.getByTestId('step-token')).toBeVisible();
-	});
+    test('Account Edit link navigates to Screen 1', async ({ page }) => {
+      await goToScreen7(page);
+      // Click the Edit button next to ACCOUNT section
+      const accountSection = page.locator('.review-section-header').filter({ hasText: 'Account' });
+      await accountSection.getByRole('button', { name: 'Edit' }).click();
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
+
+    test('Connections Edit link navigates to Screen 2', async ({ page }) => {
+      await goToScreen7(page);
+      const connectionsSection = page.locator('.review-section-header').filter({ hasText: 'Connections' });
+      await connectionsSection.getByRole('button', { name: 'Edit' }).click();
+      await expect(page.getByTestId('step-connections-hub')).toBeVisible();
+    });
+
+    test('Required Models Edit link navigates to Screen 5', async ({ page }) => {
+      await goToScreen7(page);
+      const modelsSection = page.locator('.review-section-header').filter({ hasText: 'Required models' });
+      await modelsSection.getByRole('button', { name: 'Edit' }).click();
+      await expect(page.getByTestId('step-models')).toBeVisible();
+    });
+
+    test('Optional Add-ons Edit link navigates to Screen 6', async ({ page }) => {
+      await goToScreen7(page);
+      const addonsSection = page.locator('.review-section-header').filter({ hasText: 'Optional add-ons' });
+      await addonsSection.getByRole('button', { name: 'Edit' }).click();
+      await expect(page.getByTestId('step-optional-addons')).toBeVisible();
+    });
+
+    test('Back returns to Screen 6 (Optional Add-ons)', async ({ page }) => {
+      await goToScreen7(page);
+      await page.getByRole('button', { name: 'Back' }).click();
+      await expect(page.getByTestId('step-optional-addons')).toBeVisible();
+    });
+
+    test('Download opencode.json fires export request and shows no error', async ({ page }) => {
+      await goToScreen7(page);
+      // Track the request
+      const [request] = await Promise.all([
+        page.waitForRequest('**/admin/connections/export/opencode'),
+        page.getByRole('button', { name: 'Download opencode.json' }).click()
+      ]);
+      expect(request).toBeTruthy();
+      // No export error shown
+      await expect(page.getByText('Export error')).not.toBeVisible();
+    });
+
+    test('Download mem0-config.json fires export request and shows no error', async ({ page }) => {
+      await goToScreen7(page);
+      const [request] = await Promise.all([
+        page.waitForRequest('**/admin/connections/export/mem0'),
+        page.getByRole('button', { name: 'Download mem0-config.json' }).click()
+      ]);
+      expect(request).toBeTruthy();
+      await expect(page.getByText('Export error')).not.toBeVisible();
+    });
+
+    test('Export sends x-admin-token header via setup token', async ({ page }) => {
+      // Override the export mock to capture the request headers
+      let capturedToken = '';
+      await page.route('**/admin/connections/export/opencode', (route) => {
+        capturedToken = route.request().headers()['x-admin-token'] ?? '';
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'content-disposition': 'attachment; filename="opencode.json"' },
+          body: JSON.stringify({ model: 'gpt-4o' })
+        });
+      });
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page, { token: 'supersecrettoken' });
+      await addRemoteConnection(page);
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Download opencode.json' }).click();
+      await page.waitForTimeout(300);
+      expect(capturedToken).toBeTruthy();
+    });
+
+    test('Export auth failure shows error message', async ({ page }) => {
+      // Override export to return 401
+      await page.route('**/admin/connections/export/opencode', (route) =>
+        route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Missing or invalid x-admin-token' })
+        })
+      );
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Download opencode.json' }).click();
+      await expect(page.getByText('Missing or invalid x-admin-token')).toBeVisible({ timeout: 3000 });
+    });
+
+    test('Save POSTs correct body and advances to deploying screen', async ({ page }) => {
+      let postedBody: Record<string, unknown> = {};
+      let postedHeaders: Record<string, string> = {};
+      await mockDeployReady(page);
+      await page.route('**/admin/setup', (route) => {
+        if (route.request().method() === 'POST') {
+          postedBody = JSON.parse(route.request().postData() ?? '{}');
+          postedHeaders = route.request().headers();
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: true, async: true, started: ['caddy', 'memory'], dockerAvailable: true })
+          });
+        }
+        return route.continue();
+      });
+      await mockConnectionTest(page);
+      await mockExports(page);
+      await page.goto('/setup');
+      await completeWelcome(page, { name: 'Alice', email: 'alice@example.com', token: 'my-secure-token' });
+      await addRemoteConnection(page, { apiKey: 'sk-test-save' });
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
+
+      // Validate POST body shape
+      expect(postedBody.adminToken).toBe('my-secure-token');
+      expect(postedBody.ownerName).toBe('Alice');
+      expect(postedBody.ownerEmail).toBe('alice@example.com');
+      const connections = postedBody.connections as Array<Record<string, unknown>>;
+      expect(Array.isArray(connections)).toBe(true);
+      expect(connections.length).toBeGreaterThanOrEqual(1);
+      expect(connections[0].provider).toBe('openai');
+      expect(connections[0].apiKey).toBe('sk-test-save');
+      const assignments = postedBody.assignments as Record<string, Record<string, unknown>>;
+      expect(assignments.llm.model).toBe('gpt-4o');
+      expect(assignments.embeddings.model).toBe('text-embedding-3-small');
+      expect(postedBody.memoryUserId).toBeTruthy();
+      expect(postedHeaders['x-admin-token']).toBeTruthy();
+    });
+
+    test('Save install error stays on review and shows message', async ({ page }) => {
+      await page.route('**/admin/setup', (route) => {
+        if (route.request().method() === 'POST') {
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'config_save_failed', message: 'Failed to update secrets.env: file locked' })
+          });
+        }
+        return route.continue();
+      });
+      await mockConnectionTest(page);
+      await mockExports(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Failed to update secrets.env');
+      await expect(page.getByTestId('step-review')).toBeVisible();
+    });
+
+    test('Docker unavailable shows error on review screen', async ({ page }) => {
+      await page.route('**/admin/setup', (route) => {
+        if (route.request().method() === 'POST') {
+          return route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'docker_unavailable', message: 'Docker is not available. Install or start Docker and retry.' })
+          });
+        }
+        return route.continue();
+      });
+      await mockConnectionTest(page);
+      await mockExports(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Docker is not available');
+    });
+
+    test('Docker Compose failure shows error on deploying screen', async ({ page }) => {
+      await page.route('**/admin/setup', (route) => {
+        if (route.request().method() === 'POST') {
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: true, async: true, started: ['caddy', 'memory'], dockerAvailable: true })
+          });
+        }
+        return route.continue();
+      });
+      await page.route('**/admin/setup/deploy-status', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            active: true,
+            phase: 'error',
+            error: 'Docker Compose failed: port 5432 already in use',
+            services: [
+              { service: 'caddy', label: 'Caddy', imageReady: true, containerRunning: false },
+            ]
+          })
+        })
+      );
+      await mockConnectionTest(page);
+      await mockExports(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[role="alert"]')).toContainText('Docker Compose failed', { timeout: 5000 });
+    });
+
+    test('Successful deploy shows Go to Console link', async ({ page }) => {
+      await mockDeployReady(page);
+      await mockInstallSuccess(page);
+      await mockConnectionTest(page);
+      await mockExports(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await navigateToReview(page);
+      await page.getByRole('button', { name: 'Save' }).click();
+      await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('link', { name: 'Go to Console' })).toBeVisible({ timeout: 10000 });
+    });
+  });
+
+  // ── Step-dot navigation ────────────────────────────────────────────────────
+
+  test.describe('Step dot navigation', () => {
+    test('clicking a completed step dot returns to that screen', async ({ page }) => {
+      await mockConnectionTest(page);
+      await page.goto('/setup');
+      await completeWelcome(page);
+      await addRemoteConnection(page);
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.getByTestId('step-models')).toBeVisible();
+      // Click dot 1 (Welcome) to jump back
+      await page.getByRole('button', { name: /Step 1/ }).click();
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
+
+    test('future step dots are disabled until reached', async ({ page }) => {
+      await page.goto('/setup');
+      await completeWelcome(page);
+      // Step 4 (models) should be disabled — not yet reached
+      await expect(page.getByRole('button', { name: /Step 4/ })).toBeDisabled();
+    });
+  });
+
+  // ── API contract tests ─────────────────────────────────────────────────────
+
+  test.describe('Admin API', () => {
+    test('GET /admin/setup is accessible without auth', async ({ page }) => {
+      const res = await page.request.get('/admin/setup');
+      expect(res.ok()).toBeTruthy();
+    });
+
+    test('GET /admin/setup returns boolean flags — never raw secret values', async ({ page }) => {
+      const res = await page.request.get('/admin/setup');
+      const data = await res.json() as Record<string, unknown>;
+      expect(data).toHaveProperty('configured');
+      for (const val of Object.values(data.configured as Record<string, unknown>)) {
+        expect(typeof val).toBe('boolean');
+      }
+      expect(data).not.toHaveProperty('adminToken');
+      expect(data).not.toHaveProperty('openaiApiKey');
+    });
+
+    test('GET /admin/setup returns setupComplete as boolean', async ({ page }) => {
+      const res = await page.request.get('/admin/setup');
+      const data = await res.json() as Record<string, unknown>;
+      expect(typeof data.setupComplete).toBe('boolean');
+    });
+
+    test('setup page is accessible when ADMIN_TOKEN is not set', async ({ page }) => {
+      await page.goto('/setup');
+      await expect(page.locator('h1')).toContainText('OpenPalm Setup Wizard');
+    });
+  });
 });
