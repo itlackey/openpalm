@@ -1,10 +1,12 @@
 import type { RequestHandler } from './$types';
+import { PROVIDER_KEY_MAP } from '$lib/provider-constants.js';
 import { getState } from '$lib/server/state.js';
 import {
   appendAudit,
   createConnectionProfile,
   deleteConnectionProfile,
   listConnectionProfiles,
+  patchSecretsEnvFile,
   updateConnectionProfile,
   type CanonicalConnectionProfile,
 } from '$lib/server/control-plane.js';
@@ -18,6 +20,75 @@ import {
   parseJsonBody,
   requireAdmin,
 } from '$lib/server/helpers.js';
+
+type ProfileParseResult =
+  | { ok: true; value: CanonicalConnectionProfile }
+  | { ok: false; status: number; message: string };
+
+function normalizeProfilePayload(rawProfile: unknown, configDir: string): ProfileParseResult {
+  if (typeof rawProfile !== 'object' || rawProfile === null) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'connection profile must be an object',
+    };
+  }
+
+  const record = rawProfile as Record<string, unknown>;
+  const auth = typeof record.auth === 'object' && record.auth !== null
+    ? record.auth as Record<string, unknown>
+    : null;
+
+  if (!auth || auth.mode !== 'api_key') {
+    const parsed = parseCanonicalConnectionProfile(rawProfile);
+    return parsed.ok
+      ? parsed as ProfileParseResult
+      : { ok: false, status: 400, message: parsed.message };
+  }
+
+  const rawApiKey = typeof record.apiKey === 'string' ? record.apiKey.trim() : '';
+  const rawSecretRef = typeof auth.apiKeySecretRef === 'string' ? auth.apiKeySecretRef.trim() : '';
+
+  if (!rawApiKey && !rawSecretRef) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'connection profile auth apiKeySecretRef is required when mode is api_key',
+    };
+  }
+
+  const provider = typeof record.provider === 'string' ? record.provider.trim() : '';
+  const secretEnvVar = rawSecretRef.startsWith('env:')
+    ? rawSecretRef.slice(4)
+    : PROVIDER_KEY_MAP[provider];
+
+  if (!secretEnvVar) {
+    return {
+      ok: false,
+      status: 400,
+      message: `profile.auth.apiKeySecretRef is required when auth.mode is api_key for provider "${provider}"`,
+    };
+  }
+
+  if (rawApiKey) {
+    patchSecretsEnvFile(configDir, { [secretEnvVar]: rawApiKey });
+  }
+
+  const canonicalProfile = {
+    ...record,
+    auth: {
+      mode: 'api_key',
+      apiKeySecretRef: `env:${secretEnvVar}`,
+    },
+  };
+
+  const normalized = parseCanonicalConnectionProfile(canonicalProfile);
+  if (!normalized.ok) {
+    return { ok: false, status: 400, message: normalized.message };
+  }
+
+  return normalized as ProfileParseResult;
+}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -49,9 +120,9 @@ export const POST: RequestHandler = async (event) => {
   if (!body) {
     return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
   }
-  const parsed = parseCanonicalConnectionProfile(body.profile);
+  const parsed = normalizeProfilePayload(body.profile, state.configDir);
   if (!parsed.ok) {
-    return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+    return errorResponse(parsed.status, 'bad_request', parsed.message, {}, requestId);
   }
 
   const result = createConnectionProfile(state.configDir, parsed.value as CanonicalConnectionProfile);
@@ -76,9 +147,9 @@ export const PUT: RequestHandler = async (event) => {
   if (!body) {
     return errorResponse(400, 'invalid_input', 'Request body must be valid JSON', {}, requestId);
   }
-  const parsed = parseCanonicalConnectionProfile(body.profile);
+  const parsed = normalizeProfilePayload(body.profile, state.configDir);
   if (!parsed.ok) {
-    return errorResponse(400, 'bad_request', parsed.message, {}, requestId);
+    return errorResponse(parsed.status, 'bad_request', parsed.message, {}, requestId);
   }
 
   const result = updateConnectionProfile(state.configDir, parsed.value as CanonicalConnectionProfile);

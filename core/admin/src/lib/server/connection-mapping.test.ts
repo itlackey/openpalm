@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { buildMem0Mapping, buildOpenCodeMapping } from './connection-mapping.js';
+import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { buildMem0Mapping, buildOpenCodeMapping, writeOpenCodeProviderConfig } from './connection-mapping.js';
 
 describe('connection mapping', () => {
   test('buildOpenCodeMapping omits options when baseUrl is blank', () => {
@@ -148,6 +151,94 @@ describe('connection mapping', () => {
     expect(mapping.model).toBe('gpt-4o');
     expect(mapping.smallModel).toBe('gpt-4o');
     expect(mapping.options).toBeUndefined();
+  });
+
+  test('writeOpenCodeProviderConfig preserves existing provider settings while updating baseURL', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openpalm-connection-mapping-'));
+    const assistantDir = join(configDir, 'assistant');
+    mkdirSync(assistantDir, { recursive: true });
+    writeFileSync(
+      join(assistantDir, 'opencode.json'),
+      JSON.stringify({
+        $schema: 'https://opencode.ai/config.json',
+        providers: {
+          openai: {
+            retries: 3,
+            options: {
+              timeout: 10_000,
+              baseURL: 'https://old.example.com/v1',
+            },
+          },
+        },
+      }, null, 2) + '\n',
+    );
+
+    writeOpenCodeProviderConfig(configDir, {
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      smallModel: 'gpt-4.1-mini',
+      options: { baseURL: 'https://api.openai.com/v1' },
+    });
+
+    const updated = JSON.parse(readFileSync(join(assistantDir, 'opencode.json'), 'utf-8')) as {
+      providers: {
+        openai: {
+          retries: number;
+          options: {
+            timeout: number;
+            baseURL: string;
+          };
+        };
+      };
+    };
+
+    expect(updated.providers.openai.retries).toBe(3);
+    expect(updated.providers.openai.options.timeout).toBe(10_000);
+    expect(updated.providers.openai.options.baseURL).toBe('https://api.openai.com/v1');
+
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  test('writeOpenCodeProviderConfig clears stale provider baseURL when mapping omits one', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'openpalm-connection-mapping-'));
+    const assistantDir = join(configDir, 'assistant');
+    mkdirSync(assistantDir, { recursive: true });
+    writeFileSync(
+      join(assistantDir, 'opencode.json'),
+      JSON.stringify({
+        $schema: 'https://opencode.ai/config.json',
+        providers: {
+          openai: {
+            options: {
+              timeout: 10_000,
+              baseURL: 'https://old.example.com/v1',
+            },
+          },
+        },
+      }, null, 2) + '\n',
+    );
+
+    writeOpenCodeProviderConfig(configDir, {
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      smallModel: 'gpt-4.1-mini',
+    });
+
+    const updated = JSON.parse(readFileSync(join(assistantDir, 'opencode.json'), 'utf-8')) as {
+      providers: {
+        openai: {
+          options: {
+            timeout: number;
+            baseURL?: string;
+          };
+        };
+      };
+    };
+
+    expect(updated.providers.openai.options.timeout).toBe(10_000);
+    expect(updated.providers.openai.options.baseURL).toBeUndefined();
+
+    rmSync(configDir, { recursive: true, force: true });
   });
 
   test('buildMem0Mapping with two separate connections emits correct per-side baseUrl', () => {

@@ -3,7 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
   import { SETUP_WIZARD_COPY } from '$lib/setup-wizard/copy.js';
-  import { mapModelDiscoveryError } from '$lib/model-discovery.js';
+  import { mapConnectionTestError } from '$lib/model-discovery.js';
   import WizardShell from '$lib/components/setup-wizard/WizardShell.svelte';
   import ConnectionPicker from '$lib/components/setup-wizard/ConnectionPicker.svelte';
   import ConnectionsHubList from '$lib/components/setup-wizard/ConnectionsHubList.svelte';
@@ -22,22 +22,6 @@
   } from '$lib/setup-wizard/state.js';
   import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
-
-  // ── Connection test error mapping ────────────────────────────────────────
-  function mapConnectionTestError(result: { error?: string; errorCode?: string }): string {
-    switch (result.errorCode) {
-      case 'unauthorized':
-        return 'Unauthorized. This endpoint may require a valid API key.';
-      case 'not_found':
-        return 'Endpoint not found. Verify the Base URL includes /v1.';
-      case 'timeout':
-        return "Couldn't reach the server. Confirm it's running and accessible.";
-      case 'missing_base_url':
-        return 'Base URL is required for this provider.';
-      default:
-        return result.error ?? 'Connection failed. Check the Base URL and API key.';
-    }
-  }
 
   interface Props {
     data: PageData;
@@ -1062,6 +1046,8 @@
           onAddConnection={() => startNewConnection()}
           onBack={() => goToScreen('connections-hub')}
           onNext={() => {
+            if (!assignments.llm.connectionId.trim()) { connectError = 'Select a chat connection before continuing.'; return; }
+            if (!assignments.embeddings.connectionId.trim()) { connectError = 'Select an embedding connection before continuing.'; return; }
             if (!assignments.llm.model.trim()) { connectError = 'Chat model is required.'; return; }
             if (!assignments.embeddings.model.trim()) { connectError = 'Embedding model is required.'; return; }
             connectError = '';

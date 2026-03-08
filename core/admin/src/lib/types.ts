@@ -181,12 +181,21 @@ export type ConnectionProfilePayload = {
   kind: 'openai_compatible_remote' | 'openai_compatible_local';
   provider: string;
   baseUrl: string;
-  auth: {
-    mode: 'api_key' | 'none';
-    apiKeySecretRef?: string;
-  };
+  auth:
+    | {
+        mode: 'none';
+      }
+    | {
+        mode: 'api_key';
+        apiKeySecretRef?: string | null;
+      };
   /** Raw API key — stored in secrets.env, not in the profile document. */
   apiKey?: string;
+};
+
+export type ConnectionProfileMutationResponse = {
+  ok: true;
+  profile: CanonicalConnectionProfileDto;
 };
 
 export type SystemConnectionSaveResult = {

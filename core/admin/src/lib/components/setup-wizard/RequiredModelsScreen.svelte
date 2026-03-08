@@ -73,6 +73,7 @@
       <select id="llm-connection" value={assignments.llm.connectionId} onchange={(e) => {
         onAssignmentsChange({ ...assignments, llm: { ...assignments.llm, connectionId: e.currentTarget.value } });
       }}>
+        <option value="" disabled>{SETUP_WIZARD_COPY.llmConnectionPlaceholder}</option>
         {#each connections as conn}<option value={conn.id}>{conn.name || conn.provider}</option>{/each}
       </select>
     </div>
@@ -117,6 +118,7 @@
       <select id="emb-connection" value={assignments.embeddings.connectionId} onchange={(e) => {
         onAssignmentsChange({ ...assignments, embeddings: { ...assignments.embeddings, connectionId: e.currentTarget.value, sameAsLlm: false } });
       }}>
+        <option value="" disabled>{SETUP_WIZARD_COPY.embeddingConnectionPlaceholder}</option>
         {#each connections as conn}<option value={conn.id}>{conn.name || conn.provider}</option>{/each}
       </select>
     </div>

@@ -13,6 +13,7 @@ import type {
   SaveConnectionsDtoPayload,
   ConnectionProfilePayload,
   CanonicalConnectionProfileDto,
+  ConnectionProfileMutationResponse,
 } from './types.js';
 
 const apiBase = '';
@@ -398,7 +399,7 @@ export async function saveConnectionsDto(
 export async function createConnectionProfile(
   token: string,
   profile: ConnectionProfilePayload
-): Promise<{ profile: CanonicalConnectionProfileDto }> {
+): Promise<ConnectionProfileMutationResponse> {
   const res = await post('/admin/connections/profiles', { profile }, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
@@ -406,13 +407,13 @@ export async function createConnectionProfile(
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
-  return (await res.json()) as { profile: CanonicalConnectionProfileDto };
+  return (await res.json()) as ConnectionProfileMutationResponse;
 }
 
 export async function updateConnectionProfile(
   token: string,
   profile: ConnectionProfilePayload
-): Promise<{ profile: CanonicalConnectionProfileDto }> {
+): Promise<ConnectionProfileMutationResponse> {
   const res = await put('/admin/connections/profiles', { profile }, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
@@ -423,7 +424,7 @@ export async function updateConnectionProfile(
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
-  return (await res.json()) as { profile: CanonicalConnectionProfileDto };
+  return (await res.json()) as ConnectionProfileMutationResponse;
 }
 
 export async function deleteConnectionProfile(
