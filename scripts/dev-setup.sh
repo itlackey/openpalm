@@ -87,6 +87,8 @@ if [[ $seed_env -eq 1 ]]; then
 	# Only contains ADMIN_TOKEN and LLM provider keys. No paths or infra config.
 	if [[ ! -f "$ENV_DEST" || $force -eq 1 ]]; then
 		cp "$ENV_SRC" "$ENV_DEST"
+		# Seed a dev admin token so stack tests work out of the box
+		sed -i 's/^ADMIN_TOKEN=$/ADMIN_TOKEN=dev-admin-token/' "$ENV_DEST"
 	fi
 	if [[ -f "$ENV_DEST" ]]; then
 		cp "$ENV_DEST" "$SECRETS_ENV_DEST"
@@ -165,7 +167,7 @@ if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
         "temperature": 0.1,
         "max_tokens": 2000,
         "api_key": "ollama",
-        "openai_base_url": "http://ollama:11434/v1"
+        "openai_base_url": "http://host.docker.internal:11434/v1"
       }
     },
     "embedder": {
@@ -173,7 +175,7 @@ if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
       "config": {
         "model": "nomic-embed-text",
         "api_key": "ollama",
-        "openai_base_url": "http://ollama:11434/v1"
+        "openai_base_url": "http://host.docker.internal:11434/v1"
       }
     },
     "vector_store": {

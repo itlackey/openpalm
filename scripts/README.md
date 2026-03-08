@@ -68,10 +68,15 @@ npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant
 Creates `.dev/` XDG directories and optionally seeds config files for local development.
 
 ```bash
-./scripts/dev-setup.sh --seed-env
+./scripts/dev-setup.sh --seed-env        # Seed configs (non-destructive)
+./scripts/dev-setup.sh --seed-env --force # Overwrite existing configs
 ```
 
 Sets `OPENPALM_*_HOME` to absolute `.dev/` paths so the admin dev server picks them up without additional environment setup.
+
+When `--seed-env` is used, this script also:
+- Seeds `ADMIN_TOKEN=dev-admin-token` in `secrets.env` (matches test expectations)
+- Seeds OpenMemory `default_config.json` with Ollama via `host.docker.internal:11434` and `nomic-embed-text` (768 dims)
 
 ## iso/
 

@@ -136,10 +136,20 @@ async function addMemory(
 			timeout: 60_000
 		});
 		const raw = await res.json().catch(() => null);
-		// Memory add returns a single object { id, content, ... } or null
-		// (null when embedding provider is busy or deduplication triggers)
-		if (raw && typeof raw === 'object' && raw.id) {
-			return { results: [{ id: raw.id, memory: raw.content ?? text }], _status: res.status() };
+		// Memory add returns { results: [{ id, memory, event }] } or a single
+		// object { id, content, ... } depending on mem0 version.
+		if (raw && typeof raw === 'object') {
+			// Array-wrapped format: { results: [{ id, memory }] }
+			if (Array.isArray(raw.results) && raw.results.length > 0) {
+				return {
+					results: raw.results.map((r: any) => ({ id: r.id, memory: r.memory ?? r.content ?? text })),
+					_status: res.status()
+				};
+			}
+			// Single-object format: { id, content }
+			if (raw.id) {
+				return { results: [{ id: raw.id, memory: raw.content ?? text }], _status: res.status() };
+			}
 		}
 		if (!res.ok()) {
 			return { results: [], _status: res.status() };

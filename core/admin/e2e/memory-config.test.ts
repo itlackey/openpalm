@@ -494,7 +494,8 @@ test.describe('Memory Ollama Integration', () => {
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
 	test('config file is mounted and readable in memory container', async ({ request }) => {
-		const response = await request.get('/admin/memory/config', {
+		// Hit the real admin container directly (not the preview server)
+		const response = await request.get('http://localhost:8100/admin/memory/config', {
 			headers: {
 				'x-admin-token': process.env.ADMIN_TOKEN ?? '',
 				'x-requested-by': 'test',
@@ -541,7 +542,8 @@ test.describe('Memory Ollama Integration', () => {
 			memory: { custom_instructions: '' }
 		};
 
-		const saveRes = await request.post('/admin/memory/config', {
+		// Hit the real admin container directly (not the preview server)
+		const saveRes = await request.post('http://localhost:8100/admin/memory/config', {
 			data: ollamaConfig,
 			headers: {
 				'content-type': 'application/json',
@@ -555,7 +557,7 @@ test.describe('Memory Ollama Integration', () => {
 		expect(saveData.ok).toBe(true);
 		expect(saveData.persisted).toBe(true);
 
-		const readRes = await request.get('/admin/memory/config', {
+		const readRes = await request.get('http://localhost:8100/admin/memory/config', {
 			headers: {
 				'x-admin-token': process.env.ADMIN_TOKEN ?? '',
 				'x-requested-by': 'test',
