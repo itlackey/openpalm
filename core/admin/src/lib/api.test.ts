@@ -259,4 +259,43 @@ describe('api canonical connections DTO adapter', () => {
       }),
     );
   });
+
+  it('falls back to plain text error bodies for profile create failures', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('Plain text failure', {
+        status: 500,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+
+    await expect(
+      createConnectionProfile('admin-token', {
+        id: 'p1',
+        name: 'Example',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'none' },
+      }),
+    ).rejects.toThrow('Plain text failure');
+  });
+
+  it('falls back to the default error copy when the response body is empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('', {
+        status: 500,
+      }),
+    );
+
+    await expect(
+      createConnectionProfile('admin-token', {
+        id: 'p1',
+        name: 'Example',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'none' },
+      }),
+    ).rejects.toThrow('Request failed (HTTP 500)');
+  });
 });

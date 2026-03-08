@@ -9,6 +9,7 @@
     saveConnectionsDto,
     testConnectionProfile,
   } from '$lib/api.js';
+  import { mapConnectionTestError } from '$lib/model-discovery.js';
   import type { CanonicalConnectionProfileDto, ConnectionProfilePayload } from '$lib/types.js';
   import ConnectionForm from './ConnectionForm.svelte';
 
@@ -181,21 +182,6 @@
       testError = e instanceof Error ? e.message : 'Network error — unable to reach admin API.';
     } finally {
       testLoading = false;
-    }
-  }
-
-  function mapConnectionTestError(result: { error?: string; errorCode?: string }): string {
-    switch (result.errorCode) {
-      case 'unauthorized':
-        return 'Unauthorized. This endpoint may require a valid API key.';
-      case 'not_found':
-        return 'Endpoint not found. Verify the Base URL includes /v1.';
-      case 'timeout':
-        return "Couldn't reach the server. Confirm it's running and accessible.";
-      case 'missing_base_url':
-        return 'Base URL is required for this provider.';
-      default:
-        return result.error ?? 'Connection failed. Check the Base URL and API key.';
     }
   }
 

@@ -26,6 +26,24 @@ export type ConnectionTestErrorCode =
   | 'missing_base_url'
   | 'unknown';
 
+export function mapConnectionTestError(result: {
+  error?: string;
+  errorCode?: ConnectionTestErrorCode | string;
+}): string {
+  switch (result.errorCode) {
+    case 'unauthorized':
+      return 'Unauthorized. This endpoint may require a valid API key.';
+    case 'not_found':
+      return 'Endpoint not found. Verify the Base URL includes /v1.';
+    case 'timeout':
+      return "Couldn't reach the server. Confirm it's running and accessible.";
+    case 'missing_base_url':
+      return 'Base URL is required for this provider.';
+    default:
+      return result.error ?? 'Connection failed. Check the Base URL and API key.';
+  }
+}
+
 export function mapDiscoveryResultToErrorCode(
   result: Pick<ModelDiscoveryLike, 'reason' | 'error'>
 ): ConnectionTestErrorCode {
