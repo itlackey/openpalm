@@ -2,14 +2,14 @@
   import { getAdminToken } from '$lib/auth.js';
   import {
     fetchConnectionsDto,
-    fetchProviderModels,
     createConnectionProfile,
     updateConnectionProfile,
     deleteConnectionProfile,
-    saveSystemConnection,
     fetchMemoryConfig,
+    saveConnectionsDto,
+    testConnectionProfile,
   } from '$lib/api.js';
-  import { mapModelDiscoveryError } from '$lib/model-discovery.js';
+  import { mapConnectionTestError } from '$lib/model-discovery.js';
   import type { CanonicalConnectionProfileDto, ConnectionProfilePayload } from '$lib/types.js';
   import ConnectionForm from './ConnectionForm.svelte';
 
@@ -111,7 +111,10 @@
         kind: profile.kind as 'openai_compatible_remote' | 'openai_compatible_local',
         provider: profile.provider,
         baseUrl: profile.baseUrl,
-        auth: { mode: profile.auth.mode },
+        auth: {
+          mode: profile.auth.mode,
+          apiKeySecretRef: profile.auth.apiKeySecretRef,
+        },
       };
       await createConnectionProfile(token, copy);
       await loadProfiles();
@@ -171,15 +174,15 @@
     testModelList = [];
     connectionTested = false;
     try {
-      const result = await fetchProviderModels(token, 'openai', draft.apiKey || '', draft.baseUrl);
-      if (result.error) {
-        testError = mapModelDiscoveryError(result);
+      const result = await testConnectionProfile(token, draft);
+      if (!result.ok) {
+        testError = mapConnectionTestError(result);
         return;
       }
       testModelList = result.models ?? [];
       connectionTested = true;
-    } catch {
-      testError = 'Network error — unable to reach admin API.';
+    } catch (e) {
+      testError = e instanceof Error ? e.message : 'Network error — unable to reach admin API.';
     } finally {
       testLoading = false;
     }
@@ -210,14 +213,21 @@
     resetSuccess = false;
 
     try {
-      const primary = profiles[0];
-      const result = await saveSystemConnection(token, {
-        provider: primary?.provider ?? 'openai',
-        apiKey: '',
-        baseUrl: primary?.baseUrl ?? '',
-        systemModel: '',
-        embeddingModel: '',
-        embeddingDims,
+      const dto = await fetchConnectionsDto(token);
+      if (dto.profiles.length === 0) {
+        memorySaveError = 'Add a connection before saving memory settings.';
+        return;
+      }
+
+      const result = await saveConnectionsDto(token, {
+        profiles: dto.profiles,
+        assignments: {
+          ...dto.assignments,
+          embeddings: {
+            ...dto.assignments.embeddings,
+            embeddingDims,
+          },
+        },
         memoryUserId,
         customInstructions,
       });
@@ -232,8 +242,8 @@
       } else {
         memorySaveError = 'Failed to save memory settings.';
       }
-    } catch {
-      memorySaveError = 'Unable to reach admin API.';
+    } catch (e) {
+      memorySaveError = e instanceof Error ? e.message : 'Unable to reach admin API.';
     } finally {
       memorySaving = false;
     }
