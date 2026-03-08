@@ -16,6 +16,7 @@ const DATA_DIR = process.env.MEMORY_DATA_DIR ?? '/data';
 const PORT = parseInt(process.env.MEMORY_PORT ?? '8765', 10);
 
 let _memory: Memory | null = null;
+let _memoryInit: Promise<Memory> | null = null;
 
 function loadConfig(): Record<string, unknown> {
   if (!existsSync(CONFIG_PATH)) return {};
@@ -93,14 +94,21 @@ function configToMemoryConfig(raw: Record<string, unknown>): MemoryConfig {
 
 async function getMemory(): Promise<Memory> {
   if (_memory) return _memory;
-  const rawConfig = resolveEnvKeys(loadConfig());
-  const memConfig = configToMemoryConfig(rawConfig);
-  _memory = new Memory(memConfig);
-  await _memory.initialize();
-  return _memory;
+  if (_memoryInit) return _memoryInit;
+  _memoryInit = (async () => {
+    const rawConfig = resolveEnvKeys(loadConfig());
+    const memConfig = configToMemoryConfig(rawConfig);
+    const m = new Memory(memConfig);
+    await m.initialize();
+    _memory = m;
+    _memoryInit = null;
+    return m;
+  })();
+  return _memoryInit;
 }
 
 async function resetMemory(): Promise<void> {
+  _memoryInit = null;
   if (_memory) {
     _memory.close();
     _memory = null;
@@ -213,7 +221,9 @@ async function handleRequest(req: Request): Promise<Response> {
         metadata: body.metadata as Record<string, unknown>,
         infer: body.infer !== false,
       });
-      return json(result);
+      // Include top-level id for clients that read response.id (e.g. memory-lib.ts)
+      const firstId = (result.results as { id?: string }[])?.find(r => r.id)?.id ?? null;
+      return json({ ...result, id: firstId });
     }
 
     // POST /api/v1/memories/filter

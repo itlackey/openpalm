@@ -23,7 +23,7 @@ COPY core/memory/package.json core/memory/
 COPY core/memory/src/ core/memory/src/
 
 # Install dependencies (workspace resolution requires root package.json + bun.lock)
-RUN bun install --frozen-lockfile || bun install
+RUN bun install --frozen-lockfile
 
 RUN chown -R memory:memory /app
 

@@ -305,8 +305,13 @@ export const checkQdrantDimensions = checkVectorDimensions;
 export function resetVectorStore(
   dataDir: string
 ): { ok: boolean; error?: string } {
-  // Remove sqlite-vec database file
-  const dbPath = `${dataDir}/memory/memory.db`;
+  // Read persisted config to find the actual db_path
+  const persisted = readMemoryConfig(dataDir);
+  const configuredPath = persisted.mem0.vector_store.config.db_path;
+  // Use configured path if absolute, otherwise default
+  const dbPath = configuredPath && configuredPath.startsWith('/')
+    ? configuredPath
+    : `${dataDir}/memory/memory.db`;
   // Also remove legacy Qdrant data if it exists
   const qdrantPath = `${dataDir}/memory/qdrant`;
   try {
