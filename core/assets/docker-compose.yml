@@ -37,6 +37,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       MEMORY_DATA_DIR: /data
+      HOME: /data
+      MEM0_DIR: /data/.mem0
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:

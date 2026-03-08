@@ -92,6 +92,12 @@ describe('MemoryContextPlugin lifecycle integration', () => {
 
     expect(createdOutput.context.length).toBeGreaterThan(0);
     expect(createdOutput.context[0]).toContain('Memory - Session Context');
+    const retrievalCall = calls.find((call) => {
+      return call.url.endsWith('/api/v2/memories/search') && call.method === 'POST';
+    });
+    const retrievalBody = (retrievalCall?.body ?? {}) as Record<string, unknown>;
+    expect(retrievalBody.run_id).toBeUndefined();
+    expect(retrievalBody.agent_id).toBeUndefined();
 
     const beforeOutput: { context: string[] } = { context: [] };
     await hooks['tool.execute.before'](
