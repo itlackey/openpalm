@@ -72,19 +72,29 @@ async function readErrorMessage(
 ): Promise<string> {
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
-    const data = (await res.clone().json().catch(() => null)) as
-      | { message?: string; error?: string }
-      | null;
-    if (typeof data?.message === 'string' && data.message) {
+    const data = (await res.clone().json().catch(() => null)) as unknown;
+    if (hasNonEmptyString(data, 'message')) {
       return data.message;
     }
-    if (typeof data?.error === 'string' && data.error) {
+    if (hasNonEmptyString(data, 'error')) {
       return data.error;
     }
   }
 
   const text = await res.text().catch(() => '');
   return text || fallback;
+}
+
+function hasNonEmptyString(
+  value: unknown,
+  key: 'message' | 'error'
+): value is Record<typeof key, string> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return typeof record[key] === 'string' && record[key].length > 0;
 }
 
 export async function fetchHealth(): Promise<{

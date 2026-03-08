@@ -111,7 +111,10 @@
         kind: profile.kind as 'openai_compatible_remote' | 'openai_compatible_local',
         provider: profile.provider,
         baseUrl: profile.baseUrl,
-        auth: { ...profile.auth },
+        auth: {
+          mode: profile.auth.mode,
+          apiKeySecretRef: profile.auth.apiKeySecretRef,
+        },
       };
       await createConnectionProfile(token, copy);
       await loadProfiles();
