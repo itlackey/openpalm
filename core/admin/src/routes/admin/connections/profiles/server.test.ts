@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { getState, resetState } from '$lib/server/state.js';
@@ -151,6 +151,31 @@ describe('/admin/connections/profiles route', () => {
     expect(res.status).toBe(400);
   });
 
+  test('POST accepts a raw apiKey and stores a derived secret ref', async () => {
+    const res = await POST(makeEvent('POST', {
+      profile: {
+        id: 'new-openai',
+        name: 'New OpenAI',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'api_key' },
+        apiKey: 'sk-new-openai',
+      },
+    }));
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      profile: {
+        auth: {
+          apiKeySecretRef: string;
+        };
+      };
+    };
+    expect(body.profile.auth.apiKeySecretRef).toBe('env:OPENAI_API_KEY');
+    expect(readFileSync(join(getState().configDir, 'secrets.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-new-openai');
+  });
+
   test('PUT returns 404 when updating a non-existent profile', async () => {
     const res = await PUT(makeEvent('PUT', {
       profile: {
@@ -220,5 +245,30 @@ describe('/admin/connections/profiles route', () => {
     // Confirm gone
     const gone = await DELETE(makeEvent('DELETE', { id: 'groq-cloud' }));
     expect(gone.status).toBe(404);
+  });
+
+  test('PUT accepts a raw apiKey and refreshes the stored secret', async () => {
+    const res = await PUT(makeEvent('PUT', {
+      profile: {
+        id: 'primary',
+        name: 'OpenAI',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: '',
+        auth: { mode: 'api_key' },
+        apiKey: 'sk-updated-openai',
+      },
+    }));
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      profile: {
+        auth: {
+          apiKeySecretRef: string;
+        };
+      };
+    };
+    expect(body.profile.auth.apiKeySecretRef).toBe('env:OPENAI_API_KEY');
+    expect(readFileSync(join(getState().configDir, 'secrets.env'), 'utf-8')).toContain('OPENAI_API_KEY=sk-updated-openai');
   });
 });

@@ -77,18 +77,34 @@ export function writeOpenCodeProviderConfig(
     // File absent or unparseable — use seed
   }
 
+  const existingProviders =
+    (existing as { providers?: Record<string, unknown> }).providers ?? {};
+  const existingProviderConfig =
+    (existingProviders as Record<string, unknown>)[mapping.provider] ?? {};
+  const existingOptions =
+    (existingProviderConfig as { options?: Record<string, unknown> }).options ?? {};
+  const updatedOptions: Record<string, unknown> = { ...existingOptions };
+  const mappingBaseUrl = mapping.options?.baseURL?.trim();
+
+  if (mappingBaseUrl) {
+    updatedOptions.baseURL = mappingBaseUrl;
+  } else {
+    delete (updatedOptions as { baseURL?: unknown }).baseURL;
+  }
+
+  const updatedProviderConfig: Record<string, unknown> = {
+    ...existingProviderConfig as Record<string, unknown>,
+    ...(Object.keys(updatedOptions).length > 0 ? { options: updatedOptions } : {}),
+  };
+
   const updated = {
     ...existing,
     model: mapping.model,
     smallModel: mapping.smallModel,
-    ...(mapping.options?.baseURL
-      ? {
-          providers: {
-            ...(existing.providers as Record<string, unknown> | undefined ?? {}),
-            [mapping.provider]: { options: { baseURL: mapping.options.baseURL } },
-          },
-        }
-      : {}),
+    providers: {
+      ...existingProviders,
+      [mapping.provider]: updatedProviderConfig,
+    },
   };
 
   writeFileSync(configPath, JSON.stringify(updated, null, 2) + '\n');

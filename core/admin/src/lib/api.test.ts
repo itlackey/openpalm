@@ -185,6 +185,40 @@ describe('api canonical connections DTO adapter', () => {
     ).rejects.toThrow('Profile name is required.');
   });
 
+  it('returns the structured profile mutation response for profile create', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          profile: {
+            id: 'p1',
+            name: 'OpenAI',
+            kind: 'openai_compatible_remote',
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            auth: { mode: 'api_key', apiKeySecretRef: 'env:OPENAI_API_KEY' },
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await createConnectionProfile('admin-token', {
+      id: 'p1',
+      name: 'OpenAI',
+      kind: 'openai_compatible_remote',
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      auth: { mode: 'api_key', apiKeySecretRef: 'env:OPENAI_API_KEY' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.profile.id).toBe('p1');
+  });
+
   it('surfaces JSON error messages from profile update failures', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(

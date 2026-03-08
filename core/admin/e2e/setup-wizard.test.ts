@@ -447,6 +447,8 @@ test.describe('Setup Wizard', () => {
       await expect(page.locator('h2')).toHaveText('Required models');
       await expect(page.locator('#system-model')).toBeVisible();
       await expect(page.locator('#embedding-model')).toBeVisible();
+      await expect(page.locator('#llm-connection option[value=""]')).toHaveText('Select a chat connection');
+      await expect(page.locator('#emb-connection option[value=""]')).toHaveText('Select an embedding connection');
     });
 
     test('Continue requires chat model', async ({ page }) => {
@@ -460,6 +462,19 @@ test.describe('Setup Wizard', () => {
       await page.locator('#system-model').fill('gpt-4o');
       await page.getByRole('button', { name: 'Continue' }).click();
       await expect(page.locator('[role="alert"]')).toContainText('Embedding model is required.');
+    });
+
+    test('Continue requires selected model connections', async ({ page }) => {
+      await goToScreen5(page);
+      await page.locator('#system-model').fill('gpt-4o');
+      await page.locator('#embedding-model').fill('text-embedding-3-small');
+      await page.locator('#llm-connection').evaluate((element) => {
+        const select = element as HTMLSelectElement;
+        select.value = '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Select a chat connection before continuing.');
     });
 
     test('Back returns to Screen 2 (Connections Hub)', async ({ page }) => {

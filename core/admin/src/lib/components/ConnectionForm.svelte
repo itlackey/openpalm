@@ -79,9 +79,20 @@
   });
 
   // ── Validation ───────────────────────────────────────────────────
+  function isValidHttpUrl(value: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    try {
+      const url = new URL(trimmed);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
   function validate(): boolean {
     nameError = name.trim() ? '' : 'Connection name is required.';
-    baseUrlError = baseUrl.trim() ? '' : 'Enter a valid URL.';
+    baseUrlError = isValidHttpUrl(baseUrl) ? '' : 'Enter a valid URL.';
     return !nameError && !baseUrlError;
   }
 
@@ -89,16 +100,25 @@
   function handleSubmit(e: SubmitEvent): void {
     e.preventDefault();
     if (!validate()) return;
+    const trimmedApiKey = apiKey.trim();
+    const existingSecretRef = initial?.auth.mode === 'api_key'
+      ? initial.auth.apiKeySecretRef
+      : undefined;
     const payload: ConnectionProfilePayload = {
       id: id || crypto.randomUUID().slice(0, 8),
       name: name.trim(),
       kind,
       provider,
       baseUrl: baseUrl.trim(),
-      auth: {
-        mode: requiresKey ? 'api_key' : 'none',
-      },
-      apiKey: requiresKey && apiKey.trim() ? apiKey.trim() : undefined,
+      auth: requiresKey
+        ? {
+            mode: 'api_key',
+            ...(existingSecretRef ? { apiKeySecretRef: existingSecretRef } : {}),
+          }
+        : {
+            mode: 'none',
+          },
+      apiKey: requiresKey && trimmedApiKey ? trimmedApiKey : undefined,
     };
     onSave(payload);
     apiKey = ''; // clear secret after save

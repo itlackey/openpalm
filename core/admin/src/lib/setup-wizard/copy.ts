@@ -57,11 +57,13 @@ export const SETUP_WIZARD_COPY = {
   // ── Screen 5: Required Models ─────────────────────────────────────────
   llmCardTitle: 'Chat model (LLM)',
   llmCardHelp: 'This model is used for responses and tool use in supported apps.',
+  llmConnectionPlaceholder: 'Select a chat connection',
   llmSmallModelLabel: 'Small model (for lightweight tasks)',
   llmSmallModelHint: 'Optional cheaper model for small tasks.',
   llmSmallModelPlaceholder: 'e.g., gpt-4.1-mini',
   embeddingsCardTitle: 'Embeddings',
   embeddingsCardHelp: 'Used for vector search / memory features.',
+  embeddingConnectionPlaceholder: 'Select an embedding connection',
   embeddingsSameAsLlm: 'Use same as Chat model',
   embeddingsAdvancedToggle: 'Advanced embedding settings',
   embeddingsDimsLabel: 'Embedding dimensions override',
