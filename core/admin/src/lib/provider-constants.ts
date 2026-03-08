@@ -62,33 +62,29 @@ export const PROVIDER_LABELS: Record<string, string> = {
 /**
  * Map provider name → mem0-compatible provider name.
  * mem0 doesn't know "model-runner" or "lmstudio" — both speak OpenAI protocol.
+ * Ollama also maps to "openai" because Ollama exposes an OpenAI-compatible API
+ * at /v1, and using provider "ollama" in mem0 requires the `ollama` Python
+ * package which we don't install in the memory container.
  */
 export function mem0ProviderName(provider: string): string {
-  if (provider === "model-runner" || provider === "lmstudio") return "openai";
+  if (provider === "model-runner" || provider === "lmstudio" || provider === "ollama") return "openai";
   return provider;
 }
 
 /**
  * Map provider/base URL input to the mem0 config key/value pair.
- * OpenAI-compatible providers use openai_base_url (+ /v1), while Ollama uses ollama_base_url.
+ * All local providers (Ollama, Model Runner, LM Studio) use the OpenAI-compatible
+ * endpoint, so we always set openai_base_url with a /v1 suffix.
  */
 export function mem0BaseUrlConfig(
-  provider: string,
+  _provider: string,
   baseUrl: string
-): { key: "openai_base_url" | "ollama_base_url"; value: string } | null {
+): { key: "openai_base_url"; value: string } | null {
   const trimmed = baseUrl.trim();
   if (!trimmed) return null;
 
   const normalized = trimmed.replace(/\/+$/, "");
-  const mem0Provider = mem0ProviderName(provider);
-
-  if (mem0Provider === "ollama") {
-    return { key: "ollama_base_url", value: normalized };
-  }
-  if (mem0Provider === "openai") {
-    return { key: "openai_base_url", value: `${normalized}/v1` };
-  }
-  return null;
+  return { key: "openai_base_url", value: `${normalized}/v1` };
 }
 
 /** Default models to pull when enabling Ollama from the wizard. */

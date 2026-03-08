@@ -193,7 +193,7 @@ async function handleUnifiedSave(
     const mem0Url = mem0BaseUrlConfig(provider, baseUrl);
     if (mem0Url?.key === "openai_base_url") {
       // OPENAI_BASE_URL is read by the memory container as env var fallback
-      // for OpenAI-protocol providers. Ollama reads ollama_base_url from config.
+      // for OpenAI-protocol providers (including Ollama via OpenAI-compat API).
       patches.OPENAI_BASE_URL = mem0Url.value;
     }
   }

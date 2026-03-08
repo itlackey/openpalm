@@ -27,22 +27,6 @@ services:
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [assistant_net, channel_lan, channel_public]
 
-  # ── Ollama (local LLM runtime) ────────────────────────────────────
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    ports:
-      - "${OPENPALM_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434:11434"
-    volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/ollama:/root/.ollama
-    networks: [assistant_net]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight FastAPI wrapping mem0 SDK with embedded Qdrant (file-based).
   memory:

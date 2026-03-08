@@ -161,17 +161,19 @@ if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
     "llm": {
       "provider": "openai",
       "config": {
-        "model": "gpt-4o-mini",
+        "model": "llama3.2:latest",
         "temperature": 0.1,
         "max_tokens": 2000,
-        "api_key": "env:OPENAI_API_KEY"
+        "api_key": "ollama",
+        "openai_base_url": "http://ollama:11434/v1"
       }
     },
     "embedder": {
       "provider": "openai",
       "config": {
-        "model": "text-embedding-3-small",
-        "api_key": "env:OPENAI_API_KEY"
+        "model": "nomic-embed-text",
+        "api_key": "ollama",
+        "openai_base_url": "http://ollama:11434/v1"
       }
     },
     "vector_store": {
@@ -179,7 +181,7 @@ if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
       "config": {
         "collection_name": "memory",
         "path": "/data/qdrant",
-        "embedding_model_dims": 1536
+        "embedding_model_dims": 768
       }
     }
   },

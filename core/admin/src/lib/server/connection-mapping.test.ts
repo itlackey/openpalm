@@ -96,7 +96,7 @@ describe('connection mapping', () => {
     expect(mapping.mem0.embedder.config.openai_base_url).toBe('https://api.openai.com/v1');
   });
 
-  test('buildMem0Mapping supports ollama LLM with openai embedder', () => {
+  test('buildMem0Mapping maps ollama to openai provider with openai_base_url', () => {
     const mapping = buildMem0Mapping({
       llm: {
         provider: 'ollama',
@@ -114,10 +114,10 @@ describe('connection mapping', () => {
       customInstructions: '',
     });
 
-    // LLM uses Ollama
-    expect(mapping.mem0.llm.provider).toBe('ollama');
+    // LLM uses Ollama via OpenAI-compatible protocol (mem0 maps ollama → openai)
+    expect(mapping.mem0.llm.provider).toBe('openai');
     expect(mapping.mem0.llm.config.model).toBe('llama3.2:3b');
-    expect(mapping.mem0.llm.config.ollama_base_url).toBe('http://ollama:11434');
+    expect(mapping.mem0.llm.config.openai_base_url).toBe('http://ollama:11434/v1');
 
     // Embedder uses OpenAI (no base URL override needed)
     expect(mapping.mem0.embedder.provider).toBe('openai');

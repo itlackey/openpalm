@@ -36,8 +36,8 @@ describe("mem0ProviderName", () => {
     expect(mem0ProviderName("openai")).toBe("openai");
   });
 
-  test("passes 'ollama' through unchanged", () => {
-    expect(mem0ProviderName("ollama")).toBe("ollama");
+  test("maps 'ollama' to 'openai' (uses OpenAI-compatible API)", () => {
+    expect(mem0ProviderName("ollama")).toBe("openai");
   });
 
   test("passes 'anthropic' through unchanged", () => {
@@ -50,10 +50,10 @@ describe("mem0ProviderName", () => {
 });
 
 describe("mem0BaseUrlConfig", () => {
-  test("uses ollama_base_url for ollama without /v1 suffix", () => {
+  test("uses openai_base_url for ollama with /v1 suffix", () => {
     expect(mem0BaseUrlConfig("ollama", "http://localhost:11434/")).toEqual({
-      key: "ollama_base_url",
-      value: "http://localhost:11434",
+      key: "openai_base_url",
+      value: "http://localhost:11434/v1",
     });
   });
 
@@ -64,9 +64,12 @@ describe("mem0BaseUrlConfig", () => {
     });
   });
 
-  test("returns null for empty base url or unsupported provider", () => {
+  test("returns null for empty base url, maps any non-empty provider", () => {
     expect(mem0BaseUrlConfig("anthropic", "")).toBeNull();
-    expect(mem0BaseUrlConfig("anthropic", "https://api.anthropic.com")).toBeNull();
+    expect(mem0BaseUrlConfig("anthropic", "https://api.anthropic.com")).toEqual({
+      key: "openai_base_url",
+      value: "https://api.anthropic.com/v1",
+    });
   });
 });
 
