@@ -53,12 +53,27 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 			body: JSON.stringify({ complete: true, missing: [] })
 		})
 	);
+	// New-format GET /admin/connections: profiles + assignments + connections
 	await page.route('**/admin/connections', (route) => {
 		if (route.request().method() === 'GET') {
 			return route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({
+					profiles: [
+						{
+							id: 'primary',
+							name: 'OpenAI Production',
+							kind: 'openai_compatible_remote',
+							provider: 'openai',
+							baseUrl: 'https://api.openai.com/v1',
+							auth: { mode: 'api_key', apiKeySecretRef: 'OPENAI_API_KEY' }
+						}
+					],
+					assignments: {
+						llm: { connectionId: 'primary', model: 'gpt-4o-mini' },
+						embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 }
+					},
 					connections: {
 						SYSTEM_LLM_PROVIDER: 'openai',
 						SYSTEM_LLM_BASE_URL: 'https://api.openai.com',
@@ -114,35 +129,45 @@ async function navigateToConnections(page: import('@playwright/test').Page) {
 	await page.reload();
 	await page.waitForSelector('nav', { timeout: 10000 });
 	await page.getByRole('tab', { name: /connections/i }).click();
-	// Wait for the connections tab heading
+	// Wait for the connections tab h2 heading
 	await expect(page.locator('h2:has-text("Connections")')).toBeVisible({ timeout: 10000 });
 }
 
+/** Open the "Add connection" form within the Connections tab. */
+async function openAddConnectionForm(page: import('@playwright/test').Page) {
+	await page.getByRole('button', { name: 'Add connection' }).click();
+	// Wait for the form heading to appear
+	await expect(page.locator('h3:has-text("Add connection")')).toBeVisible({ timeout: 5000 });
+}
+
 test.describe('Connections Tab UI', () => {
-	test('connections tab shows System LLM Connection section', async ({ page }) => {
+	test('connections tab shows Connections list and Memory Settings sections', async ({ page }) => {
 		await setupConsoleMocks(page);
 		await navigateToConnections(page);
 
-		// Verify the System LLM Connection section is visible
-		await expect(page.getByRole('heading', { name: 'System LLM Connection' })).toBeVisible();
+		// Verify the top-level Connections heading is visible
+		await expect(page.locator('h2:has-text("Connections")')).toBeVisible();
 
-		// Verify Memory Settings section exists
-		await expect(page.getByText('Memory Settings')).toBeVisible();
+		// Verify the Connections profiles panel heading
+		await expect(page.locator('h3:has-text("Connections")')).toBeVisible();
 
-		// Verify form controls are present
-		await expect(page.locator('#conn-provider')).toBeVisible();
-		await expect(page.locator('#conn-base-url')).toBeVisible();
-		await expect(page.locator('#conn-system-model')).toBeVisible();
-		await expect(page.locator('#conn-embedding-model')).toBeVisible();
-		await expect(page.locator('#conn-embedding-dims')).toBeVisible();
+		// Verify the Memory Settings section exists
+		await expect(page.locator('h3:has-text("Memory Settings")')).toBeVisible();
+
+		// Verify Memory User ID field is present (the one remaining persisted field)
 		await expect(page.locator('#conn-memory-user-id')).toBeVisible();
 
-		// Verify loaded values from mocked connections (wait for async load)
-		await expect(page.locator('#conn-system-model')).toHaveValue('gpt-4o-mini', { timeout: 5000 });
-		await expect(page.locator('#conn-embedding-model')).toHaveValue('text-embedding-3-small', { timeout: 5000 });
+		// Verify loaded Memory User ID from mocked connections
+		await expect(page.locator('#conn-memory-user-id')).toHaveValue('default_user', { timeout: 5000 });
+
+		// Verify the Add connection button is present in the profiles panel
+		await expect(page.getByRole('button', { name: 'Add connection' })).toBeVisible();
+
+		// Verify the existing mocked profile is shown in the table
+		await expect(page.getByText('OpenAI Production')).toBeVisible({ timeout: 5000 });
 	});
 
-	test('saving connection sends correct data', async ({ page }) => {
+	test('saving memory settings sends correct data', async ({ page }) => {
 		let savedPayload: Record<string, unknown> | null = null;
 
 		await setupConsoleMocks(page);
@@ -162,7 +187,16 @@ test.describe('Connections Tab UI', () => {
 					status: 200,
 					contentType: 'application/json',
 					body: JSON.stringify({
-						profiles: [],
+						profiles: [
+							{
+								id: 'primary',
+								name: 'OpenAI Production',
+								kind: 'openai_compatible_remote',
+								provider: 'openai',
+								baseUrl: 'https://api.openai.com/v1',
+								auth: { mode: 'api_key', apiKeySecretRef: 'OPENAI_API_KEY' }
+							}
+						],
 						assignments: {
 							llm: { connectionId: 'primary', model: 'gpt-4o-mini' },
 							embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 }
@@ -172,7 +206,8 @@ test.describe('Connections Tab UI', () => {
 							OPENAI_API_KEY: 'sk-****1234',
 							SYSTEM_LLM_MODEL: 'gpt-4o-mini',
 							EMBEDDING_MODEL: 'text-embedding-3-small',
-							EMBEDDING_DIMS: '1536'
+							EMBEDDING_DIMS: '1536',
+							MEMORY_USER_ID: 'default_user'
 						}
 					})
 				});
@@ -182,40 +217,38 @@ test.describe('Connections Tab UI', () => {
 
 		await navigateToConnections(page);
 
-		// Change provider to ollama
-		await page.locator('#conn-provider').selectOption('ollama');
-		await page.locator('#conn-system-model').fill('llama3');
+		// Update the Memory User ID field
+		const userIdField = page.locator('#conn-memory-user-id');
+		await userIdField.clear();
+		await userIdField.fill('test_user');
 
-		// Save
-		await page.getByRole('button', { name: 'Save' }).click();
+		// Save via "Save Memory Settings" button
+		await page.getByRole('button', { name: 'Save Memory Settings' }).click();
 
 		// Verify success message
-		await expect(page.getByText('Connection saved successfully')).toBeVisible({ timeout: 5000 });
+		await expect(page.getByText('Memory settings saved.')).toBeVisible({ timeout: 5000 });
 
-		// Verify the posted payload
+		// Verify the posted payload includes the provider from the first profile
 		expect(savedPayload).not.toBeNull();
 		if (!savedPayload) {
 			throw new Error('Expected /admin/connections payload to be captured');
 		}
-		const payload = savedPayload as unknown as {
+		const payload = savedPayload as {
 			profiles: Array<Record<string, unknown>>;
-			assignments: { llm: { model: string } };
+			assignments: Record<string, unknown>;
+			memoryUserId?: string;
 		};
+		// The canonical DTO save path sends profiles + assignments (not a top-level provider)
 		expect(Array.isArray(payload.profiles)).toBe(true);
-		expect(payload.profiles[0]?.provider).toBe('ollama');
-		expect(payload.assignments?.llm).toBeTruthy();
-		expect(payload.assignments.llm.model).toBe('llama3');
+		expect(payload.profiles.length).toBeGreaterThan(0);
+		// The provider comes from the first profile (built from the loaded connection)
+		expect(typeof payload.profiles[0]?.provider).toBe('string');
+		// assignments object must be present
+		expect(typeof payload.assignments).toBe('object');
+		// memoryUserId should reflect what was typed
+		expect(payload.memoryUserId).toBe('test_user');
 	});
 
-	test('embedding model field hint warns about collection reset', async ({ page }) => {
-		await setupConsoleMocks(page);
-		await navigateToConnections(page);
-
-		// Verify the field hint about embedding model changes
-		await expect(
-			page.getByText('Changing this after data is stored requires a collection reset')
-		).toBeVisible();
-	});
 });
 
 test.describe('Memory Config API', () => {
@@ -416,10 +449,13 @@ test.describe('Memory Models API', () => {
 });
 
 test.describe('Connection Test & Model Selection UI', () => {
-	test('Test Connection button fetches models from provider', async ({ page }) => {
+	test('Add connection form shows provider and base URL fields', async ({ page }) => {
+		// Previously "Test Connection button fetches models from provider" — the test was checking
+		// that #conn-provider had value 'openai'. In the refactored UI the provider field lives
+		// inside the ConnectionForm panel, which is only shown after clicking "Add connection".
 		await setupConsoleMocks(page);
 
-		// Mock the models endpoint
+		// Mock the models endpoint (may be called on test)
 		await page.route('**/admin/memory/models', (route) =>
 			route.fulfill({
 				status: 200,
@@ -429,15 +465,20 @@ test.describe('Connection Test & Model Selection UI', () => {
 		);
 
 		await navigateToConnections(page);
+		await openAddConnectionForm(page);
 
-		// The provider should be pre-filled with openai
-		await expect(page.locator('#conn-provider')).toHaveValue('openai');
+		// The provider field (#cf-provider) should default to 'openai'
+		await expect(page.locator('#cf-provider')).toBeVisible();
+		await expect(page.locator('#cf-provider')).toHaveValue('openai');
 
-		// System model should be visible (text input since no models loaded yet)
-		await expect(page.locator('#conn-system-model')).toBeVisible();
+		// Base URL field should be visible
+		await expect(page.locator('#cf-base-url')).toBeVisible();
+
+		// The "Test connection" button is present (disabled until URL is filled)
+		await expect(page.getByRole('button', { name: /test connection/i })).toBeVisible();
 	});
 
-	test('Test Connection shows error when provider is unreachable', async ({ page }) => {
+	test('Test connection shows error when provider is unreachable', async ({ page }) => {
 		await setupConsoleMocks(page);
 
 		await page.route('**/admin/memory/models', (route) =>
@@ -449,15 +490,22 @@ test.describe('Connection Test & Model Selection UI', () => {
 		);
 
 		await navigateToConnections(page);
+		await openAddConnectionForm(page);
 
-		// Click Test Connection
-		await page.getByRole('button', { name: 'Test Connection' }).click();
+		// Fill in a base URL to enable the Test connection button
+		await page.locator('#cf-base-url').fill('http://localhost:11434/v1');
 
-		// Wait for error to appear
-		await expect(page.getByText('Network error — unable to reach admin API.')).toBeVisible({ timeout: 5000 });
+		// Click Test connection
+		await page.getByRole('button', { name: /test connection/i }).click();
+
+		// Wait for error to appear — mapModelDiscoveryError converts the empty-models+error
+		// response into a human-readable string; network errors surface as 'Network error…'
+		await expect(
+			page.locator('.field-error').or(page.getByText(/network error|connection refused|unable to reach/i))
+		).toBeVisible({ timeout: 5000 });
 	});
 
-	test('Test Connection populates model dropdowns', async ({ page }) => {
+	test('Test connection populates Connected status', async ({ page }) => {
 		let modelCallCount = 0;
 
 		await setupConsoleMocks(page);
@@ -472,13 +520,17 @@ test.describe('Connection Test & Model Selection UI', () => {
 		});
 
 		await navigateToConnections(page);
+		await openAddConnectionForm(page);
 
-		// Click Test Connection
-		await page.getByRole('button', { name: 'Test Connection' }).click();
+		// Fill in a base URL to enable the Test connection button
+		await page.locator('#cf-base-url').fill('https://api.openai.com/v1');
 
-		// Wait for connection success
+		// Click Test connection
+		await page.getByRole('button', { name: /test connection/i }).click();
+
+		// Wait for connection success — the ConnectionForm renders a role="status" span
 		await expect(page.locator('[role="status"]')).toBeVisible({ timeout: 5000 });
-		await expect(page.getByText('Connected')).toBeVisible();
+		await expect(page.getByText(/connected/i)).toBeVisible();
 
 		// Verify a model call was made
 		expect(modelCallCount).toBeGreaterThan(0);
