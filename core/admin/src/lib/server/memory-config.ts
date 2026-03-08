@@ -23,10 +23,11 @@ export type MemoryConfig = {
     llm: { provider: string; config: Record<string, unknown> };
     embedder: { provider: string; config: Record<string, unknown> };
     vector_store: {
-      provider: "qdrant";
+      provider: "sqlite-vec" | "qdrant";
       config: {
         collection_name: string;
-        path: string;
+        db_path?: string;
+        path?: string;
         embedding_model_dims: number;
       };
     };
@@ -188,10 +189,10 @@ export function getDefaultConfig(): MemoryConfig {
         },
       },
       vector_store: {
-        provider: "qdrant",
+        provider: "sqlite-vec",
         config: {
           collection_name: "memory",
-          path: "/data/qdrant",
+          db_path: "/data/memory.db",
           embedding_model_dims: 1536,
         },
       },
@@ -268,40 +269,55 @@ export function resolveConfigForPush(
 
 // ── Dimension Checking ──────────────────────────────────────────────
 
-export type QdrantDimensionResult = {
+export type VectorDimensionResult = {
   match: boolean;
   currentDims?: number;
   expectedDims: number;
 };
 
+/** @deprecated Use checkVectorDimensions instead */
+export type QdrantDimensionResult = VectorDimensionResult;
+
 /**
  * Compare the persisted config's embedding dimensions against a new config.
- * Since Qdrant runs in embedded mode inside the memory container,
- * we can't query its HTTP API directly. Instead we compare the persisted
- * config (which reflects the collection's actual dimensions) against the
- * incoming config to detect mismatches.
+ * We compare the persisted config (which reflects the store's actual dimensions)
+ * against the incoming config to detect mismatches.
  */
-export function checkQdrantDimensions(
+export function checkVectorDimensions(
   dataDir: string,
   newConfig: MemoryConfig
-): QdrantDimensionResult {
+): VectorDimensionResult {
   const expectedDims = newConfig.mem0.vector_store.config.embedding_model_dims;
   const persisted = readMemoryConfig(dataDir);
   const currentDims = persisted.mem0.vector_store.config.embedding_model_dims;
   return { match: currentDims === expectedDims, currentDims, expectedDims };
 }
 
+/** @deprecated Use checkVectorDimensions instead */
+export const checkQdrantDimensions = checkVectorDimensions;
+
 /**
- * Delete the embedded Qdrant data directory so the memory service recreates
+ * Delete the vector store data so the memory service recreates
  * the collection with correct dimensions on next startup.
  *
  * The memory container must be restarted after this operation.
  */
-export function resetQdrantCollection(
+export function resetVectorStore(
   dataDir: string
 ): { ok: boolean; error?: string } {
+  // Remove sqlite-vec database file
+  const dbPath = `${dataDir}/memory/memory.db`;
+  // Also remove legacy Qdrant data if it exists
   const qdrantPath = `${dataDir}/memory/qdrant`;
   try {
+    if (existsSync(dbPath)) {
+      rmSync(dbPath, { force: true });
+    }
+    // Also clean WAL/SHM files
+    for (const suffix of ['-wal', '-shm']) {
+      const walPath = `${dbPath}${suffix}`;
+      if (existsSync(walPath)) rmSync(walPath, { force: true });
+    }
     if (existsSync(qdrantPath)) {
       rmSync(qdrantPath, { recursive: true, force: true });
     }
@@ -310,6 +326,9 @@ export function resetQdrantCollection(
     return { ok: false, error: String(err) };
   }
 }
+
+/** @deprecated Use resetVectorStore instead */
+export const resetQdrantCollection = resetVectorStore;
 
 // ── Runtime API ──────────────────────────────────────────────────────────
 

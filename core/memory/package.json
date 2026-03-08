@@ -1,0 +1,12 @@
+{
+  "name": "@openpalm/memory-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "CC-BY-4.0",
+  "description": "Lightweight Bun.js API wrapper around @openpalm/memory",
+  "dependencies": {
+    "@openpalm/memory": "workspace:*",
+    "sqlite-vec": "^0.1.7-alpha.2"
+  }
+}

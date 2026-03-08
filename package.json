@@ -7,11 +7,13 @@
     "core/admin",
     "core/guardian",
     "core/cli",
+    "core/memory",
     "packages/channels-sdk",
     "packages/channel-discord",
     "packages/channel-api",
     "packages/channel-chat",
-    "packages/assistant-tools"
+    "packages/assistant-tools",
+    "packages/memory"
   ],
   "scripts": {
     "admin:dev": "bun run --cwd core/admin dev",

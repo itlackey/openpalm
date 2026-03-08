@@ -73,10 +73,10 @@ describe("getDefaultConfig", () => {
     expect(config.mem0.embedder.config.model).toBe("text-embedding-3-small");
   });
 
-  test("returns config with qdrant vector store using embedded path", () => {
+  test("returns config with sqlite-vec vector store", () => {
     const config = getDefaultConfig();
-    expect(config.mem0.vector_store.provider).toBe("qdrant");
-    expect(config.mem0.vector_store.config.path).toBe("/data/qdrant");
+    expect(config.mem0.vector_store.provider).toBe("sqlite-vec");
+    expect(config.mem0.vector_store.config.db_path).toBe("/data/memory.db");
     expect(config.mem0.vector_store.config.embedding_model_dims).toBe(1536);
   });
 
