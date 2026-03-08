@@ -42,6 +42,7 @@ describe("ensureXdgDirs", () => {
     expect(existsSync(join(configHome, "channels"))).toBe(true);
     expect(existsSync(join(configHome, "connections"))).toBe(true);
     expect(existsSync(join(configHome, "assistant"))).toBe(true);
+    expect(existsSync(join(configHome, "stash"))).toBe(true);
 
     // STATE subtrees
     expect(existsSync(stateHome)).toBe(true);

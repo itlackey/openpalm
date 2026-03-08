@@ -117,7 +117,7 @@ export type SystemConnectionPayload = {
 export type CanonicalConnectionProfileDto = {
   id: string;
   name: string;
-  kind: 'openai_compatible_remote' | 'openai_compatible_local';
+  kind: 'openai_compatible_remote' | 'openai_compatible_local' | 'ollama_local';
   provider: string;
   baseUrl: string;
   auth: {
@@ -136,6 +136,27 @@ export type CanonicalAssignmentsDto = {
     connectionId: string;
     model: string;
     embeddingDims?: number;
+  };
+  reranking?: {
+    enabled: boolean;
+    connectionId?: string;
+    mode?: 'llm' | 'dedicated';
+    model?: string;
+    topK?: number;
+    topN?: number;
+  };
+  tts?: {
+    enabled: boolean;
+    connectionId?: string;
+    model?: string;
+    voice?: string;
+    format?: string;
+  };
+  stt?: {
+    enabled: boolean;
+    connectionId?: string;
+    model?: string;
+    language?: string;
   };
 };
 

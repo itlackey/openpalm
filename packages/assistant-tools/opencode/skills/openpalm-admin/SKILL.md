@@ -41,8 +41,7 @@ Inspect configured automations, scheduler status, and recent execution logs.
 ### `admin-artifacts` (list, manifest, get)
 Inspect the generated configuration files:
 - `compose` = docker-compose.yml
-- `caddy` = caddy.json (reverse proxy config)
-- `env` = secrets.env (environment variables)
+- `caddyfile` (or alias `caddy`) = Caddyfile (reverse proxy config)
 
 ### `admin-connections` (get, set, status)
 View and manage external API connections (secrets stored in `secrets.env`):

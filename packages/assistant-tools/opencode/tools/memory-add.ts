@@ -20,16 +20,25 @@ export default tool({
       ),
   },
   async execute(args) {
-    let metadata: Record<string, any> = {};
+    let metadata: Record<string, unknown> = {};
     if (args.metadata) {
-      try { metadata = JSON.parse(args.metadata); } catch {}
+      try {
+        const parsed = JSON.parse(args.metadata) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          metadata = parsed as Record<string, unknown>;
+        } else {
+          return JSON.stringify({ error: true, message: "metadata must be a JSON object" });
+        }
+      } catch {
+        return JSON.stringify({ error: true, message: "Invalid JSON in metadata argument" });
+      }
     }
     // Apply defaults for categorisation fields when not provided
-    if (!metadata.category) metadata.category = "semantic";
-    if (!metadata.source) metadata.source = "manual";
-    if (metadata.confidence === undefined) metadata.confidence = 1.0;
-    if (!metadata.access_count) metadata.access_count = 0;
-    if (!metadata.last_accessed) metadata.last_accessed = new Date().toISOString();
+    if (typeof metadata.category !== "string") metadata.category = "semantic";
+    if (typeof metadata.source !== "string") metadata.source = "manual";
+    if (typeof metadata.confidence !== "number") metadata.confidence = 1.0;
+    if (typeof metadata.access_count !== "number") metadata.access_count = 0;
+    if (typeof metadata.last_accessed !== "string") metadata.last_accessed = new Date().toISOString();
     return memoryFetch("/api/v1/memories/", {
       method: "POST",
       body: JSON.stringify({

@@ -10,7 +10,7 @@ export default tool({
       .describe("Comma-separated list of memory UUIDs to delete (at least one required)"),
   },
   async execute(args) {
-    const ids = args.memory_ids.split(",").map(s => s.trim()).filter(Boolean);
+    const ids = [...new Set(args.memory_ids.split(",").map((value) => value.trim()).filter(Boolean))];
     if (ids.length === 0) return JSON.stringify({ error: true, message: "No memory IDs provided" });
     return memoryFetch("/api/v1/memories/", {
       method: "DELETE",

@@ -285,9 +285,11 @@ export async function saveSystemConnection(
       {
         id: 'primary',
         name: 'Primary connection',
-        kind: payload.provider === 'ollama' || payload.provider === 'lmstudio' || payload.provider === 'model-runner'
-          ? 'openai_compatible_local'
-          : 'openai_compatible_remote',
+        kind: payload.provider === 'ollama-instack'
+          ? 'ollama_local'
+          : (payload.provider === 'ollama' || payload.provider === 'lmstudio' || payload.provider === 'model-runner'
+            ? 'openai_compatible_local'
+            : 'openai_compatible_remote'),
         provider: payload.provider,
         baseUrl: payload.baseUrl,
         auth: {
@@ -313,6 +315,20 @@ export async function saveSystemConnection(
   };
 
   const res = await post('/admin/connections', dtoPayload, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as SystemConnectionSaveResult;
+}
+
+export async function saveConnectionsDto(
+  token: string,
+  payload: SaveConnectionsDtoPayload
+): Promise<SystemConnectionSaveResult> {
+  const res = await post('/admin/connections', payload, token);
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }

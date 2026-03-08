@@ -2,6 +2,14 @@ import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
 const LONG_TIMEOUT = { signal: AbortSignal.timeout(120_000) };
+const CHANNEL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+function validateChannelName(channel: string): string | null {
+  if (!CHANNEL_NAME_PATTERN.test(channel)) {
+    return "Invalid channel name. Use lowercase letters, numbers, and hyphens only.";
+  }
+  return null;
+}
 
 export const list = tool({
   description: "List all discovered channels, their routing status (hasRoute), and whether they are built-in or community-added",
@@ -16,6 +24,8 @@ export const install = tool({
     channel: tool.schema.string().describe("The channel name to install (e.g. 'chat', 'telegram')"),
   },
   async execute(args) {
+    const error = validateChannelName(args.channel);
+    if (error) return JSON.stringify({ error: true, message: error });
     return adminFetch("/admin/channels/install", {
       method: "POST",
       body: JSON.stringify({ channel: args.channel }),
@@ -30,6 +40,8 @@ export const uninstall = tool({
     channel: tool.schema.string().describe("The channel name to uninstall (e.g. 'chat', 'telegram')"),
   },
   async execute(args) {
+    const error = validateChannelName(args.channel);
+    if (error) return JSON.stringify({ error: true, message: error });
     return adminFetch("/admin/channels/uninstall", {
       method: "POST",
       body: JSON.stringify({ channel: args.channel }),

@@ -52,7 +52,7 @@ Configuration is read from `/app/default_config.json`.
 
 ## Compound Memory Pattern
 
-Compound memory means the assistant improves over time by accumulating knowledge. Steps 1 and 2 are now **automated** by the memory-context plugin, but you can still perform them manually for targeted operations.
+Compound memory means the assistant improves over time by accumulating knowledge. Core retrieval, reinforcement, synthesis, and hygiene are automated by the memory lifecycle plugin; manual tools remain available for targeted edits.
 
 ### 1. Retrieve Before Acting (Automated)
 
@@ -65,7 +65,7 @@ memory-search({ query: "project architecture decisions" })
 
 ### 2. Learn During Interaction (Automated)
 
-When you finish responding, the plugin automatically extracts important learnings from the conversation and stores them with the appropriate category. You can still add memories manually for things the auto-extraction might miss:
+During session activity, the plugin tracks command and tool outcomes, reinforces successful procedural memories, records repeated failures as cautionary procedural memories, and stores episodic summaries at session end. You can still add memories manually for anything automation misses:
 
 ```
 memory-add({ text: "User prefers Bun over npm", metadata: '{"category":"semantic"}' })
@@ -85,10 +85,10 @@ memory-update({ memory_id: "uuid", memory_content: "Updated fact..." })
 **Delete incorrect or outdated memories:**
 
 ```
-memory-delete({ memory_ids: ["uuid1", "uuid2"] })
+memory-delete({ memory_ids: "uuid1,uuid2" })
 ```
 
-Memory hygiene checks also run automatically once per day, prompting you to review duplicates and stale entries.
+Memory hygiene also runs automatically (dedupe + stale pruning) with conservative safety rules.
 
 ## What to Remember
 
@@ -128,16 +128,15 @@ The `memory-context` plugin provides full lifecycle automation:
 - Retrieves scoped memories in parallel:
   - personal semantic + procedural
   - project/app scoped context (`app_id`)
-  - stack semantic + procedural (`user_id=openpalm`)
+  - stack procedural (`user_id=openpalm`)
   - optional global procedures (`user_id=global`)
-- Runs a daily memory hygiene check (detects duplicates and stale entries)
-- Triggers cross-session reflexion when enough episodes have accumulated (every ~10 sessions)
+- Runs scheduled hygiene (dedupe + stale pruning with pinned/immutable protection)
+- Runs periodic cross-session synthesis from episodic outcomes
 
 ### During Interaction (`session.idle`)
-- After the agent finishes responding (throttled to once per 60 seconds, skipping single-turn interactions)
-- Automatically reflects on the conversation and extracts learnings using the LLM
-- Categorises memories as semantic, episodic, or procedural
-- Transparently acknowledges key learnings to the user
+- Periodically consolidates tracked tool outcomes into procedural memories
+- Reinforces high-success patterns and stores cautionary notes for repeated failures
+- Uses novelty checks to avoid duplicate low-value writes
 
 ### Before Tool Execution (`tool.execute.before`)
 - For admin operation tools, retrieves stack procedural memory only (`user_id=openpalm`)
@@ -153,7 +152,7 @@ The `memory-context` plugin provides full lifecycle automation:
 - Preserves session state metadata so context survives window resets
 
 ### On Session End (`session.deleted`)
-- Stores an episodic summary of the session for cross-session learning
+- Stores an episodic summary of tool outcomes for cross-session learning
 - Cleans up per-session tracking state
 
 ### Shell Environment
@@ -171,14 +170,10 @@ All memories are tagged with a category in their metadata:
 
 ### Confidence Scoring
 
-Memories carry a confidence value (0.0–1.0):
-- **Manual** memories (via `memory-add` tool): 1.0
-- **Auto-extracted** (session.idle): 0.7
-- **Reflexion** insights (cross-session synthesis): 0.5
-
-### Cross-Session Reflexion
-
-When enough episodic memories accumulate for a project (~5+ episodes), the plugin asks the LLM to synthesise higher-level insights — recurring patterns, successful approaches, and lessons learned. These are stored as semantic or procedural memories with `source: "reflexion"`.
+Memories carry a confidence value (0.0-1.0):
+- **Manual** memories (via `memory-add`): default 1.0
+- **Automated procedural consolidation**: dynamic confidence based on observed success/failure rates
+- **Cross-session synthesis**: moderate confidence, then reinforced via outcome feedback
 
 ## When to Use This Skill
 

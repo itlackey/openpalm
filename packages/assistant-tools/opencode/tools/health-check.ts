@@ -7,7 +7,10 @@ export default tool({
   },
   async execute(args) {
     const ALL = ["guardian", "memory", "admin"];
-    const targets = args.services ? args.services.split(",").map(s => s.trim()).filter(Boolean) : ALL;
+    const requested = args.services
+      ? args.services.split(",").map((service) => service.trim()).filter(Boolean)
+      : ALL;
+    const targets = [...new Set(requested)];
     const portMap: Record<string, number> = { guardian: 8080, memory: 8765, admin: 8100 };
     const results: Record<string, { status: string; latencyMs?: number }> = {};
     await Promise.all(

@@ -1,44 +1,25 @@
-/**
- * Shared memory library for the memory plugin layer.
- *
- * Centralizes types, constants, and helpers used by memory-context.ts
- * and memory-hygiene.ts.  The tools in opencode/tools/ continue to use
- * memoryFetch from lib.ts (they return raw JSON strings to the agent);
- * this module returns parsed objects and silently returns null on failure.
- */
-
 import { basename } from 'node:path';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-export const MEMORY_URL =
-  process.env.MEMORY_API_URL || 'http://memory:8765';
-export const USER_ID =
-  process.env.MEMORY_USER_ID || 'default_user';
+export const MEMORY_URL = process.env.MEMORY_API_URL || 'http://memory:8765';
+export const USER_ID = process.env.MEMORY_USER_ID || 'default_user';
 export const STACK_USER_ID = 'openpalm';
 export const GLOBAL_USER_ID = 'global';
 export const APP_NAME = 'openpalm-assistant';
 export const DEFAULT_AGENT_ID = process.env.MEMORY_AGENT_ID || 'openpalm';
 export const DEFAULT_APP_ID = deriveDefaultAppId();
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type MemoryCategory = "semantic" | "episodic" | "procedural";
+export type MemoryCategory = 'semantic' | 'episodic' | 'procedural';
 export type MemoryScope = 'personal' | 'stack' | 'global';
 
-export interface MemoryIdentity {
+export type MemoryIdentity = {
   scope?: MemoryScope;
   userId?: string;
   agentId?: string;
   appId?: string;
   runId?: string;
-}
+};
 
-export interface MemoryMetadata {
+export type MemoryMetadata = {
   category: MemoryCategory;
   source: 'auto-extract' | 'manual' | 'reflexion' | 'consolidation';
   confidence?: number;
@@ -56,24 +37,40 @@ export interface MemoryMetadata {
   negative_feedback_count?: number;
   pinned?: boolean;
   immutable?: boolean;
-}
+  [key: string]: unknown;
+};
 
-export interface MemoryItem {
+export type MemoryItem = {
   id: string;
   content: string;
   metadata?: Record<string, unknown>;
   created_at?: string;
   app_name?: string;
-}
+};
 
-// ---------------------------------------------------------------------------
-// Fetch helper
-// ---------------------------------------------------------------------------
+type SearchOptions = {
+  size?: number;
+  category?: MemoryCategory;
+  timeoutMs?: number;
+  highSignalOnly?: boolean;
+} & MemoryIdentity;
 
-/**
- * Fetch from the Memory API.  Returns parsed JSON on success or
- * `null` on any error — hooks must never throw.
- */
+type ListOptions = {
+  page?: number;
+  size?: number;
+  search_query?: string;
+  sort_column?: 'created_at' | 'memory' | 'app_name';
+  sort_direction?: 'asc' | 'desc';
+  timeoutMs?: number;
+} & MemoryIdentity;
+
+type ResolvedMemoryIdentity = {
+  userId: string;
+  agentId: string;
+  appId: string;
+  runId?: string;
+};
+
 export async function pluginMemoryFetch(
   path: string,
   options?: RequestInit & { timeoutMs?: number },
@@ -82,8 +79,8 @@ export async function pluginMemoryFetch(
     const { timeoutMs, ...rest } = options ?? {};
     const res = await fetch(`${MEMORY_URL}${path}`, {
       ...rest,
-      headers: { 'content-type': 'application/json', ...rest?.headers },
-      signal: rest?.signal ?? AbortSignal.timeout(timeoutMs ?? 5_000),
+      headers: { 'content-type': 'application/json', ...rest.headers },
+      signal: rest.signal ?? AbortSignal.timeout(timeoutMs ?? 5_000),
     });
     if (!res.ok) return null;
     return await res.json();
@@ -92,21 +89,11 @@ export async function pluginMemoryFetch(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Memory operations
-// ---------------------------------------------------------------------------
-
-/** Semantic search with optional client-side category filtering. */
 export async function searchMemories(
   query: string,
-  opts?: {
-    size?: number;
-    category?: MemoryCategory;
-    timeoutMs?: number;
-    highSignalOnly?: boolean;
-  } & MemoryIdentity,
+  opts?: SearchOptions,
 ): Promise<MemoryItem[]> {
-  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : (opts.size ?? 10);
+  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : (opts?.size ?? 10);
   const identity = resolveMemoryIdentity(opts);
   const commonSearchBody = {
     user_id: identity.userId,
@@ -124,9 +111,7 @@ export async function searchMemories(
     body: JSON.stringify({
       ...commonSearchBody,
       query,
-      filters: {
-        ...(opts?.category ? { category: opts.category } : {}),
-      },
+      filters: opts?.category ? { category: opts.category } : {},
     }),
   });
   const v2items = readItems(v2data);
@@ -134,16 +119,35 @@ export async function searchMemories(
     return postFilterMemories(v2items, opts);
   }
 
-  const data = await pluginMemoryFetch('/api/v1/memories/filter', {
+  const v1data = await pluginMemoryFetch('/api/v1/memories/filter', {
     method: 'POST',
     timeoutMs: opts?.timeoutMs,
     body: JSON.stringify(commonSearchBody),
   });
-  const items = readItems(data) ?? [];
-  return postFilterMemories(items, opts);
+  const v1items = readItems(v1data) ?? [];
+  return postFilterMemories(v1items, opts);
 }
 
-/** Store a memory with full metadata.  Mem0 deduplicates via infer:true. */
+export async function listMemories(opts?: ListOptions): Promise<MemoryItem[]> {
+  const identity = resolveMemoryIdentity(opts);
+  const data = await pluginMemoryFetch('/api/v1/memories/filter', {
+    method: 'POST',
+    timeoutMs: opts?.timeoutMs,
+    body: JSON.stringify({
+      user_id: identity.userId,
+      agent_id: identity.agentId,
+      app_id: identity.appId,
+      ...(identity.runId ? { run_id: identity.runId } : {}),
+      page: opts?.page ?? 1,
+      size: opts?.size ?? 50,
+      search_query: opts?.search_query ?? null,
+      sort_column: opts?.sort_column ?? 'created_at',
+      sort_direction: opts?.sort_direction ?? 'desc',
+    }),
+  });
+  return readItems(data) ?? [];
+}
+
 export async function addMemory(
   text: string,
   meta?: Partial<MemoryMetadata>,
@@ -159,6 +163,7 @@ export async function addMemory(
     ...meta,
     scope: identityInput?.scope ?? meta?.scope ?? 'personal',
   };
+
   const data = await pluginMemoryFetch('/api/v1/memories/', {
     method: 'POST',
     timeoutMs: 10_000,
@@ -173,12 +178,48 @@ export async function addMemory(
       infer: true,
     }),
   });
+
   const dataRecord = asRecord(data);
   const id = dataRecord?.id;
   return typeof id === 'string' ? id : null;
 }
 
-/** Quick stats: total memories and app count. */
+export async function addMemoryIfNovel(
+  text: string,
+  meta?: Partial<MemoryMetadata>,
+  identityInput?: MemoryIdentity,
+): Promise<string | null> {
+  const normalized = normalizeMemoryText(text);
+  if (!normalized) return null;
+
+  const possibleDuplicates = await searchMemories(text, {
+    size: 6,
+    category: meta?.category,
+    timeoutMs: 1_800,
+    ...identityInput,
+  });
+  const hasDuplicate = possibleDuplicates.some((item) => {
+    return normalizeMemoryText(item.content) === normalized;
+  });
+  if (hasDuplicate) return null;
+
+  return addMemory(text, meta, identityInput);
+}
+
+export async function deleteMemories(
+  memoryIds: string[],
+  identityInput?: MemoryIdentity,
+): Promise<boolean> {
+  if (memoryIds.length === 0) return true;
+  const identity = resolveMemoryIdentity(identityInput);
+  const response = await pluginMemoryFetch('/api/v1/memories/', {
+    method: 'DELETE',
+    timeoutMs: 8_000,
+    body: JSON.stringify({ memory_ids: memoryIds, user_id: identity.userId }),
+  });
+  return response !== null;
+}
+
 export async function getMemoryStats(timeoutMs = 3_000): Promise<{
   total_memories: number;
   total_apps: number;
@@ -186,14 +227,11 @@ export async function getMemoryStats(timeoutMs = 3_000): Promise<{
   return getMemoryStatsWithIdentity(timeoutMs);
 }
 
-/** Returns true if the memory service is reachable. */
 export async function isMemoryAvailable(
   timeoutMs?: number,
   identity?: MemoryIdentity,
 ): Promise<boolean> {
-  return (
-    (await getMemoryStatsWithIdentity(timeoutMs, identity)) !== null
-  );
+  return (await getMemoryStatsWithIdentity(timeoutMs, identity)) !== null;
 }
 
 export async function sendMemoryFeedback(
@@ -212,6 +250,7 @@ export async function sendMemoryFeedback(
     value: positive ? 1 : -1,
     reason,
   };
+
   const endpoints = [
     `/api/v1/memories/${encodeURIComponent(memoryId)}/feedback`,
     '/api/v1/feedback',
@@ -283,23 +322,35 @@ export async function getMemoryEvent(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
-
-/** Format a list of memories for injection into the agent's context. */
-export function formatMemoriesForContext(
-  memories: MemoryItem[],
-  heading?: string,
-): string {
-  if (memories.length === 0) return "";
+export function formatMemoriesForContext(memories: MemoryItem[], heading?: string): string {
+  if (memories.length === 0) return '';
   const lines: string[] = [];
   if (heading) lines.push(heading);
-  for (const m of memories) {
-    const tag = m.metadata?.category ? `[${m.metadata.category}]` : "";
-    lines.push(`- ${tag} ${m.content}`);
+  for (const memory of memories) {
+    const tag = typeof memory.metadata?.category === 'string'
+      ? `[${memory.metadata.category}]`
+      : '';
+    lines.push(`- ${tag} ${memory.content}`.trim());
   }
-  return lines.join("\n");
+  return lines.join('\n');
+}
+
+export function normalizeMemoryText(content: string): string {
+  return content
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^\w\s.-]/g, '')
+    .trim()
+    .slice(0, 220);
+}
+
+export function resolveMemoryIdentity(identityInput?: MemoryIdentity): ResolvedMemoryIdentity {
+  return {
+    userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
+    agentId: identityInput?.agentId ?? DEFAULT_AGENT_ID,
+    appId: identityInput?.appId ?? DEFAULT_APP_ID,
+    runId: identityInput?.runId,
+  };
 }
 
 function deriveDefaultAppId(): string {
@@ -318,36 +369,13 @@ function resolveScopeUserId(scope: MemoryScope = 'personal'): string {
   return USER_ID;
 }
 
-function resolveMemoryIdentity(
-  identityInput?: MemoryIdentity,
-): {
-  userId: string;
-  agentId: string;
-  appId: string;
-  runId?: string;
-} {
-  return {
-    userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
-    agentId: identityInput?.agentId ?? DEFAULT_AGENT_ID,
-    appId: identityInput?.appId ?? DEFAULT_APP_ID,
-    runId: identityInput?.runId,
-  };
-}
-
-function postFilterMemories(
-  memories: MemoryItem[],
-  opts?: {
-    size?: number;
-    category?: MemoryCategory;
-    highSignalOnly?: boolean;
-  },
-): MemoryItem[] {
+function postFilterMemories(memories: MemoryItem[], opts?: SearchOptions): MemoryItem[] {
   let items = memories;
   if (opts?.category) {
-    items = items.filter((m) => m.metadata?.category === opts.category);
+    items = items.filter((memory) => memory.metadata?.category === opts.category);
   }
   if (opts?.highSignalOnly) {
-    items = items.filter((m) => isHighSignalMemory(m.metadata));
+    items = items.filter((memory) => isHighSignalMemory(memory.metadata));
   }
   return items.slice(0, opts?.size ?? 10);
 }
@@ -358,10 +386,7 @@ function isHighSignalMemory(metadata: Record<string, unknown> | undefined): bool
   if (typeof metadata.confidence === 'number' && metadata.confidence >= 0.85) {
     return true;
   }
-  if (
-    typeof metadata.feedback_score === 'number' &&
-    metadata.feedback_score > 0
-  ) {
+  if (typeof metadata.feedback_score === 'number' && metadata.feedback_score > 0) {
     return true;
   }
   if (
@@ -376,10 +401,7 @@ function isHighSignalMemory(metadata: Record<string, unknown> | undefined): bool
 async function getMemoryStatsWithIdentity(
   timeoutMs = 3_000,
   identityInput?: MemoryIdentity,
-): Promise<{
-  total_memories: number;
-  total_apps: number;
-} | null> {
+): Promise<{ total_memories: number; total_apps: number } | null> {
   const identity = resolveMemoryIdentity(identityInput);
   const stats = await pluginMemoryFetch(
     `/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`,
@@ -404,16 +426,22 @@ function readItems(data: unknown): MemoryItem[] | undefined {
   if (!record) return undefined;
   const items = record.items ?? record.results;
   if (!Array.isArray(items)) return undefined;
-  return items.filter((item): item is MemoryItem => {
-    if (!item || typeof item !== 'object') return false;
-    const maybeItem = item as Record<string, unknown>;
-    return typeof maybeItem.id === 'string' && typeof maybeItem.content === 'string';
-  });
+  return items.flatMap((item) => toMemoryItem(item));
+}
+
+function toMemoryItem(item: unknown): MemoryItem[] {
+  if (!item || typeof item !== 'object') return [];
+  const maybeItem = item as Record<string, unknown>;
+  const id = maybeItem.id;
+  const content = maybeItem.content ?? maybeItem.memory;
+  if (typeof id !== 'string' || typeof content !== 'string') return [];
+  const metadata = asRecord(maybeItem.metadata) ?? undefined;
+  const createdAt = typeof maybeItem.created_at === 'string' ? maybeItem.created_at : undefined;
+  const appName = typeof maybeItem.app_name === 'string' ? maybeItem.app_name : undefined;
+  return [{ id, content, metadata, created_at: createdAt, app_name: appName }];
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === 'object') {
-    return value as Record<string, unknown>;
-  }
+  if (value && typeof value === 'object') return value as Record<string, unknown>;
   return null;
 }

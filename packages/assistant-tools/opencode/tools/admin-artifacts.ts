@@ -1,6 +1,8 @@
 import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
+const ALLOWED_ARTIFACTS = new Set(["compose", "caddyfile", "caddy"]);
+
 export const list = tool({
   description: "List all generated artifacts with their metadata (name, sha256 hash, generation time, size)",
   async execute() {
@@ -18,9 +20,15 @@ export const manifest = tool({
 export const get = tool({
   description: "Get the raw content of a specific artifact. Use this to inspect the generated docker-compose.yml or Caddyfile.",
   args: {
-    name: tool.schema.string().describe("The artifact to retrieve: 'compose' for docker-compose.yml, 'caddyfile' for Caddyfile"),
+    name: tool.schema.string().describe("The artifact to retrieve: 'compose' for docker-compose.yml or 'caddyfile'/'caddy' for Caddyfile"),
   },
   async execute(args) {
+    if (!ALLOWED_ARTIFACTS.has(args.name)) {
+      return JSON.stringify({
+        error: true,
+        message: "Invalid artifact name. Expected one of: compose, caddyfile, caddy",
+      });
+    }
     return adminFetch(`/admin/artifacts/${args.name}`);
   },
 });

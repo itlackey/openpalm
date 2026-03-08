@@ -16,7 +16,8 @@ export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unkno
 
 export type ConnectionKind =
   | "openai_compatible_remote"
-  | "openai_compatible_local";
+  | "openai_compatible_local"
+  | "ollama_local";
 
 export type ConnectionAuthMode = "api_key" | "none";
 
@@ -140,6 +141,7 @@ export const CORE_SERVICES: CoreServiceName[] = [
 export const CONNECTION_KINDS: ConnectionKind[] = [
   "openai_compatible_remote",
   "openai_compatible_local",
+  "ollama_local",
 ];
 
 export const REQUIRED_CAPABILITIES: RequiredCapability[] = [

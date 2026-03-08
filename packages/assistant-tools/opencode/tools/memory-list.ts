@@ -12,15 +12,26 @@ export default tool({
     sort_direction: tool.schema.string().optional().describe("Sort direction: asc or desc (default: desc)"),
   },
   async execute(args) {
+    const page = typeof args.page === "number" && Number.isFinite(args.page) && args.page > 0
+      ? Math.floor(args.page)
+      : 1;
+    const sizeInput = typeof args.size === "number" && Number.isFinite(args.size)
+      ? Math.floor(args.size)
+      : 20;
+    const size = Math.min(Math.max(sizeInput, 1), 100);
+    const sortColumn = ["created_at", "memory", "app_name"].includes(args.sort_column || "")
+      ? args.sort_column
+      : "created_at";
+    const sortDirection = args.sort_direction === "asc" ? "asc" : "desc";
     return memoryFetch("/api/v1/memories/filter", {
       method: "POST",
       body: JSON.stringify({
         user_id: USER_ID,
-        page: args.page || 1,
-        size: args.size || 20,
+        page,
+        size,
         search_query: args.search_query || null,
-        sort_column: args.sort_column || "created_at",
-        sort_direction: args.sort_direction || "desc",
+        sort_column: sortColumn,
+        sort_direction: sortDirection,
       }),
     });
   },

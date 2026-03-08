@@ -3,6 +3,7 @@ import {
   fetchConnections,
   fetchConnectionsDto,
   saveSystemConnection,
+  saveConnectionsDto,
 } from './api.js';
 
 const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
@@ -104,5 +105,53 @@ describe('api canonical connections DTO adapter', () => {
     expect(body.assignments.llm.model).toBe('gpt-4.1-mini');
     expect(body.assignments.embeddings.embeddingDims).toBe(1536);
     expect(body.capabilities).toEqual(['llm', 'embeddings']);
+  });
+
+  it('posts full DTO payload for saveConnectionsDto including optional capability fields', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, pushed: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+    await saveConnectionsDto('admin-token', {
+      profiles: [
+        {
+          id: 'p1',
+          name: 'Remote',
+          kind: 'openai_compatible_remote',
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          auth: { mode: 'api_key', apiKeySecretRef: 'env:OPENAI_API_KEY' },
+        },
+      ],
+      assignments: {
+        llm: { connectionId: 'p1', model: 'gpt-4o' },
+        embeddings: { connectionId: 'p1', model: 'text-embedding-3-small', embeddingDims: 1536 },
+        tts: { enabled: true, connectionId: 'p1', model: 'tts-1', voice: 'nova' },
+        stt: { enabled: false },
+      },
+    });
+
+    const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(String(requestInit.body)) as {
+      profiles: Array<{ kind: string }>;
+      assignments: {
+        llm: { model: string };
+        embeddings: { embeddingDims: number };
+        tts: { enabled: boolean; voice: string };
+        stt: { enabled: boolean };
+      };
+    };
+
+    expect(body.profiles[0].kind).toBe('openai_compatible_remote');
+    expect(body.assignments.llm.model).toBe('gpt-4o');
+    expect(body.assignments.embeddings.embeddingDims).toBe(1536);
+    expect(body.assignments.tts.enabled).toBe(true);
+    expect(body.assignments.tts.voice).toBe('nova');
+    expect(body.assignments.stt.enabled).toBe(false);
   });
 });

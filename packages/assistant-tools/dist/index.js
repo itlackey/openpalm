@@ -9,17 +9,25 @@ var __export = (target, all) => {
     });
 };
 
+// opencode/plugins/memory-context.ts
+import { basename as basename2 } from "node:path";
+
 // opencode/plugins/memory-lib.ts
+import { basename } from "node:path";
 var MEMORY_URL = process.env.MEMORY_API_URL || "http://memory:8765";
 var USER_ID = process.env.MEMORY_USER_ID || "default_user";
+var STACK_USER_ID = "openpalm";
+var GLOBAL_USER_ID = "global";
 var APP_NAME = "openpalm-assistant";
+var DEFAULT_AGENT_ID = process.env.MEMORY_AGENT_ID || "openpalm";
+var DEFAULT_APP_ID = deriveDefaultAppId();
 async function pluginMemoryFetch(path, options) {
   try {
     const { timeoutMs, ...rest } = options ?? {};
     const res = await fetch(`${MEMORY_URL}${path}`, {
       ...rest,
-      headers: { "content-type": "application/json", ...rest?.headers },
-      signal: rest?.signal ?? AbortSignal.timeout(timeoutMs ?? 5000)
+      headers: { "content-type": "application/json", ...rest.headers },
+      signal: rest.signal ?? AbortSignal.timeout(timeoutMs ?? 5000)
     });
     if (!res.ok)
       return null;
@@ -29,50 +37,143 @@ async function pluginMemoryFetch(path, options) {
   }
 }
 async function searchMemories(query, opts) {
-  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : opts.size ?? 10;
+  const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : opts?.size ?? 10;
+  const identity = resolveMemoryIdentity(opts);
+  const commonSearchBody = {
+    user_id: identity.userId,
+    agent_id: identity.agentId,
+    app_id: identity.appId,
+    ...identity.runId ? { run_id: identity.runId } : {},
+    search_query: query,
+    page: 1,
+    size: fetchSize
+  };
+  const v2data = await pluginMemoryFetch("/api/v2/memories/search", {
+    method: "POST",
+    timeoutMs: opts?.timeoutMs,
+    body: JSON.stringify({
+      ...commonSearchBody,
+      query,
+      filters: opts?.category ? { category: opts.category } : {}
+    })
+  });
+  const v2items = readItems(v2data);
+  if (v2items) {
+    return postFilterMemories(v2items, opts);
+  }
+  const v1data = await pluginMemoryFetch("/api/v1/memories/filter", {
+    method: "POST",
+    timeoutMs: opts?.timeoutMs,
+    body: JSON.stringify(commonSearchBody)
+  });
+  const v1items = readItems(v1data) ?? [];
+  return postFilterMemories(v1items, opts);
+}
+async function listMemories(opts) {
+  const identity = resolveMemoryIdentity(opts);
   const data = await pluginMemoryFetch("/api/v1/memories/filter", {
     method: "POST",
     timeoutMs: opts?.timeoutMs,
     body: JSON.stringify({
-      user_id: USER_ID,
-      search_query: query,
-      page: 1,
-      size: fetchSize
+      user_id: identity.userId,
+      agent_id: identity.agentId,
+      app_id: identity.appId,
+      ...identity.runId ? { run_id: identity.runId } : {},
+      page: opts?.page ?? 1,
+      size: opts?.size ?? 50,
+      search_query: opts?.search_query ?? null,
+      sort_column: opts?.sort_column ?? "created_at",
+      sort_direction: opts?.sort_direction ?? "desc"
     })
   });
-  let items = data?.items ?? [];
-  if (opts?.category) {
-    items = items.filter((m) => m.metadata?.category === opts.category);
-  }
-  return items.slice(0, opts?.size ?? 10);
+  return readItems(data) ?? [];
 }
-async function addMemory(text, meta) {
+async function addMemory(text, meta, identityInput) {
+  const identity = resolveMemoryIdentity(identityInput);
   const metadata = {
     category: meta?.category ?? "semantic",
     source: meta?.source ?? "auto-extract",
     confidence: meta?.confidence ?? 0.7,
     access_count: 0,
     last_accessed: new Date().toISOString(),
-    ...meta
+    ...meta,
+    scope: identityInput?.scope ?? meta?.scope ?? "personal"
   };
   const data = await pluginMemoryFetch("/api/v1/memories/", {
     method: "POST",
     timeoutMs: 1e4,
     body: JSON.stringify({
-      user_id: USER_ID,
+      user_id: identity.userId,
+      agent_id: identity.agentId,
+      app_id: identity.appId,
+      ...identity.runId ? { run_id: identity.runId } : {},
       text,
       app: APP_NAME,
       metadata,
       infer: true
     })
   });
-  return data?.id ?? null;
+  const dataRecord = asRecord(data);
+  const id = dataRecord?.id;
+  return typeof id === "string" ? id : null;
 }
-async function getMemoryStats(timeoutMs = 3000) {
-  return pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(USER_ID)}`, { timeoutMs });
+async function addMemoryIfNovel(text, meta, identityInput) {
+  const normalized = normalizeMemoryText(text);
+  if (!normalized)
+    return null;
+  const possibleDuplicates = await searchMemories(text, {
+    size: 6,
+    category: meta?.category,
+    timeoutMs: 1800,
+    ...identityInput
+  });
+  const hasDuplicate = possibleDuplicates.some((item) => {
+    return normalizeMemoryText(item.content) === normalized;
+  });
+  if (hasDuplicate)
+    return null;
+  return addMemory(text, meta, identityInput);
 }
-async function isMemoryAvailable(timeoutMs) {
-  return await getMemoryStats(timeoutMs) !== null;
+async function deleteMemories(memoryIds, identityInput) {
+  if (memoryIds.length === 0)
+    return true;
+  const identity = resolveMemoryIdentity(identityInput);
+  const response = await pluginMemoryFetch("/api/v1/memories/", {
+    method: "DELETE",
+    timeoutMs: 8000,
+    body: JSON.stringify({ memory_ids: memoryIds, user_id: identity.userId })
+  });
+  return response !== null;
+}
+async function isMemoryAvailable(timeoutMs, identity) {
+  return await getMemoryStatsWithIdentity(timeoutMs, identity) !== null;
+}
+async function sendMemoryFeedback(memoryId, positive, reason, identityInput) {
+  const identity = resolveMemoryIdentity(identityInput);
+  const feedback = {
+    memory_id: memoryId,
+    user_id: identity.userId,
+    agent_id: identity.agentId,
+    app_id: identity.appId,
+    ...identity.runId ? { run_id: identity.runId } : {},
+    value: positive ? 1 : -1,
+    reason
+  };
+  const endpoints = [
+    `/api/v1/memories/${encodeURIComponent(memoryId)}/feedback`,
+    "/api/v1/feedback",
+    "/api/v2/feedback"
+  ];
+  for (const endpoint of endpoints) {
+    const result = await pluginMemoryFetch(endpoint, {
+      method: "POST",
+      timeoutMs: 3000,
+      body: JSON.stringify(feedback)
+    });
+    if (result)
+      return true;
+  }
+  return false;
 }
 function formatMemoriesForContext(memories, heading) {
   if (memories.length === 0)
@@ -80,347 +181,892 @@ function formatMemoriesForContext(memories, heading) {
   const lines = [];
   if (heading)
     lines.push(heading);
-  for (const m of memories) {
-    const tag = m.metadata?.category ? `[${m.metadata.category}]` : "";
-    lines.push(`- ${tag} ${m.content}`);
+  for (const memory of memories) {
+    const tag = typeof memory.metadata?.category === "string" ? `[${memory.metadata.category}]` : "";
+    lines.push(`- ${tag} ${memory.content}`.trim());
   }
   return lines.join(`
 `);
 }
+function normalizeMemoryText(content) {
+  return content.toLowerCase().replace(/\s+/g, " ").replace(/[^\w\s.-]/g, "").trim().slice(0, 220);
+}
+function resolveMemoryIdentity(identityInput) {
+  return {
+    userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
+    agentId: identityInput?.agentId ?? DEFAULT_AGENT_ID,
+    appId: identityInput?.appId ?? DEFAULT_APP_ID,
+    runId: identityInput?.runId
+  };
+}
+function deriveDefaultAppId() {
+  const envAppId = process.env.MEMORY_APP_ID?.trim();
+  if (envAppId)
+    return envAppId;
+  const cwd = process.cwd().trim();
+  if (!cwd)
+    return "openpalm";
+  const name = basename(cwd);
+  if (!name || name === "." || name === "/")
+    return "openpalm";
+  return name.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+}
+function resolveScopeUserId(scope = "personal") {
+  if (scope === "stack")
+    return STACK_USER_ID;
+  if (scope === "global")
+    return GLOBAL_USER_ID;
+  return USER_ID;
+}
+function postFilterMemories(memories, opts) {
+  let items = memories;
+  if (opts?.category) {
+    items = items.filter((memory) => memory.metadata?.category === opts.category);
+  }
+  if (opts?.highSignalOnly) {
+    items = items.filter((memory) => isHighSignalMemory(memory.metadata));
+  }
+  return items.slice(0, opts?.size ?? 10);
+}
+function isHighSignalMemory(metadata) {
+  if (!metadata)
+    return false;
+  if (metadata.pinned === true || metadata.immutable === true)
+    return true;
+  if (typeof metadata.confidence === "number" && metadata.confidence >= 0.85) {
+    return true;
+  }
+  if (typeof metadata.feedback_score === "number" && metadata.feedback_score > 0) {
+    return true;
+  }
+  if (typeof metadata.positive_feedback_count === "number" && typeof metadata.negative_feedback_count === "number") {
+    return metadata.positive_feedback_count > metadata.negative_feedback_count;
+  }
+  return false;
+}
+async function getMemoryStatsWithIdentity(timeoutMs = 3000, identityInput) {
+  const identity = resolveMemoryIdentity(identityInput);
+  const stats = await pluginMemoryFetch(`/api/v1/stats/?user_id=${encodeURIComponent(identity.userId)}`, { timeoutMs });
+  const statsRecord = asRecord(stats);
+  if (statsRecord && typeof statsRecord.total_memories === "number" && typeof statsRecord.total_apps === "number") {
+    return {
+      total_memories: statsRecord.total_memories,
+      total_apps: statsRecord.total_apps
+    };
+  }
+  return null;
+}
+function readItems(data) {
+  const record = asRecord(data);
+  if (!record)
+    return;
+  const items = record.items ?? record.results;
+  if (!Array.isArray(items))
+    return;
+  return items.flatMap((item) => toMemoryItem(item));
+}
+function toMemoryItem(item) {
+  if (!item || typeof item !== "object")
+    return [];
+  const maybeItem = item;
+  const id = maybeItem.id;
+  const content = maybeItem.content ?? maybeItem.memory;
+  if (typeof id !== "string" || typeof content !== "string")
+    return [];
+  const metadata = asRecord(maybeItem.metadata) ?? undefined;
+  const createdAt = typeof maybeItem.created_at === "string" ? maybeItem.created_at : undefined;
+  const appName = typeof maybeItem.app_name === "string" ? maybeItem.app_name : undefined;
+  return [{ id, content, metadata, created_at: createdAt, app_name: appName }];
+}
+function asRecord(value) {
+  if (value && typeof value === "object")
+    return value;
+  return null;
+}
 
 // opencode/plugins/memory-hygiene.ts
-var STALE_THRESHOLD_DAYS = 30;
-var LOW_CONFIDENCE_THRESHOLD = 0.3;
-async function runQuickHygiene() {
-  const report = { duplicatesFound: 0, staleFound: 0 };
-  try {
-    const data = await pluginMemoryFetch("/api/v1/memories/filter", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: USER_ID,
-        page: 1,
-        size: 50,
-        sort_column: "created_at",
-        sort_direction: "desc"
-      })
-    });
-    const items = data?.items;
-    if (!items || items.length === 0)
-      return report;
-    const seen = new Map;
-    for (const mem of items) {
-      const key = normalise(mem.content ?? mem.memory ?? "");
-      if (!key)
-        continue;
-      if (seen.has(key)) {
-        report.duplicatesFound++;
-      } else {
-        seen.set(key, mem.id);
-      }
+var STALE_THRESHOLD_DAYS = 45;
+var STALE_LOW_CONFIDENCE = 0.25;
+var HARD_STALE_THRESHOLD_DAYS = 120;
+var MAX_SCAN_SIZE = 200;
+var MAX_DELETE_BATCH = 60;
+async function runAutomatedHygiene(identity) {
+  const report = {
+    scanned: 0,
+    duplicatesFound: 0,
+    staleFound: 0,
+    deletedDuplicates: 0,
+    deletedStale: 0,
+    skippedProtected: 0,
+    errors: 0
+  };
+  const items = await listMemories({
+    ...identity,
+    page: 1,
+    size: MAX_SCAN_SIZE,
+    sort_column: "created_at",
+    sort_direction: "desc",
+    timeoutMs: 3500
+  });
+  report.scanned = items.length;
+  if (items.length === 0)
+    return report;
+  const duplicatesToDelete = collectDuplicateCandidates(items, report);
+  const staleToDelete = collectStaleCandidates(items, duplicatesToDelete, report);
+  const duplicateBatch = duplicatesToDelete.slice(0, MAX_DELETE_BATCH);
+  if (duplicateBatch.length > 0) {
+    const deleted = await deleteMemories(duplicateBatch, identity);
+    if (deleted) {
+      report.deletedDuplicates = duplicateBatch.length;
+    } else {
+      report.errors++;
     }
-    const now = Date.now();
-    for (const mem of items) {
-      const lastAccessed = mem.metadata?.last_accessed ? new Date(mem.metadata.last_accessed).getTime() : new Date(mem.created_at ?? now).getTime();
-      const daysSince = (now - lastAccessed) / (1000 * 60 * 60 * 24);
-      const confidence = mem.metadata?.confidence ?? 0.7;
-      if (daysSince > STALE_THRESHOLD_DAYS && confidence < LOW_CONFIDENCE_THRESHOLD) {
-        report.staleFound++;
-      }
+  }
+  const staleBatch = staleToDelete.filter((id) => !duplicateBatch.includes(id)).slice(0, MAX_DELETE_BATCH);
+  if (staleBatch.length > 0) {
+    const deleted = await deleteMemories(staleBatch, identity);
+    if (deleted) {
+      report.deletedStale = staleBatch.length;
+    } else {
+      report.errors++;
     }
-  } catch {}
+  }
   return report;
 }
-function buildHygienePrompt(report) {
-  if (report.duplicatesFound === 0 && report.staleFound === 0)
+function buildHygieneContextNote(report) {
+  if (report.duplicatesFound === 0 && report.staleFound === 0 && report.deletedDuplicates === 0 && report.deletedStale === 0) {
     return null;
-  const parts = [
-    "[SYSTEM: Memory Hygiene]",
-    "",
-    "A quick memory-store health check found potential issues:"
-  ];
-  if (report.duplicatesFound > 0) {
-    parts.push(`- ${report.duplicatesFound} potential duplicate memories detected`);
   }
-  if (report.staleFound > 0) {
-    parts.push(`- ${report.staleFound} stale low-confidence memories found`);
+  const notes = ["## Memory Hygiene"];
+  notes.push(`Scanned ${report.scanned} recent memories.`);
+  notes.push(`Detected ${report.duplicatesFound} duplicates and ${report.staleFound} stale low-signal entries.`);
+  notes.push(`Auto-curated ${report.deletedDuplicates} duplicates and ${report.deletedStale} stale entries.`);
+  if (report.skippedProtected > 0) {
+    notes.push(`Skipped ${report.skippedProtected} protected memories (pinned/immutable).`);
   }
-  parts.push("");
-  parts.push("Use memory-list to review and memory-delete to clean up obvious duplicates or stale entries. " + "Be conservative — only remove clearly redundant or incorrect information.");
-  return parts.join(`
+  if (report.errors > 0) {
+    notes.push("Some hygiene actions failed; memory store remains usable.");
+  }
+  return notes.join(`
 `);
 }
-function normalise(content) {
-  return content.toLowerCase().replace(/[^\w\s]/g, "").trim().slice(0, 60);
+function collectDuplicateCandidates(items, report) {
+  const grouped = new Map;
+  for (const item of items) {
+    const normalized = normalizeMemoryText(item.content);
+    if (!normalized)
+      continue;
+    const category = typeof item.metadata?.category === "string" ? item.metadata.category : "unknown";
+    const key = `${category}::${normalized}`;
+    const list = grouped.get(key) ?? [];
+    list.push(item);
+    grouped.set(key, list);
+  }
+  const toDelete = [];
+  for (const group of grouped.values()) {
+    if (group.length < 2)
+      continue;
+    report.duplicatesFound += group.length - 1;
+    const sorted = [...group].sort(compareMemoryPriority);
+    const keep = sorted[0];
+    for (const candidate of sorted) {
+      if (candidate.id === keep.id)
+        continue;
+      if (isProtected(candidate)) {
+        report.skippedProtected++;
+        continue;
+      }
+      toDelete.push(candidate.id);
+    }
+  }
+  return uniqueIds(toDelete);
+}
+function collectStaleCandidates(items, alreadySelected, report) {
+  const now = Date.now();
+  const already = new Set(alreadySelected);
+  const toDelete = [];
+  for (const item of items) {
+    if (already.has(item.id))
+      continue;
+    if (isProtected(item)) {
+      report.skippedProtected++;
+      continue;
+    }
+    const metadata = item.metadata;
+    const confidence = typeof metadata?.confidence === "number" ? metadata.confidence : 0.7;
+    const feedbackScore = typeof metadata?.feedback_score === "number" ? metadata.feedback_score : 0;
+    const referenceDate = toTimestamp(metadata?.last_accessed) ?? toTimestamp(item.created_at);
+    if (!referenceDate)
+      continue;
+    const daysSince = (now - referenceDate) / (1000 * 60 * 60 * 24);
+    const shouldDelete = daysSince >= STALE_THRESHOLD_DAYS && confidence <= STALE_LOW_CONFIDENCE && feedbackScore <= 0 || daysSince >= HARD_STALE_THRESHOLD_DAYS;
+    if (shouldDelete) {
+      report.staleFound++;
+      toDelete.push(item.id);
+    }
+  }
+  return uniqueIds(toDelete);
+}
+function compareMemoryPriority(a, b) {
+  const aScore = memoryQualityScore(a);
+  const bScore = memoryQualityScore(b);
+  if (aScore !== bScore)
+    return bScore - aScore;
+  const aTime = toTimestamp(a.created_at) ?? 0;
+  const bTime = toTimestamp(b.created_at) ?? 0;
+  return bTime - aTime;
+}
+function memoryQualityScore(item) {
+  let score = 0;
+  const metadata = item.metadata;
+  if (metadata?.pinned === true)
+    score += 10;
+  if (metadata?.immutable === true)
+    score += 10;
+  if (typeof metadata?.confidence === "number")
+    score += metadata.confidence;
+  if (typeof metadata?.feedback_score === "number")
+    score += metadata.feedback_score;
+  return score;
+}
+function isProtected(item) {
+  return item.metadata?.pinned === true || item.metadata?.immutable === true;
+}
+function toTimestamp(value) {
+  if (typeof value !== "string" || !value)
+    return null;
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp))
+    return null;
+  return timestamp;
+}
+function uniqueIds(ids) {
+  return [...new Set(ids)];
 }
 
 // opencode/plugins/memory-context.ts
 var sessions = new Map;
+var pendingToolFeedback = new Map;
 var lastHygieneRunAt = 0;
-var sessionsSinceReflexion = 0;
+var sessionsSinceSynthesis = 0;
 var HYGIENE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-var EXTRACTION_COOLDOWN_MS = 60000;
-var MIN_IDLE_COUNT_FOR_EXTRACTION = 2;
-var REFLEXION_SESSION_INTERVAL = 10;
-var REFLEXION_EPISODE_THRESHOLD = 5;
-var REFLEXION_DEFAULT_CONFIDENCE = 0.5;
-function buildExtractionPrompt(state) {
-  return `[SYSTEM: Memory Extraction]
-
-Review the conversation so far and extract any important NEW information worth remembering long-term. For each item, call memory-add with the text and appropriate metadata JSON string.
-
-Categories (use as the "category" field in metadata):
-- "semantic" — general facts, user preferences, project decisions, technical knowledge
-- "episodic" — specific events or outcomes from this session (what happened, results, errors)
-- "procedural" — procedures, workflows, multi-step patterns that worked (how-to knowledge)
-
-For each learning, call memory-add like this:
-  memory-add({ text: "clear standalone statement", metadata: '{"category":"semantic","source":"auto-extract","session_id":"${state.sessionId}","project":"${state.project}"}' })
-
-Rules:
-- Only genuinely NEW information not already in memory
-- Write each memory as a clear, self-contained statement
-- Never store secrets, API keys, passwords, or tokens
-- Skip ephemeral details (current git branch, temp file paths)
-- Prefer quality over quantity — one precise statement over five vague ones
-- After storing memories, briefly acknowledge what you learned (e.g. "Noted for future sessions: ...")
-
-If nothing worth remembering was discussed, respond with "Nothing to extract." and no tool calls.`;
-}
-function buildReflexionPrompt(episodes, project) {
-  const episodeList = episodes.map((e) => `- ${e.content}`).join(`
-`);
-  return `[SYSTEM: Cross-Session Reflexion]
-
-Review these past session episodes for project "${project}" and extract higher-level insights — recurring patterns, successful approaches, evolving preferences, or lessons learned across sessions:
-
-${episodeList}
-
-For each insight, call memory-add with metadata:
-  memory-add({ text: "insight statement", metadata: '{"category":"semantic or procedural","source":"reflexion","project":"${project}","confidence":${REFLEXION_DEFAULT_CONFIDENCE}}' })
-
-Rules:
-- Only extract genuinely novel insights not already captured as individual memories
-- Generalise from specific episodes into reusable knowledge
-- Prefer procedural memories for workflow patterns, semantic for facts/preferences
-
-If no new insights emerge, respond with "No new insights." and no tool calls.`;
-}
+var LEARNING_COOLDOWN_MS = 75000;
+var MIN_IDLE_COUNT_FOR_LEARNING = 2;
+var SYNTHESIS_SESSION_INTERVAL = 8;
+var SYNTHESIS_MIN_EPISODES = 10;
+var MAX_SESSION_OUTCOMES = 100;
+var INCLUDE_STACK_MEMORY = (process.env.MEMORY_INCLUDE_STACK_MEMORY ?? "true").toLowerCase() !== "false";
+var INCLUDE_GLOBAL_PROCEDURAL = (process.env.MEMORY_INCLUDE_GLOBAL_PROCEDURAL ?? "").toLowerCase() === "true";
 var MemoryContextPlugin = async (ctx) => {
-  const client = ctx?.client;
+  await log(ctx.client, "info", "Memory lifecycle plugin initialized", {
+    memoryUrl: MEMORY_URL
+  });
   return {
     "session.created": async (input, output) => {
-      const sessionId = input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
-      const project = input?.project?.name ?? ctx?.project?.name ?? ctx?.directory ?? "unknown";
+      const hookInput = asHookInput(input);
+      const hookOutput = asHookOutput(output);
+      const sessionId = getSessionId(hookInput);
+      const project = getProjectName(hookInput, ctx.directory);
+      const agentId = getAgentName(hookInput);
+      const appId = deriveAppId(project);
       sessions.set(sessionId, {
         sessionId,
         project,
-        startedAt: new Date().toISOString(),
-        contextInjected: false,
+        agentId,
+        appId,
+        startedAtIso: new Date().toISOString(),
         idleCount: 0,
-        lastExtractionAt: 0
+        lastLearningAtMs: 0,
+        contextInjected: false,
+        commandSignals: new Set,
+        outcomes: []
       });
-      const stats = await getMemoryStats();
-      if (!stats)
-        return;
-      const episodicQuery = project !== "unknown" ? `${project} recent sessions outcomes results` : "recent sessions outcomes results";
-      const [semanticMems, proceduralMems, episodicMems] = await Promise.all([
-        searchMemories("user preferences project context conventions decisions", { size: 10, category: "semantic" }),
-        searchMemories("procedures workflows patterns how to", {
-          size: 5,
-          category: "procedural"
-        }),
-        searchMemories(episodicQuery, {
-          size: 5,
-          category: "episodic"
-        })
-      ]);
-      const reflexionEpisodes = project !== "unknown" ? episodicMems.filter((m) => !m.metadata?.project || m.metadata.project === project) : episodicMems;
-      let projectMems = [];
-      if (project !== "unknown") {
-        projectMems = await searchMemories(`${project} project specific context`, { size: 5 });
-      }
-      const lines = ["## Memory — Session Context"];
-      if (stats) {
-        lines.push(`Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`);
-      }
-      lines.push("");
-      if (semanticMems.length > 0) {
-        lines.push("### Known Facts & Preferences");
-        lines.push(formatMemoriesForContext(semanticMems));
-        lines.push("");
-      }
-      if (proceduralMems.length > 0) {
-        lines.push("### Learned Procedures");
-        lines.push("These are patterns and workflows learned from past sessions:");
-        lines.push(formatMemoriesForContext(proceduralMems));
-        lines.push("");
-      }
-      if (episodicMems.length > 0) {
-        lines.push("### Recent Session History");
-        lines.push(formatMemoriesForContext(episodicMems));
-        lines.push("");
-      }
-      if (projectMems.length > 0) {
-        lines.push(`### Project Context (${project})`);
-        lines.push(formatMemoriesForContext(projectMems));
-        lines.push("");
-      }
-      lines.push("### Memory Instructions");
-      lines.push("You have access to Memory tools. Use `memory-search` to find additional context. " + "Important learnings from this session will be automatically extracted and stored. " + "Use `memory-add` explicitly for anything the auto-extraction might miss.");
-      if (output?.context) {
-        output.context.push(lines.join(`
-`));
-      }
       const state = sessions.get(sessionId);
-      if (state)
-        state.contextInjected = true;
-      const now = Date.now();
-      if (now - lastHygieneRunAt > HYGIENE_INTERVAL_MS) {
-        lastHygieneRunAt = now;
-        try {
-          const report = await runQuickHygiene();
-          const prompt = buildHygienePrompt(report);
-          if (prompt && typeof client?.session?.prompt === "function") {
-            await client.session.prompt({
-              path: { id: sessionId },
-              body: { parts: [{ type: "text", text: prompt }] }
-            });
-          }
-        } catch {}
+      if (!state)
+        return;
+      const personalIdentity = getSessionIdentity(state, "personal");
+      const memoryReady = await isMemoryAvailable(2500, personalIdentity);
+      if (!memoryReady) {
+        await log(ctx.client, "warn", "Memory API unavailable during session.created", {
+          sessionId,
+          project
+        });
+        return;
       }
-      sessionsSinceReflexion++;
-      if (sessionsSinceReflexion >= REFLEXION_SESSION_INTERVAL && reflexionEpisodes.length >= REFLEXION_EPISODE_THRESHOLD && typeof client?.session?.prompt === "function") {
-        sessionsSinceReflexion = 0;
-        try {
-          const prompt = buildReflexionPrompt(reflexionEpisodes, project);
-          await client.session.prompt({
-            path: { id: sessionId },
-            body: { parts: [{ type: "text", text: prompt }] }
-          });
-        } catch {}
-      }
+      const retrieval = await retrieveSessionContext(state);
+      const contextBlock = buildSessionContextBlock(state, retrieval);
+      ensureContext(hookOutput).push(contextBlock);
+      state.contextInjected = true;
+      await maybeRunHygiene(state, hookOutput);
+      sessionsSinceSynthesis++;
+      await maybeRunCrossSessionSynthesis(state);
+    },
+    "command.executed": async (input) => {
+      const hookInput = asHookInput(input);
+      const sessionId = getSessionId(hookInput);
+      const state = sessions.get(sessionId);
+      if (!state)
+        return;
+      const commandText = readCommandText(hookInput.command);
+      const preference = extractPreferenceSignal(commandText);
+      if (!preference)
+        return;
+      if (state.commandSignals.has(preference))
+        return;
+      state.commandSignals.add(preference);
+      await addMemoryIfNovel(preference, {
+        category: "semantic",
+        source: "auto-extract",
+        confidence: 0.65,
+        keywords: ["preference", state.appId],
+        project: state.project,
+        session_id: sessionId,
+        created_by_hook: "command.executed"
+      }, getSessionIdentity(state, "personal"));
     },
     "session.idle": async (input) => {
-      const sessionId = input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+      const hookInput = asHookInput(input);
+      const sessionId = getSessionId(hookInput);
       const state = sessions.get(sessionId);
       if (!state)
         return;
       state.idleCount++;
-      if (state.idleCount < MIN_IDLE_COUNT_FOR_EXTRACTION)
+      if (state.idleCount < MIN_IDLE_COUNT_FOR_LEARNING)
         return;
       const now = Date.now();
-      if (now - state.lastExtractionAt < EXTRACTION_COOLDOWN_MS)
+      if (now - state.lastLearningAtMs < LEARNING_COOLDOWN_MS)
         return;
-      if (!await isMemoryAvailable())
-        return;
-      state.lastExtractionAt = now;
-      const sessionClient = input?.client ?? client;
-      if (typeof sessionClient?.session?.prompt !== "function")
-        return;
-      try {
-        const prompt = buildExtractionPrompt(state);
-        await sessionClient.session.prompt({
-          path: { id: sessionId },
-          body: { parts: [{ type: "text", text: prompt }] }
-        });
-      } catch {}
+      state.lastLearningAtMs = now;
+      await persistSessionLearnings(state, { finalFlush: false });
     },
-    "session.deleted": async (input) => {
-      const sessionId = input?.session?.id ?? input?.properties?.sessionId ?? "unknown";
+    "tool.execute.before": async (input, output) => {
+      const hookInput = asHookInput(input);
+      const hookOutput = asHookOutput(output);
+      const toolName = hookInput.tool?.name;
+      if (!toolName || toolName.startsWith("memory-"))
+        return;
+      const sessionId = getSessionId(hookInput);
       const state = sessions.get(sessionId);
       if (!state)
         return;
-      if (state.idleCount >= MIN_IDLE_COUNT_FOR_EXTRACTION) {
-        if (await isMemoryAvailable()) {
-          const summary = `Session in project "${state.project}" started ${state.startedAt}. ` + `Automated memory extraction was run across ${state.idleCount} exchanges.`;
-          await addMemory(summary, {
-            category: "episodic",
-            source: "auto-extract",
-            session_id: sessionId,
-            project: state.project,
-            confidence: 0.8,
-            created_by_hook: "session.deleted"
-          });
-        }
-      }
-      sessions.delete(sessionId);
+      const isAdminTool = toolName.startsWith("admin-");
+      if (!isAdminTool && !isProjectCodeTool(toolName))
+        return;
+      const scopedMemories = await retrieveToolGuidance(state, toolName, isAdminTool);
+      if (scopedMemories.length === 0)
+        return;
+      const guidance = formatMemoriesForContext(scopedMemories, `### Learned Procedures For ${toolName}`);
+      ensureContext(hookOutput).push(guidance);
+      const executionId = getExecutionId(hookInput, toolName, sessionId);
+      const queue = pendingToolFeedback.get(executionId) ?? [];
+      queue.push({
+        memoryIds: scopedMemories.map((memory) => memory.id),
+        identity: isAdminTool ? getSessionIdentity(state, "stack") : getSessionIdentity(state, "personal"),
+        startedAt: Date.now()
+      });
+      pendingToolFeedback.set(executionId, queue);
     },
-    "tool.execute.before": async (input, output) => {
-      const toolName = input?.tool?.name;
+    "tool.execute.after": async (input, output) => {
+      const hookInput = asHookInput(input);
+      const hookOutput = asHookOutput(output);
+      const toolName = hookInput.tool?.name;
       if (!toolName)
         return;
-      const proceduralPrefixes = [
-        "admin-lifecycle",
-        "admin-containers",
-        "admin-channels",
-        "admin-config"
-      ];
-      if (!proceduralPrefixes.some((p) => toolName.startsWith(p)))
+      const sessionId = getSessionId(hookInput);
+      const state = sessions.get(sessionId);
+      if (!state)
         return;
-      if (!await isMemoryAvailable(1200))
-        return;
-      const memories = await searchMemories(`procedure for ${toolName.replace(/_/g, " ")} operations`, { size: 3, category: "procedural", timeoutMs: 1200 });
-      if (memories.length === 0)
-        return;
-      const guidance = formatMemoriesForContext(memories, `### Relevant Procedures for ${toolName}`);
-      if (output?.context) {
-        output.context.push(guidance);
+      const executionId = getExecutionId(hookInput, toolName, sessionId);
+      const queue = pendingToolFeedback.get(executionId) ?? [];
+      const pending = queue.shift();
+      const failed = didToolFail(hookInput, hookOutput);
+      if (pending && pending.memoryIds.length > 0) {
+        const reason = failed ? `Tool ${toolName} failed after procedural memory injection` : `Tool ${toolName} succeeded with procedural memory injection`;
+        await Promise.all(pending.memoryIds.map((memoryId) => sendMemoryFeedback(memoryId, !failed, reason, {
+          ...pending.identity,
+          runId: sessionId
+        })));
+      }
+      const startedAt = pending?.startedAt ?? Date.now();
+      const finishedAt = Date.now();
+      rememberOutcome(state, {
+        toolName,
+        ok: !failed,
+        startedAt,
+        finishedAt,
+        durationMs: Math.max(0, finishedAt - startedAt),
+        executionId
+      });
+      if (queue.length === 0) {
+        pendingToolFeedback.delete(executionId);
+      } else {
+        pendingToolFeedback.set(executionId, queue);
       }
     },
-    "experimental.session.compacting": async (_input, output) => {
-      const sessionId = _input?.session?.id ?? _input?.properties?.sessionId ?? "unknown";
+    "session.deleted": async (input) => {
+      const hookInput = asHookInput(input);
+      const sessionId = getSessionId(hookInput);
       const state = sessions.get(sessionId);
-      const stats = await getMemoryStats(1500);
-      if (!stats)
+      if (!state)
         return;
-      const [semanticMems, proceduralMems] = await Promise.all([
-        searchMemories("user preferences project context important decisions", { size: 10, category: "semantic", timeoutMs: 1500 }),
-        searchMemories("procedures patterns workflows", {
-          size: 5,
+      await persistSessionLearnings(state, { finalFlush: true });
+      await persistSessionEpisode(state);
+      sessions.delete(sessionId);
+      for (const [executionId] of pendingToolFeedback.entries()) {
+        if (executionId.startsWith(`${sessionId}::`)) {
+          pendingToolFeedback.delete(executionId);
+        }
+      }
+    },
+    "experimental.session.compacting": async (input, output) => {
+      const hookInput = asHookInput(input);
+      const hookOutput = asHookOutput(output);
+      const sessionId = getSessionId(hookInput);
+      const state = sessions.get(sessionId);
+      if (!state)
+        return;
+      const [semanticMemories, proceduralMemories] = await Promise.all([
+        searchMemories("user preferences project context important decisions", {
+          size: 8,
+          category: "semantic",
+          timeoutMs: 1200,
+          highSignalOnly: true,
+          ...getSessionIdentity(state, "personal")
+        }),
+        searchMemories("procedures workflows patterns", {
+          size: 6,
           category: "procedural",
-          timeoutMs: 1500
+          timeoutMs: 1200,
+          highSignalOnly: true,
+          ...getSessionIdentity(state, "personal")
         })
       ]);
       const lines = ["## Memory Context (Compaction)"];
-      if (stats) {
-        lines.push(`Memory store: ${stats.total_memories} memories across ${stats.total_apps} apps.`);
+      if (semanticMemories.length > 0) {
+        lines.push("", "### Facts And Preferences", formatMemoriesForContext(semanticMemories));
       }
-      if (semanticMems.length > 0) {
-        lines.push("");
-        lines.push("### Known Facts & Preferences");
-        lines.push(formatMemoriesForContext(semanticMems));
+      if (proceduralMemories.length > 0) {
+        lines.push("", "### Learned Procedures", formatMemoriesForContext(proceduralMemories));
       }
-      if (proceduralMems.length > 0) {
-        lines.push("");
-        lines.push("### Learned Procedures");
-        lines.push(formatMemoriesForContext(proceduralMems));
-      }
-      if (state) {
-        lines.push("");
-        lines.push("### Session State");
-        lines.push(`- Project: ${state.project}`);
-        lines.push(`- Session started: ${state.startedAt}`);
-        lines.push(`- Automated extraction idle count: ${state.idleCount}`);
-      }
-      lines.push("");
-      lines.push("### Memory Instructions");
-      lines.push("You have access to Memory tools. Use `memory-search` to find relevant context. " + "Important learnings are automatically extracted. Use `memory-add` for anything the auto-extraction might miss. " + "Memories are categorised as semantic (facts), episodic (events), or procedural (workflows).");
-      if (!output)
-        return;
-      if (!output.context) {
-        output.context = [];
-      }
-      output.context.push(lines.join(`
+      lines.push("", "### Session State", `- Project: ${state.project}`, `- Tool outcomes tracked: ${state.outcomes.length}`);
+      ensureContext(hookOutput).push(lines.join(`
 `));
     },
     "shell.env": async (_input, output) => {
-      output.env.MEMORY_API_URL = MEMORY_URL;
-      output.env.MEMORY_USER_ID = USER_ID;
+      const hookOutput = asHookOutput(output);
+      if (!hookOutput.env)
+        hookOutput.env = {};
+      hookOutput.env.MEMORY_API_URL = MEMORY_URL;
+      hookOutput.env.MEMORY_USER_ID = USER_ID;
     }
   };
 };
+async function retrieveSessionContext(state) {
+  const personalIdentity = getSessionIdentity(state, "personal");
+  const stackIdentity = getSessionIdentity(state, "stack");
+  const globalIdentity = getSessionIdentity(state, "global");
+  const [
+    personalSemantic,
+    personalProcedural,
+    projectScoped,
+    stackProcedural,
+    globalProcedural,
+    episodic
+  ] = await Promise.all([
+    searchMemories("preferences conventions technical decisions", {
+      size: 10,
+      category: "semantic",
+      ...personalIdentity
+    }),
+    searchMemories("procedures workflows patterns how to", {
+      size: 7,
+      category: "procedural",
+      ...personalIdentity
+    }),
+    searchMemories(`${state.appId} project conventions coding patterns`, {
+      size: 6,
+      ...personalIdentity
+    }),
+    INCLUDE_STACK_MEMORY ? searchMemories("openpalm operations procedures workflow", {
+      size: 5,
+      category: "procedural",
+      ...stackIdentity
+    }) : Promise.resolve([]),
+    INCLUDE_GLOBAL_PROCEDURAL ? searchMemories("global procedural rules", {
+      size: 4,
+      category: "procedural",
+      ...globalIdentity
+    }) : Promise.resolve([]),
+    searchMemories(`${state.appId} recent outcomes failures results`, {
+      size: 8,
+      category: "episodic",
+      ...personalIdentity
+    })
+  ]);
+  return {
+    personalSemantic: uniqueById(personalSemantic),
+    personalProcedural: uniqueById(personalProcedural),
+    projectScoped: uniqueById(projectScoped),
+    stackProcedural: uniqueById(stackProcedural),
+    globalProcedural: uniqueById(globalProcedural),
+    episodic: uniqueById(episodic)
+  };
+}
+function buildSessionContextBlock(state, retrieval) {
+  const lines = ["## Memory - Session Context"];
+  if (retrieval.personalSemantic.length > 0) {
+    lines.push("", "### Personal Facts And Preferences", formatMemoriesForContext(retrieval.personalSemantic));
+  }
+  if (retrieval.personalProcedural.length > 0) {
+    lines.push("", "### Personal Procedures", formatMemoriesForContext(retrieval.personalProcedural));
+  }
+  if (retrieval.projectScoped.length > 0) {
+    lines.push("", `### Project Context (${state.appId})`, formatMemoriesForContext(retrieval.projectScoped));
+  }
+  if (retrieval.stackProcedural.length > 0) {
+    lines.push("", "### OpenPalm Stack Procedures", formatMemoriesForContext(retrieval.stackProcedural));
+  }
+  if (retrieval.globalProcedural.length > 0) {
+    lines.push("", "### Global Procedures", formatMemoriesForContext(retrieval.globalProcedural));
+  }
+  if (retrieval.episodic.length > 0) {
+    lines.push("", "### Recent Episodic Notes", formatMemoriesForContext(retrieval.episodic));
+  }
+  lines.push("", "### Memory Lifecycle", "- Context retrieval is automatic at session start.", "- Tool outcomes automatically reinforce or downrank injected memories.", "- Session learnings and episodic summaries are curated automatically.", "- Use `memory-search` and `memory-add` for explicit memory control.");
+  return lines.join(`
+`);
+}
+async function retrieveToolGuidance(state, toolName, isAdminTool) {
+  if (isAdminTool) {
+    return searchMemories(`openpalm procedure for ${toolName.replace(/_/g, " ")} operations`, {
+      size: 5,
+      category: "procedural",
+      timeoutMs: 1200,
+      highSignalOnly: true,
+      ...getSessionIdentity(state, "stack")
+    });
+  }
+  const [personalProcedural, projectPatterns] = await Promise.all([
+    searchMemories(`preferred workflow for ${toolName.replace(/_/g, " ")}`, {
+      size: 4,
+      category: "procedural",
+      timeoutMs: 1200,
+      highSignalOnly: true,
+      ...getSessionIdentity(state, "personal")
+    }),
+    searchMemories(`${state.appId} project patterns for ${toolName.replace(/_/g, " ")}`, {
+      size: 4,
+      timeoutMs: 1200,
+      ...getSessionIdentity(state, "personal")
+    })
+  ]);
+  return uniqueById([...personalProcedural, ...projectPatterns]);
+}
+async function persistSessionLearnings(state, options) {
+  if (state.outcomes.length === 0)
+    return;
+  const grouped = groupOutcomesByTool(state.outcomes);
+  const personalIdentity = getSessionIdentity(state, "personal");
+  const additions = [];
+  for (const [toolName, outcomes] of grouped.entries()) {
+    const attempts = outcomes.length;
+    const successes = outcomes.filter((o) => o.ok).length;
+    const failureCount = attempts - successes;
+    const successRate = attempts > 0 ? successes / attempts : 0;
+    if (successes >= 2 && successRate >= 0.8) {
+      additions.push(addMemoryIfNovel(`${toolName} is a reliable workflow in ${state.appId}; ${successes}/${attempts} recent executions succeeded.`, {
+        category: "procedural",
+        source: "consolidation",
+        confidence: clamp(0.55 + successRate * 0.35, 0.55, 0.95),
+        keywords: [toolName, "workflow", "success", state.appId],
+        project: state.project,
+        session_id: state.sessionId,
+        created_by_hook: options.finalFlush ? "session.deleted" : "session.idle"
+      }, personalIdentity));
+    }
+    if (failureCount >= 2 && successRate <= 0.35) {
+      additions.push(addMemoryIfNovel(`${toolName} has low reliability in ${state.appId}; validate prerequisites before using it.`, {
+        category: "procedural",
+        source: "consolidation",
+        confidence: 0.55,
+        expiration_days: 45,
+        keywords: [toolName, "failure", "prerequisite", state.appId],
+        project: state.project,
+        session_id: state.sessionId,
+        created_by_hook: options.finalFlush ? "session.deleted" : "session.idle"
+      }, personalIdentity));
+    }
+  }
+  await Promise.all(additions);
+}
+async function persistSessionEpisode(state) {
+  if (state.idleCount < MIN_IDLE_COUNT_FOR_LEARNING)
+    return;
+  if (!await isMemoryAvailable(1800, getSessionIdentity(state, "personal")))
+    return;
+  const grouped = groupOutcomesByTool(state.outcomes);
+  const fragments = [];
+  for (const [toolName, outcomes] of grouped.entries()) {
+    const successCount = outcomes.filter((outcome) => outcome.ok).length;
+    fragments.push(`${toolName} ${successCount}/${outcomes.length} succeeded`);
+  }
+  const episode = `Session ${state.sessionId} in ${state.appId} ran ${state.outcomes.length} tracked tool executions. ` + `Outcome snapshot: ${fragments.slice(0, 6).join("; ") || "no tool outcomes recorded"}.`;
+  await addMemoryIfNovel(episode, {
+    category: "episodic",
+    source: "auto-extract",
+    confidence: 0.78,
+    session_id: state.sessionId,
+    project: state.project,
+    keywords: ["session-summary", state.appId],
+    created_by_hook: "session.deleted"
+  }, getSessionIdentity(state, "personal"));
+}
+async function maybeRunCrossSessionSynthesis(state) {
+  if (sessionsSinceSynthesis < SYNTHESIS_SESSION_INTERVAL)
+    return;
+  const episodes = await searchMemories(`${state.appId} session outcomes failures successes`, {
+    size: 30,
+    category: "episodic",
+    timeoutMs: 2500,
+    ...getSessionIdentity(state, "personal")
+  });
+  if (episodes.length < SYNTHESIS_MIN_EPISODES)
+    return;
+  sessionsSinceSynthesis = 0;
+  const recurring = extractRecurringOutcomeSignals(episodes, state.appId);
+  if (recurring.length === 0)
+    return;
+  await Promise.all(recurring.map((signal) => addMemoryIfNovel(signal, {
+    category: "procedural",
+    source: "consolidation",
+    confidence: 0.6,
+    keywords: ["cross-session", "synthesis", state.appId],
+    project: state.project,
+    created_by_hook: "session.created"
+  }, getSessionIdentity(state, "personal"))));
+}
+async function maybeRunHygiene(state, output) {
+  const now = Date.now();
+  if (now - lastHygieneRunAt < HYGIENE_INTERVAL_MS)
+    return;
+  lastHygieneRunAt = now;
+  const report = await runAutomatedHygiene(getSessionIdentity(state, "personal"));
+  const note = buildHygieneContextNote(report);
+  if (note)
+    ensureContext(output).push(note);
+}
+function getSessionIdentity(state, scope) {
+  return {
+    scope,
+    agentId: state.agentId || DEFAULT_AGENT_ID,
+    appId: state.appId || DEFAULT_APP_ID,
+    runId: state.sessionId
+  };
+}
+function rememberOutcome(state, outcome) {
+  state.outcomes.push(outcome);
+  if (state.outcomes.length > MAX_SESSION_OUTCOMES) {
+    state.outcomes.splice(0, state.outcomes.length - MAX_SESSION_OUTCOMES);
+  }
+}
+function extractRecurringOutcomeSignals(episodes, appId) {
+  const counts = new Map;
+  for (const episode of episodes) {
+    const text = episode.content.toLowerCase();
+    for (const token of text.split(/[^a-z0-9_-]+/g)) {
+      if (!token || token.length < 4)
+        continue;
+      if (!token.includes("admin-") && !token.includes("memory-") && !token.includes("bash")) {
+        continue;
+      }
+      counts.set(token, (counts.get(token) ?? 0) + 1);
+    }
+  }
+  const recurring = [];
+  for (const [token, count] of counts.entries()) {
+    if (count < 3)
+      continue;
+    recurring.push(`Across recent ${appId} sessions, ${token} appears repeatedly; prefer validating context before and after using it.`);
+  }
+  return recurring.slice(0, 4);
+}
+function groupOutcomesByTool(outcomes) {
+  const grouped = new Map;
+  for (const outcome of outcomes) {
+    const list = grouped.get(outcome.toolName) ?? [];
+    list.push(outcome);
+    grouped.set(outcome.toolName, list);
+  }
+  return grouped;
+}
+function isProjectCodeTool(toolName) {
+  const codePrefixes = [
+    "bash",
+    "view",
+    "rg",
+    "glob",
+    "task",
+    "search_code_subagent",
+    "apply_patch",
+    "read_bash",
+    "write_bash",
+    "code_review"
+  ];
+  return codePrefixes.some((prefix) => toolName.startsWith(prefix));
+}
+function didToolFail(input, output) {
+  if (input.error || output.error)
+    return true;
+  const result = output.result ?? input.result;
+  if (!result || typeof result !== "object")
+    return false;
+  const record = result;
+  if ("error" in record && Boolean(record.error))
+    return true;
+  if ("ok" in record && record.ok === false)
+    return true;
+  if ("success" in record && record.success === false)
+    return true;
+  return false;
+}
+function getSessionId(input) {
+  return input.session?.id ?? input.properties?.sessionId ?? "unknown";
+}
+function getProjectName(input, directory) {
+  return input.project?.name ?? directory ?? "unknown";
+}
+function getAgentName(input) {
+  return input.agent?.name ?? DEFAULT_AGENT_ID;
+}
+function readCommandText(command) {
+  if (typeof command === "string" && command.trim())
+    return command.trim();
+  if (!command || typeof command !== "object")
+    return null;
+  const record = command;
+  const direct = record.text ?? record.command ?? record.raw;
+  if (typeof direct === "string" && direct.trim())
+    return direct.trim();
+  const parts = record.parts;
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      if (!part || typeof part !== "object")
+        continue;
+      const partRecord = part;
+      if (typeof partRecord.text === "string" && partRecord.text.trim()) {
+        return partRecord.text.trim();
+      }
+    }
+  }
+  return null;
+}
+function extractPreferenceSignal(text) {
+  if (!text)
+    return null;
+  const trimmed = text.trim();
+  if (trimmed.length < 24 || trimmed.length > 240)
+    return null;
+  const preferencePatterns = [
+    /\b(i|we)\s+(prefer|like)\b/i,
+    /\b(always|never|avoid|please use|do not)\b/i,
+    /\bconvention\b/i
+  ];
+  const hasSignal = preferencePatterns.some((pattern) => pattern.test(trimmed));
+  if (!hasSignal)
+    return null;
+  const redacted = redactSecrets(trimmed);
+  if (!redacted)
+    return null;
+  return `Preference: ${redacted}`;
+}
+function redactSecrets(value) {
+  return value.replace(/\b(sk-[a-zA-Z0-9]{8,})\b/g, "[redacted-token]").replace(/\b([a-zA-Z0-9_]{24,}\.[a-zA-Z0-9_\-]{6,}\.[a-zA-Z0-9_\-]{20,})\b/g, "[redacted-jwt]").replace(/\b(password|token|secret|api[_-]?key)\s*[:=]\s*\S+/gi, "$1=[redacted]").trim();
+}
+function getExecutionId(input, toolName, sessionId) {
+  const explicitId = input.execution?.id ?? input.toolCall?.id ?? input.call?.id;
+  if (explicitId)
+    return `${sessionId}::${explicitId}`;
+  const argsSignature = hashArgs(input.args);
+  return `${sessionId}::${toolName}::${argsSignature}`;
+}
+function hashArgs(args) {
+  if (!args)
+    return "noargs";
+  try {
+    const asJson = JSON.stringify(args);
+    if (!asJson)
+      return "noargs";
+    let hash = 0;
+    for (let index = 0;index < asJson.length; index++) {
+      hash = hash * 31 + asJson.charCodeAt(index) | 0;
+    }
+    return Math.abs(hash).toString(36);
+  } catch {
+    return "noargs";
+  }
+}
+function deriveAppId(project) {
+  if (!project || project === "unknown")
+    return DEFAULT_APP_ID;
+  const projectName = basename2(project);
+  if (!projectName || projectName === "." || projectName === "/") {
+    return DEFAULT_APP_ID;
+  }
+  return normaliseIdValue(projectName);
+}
+function normaliseIdValue(value) {
+  return value.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+}
+function uniqueById(items) {
+  const seen = new Set;
+  const unique = [];
+  for (const item of items) {
+    if (seen.has(item.id))
+      continue;
+    seen.add(item.id);
+    unique.push(item);
+  }
+  return unique;
+}
+function ensureContext(output) {
+  if (!output.context)
+    output.context = [];
+  return output.context;
+}
+function clamp(value, min, max) {
+  if (value < min)
+    return min;
+  if (value > max)
+    return max;
+  return value;
+}
+function asHookInput(value) {
+  if (!value || typeof value !== "object")
+    return {};
+  return value;
+}
+function asHookOutput(value) {
+  if (!value || typeof value !== "object")
+    return {};
+  return value;
+}
+async function log(client, level, message, extra) {
+  const logger = client?.app?.log;
+  if (!logger)
+    return;
+  try {
+    await logger({
+      body: {
+        service: "assistant-memory-lifecycle",
+        level,
+        message,
+        extra
+      }
+    });
+  } catch {}
+}
 
-// ../../node_modules/zod/v4/classic/external.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/external.js
 var exports_external = {};
 __export(exports_external, {
   xid: () => xid2,
@@ -650,7 +1296,7 @@ __export(exports_external, {
   $brand: () => $brand
 });
 
-// ../../node_modules/zod/v4/core/index.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/index.js
 var exports_core2 = {};
 __export(exports_core2, {
   version: () => version,
@@ -914,7 +1560,7 @@ __export(exports_core2, {
   $ZodAny: () => $ZodAny
 });
 
-// ../../node_modules/zod/v4/core/core.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/core.js
 var NEVER = Object.freeze({
   status: "aborted"
 });
@@ -981,7 +1627,7 @@ function config(newConfig) {
     Object.assign(globalConfig, newConfig);
   return globalConfig;
 }
-// ../../node_modules/zod/v4/core/util.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/util.js
 var exports_util = {};
 __export(exports_util, {
   unwrapMessage: () => unwrapMessage,
@@ -1610,7 +2256,7 @@ class Class {
   constructor(..._args) {}
 }
 
-// ../../node_modules/zod/v4/core/errors.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = "$ZodError";
   Object.defineProperty(inst, "_zod", {
@@ -1753,7 +2399,7 @@ function prettifyError(error) {
 `);
 }
 
-// ../../node_modules/zod/v4/core/parse.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema, value, _ctx, _params) => {
   const ctx = _ctx ? Object.assign(_ctx, { async: false }) : { async: false };
   const result = schema._zod.run({ value, issues: [] }, ctx);
@@ -1840,7 +2486,7 @@ var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync($ZodRealError);
-// ../../node_modules/zod/v4/core/regexes.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/regexes.js
 var exports_regexes = {};
 __export(exports_regexes, {
   xid: () => xid,
@@ -1992,7 +2638,7 @@ var sha512_hex = /^[0-9a-fA-F]{128}$/;
 var sha512_base64 = /* @__PURE__ */ fixedBase64(86, "==");
 var sha512_base64url = /* @__PURE__ */ fixedBase64url(86);
 
-// ../../node_modules/zod/v4/core/checks.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a;
   inst._zod ?? (inst._zod = {});
@@ -2533,7 +3179,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// ../../node_modules/zod/v4/core/doc.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/doc.js
 class Doc {
   constructor(args = []) {
     this.content = [];
@@ -2571,14 +3217,14 @@ class Doc {
   }
 }
 
-// ../../node_modules/zod/v4/core/versions.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 1,
   patch: 8
 };
 
-// ../../node_modules/zod/v4/core/schemas.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a;
   inst ?? (inst = {});
@@ -4401,7 +5047,7 @@ function handleRefineResult(result, payload, input, inst) {
     payload.issues.push(issue(_iss));
   }
 }
-// ../../node_modules/zod/v4/locales/index.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/index.js
 var exports_locales = {};
 __export(exports_locales, {
   zhTW: () => zh_TW_default,
@@ -4452,7 +5098,7 @@ __export(exports_locales, {
   ar: () => ar_default
 });
 
-// ../../node_modules/zod/v4/locales/ar.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ar.js
 var error = () => {
   const Sizable = {
     string: { unit: "حرف", verb: "أن يحوي" },
@@ -4568,7 +5214,7 @@ function ar_default() {
     localeError: error()
   };
 }
-// ../../node_modules/zod/v4/locales/az.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/az.js
 var error2 = () => {
   const Sizable = {
     string: { unit: "simvol", verb: "olmalıdır" },
@@ -4683,7 +5329,7 @@ function az_default() {
     localeError: error2()
   };
 }
-// ../../node_modules/zod/v4/locales/be.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/be.js
 function getBelarusianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -4847,7 +5493,7 @@ function be_default() {
     localeError: error3()
   };
 }
-// ../../node_modules/zod/v4/locales/ca.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ca.js
 var error4 = () => {
   const Sizable = {
     string: { unit: "caràcters", verb: "contenir" },
@@ -4964,7 +5610,7 @@ function ca_default() {
     localeError: error4()
   };
 }
-// ../../node_modules/zod/v4/locales/cs.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/cs.js
 var error5 = () => {
   const Sizable = {
     string: { unit: "znaků", verb: "mít" },
@@ -5099,7 +5745,7 @@ function cs_default() {
     localeError: error5()
   };
 }
-// ../../node_modules/zod/v4/locales/da.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/da.js
 var error6 = () => {
   const Sizable = {
     string: { unit: "tegn", verb: "havde" },
@@ -5230,7 +5876,7 @@ function da_default() {
     localeError: error6()
   };
 }
-// ../../node_modules/zod/v4/locales/de.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/de.js
 var error7 = () => {
   const Sizable = {
     string: { unit: "Zeichen", verb: "zu haben" },
@@ -5346,7 +5992,7 @@ function de_default() {
     localeError: error7()
   };
 }
-// ../../node_modules/zod/v4/locales/en.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/en.js
 var parsedType = (data) => {
   const t = typeof data;
   switch (t) {
@@ -5463,7 +6109,7 @@ function en_default() {
     localeError: error8()
   };
 }
-// ../../node_modules/zod/v4/locales/eo.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/eo.js
 var parsedType2 = (data) => {
   const t = typeof data;
   switch (t) {
@@ -5579,7 +6225,7 @@ function eo_default() {
     localeError: error9()
   };
 }
-// ../../node_modules/zod/v4/locales/es.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/es.js
 var error10 = () => {
   const Sizable = {
     string: { unit: "caracteres", verb: "tener" },
@@ -5727,7 +6373,7 @@ function es_default() {
     localeError: error10()
   };
 }
-// ../../node_modules/zod/v4/locales/fa.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/fa.js
 var error11 = () => {
   const Sizable = {
     string: { unit: "کاراکتر", verb: "داشته باشد" },
@@ -5849,7 +6495,7 @@ function fa_default() {
     localeError: error11()
   };
 }
-// ../../node_modules/zod/v4/locales/fi.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/fi.js
 var error12 = () => {
   const Sizable = {
     string: { unit: "merkkiä", subject: "merkkijonon" },
@@ -5971,7 +6617,7 @@ function fi_default() {
     localeError: error12()
   };
 }
-// ../../node_modules/zod/v4/locales/fr.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/fr.js
 var error13 = () => {
   const Sizable = {
     string: { unit: "caractères", verb: "avoir" },
@@ -6087,7 +6733,7 @@ function fr_default() {
     localeError: error13()
   };
 }
-// ../../node_modules/zod/v4/locales/fr-CA.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/fr-CA.js
 var error14 = () => {
   const Sizable = {
     string: { unit: "caractères", verb: "avoir" },
@@ -6204,7 +6850,7 @@ function fr_CA_default() {
     localeError: error14()
   };
 }
-// ../../node_modules/zod/v4/locales/he.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/he.js
 var error15 = () => {
   const Sizable = {
     string: { unit: "אותיות", verb: "לכלול" },
@@ -6320,7 +6966,7 @@ function he_default() {
     localeError: error15()
   };
 }
-// ../../node_modules/zod/v4/locales/hu.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/hu.js
 var error16 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "legyen" },
@@ -6436,7 +7082,7 @@ function hu_default() {
     localeError: error16()
   };
 }
-// ../../node_modules/zod/v4/locales/id.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/id.js
 var error17 = () => {
   const Sizable = {
     string: { unit: "karakter", verb: "memiliki" },
@@ -6552,7 +7198,7 @@ function id_default() {
     localeError: error17()
   };
 }
-// ../../node_modules/zod/v4/locales/is.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/is.js
 var parsedType3 = (data) => {
   const t = typeof data;
   switch (t) {
@@ -6669,7 +7315,7 @@ function is_default() {
     localeError: error18()
   };
 }
-// ../../node_modules/zod/v4/locales/it.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/it.js
 var error19 = () => {
   const Sizable = {
     string: { unit: "caratteri", verb: "avere" },
@@ -6785,7 +7431,7 @@ function it_default() {
     localeError: error19()
   };
 }
-// ../../node_modules/zod/v4/locales/ja.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ja.js
 var error20 = () => {
   const Sizable = {
     string: { unit: "文字", verb: "である" },
@@ -6900,7 +7546,7 @@ function ja_default() {
     localeError: error20()
   };
 }
-// ../../node_modules/zod/v4/locales/ka.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ka.js
 var parsedType4 = (data) => {
   const t = typeof data;
   switch (t) {
@@ -7025,7 +7671,7 @@ function ka_default() {
     localeError: error21()
   };
 }
-// ../../node_modules/zod/v4/locales/km.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/km.js
 var error22 = () => {
   const Sizable = {
     string: { unit: "តួអក្សរ", verb: "គួរមាន" },
@@ -7143,11 +7789,11 @@ function km_default() {
   };
 }
 
-// ../../node_modules/zod/v4/locales/kh.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/kh.js
 function kh_default() {
   return km_default();
 }
-// ../../node_modules/zod/v4/locales/ko.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ko.js
 var error23 = () => {
   const Sizable = {
     string: { unit: "문자", verb: "to have" },
@@ -7268,7 +7914,7 @@ function ko_default() {
     localeError: error23()
   };
 }
-// ../../node_modules/zod/v4/locales/lt.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/lt.js
 var parsedType5 = (data) => {
   const t = typeof data;
   return parsedTypeFromType(t, data);
@@ -7497,7 +8143,7 @@ function lt_default() {
     localeError: error24()
   };
 }
-// ../../node_modules/zod/v4/locales/mk.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/mk.js
 var error25 = () => {
   const Sizable = {
     string: { unit: "знаци", verb: "да имаат" },
@@ -7614,7 +8260,7 @@ function mk_default() {
     localeError: error25()
   };
 }
-// ../../node_modules/zod/v4/locales/ms.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ms.js
 var error26 = () => {
   const Sizable = {
     string: { unit: "aksara", verb: "mempunyai" },
@@ -7730,7 +8376,7 @@ function ms_default() {
     localeError: error26()
   };
 }
-// ../../node_modules/zod/v4/locales/nl.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/nl.js
 var error27 = () => {
   const Sizable = {
     string: { unit: "tekens" },
@@ -7847,7 +8493,7 @@ function nl_default() {
     localeError: error27()
   };
 }
-// ../../node_modules/zod/v4/locales/no.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/no.js
 var error28 = () => {
   const Sizable = {
     string: { unit: "tegn", verb: "å ha" },
@@ -7963,7 +8609,7 @@ function no_default() {
     localeError: error28()
   };
 }
-// ../../node_modules/zod/v4/locales/ota.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ota.js
 var error29 = () => {
   const Sizable = {
     string: { unit: "harf", verb: "olmalıdır" },
@@ -8079,7 +8725,7 @@ function ota_default() {
     localeError: error29()
   };
 }
-// ../../node_modules/zod/v4/locales/ps.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ps.js
 var error30 = () => {
   const Sizable = {
     string: { unit: "توکي", verb: "ولري" },
@@ -8201,7 +8847,7 @@ function ps_default() {
     localeError: error30()
   };
 }
-// ../../node_modules/zod/v4/locales/pl.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/pl.js
 var error31 = () => {
   const Sizable = {
     string: { unit: "znaków", verb: "mieć" },
@@ -8318,7 +8964,7 @@ function pl_default() {
     localeError: error31()
   };
 }
-// ../../node_modules/zod/v4/locales/pt.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/pt.js
 var error32 = () => {
   const Sizable = {
     string: { unit: "caracteres", verb: "ter" },
@@ -8434,7 +9080,7 @@ function pt_default() {
     localeError: error32()
   };
 }
-// ../../node_modules/zod/v4/locales/ru.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ru.js
 function getRussianPlural(count, one, few, many) {
   const absCount = Math.abs(count);
   const lastDigit = absCount % 10;
@@ -8598,7 +9244,7 @@ function ru_default() {
     localeError: error33()
   };
 }
-// ../../node_modules/zod/v4/locales/sl.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/sl.js
 var error34 = () => {
   const Sizable = {
     string: { unit: "znakov", verb: "imeti" },
@@ -8715,7 +9361,7 @@ function sl_default() {
     localeError: error34()
   };
 }
-// ../../node_modules/zod/v4/locales/sv.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/sv.js
 var error35 = () => {
   const Sizable = {
     string: { unit: "tecken", verb: "att ha" },
@@ -8833,7 +9479,7 @@ function sv_default() {
     localeError: error35()
   };
 }
-// ../../node_modules/zod/v4/locales/ta.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ta.js
 var error36 = () => {
   const Sizable = {
     string: { unit: "எழுத்துக்கள்", verb: "கொண்டிருக்க வேண்டும்" },
@@ -8950,7 +9596,7 @@ function ta_default() {
     localeError: error36()
   };
 }
-// ../../node_modules/zod/v4/locales/th.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/th.js
 var error37 = () => {
   const Sizable = {
     string: { unit: "ตัวอักษร", verb: "ควรมี" },
@@ -9067,7 +9713,7 @@ function th_default() {
     localeError: error37()
   };
 }
-// ../../node_modules/zod/v4/locales/tr.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/tr.js
 var parsedType6 = (data) => {
   const t = typeof data;
   switch (t) {
@@ -9182,7 +9828,7 @@ function tr_default() {
     localeError: error38()
   };
 }
-// ../../node_modules/zod/v4/locales/uk.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/uk.js
 var error39 = () => {
   const Sizable = {
     string: { unit: "символів", verb: "матиме" },
@@ -9299,11 +9945,11 @@ function uk_default() {
   };
 }
 
-// ../../node_modules/zod/v4/locales/ua.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ua.js
 function ua_default() {
   return uk_default();
 }
-// ../../node_modules/zod/v4/locales/ur.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/ur.js
 var error40 = () => {
   const Sizable = {
     string: { unit: "حروف", verb: "ہونا" },
@@ -9420,7 +10066,7 @@ function ur_default() {
     localeError: error40()
   };
 }
-// ../../node_modules/zod/v4/locales/vi.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/vi.js
 var error41 = () => {
   const Sizable = {
     string: { unit: "ký tự", verb: "có" },
@@ -9536,7 +10182,7 @@ function vi_default() {
     localeError: error41()
   };
 }
-// ../../node_modules/zod/v4/locales/zh-CN.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/zh-CN.js
 var error42 = () => {
   const Sizable = {
     string: { unit: "字符", verb: "包含" },
@@ -9652,7 +10298,7 @@ function zh_CN_default() {
     localeError: error42()
   };
 }
-// ../../node_modules/zod/v4/locales/zh-TW.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/zh-TW.js
 var error43 = () => {
   const Sizable = {
     string: { unit: "字元", verb: "擁有" },
@@ -9769,7 +10415,7 @@ function zh_TW_default() {
     localeError: error43()
   };
 }
-// ../../node_modules/zod/v4/locales/yo.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/locales/yo.js
 var error44 = () => {
   const Sizable = {
     string: { unit: "àmi", verb: "ní" },
@@ -9884,7 +10530,7 @@ function yo_default() {
     localeError: error44()
   };
 }
-// ../../node_modules/zod/v4/core/registries.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/registries.js
 var $output = Symbol("ZodOutput");
 var $input = Symbol("ZodInput");
 
@@ -9935,7 +10581,7 @@ function registry() {
   return new $ZodRegistry;
 }
 var globalRegistry = /* @__PURE__ */ registry();
-// ../../node_modules/zod/v4/core/api.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/api.js
 function _string(Class2, params) {
   return new Class2({
     type: "string",
@@ -10813,7 +11459,7 @@ function _stringFormat(Class2, format, fnOrRegex, _params = {}) {
   const inst = new Class2(def);
   return inst;
 }
-// ../../node_modules/zod/v4/core/to-json-schema.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/to-json-schema.js
 class JSONSchemaGenerator {
   constructor(params) {
     this.counter = 0;
@@ -11617,9 +12263,9 @@ function isTransforming(_schema, _ctx) {
   }
   throw new Error(`Unknown schema type: ${def.type}`);
 }
-// ../../node_modules/zod/v4/core/json-schema.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/core/json-schema.js
 var exports_json_schema = {};
-// ../../node_modules/zod/v4/classic/iso.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/iso.js
 var exports_iso = {};
 __export(exports_iso, {
   time: () => time2,
@@ -11660,7 +12306,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// ../../node_modules/zod/v4/classic/errors.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues);
   inst.name = "ZodError";
@@ -11695,7 +12341,7 @@ var ZodRealError = $constructor("ZodError", initializer2, {
   Parent: Error
 });
 
-// ../../node_modules/zod/v4/classic/parse.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/parse.js
 var parse3 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -11709,7 +12355,7 @@ var safeDecode2 = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync2 = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync2 = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// ../../node_modules/zod/v4/classic/schemas.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/schemas.js
 var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   $ZodType.init(inst, def);
   inst.def = def;
@@ -12684,7 +13330,7 @@ function json(params) {
 function preprocess(fn, schema) {
   return pipe(transform(fn), schema);
 }
-// ../../node_modules/zod/v4/classic/compat.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -12708,7 +13354,7 @@ function getErrorMap() {
 }
 var ZodFirstPartyTypeKind;
 (function(ZodFirstPartyTypeKind2) {})(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
-// ../../node_modules/zod/v4/classic/coerce.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/coerce.js
 var exports_coerce = {};
 __export(exports_coerce, {
   string: () => string3,
@@ -12733,9 +13379,9 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// ../../node_modules/zod/v4/classic/external.js
+// ../../node_modules/.bun/zod@4.1.8/node_modules/zod/v4/classic/external.js
 config(en_default());
-// ../../node_modules/@opencode-ai/plugin/dist/tool.js
+// ../../node_modules/.bun/@opencode-ai+plugin@1.2.15/node_modules/@opencode-ai/plugin/dist/tool.js
 function tool(input) {
   return input;
 }
@@ -12748,7 +13394,8 @@ var health_check_default = tool({
   },
   async execute(args) {
     const ALL = ["guardian", "memory", "admin"];
-    const targets = args.services ? args.services.split(",").map((s) => s.trim()).filter(Boolean) : ALL;
+    const requested = args.services ? args.services.split(",").map((service) => service.trim()).filter(Boolean) : ALL;
+    const targets = [...new Set(requested)];
     const portMap = { guardian: 8080, memory: 8765, admin: 8100 };
     const results = {};
     await Promise.all(targets.map(async (svc) => {
@@ -12795,7 +13442,7 @@ async function ensureMemoryUserProvisioned() {
   userProvisionPromise = (async () => {
     const result = await provisionMemoryUser(USER_ID2);
     if (!result.ok) {
-      console.warn(`[assistant-tools] Unable to pre-provision Memory user '${USER_ID2}': ${result.error}`);
+      console.warn(`[assistant-tools] Unable to pre-provision memory user '${USER_ID2}': ${result.error}`);
     }
   })();
   await userProvisionPromise;
@@ -12836,6 +13483,21 @@ async function memoryFetch(path, options) {
     return JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) });
   }
 }
+function memoryResponseHasError(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.error === true;
+  } catch {
+    return false;
+  }
+}
+function resolveMemoryScopeUserId(scope) {
+  if (scope === "stack")
+    return STACK_USER_ID;
+  if (scope === "global")
+    return GLOBAL_USER_ID;
+  return USER_ID2;
+}
 
 // opencode/tools/admin-audit.ts
 var admin_audit_default = tool({
@@ -12851,7 +13513,7 @@ var admin_audit_default = tool({
 
 // opencode/tools/memory-search.ts
 var memory_search_default = tool({
-  description: "Semantically search memories stored in Memory. Use this EVERY TIME a user asks a question, starts a new task, or when you need context about the user's preferences, past decisions, project details, or prior conversations. Returns the most relevant memories ranked by similarity score.",
+  description: "Semantically search memories stored in the memory service. Use this EVERY TIME a user asks a question, starts a new task, or when you need context about the user's preferences, past decisions, project details, or prior conversations. Returns the most relevant memories ranked by similarity score.",
   args: {
     query: tool.schema.string().describe("The search query — describe what you're looking for in natural language")
   },
@@ -12866,7 +13528,7 @@ var memory_search_default = tool({
 // opencode/tools/memory-add.ts
 var APP_NAME2 = "openpalm-assistant";
 var memory_add_default = tool({
-  description: "Store a new memory in Memory. Call this when the user shares preferences, makes decisions, provides project context, states facts about themselves or their environment, or when you learn something important that should persist across sessions. The memory system will automatically extract and deduplicate facts. Write memories as clear, standalone statements.",
+  description: "Store a new memory. Call this when the user shares preferences, makes decisions, provides project context, states facts about themselves or their environment, or when you learn something important that should persist across sessions. The memory system will automatically extract and deduplicate facts. Write memories as clear, standalone statements.",
   args: {
     text: tool.schema.string().describe("The memory content to store. Write as a clear, self-contained statement. Examples: 'User prefers TypeScript over JavaScript', 'Project uses PostgreSQL 18 with Qdrant vector store', 'Deploy target is Docker Compose on Ubuntu 24.04'"),
     metadata: tool.schema.string().optional().describe(`Optional JSON object of key-value metadata. Supports 'category' ('semantic' for facts/preferences, 'episodic' for events/outcomes, 'procedural' for workflows/patterns), 'source', 'project', etc. Example: '{"category":"semantic","project":"openpalm"}'`)
@@ -12875,18 +13537,25 @@ var memory_add_default = tool({
     let metadata = {};
     if (args.metadata) {
       try {
-        metadata = JSON.parse(args.metadata);
-      } catch {}
+        const parsed = JSON.parse(args.metadata);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          metadata = parsed;
+        } else {
+          return JSON.stringify({ error: true, message: "metadata must be a JSON object" });
+        }
+      } catch {
+        return JSON.stringify({ error: true, message: "Invalid JSON in metadata argument" });
+      }
     }
-    if (!metadata.category)
+    if (typeof metadata.category !== "string")
       metadata.category = "semantic";
-    if (!metadata.source)
+    if (typeof metadata.source !== "string")
       metadata.source = "manual";
-    if (metadata.confidence === undefined)
+    if (typeof metadata.confidence !== "number")
       metadata.confidence = 1;
-    if (!metadata.access_count)
+    if (typeof metadata.access_count !== "number")
       metadata.access_count = 0;
-    if (!metadata.last_accessed)
+    if (typeof metadata.last_accessed !== "string")
       metadata.last_accessed = new Date().toISOString();
     return memoryFetch("/api/v1/memories/", {
       method: "POST",
@@ -12923,7 +13592,7 @@ var memory_delete_default = tool({
     memory_ids: tool.schema.string().describe("Comma-separated list of memory UUIDs to delete (at least one required)")
   },
   async execute(args) {
-    const ids = args.memory_ids.split(",").map((s) => s.trim()).filter(Boolean);
+    const ids = [...new Set(args.memory_ids.split(",").map((value) => value.trim()).filter(Boolean))];
     if (ids.length === 0)
       return JSON.stringify({ error: true, message: "No memory IDs provided" });
     return memoryFetch("/api/v1/memories/", {
@@ -12946,7 +13615,7 @@ var memory_get_default = tool({
 
 // opencode/tools/memory-list.ts
 var memory_list_default = tool({
-  description: "List all memories stored in Memory with filtering and pagination. Use this to browse the full memory store, filter by app or category, or review what has been remembered.",
+  description: "List all memories stored in the memory service with filtering and pagination. Use this to browse the full memory store, filter by app or category, or review what has been remembered.",
   args: {
     page: tool.schema.number().optional().describe("Page number (default: 1)"),
     size: tool.schema.number().optional().describe("Results per page (default: 20, max: 100)"),
@@ -12955,15 +13624,20 @@ var memory_list_default = tool({
     sort_direction: tool.schema.string().optional().describe("Sort direction: asc or desc (default: desc)")
   },
   async execute(args) {
+    const page = typeof args.page === "number" && Number.isFinite(args.page) && args.page > 0 ? Math.floor(args.page) : 1;
+    const sizeInput = typeof args.size === "number" && Number.isFinite(args.size) ? Math.floor(args.size) : 20;
+    const size = Math.min(Math.max(sizeInput, 1), 100);
+    const sortColumn = ["created_at", "memory", "app_name"].includes(args.sort_column || "") ? args.sort_column : "created_at";
+    const sortDirection = args.sort_direction === "asc" ? "asc" : "desc";
     return memoryFetch("/api/v1/memories/filter", {
       method: "POST",
       body: JSON.stringify({
         user_id: USER_ID2,
-        page: args.page || 1,
-        size: args.size || 20,
+        page,
+        size,
         search_query: args.search_query || null,
-        sort_column: args.sort_column || "created_at",
-        sort_direction: args.sort_direction || "desc"
+        sort_column: sortColumn,
+        sort_direction: sortDirection
       })
     });
   }
@@ -12977,6 +13651,69 @@ var memory_stats_default = tool({
   }
 });
 
+// opencode/tools/memory-feedback.ts
+var memory_feedback_default = tool({
+  description: "Submit outcome feedback for a memory after it is used. Positive feedback reinforces useful memory; negative feedback demotes noisy or harmful memory.",
+  args: {
+    memory_id: tool.schema.string().uuid().describe("The UUID of the memory"),
+    sentiment: tool.schema.enum(["positive", "negative"]).describe("Feedback sentiment: 'positive' if the memory helped the outcome, 'negative' if it hurt the outcome"),
+    reason: tool.schema.string().optional().describe("Optional short reason for the feedback"),
+    scope: tool.schema.enum(["personal", "stack", "global"]).optional().describe("Memory scope to map to a deterministic user_id"),
+    agent_id: tool.schema.string().optional().describe("Optional agent identifier (defaults to openpalm)"),
+    app_id: tool.schema.string().optional().describe("Optional project/application identifier"),
+    run_id: tool.schema.string().optional().describe("Optional session/run identifier")
+  },
+  async execute(args) {
+    if (args.sentiment !== "positive" && args.sentiment !== "negative") {
+      return JSON.stringify({
+        error: true,
+        message: "Invalid sentiment. Expected 'positive' or 'negative'."
+      });
+    }
+    const payload = {
+      memory_id: args.memory_id,
+      user_id: resolveMemoryScopeUserId(args.scope),
+      agent_id: args.agent_id || "openpalm",
+      app_id: args.app_id || "openpalm",
+      ...args.run_id ? { run_id: args.run_id } : {},
+      value: args.sentiment === "negative" ? -1 : 1,
+      reason: args.reason
+    };
+    let result = await memoryFetch(`/api/v1/memories/${encodeURIComponent(args.memory_id)}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    if (memoryResponseHasError(result)) {
+      result = await memoryFetch("/api/v1/feedback", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    }
+    if (memoryResponseHasError(result)) {
+      result = await memoryFetch("/api/v2/feedback", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    }
+    return result;
+  }
+});
+
+// opencode/tools/memory-events.ts
+var memory_events_default = tool({
+  description: "Poll a memory API event for async ingestion/export pipelines until completion.",
+  args: {
+    event_id: tool.schema.string().describe("Event identifier to poll")
+  },
+  async execute(args) {
+    let result = await memoryFetch(`/api/v1/events/${encodeURIComponent(args.event_id)}`);
+    if (memoryResponseHasError(result)) {
+      result = await memoryFetch(`/api/v2/events/${encodeURIComponent(args.event_id)}`);
+    }
+    return result;
+  }
+});
+
 // opencode/tools/admin-config.ts
 var get_access_scope = tool({
   description: "Get the current access scope (host-only or LAN)",
@@ -12987,7 +13724,7 @@ var get_access_scope = tool({
 var set_access_scope = tool({
   description: "Set the access scope to control who can reach OpenPalm services. 'host' restricts to localhost only, 'lan' allows local network access.",
   args: {
-    scope: tool.schema.string().describe("The access scope to set: host or lan")
+    scope: tool.schema.enum(["host", "lan"]).describe("The access scope to set: host or lan")
   },
   async execute(args) {
     return adminFetch("/admin/access-scope", {
@@ -12999,6 +13736,22 @@ var set_access_scope = tool({
 
 // opencode/tools/admin-containers.ts
 var VALID_SERVICES = "caddy, memory, assistant, guardian, admin, channel-chat, channel-discord, channel-voice, channel-telegram";
+var ALLOWED_SERVICES = new Set([
+  "caddy",
+  "memory",
+  "assistant",
+  "guardian",
+  "admin",
+  "channel-chat",
+  "channel-discord",
+  "channel-voice",
+  "channel-telegram"
+]);
+function validateService(service) {
+  if (ALLOWED_SERVICES.has(service))
+    return null;
+  return `Invalid service '${service}'. Valid services: ${VALID_SERVICES}`;
+}
 var list = tool({
   description: "List all OpenPalm containers and their current status (running/stopped/healthy)",
   async execute() {
@@ -13011,6 +13764,9 @@ var up = tool({
     service: tool.schema.string().describe(`The service to start. Valid: ${VALID_SERVICES}`)
   },
   async execute(args) {
+    const error45 = validateService(args.service);
+    if (error45)
+      return JSON.stringify({ error: true, message: error45 });
     return adminFetch("/admin/containers/up", {
       method: "POST",
       body: JSON.stringify({ service: args.service })
@@ -13023,6 +13779,9 @@ var down = tool({
     service: tool.schema.string().describe(`The service to stop. Valid: ${VALID_SERVICES}`)
   },
   async execute(args) {
+    const error45 = validateService(args.service);
+    if (error45)
+      return JSON.stringify({ error: true, message: error45 });
     return adminFetch("/admin/containers/down", {
       method: "POST",
       body: JSON.stringify({ service: args.service })
@@ -13035,6 +13794,9 @@ var restart = tool({
     service: tool.schema.string().describe(`The service to restart. Valid: ${VALID_SERVICES}`)
   },
   async execute(args) {
+    const error45 = validateService(args.service);
+    if (error45)
+      return JSON.stringify({ error: true, message: error45 });
     return adminFetch("/admin/containers/restart", {
       method: "POST",
       body: JSON.stringify({ service: args.service })
@@ -13043,6 +13805,7 @@ var restart = tool({
 });
 
 // opencode/tools/admin-artifacts.ts
+var ALLOWED_ARTIFACTS = new Set(["compose", "caddyfile", "caddy"]);
 var list2 = tool({
   description: "List all generated artifacts with their metadata (name, sha256 hash, generation time, size)",
   async execute() {
@@ -13058,14 +13821,34 @@ var manifest = tool({
 var get = tool({
   description: "Get the raw content of a specific artifact. Use this to inspect the generated docker-compose.yml or Caddyfile.",
   args: {
-    name: tool.schema.string().describe("The artifact to retrieve: 'compose' for docker-compose.yml, 'caddyfile' for Caddyfile")
+    name: tool.schema.string().describe("The artifact to retrieve: 'compose' for docker-compose.yml or 'caddyfile'/'caddy' for Caddyfile")
   },
   async execute(args) {
+    if (!ALLOWED_ARTIFACTS.has(args.name)) {
+      return JSON.stringify({
+        error: true,
+        message: "Invalid artifact name. Expected one of: compose, caddyfile, caddy"
+      });
+    }
     return adminFetch(`/admin/artifacts/${args.name}`);
   }
 });
 
 // opencode/tools/admin-connections.ts
+var ALLOWED_KEYS = new Set([
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GROQ_API_KEY",
+  "MISTRAL_API_KEY",
+  "GOOGLE_API_KEY",
+  "SYSTEM_LLM_PROVIDER",
+  "SYSTEM_LLM_BASE_URL",
+  "SYSTEM_LLM_MODEL",
+  "OPENAI_BASE_URL",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_DIMS",
+  "MEMORY_USER_ID"
+]);
 var get2 = tool({
   description: "Get current LLM provider connection keys and config values. API key values are masked (all but last 4 characters visible). Use this to see which keys are configured without exposing actual values.",
   async execute() {
@@ -13080,7 +13863,26 @@ var set2 = tool({
   async execute(args) {
     let body;
     try {
-      body = JSON.parse(args.patches);
+      const parsed = JSON.parse(args.patches);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return JSON.stringify({ error: true, message: "patches must be a JSON object" });
+      }
+      body = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (!ALLOWED_KEYS.has(key)) {
+          return JSON.stringify({
+            error: true,
+            message: `Unsupported key '${key}'. Only approved connection keys can be set.`
+          });
+        }
+        if (typeof value !== "string") {
+          return JSON.stringify({
+            error: true,
+            message: `Invalid value for '${key}'. Expected a string value.`
+          });
+        }
+        body[key] = value;
+      }
     } catch {
       return JSON.stringify({ error: true, message: "Invalid JSON in patches argument" });
     }
@@ -13099,6 +13901,13 @@ var status = tool({
 
 // opencode/tools/admin-channels.ts
 var LONG_TIMEOUT = { signal: AbortSignal.timeout(120000) };
+var CHANNEL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+function validateChannelName(channel) {
+  if (!CHANNEL_NAME_PATTERN.test(channel)) {
+    return "Invalid channel name. Use lowercase letters, numbers, and hyphens only.";
+  }
+  return null;
+}
 var list3 = tool({
   description: "List all discovered channels, their routing status (hasRoute), and whether they are built-in or community-added",
   async execute() {
@@ -13111,6 +13920,9 @@ var install = tool({
     channel: tool.schema.string().describe("The channel name to install (e.g. 'chat', 'telegram')")
   },
   async execute(args) {
+    const error45 = validateChannelName(args.channel);
+    if (error45)
+      return JSON.stringify({ error: true, message: error45 });
     return adminFetch("/admin/channels/install", {
       method: "POST",
       body: JSON.stringify({ channel: args.channel }),
@@ -13124,6 +13936,9 @@ var uninstall = tool({
     channel: tool.schema.string().describe("The channel name to uninstall (e.g. 'chat', 'telegram')")
   },
   async execute(args) {
+    const error45 = validateChannelName(args.channel);
+    if (error45)
+      return JSON.stringify({ error: true, message: error45 });
     return adminFetch("/admin/channels/uninstall", {
       method: "POST",
       body: JSON.stringify({ channel: args.channel }),
@@ -13175,7 +13990,7 @@ var list4 = tool({
 
 // opencode/tools/memory-apps.ts
 var list5 = tool({
-  description: "List all apps (memory sources/clients) registered in Memory with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
+  description: "List all apps (memory sources/clients) registered in the memory service with their memory counts and access statistics. Use this to understand which applications are contributing memories.",
   async execute() {
     return memoryFetch("/api/v1/apps/?page=1&page_size=50");
   }
@@ -13183,7 +13998,7 @@ var list5 = tool({
 var get3 = tool({
   description: "Get details for a specific app including memory count, access statistics, and activity timestamps.",
   args: {
-    app_id: tool.schema.string().uuid().describe("The UUID of the app to inspect")
+    app_id: tool.schema.string().describe("The app identifier to inspect")
   },
   async execute(args) {
     return memoryFetch(`/api/v1/apps/${args.app_id}`);
@@ -13192,7 +14007,7 @@ var get3 = tool({
 var memories = tool({
   description: "List memories created by a specific app. Use this to review what a particular application has stored.",
   args: {
-    app_id: tool.schema.string().uuid().describe("The UUID of the app"),
+    app_id: tool.schema.string().describe("The app identifier"),
     page: tool.schema.number().optional().describe("Page number (default: 1)"),
     page_size: tool.schema.number().optional().describe("Results per page (default: 20)")
   },
@@ -13200,6 +14015,51 @@ var memories = tool({
     const page = args.page || 1;
     const size = args.page_size || 20;
     return memoryFetch(`/api/v1/apps/${args.app_id}/memories?page=${page}&page_size=${size}`);
+  }
+});
+
+// opencode/tools/memory-exports.ts
+var create = tool({
+  description: "Create a memory export job for snapshots, audits, and curation pipelines.",
+  args: {
+    scope: tool.schema.enum(["personal", "stack", "global"]).optional().describe("Memory scope to map to a deterministic user_id"),
+    agent_id: tool.schema.string().optional().describe("Optional agent identifier"),
+    app_id: tool.schema.string().optional().describe("Optional application/project identifier"),
+    run_id: tool.schema.string().optional().describe("Optional session/run identifier")
+  },
+  async execute(args) {
+    const payload = {
+      user_id: resolveMemoryScopeUserId(args.scope),
+      agent_id: args.agent_id || "openpalm",
+      app_id: args.app_id || "openpalm",
+      ...args.run_id ? { run_id: args.run_id } : {}
+    };
+    let result = await memoryFetch("/api/v1/exports", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    if (memoryResponseHasError(result)) {
+      result = await memoryFetch("/api/v2/exports", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    }
+    return result;
+  }
+});
+var get4 = tool({
+  description: "Fetch status/details for a memory export job by export ID.",
+  args: {
+    export_id: tool.schema.string().describe("Export job identifier"),
+    scope: tool.schema.enum(["personal", "stack", "global"]).optional().describe("Memory scope to map to a deterministic user_id")
+  },
+  async execute(args) {
+    const userId = resolveMemoryScopeUserId(args.scope);
+    let result = await memoryFetch(`/api/v1/exports/${encodeURIComponent(args.export_id)}?user_id=${encodeURIComponent(userId)}`);
+    if (memoryResponseHasError(result)) {
+      result = await memoryFetch(`/api/v2/exports/${encodeURIComponent(args.export_id)}?user_id=${encodeURIComponent(userId)}`);
+    }
+    return result;
   }
 });
 
@@ -13218,6 +14078,8 @@ var plugin = async (input) => {
       "memory-get": memory_get_default,
       "memory-list": memory_list_default,
       "memory-stats": memory_stats_default,
+      "memory-feedback": memory_feedback_default,
+      "memory-events_get": memory_events_default,
       "admin-config_get_access_scope": get_access_scope,
       "admin-config_set_access_scope": set_access_scope,
       "admin-containers_list": list,
@@ -13241,7 +14103,9 @@ var plugin = async (input) => {
       "admin-automations_list": list4,
       "memory-apps_list": list5,
       "memory-apps_get": get3,
-      "memory-apps_memories": memories
+      "memory-apps_memories": memories,
+      "memory-exports_create": create,
+      "memory-exports_get": get4
     }
   };
 };

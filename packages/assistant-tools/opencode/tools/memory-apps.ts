@@ -13,7 +13,7 @@ export const get = tool({
   description:
     "Get details for a specific app including memory count, access statistics, and activity timestamps.",
   args: {
-    app_id: tool.schema.string().uuid().describe("The UUID of the app to inspect"),
+    app_id: tool.schema.string().describe("The app identifier to inspect"),
   },
   async execute(args) {
     return memoryFetch(`/api/v1/apps/${args.app_id}`);
@@ -24,7 +24,7 @@ export const memories = tool({
   description:
     "List memories created by a specific app. Use this to review what a particular application has stored.",
   args: {
-    app_id: tool.schema.string().uuid().describe("The UUID of the app"),
+    app_id: tool.schema.string().describe("The app identifier"),
     page: tool.schema.number().optional().describe("Page number (default: 1)"),
     page_size: tool.schema.number().optional().describe("Results per page (default: 20)"),
   },

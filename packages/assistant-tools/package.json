@@ -15,6 +15,7 @@
   ],
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --format esm --target node",
+    "test": "bun test",
     "prepublishOnly": "bun run build"
   },
   "repository": {

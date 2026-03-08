@@ -7,7 +7,7 @@ export default tool({
   args: {
     memory_id: tool.schema.string().uuid().describe("The UUID of the memory"),
     sentiment: tool.schema
-      .string()
+      .enum(["positive", "negative"])
       .describe(
         "Feedback sentiment: 'positive' if the memory helped the outcome, 'negative' if it hurt the outcome",
       ),
@@ -16,7 +16,7 @@ export default tool({
       .optional()
       .describe("Optional short reason for the feedback"),
     scope: tool.schema
-      .string()
+      .enum(["personal", "stack", "global"])
       .optional()
       .describe("Memory scope to map to a deterministic user_id"),
     agent_id: tool.schema

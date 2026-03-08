@@ -10,10 +10,11 @@ import {
 } from './scope.js';
 
 describe('setup wizard v1 scope', () => {
-  it('defines only the two allowed connection kinds', () => {
+  it('defines only the three allowed connection kinds', () => {
     expect(WIZARD_CONNECTION_KINDS).toEqual([
       'openai_compatible_remote',
       'openai_compatible_local',
+      'ollama_local',
     ]);
   });
 
@@ -25,9 +26,11 @@ describe('setup wizard v1 scope', () => {
   it('accepts only v1 in-scope providers', () => {
     expect(isWizardProviderInScope('openai')).toBe(true);
     expect(isWizardProviderInScope('ollama')).toBe(true);
+    expect(isWizardProviderInScope('ollama-instack')).toBe(true);
     expect(isWizardProviderInScope('anthropic')).toBe(false);
     expect(getWizardConnectionKindForProvider('openai')).toBe('openai_compatible_remote');
     expect(getWizardConnectionKindForProvider('ollama')).toBe('openai_compatible_local');
+    expect(getWizardConnectionKindForProvider('ollama-instack')).toBe('ollama_local');
   });
 
   it('validates capability payloads and required capability presence', () => {

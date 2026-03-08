@@ -66,7 +66,8 @@ mkdir -p "$CONFIG_DIR" "$CHANNELS_DIR" "$DEV_ROOT/config/automations" \
 	"$DATA_DIR/guardian" \
 	"$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
 	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/opencode" \
-	"$DEV_ROOT/work"
+	"$DEV_ROOT/work" \
+	"$DEV_ROOT/config/stash"
 
 # Seed core assets to DATA_HOME (source of truth) — write-once unless --force
 if [[ ! -f "$CADDY_CORE_DEST" || $force -eq 1 ]]; then
@@ -157,7 +158,7 @@ fi
 
 # ── Seed Memory default config ───────────────────────────────────────────
 if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
-	cat > "$DATA_DIR/memory/default_config.json" << 'OMEOF'
+	cat >"$DATA_DIR/memory/default_config.json" <<'OMEOF'
 {
   "mem0": {
     "llm": {

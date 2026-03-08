@@ -1,6 +1,21 @@
 import { tool } from "@opencode-ai/plugin";
 import { adminFetch } from "./lib.ts";
 
+const ALLOWED_KEYS = new Set([
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GROQ_API_KEY",
+  "MISTRAL_API_KEY",
+  "GOOGLE_API_KEY",
+  "SYSTEM_LLM_PROVIDER",
+  "SYSTEM_LLM_BASE_URL",
+  "SYSTEM_LLM_MODEL",
+  "OPENAI_BASE_URL",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_DIMS",
+  "MEMORY_USER_ID",
+]);
+
 export const get = tool({
   description: "Get current LLM provider connection keys and config values. API key values are masked (all but last 4 characters visible). Use this to see which keys are configured without exposing actual values.",
   async execute() {
@@ -16,7 +31,26 @@ export const set = tool({
   async execute(args) {
     let body: Record<string, string>;
     try {
-      body = JSON.parse(args.patches);
+      const parsed = JSON.parse(args.patches) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return JSON.stringify({ error: true, message: "patches must be a JSON object" });
+      }
+      body = {};
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (!ALLOWED_KEYS.has(key)) {
+          return JSON.stringify({
+            error: true,
+            message: `Unsupported key '${key}'. Only approved connection keys can be set.`,
+          });
+        }
+        if (typeof value !== "string") {
+          return JSON.stringify({
+            error: true,
+            message: `Invalid value for '${key}'. Expected a string value.`,
+          });
+        }
+        body[key] = value;
+      }
     } catch {
       return JSON.stringify({ error: true, message: "Invalid JSON in patches argument" });
     }

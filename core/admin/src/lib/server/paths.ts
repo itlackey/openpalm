@@ -50,6 +50,7 @@ export function ensureXdgDirs(): void {
     `${configHome}/connections`,
     `${configHome}/assistant`,
     `${configHome}/automations`,
+    `${configHome}/stash`,
 
     // DATA_HOME — persistent service data (pre-created to avoid root-owned dirs)
     dataHome,

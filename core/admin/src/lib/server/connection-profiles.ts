@@ -11,6 +11,13 @@ const CONNECTIONS_DIRNAME = 'connections';
 const CONNECTION_PROFILES_FILENAME = 'profiles.json';
 
 const LOCAL_PROVIDERS = new Set(['ollama', 'lmstudio', 'model-runner']);
+const INSTACK_PROVIDERS = new Set(['ollama-instack']);
+
+function normalizeConnectionKind(provider: string): ConnectionKind {
+  if (INSTACK_PROVIDERS.has(provider)) return 'ollama_local';
+  if (LOCAL_PROVIDERS.has(provider)) return 'openai_compatible_local';
+  return 'openai_compatible_remote';
+}
 
 export function getConnectionProfilesDir(configDir: string): string {
   return `${configDir}/${CONNECTIONS_DIRNAME}`;
@@ -18,12 +25,6 @@ export function getConnectionProfilesDir(configDir: string): string {
 
 export function getConnectionProfilesPath(configDir: string): string {
   return `${getConnectionProfilesDir(configDir)}/${CONNECTION_PROFILES_FILENAME}`;
-}
-
-function normalizeConnectionKind(provider: string): ConnectionKind {
-  return LOCAL_PROVIDERS.has(provider)
-    ? 'openai_compatible_local'
-    : 'openai_compatible_remote';
 }
 
 // ── Validation helpers ──────────────────────────────────────────────────
@@ -40,7 +41,7 @@ function isValidProfile(value: unknown): value is CanonicalConnectionProfile {
   if (!isRecord(value)) return false;
   if (!isNonEmptyString(value.id)) return false;
   if (!isNonEmptyString(value.name)) return false;
-  if (value.kind !== 'openai_compatible_remote' && value.kind !== 'openai_compatible_local') return false;
+  if (value.kind !== 'openai_compatible_remote' && value.kind !== 'openai_compatible_local' && value.kind !== 'ollama_local') return false;
   if (!isNonEmptyString(value.provider)) return false;
   if (typeof value.baseUrl !== 'string') return false;
   if (!isRecord(value.auth)) return false;

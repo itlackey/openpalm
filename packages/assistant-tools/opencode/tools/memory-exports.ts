@@ -6,7 +6,7 @@ export const create = tool({
     "Create a memory export job for snapshots, audits, and curation pipelines.",
   args: {
     scope: tool.schema
-      .string()
+      .enum(["personal", "stack", "global"])
       .optional()
       .describe("Memory scope to map to a deterministic user_id"),
     agent_id: tool.schema
@@ -49,7 +49,7 @@ export const get = tool({
   args: {
     export_id: tool.schema.string().describe("Export job identifier"),
     scope: tool.schema
-      .string()
+      .enum(["personal", "stack", "global"])
       .optional()
       .describe("Memory scope to map to a deterministic user_id"),
   },

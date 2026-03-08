@@ -1,6 +1,7 @@
 export const SUPPORTED_CONNECTION_KINDS_V1 = [
   'openai_compatible_remote',
   'openai_compatible_local',
+  'ollama_local',
 ] as const;
 
 export const WIZARD_CONNECTION_KINDS = SUPPORTED_CONNECTION_KINDS_V1;
@@ -39,6 +40,7 @@ export const WIZARD_PROVIDER_KIND_MAP = {
   ollama: 'openai_compatible_local',
   lmstudio: 'openai_compatible_local',
   'model-runner': 'openai_compatible_local',
+  'ollama-instack': 'ollama_local',
 } as const satisfies Record<string, WizardConnectionKind>;
 
 export type WizardScopedProvider = keyof typeof WIZARD_PROVIDER_KIND_MAP;

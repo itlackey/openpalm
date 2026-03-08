@@ -11,7 +11,7 @@ export const get_access_scope = tool({
 export const set_access_scope = tool({
   description: "Set the access scope to control who can reach OpenPalm services. 'host' restricts to localhost only, 'lan' allows local network access.",
   args: {
-    scope: tool.schema.string().describe("The access scope to set: host or lan"),
+    scope: tool.schema.enum(["host", "lan"]).describe("The access scope to set: host or lan"),
   },
   async execute(args) {
     return adminFetch("/admin/access-scope", {

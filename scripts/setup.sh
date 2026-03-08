@@ -264,6 +264,7 @@ create_directories() {
 		"$CONFIG_HOME/channels"
 		"$CONFIG_HOME/assistant"
 		"$CONFIG_HOME/automations"
+		"$CONFIG_HOME/stash"
 
 		# DATA_HOME — persistent service data
 		"$DATA_HOME"

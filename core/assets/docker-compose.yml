@@ -86,7 +86,7 @@ services:
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/opencode:/home/opencode/.local/state/opencode
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/opencode:/home/opencode/.local/share/opencode
       - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
-      - ${OPENPALM_STATE_HOME:-${HOME}/stash}:/stash
+      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/stash:/stash
     working_dir: /work
     networks: [assistant_net]
     depends_on:
