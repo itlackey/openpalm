@@ -47,7 +47,7 @@
   // ── Multi-connection state ──────────────────────────────────────────────
   let connections: WizardConnectionDraft[] = $state([]);
   let editingConnectionIndex = $state(-1);
-  let addingNewConnection = $state(false);
+  let draftConnectionIndex = $state<number | null>(null);
 
   // Derived: the connection currently being edited
   let editingConnection = $derived(
@@ -190,7 +190,7 @@
     const draft = createConnectionDraft(id);
     connections = [...connections, draft];
     editingConnectionIndex = connections.length - 1;
-    addingNewConnection = connections.length > 1;
+    draftConnectionIndex = editingConnectionIndex;
     connectError = '';
     goToScreen('connection-type');
   }
@@ -270,14 +270,14 @@
       };
     }
 
-    addingNewConnection = false;
+    draftConnectionIndex = null;
     editingConnectionIndex = -1;
     goToScreen('connections-hub');
   }
 
   function editConnection(index: number): void {
     editingConnectionIndex = index;
-    addingNewConnection = true;
+    draftConnectionIndex = null;
     connectError = '';
     goToScreen('add-connection-details');
   }
@@ -295,7 +295,7 @@
     };
     connections = [...connections, copy];
     editingConnectionIndex = connections.length - 1;
-    addingNewConnection = true;
+    draftConnectionIndex = editingConnectionIndex;
     connectError = '';
     goToScreen('add-connection-details');
   }
@@ -839,6 +839,7 @@
               if (!memoryUserId || memoryUserId === detectedUserId || memoryUserId === 'default_user') {
                 memoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
               }
+              draftConnectionIndex = null;
               goToScreen('connections-hub');
             }}>{SETUP_WIZARD_COPY.welcomeStart}</button>
           </div>
@@ -887,10 +888,9 @@
           />
           <div class="step-actions">
             <button class="btn btn-secondary" onclick={() => {
-              // If we were adding a new connection, remove the blank draft
-              if (addingNewConnection && connections.length > 0) {
+              if (draftConnectionIndex !== null && draftConnectionIndex === connections.length - 1) {
                 connections = connections.slice(0, -1);
-                addingNewConnection = false;
+                draftConnectionIndex = null;
               }
               goToScreen('connections-hub');
             }}>Back</button>
@@ -996,11 +996,11 @@
               value={editingConnection.baseUrl}
               oninput={(e) => updateEditingField('baseUrl', e.currentTarget.value)}
               placeholder={editingConnection.connectionType === 'cloud'
-                ? 'https://api.example.com/v1'
-                : 'http://localhost:1234/v1'}
+                ? 'https://api.example.com'
+                : 'http://localhost:1234'}
             />
             <p class="field-hint">{SETUP_WIZARD_COPY.addConnectionBaseUrlHint}</p>
-            {#if editingConnection.baseUrl && !editingConnection.baseUrl.endsWith('/v1') && !Object.values(PROVIDER_DEFAULT_URLS).includes(editingConnection.baseUrl)}
+            {#if /\/v1\/?$/.test(editingConnection.baseUrl.trim())}
               <p class="field-warn">{SETUP_WIZARD_COPY.addConnectionBaseUrlWarn}</p>
             {/if}
           </div>

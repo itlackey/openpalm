@@ -70,11 +70,22 @@ export function writeOpenCodeProviderConfig(
 
   // Read existing config or start from schema-only seed
   let existing: Record<string, unknown> = { $schema: 'https://opencode.ai/config.json' };
+  let raw: string | undefined;
   try {
-    const raw = readFileSync(configPath, 'utf-8');
-    existing = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    // File absent or unparseable — use seed
+    raw = readFileSync(configPath, 'utf-8');
+  } catch (err) {
+    const nodeErr = err as NodeJS.ErrnoException;
+    if (nodeErr.code !== 'ENOENT') {
+      return;
+    }
+  }
+
+  if (raw !== undefined) {
+    try {
+      existing = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return;
+    }
   }
 
   const existingProviders =
