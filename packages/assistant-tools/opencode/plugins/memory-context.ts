@@ -608,9 +608,7 @@ function getSessionIdentity(
 ): MemoryIdentity {
   return {
     scope,
-    agentId: state.agentId || DEFAULT_AGENT_ID,
     appId: state.appId || DEFAULT_APP_ID,
-    runId: state.sessionId,
   };
 }
 
