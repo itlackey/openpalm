@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, beforeEach } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { useConsoleGuard, type ConsoleGuard } from '$lib/test-utils/console-guard';
 import Page from './+page.svelte';
@@ -51,7 +51,7 @@ describe('/setup page — Welcome screen validation', () => {
     render(Page, { props: { data: mockData } });
 
     await page.getByRole('textbox', { name: 'Admin Token' }).fill('secure-pass');
-    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('button', { name: 'Start' }).click();
 
     const errorMsg = page.getByRole('alert');
     await expect.element(errorMsg).toHaveTextContent('Name is required.');
@@ -64,7 +64,7 @@ describe('/setup page — Welcome screen validation', () => {
     render(Page, { props: { data: mockData } });
 
     await page.getByLabelText('Your Name').fill('Alice');
-    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('button', { name: 'Start' }).click();
 
     const errorMsg = page.getByRole('alert');
     await expect.element(errorMsg).toHaveTextContent('Admin token is required.');
@@ -78,7 +78,7 @@ describe('/setup page — Welcome screen validation', () => {
 
     await page.getByLabelText('Your Name').fill('Alice');
     await page.getByRole('textbox', { name: 'Admin Token' }).fill('short');
-    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('button', { name: 'Start' }).click();
 
     const errorMsg = page.getByRole('alert');
     await expect.element(errorMsg).toHaveTextContent('at least 8 characters');
@@ -89,12 +89,15 @@ describe('/setup page — Welcome screen validation', () => {
 
 describe('/setup page — connection-type screen', () => {
   let guard: ConsoleGuard;
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/setup');
+  });
   afterEach(() => { guard?.cleanup(); });
 
   async function advancePastToken(): Promise<void> {
     await page.getByLabelText('Your Name').fill('Alice');
     await page.getByRole('textbox', { name: 'Admin Token' }).fill('token-secure-123');
-    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('button', { name: 'Start' }).click();
   }
 
   it('syncs connection-type screen into URL after navigating from connections-hub', async () => {
@@ -115,9 +118,9 @@ describe('/setup page — connection-type screen', () => {
     await advancePastToken();
 
     // Click Add connection to enter connection-type screen
-    await page.getByRole('button', { name: 'Add connection' }).click();
+    await page.getByTestId('step-connections-hub').getByRole('button', { name: 'Add connection' }).click();
 
-    const heading = page.getByRole('heading', { name: 'Connection details' });
+    const heading = page.getByRole('heading', { name: 'Add a connection' });
     await expect.element(heading).toBeInTheDocument();
 
     expect(window.location.search).toContain('screen=connection-type');
@@ -130,10 +133,10 @@ describe('/setup page — connection-type screen', () => {
     render(Page, { props: { data: mockData } });
 
     await advancePastToken();
-    await page.getByRole('button', { name: 'Add connection' }).click();
+    await page.getByTestId('step-connections-hub').getByRole('button', { name: 'Add connection' }).click();
 
-    await expect.element(page.getByText('OpenAI-Compatible')).toBeInTheDocument();
-    await expect.element(page.getByText('Local Model')).toBeInTheDocument();
+    await expect.element(page.getByText('Remote OpenAI-compatible')).toBeInTheDocument();
+    await expect.element(page.getByText('Local OpenAI-compatible')).toBeInTheDocument();
 
     guard.expectNoErrors();
   });
@@ -143,7 +146,7 @@ describe('/setup page — connection-type screen', () => {
     render(Page, { props: { data: mockData } });
 
     await advancePastToken();
-    await page.getByRole('button', { name: 'Add connection' }).click();
+    await page.getByTestId('step-connections-hub').getByRole('button', { name: 'Add connection' }).click();
     await page.getByRole('button', { name: 'Back' }).click();
 
     const heading = page.getByRole('heading', { name: 'Connections' });
@@ -248,7 +251,7 @@ describe('/setup page', () => {
 
 		await page.getByLabelText('Your Name').fill('Alice');
 		await page.getByRole('textbox', { name: 'Admin Token' }).fill('token-secure-123');
-		await page.getByRole('button', { name: 'Next' }).click();
+		await page.getByRole('button', { name: 'Start' }).click();
 
 		expect(window.location.search).toContain('screen=connections-hub');
 
