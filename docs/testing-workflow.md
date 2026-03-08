@@ -12,12 +12,23 @@ Before running any stack tests (Tiers 4+), ensure:
 2. **Ollama running on host** with `nomic-embed-text` model pulled (768-dim embeddings)
 3. **Stack built and running:** `bun run dev:build`
 
+Quick preflight checks (recommended):
+
+```bash
+# Verify host Ollama is reachable and models are present
+curl -sS http://localhost:11434/api/tags
+
+# Verify admin runtime memory config points at host Ollama
+curl -sS -H "x-admin-token: dev-admin-token" http://localhost:8100/admin/memory/config
+```
+
 > **Common pitfalls (already fixed in code/scripts):**
 > - Memory container needs `ollama` Python package (in `requirements.txt`) — without it, mem0's Ollama embedder crashes with EOFError
 > - Memory config must use `http://host.docker.internal:11434` for Ollama (not `localhost`, not `ollama:11434`) — Ollama runs on host, not in compose
 > - Embedding model dimensions must match config: `nomic-embed-text` = 768, `qwen3-embedding:0.6b` = 1024
 > - `ADMIN_TOKEN` in `secrets.env` must be `dev-admin-token` to match test expectations
 > - Stack tests hit the admin container directly (`http://localhost:8100`), not the Playwright preview server
+> - If you want **zero skipped E2E tests**, run with both `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1`
 
 ---
 
@@ -118,6 +129,22 @@ RUN_DOCKER_STACK_TESTS=1 \
 
 **Files:** `e2e/assistant-pipeline.test.ts` (groups 5-6)
 
+**No-skip expectation:** with `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1`, Playwright should run all groups (current baseline: `100 passed`, `0 skipped`).
+
+---
+
+## Known Caveat: Admin Browser Unit Tests
+
+`bun run admin:test:unit` includes browser-mode Vitest tests in `core/admin/src/routes/setup/page.svelte.spec.ts`.
+
+In this environment, these can intermittently fail with Chromium `TimeoutError` on the setup wizard `Next` button while server unit tests and full Playwright E2E still pass.
+
+If this happens:
+
+1. Re-run `bun run admin:test:unit` once to check for flake.
+2. Run `RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e` to confirm full end-to-end behavior.
+3. Treat repeated `page.svelte.spec.ts` timeouts as a browser-unit-test stability issue, separate from stack/LLM integration health.
+
 ---
 
 ## Tier 6: Full Dev E2E Script
@@ -154,6 +181,7 @@ This is the "nuclear option" — tests everything from a completely clean slate.
 | Medium (~5min) | Above + `bun run admin:test` | + E2E wizard flow |
 | Thorough (~1min extra) | Above + stack tests (Tier 4) | + live service integration |
 | Full (~1min extra) | Above + LLM tests (Tier 5) | + real LLM inference |
+| No-skip E2E (~1min) | `RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e` | Full Playwright suite with no skips |
 | Nuclear (~60min) | `./scripts/dev-e2e-test.sh` | Everything from clean slate |
 
 ## Recommended Local Workflow
@@ -171,6 +199,9 @@ RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
 
 # 4. Full pipeline validation (run for LLM/memory changes)
 RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+
+# Optional: one-command consolidated Tier 1-5 pass (halts on first failure)
+bun run check && bun run test && bun run admin:test:unit && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
 
 # 5. Clean-slate validation (run before releases)
 ./scripts/dev-e2e-test.sh

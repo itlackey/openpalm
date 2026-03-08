@@ -3,10 +3,12 @@
   import { onMount, onDestroy } from 'svelte';
   import { LLM_PROVIDERS, PROVIDER_DEFAULT_URLS, PROVIDER_LABELS, LOCAL_PROVIDER_HELP, EMBEDDING_DIMS, OLLAMA_DEFAULT_MODELS } from '$lib/provider-constants.js';
   import { SETUP_WIZARD_COPY } from '$lib/setup-wizard/copy.js';
-  import { mapModelDiscoveryError } from '$lib/model-discovery.js';
+  import { mapConnectionTestError } from '$lib/model-discovery.js';
   import WizardShell from '$lib/components/setup-wizard/WizardShell.svelte';
   import ConnectionPicker from '$lib/components/setup-wizard/ConnectionPicker.svelte';
-  import ModelSelector from '$lib/components/setup-wizard/ModelSelector.svelte';
+  import ConnectionsHubList from '$lib/components/setup-wizard/ConnectionsHubList.svelte';
+  import RequiredModelsScreen from '$lib/components/setup-wizard/RequiredModelsScreen.svelte';
+  import OptionalAddonsScreen from '$lib/components/setup-wizard/OptionalAddonsScreen.svelte';
   import {
     createInitialDraft,
     createConnectionDraft,
@@ -16,6 +18,7 @@
     parseWizardScreen,
     type WizardScreen,
     type WizardConnectionDraft,
+    type WizardAssignments,
   } from '$lib/setup-wizard/state.js';
   import type { LocalProviderDetection } from '$lib/api.js';
   import type { PageData } from './$types';
@@ -44,7 +47,7 @@
   // ── Multi-connection state ──────────────────────────────────────────────
   let connections: WizardConnectionDraft[] = $state([]);
   let editingConnectionIndex = $state(-1);
-  let addingNewConnection = $state(false);
+  let draftConnectionIndex = $state<number | null>(null);
 
   // Derived: the connection currently being edited
   let editingConnection = $derived(
@@ -54,12 +57,11 @@
   );
 
   // ── Capability assignments ──────────────────────────────────────────────
-  let llmConnectionId = $state('');
-  let llmModel = $state('');
-  let llmSmallModel = $state('');
-  let embeddingConnectionId = $state('');
-  let embeddingModel = $state('');
-  let embeddingDims = $state(1536);
+  let assignments = $state(initialDraft.assignments);
+
+  // Convenience accessors (derived, no extra state)
+  let llmConnectionId = $derived(assignments.llm.connectionId);
+  let embeddingConnectionId = $derived(assignments.embeddings.connectionId);
   let memoryUserId = $state(initialDraft.memoryUserId);
 
   // Cloud provider quick-picks
@@ -79,6 +81,7 @@
   // ── Install state ───────────────────────────────────────────────────────
   let installing = $state(false);
   let installError = $state('');
+  let exportError = $state('');
   let startedServices: string[] = $state([]);
 
   // ── Deploy progress state ─────────────────────────────────────────────
@@ -122,9 +125,6 @@
   let llmConnection = $derived(getConnectionById(llmConnectionId));
   let embConnection = $derived(getConnectionById(embeddingConnectionId));
 
-  let llmModelList = $derived(llmConnection?.modelList ?? []);
-  let embModelList = $derived(embConnection?.modelList ?? []);
-
   function maskedKey(key: string): string {
     return key ? key.slice(0, 3) + '...' + key.slice(-4) : '(not set)';
   }
@@ -167,10 +167,15 @@
   onMount(() => {
     const parsed = parseWizardScreen(new URL(window.location.href).searchParams.get('screen'));
     if (parsed) {
-      // If restoring a screen that requires state but we have none, reset to token
-      const needsState = ['cloud-provider', 'local-provider', 'models', 'review', 'install'];
+      const needsState: WizardScreen[] = [
+        'add-connection-details',
+        'models',
+        'optional-addons',
+        'review',
+        'install',
+      ];
       if (needsState.includes(parsed) && connections.length === 0) {
-        screen = 'token';
+        screen = 'welcome';
       } else {
         screen = parsed;
         furthestScreen = maxScreen(furthestScreen, parsed);
@@ -185,7 +190,7 @@
     const draft = createConnectionDraft(id);
     connections = [...connections, draft];
     editingConnectionIndex = connections.length - 1;
-    addingNewConnection = connections.length > 1;
+    draftConnectionIndex = editingConnectionIndex;
     connectError = '';
     goToScreen('connection-type');
   }
@@ -193,22 +198,20 @@
   function selectConnectionType(type: 'cloud' | 'local'): void {
     if (!editingConnection) return;
     const idx = editingConnectionIndex;
-    const updated = { ...editingConnection, connectionType: type, tested: false, modelList: [] as string[] };
-
-    if (type === 'cloud') {
-      updated.provider = 'openai';
-      updated.baseUrl = PROVIDER_DEFAULT_URLS['openai'] ?? '';
-      updated.apiKey = '';
-      connections = connections.map((c, i) => i === idx ? updated : c);
-      goToScreen('cloud-provider');
-    } else {
-      updated.provider = 'ollama';
-      updated.baseUrl = PROVIDER_DEFAULT_URLS['ollama'] ?? '';
-      updated.apiKey = '';
-      connections = connections.map((c, i) => i === idx ? updated : c);
-      void detectLocalProviders();
-      goToScreen('local-provider');
-    }
+    const updated: WizardConnectionDraft = {
+      ...editingConnection,
+      connectionType: type,
+      tested: false,
+      modelList: [],
+      provider: type === 'cloud' ? 'openai' : 'ollama',
+      baseUrl: type === 'cloud'
+        ? (PROVIDER_DEFAULT_URLS['openai'] ?? '')
+        : (PROVIDER_DEFAULT_URLS['ollama'] ?? ''),
+      apiKey: '',
+    };
+    connections = connections.map((c, i) => i === idx ? updated : c);
+    if (type === 'local') void detectLocalProviders();
+    goToScreen('add-connection-details');
   }
 
   function handleProviderChange(newProvider: string): void {
@@ -231,7 +234,6 @@
     };
     connections = connections.map((c, i) => i === idx ? updated : c);
     connectError = '';
-    // Auto-test detected local providers immediately
     if (detected?.available) {
       scheduleAutoTest();
     }
@@ -257,25 +259,62 @@
 
     // Set default assignments if this is the first connection
     if (connections.length === 1) {
-      llmConnectionId = editingConnection.id;
-      embeddingConnectionId = editingConnection.id;
+      assignments = {
+        ...assignments,
+        llm: { ...assignments.llm, connectionId: editingConnection.id },
+        embeddings: {
+          ...assignments.embeddings,
+          connectionId: editingConnection.id,
+          sameAsLlm: true,
+        },
+      };
     }
 
-    addingNewConnection = false;
-    goToScreen('models');
+    draftConnectionIndex = null;
+    editingConnectionIndex = -1;
+    goToScreen('connections-hub');
   }
 
+  function editConnection(index: number): void {
+    editingConnectionIndex = index;
+    draftConnectionIndex = null;
+    connectError = '';
+    goToScreen('add-connection-details');
+  }
 
-  // ── Embedding model change handler ──────────────────────────────────────
+  function duplicateConnection(index: number): void {
+    const source = connections[index];
+    if (!source) return;
+    const newId = crypto.randomUUID().slice(0, 8);
+    const copy: WizardConnectionDraft = {
+      ...source,
+      id: newId,
+      name: source.name ? `${source.name} (copy)` : '',
+      tested: false,
+      modelList: [],
+    };
+    connections = [...connections, copy];
+    editingConnectionIndex = connections.length - 1;
+    draftConnectionIndex = editingConnectionIndex;
+    connectError = '';
+    goToScreen('add-connection-details');
+  }
 
-  function handleEmbeddingModelChange(newModel: string): void {
-    embeddingModel = newModel;
-    const conn = getConnectionById(embeddingConnectionId);
-    if (conn) {
-      const key = `${conn.provider}/${newModel}`;
-      if (EMBEDDING_DIMS[key]) {
-        embeddingDims = EMBEDDING_DIMS[key];
-      }
+  function removeConnection(index: number): void {
+    const removed = connections[index];
+    connections = connections.filter((_, i) => i !== index);
+    // If removed connection was assigned to LLM or embeddings, clear those
+    if (removed && assignments.llm.connectionId === removed.id) {
+      assignments = {
+        ...assignments,
+        llm: { ...assignments.llm, connectionId: '', model: '' },
+      };
+    }
+    if (removed && assignments.embeddings.connectionId === removed.id) {
+      assignments = {
+        ...assignments,
+        embeddings: { ...assignments.embeddings, connectionId: '', model: '' },
+      };
     }
   }
 
@@ -340,10 +379,18 @@
     connections = connections.map((c, i) => i === idx ? updated : c);
 
     if (pulledModels.length > 0) {
-      llmModel = (result.defaultChatModel as string) ?? OLLAMA_DEFAULT_MODELS.chat;
-      embeddingModel = (result.defaultEmbeddingModel as string) ?? OLLAMA_DEFAULT_MODELS.embedding;
-      const dimsKey = `ollama/${embeddingModel}`;
-      embeddingDims = EMBEDDING_DIMS[dimsKey] ?? 768;
+      const defaultChat = (result.defaultChatModel as string) ?? OLLAMA_DEFAULT_MODELS.chat;
+      const defaultEmbed = (result.defaultEmbeddingModel as string) ?? OLLAMA_DEFAULT_MODELS.embedding;
+      const dimsKey = `ollama/${defaultEmbed}`;
+      assignments = {
+        ...assignments,
+        llm: { ...assignments.llm, model: defaultChat },
+        embeddings: {
+          ...assignments.embeddings,
+          model: defaultEmbed,
+          embeddingDims: EMBEDDING_DIMS[dimsKey] ?? 768,
+        },
+      };
     }
     if (failedModels.length > 0) {
       ollamaEnableError = `Ollama is running but failed to pull: ${failedModels.join(', ')}. You can pull them manually.`;
@@ -365,10 +412,13 @@
         applyOllamaResult(data);
         enablingOllama = false;
         ollamaEnableProgress = '';
-        // Set assignments and go to models for review
+        // Set assignments and go to connections hub
         if (editingConnection) {
-          llmConnectionId = editingConnection.id;
-          embeddingConnectionId = editingConnection.id;
+          assignments = {
+            ...assignments,
+            llm: { ...assignments.llm, connectionId: editingConnection.id },
+            embeddings: { ...assignments.embeddings, connectionId: editingConnection.id },
+          };
         }
         finalizeConnection();
       } else if (data.phase === 'error') {
@@ -424,16 +474,16 @@
     testingConnection = true;
     connectError = '';
     try {
-      const res = await fetch('/admin/setup/models', {
+      const res = await fetch('/admin/connections/test', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           ...buildHeaders(setupSessionToken)
         },
         body: JSON.stringify({
-          provider: target.provider,
-          apiKey: target.apiKey,
           baseUrl: target.baseUrl,
+          apiKey: target.apiKey,
+          kind: target.connectionType === 'local' ? 'local' : 'cloud',
         })
       });
       if (!res.ok) {
@@ -442,8 +492,8 @@
         return;
       }
       const result = await res.json();
-      if (result.error) {
-        connectError = mapModelDiscoveryError(result);
+      if (!result.ok) {
+        connectError = mapConnectionTestError(result);
         return;
       }
       const apiModels: string[] = result.models ?? [];
@@ -452,8 +502,8 @@
       const idx = connections.findIndex(c => c.id === target.id);
       if (idx >= 0) {
         const merged = new Set<string>(apiModels);
-        if (llmModel && target.id === llmConnectionId) merged.add(llmModel);
-        if (embeddingModel && target.id === embeddingConnectionId) merged.add(embeddingModel);
+        if (assignments.llm.model && target.id === assignments.llm.connectionId) merged.add(assignments.llm.model);
+        if (assignments.embeddings.model && target.id === assignments.embeddings.connectionId) merged.add(assignments.embeddings.model);
         const sorted = [...merged].sort();
         connections = connections.map((c, i) =>
           i === idx ? { ...c, tested: true, modelList: sorted } : c
@@ -461,14 +511,15 @@
 
         // Pre-select models if not already set
         if (sorted.length > 0) {
-          if (!llmModel && target.id === llmConnectionId) {
-            llmModel = sorted[0];
+          if (!assignments.llm.model && target.id === assignments.llm.connectionId) {
+            assignments = { ...assignments, llm: { ...assignments.llm, model: sorted[0] } };
           }
-          if (!embeddingModel && target.id === embeddingConnectionId) {
-            const embedCandidate = sorted.find(m =>
-              m.includes('embed') || m.includes('ada')
-            );
-            embeddingModel = embedCandidate ?? sorted[0];
+          if (!assignments.embeddings.model && target.id === assignments.embeddings.connectionId) {
+            const embedCandidate = sorted.find(m => m.includes('embed') || m.includes('ada'));
+            assignments = {
+              ...assignments,
+              embeddings: { ...assignments.embeddings, model: embedCandidate ?? sorted[0] },
+            };
           }
         }
       }
@@ -480,6 +531,30 @@
   }
 
   // ── Install handler ─────────────────────────────────────────────────────
+
+  async function handleExport(type: 'opencode' | 'mem0'): Promise<void> {
+    exportError = '';
+    try {
+      const res = await fetch(`/admin/connections/export/${type}`, {
+        headers: buildHeaders(setupSessionToken)
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { message?: string };
+        exportError = data.message ?? `Export failed (HTTP ${res.status})`;
+        return;
+      }
+      const blob = await res.blob();
+      const filename = type === 'opencode' ? 'opencode.json' : 'mem0-config.json';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      exportError = 'Network error — unable to download config.';
+    }
+  }
 
   async function handleInstall(): Promise<void> {
     if (installing) return;
@@ -505,15 +580,41 @@
           })),
           assignments: {
             llm: {
-              connectionId: llmConnectionId,
-              model: llmModel,
-              ...(llmSmallModel ? { smallModel: llmSmallModel } : {}),
+              connectionId: assignments.llm.connectionId,
+              model: assignments.llm.model,
+              ...(assignments.llm.smallModel ? { smallModel: assignments.llm.smallModel } : {}),
             },
             embeddings: {
-              connectionId: embeddingConnectionId,
-              model: embeddingModel,
-              embeddingDims,
+              connectionId: assignments.embeddings.connectionId,
+              model: assignments.embeddings.model,
+              embeddingDims: assignments.embeddings.embeddingDims,
             },
+            ...(assignments.reranking.enabled ? {
+              reranking: {
+                enabled: true,
+                connectionId: assignments.reranking.connectionId,
+                model: assignments.reranking.model,
+                mode: assignments.reranking.mode,
+                topN: assignments.reranking.topN,
+              },
+            } : {}),
+            ...(assignments.tts.enabled ? {
+              tts: {
+                enabled: true,
+                connectionId: assignments.tts.connectionId,
+                model: assignments.tts.model,
+                voice: assignments.tts.voice,
+                format: assignments.tts.format,
+              },
+            } : {}),
+            ...(assignments.stt.enabled ? {
+              stt: {
+                enabled: true,
+                connectionId: assignments.stt.connectionId,
+                model: assignments.stt.model,
+                language: assignments.stt.language,
+              },
+            } : {}),
           },
           memoryUserId,
           ollamaEnabled,
@@ -527,6 +628,7 @@
       }
       const data = await res.json();
       startedServices = data.started ?? [];
+      setupSessionToken = adminToken;
       goToScreen('deploying');
       startDeployPolling();
     } catch {
@@ -627,30 +729,89 @@
 
       {#if screen !== 'deploying'}
         <nav class="step-indicators" aria-label="Wizard steps">
-          <button class="step-dot" class:active={screen === 'token'} class:completed={isAfterScreen(furthestScreen, 'token')} onclick={() => goToScreen('token')} aria-label="Step 1: Admin Token" aria-current={screen === 'token' ? 'step' : undefined}>{#if isAfterScreen(furthestScreen, 'token')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}1{/if}</button>
-          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'token')}></span>
-          <button class="step-dot" class:active={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'} class:completed={isAfterScreen(furthestScreen, 'local-provider')} onclick={() => {
-            if (connections.length > 0) {
-              editingConnectionIndex = 0;
-              addingNewConnection = false;
-              const conn = connections[0];
-              goToScreen(conn.connectionType === 'local' ? 'local-provider' : 'cloud-provider');
-            } else {
-              goToScreen('connection-type');
-            }
-          }} disabled={!isAfterScreen(furthestScreen, 'token')} aria-label="Step 2: Connection" aria-current={screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider' ? 'step' : undefined}>{#if isAfterScreen(furthestScreen, 'local-provider')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}2{/if}</button>
-          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'local-provider')}></span>
-          <button class="step-dot" class:active={screen === 'models'} class:completed={isAfterScreen(furthestScreen, 'models')} onclick={() => goToScreen('models')} disabled={!isAtOrAfterScreen(furthestScreen, 'models')} aria-label="Step 3: Models" aria-current={screen === 'models' ? 'step' : undefined}>{#if isAfterScreen(furthestScreen, 'models')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}3{/if}</button>
+          <!-- Dot 1: Welcome -->
+          <button class="step-dot"
+            class:active={screen === 'welcome'}
+            class:completed={isAfterScreen(furthestScreen, 'welcome')}
+            onclick={() => goToScreen('welcome')}
+            aria-label="Step 1: Welcome"
+            aria-current={screen === 'welcome' ? 'step' : undefined}>
+            {#if isAfterScreen(furthestScreen, 'welcome')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}1{/if}
+          </button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'welcome')}></span>
+
+          <!-- Dot 2: Connections Hub -->
+          <button class="step-dot"
+            class:active={screen === 'connections-hub'}
+            class:completed={isAfterScreen(furthestScreen, 'connections-hub')}
+            disabled={!isAtOrAfterScreen(furthestScreen, 'connections-hub')}
+            onclick={() => goToScreen('connections-hub')}
+            aria-label="Step 2: Connections"
+            aria-current={screen === 'connections-hub' ? 'step' : undefined}>
+            {#if isAfterScreen(furthestScreen, 'connections-hub')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}2{/if}
+          </button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'connections-hub')}></span>
+
+          <!-- Dot 3: Add Connection (Type + Details — grouped) -->
+          <button class="step-dot"
+            class:active={screen === 'connection-type' || screen === 'add-connection-details'}
+            class:completed={isAfterScreen(furthestScreen, 'add-connection-details')}
+            disabled={!isAtOrAfterScreen(furthestScreen, 'connection-type')}
+            onclick={() => {
+              if (connections.length > 0) {
+                editingConnectionIndex = 0;
+                goToScreen('add-connection-details');
+              } else {
+                goToScreen('connection-type');
+              }
+            }}
+            aria-label="Step 3: Add Connection"
+            aria-current={screen === 'connection-type' || screen === 'add-connection-details' ? 'step' : undefined}>
+            {#if isAfterScreen(furthestScreen, 'add-connection-details')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}3{/if}
+          </button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'add-connection-details')}></span>
+
+          <!-- Dot 4: Required Models -->
+          <button class="step-dot"
+            class:active={screen === 'models'}
+            class:completed={isAfterScreen(furthestScreen, 'models')}
+            disabled={!isAtOrAfterScreen(furthestScreen, 'models')}
+            onclick={() => goToScreen('models')}
+            aria-label="Step 4: Required Models"
+            aria-current={screen === 'models' ? 'step' : undefined}>
+            {#if isAfterScreen(furthestScreen, 'models')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}4{/if}
+          </button>
           <span class="step-line" class:active={isAfterScreen(furthestScreen, 'models')}></span>
-          <button class="step-dot" class:active={screen === 'review' || screen === 'install'} aria-label="Step 4: Review & Install" aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined} disabled={!isAtOrAfterScreen(furthestScreen, 'review')} onclick={() => goToScreen('review')}>4</button>
+
+          <!-- Dot 5: Optional Add-ons -->
+          <button class="step-dot"
+            class:active={screen === 'optional-addons'}
+            class:completed={isAfterScreen(furthestScreen, 'optional-addons')}
+            disabled={!isAtOrAfterScreen(furthestScreen, 'optional-addons')}
+            onclick={() => goToScreen('optional-addons')}
+            aria-label="Step 5: Optional Add-ons"
+            aria-current={screen === 'optional-addons' ? 'step' : undefined}>
+            {#if isAfterScreen(furthestScreen, 'optional-addons')}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>{:else}5{/if}
+          </button>
+          <span class="step-line" class:active={isAfterScreen(furthestScreen, 'optional-addons')}></span>
+
+          <!-- Dot 6: Review & Install -->
+          <button class="step-dot"
+            class:active={screen === 'review' || screen === 'install'}
+            disabled={!isAtOrAfterScreen(furthestScreen, 'review')}
+            onclick={() => goToScreen('review')}
+            aria-label="Step 6: Review & Install"
+            aria-current={screen === 'review' || screen === 'install' ? 'step' : undefined}>
+            6
+          </button>
         </nav>
       {/if}
 
-      <!-- Step 1: Welcome -->
-      {#if screen === 'token'}
-        <div class="step-content" data-testid="step-token">
-          <h2>Welcome</h2>
-          <p class="step-description">Tell us a bit about yourself and set a secure admin token.</p>
+      <!-- Screen 1: Welcome -->
+      {#if screen === 'welcome'}
+        <div class="step-content" data-testid="step-welcome">
+          <h2>{SETUP_WIZARD_COPY.welcomeTitle}</h2>
+          <p class="step-description">{SETUP_WIZARD_COPY.welcomeBody}</p>
           <div class="field-group">
             <label for="owner-name">Your Name</label>
             <input id="owner-name" type="text" bind:value={ownerName} placeholder="Jane Doe" />
@@ -678,90 +839,107 @@
               if (!memoryUserId || memoryUserId === detectedUserId || memoryUserId === 'default_user') {
                 memoryUserId = ownerName.trim().toLowerCase().replace(/\s+/g, '_');
               }
-              startNewConnection();
-            }}>Next</button>
+              draftConnectionIndex = null;
+              goToScreen('connections-hub');
+            }}>{SETUP_WIZARD_COPY.welcomeStart}</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 2: Connection -->
-      {#if screen === 'connection-type' || screen === 'cloud-provider' || screen === 'local-provider'}
-        <div class="step-content" data-testid="step-provider">
+      <!-- Screen 2: Connections Hub -->
+      {#if screen === 'connections-hub'}
+        <div class="step-content" data-testid="step-connections-hub">
+          <h2>{SETUP_WIZARD_COPY.connectionsHubTitle}</h2>
+          <p class="step-description">{SETUP_WIZARD_COPY.connectionsHubBody}</p>
 
-          {#if addingNewConnection && connections.length > 1}
-            <div class="connections-summary">
-              <h3 class="connections-summary-title">{SETUP_WIZARD_COPY.connectionSummaryTitle}</h3>
-              {#each connections.slice(0, -1) as conn}
-                <div class="connection-card">
-                  <span class="connection-card-name">{conn.name || conn.provider}</span>
-                  <span class="connection-card-detail">{conn.baseUrl || '(default URL)'}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
+          <ConnectionsHubList
+            {connections}
+            onEdit={(i) => editConnection(i)}
+            onDuplicate={(i) => duplicateConnection(i)}
+            onRemove={(i) => removeConnection(i)}
+            onAdd={() => startNewConnection()}
+            emptyHeadline={SETUP_WIZARD_COPY.connectionsHubEmptyHeadline}
+            emptyBody={SETUP_WIZARD_COPY.connectionsHubEmptyBody}
+            emptyCta={SETUP_WIZARD_COPY.connectionsHubEmptyCta}
+          />
 
-          {#if screen === 'connection-type'}
-            <h2>{addingNewConnection ? 'Add Connection' : 'Connection Type'}</h2>
-            <p class="step-description">{SETUP_WIZARD_COPY.connectionTypePrompt}</p>
-            <ConnectionPicker onSelectCloud={() => selectConnectionType('cloud')} onSelectLocal={() => selectConnectionType('local')} />
-            <div class="step-actions">
-              {#if addingNewConnection}
-                <button class="btn btn-secondary" onclick={() => {
-                  connections = connections.slice(0, -1);
-                  addingNewConnection = false;
-                  goToScreen('models');
-                }}>Cancel</button>
-              {:else}
-                <button class="btn btn-secondary" onclick={() => goToScreen('token')}>Back</button>
-              {/if}
-            </div>
+          <div class="step-actions">
+            <button class="btn btn-secondary" onclick={() => goToScreen('welcome')}>Back</button>
+            <button class="btn btn-outline" onclick={() => startNewConnection()}>
+              {SETUP_WIZARD_COPY.connectionsHubAddBtn}
+            </button>
+            <button class="btn btn-primary"
+              disabled={connections.length === 0}
+              onclick={() => { connectError = ''; goToScreen('models'); }}>
+              {SETUP_WIZARD_COPY.connectionsHubContinueBtn}
+            </button>
+          </div>
+        </div>
+      {/if}
 
-          {:else if screen === 'cloud-provider' && editingConnection}
-            <h2>Cloud Provider</h2>
-            <p class="step-description">Pick a provider or enter custom connection details.</p>
+      <!-- Screen 3: Connection Type -->
+      {#if screen === 'connection-type'}
+        <div class="step-content" data-testid="step-connection-type">
+          <h2>{SETUP_WIZARD_COPY.addConnectionTypeTitle}</h2>
+          <p class="step-description">{SETUP_WIZARD_COPY.connectionTypePrompt}</p>
+          <ConnectionPicker
+            onSelectCloud={() => selectConnectionType('cloud')}
+            onSelectLocal={() => selectConnectionType('local')}
+          />
+          <div class="step-actions">
+            <button class="btn btn-secondary" onclick={() => {
+              if (draftConnectionIndex !== null && draftConnectionIndex === connections.length - 1) {
+                connections = connections.slice(0, -1);
+                draftConnectionIndex = null;
+              }
+              goToScreen('connections-hub');
+            }}>Back</button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Screen 4: Add Connection Details -->
+      {#if screen === 'add-connection-details' && editingConnection}
+        <div class="step-content" data-testid="step-add-connection-details">
+          <h2>{SETUP_WIZARD_COPY.addConnectionDetailsTitle}</h2>
+          <p class="step-description">{SETUP_WIZARD_COPY.addConnectionDetailsBody}</p>
+
+          <!-- Connection name -->
+          <div class="field-group">
+            <label for="conn-name">{SETUP_WIZARD_COPY.addConnectionNameLabel}</label>
+            <input
+              id="conn-name"
+              type="text"
+              value={editingConnection.name}
+              oninput={(e) => updateEditingField('name', e.currentTarget.value)}
+              placeholder={SETUP_WIZARD_COPY.addConnectionNamePlaceholder}
+            />
+          </div>
+
+          <!-- Cloud-specific: provider chip picker + API key -->
+          {#if editingConnection.connectionType === 'cloud'}
             <div class="provider-quick-picks">
               {#each CLOUD_PROVIDERS as p}
-                <button class="provider-chip" class:selected={editingConnection.provider === p} type="button" onclick={() => handleProviderChange(p)}>
+                <button class="provider-chip" class:selected={editingConnection.provider === p}
+                  type="button" onclick={() => handleProviderChange(p)}>
                   {PROVIDER_LABELS[p] ?? p}
                 </button>
               {/each}
             </div>
-            <div class="field-group">
-              <label for="llm-api-key">API Key</label>
-              <input id="llm-api-key" type="password" value={editingConnection.apiKey} oninput={(e) => { updateEditingField('apiKey', e.currentTarget.value); scheduleAutoTest(); }} placeholder="Enter your API key" />
-            </div>
-            <div class="field-group">
-              <label for="llm-base-url">Base URL <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span></label>
-              <input id="llm-base-url" type="url" value={editingConnection.baseUrl} oninput={(e) => updateEditingField('baseUrl', e.currentTarget.value)} placeholder="Provider base URL" />
-              <p class="field-hint">Leave default unless using a custom endpoint or proxy.</p>
-            </div>
-            {#if connectError}
-              <p class="field-error" role="alert">{connectError}</p>
-            {/if}
-            {#if editingConnection.tested}
-              <div class="connection-success" role="status">
-                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                <span>Connected — {editingConnection.modelList.length} model{editingConnection.modelList.length !== 1 ? 's' : ''} found.</span>
-              </div>
-            {/if}
-            <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => goToScreen('connection-type')}>Back</button>
-              <button class="btn btn-outline" onclick={() => void testConnection()} disabled={testingConnection}>
-                {#if testingConnection}<span class="spinner"></span> Testing...{:else}Test Connection{/if}
-              </button>
-              <button class="btn btn-primary" disabled={testingConnection} onclick={() => {
-                const err = validateConnectionFields();
-                if (err) { connectError = err; return; }
-                finalizeConnection();
-              }}>Next</button>
-            </div>
 
-          {:else if screen === 'local-provider' && editingConnection}
-            <h2>Local Provider</h2>
-            <p class="step-description">Connect to a local LLM running on your machine.</p>
+            <div class="field-group">
+              <label for="conn-api-key">{SETUP_WIZARD_COPY.addConnectionApiKeyLabel}</label>
+              <input id="conn-api-key" type="password"
+                value={editingConnection.apiKey}
+                oninput={(e) => { updateEditingField('apiKey', e.currentTarget.value); scheduleAutoTest(); }}
+                placeholder={SETUP_WIZARD_COPY.addConnectionApiKeyPlaceholder}
+              />
+              <p class="field-hint">{SETUP_WIZARD_COPY.addConnectionApiKeyHint}</p>
+            </div>
+          {/if}
+
+          <!-- Local-specific: detection + Ollama enable -->
+          {#if editingConnection.connectionType === 'local'}
             {#if detectingProviders}
               <div class="loading-state" style="justify-content: flex-start; padding: var(--space-4) 0;">
                 <span class="spinner"></span>
@@ -809,123 +987,96 @@
                 </div>
               {/if}
             {/if}
-            <div class="field-group">
-              <label for="llm-base-url-local">Base URL</label>
-              <input id="llm-base-url-local" type="url" value={editingConnection.baseUrl} oninput={(e) => updateEditingField('baseUrl', e.currentTarget.value)} placeholder="Provider base URL" />
-              {#if LOCAL_PROVIDER_HELP[editingConnection.provider]}
-                <p class="field-hint">{LOCAL_PROVIDER_HELP[editingConnection.provider]}</p>
-              {:else}
-                <p class="field-hint">Auto-detected from your running provider.</p>
-              {/if}
-            </div>
-            {#if connectError}<p class="field-error" role="alert">{connectError}</p>{/if}
-            {#if editingConnection.tested && !ollamaEnabled}
-              <div class="connection-success" role="status">
-                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                <span>Connected — {editingConnection.modelList.length} model{editingConnection.modelList.length !== 1 ? 's' : ''} found.</span>
-              </div>
+          {/if}
+
+          <!-- Shared: Base URL -->
+          <div class="field-group">
+            <label for="conn-base-url">{SETUP_WIZARD_COPY.addConnectionBaseUrlLabel}</label>
+            <input id="conn-base-url" type="url"
+              value={editingConnection.baseUrl}
+              oninput={(e) => updateEditingField('baseUrl', e.currentTarget.value)}
+              placeholder={editingConnection.connectionType === 'cloud'
+                ? 'https://api.example.com'
+                : 'http://localhost:1234'}
+            />
+            <p class="field-hint">{SETUP_WIZARD_COPY.addConnectionBaseUrlHint}</p>
+            {#if /\/v1\/?$/.test(editingConnection.baseUrl.trim())}
+              <p class="field-warn">{SETUP_WIZARD_COPY.addConnectionBaseUrlWarn}</p>
             {/if}
-            <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => goToScreen('connection-type')}>Back</button>
-              {#if !ollamaEnabled}
-                <button class="btn btn-outline" onclick={() => void testConnection()} disabled={testingConnection}>
-                  {#if testingConnection}<span class="spinner"></span> Testing...{:else}Test Connection{/if}
-                </button>
-              {/if}
-              <button class="btn btn-primary" disabled={testingConnection} onclick={() => {
-                const err = validateConnectionFields();
-                if (err) { connectError = err; return; }
-                finalizeConnection();
-              }}>Next</button>
-            </div>
-          {/if}
-        </div>
-      {/if}
-
-      <!-- Step 3: Models -->
-      {#if screen === 'models'}
-        <div class="step-content" data-testid="step-models">
-          <h2>{SETUP_WIZARD_COPY.selectModelsTitle}</h2>
-          <p class="step-description">{SETUP_WIZARD_COPY.selectModelsDescription}</p>
-
-          {#if connections.length > 1}
-            <div class="field-group">
-              <label for="llm-connection">{SETUP_WIZARD_COPY.llmConnectionLabel}</label>
-              <select id="llm-connection" value={llmConnectionId} onchange={(e) => {
-                llmConnectionId = e.currentTarget.value;
-                const conn = getConnectionById(llmConnectionId);
-                if (conn && conn.modelList.length === 0 && !conn.tested) void testConnection(conn);
-              }}>
-                {#each connections as conn}<option value={conn.id}>{conn.name || conn.provider}</option>{/each}
-              </select>
-            </div>
-          {/if}
-
-          <div class="field-group">
-            <label for="system-model">System Model</label>
-            <ModelSelector id="system-model" bind:value={llmModel} options={llmModelList} placeholder="gpt-4o-mini" />
-            <p class="field-hint">Used for message routing, safety, and memory reasoning.</p>
           </div>
-
-          {#if connections.length > 1}
-            <div class="field-group">
-              <label for="emb-connection">{SETUP_WIZARD_COPY.embeddingConnectionLabel}</label>
-              <select id="emb-connection" value={embeddingConnectionId} onchange={(e) => {
-                embeddingConnectionId = e.currentTarget.value;
-                const conn = getConnectionById(embeddingConnectionId);
-                if (conn && conn.modelList.length === 0 && !conn.tested) void testConnection(conn);
-              }}>
-                {#each connections as conn}<option value={conn.id}>{conn.name || conn.provider}</option>{/each}
-              </select>
-            </div>
-          {/if}
-
-          <div class="field-group">
-            <label for="embedding-model">Embedding Model</label>
-            <ModelSelector id="embedding-model" bind:value={embeddingModel} options={embModelList} placeholder="text-embedding-3-small" onChange={handleEmbeddingModelChange} />
-            <p class="field-hint">Used for memory vector embeddings. Changing this later requires a collection reset.</p>
-          </div>
-
-          <div class="field-group">
-            <label for="embedding-dims">Embedding Dimensions</label>
-            <input id="embedding-dims" type="number" bind:value={embeddingDims} min="1" step="1" />
-            <p class="field-hint">Auto-filled for known models. Edit if using a custom model.</p>
-          </div>
-
-          <button class="btn-link add-connection-link" type="button" onclick={() => startNewConnection()}>
-            {connections.length === 1 ? SETUP_WIZARD_COPY.differentEmbeddingProvider : SETUP_WIZARD_COPY.addAnotherConnection}
-          </button>
 
           {#if connectError}
             <p class="field-error" role="alert">{connectError}</p>
           {/if}
 
+          {#if editingConnection.tested}
+            <div class="connection-success" role="status">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span>Connected — {editingConnection.modelList.length} model{editingConnection.modelList.length !== 1 ? 's' : ''} found.</span>
+            </div>
+          {/if}
+
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => {
-              editingConnectionIndex = connections.length - 1;
-              const lastConn = connections[connections.length - 1];
-              goToScreen(lastConn?.connectionType === 'local' ? 'local-provider' : 'cloud-provider');
-            }}>Back</button>
-            <button class="btn btn-primary" onclick={() => {
-              if (!llmModel.trim()) { connectError = 'System model is required.'; return; }
-              if (!embeddingModel.trim()) { connectError = 'Embedding model is required.'; return; }
-              connectError = '';
-              goToScreen('review');
-            }}>Next</button>
+            <button class="btn btn-secondary" onclick={() => goToScreen('connection-type')}>{SETUP_WIZARD_COPY.addConnectionCancelBtn}</button>
+            {#if !ollamaEnabled || editingConnection.connectionType === 'cloud'}
+              <button class="btn btn-outline" onclick={() => void testConnection()} disabled={testingConnection}>
+                {#if testingConnection}<span class="spinner"></span> Testing...{:else}Test Connection{/if}
+              </button>
+            {/if}
+            <button class="btn btn-primary" disabled={testingConnection} onclick={() => {
+              if (!editingConnection!.name.trim()) { connectError = 'Connection name is required.'; return; }
+              const err = validateConnectionFields();
+              if (err) { connectError = err; return; }
+              finalizeConnection();
+            }}>{SETUP_WIZARD_COPY.addConnectionSaveBtn}</button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 4: Review & Install -->
+      <!-- Screen 5: Required Models -->
+      {#if screen === 'models'}
+        <RequiredModelsScreen
+          {connections}
+          {assignments}
+          {connectError}
+          onAssignmentsChange={(next) => { assignments = next; }}
+          onAddConnection={() => startNewConnection()}
+          onBack={() => goToScreen('connections-hub')}
+          onNext={() => {
+            if (!assignments.llm.connectionId.trim()) { connectError = 'Select a chat connection before continuing.'; return; }
+            if (!assignments.embeddings.connectionId.trim()) { connectError = 'Select an embedding connection before continuing.'; return; }
+            if (!assignments.llm.model.trim()) { connectError = 'Chat model is required.'; return; }
+            if (!assignments.embeddings.model.trim()) { connectError = 'Embedding model is required.'; return; }
+            connectError = '';
+            goToScreen('optional-addons');
+          }}
+        />
+      {/if}
+
+      <!-- Screen 6: Optional Add-ons -->
+      {#if screen === 'optional-addons'}
+        <OptionalAddonsScreen
+          {connections}
+          {assignments}
+          onAssignmentsChange={(next) => { assignments = next; }}
+          onBack={() => goToScreen('models')}
+          onNext={() => goToScreen('review')}
+          onSkip={() => goToScreen('review')}
+        />
+      {/if}
+
+      <!-- Screen 7: Review & Install -->
       {#if screen === 'review' || screen === 'install'}
         <div class="step-content" data-testid="step-review">
-          <h2>Review & Install</h2>
+          <h2>{SETUP_WIZARD_COPY.reviewTitle}</h2>
+          <p class="step-description">{SETUP_WIZARD_COPY.reviewBody}</p>
           <div class="review-grid">
             <div class="review-section-header">
               <span>Account</span>
-              <button class="review-edit-btn" onclick={() => goToScreen('token')} type="button">Edit</button>
+              <button class="review-edit-btn" onclick={() => goToScreen('welcome')} type="button">Edit</button>
             </div>
             <div class="review-item">
               <span class="review-label">Name</span>
@@ -937,17 +1088,8 @@
             <div class="review-item"><span class="review-label">Admin Token</span><span class="review-value mono">Set</span></div>
 
             <div class="review-section-header">
-              <span>Connection</span>
-              <button class="review-edit-btn" onclick={() => {
-                if (connections.length > 0) {
-                  editingConnectionIndex = 0;
-                  addingNewConnection = false;
-                  const conn = connections[0];
-                  goToScreen(conn.connectionType === 'local' ? 'local-provider' : 'cloud-provider');
-                } else {
-                  goToScreen('connection-type');
-                }
-              }} type="button">Edit</button>
+              <span>{SETUP_WIZARD_COPY.reviewSectionConnections}</span>
+              <button class="review-edit-btn" onclick={() => goToScreen('connections-hub')} type="button">Edit</button>
             </div>
             {#each connections as conn, i}
               <div class="review-item">
@@ -973,33 +1115,85 @@
             {/if}
 
             <div class="review-section-header">
-              <span>Models</span>
+              <span>{SETUP_WIZARD_COPY.reviewSectionModels}</span>
               <button class="review-edit-btn" onclick={() => goToScreen('models')} type="button">Edit</button>
             </div>
             <div class="review-item">
-              <span class="review-label">System Model</span>
-              <span class="review-value mono">{llmModel || '—'}{connections.length > 1 && llmConnection ? ` (${llmConnection.name})` : ''}</span>
+              <span class="review-label">Chat Model</span>
+              <span class="review-value mono">{assignments.llm.model || '—'}{connections.length > 1 && llmConnection ? ` (${llmConnection.name})` : ''}</span>
             </div>
+            {#if assignments.llm.smallModel}
+              <div class="review-item">
+                <span class="review-label">Small Model</span>
+                <span class="review-value mono">{assignments.llm.smallModel}</span>
+              </div>
+            {/if}
             <div class="review-item">
               <span class="review-label">Embedding Model</span>
-              <span class="review-value mono">{embeddingModel || '—'}{connections.length > 1 && embConnection ? ` (${embConnection.name})` : ''}</span>
+              <span class="review-value mono">{assignments.embeddings.model || '—'}{connections.length > 1 && embConnection ? ` (${embConnection.name})` : ''}</span>
             </div>
-            <div class="review-item"><span class="review-label">Embedding Dimensions</span><span class="review-value mono">{embeddingDims}</span></div>
+            <div class="review-item"><span class="review-label">Embedding Dimensions</span><span class="review-value mono">{assignments.embeddings.embeddingDims}</span></div>
             <div class="review-item"><span class="review-label">Memory User ID</span><span class="review-value">{memoryUserId}</span></div>
+
+            <div class="review-section-header">
+              <span>{SETUP_WIZARD_COPY.reviewSectionAddons}</span>
+              <button class="review-edit-btn" onclick={() => goToScreen('optional-addons')} type="button">Edit</button>
+            </div>
+            {#if assignments.reranking.enabled || assignments.tts.enabled || assignments.stt.enabled}
+              {#if assignments.reranking.enabled}
+                <div class="review-item"><span class="review-label">Reranking</span><span class="review-value">{assignments.reranking.mode === 'llm' ? 'LLM reranker' : 'Dedicated reranker'}{assignments.reranking.model ? ` — ${assignments.reranking.model}` : ''}</span></div>
+              {/if}
+              {#if assignments.tts.enabled}
+                <div class="review-item"><span class="review-label">Text-to-Speech</span><span class="review-value">{assignments.tts.model || 'Enabled'}{assignments.tts.voice ? ` / ${assignments.tts.voice}` : ''}</span></div>
+              {/if}
+              {#if assignments.stt.enabled}
+                <div class="review-item"><span class="review-label">Speech-to-Text</span><span class="review-value">{assignments.stt.model || 'Enabled'}{assignments.stt.language ? ` / ${assignments.stt.language}` : ''}</span></div>
+              {/if}
+            {:else}
+              <div class="review-item"><span class="review-label review-label--muted">None configured</span><span class="review-value"></span></div>
+            {/if}
+          </div>
+
+          <div class="review-grid">
+            <div class="review-section-header">
+              <span>Config Exports</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">OpenCode config</span>
+              <span class="review-value">
+                <button class="review-edit-btn" type="button" onclick={() => void handleExport('opencode')}>
+                  Download opencode.json
+                </button>
+              </span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Mem0 config</span>
+              <span class="review-value">
+                <button class="review-edit-btn" type="button" onclick={() => void handleExport('mem0')}>
+                  Download mem0-config.json
+                </button>
+              </span>
+            </div>
+            {#if exportError}
+              <div class="review-item">
+                <span class="review-label" style="color: var(--color-error)">Export error</span>
+                <span class="review-value" style="color: var(--color-error)">{exportError}</span>
+              </div>
+            {/if}
           </div>
 
           {#if installError}<p class="install-error" role="alert">{installError}</p>{/if}
 
           <div class="step-actions">
-            <button class="btn btn-secondary" onclick={() => goToScreen('models')} disabled={installing}>Back</button>
+            <button class="btn btn-secondary" onclick={() => goToScreen('optional-addons')} disabled={installing}>Back</button>
             <button class="btn btn-primary" onclick={handleInstall} disabled={installing}>
-              {#if installing}<span class="spinner"></span> Installing...{:else}Install Stack{/if}
+              {#if installing}<span class="spinner"></span> Installing...{:else}{SETUP_WIZARD_COPY.reviewSaveBtn}{/if}
             </button>
           </div>
         </div>
       {/if}
 
-      <!-- Step 5: Deploying -->
+      <!-- Deploying screen (unchanged) -->
       {#if screen === 'deploying'}
         <div class="step-content" data-testid="step-deploying">
           <div class="deploy-header">
@@ -1111,6 +1305,12 @@
   .field-group input:focus, .field-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-subtle); }
   .field-hint { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.5; }
   .field-error { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); color: #dc2626; font-size: var(--text-sm); font-weight: var(--font-medium); }
+  .field-warn {
+    margin-top: var(--space-2);
+    font-size: var(--text-xs);
+    color: #b45309;
+    line-height: 1.5;
+  }
   /* connection-type-card styles live in ConnectionPicker.svelte (scoped) */
   .provider-quick-picks { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
   .provider-chip { padding: 6px 14px; font-size: var(--text-xs); font-weight: var(--font-medium); border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-bg); color: var(--color-text); cursor: pointer; transition: all var(--transition-fast); }
@@ -1123,14 +1323,6 @@
   .enable-ollama-btn { width: 100%; }
   .ollama-progress { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-secondary); padding: var(--space-2) 0; }
   .connection-success { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--color-success-bg, rgba(64, 192, 87, 0.1)); border: 1px solid var(--color-success-border, rgba(64, 192, 87, 0.25)); border-radius: var(--radius-md); font-size: var(--text-sm); color: var(--color-text); margin-bottom: var(--space-2); }
-  .connections-summary { margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
-  .connections-summary-title { font-size: var(--text-xs); font-weight: var(--font-semibold); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 var(--space-2); }
-  .connection-card { display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) var(--space-3); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-1); }
-  .connection-card-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
-  .connection-card-detail { font-size: var(--text-xs); color: var(--color-text-tertiary); font-family: var(--font-mono); }
-  .btn-link { background: none; border: none; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; padding: var(--space-2) 0; text-decoration: underline; text-underline-offset: 2px; }
-  .btn-link:hover { color: var(--color-primary-hover); }
-  .add-connection-link { display: block; margin-bottom: var(--space-2); }
   .step-content { display: flex; flex-direction: column; flex: 1; }
   .step-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: auto; padding-top: var(--space-5); border-top: 1px solid var(--color-border); }
   .review-grid { display: flex; flex-direction: column; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: var(--space-2); }
@@ -1141,6 +1333,7 @@
   .review-item:last-child { border-bottom: none; }
   .review-item:nth-child(even) { background: rgba(0, 0, 0, 0.03); }
   .review-label { font-size: var(--text-sm); color: var(--color-text-secondary); flex-shrink: 0; min-width: 140px; }
+  .review-label--muted { color: var(--color-text-tertiary); font-style: italic; }
   .review-value { font-size: var(--text-sm); color: var(--color-text); text-align: right; word-break: break-all; font-weight: var(--font-medium); }
   .review-value.mono { font-family: var(--font-mono); font-size: 0.8rem; }
   .install-error { margin-top: var(--space-3); color: var(--color-danger); font-size: var(--text-sm); }

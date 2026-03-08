@@ -1,223 +1,251 @@
 <script lang="ts">
   import { getAdminToken } from '$lib/auth.js';
   import {
-    fetchConnections,
+    fetchConnectionsDto,
+    createConnectionProfile,
+    updateConnectionProfile,
+    deleteConnectionProfile,
     fetchMemoryConfig,
-    fetchProviderModels,
-    saveSystemConnection
+    saveConnectionsDto,
+    testConnectionProfile,
   } from '$lib/api.js';
-  import { mapModelDiscoveryError } from '$lib/model-discovery.js';
-  import {
-    LLM_PROVIDERS,
-    PROVIDER_DEFAULT_URLS,
-    PROVIDER_KEY_MAP,
-    EMBEDDING_DIMS,
-    PROVIDER_LABELS,
-    LOCAL_PROVIDER_HELP
-  } from '$lib/provider-constants.js';
+  import { mapConnectionTestError } from '$lib/model-discovery.js';
+  import type { CanonicalConnectionProfileDto, ConnectionProfilePayload } from '$lib/types.js';
+  import ConnectionForm from './ConnectionForm.svelte';
 
   interface Props {
-    connections: Record<string, string>;
     loading: boolean;
     onRefresh: () => void;
   }
 
-  let { connections, loading, onRefresh }: Props = $props();
+  let { loading, onRefresh }: Props = $props();
 
-  // ── Form State ────────────────────────────────────────────────────
-  let provider = $state('openai');
-  let apiKey = $state('');
-  let baseUrl = $state(PROVIDER_DEFAULT_URLS['openai'] ?? '');
-  let systemModel = $state('');
-  let embeddingModel = $state('');
-  let embeddingDims = $state(1536);
-  let memoryUserId = $state('default_user');
-  let customInstructions = $state('');
+  // ── Profile list state ───────────────────────────────────────────
+  let profiles = $state<CanonicalConnectionProfileDto[]>([]);
+  let listLoading = $state(false);
+  let listError = $state('');
 
-  // ── Model List State ──────────────────────────────────────────────
-  let modelList: string[] = $state([]);
-  let modelListLoading = $state(false);
-  let modelListError = $state('');
+  // ── Form panel state ─────────────────────────────────────────────
+  let formMode = $state<'hidden' | 'create' | 'edit'>('hidden');
+  let editingProfile = $state<CanonicalConnectionProfileDto | null>(null);
+
+  // ── Inline test state (lifted from ConnectionForm) ────────────────
+  let testLoading = $state(false);
+  let testError = $state('');
+  let testModelList = $state<string[]>([]);
   let connectionTested = $state(false);
 
-  // ── Save State ────────────────────────────────────────────────────
-  let saving = $state(false);
-  let saveError = $state('');
-  let saveSuccess = $state(false);
+  // ── Action feedback ───────────────────────────────────────────────
+  let actionError = $state('');
+  let actionSuccess = $state('');
 
-  // ── Dimension Mismatch State ──────────────────────────────────────
-  let dimensionWarning = $state('');
+  // ── Memory settings state ─────────────────────────────────────────
+  let memoryUserId = $state('default_user');
+  let customInstructions = $state('');
+  let embeddingDims = $state(1536);
+  let memorySaving = $state(false);
+  let memorySaveError = $state('');
+  let memorySaveSuccess = $state(false);
   let dimensionMismatch = $state(false);
+  let dimensionWarning = $state('');
   let resetting = $state(false);
   let resetSuccess = $state(false);
 
-  // ── Loaded flag ───────────────────────────────────────────────────
-  let loaded = $state(false);
+  // ── Load on mount ─────────────────────────────────────────────────
+  void loadProfiles();
+  void loadMemoryConfig();
 
-  // ── Toast State ──────────────────────────────────────────────
-  let toastVisible = $state(false);
-  let toastMessage = $state('');
-
-  // ── Derived ───────────────────────────────────────────────────────
-  let isLocalProvider = $derived(['ollama', 'lmstudio', 'model-runner'].includes(provider));
-  let canTestWithoutCredentials = $derived(provider === 'anthropic');
-
-  let maskedCurrentKey = $derived.by(() => {
-    const envVar = PROVIDER_KEY_MAP[provider];
-    return envVar ? (connections[envVar] ?? '') : '';
-  });
-
-  // ── Initialize from connections prop ──────────────────────────────
-  void loadCurrentState();
-
-  async function loadCurrentState(): Promise<void> {
-    const token = getAdminToken();
-    if (!token || loaded) return;
-
-    try {
-      const conns = await fetchConnections(token);
-
-      // Pre-fill from saved system connection fields
-      if (conns.SYSTEM_LLM_PROVIDER) provider = conns.SYSTEM_LLM_PROVIDER;
-      if (conns.SYSTEM_LLM_BASE_URL) {
-        baseUrl = conns.SYSTEM_LLM_BASE_URL;
-      } else if (conns.SYSTEM_LLM_PROVIDER) {
-        baseUrl = PROVIDER_DEFAULT_URLS[conns.SYSTEM_LLM_PROVIDER] ?? '';
-      }
-      if (conns.SYSTEM_LLM_MODEL) systemModel = conns.SYSTEM_LLM_MODEL;
-      if (conns.EMBEDDING_MODEL) embeddingModel = conns.EMBEDDING_MODEL;
-      if (conns.EMBEDDING_DIMS) embeddingDims = Number(conns.EMBEDDING_DIMS) || 1536;
-      if (conns.MEMORY_USER_ID) memoryUserId = conns.MEMORY_USER_ID;
-
-      // Load custom instructions from memory config
-      try {
-        const omData = await fetchMemoryConfig(token);
-        customInstructions = omData.config.memory.custom_instructions ?? '';
-      } catch {
-        // Memory config may not exist yet
-      }
-
-      loaded = true;
-    } catch {
-      // Fall back to defaults
-      loaded = true;
-    }
-  }
-
-  // ── Event Handlers ────────────────────────────────────────────────
-
-  function handleProviderChange(newProvider: string): void {
-    provider = newProvider;
-    if (!baseUrl || Object.values(PROVIDER_DEFAULT_URLS).includes(baseUrl)) {
-      baseUrl = PROVIDER_DEFAULT_URLS[newProvider] ?? '';
-    }
-    connectionTested = false;
-    modelList = [];
-    modelListError = '';
-    apiKey = '';
-  }
-
-  function handleEmbeddingModelChange(newModel: string): void {
-    embeddingModel = newModel;
-    const key = `${provider}/${newModel}`;
-    if (EMBEDDING_DIMS[key]) {
-      embeddingDims = EMBEDDING_DIMS[key];
-    }
-  }
-
-  async function testConnection(): Promise<void> {
+  async function loadProfiles(): Promise<void> {
     const token = getAdminToken();
     if (!token) return;
-
-    modelListLoading = true;
-    modelListError = '';
-
+    listLoading = true;
+    listError = '';
     try {
-      // If user typed a new key, pass it raw; otherwise use the env ref
-      const envVar = PROVIDER_KEY_MAP[provider];
-      const apiKeyRef = apiKey.trim()
-        ? apiKey.trim()
-        : envVar ? `env:${envVar}` : '';
-
-      const result = await fetchProviderModels(token, provider, apiKeyRef, baseUrl);
-      if (result.error) {
-        modelListError = mapModelDiscoveryError(result);
-        return;
-      }
-      const apiModels = result.models ?? [];
-
-      // Merge API results with any currently-configured models so dropdowns
-      // don't lose the user's selection (models may still be pulling).
-      const merged = new Set(apiModels);
-      if (systemModel) merged.add(systemModel);
-      if (embeddingModel) merged.add(embeddingModel);
-      modelList = [...merged].sort();
-      connectionTested = true;
-
-      // Pre-select models if not already set
-      if (modelList.length > 0) {
-        if (!systemModel) systemModel = modelList[0];
-        if (!embeddingModel) {
-          const embedCandidate = modelList.find(m =>
-            m.includes('embed') || m.includes('ada')
-          );
-          embeddingModel = embedCandidate ?? modelList[0];
-          handleEmbeddingModelChange(embeddingModel);
-        }
-      }
+      const dto = await fetchConnectionsDto(token);
+      profiles = dto.profiles;
     } catch {
-      modelListError = 'Network error — unable to reach admin API.';
+      listError = 'Failed to load connections.';
     } finally {
-      modelListLoading = false;
+      listLoading = false;
     }
   }
 
-  async function handleSave(): Promise<void> {
+  async function loadMemoryConfig(): Promise<void> {
     const token = getAdminToken();
-    if (!token) {
-      saveError = 'Admin token required.';
-      return;
+    if (!token) return;
+    try {
+      const conns = await fetchConnectionsDto(token);
+      if (conns.connections['MEMORY_USER_ID']) memoryUserId = conns.connections['MEMORY_USER_ID'];
+      if (conns.connections['EMBEDDING_DIMS']) embeddingDims = Number(conns.connections['EMBEDDING_DIMS']) || 1536;
+      const omData = await fetchMemoryConfig(token);
+      customInstructions = omData.config.memory.custom_instructions ?? '';
+    } catch {
+      // Memory config may not exist yet — fall through
     }
+  }
 
-    saving = true;
-    saveError = '';
-    saveSuccess = false;
+  // ── Profile CRUD action handlers ──────────────────────────────────
+
+  function handleAddNew(): void {
+    editingProfile = null;
+    formMode = 'create';
+    clearFeedback();
+    resetTestState();
+  }
+
+  function handleEdit(profile: CanonicalConnectionProfileDto): void {
+    editingProfile = profile;
+    formMode = 'edit';
+    clearFeedback();
+    resetTestState();
+  }
+
+  async function handleDuplicate(profile: CanonicalConnectionProfileDto): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    actionError = '';
+    try {
+      const copy: ConnectionProfilePayload = {
+        id: crypto.randomUUID().slice(0, 8),
+        name: `${profile.name} (copy)`,
+        kind: profile.kind as 'openai_compatible_remote' | 'openai_compatible_local',
+        provider: profile.provider,
+        baseUrl: profile.baseUrl,
+        auth: {
+          mode: profile.auth.mode,
+          apiKeySecretRef: profile.auth.apiKeySecretRef,
+        },
+      };
+      await createConnectionProfile(token, copy);
+      await loadProfiles();
+      actionSuccess = `Duplicated "${profile.name}".`;
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : 'Failed to duplicate.';
+    }
+  }
+
+  async function handleRemove(profile: CanonicalConnectionProfileDto): Promise<void> {
+    if (!confirm(`Remove "${profile.name}"? This cannot be undone.`)) return;
+    const token = getAdminToken();
+    if (!token) return;
+    actionError = '';
+    try {
+      await deleteConnectionProfile(token, profile.id);
+      await loadProfiles();
+      actionSuccess = `Removed "${profile.name}".`;
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : 'Failed to remove.';
+    }
+  }
+
+  async function handleFormSave(payload: ConnectionProfilePayload): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    actionError = '';
+    try {
+      if (formMode === 'create') {
+        await createConnectionProfile(token, payload);
+        actionSuccess = `Connection "${payload.name}" added.`;
+      } else {
+        await updateConnectionProfile(token, payload);
+        actionSuccess = `Connection "${payload.name}" updated.`;
+      }
+      formMode = 'hidden';
+      editingProfile = null;
+      resetTestState();
+      await loadProfiles();
+      onRefresh();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : 'Failed to save.';
+    }
+  }
+
+  function handleFormCancel(): void {
+    formMode = 'hidden';
+    editingProfile = null;
+    resetTestState();
+  }
+
+  async function handleTest(draft: { baseUrl: string; apiKey: string; kind: string }): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    testLoading = true;
+    testError = '';
+    testModelList = [];
+    connectionTested = false;
+    try {
+      const result = await testConnectionProfile(token, draft);
+      if (!result.ok) {
+        testError = mapConnectionTestError(result);
+        return;
+      }
+      testModelList = result.models ?? [];
+      connectionTested = true;
+    } catch (e) {
+      testError = e instanceof Error ? e.message : 'Network error — unable to reach admin API.';
+    } finally {
+      testLoading = false;
+    }
+  }
+
+  function clearFeedback(): void {
+    actionError = '';
+    actionSuccess = '';
+  }
+
+  function resetTestState(): void {
+    testLoading = false;
+    testError = '';
+    testModelList = [];
+    connectionTested = false;
+  }
+
+  // ── Memory Settings save path ─────────────────────────────────────
+
+  async function handleMemorySave(): Promise<void> {
+    const token = getAdminToken();
+    if (!token) return;
+    memorySaving = true;
+    memorySaveError = '';
+    memorySaveSuccess = false;
     dimensionWarning = '';
     dimensionMismatch = false;
     resetSuccess = false;
 
     try {
-      const result = await saveSystemConnection(token, {
-        provider,
-        apiKey,
-        baseUrl,
-        systemModel,
-        embeddingModel,
-        embeddingDims,
+      const dto = await fetchConnectionsDto(token);
+      if (dto.profiles.length === 0) {
+        memorySaveError = 'Add a connection before saving memory settings.';
+        return;
+      }
+
+      const result = await saveConnectionsDto(token, {
+        profiles: dto.profiles,
+        assignments: {
+          ...dto.assignments,
+          embeddings: {
+            ...dto.assignments.embeddings,
+            embeddingDims,
+          },
+        },
         memoryUserId,
         customInstructions,
       });
 
       if (result.ok) {
-        saveSuccess = true;
-        apiKey = '';  // Clear secret after save
-
-        if (!result.pushed && result.pushError) {
-          saveError = 'Config saved. Restart memory service to apply changes.';
-        }
+        memorySaveSuccess = true;
         if (result.dimensionMismatch) {
           dimensionMismatch = true;
           dimensionWarning = result.dimensionWarning ?? 'Embedding dimensions changed. Reset the memory collection to apply.';
         }
-
         onRefresh();
       } else {
-        saveError = 'Failed to save.';
+        memorySaveError = 'Failed to save memory settings.';
       }
-    } catch {
-      saveError = 'Unable to reach admin API.';
+    } catch (e) {
+      memorySaveError = e instanceof Error ? e.message : 'Unable to reach admin API.';
     } finally {
-      saving = false;
+      memorySaving = false;
     }
   }
 
@@ -246,21 +274,14 @@
         dimensionWarning = '';
       } else {
         const data = await res.json().catch(() => ({})) as { message?: string };
-        saveError = data.message ?? 'Failed to reset memory collection.';
+        memorySaveError = data.message ?? 'Failed to reset memory collection.';
       }
     } catch {
-      saveError = 'Unable to reach admin API.';
+      memorySaveError = 'Unable to reach admin API.';
     } finally {
       resetting = false;
     }
   }
-
-  function handleSubmit(e: SubmitEvent): void {
-    e.preventDefault();
-    void handleSave();
-  }
-
-
 </script>
 
 <section class="connections-tab" aria-label="Connections configuration">
@@ -268,7 +289,8 @@
     <div class="tab-header-text">
       <h2>Connections</h2>
       <p class="tab-subtitle">
-        Configure the system LLM connection used by the Guardian and Memory.
+        Connections let you reuse the same endpoint (and credentials) across different
+        model types. You can mix local and remote hosts.
       </p>
     </div>
     <button
@@ -285,21 +307,229 @@
     </button>
   </div>
 
-  {#if loading}
-    <div class="loading-state">
-      <span class="spinner"></span>
-      <span>Loading connections...</span>
+  <!-- ── Feedback Messages ─────────────────────────────────────── -->
+  {#if actionSuccess}
+    <div class="feedback feedback--success" role="status" aria-live="polite">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>{actionSuccess}</span>
+      <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => actionSuccess = ''}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
     </div>
-  {:else}
-    <!-- ── Feedback Messages ─────────────────────────────────────── -->
-    {#if saveSuccess}
+  {/if}
+
+  {#if actionError}
+    <div class="feedback feedback--error" role="alert" aria-live="assertive">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>{actionError}</span>
+      <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => actionError = ''}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  {/if}
+
+  {#if dimensionMismatch}
+    <div class="feedback feedback--warning dim-warning" role="alert" aria-live="assertive">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+      <div class="dim-warning-content">
+        <span>{dimensionWarning}</span>
+        <button
+          class="btn btn-sm btn-danger"
+          type="button"
+          disabled={resetting}
+          onclick={() => void handleResetCollection()}
+        >
+          {#if resetting}
+            <span class="spinner"></span>
+          {/if}
+          Reset Collection
+        </button>
+      </div>
+      <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => { dimensionWarning = ''; dimensionMismatch = false; }}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  {/if}
+
+  {#if resetSuccess}
+    <div class="feedback feedback--success" role="status" aria-live="polite">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      <span>Memory collection reset. Restart Memory to recreate it with the new dimensions.</span>
+      <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => resetSuccess = false}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  {/if}
+
+  <!-- ── Profiles list ─────────────────────────────────────────── -->
+  <section class="panel connections-section">
+    <div class="panel-header">
+      <h3>Connections</h3>
+      {#if !listLoading}
+        <button class="btn btn-sm btn-outline" type="button" onclick={handleAddNew}>
+          Add connection
+        </button>
+      {/if}
+    </div>
+
+    <div class="panel-body" style="padding: 0;">
+      {#if listLoading}
+        <div class="loading-state">
+          <span class="spinner"></span>
+          <span>Loading connections...</span>
+        </div>
+      {:else if listError}
+        <div class="list-error">
+          <span>{listError}</span>
+          <button class="btn btn-sm btn-ghost" type="button" onclick={loadProfiles}>
+            Retry
+          </button>
+        </div>
+      {:else if profiles.length === 0}
+        <div class="empty-state">
+          <p class="empty-headline">No connections yet</p>
+          <p class="empty-body">
+            Add a connection to a local server (like LM Studio) or a remote
+            OpenAI-compatible endpoint.
+          </p>
+          <button class="btn btn-primary btn-sm" type="button" onclick={handleAddNew}>
+            Add your first connection
+          </button>
+        </div>
+      {:else}
+        <div class="conn-table">
+          <div class="conn-table-head">
+            <span class="conn-col conn-col--name">Name</span>
+            <span class="conn-col conn-col--type">Type</span>
+            <span class="conn-col conn-col--url">Base URL</span>
+            <span class="conn-col conn-col--auth">Auth</span>
+            <span class="conn-col conn-col--actions"></span>
+          </div>
+          {#each profiles as profile (profile.id)}
+            <div class="conn-table-row">
+              <span class="conn-col conn-col--name conn-name">{profile.name}</span>
+              <span class="conn-col conn-col--type">
+                <span class="badge {profile.kind === 'openai_compatible_local' ? 'badge-local' : 'badge-remote'}">
+                  {profile.kind === 'openai_compatible_local' ? 'Local' : 'Remote'}
+                </span>
+              </span>
+              <span class="conn-col conn-col--url conn-url" title={profile.baseUrl}>
+                {profile.baseUrl}
+              </span>
+              <span class="conn-col conn-col--auth">
+                {profile.auth.mode === 'api_key' ? 'Key set' : 'No key'}
+              </span>
+              <span class="conn-col conn-col--actions">
+                <button class="btn-action" type="button"
+                  onclick={() => handleEdit(profile)} aria-label="Edit {profile.name}">
+                  Edit
+                </button>
+                <button class="btn-action" type="button"
+                  onclick={() => void handleDuplicate(profile)}
+                  aria-label="Duplicate {profile.name}">
+                  Duplicate
+                </button>
+                <button class="btn-action btn-action--danger" type="button"
+                  onclick={() => void handleRemove(profile)}
+                  aria-label="Remove {profile.name}">
+                  Remove
+                </button>
+              </span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  </section>
+
+  <!-- ── ConnectionForm panel (create / edit) ─────────────────── -->
+  {#if formMode !== 'hidden'}
+    <section class="panel connections-section">
+      <div class="panel-header">
+        <h3>{formMode === 'create' ? 'Add connection' : 'Edit connection'}</h3>
+      </div>
+      <div class="panel-body">
+        <ConnectionForm
+          initial={editingProfile}
+          {testLoading}
+          modelList={testModelList}
+          {testError}
+          {connectionTested}
+          onSave={(payload) => void handleFormSave(payload)}
+          onCancel={handleFormCancel}
+          onTest={(draft) => void handleTest(draft)}
+        />
+      </div>
+    </section>
+  {/if}
+
+  <!-- ── Memory Settings ────────────────────────────────────────── -->
+  <form onsubmit={(e) => { e.preventDefault(); void handleMemorySave(); }} novalidate>
+    <section class="panel connections-section">
+      <div class="panel-header">
+        <h3>Memory Settings</h3>
+      </div>
+      <div class="panel-body">
+        <div class="form-grid">
+
+          <div class="form-field">
+            <label for="conn-memory-user-id" class="form-label">Memory User ID</label>
+            <input
+              id="conn-memory-user-id"
+              type="text"
+              class="form-input"
+              bind:value={memoryUserId}
+              placeholder="default_user"
+              autocomplete="off"
+            />
+            <span class="field-hint">Identifies the memory owner.</span>
+          </div>
+
+          <div class="form-field form-field-full">
+            <label for="conn-om-instructions" class="form-label">Custom Instructions</label>
+            <textarea
+              id="conn-om-instructions"
+              class="form-input form-textarea"
+              bind:value={customInstructions}
+              placeholder="Optional instructions for memory processing..."
+              rows="3"
+            ></textarea>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    {#if memorySaveSuccess}
       <div class="feedback feedback--success" role="status" aria-live="polite">
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
-        <span>Connection saved successfully.</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveSuccess = false}>
+        <span>Memory settings saved.</span>
+        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => memorySaveSuccess = false}>
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -307,15 +537,15 @@
       </div>
     {/if}
 
-    {#if saveError}
+    {#if memorySaveError}
       <div class="feedback feedback--error" role="alert" aria-live="assertive">
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10" />
           <line x1="12" y1="8" x2="12" y2="12" />
           <line x1="12" y1="16" x2="12.01" y2="16" />
         </svg>
-        <span>{saveError}</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => saveError = ''}>
+        <span>{memorySaveError}</span>
+        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => memorySaveError = ''}>
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -323,252 +553,15 @@
       </div>
     {/if}
 
-    {#if dimensionMismatch}
-      <div class="feedback feedback--warning dim-warning" role="alert" aria-live="assertive">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-        <div class="dim-warning-content">
-          <span>{dimensionWarning}</span>
-          <button
-            class="btn btn-sm btn-danger"
-            type="button"
-            disabled={resetting}
-            onclick={() => void handleResetCollection()}
-          >
-            {#if resetting}
-              <span class="spinner"></span>
-            {/if}
-            Reset Collection
-          </button>
-        </div>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => { dimensionWarning = ''; dimensionMismatch = false; }}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    {/if}
-
-    {#if resetSuccess}
-      <div class="feedback feedback--success" role="status" aria-live="polite">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-          <polyline points="22 4 12 14.01 9 11.01" />
-        </svg>
-        <span>Memory collection reset. Restart Memory to recreate it with the new dimensions.</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => resetSuccess = false}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    {/if}
-
-    <form onsubmit={handleSubmit} novalidate>
-      <!-- ── Section 1: System LLM Connection ──────────────────────── -->
-      <section class="panel connections-section">
-        <div class="panel-header">
-          <h3>System LLM Connection</h3>
-          <p class="section-desc">
-            One connection shared by the Guardian (message routing) and Memory (memory + embeddings).
-          </p>
-        </div>
-        <div class="panel-body">
-          <div class="form-grid">
-
-            <div class="form-field">
-              <label for="conn-provider" class="form-label">Provider</label>
-              <select
-                id="conn-provider"
-                class="form-input"
-                value={provider}
-                onchange={(e) => handleProviderChange(e.currentTarget.value)}
-              >
-                {#each LLM_PROVIDERS as p}
-                  <option value={p}>{PROVIDER_LABELS[p] ?? p}</option>
-                {/each}
-              </select>
-            </div>
-
-            <div class="form-field">
-              <label for="conn-api-key" class="form-label">
-                API Key
-                {#if isLocalProvider}
-                  <span style="color: var(--color-text-tertiary); font-weight: normal;">(optional)</span>
-                {/if}
-                {#if maskedCurrentKey}
-                  <span class="current-value">Current: {maskedCurrentKey}</span>
-                {/if}
-              </label>
-              <input
-                id="conn-api-key"
-                type="password"
-                class="form-input"
-                bind:value={apiKey}
-                placeholder={provider === 'openai' ? 'sk-...' : 'Enter API key'}
-                autocomplete="off"
-              />
-              <span class="field-hint">Leave blank to keep the current key.</span>
-            </div>
-
-            <div class="form-field">
-              <label for="conn-base-url" class="form-label">Base URL</label>
-              <input
-                id="conn-base-url"
-                type="url"
-                class="form-input"
-                bind:value={baseUrl}
-                placeholder="Provider base URL"
-                autocomplete="off"
-              />
-              <span class="field-hint">
-                {#if provider === 'ollama'}
-                  Default: <code>http://host.docker.internal:11434</code>
-                {:else if provider === 'lmstudio'}
-                  Default: <code>http://host.docker.internal:1234</code>
-                {:else}
-                  Leave default unless using a custom endpoint.
-                {/if}
-              </span>
-              {#if LOCAL_PROVIDER_HELP[provider]}
-                <p class="field-hint" style="margin-top: var(--space-1);">{LOCAL_PROVIDER_HELP[provider]}</p>
-              {/if}
-            </div>
-
-          </div>
-
-          <!-- Test Connection -->
-          <div class="test-connection-row">
-            <button
-              class="btn btn-outline"
-              type="button"
-              onclick={() => void testConnection()}
-              disabled={modelListLoading || (!isLocalProvider && !canTestWithoutCredentials && !apiKey.trim() && !maskedCurrentKey && !baseUrl)}
-            >
-              {#if modelListLoading}
-                <span class="spinner"></span>
-                Testing...
-              {:else}
-                Test Connection
-              {/if}
-            </button>
-            {#if connectionTested}
-              <span class="connection-success" role="status">
-                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                Connected{modelList.length > 0 ? ` — ${modelList.length} model${modelList.length !== 1 ? 's' : ''} found.` : '.'}
-              </span>
-            {/if}
-            {#if modelListError}
-              <span class="field-error">{modelListError}</span>
-            {/if}
-          </div>
-
-          <!-- Model Selection -->
-          <div class="form-grid model-grid">
-
-            <div class="form-field">
-              <label for="conn-system-model" class="form-label">System Model</label>
-              {#if modelList.length > 0}
-                <select id="conn-system-model" class="form-input" bind:value={systemModel}>
-                  {#each modelList as m}
-                    <option value={m}>{m}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input id="conn-system-model" type="text" class="form-input" bind:value={systemModel} placeholder="gpt-4o-mini" />
-              {/if}
-              <span class="field-hint">Used for message routing, safety, and memory reasoning.</span>
-            </div>
-
-            <div class="form-field">
-              <label for="conn-embedding-model" class="form-label">Embedding Model</label>
-              {#if modelList.length > 0}
-                <select
-                  id="conn-embedding-model"
-                  class="form-input"
-                  value={embeddingModel}
-                  onchange={(e) => handleEmbeddingModelChange(e.currentTarget.value)}
-                >
-                  {#each modelList as m}
-                    <option value={m}>{m}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input id="conn-embedding-model" type="text" class="form-input" bind:value={embeddingModel} placeholder="text-embedding-3-small" />
-              {/if}
-              <span class="field-hint">Changing this after data is stored requires a collection reset.</span>
-            </div>
-
-            <div class="form-field">
-              <label for="conn-embedding-dims" class="form-label">Embedding Dimensions</label>
-              <input
-                id="conn-embedding-dims"
-                type="number"
-                class="form-input"
-                bind:value={embeddingDims}
-                min="1"
-                step="1"
-              />
-              <span class="field-hint">Auto-filled for known models. Use Test Connection to populate dropdowns.</span>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      <!-- ── Section 2: Memory Settings ────────────────────────── -->
-      <section class="panel connections-section">
-        <div class="panel-header">
-          <h3>Memory Settings</h3>
-        </div>
-        <div class="panel-body">
-          <div class="form-grid">
-
-            <div class="form-field">
-              <label for="conn-memory-user-id" class="form-label">Memory User ID</label>
-              <input
-                id="conn-memory-user-id"
-                type="text"
-                class="form-input"
-                bind:value={memoryUserId}
-                placeholder="default_user"
-                autocomplete="off"
-              />
-              <span class="field-hint">Identifies the memory owner.</span>
-            </div>
-
-            <div class="form-field form-field-full">
-              <label for="conn-om-instructions" class="form-label">Custom Instructions</label>
-              <textarea
-                id="conn-om-instructions"
-                class="form-input form-textarea"
-                bind:value={customInstructions}
-                placeholder="Optional instructions for memory processing..."
-                rows="3"
-              ></textarea>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      <!-- ── Save Button ──────────────────────────────────────────── -->
-      <div class="form-actions">
-        <button class="btn btn-primary" type="submit" disabled={saving}>
-          {#if saving}
-            <span class="spinner"></span>
-          {/if}
-          Save
-        </button>
-      </div>
-    </form>
-  {/if}
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit" disabled={memorySaving}>
+        {#if memorySaving}
+          <span class="spinner"></span>
+        {/if}
+        Save Memory Settings
+      </button>
+    </div>
+  </form>
 </section>
 
 <style>
@@ -681,6 +674,9 @@
   }
 
   .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--color-border);
   }
@@ -689,12 +685,6 @@
     font-size: var(--text-base);
     font-weight: var(--font-semibold);
     color: var(--color-text);
-    margin-bottom: var(--space-1);
-  }
-
-  .section-desc {
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
     margin: 0;
   }
 
@@ -730,13 +720,6 @@
     color: var(--color-text-secondary);
   }
 
-  .current-value {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
-    margin-left: var(--space-2);
-  }
-
   .form-input {
     width: 100%;
     height: 40px;
@@ -764,45 +747,6 @@
   .field-hint {
     font-size: var(--text-xs);
     color: var(--color-text-tertiary);
-  }
-
-  .field-hint code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    background: var(--color-bg-tertiary);
-    padding: 1px 4px;
-    border-radius: 3px;
-  }
-
-  .field-error {
-    font-size: var(--text-sm);
-    color: var(--color-danger);
-  }
-
-  /* ── Test Connection ─────────────────────────────────────────── */
-
-  .test-connection-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-    flex-wrap: wrap;
-  }
-
-  .connection-success {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--color-text);
-  }
-
-  /* ── Model Grid ──────────────────────────────────────────────── */
-
-  .model-grid {
-    margin-top: var(--space-5);
-    padding-top: var(--space-5);
-    border-top: 1px solid var(--color-border);
   }
 
   /* ── Form Actions ────────────────────────────────────────────── */
@@ -915,9 +859,144 @@
     }
   }
 
+  /* ── Profiles table ─────────────────────────────────────────── */
+
+  .conn-table {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .conn-table-head,
+  .conn-table-row {
+    display: flex;
+    align-items: center;
+    padding: var(--space-2) var(--space-4);
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .conn-table-head {
+    border-bottom: 1px solid var(--color-border);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--color-bg-secondary);
+  }
+
+  .conn-table-row {
+    border-bottom: 1px solid var(--color-bg-tertiary);
+  }
+
+  .conn-table-row:last-child {
+    border-bottom: none;
+  }
+
+  .conn-col--name  { flex: 2; min-width: 0; }
+  .conn-col--type  { flex: 1; min-width: 0; }
+  .conn-col--url   { flex: 3; min-width: 0; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+  .conn-col--auth  { flex: 1; min-width: 0; }
+  .conn-col--actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .conn-name {
+    font-weight: var(--font-medium);
+  }
+
+  .conn-url {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+  }
+
+  .badge-local {
+    color: var(--color-info);
+    background: var(--color-info-bg);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+  }
+
+  .badge-remote {
+    color: var(--color-text-secondary);
+    background: var(--color-bg-tertiary);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+  }
+
+  .btn-action {
+    background: none;
+    border: none;
+    font-size: var(--text-xs);
+    font-family: var(--font-sans);
+    font-weight: var(--font-medium);
+    color: var(--color-primary);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+  }
+
+  .btn-action:hover {
+    text-decoration: underline;
+  }
+
+  .btn-action--danger {
+    color: var(--color-danger);
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────── */
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-8) var(--space-6);
+    text-align: center;
+  }
+
+  .empty-headline {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .empty-body {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    max-width: 36ch;
+    margin: 0;
+  }
+
+  /* ── List error ──────────────────────────────────────────────── */
+
+  .list-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--color-danger);
+  }
+
   @media (max-width: 640px) {
     .form-grid {
       grid-template-columns: 1fr;
+    }
+
+    .conn-col--url,
+    .conn-col--auth {
+      display: none;
     }
   }
 </style>

@@ -17,8 +17,8 @@
 	</div>
 
 	<div class="conn-body">
-		<span class="conn-label">OpenAI-Compatible <span class="conn-badge">Remote</span></span>
-		<span class="conn-desc">API key + optional custom base URL. Works with OpenAI, Groq, Together, OpenRouter, and more.</span>
+		<span class="conn-label">Remote OpenAI-compatible <span class="conn-badge">Remote</span></span>
+		<span class="conn-desc">Use this for OpenAI, proxies, gateways, and any service that exposes an OpenAI-style API.</span>
 	</div>
 
 	<div class="conn-arrow" aria-hidden="true">
@@ -41,8 +41,8 @@
 	</div>
 
 	<div class="conn-body">
-		<span class="conn-label">Local Model <span class="conn-badge conn-badge--local">On-Device</span></span>
-		<span class="conn-desc">Run models on your own hardware. No API key needed. We can set up Ollama for you.</span>
+		<span class="conn-label">Local OpenAI-compatible <span class="conn-badge conn-badge--local">On-Device</span></span>
+		<span class="conn-desc">Use this for LM Studio or any local server that exposes an OpenAI-style API. e.g., http://localhost:1234</span>
 	</div>
 
 	<div class="conn-arrow" aria-hidden="true">

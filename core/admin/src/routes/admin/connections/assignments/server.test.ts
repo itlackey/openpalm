@@ -99,4 +99,77 @@ describe('/admin/connections/assignments route', () => {
     }));
     expect(valid.status).toBe(200);
   });
+
+  test('GET returns empty-default assignments when profiles.json does not exist', async () => {
+    const state = getState();
+    const profilesPath = join(state.configDir, 'connections', 'profiles.json');
+    rmSync(profilesPath, { force: true });
+
+    const res = await GET(makeEvent('GET'));
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      assignments: {
+        llm: { connectionId: string; model: string };
+        embeddings: { connectionId: string; model: string };
+      };
+    };
+    expect(body.assignments.llm.connectionId).toBe('');
+    expect(body.assignments.embeddings.connectionId).toBe('');
+  });
+
+  test('POST returns 400 when assignments body is missing', async () => {
+    const res = await POST(makeEvent('POST', {}));
+    expect(res.status).toBe(400);
+  });
+
+  test('POST returns 409 when embeddings connectionId references unknown profile', async () => {
+    const res = await POST(makeEvent('POST', {
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'does-not-exist', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    }));
+    expect(res.status).toBe(409);
+  });
+
+  test('POST saves valid assignments and responds 200 with persisted data', async () => {
+    const res = await POST(makeEvent('POST', {
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4.1-mini' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-3-small', embeddingDims: 1536 },
+      },
+    }));
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      ok: boolean;
+      assignments: {
+        llm: { connectionId: string; model: string };
+        embeddings: { connectionId: string; model: string; embeddingDims: number };
+      };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.assignments.llm.connectionId).toBe('primary');
+    expect(body.assignments.llm.model).toBe('gpt-4.1-mini');
+    expect(body.assignments.embeddings.embeddingDims).toBe(1536);
+  });
+
+  test('POST persists to disk — subsequent GET reflects saved model', async () => {
+    await POST(makeEvent('POST', {
+      assignments: {
+        llm: { connectionId: 'primary', model: 'gpt-4-turbo' },
+        embeddings: { connectionId: 'primary', model: 'text-embedding-ada-002', embeddingDims: 1536 },
+      },
+    }));
+
+    const getRes = await GET(makeEvent('GET'));
+    expect(getRes.status).toBe(200);
+
+    const body = await getRes.json() as {
+      assignments: { llm: { model: string }; embeddings: { model: string } };
+    };
+    expect(body.assignments.llm.model).toBe('gpt-4-turbo');
+    expect(body.assignments.embeddings.model).toBe('text-embedding-ada-002');
+  });
 });

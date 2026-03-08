@@ -2,8 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchConnections,
   fetchConnectionsDto,
+  createConnectionProfile,
+  deleteConnectionProfile,
   saveSystemConnection,
   saveConnectionsDto,
+  testConnectionProfile,
+  updateConnectionProfile,
 } from './api.js';
 
 const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
@@ -153,5 +157,179 @@ describe('api canonical connections DTO adapter', () => {
     expect(body.assignments.tts.enabled).toBe(true);
     expect(body.assignments.tts.voice).toBe('nova');
     expect(body.assignments.stt.enabled).toBe(false);
+  });
+
+  it('surfaces JSON error messages from profile create failures', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: 'bad_request',
+          message: 'Profile name is required.',
+        }),
+        {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    await expect(
+      createConnectionProfile('admin-token', {
+        id: 'p1',
+        name: '',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'none' },
+      }),
+    ).rejects.toThrow('Profile name is required.');
+  });
+
+  it('returns the structured profile mutation response for profile create', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          profile: {
+            id: 'p1',
+            name: 'OpenAI',
+            kind: 'openai_compatible_remote',
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            auth: { mode: 'api_key', apiKeySecretRef: 'env:OPENAI_API_KEY' },
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await createConnectionProfile('admin-token', {
+      id: 'p1',
+      name: 'OpenAI',
+      kind: 'openai_compatible_remote',
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      auth: { mode: 'api_key', apiKeySecretRef: 'env:OPENAI_API_KEY' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.profile.id).toBe('p1');
+  });
+
+  it('surfaces JSON error messages from profile update failures', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: 'bad_request',
+          message: 'Profile provider is invalid.',
+        }),
+        {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    await expect(
+      updateConnectionProfile('admin-token', {
+        id: 'p1',
+        name: 'Example',
+        kind: 'openai_compatible_remote',
+        provider: 'bad-provider',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'none' },
+      }),
+    ).rejects.toThrow('Profile provider is invalid.');
+  });
+
+  it('surfaces JSON error messages from profile delete failures', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: 'bad_request',
+          message: 'Profile could not be deleted.',
+        }),
+        {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    await expect(deleteConnectionProfile('admin-token', 'p1')).rejects.toThrow(
+      'Profile could not be deleted.',
+    );
+  });
+
+  it('uses the structured connection test endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          models: ['gpt-4.1-mini'],
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await testConnectionProfile('admin-token', {
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+      kind: 'openai_compatible_local',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.models).toEqual(['gpt-4.1-mini']);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/admin/connections/test',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('falls back to plain text error bodies for profile create failures', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('Plain text failure', {
+        status: 500,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+
+    await expect(
+      createConnectionProfile('admin-token', {
+        id: 'p1',
+        name: 'Example',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'none' },
+      }),
+    ).rejects.toThrow('Plain text failure');
+  });
+
+  it('falls back to the default error copy when the response body is empty', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('', {
+        status: 500,
+      }),
+    );
+
+    await expect(
+      createConnectionProfile('admin-token', {
+        id: 'p1',
+        name: 'Example',
+        kind: 'openai_compatible_remote',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        auth: { mode: 'none' },
+      }),
+    ).rejects.toThrow('Request failed (HTTP 500)');
   });
 });

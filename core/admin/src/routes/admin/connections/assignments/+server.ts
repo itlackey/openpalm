@@ -4,6 +4,9 @@ import {
   appendAudit,
   getCapabilityAssignments,
   saveCapabilityAssignments,
+  buildOpenCodeMapping,
+  writeOpenCodeProviderConfig,
+  readConnectionProfilesDocument,
 } from '$lib/server/control-plane.js';
 import {
   errorResponse,
@@ -15,6 +18,9 @@ import {
   parseJsonBody,
   requireAdmin,
 } from '$lib/server/helpers.js';
+import { createLogger } from '$lib/server/logger.js';
+
+const logger = createLogger('connections.assignments');
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -56,6 +62,24 @@ export const POST: RequestHandler = async (event) => {
   if (!result.ok) {
     const errorCode = result.status === 409 ? 'conflict' : result.status === 404 ? 'not_found' : 'bad_request';
     return errorResponse(result.status, errorCode, result.message, {}, requestId);
+  }
+
+  // Wire OpenCode config write (non-critical side effect)
+  try {
+    const doc = readConnectionProfilesDocument(state.configDir);
+    const savedAssignments = result.value;
+    const llmProfile = doc.profiles.find((p) => p.id === savedAssignments.llm.connectionId);
+    if (llmProfile) {
+      const mapping = buildOpenCodeMapping({
+        provider: llmProfile.provider,
+        baseUrl: llmProfile.baseUrl,
+        systemModel: savedAssignments.llm.model,
+        smallModel: savedAssignments.llm.smallModel,
+      });
+      writeOpenCodeProviderConfig(state.configDir, mapping);
+    }
+  } catch (err) {
+    logger.warn('failed to write opencode.json after assignments save', { error: String(err), requestId });
   }
 
   appendAudit(state, actor, 'connections.assignments.save', {}, true, requestId, callerType);

@@ -11,6 +11,9 @@ import type {
   RegistryResponse,
   ConnectionsResponseDto,
   SaveConnectionsDtoPayload,
+  ConnectionProfilePayload,
+  CanonicalConnectionProfileDto,
+  ConnectionProfileMutationResponse,
 } from './types.js';
 
 const apiBase = '';
@@ -38,6 +41,61 @@ async function post(path: string, body: unknown, token?: string): Promise<Respon
     headers,
     body: JSON.stringify(body)
   });
+}
+
+async function put(path: string, body: unknown, token?: string): Promise<Response> {
+  const headers: HeadersInit = {
+    'content-type': 'application/json',
+    ...buildHeaders(token)
+  };
+  return fetch(`${apiBase}${path}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function del(path: string, body: unknown, token?: string): Promise<Response> {
+  const headers: HeadersInit = {
+    'content-type': 'application/json',
+    ...buildHeaders(token)
+  };
+  return fetch(`${apiBase}${path}`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function readErrorMessage(
+  res: Response,
+  fallback = `Request failed (HTTP ${res.status})`
+): Promise<string> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    const data = (await res.clone().json().catch(() => null)) as unknown;
+    if (hasNonEmptyString(data, 'message')) {
+      return data.message;
+    }
+    if (hasNonEmptyString(data, 'error')) {
+      return data.error;
+    }
+  }
+
+  const text = await res.text().catch(() => '');
+  return text || fallback;
+}
+
+function hasNonEmptyString(
+  value: unknown,
+  key: 'message' | 'error'
+): value is Record<typeof key, string> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return typeof record[key] === 'string' && record[key].length > 0;
 }
 
 export async function fetchHealth(): Promise<{
@@ -319,7 +377,7 @@ export async function saveSystemConnection(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as SystemConnectionSaveResult;
 }
@@ -333,9 +391,78 @@ export async function saveConnectionsDto(
     throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
   }
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await readErrorMessage(res));
   }
   return (await res.json()) as SystemConnectionSaveResult;
+}
+
+export async function createConnectionProfile(
+  token: string,
+  profile: ConnectionProfilePayload
+): Promise<ConnectionProfileMutationResponse> {
+  const res = await post('/admin/connections/profiles', { profile }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return (await res.json()) as ConnectionProfileMutationResponse;
+}
+
+export async function updateConnectionProfile(
+  token: string,
+  profile: ConnectionProfilePayload
+): Promise<ConnectionProfileMutationResponse> {
+  const res = await put('/admin/connections/profiles', { profile }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 404) {
+    throw Object.assign(new Error('Profile not found.'), { status: 404 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return (await res.json()) as ConnectionProfileMutationResponse;
+}
+
+export async function deleteConnectionProfile(
+  token: string,
+  id: string
+): Promise<void> {
+  const res = await del('/admin/connections/profiles', { id }, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (res.status === 409) {
+    throw Object.assign(
+      new Error('Profile is referenced by assignments and cannot be removed.'),
+      { status: 409 }
+    );
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+}
+
+export async function testConnectionProfile(
+  token: string,
+  draft: { baseUrl: string; apiKey: string; kind: string }
+): Promise<{ ok: boolean; models?: string[]; error?: string; errorCode?: string }> {
+  const res = await post('/admin/connections/test', draft, token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, `Connection test failed (HTTP ${res.status})`));
+  }
+  return (await res.json()) as {
+    ok: boolean;
+    models?: string[];
+    error?: string;
+    errorCode?: string;
+  };
 }
 
 export async function fetchRegistry(token: string): Promise<RegistryResponse> {

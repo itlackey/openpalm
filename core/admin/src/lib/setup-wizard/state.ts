@@ -1,21 +1,23 @@
 export type WizardConnectionType = 'cloud' | 'local';
 
 export type WizardScreen =
-  | 'token'
+  | 'welcome'
+  | 'connections-hub'
   | 'connection-type'
-  | 'cloud-provider'
-  | 'local-provider'
+  | 'add-connection-details'
   | 'models'
+  | 'optional-addons'
   | 'review'
   | 'install'
   | 'deploying';
 
 export const WIZARD_SCREEN_ORDER: WizardScreen[] = [
-  'token',
+  'welcome',
+  'connections-hub',
   'connection-type',
-  'cloud-provider',
-  'local-provider',
+  'add-connection-details',
   'models',
+  'optional-addons',
   'review',
   'install',
   'deploying',
@@ -32,16 +34,34 @@ export type WizardConnectionDraft = {
   modelList: string[];
 };
 
+export type WizardAddonState = {
+  enabled: boolean;
+  connectionId: string;
+  model: string;
+};
+
+export type WizardAssignments = {
+  llm: {
+    connectionId: string;
+    model: string;
+    smallModel: string;
+  };
+  embeddings: {
+    connectionId: string;
+    model: string;
+    embeddingDims: number;
+    sameAsLlm: boolean;
+  };
+  reranking: WizardAddonState & { mode: 'llm' | 'dedicated'; topN: number };
+  tts: WizardAddonState & { voice: string; format: string };
+  stt: WizardAddonState & { language: string };
+};
+
 export type SetupWizardDraft = {
   screen: WizardScreen;
   connections: WizardConnectionDraft[];
   editingConnectionIndex: number;
-  llmConnectionId: string;
-  llmModel: string;
-  llmSmallModel: string;
-  embeddingConnectionId: string;
-  embeddingModel: string;
-  embeddingDims: number;
+  assignments: WizardAssignments;
   memoryUserId: string;
 };
 
@@ -60,15 +80,16 @@ export function createConnectionDraft(id?: string): WizardConnectionDraft {
 
 export function createInitialDraft(detectedUserId: string): SetupWizardDraft {
   return {
-    screen: 'token',
+    screen: 'welcome',
     connections: [],
     editingConnectionIndex: 0,
-    llmConnectionId: '',
-    llmModel: '',
-    llmSmallModel: '',
-    embeddingConnectionId: '',
-    embeddingModel: '',
-    embeddingDims: 1536,
+    assignments: {
+      llm: { connectionId: '', model: '', smallModel: '' },
+      embeddings: { connectionId: '', model: '', embeddingDims: 1536, sameAsLlm: true },
+      reranking: { enabled: false, connectionId: '', model: '', mode: 'llm', topN: 5 },
+      tts: { enabled: false, connectionId: '', model: '', voice: '', format: '' },
+      stt: { enabled: false, connectionId: '', model: '', language: '' },
+    },
     memoryUserId: detectedUserId || 'default_user',
   };
 }
