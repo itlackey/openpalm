@@ -6,8 +6,6 @@ FROM oven/bun:1-alpine
 
 LABEL org.opencontainers.image.name="openpalm/memory"
 
-RUN addgroup -g 1000 memory && adduser -u 1000 -G memory -h /home/memory -D memory
-
 WORKDIR /app
 
 # Copy workspace root files needed for bun workspace resolution
@@ -25,9 +23,9 @@ COPY core/memory/src/ core/memory/src/
 # Install dependencies (workspace resolution requires root package.json + bun.lock)
 RUN bun install --frozen-lockfile
 
-RUN chown -R memory:memory /app
+RUN chown -R bun:bun /app
 
-USER memory
+USER bun
 
 EXPOSE 8765
 CMD ["bun", "run", "core/memory/src/server.ts"]
