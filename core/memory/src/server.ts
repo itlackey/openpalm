@@ -96,13 +96,18 @@ async function getMemory(): Promise<Memory> {
   if (_memory) return _memory;
   if (_memoryInit) return _memoryInit;
   _memoryInit = (async () => {
-    const rawConfig = resolveEnvKeys(loadConfig());
-    const memConfig = configToMemoryConfig(rawConfig);
-    const m = new Memory(memConfig);
-    await m.initialize();
-    _memory = m;
-    _memoryInit = null;
-    return m;
+    try {
+      const rawConfig = resolveEnvKeys(loadConfig());
+      const memConfig = configToMemoryConfig(rawConfig);
+      const m = new Memory(memConfig);
+      await m.initialize();
+      _memory = m;
+      _memoryInit = null;
+      return m;
+    } catch (err) {
+      _memoryInit = null;
+      throw err;
+    }
   })();
   return _memoryInit;
 }

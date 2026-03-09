@@ -26,6 +26,9 @@ export class OllamaEmbedder implements Embedder {
     }
 
     const data = (await res.json()) as { embeddings: number[][] };
+    if (!data.embeddings?.length) {
+      throw new Error('Ollama Embed API returned no embeddings');
+    }
     return data.embeddings[0];
   }
 

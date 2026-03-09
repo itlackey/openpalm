@@ -44,6 +44,9 @@ export class OpenAIEmbedder implements Embedder {
       data: { embedding: number[] }[];
     };
 
+    if (!data.data?.length) {
+      throw new Error('OpenAI Embeddings API returned no embeddings');
+    }
     return data.data[0].embedding;
   }
 
