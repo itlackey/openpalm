@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/admin",
-  "version": "0.8.0-rc3",
+  "version": "0.8.0",
   "private": true,
   "license": "CC-BY-4.0",
   "type": "module",
