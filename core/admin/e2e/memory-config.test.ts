@@ -510,17 +510,22 @@ test.describe('Connection Test & Model Selection UI', () => {
 
 		await setupConsoleMocks(page);
 
-		await page.route('**/admin/memory/models', (route) => {
+		await page.route('**/admin/connections/test', (route) => {
 			modelCallCount++;
 			return route.fulfill({
 				status: 200,
 				contentType: 'application/json',
-				body: JSON.stringify({ models: ['gpt-4o', 'gpt-4o-mini'] })
+				body: JSON.stringify({ ok: true, models: ['gpt-4o', 'gpt-4o-mini'] })
 			});
 		});
 
 		await navigateToConnections(page);
 		await openAddConnectionForm(page);
+
+		// Connections tab now requires API key when the key toggle is enabled.
+		// Keep the flow realistic by enabling it and providing a value.
+		await page.getByRole('checkbox', { name: /requires an api key/i }).check();
+		await page.getByPlaceholder('Paste API key').fill('sk-test');
 
 		// Fill in a base URL to enable the Test connection button
 		await page.locator('#cf-base-url').fill('https://api.openai.com/v1');

@@ -36,6 +36,28 @@ def _load_config() -> dict:
         raw = json.load(f)
     config = raw.get("mem0", raw)
 
+    # Backward-compat for legacy admin configs that used `base_url` directly
+    # under llm/embedder config objects. Recent mem0 expects provider-specific
+    # keys (for example `openai_base_url` or `ollama_base_url`).
+    for section in ("llm", "embedder"):
+        section_obj = config.get(section, {})
+        provider = section_obj.get("provider")
+        cfg = section_obj.get("config", {})
+        if not isinstance(cfg, dict):
+            continue
+
+        legacy_base_url = cfg.pop("base_url", None)
+        if isinstance(legacy_base_url, str) and legacy_base_url.strip():
+            normalized = legacy_base_url.rstrip("/")
+            if provider == "ollama":
+                cfg.setdefault("ollama_base_url", normalized)
+            else:
+                # OpenAI-compatible providers in mem0 use openai_base_url and
+                # generally expect a /v1 suffix.
+                if not normalized.endswith("/v1"):
+                    normalized = f"{normalized}/v1"
+                cfg.setdefault("openai_base_url", normalized)
+
     # Resolve env:VAR placeholders in API keys
     for section in ("llm", "embedder"):
         cfg = config.get(section, {}).get("config", {})
@@ -74,6 +96,7 @@ async def reset_memory() -> None:
 # ---------------------------------------------------------------------------
 # Request/Response models
 # ---------------------------------------------------------------------------
+
 
 class AddRequest(BaseModel):
     text: str
@@ -135,6 +158,7 @@ class UserRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _normalize_memory(item: dict) -> dict:
     """Normalize a mem0 result dict to the shape callers expect."""
     return {
@@ -148,6 +172,7 @@ def _normalize_memory(item: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.post("/api/v1/memories/")
 async def add_memories(body: AddRequest):
@@ -175,7 +200,11 @@ async def filter_memories(body: FilterRequest):
             run_id=body.run_id,
             limit=body.size,
         )
-        items = [_normalize_memory(r) for r in results.get("results", results) if isinstance(r, dict)]
+        items = [
+            _normalize_memory(r)
+            for r in results.get("results", results)
+            if isinstance(r, dict)
+        ]
         return {"items": items}
 
     results = m.get_all(
@@ -184,7 +213,11 @@ async def filter_memories(body: FilterRequest):
         run_id=body.run_id,
         limit=body.size,
     )
-    items = [_normalize_memory(r) for r in results.get("results", results) if isinstance(r, dict)]
+    items = [
+        _normalize_memory(r)
+        for r in results.get("results", results)
+        if isinstance(r, dict)
+    ]
     return {"items": items}
 
 
@@ -250,7 +283,11 @@ async def get_stats(user_id: str = "default_user"):
     # this will see a capped, approximate count.
     limit = 10000
     all_memories = m.get_all(user_id=user_id, limit=limit)
-    items = all_memories.get("results", all_memories) if isinstance(all_memories, dict) else all_memories
+    items = (
+        all_memories.get("results", all_memories)
+        if isinstance(all_memories, dict)
+        else all_memories
+    )
     count = len(items) if isinstance(items, list) else 0
     is_capped = isinstance(items, list) and count >= limit
     return {
@@ -349,13 +386,17 @@ def _validate_config_structure(config: dict) -> dict:
     that could be interpreted by future code or the mem0 SDK.
     """
     if not isinstance(config, dict):
-        raise HTTPException(status_code=400, detail="Config payload must be a JSON object.")
+        raise HTTPException(
+            status_code=400, detail="Config payload must be a JSON object."
+        )
 
     # Determine the mem0 configuration object
     if "mem0" in config:
         mem0_cfg = config["mem0"]
         if not isinstance(mem0_cfg, dict):
-            raise HTTPException(status_code=400, detail="The 'mem0' field must be an object.")
+            raise HTTPException(
+                status_code=400, detail="The 'mem0' field must be an object."
+            )
     else:
         mem0_cfg = config
 
@@ -402,10 +443,16 @@ def _validate_config_structure(config: dict) -> dict:
 async def put_config(config: dict):
     # Validate structure before persisting
     validated_config = _validate_config_structure(config)
-    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(validated_config, f, indent=2)
-        f.write("\n")
+    # CONFIG_PATH may be mounted read-only from DATA_HOME by compose. In that
+    # case, admin already persists the file on host; we only need to reset the
+    # in-process singleton so next request reloads from disk.
+    try:
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(validated_config, f, indent=2)
+            f.write("\n")
+    except OSError:
+        pass
     await reset_memory()
     return {"status": "ok"}
 
@@ -413,6 +460,7 @@ async def put_config(config: dict):
 # ---------------------------------------------------------------------------
 # User provisioning (replaces MCP SSE handshake)
 # ---------------------------------------------------------------------------
+
 
 @app.post("/api/v1/users")
 async def provision_user(body: UserRequest):
@@ -423,6 +471,7 @@ async def provision_user(body: UserRequest):
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health")
 async def health():
