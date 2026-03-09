@@ -313,13 +313,43 @@ export function resetQdrantCollection(
 
 // ── Runtime API ──────────────────────────────────────────────────────────
 
-const MEMORY_API_BASE = "http://memory:8765";
+function getMemoryApiBases(): string[] {
+  const configured =
+    process.env.MEMORY_API_URL?.trim() ||
+    process.env.OPENPALM_MEMORY_API_URL?.trim();
+
+  const bases = configured
+    ? [configured]
+    : ["http://memory:8765", "http://127.0.0.1:8765"];
+
+  return Array.from(new Set(bases.map((base) => base.replace(/\/+$/, ""))));
+}
+
+async function callMemoryApi(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const bases = getMemoryApiBases();
+  let lastError: unknown;
+
+  for (let i = 0; i < bases.length; i++) {
+    const url = `${bases[i]}${path}`;
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      lastError = err;
+      if (i === bases.length - 1) throw err;
+    }
+  }
+
+  throw lastError ?? new Error("Memory API request failed");
+}
 
 export async function pushConfigToMemory(
   config: MemoryConfig
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${MEMORY_API_BASE}/api/v1/config/`, {
+    const res = await callMemoryApi("/api/v1/config/", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(config),
@@ -336,7 +366,7 @@ export async function pushConfigToMemory(
 
 export async function fetchConfigFromMemory(): Promise<MemoryConfig | null> {
   try {
-    const res = await fetch(`${MEMORY_API_BASE}/api/v1/config/`);
+    const res = await callMemoryApi("/api/v1/config/");
     if (!res.ok) return null;
     return (await res.json()) as MemoryConfig;
   } catch {
@@ -353,7 +383,7 @@ export async function provisionMemoryUser(
   userId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${MEMORY_API_BASE}/api/v1/users`, {
+    const res = await callMemoryApi("/api/v1/users", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ user_id: userId }),

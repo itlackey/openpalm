@@ -15,12 +15,6 @@
 }
 
 :80 {
-	# ── OpenCode UI ──────────────────────────────────────────────────
-	handle_path /opencode/* {
-		import lan_only
-		reverse_proxy assistant:4096
-	}
-
 	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────
 	handle /admin/* {
 		import lan_only
