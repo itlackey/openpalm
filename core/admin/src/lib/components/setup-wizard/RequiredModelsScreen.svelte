@@ -29,14 +29,91 @@
 
   let llmModelList = $derived(llmConnection?.modelList ?? []);
   let embModelList = $derived(embConnection?.modelList ?? []);
+  let embeddingModelOptions = $derived(getEmbeddingModelOptions(embConnection, embModelList, assignments.embeddings.model));
+  let embeddingDimsHint = $derived(getEmbeddingDimsHint());
+
+  function resolveEmbeddingDims(provider: string, model: string): number | null {
+    const exact = EMBEDDING_DIMS[`${provider}/${model}`];
+    if (exact) return exact;
+
+    const withoutTag = model.replace(/:[^/]+$/, '');
+    const canonical = EMBEDDING_DIMS[`${provider}/${withoutTag}`];
+    if (canonical) return canonical;
+
+    const prefixMatch = Object.entries(EMBEDDING_DIMS).find(([key]) => {
+      const [knownProvider, knownModel] = key.split('/', 2);
+      return knownProvider === provider && (model === knownModel || model.startsWith(`${knownModel}:`));
+    });
+
+    return prefixMatch?.[1] ?? null;
+  }
+
+  function isEmbeddingLikeModel(model: string): boolean {
+    return /embed|embedding|bge|e5|nomic|minilm|mxbai|arctic|ada/i.test(model);
+  }
+
+  function getEmbeddingModelOptions(
+    connection: WizardConnectionDraft | undefined,
+    models: string[],
+    currentModel: string,
+  ): string[] {
+    if (models.length === 0) return [];
+
+    const filtered = models.filter((model) => {
+      if (!connection) return isEmbeddingLikeModel(model);
+      return resolveEmbeddingDims(connection.provider, model) !== null || isEmbeddingLikeModel(model);
+    });
+
+    if (filtered.length === 0) return models;
+    if (currentModel && !filtered.includes(currentModel) && models.includes(currentModel)) {
+      return [currentModel, ...filtered];
+    }
+
+    return filtered;
+  }
+
+  function pickPreferredEmbeddingModel(connection: WizardConnectionDraft | undefined, models: string[]): string {
+    if (models.length === 0) return '';
+
+    if (connection) {
+      const knownModel = models.find((model) => resolveEmbeddingDims(connection.provider, model) !== null);
+      if (knownModel) return knownModel;
+    }
+
+    const embeddingLike = models.find((model) => isEmbeddingLikeModel(model));
+    if (embeddingLike) return embeddingLike;
+
+    return models[0];
+  }
+
+  function handleEmbeddingConnectionChange(connectionId: string): void {
+    const nextConnection = connections.find((connection) => connection.id === connectionId);
+    const nextModel = pickPreferredEmbeddingModel(nextConnection, nextConnection?.modelList ?? []);
+
+    let nextEmbeddingDims = assignments.embeddings.embeddingDims;
+    if (nextConnection && nextModel) {
+      nextEmbeddingDims = resolveEmbeddingDims(nextConnection.provider, nextModel) ?? nextEmbeddingDims;
+    }
+
+    onAssignmentsChange({
+      ...assignments,
+      embeddings: {
+        ...assignments.embeddings,
+        connectionId,
+        model: nextModel || assignments.embeddings.model,
+        embeddingDims: nextEmbeddingDims,
+        sameAsLlm: false,
+      },
+    });
+  }
 
   function handleEmbeddingModelChange(newModel: string): void {
     const conn = embConnection;
     let embeddingDims = assignments.embeddings.embeddingDims;
     if (conn) {
-      const key = `${conn.provider}/${newModel}`;
-      if (EMBEDDING_DIMS[key]) {
-        embeddingDims = EMBEDDING_DIMS[key];
+      const nextDims = resolveEmbeddingDims(conn.provider, newModel);
+      if (nextDims) {
+        embeddingDims = nextDims;
       }
     }
     onAssignmentsChange({
@@ -45,16 +122,19 @@
     });
   }
 
-  function applyEmbeddingsSameAsLlm(): void {
-    onAssignmentsChange({
-      ...assignments,
-      embeddings: {
-        ...assignments.embeddings,
-        connectionId: assignments.llm.connectionId,
-        sameAsLlm: true,
-      },
-    });
+  function getEmbeddingDimsHint(): string {
+    if (!assignments.embeddings.model.trim() || !embConnection) {
+      return 'Choose an embedding model to auto-fill dimensions when possible.';
+    }
+
+    const detectedDims = resolveEmbeddingDims(embConnection.provider, assignments.embeddings.model);
+    if (detectedDims !== null) {
+      return `Dimensions auto-detected for this model: ${detectedDims}.`;
+    }
+
+    return `Dimensions are using the current value (${assignments.embeddings.embeddingDims}) because this model is not in the known embedding map yet.`;
   }
+
 </script>
 
 <div class="step-content" data-testid="step-models">
@@ -71,7 +151,22 @@
     <div class="field-group">
       <label for="llm-connection">{SETUP_WIZARD_COPY.llmConnectionLabel}</label>
       <select id="llm-connection" value={assignments.llm.connectionId} onchange={(e) => {
-        onAssignmentsChange({ ...assignments, llm: { ...assignments.llm, connectionId: e.currentTarget.value } });
+        const nextConnectionId = e.currentTarget.value;
+        const nextConnection = connections.find((connection) => connection.id === nextConnectionId);
+        const nextChatModel = nextConnection?.modelList[0] ?? assignments.llm.model;
+        const nextSmallModel = nextConnection?.modelList.includes(assignments.llm.smallModel)
+          ? assignments.llm.smallModel
+          : (nextConnection?.modelList[0] ?? assignments.llm.smallModel);
+
+        onAssignmentsChange({
+          ...assignments,
+          llm: {
+            ...assignments.llm,
+            connectionId: nextConnectionId,
+            model: nextChatModel,
+            smallModel: nextSmallModel,
+          },
+        });
       }}>
         <option value="" disabled>{SETUP_WIZARD_COPY.llmConnectionPlaceholder}</option>
         {#each connections as conn}<option value={conn.id}>{conn.name || conn.provider}</option>{/each}
@@ -94,7 +189,7 @@
       <ModelSelector
         id="small-model"
         value={assignments.llm.smallModel}
-        options={[]}
+        options={llmModelList}
         placeholder={SETUP_WIZARD_COPY.llmSmallModelPlaceholder}
         onChange={(v) => onAssignmentsChange({ ...assignments, llm: { ...assignments.llm, smallModel: v } })}
       />
@@ -109,14 +204,10 @@
       <span class="model-card-help">{SETUP_WIZARD_COPY.embeddingsCardHelp}</span>
     </div>
 
-    <button class="btn-link same-as-llm-btn" type="button" onclick={applyEmbeddingsSameAsLlm}>
-      {SETUP_WIZARD_COPY.embeddingsSameAsLlm}
-    </button>
-
     <div class="field-group">
       <label for="emb-connection">{SETUP_WIZARD_COPY.embeddingConnectionLabel}</label>
       <select id="emb-connection" value={assignments.embeddings.connectionId} onchange={(e) => {
-        onAssignmentsChange({ ...assignments, embeddings: { ...assignments.embeddings, connectionId: e.currentTarget.value, sameAsLlm: false } });
+        handleEmbeddingConnectionChange(e.currentTarget.value);
       }}>
         <option value="" disabled>{SETUP_WIZARD_COPY.embeddingConnectionPlaceholder}</option>
         {#each connections as conn}<option value={conn.id}>{conn.name || conn.provider}</option>{/each}
@@ -128,32 +219,30 @@
       <ModelSelector
         id="embedding-model"
         value={assignments.embeddings.model}
-        options={embModelList}
+        options={embeddingModelOptions}
         placeholder="text-embedding-3-small"
         onChange={handleEmbeddingModelChange}
       />
-      <p class="field-hint">Used for memory vector embeddings. Changing this later requires a collection reset.</p>
+      <p class="field-hint">Used for memory vector embeddings. The list prefers embedding-capable models.</p>
+      <p class="field-hint field-hint--accent">{embeddingDimsHint}</p>
     </div>
 
-    <details class="advanced-toggle">
-      <summary class="advanced-toggle-summary">{SETUP_WIZARD_COPY.embeddingsAdvancedToggle}</summary>
-      <div class="field-group" style="margin-top: var(--space-3);">
-        <label for="embedding-dims">{SETUP_WIZARD_COPY.embeddingsDimsLabel}</label>
-        <input
-          id="embedding-dims"
-          type="number"
-          value={assignments.embeddings.embeddingDims}
-          placeholder={SETUP_WIZARD_COPY.embeddingsDimsPlaceholder}
-          min="1"
-          step="1"
-          oninput={(e) => onAssignmentsChange({
-            ...assignments,
-            embeddings: { ...assignments.embeddings, embeddingDims: parseInt(e.currentTarget.value, 10) || 1536 },
-          })}
-        />
-        <p class="field-hint">{SETUP_WIZARD_COPY.embeddingsDimsHint}</p>
-      </div>
-    </details>
+    <div class="field-group field-group--compact">
+      <label for="embedding-dims">{SETUP_WIZARD_COPY.embeddingsDimsLabel}</label>
+      <input
+        id="embedding-dims"
+        type="number"
+        value={assignments.embeddings.embeddingDims}
+        placeholder={SETUP_WIZARD_COPY.embeddingsDimsPlaceholder}
+        min="1"
+        step="1"
+        oninput={(e) => onAssignmentsChange({
+          ...assignments,
+          embeddings: { ...assignments.embeddings, embeddingDims: parseInt(e.currentTarget.value, 10) || 1536 },
+        })}
+      />
+      <p class="field-hint">{SETUP_WIZARD_COPY.embeddingsDimsHint}</p>
+    </div>
   </div>
 
   <button class="btn-link add-connection-link" type="button" onclick={onAddConnection}>
@@ -208,6 +297,9 @@
   .field-group {
     margin-bottom: var(--space-4);
   }
+  .field-group--compact {
+    margin-bottom: 0;
+  }
   .field-group label {
     display: block;
     font-size: var(--text-sm);
@@ -239,6 +331,10 @@
     color: var(--color-text-secondary);
     line-height: 1.5;
   }
+  .field-hint--accent {
+    color: var(--color-primary-hover);
+    font-weight: var(--font-medium);
+  }
   .field-error {
     margin: 0 0 var(--space-3);
     padding: var(--space-2) var(--space-3);
@@ -248,21 +344,6 @@
     color: #dc2626;
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
-  }
-  .same-as-llm-btn {
-    display: inline-block;
-    margin-bottom: var(--space-3);
-    background: none;
-    border: none;
-    color: var(--color-primary);
-    font-size: var(--text-sm);
-    cursor: pointer;
-    padding: 0;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .same-as-llm-btn:hover {
-    color: var(--color-primary-hover);
   }
   .add-connection-link {
     display: block;
@@ -275,19 +356,6 @@
     padding: var(--space-2) 0;
     text-decoration: underline;
     text-underline-offset: 2px;
-  }
-  .advanced-toggle {
-    margin-bottom: var(--space-2);
-  }
-  .advanced-toggle-summary {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    user-select: none;
-    padding: var(--space-1) 0;
-  }
-  .advanced-toggle-summary:hover {
-    color: var(--color-text);
   }
   .step-actions {
     display: flex;

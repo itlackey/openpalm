@@ -98,6 +98,103 @@
   let deployError = $state('');
   let deployPollTimer: ReturnType<typeof setInterval> | null = null;
 
+  function summarizeDeployError(error: string): string {
+    if (!error.trim()) return 'Deployment failed.';
+
+    if (/error mounting/i.test(error)) {
+      return 'OpenPalm could not start because one of the generated stack mounts does not match the expected file or directory type.';
+    }
+
+    if (/docker is not available/i.test(error)) {
+      return 'OpenPalm could not start because Docker is unavailable on this host.';
+    }
+
+    const daemonMatch = error.match(/Error response from daemon:\s*([^\n]+)$/i);
+    if (daemonMatch?.[1]) {
+      const message = daemonMatch[1].trim();
+      return message.length > 180 ? `${message.slice(0, 177)}...` : message;
+    }
+
+    const composeMatch = error.match(/Docker Compose failed:\s*(.+)$/i);
+    if (composeMatch?.[1]) {
+      const message = composeMatch[1].trim();
+      return message.length > 180 ? `${message.slice(0, 177)}...` : message;
+    }
+
+    return error.length > 240 ? `${error.slice(0, 237)}...` : error;
+  }
+
+  function getDeployFailureTitle(error: string): string {
+    if (/error mounting/i.test(error)) return 'A stack file or mount path is invalid';
+    if (/docker is not available/i.test(error)) return 'Docker is not available';
+    if (/network/i.test(error) && /unable to/i.test(error)) return 'A required service could not be reached';
+    return 'OpenPalm could not finish starting the stack';
+  }
+
+  function getDeployRecoverySteps(error: string): string[] {
+    if (/error mounting/i.test(error)) {
+      return [
+        'Return to Review and try setup again after checking generated stack files and host mount paths.',
+        'If you are testing in a temporary environment, reset it before retrying so the artifacts are recreated cleanly.',
+      ];
+    }
+
+    if (/docker is not available/i.test(error)) {
+      return [
+        'Start Docker, then retry setup.',
+        'If Docker is running elsewhere, make sure this host can talk to it before retrying.',
+      ];
+    }
+
+    return [
+      'Go back to Review to adjust settings, then try again.',
+      'Open Technical details if you need the raw Docker error for troubleshooting.',
+    ];
+  }
+
+  function getDeployTipsTitle(): string {
+    return deployPhase === 'error' ? 'How to recover' : 'What is happening right now?';
+  }
+
+  function getDeployTipsKicker(): string {
+    return deployPhase === 'error' ? 'Next steps' : 'Tips while you wait';
+  }
+
+  let deployTipsTitle = $derived(getDeployTipsTitle());
+  let deployTipsKicker = $derived(getDeployTipsKicker());
+
+  let deployErrorSummary = $derived(summarizeDeployError(deployError));
+  let deployFailureTitle = $derived(getDeployFailureTitle(deployError));
+  let deployRecoverySteps = $derived(getDeployRecoverySteps(deployError));
+
+  const DEPLOY_TIPS = {
+    pulling: [
+      'First startup is the slowest because container images still need to download.',
+      'You can keep this tab open while the stack comes online.',
+      'If a provider is local, make sure it is still running on this machine.',
+    ],
+    starting: [
+      'OpenPalm is wiring services together on the internal Docker network.',
+      'The admin console will be available as soon as the core services finish starting.',
+      'Model downloads can continue in your provider separately after setup completes.',
+    ],
+    ready: [
+      'Your core services are online and ready for the console.',
+      'You can revisit Connections later to swap models or add more providers.',
+      'If memory embeddings ever change, reset the collection before re-indexing.',
+    ],
+    error: [
+      'Review the error first, then return to the previous step to adjust settings.',
+      'Local providers should stay reachable from the OpenPalm host during startup.',
+      'You can rerun setup after fixing Docker or provider issues.',
+    ],
+    idle: [
+      'OpenPalm will validate your selections and then start the stack for you.',
+      'A single good chat connection is enough to get started quickly.',
+      'You can add optional add-ons later from the admin UI.',
+    ],
+  } as const;
+
   // ── Validation ──────────────────────────────────────────────────────────
   let tokenError = $state('');
   let connectError = $state('');
@@ -121,6 +218,167 @@
   function getConnectionById(id: string): WizardConnectionDraft | undefined {
     return connections.find(c => c.id === id);
   }
+
+  function getConnectionTypeLabel(type: WizardConnectionDraft['connectionType']): string {
+    return type === 'local' ? 'Local' : 'Remote';
+  }
+
+  function getConnectionNameById(id: string): string {
+    return getConnectionById(id)?.name || getConnectionById(id)?.provider || 'No connection selected';
+  }
+
+  function formatModelReview(model: string, connectionId: string): string {
+    if (!model.trim()) return 'Not configured';
+    return `${model} (${getConnectionNameById(connectionId)})`;
+  }
+
+  function getEffectiveMemoryModel(): string {
+    return assignments.llm.smallModel.trim() || assignments.llm.model.trim();
+  }
+
+  function formatAddonReview(enabled: boolean, connectionId: string, parts: string[]): string {
+    if (!enabled) return 'Disabled';
+    const detail = parts.filter(Boolean).join(' / ');
+    return detail
+      ? `${detail} (${getConnectionNameById(connectionId)})`
+      : `Enabled (${getConnectionNameById(connectionId)})`;
+  }
+
+  function getConnectionModeSummary(type: WizardConnectionDraft['connectionType']): {
+    title: string;
+    body: string;
+    bullets: string[];
+  } {
+    if (type === 'local') {
+      return {
+        title: 'Local connection',
+        body: 'Best for Ollama, LM Studio, and Docker Model Runner running on this machine or your LAN.',
+        bullets: [
+          'Usually does not need an API key.',
+          'We try to detect running local providers automatically.',
+          'Use a localhost or LAN address that this host can reach.',
+        ],
+      };
+    }
+
+    return {
+      title: 'Remote connection',
+      body: 'Best for hosted providers, gateways, and work proxies that expose an OpenAI-compatible API.',
+      bullets: [
+        'Usually requires an API key.',
+        'We prefill the base URL using the selected provider when possible.',
+        'Good for OpenAI, Groq, Together, Mistral, and hosted proxies.',
+      ],
+    };
+  }
+
+  function resolveEmbeddingDims(provider: string, model: string): number | null {
+    const exact = EMBEDDING_DIMS[`${provider}/${model}`];
+    if (exact) return exact;
+
+    const withoutTag = model.replace(/:[^/]+$/, '');
+    const canonical = EMBEDDING_DIMS[`${provider}/${withoutTag}`];
+    if (canonical) return canonical;
+
+    const prefixMatch = Object.entries(EMBEDDING_DIMS).find(([key]) => {
+      const [knownProvider, knownModel] = key.split('/', 2);
+      return knownProvider === provider && (model === knownModel || model.startsWith(`${knownModel}:`));
+    });
+
+    return prefixMatch?.[1] ?? null;
+  }
+
+  function isEmbeddingLikeModel(model: string): boolean {
+    return /embed|embedding|bge|e5|nomic|minilm|mxbai|arctic|ada/i.test(model);
+  }
+
+  function isNonChatModel(model: string): boolean {
+    return /embed|embedding|rerank|tts|whisper|stt|transcribe|vision|moderation/i.test(model);
+  }
+
+  function pickPreferredChatModel(connection: WizardConnectionDraft, models: string[]): string {
+    if (models.length === 0) return '';
+
+    if (connection.provider === 'ollama') {
+      const ollamaDefault = models.find((model) => model === OLLAMA_DEFAULT_MODELS.chat || model.startsWith(`${OLLAMA_DEFAULT_MODELS.chat}:`));
+      if (ollamaDefault) return ollamaDefault;
+    }
+
+    const chatLike = models.find((model) => !isNonChatModel(model));
+    return chatLike ?? models[0];
+  }
+
+  function pickPreferredSmallModel(models: string[], chatModel: string): string {
+    if (chatModel && models.includes(chatModel)) return chatModel;
+    return chatModel || models[0] || '';
+  }
+
+  function pickPreferredEmbeddingModel(connection: WizardConnectionDraft, models: string[]): { model: string; dims: number } {
+    if (models.length === 0) {
+      return { model: '', dims: 1536 };
+    }
+
+    const exactKnown = models.find((model) => resolveEmbeddingDims(connection.provider, model) !== null);
+    const embeddingLike = models.find((model) => isEmbeddingLikeModel(model));
+    const chosen = exactKnown ?? embeddingLike ?? models[0];
+
+    return {
+      model: chosen,
+      dims: resolveEmbeddingDims(connection.provider, chosen) ?? 1536,
+    };
+  }
+
+  function applySuggestedAssignmentsForConnection(connection: WizardConnectionDraft): void {
+    const chatModel = pickPreferredChatModel(connection, connection.modelList);
+    const smallModel = pickPreferredSmallModel(connection.modelList, chatModel);
+    const embedding = pickPreferredEmbeddingModel(connection, connection.modelList);
+
+    assignments = {
+      ...assignments,
+      llm: {
+        ...assignments.llm,
+        connectionId: connection.id,
+        model: chatModel || assignments.llm.model,
+        smallModel: smallModel || assignments.llm.smallModel,
+      },
+      embeddings: {
+        ...assignments.embeddings,
+        connectionId: connection.id,
+        model: embedding.model || assignments.embeddings.model,
+        embeddingDims: embedding.dims || assignments.embeddings.embeddingDims,
+        sameAsLlm: false,
+      },
+    };
+  }
+
+  function getDeployProgress(services: ServiceDeployInfo[]): number {
+    if (services.length === 0) return 0;
+    let total = 0;
+    for (const service of services) {
+      if (service.containerRunning) total += 1;
+      else if (service.imageReady) total += 0.7;
+    }
+    return Math.round((total / services.length) * 100);
+  }
+
+  function getDeployStatusText(service: ServiceDeployInfo): string {
+    if (service.containerRunning) return 'Running';
+    if (deployPhase === 'error' && service.imageReady) return 'Image pulled, startup stopped';
+    if (deployPhase === 'starting' && service.imageReady) return 'Starting container...';
+    if (service.imageReady) return 'Image ready';
+    return 'Pulling image...';
+  }
+
+  function getDeployTipList(): string[] {
+    if (deployPhase === 'pulling') return [...DEPLOY_TIPS.pulling];
+    if (deployPhase === 'starting') return [...DEPLOY_TIPS.starting];
+    if (deployPhase === 'ready') return [...DEPLOY_TIPS.ready];
+    if (deployPhase === 'error') return [...DEPLOY_TIPS.error];
+    return [...DEPLOY_TIPS.idle];
+  }
+
+  let deployProgress = $derived(getDeployProgress(deployServices));
+  let deployTipList = $derived(getDeployTipList());
 
   let llmConnection = $derived(getConnectionById(llmConnectionId));
   let embConnection = $derived(getConnectionById(embeddingConnectionId));
@@ -257,17 +515,10 @@
       );
     }
 
-    // Set default assignments if this is the first connection
+    // Set sensible defaults if this is the first connection
     if (connections.length === 1) {
-      assignments = {
-        ...assignments,
-        llm: { ...assignments.llm, connectionId: editingConnection.id },
-        embeddings: {
-          ...assignments.embeddings,
-          connectionId: editingConnection.id,
-          sameAsLlm: true,
-        },
-      };
+      const currentConnection = connections[idx] ?? editingConnection;
+      applySuggestedAssignmentsForConnection(currentConnection);
     }
 
     draftConnectionIndex = null;
@@ -505,21 +756,18 @@
         if (assignments.llm.model && target.id === assignments.llm.connectionId) merged.add(assignments.llm.model);
         if (assignments.embeddings.model && target.id === assignments.embeddings.connectionId) merged.add(assignments.embeddings.model);
         const sorted = [...merged].sort();
+        const updatedConnection = { ...target, tested: true, modelList: sorted };
         connections = connections.map((c, i) =>
-          i === idx ? { ...c, tested: true, modelList: sorted } : c
+          i === idx ? updatedConnection : c
         );
 
-        // Pre-select models if not already set
         if (sorted.length > 0) {
-          if (!assignments.llm.model && target.id === assignments.llm.connectionId) {
-            assignments = { ...assignments, llm: { ...assignments.llm, model: sorted[0] } };
-          }
-          if (!assignments.embeddings.model && target.id === assignments.embeddings.connectionId) {
-            const embedCandidate = sorted.find(m => m.includes('embed') || m.includes('ada'));
-            assignments = {
-              ...assignments,
-              embeddings: { ...assignments.embeddings, model: embedCandidate ?? sorted[0] },
-            };
+          const isFirstConnection = connections.length === 1;
+          const ownsCurrentLlm = target.id === assignments.llm.connectionId;
+          const ownsCurrentEmbedding = target.id === assignments.embeddings.connectionId;
+
+          if (isFirstConnection || (!assignments.llm.model && ownsCurrentLlm) || (!assignments.embeddings.model && ownsCurrentEmbedding)) {
+            applySuggestedAssignmentsForConnection(updatedConnection);
           }
         }
       }
@@ -650,6 +898,14 @@
       clearInterval(deployPollTimer);
       deployPollTimer = null;
     }
+  }
+
+  function resetDeployUiState(): void {
+    deployPhase = null;
+    deployError = '';
+    deployServices = [];
+    deployMessage = '';
+    installing = false;
   }
 
   async function pollDeployStatus(): Promise<void> {
@@ -814,17 +1070,17 @@
           <p class="step-description">{SETUP_WIZARD_COPY.welcomeBody}</p>
           <div class="field-group">
             <label for="owner-name">Your Name</label>
-            <input id="owner-name" type="text" bind:value={ownerName} placeholder="Jane Doe" />
+            <input id="owner-name" type="text" bind:value={ownerName} placeholder="Jane Doe" autocomplete="name" />
             <p class="field-hint">Used as the default Memory user ID.</p>
           </div>
           <div class="field-group">
-            <label for="owner-email">Email</label>
-            <input id="owner-email" type="email" bind:value={ownerEmail} placeholder="jane@example.com" />
+            <label for="owner-email">Email (optional)</label>
+            <input id="owner-email" type="email" bind:value={ownerEmail} placeholder="jane@example.com" autocomplete="email" />
             <p class="field-hint">For account identification. Not shared externally.</p>
           </div>
           <div class="field-group">
             <label for="admin-token">Admin Token</label>
-            <input id="admin-token" type="password" bind:value={adminToken} placeholder="Enter a secure admin token" />
+            <input id="admin-token" type="password" bind:value={adminToken} placeholder="Enter a secure admin token" autocomplete="new-password" />
             <p class="field-hint">This token protects your admin console. Keep it safe — you'll need it to log in.</p>
           </div>
           {#if tokenError}
@@ -904,6 +1160,19 @@
           <h2>{SETUP_WIZARD_COPY.addConnectionDetailsTitle}</h2>
           <p class="step-description">{SETUP_WIZARD_COPY.addConnectionDetailsBody}</p>
 
+          <div class="connection-mode-card connection-mode-card--{editingConnection.connectionType}">
+            <div class="connection-mode-header">
+              <span class="connection-mode-badge">{getConnectionTypeLabel(editingConnection.connectionType)}</span>
+              <h3>{getConnectionModeSummary(editingConnection.connectionType).title}</h3>
+            </div>
+            <p>{getConnectionModeSummary(editingConnection.connectionType).body}</p>
+            <ul class="connection-mode-list">
+              {#each getConnectionModeSummary(editingConnection.connectionType).bullets as bullet}
+                <li>{bullet}</li>
+              {/each}
+            </ul>
+          </div>
+
           <!-- Connection name -->
           <div class="field-group">
             <label for="conn-name">{SETUP_WIZARD_COPY.addConnectionNameLabel}</label>
@@ -913,6 +1182,7 @@
               value={editingConnection.name}
               oninput={(e) => updateEditingField('name', e.currentTarget.value)}
               placeholder={SETUP_WIZARD_COPY.addConnectionNamePlaceholder}
+              autocomplete="organization"
             />
           </div>
 
@@ -933,6 +1203,7 @@
                 value={editingConnection.apiKey}
                 oninput={(e) => { updateEditingField('apiKey', e.currentTarget.value); scheduleAutoTest(); }}
                 placeholder={SETUP_WIZARD_COPY.addConnectionApiKeyPlaceholder}
+                autocomplete="new-password"
               />
               <p class="field-hint">{SETUP_WIZARD_COPY.addConnectionApiKeyHint}</p>
             </div>
@@ -998,6 +1269,7 @@
               placeholder={editingConnection.connectionType === 'cloud'
                 ? 'https://api.example.com'
                 : 'http://localhost:1234'}
+              autocomplete="url"
             />
             <p class="field-hint">{SETUP_WIZARD_COPY.addConnectionBaseUrlHint}</p>
             {#if /\/v1\/?$/.test(editingConnection.baseUrl.trim())}
@@ -1064,7 +1336,6 @@
           onAssignmentsChange={(next) => { assignments = next; }}
           onBack={() => goToScreen('models')}
           onNext={() => goToScreen('review')}
-          onSkip={() => goToScreen('review')}
         />
       {/if}
 
@@ -1120,17 +1391,21 @@
             </div>
             <div class="review-item">
               <span class="review-label">Chat Model</span>
-              <span class="review-value mono">{assignments.llm.model || '—'}{connections.length > 1 && llmConnection ? ` (${llmConnection.name})` : ''}</span>
+              <span class="review-value mono">{formatModelReview(assignments.llm.model, assignments.llm.connectionId)}</span>
             </div>
             {#if assignments.llm.smallModel}
               <div class="review-item">
                 <span class="review-label">Small Model</span>
-                <span class="review-value mono">{assignments.llm.smallModel}</span>
+                <span class="review-value mono">{formatModelReview(assignments.llm.smallModel, assignments.llm.connectionId)}</span>
               </div>
             {/if}
             <div class="review-item">
               <span class="review-label">Embedding Model</span>
-              <span class="review-value mono">{assignments.embeddings.model || '—'}{connections.length > 1 && embConnection ? ` (${embConnection.name})` : ''}</span>
+              <span class="review-value mono">{formatModelReview(assignments.embeddings.model, assignments.embeddings.connectionId)}</span>
+            </div>
+            <div class="review-item">
+              <span class="review-label">Memory Model</span>
+              <span class="review-value mono">{formatModelReview(getEffectiveMemoryModel(), assignments.llm.connectionId)}</span>
             </div>
             <div class="review-item"><span class="review-label">Embedding Dimensions</span><span class="review-value mono">{assignments.embeddings.embeddingDims}</span></div>
             <div class="review-item"><span class="review-label">Memory User ID</span><span class="review-value">{memoryUserId}</span></div>
@@ -1141,13 +1416,13 @@
             </div>
             {#if assignments.reranking.enabled || assignments.tts.enabled || assignments.stt.enabled}
               {#if assignments.reranking.enabled}
-                <div class="review-item"><span class="review-label">Reranking</span><span class="review-value">{assignments.reranking.mode === 'llm' ? 'LLM reranker' : 'Dedicated reranker'}{assignments.reranking.model ? ` — ${assignments.reranking.model}` : ''}</span></div>
+                <div class="review-item"><span class="review-label">Reranking</span><span class="review-value">{formatAddonReview(assignments.reranking.enabled, assignments.reranking.connectionId, [assignments.reranking.mode === 'llm' ? 'LLM reranker' : 'Dedicated reranker', assignments.reranking.model])}</span></div>
               {/if}
               {#if assignments.tts.enabled}
-                <div class="review-item"><span class="review-label">Text-to-Speech</span><span class="review-value">{assignments.tts.model || 'Enabled'}{assignments.tts.voice ? ` / ${assignments.tts.voice}` : ''}</span></div>
+                <div class="review-item"><span class="review-label">Text-to-Speech</span><span class="review-value">{formatAddonReview(assignments.tts.enabled, assignments.tts.connectionId, [assignments.tts.model || 'Enabled', assignments.tts.voice])}</span></div>
               {/if}
               {#if assignments.stt.enabled}
-                <div class="review-item"><span class="review-label">Speech-to-Text</span><span class="review-value">{assignments.stt.model || 'Enabled'}{assignments.stt.language ? ` / ${assignments.stt.language}` : ''}</span></div>
+                <div class="review-item"><span class="review-label">Speech-to-Text</span><span class="review-value">{formatAddonReview(assignments.stt.enabled, assignments.stt.connectionId, [assignments.stt.model || 'Enabled', assignments.stt.language])}</span></div>
               {/if}
             {:else}
               <div class="review-item"><span class="review-label review-label--muted">None configured</span><span class="review-value"></span></div>
@@ -1202,38 +1477,93 @@
               {#if deployPhase === 'pulling'}Pulling container images...
               {:else if deployPhase === 'starting'}Starting services...
               {:else if deployPhase === 'ready'}All services are up and running.
-              {:else if deployPhase === 'error'}Deployment encountered an error.
+              {:else if deployPhase === 'error'}OpenPalm could not finish starting.
               {:else}Preparing deployment...{/if}
             </p>
           </div>
+          <div class="deploy-progress-summary" aria-label="Overall startup progress">
+            <div class="deploy-progress-meta">
+              <span class="deploy-progress-label">{deployPhase === 'error' ? 'Startup stopped' : 'Overall progress'}</span>
+              <span class="deploy-progress-value" class:deploy-progress-value--error={deployPhase === 'error'}>
+                {#if deployPhase === 'error'}Needs attention{:else}{deployProgress}%{/if}
+              </span>
+            </div>
+            <div class="deploy-progress-bar" class:deploy-progress-bar--error={deployPhase === 'error'}>
+              <div class="deploy-progress-fill" class:deploy-progress-fill--error={deployPhase === 'error'} style={`width: ${deployProgress}%`}></div>
+            </div>
+            {#if deployMessage && deployPhase !== 'error'}
+              <p class="deploy-progress-note">{deployMessage}</p>
+            {/if}
+          </div>
+          {#if deployPhase === 'error'}
+            <section class="deploy-failure-card" aria-label="Deployment failure summary">
+              <div class="deploy-failure-header">
+                <span class="deploy-failure-kicker">Setup needs attention</span>
+                <h3>{deployFailureTitle}</h3>
+              </div>
+              <p class="deploy-failure-summary">{deployErrorSummary}</p>
+              <ul class="deploy-failure-list">
+                {#each deployRecoverySteps as step}
+                  <li>{step}</li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
           <div class="deploy-services">
-            {#each deployServices as svc}
-              <div class="deploy-service-row">
-                <div class="deploy-service-indicator">
-                  {#if svc.containerRunning || svc.imageReady}
+                {#each deployServices as svc}
+                  <div class="deploy-service-row">
+                    <div class="deploy-service-indicator">
+                  {#if deployPhase === 'error' && svc.imageReady && !svc.containerRunning}
+                    <span class="deploy-warning" aria-label="Startup stopped">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+                    </span>
+                  {:else if svc.containerRunning || svc.imageReady}
                     <span class="deploy-check" aria-label={svc.containerRunning ? 'Running' : 'Image ready'}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                     </span>
                   {:else}
                     <span class="deploy-spinner" aria-label="Downloading"><span class="spinner"></span></span>
                   {/if}
-                </div>
+                    </div>
                 <div class="deploy-service-info">
                   <span class="deploy-service-name">{svc.label}</span>
                   <span class="deploy-service-status">
-                    {#if svc.containerRunning}Running{:else if svc.imageReady}Image ready{:else}Pulling image...{/if}
+                    {getDeployStatusText(svc)}
                   </span>
                 </div>
                 <div class="deploy-service-bar">
-                  <div class="deploy-bar-fill" class:indeterminate={!svc.imageReady} class:complete={svc.imageReady}></div>
+                  <div
+                    class="deploy-bar-fill"
+                    class:indeterminate={!svc.imageReady}
+                    class:ready={svc.imageReady && !svc.containerRunning && deployPhase !== 'error'}
+                    class:stopped={svc.imageReady && !svc.containerRunning && deployPhase === 'error'}
+                    class:complete={svc.containerRunning}
+                  ></div>
                 </div>
               </div>
             {/each}
           </div>
+          {#if deployPhase !== 'error'}
+          <aside class="deploy-tips" aria-label="Startup tips">
+            <div class="deploy-tips-header">
+              <span class="deploy-tips-kicker">{deployTipsKicker}</span>
+              <h3>{deployTipsTitle}</h3>
+            </div>
+            <ul>
+              {#each deployTipList as tip}
+                <li>{tip}</li>
+              {/each}
+            </ul>
+          </aside>
+          {/if}
           {#if deployPhase === 'error'}
-            <p class="install-error" role="alert">{deployError}</p>
+            <details class="deploy-error-details">
+              <summary>Technical details</summary>
+              <pre>{deployError}</pre>
+            </details>
             <div class="step-actions">
-              <button class="btn btn-secondary" onclick={() => { deployPhase = null; deployError = ''; deployServices = []; deployMessage = ''; installing = false; goToScreen('review'); }}>Back to Review</button>
+              <button class="btn btn-secondary" onclick={() => { resetDeployUiState(); goToScreen('review'); }}>Back to Review</button>
+              <button class="btn btn-primary" onclick={() => { resetDeployUiState(); void handleInstall(); }}>Try Again</button>
             </div>
           {/if}
           {#if deployPhase === 'ready'}
@@ -1304,6 +1634,59 @@
   .field-group input:hover, .field-group select:hover { border-color: var(--color-border-hover); }
   .field-group input:focus, .field-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-subtle); }
   .field-hint { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary); line-height: 1.5; }
+  .connection-mode-card {
+    margin-bottom: var(--space-5);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,249,251,0.96) 100%);
+  }
+  .connection-mode-card--local {
+    border-color: rgba(64, 192, 87, 0.35);
+    box-shadow: inset 0 1px 0 rgba(64, 192, 87, 0.08);
+  }
+  .connection-mode-card--cloud {
+    border-color: rgba(51, 154, 240, 0.28);
+    box-shadow: inset 0 1px 0 rgba(51, 154, 240, 0.08);
+  }
+  .connection-mode-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+  }
+  .connection-mode-header h3 {
+    font-size: var(--text-base);
+    margin: 0;
+    color: var(--color-text);
+  }
+  .connection-mode-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    background: var(--color-primary-subtle);
+    color: var(--color-text);
+  }
+  .connection-mode-card p {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+  .connection-mode-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: var(--color-text);
+    display: grid;
+    gap: var(--space-2);
+  }
+  .connection-mode-list li {
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
   .field-error { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); color: #dc2626; font-size: var(--text-sm); font-weight: var(--font-medium); }
   .field-warn {
     margin-top: var(--space-2);
@@ -1365,10 +1748,64 @@
   .provider-option-label { flex: 1; font-weight: var(--font-medium); }
   .provider-option-hint { font-size: var(--text-xs); color: var(--color-text-tertiary); }
   .deploy-header { text-align: center; margin-bottom: var(--space-6); }
+  .deploy-progress-summary {
+    margin-bottom: var(--space-5);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+  }
+  .deploy-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .deploy-progress-label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+  .deploy-progress-value {
+    font-size: var(--text-sm);
+    font-weight: var(--font-bold);
+    color: var(--color-primary-hover);
+  }
+  .deploy-progress-value--error {
+    color: var(--color-danger);
+  }
+  .deploy-progress-bar {
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+  }
+  .deploy-progress-bar--error {
+    background: #fef2f2;
+    border-color: rgba(220, 38, 38, 0.24);
+  }
+  .deploy-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #ffb020 0%, #2f9e44 100%);
+    transition: width 0.4s ease;
+  }
+  .deploy-progress-fill--error {
+    background: linear-gradient(90deg, #f59e0b 0%, #dc2626 100%);
+  }
+  .deploy-progress-note {
+    margin: var(--space-3) 0 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
   .deploy-services { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-6); }
   .deploy-service-row { display: grid; grid-template-columns: 28px 1fr 120px; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
   .deploy-service-indicator { display: flex; align-items: center; justify-content: center; }
   .deploy-check { display: flex; align-items: center; justify-content: center; }
+  .deploy-warning { display: flex; align-items: center; justify-content: center; }
   .deploy-spinner { display: flex; align-items: center; justify-content: center; }
   .deploy-service-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .deploy-service-name { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text); }
@@ -1376,9 +1813,112 @@
   .deploy-service-bar { height: 6px; background: var(--color-bg-secondary); border-radius: 3px; overflow: hidden; }
   .deploy-bar-fill { height: 100%; border-radius: 3px; transition: all 0.4s ease; }
   .deploy-bar-fill.indeterminate { width: 40%; background: var(--color-primary); animation: indeterminate-bar 1.5s ease-in-out infinite; }
+  .deploy-bar-fill.ready { width: 72%; background: #ffb020; animation: none; }
+  .deploy-bar-fill.stopped { width: 72%; background: #d97706; animation: none; opacity: 0.9; }
   .deploy-bar-fill.complete { width: 100%; background: var(--color-success); animation: none; }
+  .deploy-failure-card {
+    margin-bottom: var(--space-5);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(220, 38, 38, 0.18);
+    background: linear-gradient(180deg, rgba(254, 242, 242, 0.96) 0%, rgba(255, 251, 251, 0.99) 100%);
+  }
+  .deploy-failure-header {
+    margin-bottom: var(--space-2);
+  }
+  .deploy-failure-kicker {
+    display: inline-block;
+    margin-bottom: var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #b91c1c;
+  }
+  .deploy-failure-header h3 {
+    margin: 0;
+    font-size: var(--text-lg);
+    color: var(--color-text);
+  }
+  .deploy-failure-summary {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.55;
+  }
+  .deploy-failure-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: var(--space-2);
+  }
+  .deploy-failure-list li {
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    line-height: 1.5;
+  }
   @keyframes indeterminate-bar { 0% { transform: translateX(-100%); } 50% { transform: translateX(150%); } 100% { transform: translateX(-100%); } }
   @media (prefers-reduced-motion: reduce) { .deploy-bar-fill.indeterminate { animation: none; width: 100%; opacity: 0.5; } }
   .deploy-done { text-align: center; margin-top: var(--space-4); }
+  .deploy-tips {
+    margin-top: var(--space-5);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 176, 32, 0.28);
+    background: linear-gradient(180deg, rgba(255, 248, 235, 0.95) 0%, rgba(255, 253, 247, 0.95) 100%);
+  }
+  .deploy-tips--error {
+    border-color: rgba(220, 38, 38, 0.18);
+    background: linear-gradient(180deg, rgba(255, 244, 244, 0.96) 0%, rgba(255, 251, 251, 0.99) 100%);
+  }
+  .deploy-tips-header {
+    margin-bottom: var(--space-3);
+  }
+  .deploy-tips-kicker {
+    display: inline-block;
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #a16207;
+    margin-bottom: var(--space-1);
+  }
+  .deploy-tips h3 {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--color-text);
+  }
+  .deploy-tips ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: var(--space-2);
+  }
+  .deploy-tips li {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+  .deploy-error-details {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-secondary);
+  }
+  .deploy-error-details summary {
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+  }
+  .deploy-error-details pre {
+    margin: var(--space-3) 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
   @media (max-width: 480px) { .deploy-service-row { grid-template-columns: 28px 1fr; } .deploy-service-bar { display: none; } }
 </style>

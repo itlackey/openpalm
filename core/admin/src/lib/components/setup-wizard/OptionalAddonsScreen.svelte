@@ -9,10 +9,9 @@
     onAssignmentsChange: (next: WizardAssignments) => void;
     onBack: () => void;
     onNext: () => void;
-    onSkip: () => void;
   }
 
-  let { connections, assignments, onAssignmentsChange, onBack, onNext, onSkip }: Props = $props();
+  let { connections, assignments, onAssignmentsChange, onBack, onNext }: Props = $props();
 
   function rerankingConnModelList(): string[] {
     const conn = connections.find(c => c.id === assignments.reranking.connectionId);
@@ -203,7 +202,6 @@
 
   <div class="step-actions">
     <button class="btn btn-secondary" onclick={onBack}>Back</button>
-    <button class="btn-link skip-link" type="button" onclick={onSkip}>{SETUP_WIZARD_COPY.addonsSkipLink}</button>
     <button class="btn btn-primary" onclick={onNext}>Continue</button>
   </div>
 </div>
@@ -324,20 +322,6 @@
     margin-top: auto;
     padding-top: var(--space-5);
     border-top: 1px solid var(--color-border);
-  }
-  .skip-link {
-    background: none;
-    border: none;
-    color: var(--color-text-secondary);
-    font-size: var(--text-sm);
-    cursor: pointer;
-    padding: 0;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    margin-right: auto;
-  }
-  .skip-link:hover {
-    color: var(--color-text);
   }
   .btn {
     display: inline-flex;

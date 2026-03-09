@@ -266,6 +266,7 @@ export const POST: RequestHandler = async (event) => {
 
   // Set SYSTEM_LLM_* from the LLM connection for env-level consumers
   const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId)!;
+  const memoryModel = llmSmallModel || llmModel;
   updates.SYSTEM_LLM_PROVIDER = llmConnection.provider;
   updates.SYSTEM_LLM_MODEL = llmModel;
   if (llmConnection.baseUrl) {
@@ -315,7 +316,7 @@ export const POST: RequestHandler = async (event) => {
     llm: {
       provider: llmConnection.provider,
       baseUrl: llmConnection.baseUrl,
-      model: llmModel,
+      model: memoryModel,
       apiKeyRef: llmApiKeyEnvRef,
     },
     embedder: {

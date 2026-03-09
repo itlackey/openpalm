@@ -17,8 +17,9 @@
 	</div>
 
 	<div class="conn-body">
-		<span class="conn-label">Remote OpenAI-compatible <span class="conn-badge">Remote</span></span>
-		<span class="conn-desc">Use this for OpenAI, proxies, gateways, and any service that exposes an OpenAI-style API.</span>
+		<span class="conn-label">Remote OpenAI-compatible <span class="conn-badge">Hosted</span></span>
+		<span class="conn-desc">Best for OpenAI, Groq, Together, gateways, and work proxies. Usually requires an API key and starts with a provider default URL.</span>
+		<span class="conn-note">Recommended if you already use a hosted API provider.</span>
 	</div>
 
 	<div class="conn-arrow" aria-hidden="true">
@@ -42,7 +43,8 @@
 
 	<div class="conn-body">
 		<span class="conn-label">Local OpenAI-compatible <span class="conn-badge conn-badge--local">On-Device</span></span>
-		<span class="conn-desc">Use this for LM Studio or any local server that exposes an OpenAI-style API. e.g., http://localhost:1234</span>
+		<span class="conn-desc">Best for Ollama, LM Studio, and Docker Model Runner. We will try to detect what is already running on this machine first.</span>
+		<span class="conn-note conn-note--recommended">Recommended for most self-hosted OpenPalm setups.</span>
 	</div>
 
 	<div class="conn-arrow" aria-hidden="true">
@@ -155,6 +157,17 @@
 		font-size: var(--text-sm); /* 13px — up from text-xs */
 		color: var(--color-text-secondary);
 		line-height: 1.45;
+	}
+
+	.conn-note {
+		font-size: var(--text-xs);
+		color: var(--color-text-tertiary);
+		line-height: 1.4;
+	}
+
+	.conn-note--recommended {
+		color: #2f9e44;
+		font-weight: var(--font-medium);
 	}
 
 	/* ── Badge ──────────────────────────────────────────────────────────── */
