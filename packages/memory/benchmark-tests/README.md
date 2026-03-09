@@ -52,7 +52,7 @@ bun run test:benchmark:ts-only
 ## Output
 
 - ASCII comparison tables printed to stdout
-- JSON results written to `/tmp/openpalm-benchmark/*.json`
+- JSON results written to `packages/memory/benchmark-tests/.benchmark-data/*.json`
 
 ## Design
 

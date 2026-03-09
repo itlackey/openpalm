@@ -53,7 +53,7 @@ export function getTsConfig() {
         maxTokens: 2000,
         ...(BENCHMARK_MODE === 'openai'
           ? { apiKey: OPENAI_API_KEY }
-          : { ollamaBaseUrl: OLLAMA_BASE_URL }),
+          : { baseUrl: OLLAMA_BASE_URL }),
       },
     },
     embedder: {
@@ -63,7 +63,7 @@ export function getTsConfig() {
         dimensions: BENCHMARK_EMBED_DIMS,
         ...(BENCHMARK_MODE === 'openai'
           ? { apiKey: OPENAI_API_KEY }
-          : { ollamaBaseUrl: OLLAMA_BASE_URL }),
+          : { baseUrl: OLLAMA_BASE_URL }),
       },
     },
     vectorStore: {
