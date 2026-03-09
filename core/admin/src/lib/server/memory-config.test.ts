@@ -15,6 +15,7 @@ import {
   fetchProviderModels,
   checkQdrantDimensions,
   resetQdrantCollection,
+  resetVectorStore,
   provisionMemoryUser,
   LLM_PROVIDERS,
   EMBED_PROVIDERS,
@@ -588,6 +589,93 @@ describe("resetQdrantCollection", () => {
     const result = resetQdrantCollection(dataDir);
     expect(result.ok).toBe(true);
     expect(existsSync(qdrantDir)).toBe(false);
+  });
+});
+
+describe("resetVectorStore container path translation", () => {
+  test("translates /data/ prefix to dataDir", () => {
+    const dataDir = trackDir(makeTempDir());
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    // Write config with container-style db_path
+    mkdirSync(join(dataDir, "memory"), { recursive: true });
+    writeFileSync(
+      join(dataDir, "memory", "default_config.json"),
+      JSON.stringify({
+        mem0: {
+          llm: { provider: "openai", config: {} },
+          embedder: { provider: "openai", config: {} },
+          vector_store: {
+            provider: "sqlite-vec",
+            config: {
+              collection_name: "memory",
+              db_path: "/data/memory.db",
+              embedding_model_dims: 1536,
+            },
+          },
+        },
+        memory: { custom_instructions: "" },
+      })
+    );
+
+    // Create the DB file at the translated host path
+    // /data/memory.db → ${dataDir}/memory/memory.db (since /data mounts to ${dataDir}/memory)
+    writeFileSync(join(dataDir, "memory", "memory.db"), "fake-db");
+
+    const result = resetVectorStore(dataDir);
+    expect(result.ok).toBe(true);
+    // The file at the translated path should be deleted
+    expect(existsSync(join(dataDir, "memory", "memory.db"))).toBe(false);
+  });
+
+  test("resolves relative db_path under dataDir/memory/", () => {
+    const dataDir = trackDir(makeTempDir());
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    mkdirSync(join(dataDir, "memory"), { recursive: true });
+    writeFileSync(
+      join(dataDir, "memory", "default_config.json"),
+      JSON.stringify({
+        mem0: {
+          llm: { provider: "openai", config: {} },
+          embedder: { provider: "openai", config: {} },
+          vector_store: {
+            provider: "sqlite-vec",
+            config: {
+              collection_name: "memory",
+              db_path: "custom.db",
+              embedding_model_dims: 1536,
+            },
+          },
+        },
+        memory: { custom_instructions: "" },
+      })
+    );
+    writeFileSync(join(dataDir, "memory", "custom.db"), "fake-db");
+
+    const result = resetVectorStore(dataDir);
+    expect(result.ok).toBe(true);
+    expect(existsSync(join(dataDir, "memory", "custom.db"))).toBe(false);
+  });
+
+  test("uses default path when db_path not configured", () => {
+    const dataDir = trackDir(makeTempDir());
+    const result = resetVectorStore(dataDir);
+    expect(result.ok).toBe(true);
+  });
+
+  test("removes WAL and SHM files alongside db", () => {
+    const dataDir = trackDir(makeTempDir());
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    mkdirSync(join(dataDir, "memory"), { recursive: true });
+    const dbPath = join(dataDir, "memory", "memory.db");
+    writeFileSync(dbPath, "fake-db");
+    writeFileSync(`${dbPath}-wal`, "fake-wal");
+    writeFileSync(`${dbPath}-shm`, "fake-shm");
+
+    const result = resetVectorStore(dataDir);
+    expect(result.ok).toBe(true);
+    expect(existsSync(dbPath)).toBe(false);
+    expect(existsSync(`${dbPath}-wal`)).toBe(false);
+    expect(existsSync(`${dbPath}-shm`)).toBe(false);
   });
 });
 

@@ -308,10 +308,19 @@ export function resetVectorStore(
   // Read persisted config to find the actual db_path
   const persisted = readMemoryConfig(dataDir);
   const configuredPath = persisted.mem0.vector_store.config.db_path;
-  // Use configured path if absolute, otherwise default
-  const dbPath = configuredPath && configuredPath.startsWith('/')
-    ? configuredPath
-    : `${dataDir}/memory/memory.db`;
+
+  // Translate container-style paths (e.g. /data/memory.db) to the host
+  // DATA_HOME equivalent. The container's /data mount maps to
+  // ${dataDir}/memory on the host, so replace /data/ with ${dataDir}/memory/.
+  let dbPath: string;
+  if (configuredPath && configuredPath.startsWith('/data/')) {
+    dbPath = `${dataDir}/memory/${configuredPath.slice('/data/'.length)}`;
+  } else if (configuredPath && !configuredPath.startsWith('/')) {
+    // Relative path — resolve under dataDir/memory/
+    dbPath = `${dataDir}/memory/${configuredPath}`;
+  } else {
+    dbPath = `${dataDir}/memory/memory.db`;
+  }
   // Also remove legacy Qdrant data if it exists
   const qdrantPath = `${dataDir}/memory/qdrant`;
   try {

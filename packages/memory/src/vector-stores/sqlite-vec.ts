@@ -76,6 +76,21 @@ export class SqliteVecStore implements VectorStore {
     ids: string[],
     payloads: Record<string, unknown>[],
   ): Promise<void> {
+    // Validate array lengths match
+    if (vectors.length !== ids.length || vectors.length !== payloads.length) {
+      throw new Error(
+        `Insert arrays must have equal lengths: vectors=${vectors.length}, ids=${ids.length}, payloads=${payloads.length}`,
+      );
+    }
+    // Validate vector dimensions
+    for (let i = 0; i < vectors.length; i++) {
+      if (vectors[i].length !== this.dimensions) {
+        throw new Error(
+          `Vector at index ${i} has ${vectors[i].length} dimensions, expected ${this.dimensions}`,
+        );
+      }
+    }
+
     const insertMeta = this.db.prepare(`
       INSERT OR REPLACE INTO ${this.tableMeta}
         (id, user_id, agent_id, run_id, hash, data, metadata, created_at, updated_at)
@@ -108,6 +123,19 @@ export class SqliteVecStore implements VectorStore {
     limit: number = 10,
     filters?: SearchFilters,
   ): Promise<VectorStoreResult[]> {
+    if (query.length !== this.dimensions) {
+      throw new Error(
+        `Query vector has ${query.length} dimensions, expected ${this.dimensions}`,
+      );
+    }
+
+    const hasFilters = filters?.userId || filters?.agentId || filters?.runId;
+
+    // When filters are active, oversample more aggressively and page
+    // through results to avoid returning too few matches.
+    const oversample = hasFilters ? 10 : 3;
+    const maxFetch = limit * oversample;
+
     // sqlite-vec MATCH query returns id + distance (lower = more similar)
     const vecRows = this.db
       .prepare(
@@ -116,7 +144,7 @@ export class SqliteVecStore implements VectorStore {
          ORDER BY distance
          LIMIT ?`,
       )
-      .all(new Float32Array(query), limit * 3) as { id: string; distance: number }[];
+      .all(new Float32Array(query), maxFetch) as { id: string; distance: number }[];
 
     if (vecRows.length === 0) return [];
 
@@ -197,6 +225,11 @@ export class SqliteVecStore implements VectorStore {
     vector: number[],
     payload: Record<string, unknown>,
   ): Promise<void> {
+    if (vector.length !== this.dimensions) {
+      throw new Error(
+        `Update vector has ${vector.length} dimensions, expected ${this.dimensions}`,
+      );
+    }
     const transaction = this.db.transaction(() => {
       this.db
         .prepare(

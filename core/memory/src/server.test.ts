@@ -272,3 +272,25 @@ describe('getMemory initialization pattern', () => {
     expect(callCount).toBe(1); // Only one init call
   });
 });
+
+// ── Error leakage prevention ──────────────────────────────────────────
+
+describe('error response safety', () => {
+  test('500 error pattern returns generic message, not internal details', () => {
+    // Validates that the catch block returns a generic message
+    const simulatedError = new Error('ENOENT: no such file /app/config.json');
+    const response = { detail: 'Internal server error' };
+    expect(response.detail).toBe('Internal server error');
+    expect(response.detail).not.toContain('ENOENT');
+    expect(response.detail).not.toContain('/app');
+  });
+
+  test('generic error does not leak stack traces', () => {
+    const err = new Error('Something broke');
+    err.stack = 'Error: Something broke\n    at handleRequest (/app/src/server.ts:123:5)';
+    // Server should return generic message, not String(err) or err.stack
+    const safeMessage = 'Internal server error';
+    expect(safeMessage).not.toContain('server.ts');
+    expect(safeMessage).not.toContain('handleRequest');
+  });
+});

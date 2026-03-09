@@ -382,7 +382,7 @@ async function handleRequest(req: Request): Promise<Response> {
     return errorResponse(404, 'Not found');
   } catch (err) {
     console.error('Request error:', err);
-    return errorResponse(500, String(err));
+    return errorResponse(500, 'Internal server error');
   }
 }
 

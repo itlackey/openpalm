@@ -228,4 +228,64 @@ describe('SqliteVecStore', () => {
     const db = store.getDb();
     expect(db).toBeDefined();
   });
+
+  // ── Validation tests ────────────────────────────────────────────────
+
+  test('insert rejects mismatched array lengths', async () => {
+    expect(
+      store.insert([[1, 0, 0, 0], [0, 1, 0, 0]], ['id1'], [{}]),
+    ).rejects.toThrow('Insert arrays must have equal lengths');
+  });
+
+  test('insert rejects wrong vector dimensions', async () => {
+    expect(
+      store.insert([[1, 0, 0]], ['id1'], [{
+        user_id: null, agent_id: null, run_id: null,
+        hash: null, data: 'test', metadata: {},
+      }]),
+    ).rejects.toThrow('has 3 dimensions, expected 4');
+  });
+
+  test('search rejects wrong query dimensions', async () => {
+    expect(
+      store.search([1, 0]),
+    ).rejects.toThrow('has 2 dimensions, expected 4');
+  });
+
+  test('update rejects wrong vector dimensions', async () => {
+    const payload = {
+      user_id: 'user1', agent_id: null, run_id: null,
+      hash: null, data: 'test', metadata: {},
+    };
+    await store.insert([[1, 0, 0, 0]], ['id1'], [payload]);
+    expect(
+      store.update('id1', [1, 0], payload),
+    ).rejects.toThrow('has 2 dimensions, expected 4');
+  });
+
+  test('search with filters oversamples sufficiently', async () => {
+    // Insert 20 vectors: 15 for user_a, 5 for user_b
+    const vectors: number[][] = [];
+    const ids: string[] = [];
+    const payloads: Record<string, unknown>[] = [];
+    for (let i = 0; i < 20; i++) {
+      const v = [0, 0, 0, 0];
+      v[i % 4] = 1;
+      vectors.push(v);
+      ids.push(`id${i}`);
+      payloads.push({
+        user_id: i < 15 ? 'user_a' : 'user_b',
+        agent_id: null, run_id: null,
+        hash: null, data: `fact ${i}`, metadata: {},
+      });
+    }
+    await store.insert(vectors, ids, payloads);
+
+    // Search for user_b — should find results even if user_a dominates
+    const results = await store.search([1, 0, 0, 0], 5, { userId: 'user_b' });
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    for (const r of results) {
+      expect(r.payload.user_id).toBe('user_b');
+    }
+  });
 });

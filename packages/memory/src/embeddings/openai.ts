@@ -36,8 +36,8 @@ export class OpenAIEmbedder implements Embedder {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`OpenAI Embeddings API error ${res.status}: ${text}`);
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`OpenAI Embeddings API error ${res.status}: ${errBody}`);
     }
 
     const data = (await res.json()) as {
