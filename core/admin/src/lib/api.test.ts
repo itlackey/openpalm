@@ -138,6 +138,7 @@ describe('api canonical connections DTO adapter', () => {
         tts: { enabled: true, connectionId: 'p1', model: 'tts-1', voice: 'nova' },
         stt: { enabled: false },
       },
+      memoryModel: 'gpt-4.1-mini',
     });
 
     const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
@@ -149,6 +150,7 @@ describe('api canonical connections DTO adapter', () => {
         tts: { enabled: boolean; voice: string };
         stt: { enabled: boolean };
       };
+      memoryModel: string;
     };
 
     expect(body.profiles[0].kind).toBe('openai_compatible_remote');
@@ -157,6 +159,7 @@ describe('api canonical connections DTO adapter', () => {
     expect(body.assignments.tts.enabled).toBe(true);
     expect(body.assignments.tts.voice).toBe('nova');
     expect(body.assignments.stt.enabled).toBe(false);
+    expect(body.memoryModel).toBe('gpt-4.1-mini');
   });
 
   it('surfaces JSON error messages from profile create failures', async () => {

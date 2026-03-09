@@ -25,6 +25,7 @@ import {
   readSecretsEnvFile,
   patchSecretsEnvFile,
   readConnectionProfilesDocument,
+  writeConnectionProfilesDocument,
   writeConnectionsDocument,
   ALLOWED_CONNECTION_KEYS,
   maskConnectionValue,
@@ -33,6 +34,9 @@ import {
   pushConfigToMemory,
   checkQdrantDimensions,
   buildMem0Mapping,
+  buildMem0MappingFromProfiles,
+  buildOpenCodeMapping,
+  writeOpenCodeProviderConfig,
   type MemoryConfig,
   type CallerType
 } from "$lib/server/control-plane.js";
@@ -310,9 +314,13 @@ async function handleCanonicalDtoSave(
     return errorResponse(400, 'bad_request', 'profiles must include at least one profile', {}, requestId);
   }
 
-  const profileResult = parseCanonicalConnectionProfile(profiles[0]);
-  if (!profileResult.ok) {
-    return errorResponse(400, 'bad_request', profileResult.message, {}, requestId);
+  const parsedProfiles = [];
+  for (const profileInput of profiles) {
+    const profileResult = parseCanonicalConnectionProfile(profileInput);
+    if (!profileResult.ok) {
+      return errorResponse(400, 'bad_request', profileResult.message, {}, requestId);
+    }
+    parsedProfiles.push(profileResult.value);
   }
 
   const assignmentsResult = parseCapabilityAssignments(body.assignments);
@@ -320,30 +328,130 @@ async function handleCanonicalDtoSave(
     return errorResponse(400, 'bad_request', assignmentsResult.message, {}, requestId);
   }
 
-  const providerValue = (profiles[0] as Record<string, unknown>).provider;
-  const profileProvider = typeof providerValue === 'string' ? providerValue : '';
-  if (!profileProvider || !isWizardProviderInScope(profileProvider)) {
-    return errorResponse(400, 'bad_request', 'profiles[0].provider is required and must be in wizard scope', {}, requestId);
+  const assignments = assignmentsResult.value;
+  const llmProfile = parsedProfiles.find((profile) => profile.id === assignments.llm.connectionId);
+  if (!llmProfile) {
+    return errorResponse(409, 'conflict', `assignments.llm.connectionId not found: ${assignments.llm.connectionId}`, {}, requestId);
   }
 
-  const profile = profileResult.value;
-  const assignments = assignmentsResult.value;
+  const embedProfile = parsedProfiles.find((profile) => profile.id === assignments.embeddings.connectionId);
+  if (!embedProfile) {
+    return errorResponse(409, 'conflict', `assignments.embeddings.connectionId not found: ${assignments.embeddings.connectionId}`, {}, requestId);
+  }
 
-  return handleUnifiedSave(
-    {
-      provider: profileProvider,
-      apiKey: typeof body.apiKey === 'string' ? body.apiKey : '',
-      baseUrl: profile.baseUrl,
+  const memoryUserId = typeof body.memoryUserId === 'string' ? body.memoryUserId : 'default_user';
+  const customInstructions = typeof body.customInstructions === 'string' ? body.customInstructions : '';
+  const memoryModel = typeof body.memoryModel === 'string' && body.memoryModel.trim()
+    ? body.memoryModel.trim()
+    : assignments.llm.model;
+  const embeddingDims = assignments.embeddings.embeddingDims
+    ?? EMBEDDING_DIMS[`${embedProfile.provider}/${assignments.embeddings.model}`]
+    ?? 1536;
+
+  const patches: Record<string, string> = {
+    SYSTEM_LLM_PROVIDER: llmProfile.provider,
+    SYSTEM_LLM_MODEL: assignments.llm.model,
+    EMBEDDING_MODEL: assignments.embeddings.model,
+    EMBEDDING_DIMS: String(embeddingDims),
+    MEMORY_USER_ID: memoryUserId,
+  };
+
+  if (llmProfile.baseUrl.trim()) {
+    patches.SYSTEM_LLM_BASE_URL = llmProfile.baseUrl;
+    const mem0Url = mem0BaseUrlConfig(llmProfile.provider, llmProfile.baseUrl);
+    if (mem0Url?.key === 'openai_base_url') {
+      patches.OPENAI_BASE_URL = mem0Url.value;
+    }
+  }
+
+  try {
+    patchSecretsEnvFile(state.configDir, patches);
+    writeConnectionProfilesDocument(state.configDir, {
+      version: 1,
+      profiles: parsedProfiles,
+      assignments: {
+        ...assignments,
+        embeddings: {
+          ...assignments.embeddings,
+          embeddingDims,
+        },
+      },
+    });
+  } catch (err) {
+    appendAudit(
+      state,
+      actor,
+      'connections.dto.save',
+      { error: String(err) },
+      false,
+      requestId,
+      callerType,
+    );
+    return errorResponse(500, 'internal_error', 'Failed to persist connection settings', {}, requestId);
+  }
+
+  const omConfig = buildMem0MappingFromProfiles(
+    llmProfile,
+    embedProfile,
+    memoryModel,
+    assignments.embeddings.model,
+    embeddingDims,
+    customInstructions,
+  );
+
+  const dimResult = checkQdrantDimensions(state.dataDir, omConfig);
+  const dimensionMismatch = !dimResult.match;
+  const dimensionWarning = dimensionMismatch
+    ? `Embedding dimensions changed: current ${dimResult.currentDims}, config expects ${dimResult.expectedDims}. Reset the memory collection to apply.`
+    : undefined;
+
+  writeMemoryConfig(state.dataDir, omConfig);
+
+  try {
+    const mapping = buildOpenCodeMapping({
+      provider: llmProfile.provider,
+      baseUrl: llmProfile.baseUrl,
       systemModel: assignments.llm.model,
-      embeddingModel: assignments.embeddings.model,
-      embeddingDims: assignments.embeddings.embeddingDims ?? 0,
-      memoryUserId: typeof body.memoryUserId === 'string' ? body.memoryUserId : 'default_user',
-      customInstructions: typeof body.customInstructions === 'string' ? body.customInstructions : '',
-      capabilities: body.capabilities,
-    },
+      smallModel: assignments.llm.smallModel,
+    });
+    writeOpenCodeProviderConfig(state.configDir, mapping);
+  } catch (err) {
+    logger.warn('failed to write opencode config after DTO save', { error: String(err), requestId });
+  }
+
+  let pushed = false;
+  let pushError: string | undefined;
+  try {
+    const resolved = resolveConfigForPush(omConfig, state.configDir);
+    const pushResult = await pushConfigToMemory(resolved);
+    pushed = pushResult.ok;
+    if (!pushResult.ok) pushError = pushResult.error;
+  } catch (err) {
+    pushError = String(err);
+  }
+
+  appendAudit(
     state,
     actor,
-    callerType,
+    'connections.dto.save',
+    { pushed, dimensionMismatch },
+    true,
     requestId,
+    callerType,
   );
+
+  logger.info('canonical DTO save', {
+    requestId,
+    profileCount: parsedProfiles.length,
+    pushed,
+    dimensionMismatch,
+  });
+
+  return jsonResponse(200, {
+    ok: true,
+    pushed,
+    pushError,
+    dimensionWarning,
+    dimensionMismatch,
+  }, requestId);
 }

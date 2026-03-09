@@ -169,6 +169,7 @@ export type ConnectionsResponseDto = {
 export type SaveConnectionsDtoPayload = {
   profiles: CanonicalConnectionProfileDto[];
   assignments: CanonicalAssignmentsDto;
+  memoryModel?: string;
   memoryUserId?: string;
   customInstructions?: string;
   apiKey?: string;
