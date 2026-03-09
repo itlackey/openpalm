@@ -119,7 +119,9 @@ export {
   resolveApiKey,
   resolveConfigForPush,
   fetchProviderModels,
+  checkVectorDimensions,
   checkQdrantDimensions,
+  resetVectorStore,
   resetQdrantCollection,
   provisionMemoryUser,
   LLM_PROVIDERS,
@@ -128,6 +130,7 @@ export {
   PROVIDER_DEFAULT_URLS,
   type MemoryConfig,
   type ProviderModelsResult,
+  type VectorDimensionResult,
   type QdrantDimensionResult
 } from "./memory-config.js";
 

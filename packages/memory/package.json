@@ -1,0 +1,22 @@
+{
+  "name": "@openpalm/memory",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "CC-BY-4.0",
+  "description": "OpenPalm memory library — fact extraction, vector search, and history tracking",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm",
+    "directory": "packages/memory"
+  },
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "sqlite-vec": "^0.1.7-alpha.2"
+  },
+  "devDependencies": {
+    "bun-types": "^1.1.0"
+  }
+}

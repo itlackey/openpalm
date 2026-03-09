@@ -28,7 +28,7 @@ services:
     networks: [assistant_net, channel_lan, channel_public]
 
   # ── Memory ─────────────────────────────────────────────────────────
-  # Lightweight FastAPI wrapping mem0 SDK with embedded Qdrant (file-based).
+  # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
   memory:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -48,7 +48,7 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json:ro
     networks: [assistant_net]
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/docs')\""]
+      test: ["CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
