@@ -71,6 +71,13 @@ type ResolvedMemoryIdentity = {
   runId?: string;
 };
 
+type ResolvedRetrievalIdentity = {
+  userId: string;
+  agentId?: string;
+  appId?: string;
+  runId?: string;
+};
+
 export async function pluginMemoryFetch(
   path: string,
   options?: RequestInit & { timeoutMs?: number },
@@ -94,11 +101,11 @@ export async function searchMemories(
   opts?: SearchOptions,
 ): Promise<MemoryItem[]> {
   const fetchSize = opts?.category ? (opts.size ?? 10) * 2 : (opts?.size ?? 10);
-  const identity = resolveMemoryIdentity(opts);
+  const identity = resolveRetrievalIdentity(opts);
   const commonSearchBody = {
     user_id: identity.userId,
-    agent_id: identity.agentId,
-    app_id: identity.appId,
+    ...(identity.agentId ? { agent_id: identity.agentId } : {}),
+    ...(identity.appId ? { app_id: identity.appId } : {}),
     ...(identity.runId ? { run_id: identity.runId } : {}),
     search_query: query,
     page: 1,
@@ -129,14 +136,14 @@ export async function searchMemories(
 }
 
 export async function listMemories(opts?: ListOptions): Promise<MemoryItem[]> {
-  const identity = resolveMemoryIdentity(opts);
+  const identity = resolveRetrievalIdentity(opts);
   const data = await pluginMemoryFetch('/api/v1/memories/filter', {
     method: 'POST',
     timeoutMs: opts?.timeoutMs,
     body: JSON.stringify({
       user_id: identity.userId,
-      agent_id: identity.agentId,
-      app_id: identity.appId,
+      ...(identity.agentId ? { agent_id: identity.agentId } : {}),
+      ...(identity.appId ? { app_id: identity.appId } : {}),
       ...(identity.runId ? { run_id: identity.runId } : {}),
       page: opts?.page ?? 1,
       size: opts?.size ?? 50,
@@ -350,6 +357,15 @@ export function resolveMemoryIdentity(identityInput?: MemoryIdentity): ResolvedM
     agentId: identityInput?.agentId ?? DEFAULT_AGENT_ID,
     appId: identityInput?.appId ?? DEFAULT_APP_ID,
     runId: identityInput?.runId,
+  };
+}
+
+function resolveRetrievalIdentity(identityInput?: MemoryIdentity): ResolvedRetrievalIdentity {
+  return {
+    userId: identityInput?.userId ?? resolveScopeUserId(identityInput?.scope),
+    agentId: identityInput?.agentId?.trim() || undefined,
+    appId: identityInput?.appId?.trim() || undefined,
+    runId: identityInput?.runId?.trim() || undefined,
   };
 }
 

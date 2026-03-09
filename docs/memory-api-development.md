@@ -241,6 +241,8 @@ curl -s -X POST "$BASE/api/v1/memories/MEMORY_ID/feedback" \
 |----------|---------|-------------|
 | `MEMORY_CONFIG_PATH` | `/app/default_config.json` | Path to the mem0 config JSON |
 | `MEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
+| `HOME` | `/data` | Home directory used by mem0 for local defaults |
+| `MEM0_DIR` | `/data/.mem0` | mem0 runtime directory for local state/config |
 | `OPENAI_API_KEY` | — | API key (resolved from `env:OPENAI_API_KEY` in config) |
 | `OPENAI_BASE_URL` | — | Custom base URL for OpenAI-compatible providers |
 

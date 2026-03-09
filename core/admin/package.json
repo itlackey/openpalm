@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/admin",
-  "version": "0.8.0-rc3",
+  "version": "0.8.0",
   "private": true,
   "license": "CC-BY-4.0",
   "type": "module",
@@ -9,7 +9,8 @@
     "build": "svelte-kit sync && vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test:e2e": "playwright test",
+    "test:e2e": "PW_ENFORCE_NO_SKIP=1 playwright test --grep-invert @mocked",
+    "test:e2e:mocked": "playwright test --grep @mocked",
     "test": "npm run test:unit -- --run && npm run test:e2e",
     "test:unit": "vitest",
     "lint": "prettier --check . && eslint .",

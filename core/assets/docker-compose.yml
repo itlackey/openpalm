@@ -37,6 +37,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       MEMORY_DATA_DIR: /data
+      HOME: /data
+      MEM0_DIR: /data/.mem0
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:
@@ -64,7 +66,7 @@ services:
       OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       HOME: /home/opencode
-      AGENTIKIT_STASH_DIR: /stash
+      AKM_STASH_DIR: /stash
       OPENPALM_ADMIN_API_URL: http://admin:8100
       OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       MEMORY_API_URL: http://memory:8765

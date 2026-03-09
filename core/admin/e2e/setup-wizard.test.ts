@@ -155,7 +155,7 @@ async function navigateToReview(page: Page) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('Setup Wizard', () => {
+test.describe('@mocked Setup Wizard', () => {
 
   // ── Screen 1: Welcome ───────────────────────────────────────────────────────
 
@@ -405,16 +405,16 @@ test.describe('Setup Wizard', () => {
       await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 5000 });
     });
 
-    test('URL not ending in /v1 shows warning (non-blocking)', async ({ page }) => {
+    test('URL ending in /v1 shows warning (non-blocking)', async ({ page }) => {
       await page.goto('/setup');
       await goToScreen4Cloud(page);
-      // Clear the preset base URL and type one without /v1
-      await page.locator('#conn-base-url').fill('https://myproxy.example.com');
-      await expect(page.getByText(/doesn't end with \/v1/i)).toBeVisible();
-      // Warning should not block Save (name still needed)
+      // Type a URL ending with /v1 to trigger the duplicate-suffix warning.
+      await page.locator('#conn-base-url').fill('https://myproxy.example.com/v1');
+      await expect(page.getByText(/including \/v1 in this url may cause errors/i)).toBeVisible();
+      // Warning should not block Save (name/key validation still applies)
       await page.locator('#conn-name').fill('My Proxy');
       await page.locator('#conn-api-key').fill('sk-test');
-      // Should be able to attempt save (may have other validation, but no /v1 block)
+      // Should be able to attempt save (warning is informational, not blocking)
       // Just verify the warning text is there — not an error
       await expect(page.locator('.field-warn')).toBeVisible();
     });

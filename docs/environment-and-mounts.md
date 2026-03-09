@@ -239,6 +239,8 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | Variable | Default | Purpose |
 |---|---|---|
 | `MEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
+| `HOME` | `/data` | Home directory used by mem0 for user-scoped defaults |
+| `MEM0_DIR` | `/data/.mem0` | mem0 runtime directory for local state/config |
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
 | `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
 
