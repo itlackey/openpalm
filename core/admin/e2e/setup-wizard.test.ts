@@ -155,7 +155,7 @@ async function navigateToReview(page: Page) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('Setup Wizard', () => {
+test.describe('@mocked Setup Wizard', () => {
 
   // ── Screen 1: Welcome ───────────────────────────────────────────────────────
 

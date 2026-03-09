@@ -10,6 +10,41 @@ Quick-start cheatsheet for getting a dev environment running and submitting chan
 | [Bun](https://bun.sh/) | 1.1+ | Workspace manager, guardian/channel runtime, test runner |
 | [Node](https://nodejs.org/) | 22+ | Admin (SvelteKit) build and dev server |
 
+## Quick Start
+
+```bash
+./scripts/dev-setup.sh --seed-env
+
+cd core/admin
+bun install
+bun run dev
+```
+
+Admin UI + API runs on `http://localhost:8100`.
+
+From the repo root, convenience scripts are available:
+
+```bash
+bun run admin:dev        # core/admin dev server
+bun run admin:check      # svelte-check + TypeScript
+bun run guardian:dev     # core/guardian server
+bun run guardian:test    # guardian tests
+bun run sdk:test         # packages/channels-sdk tests
+bun run cli:test         # core/cli tests
+bun run channel:chat:dev    # chat channel dev server
+bun run channel:api:dev     # api channel dev server
+bun run channel:discord:dev # discord channel dev server
+bun run dev:setup        # seed .dev/ dirs and configs
+bun run dev:stack        # start dev stack (pull images)
+bun run dev:build        # start dev stack (build from source)
+bun run test             # all non-admin tests (sdk, guardian, channels, cli)
+bun run check            # admin:check + sdk:test
+```
+
+`dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
+
+`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+
 ## 1. Clone and bootstrap
 
 ```bash
@@ -20,6 +55,7 @@ bun run dev:setup      # Creates .dev/ dirs, seeds secrets.env and stack.env
 ```
 
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
+
 - Creates the `.dev/config`, `.dev/data`, and `.dev/state` directories
 - Seeds `.dev/config/secrets.env` from [`core/assets/secrets.env`](../core/assets/secrets.env)
 - Generates `.dev/state/artifacts/stack.env` with auto-detected host values
@@ -65,7 +101,8 @@ bun run guardian:test        # Guardian security tests
 bun run sdk:test             # Channels SDK unit tests
 bun run cli:test             # CLI tests
 bun run admin:test:unit      # Admin Vitest (unit + browser components)
-bun run admin:test:e2e       # Admin Playwright (requires a running build)
+bun run admin:test:e2e       # Admin Playwright integration tests (no-skip enforced locally)
+bun run admin:test:e2e:mocked # Admin Playwright mocked browser contract tests
 ```
 
 > Admin uses Vitest and Playwright, not Bun's test runner. Use `bun run test` (not bare `bun test`) from the repo root — the script filters to non-admin directories.
@@ -91,7 +128,8 @@ All scripts are defined in the root [`package.json`](../package.json):
 | `bun run admin:check` | svelte-check + TypeScript |
 | `bun run admin:test` | Vitest + Playwright (requires build) |
 | `bun run admin:test:unit` | Vitest only (CI-friendly) |
-| `bun run admin:test:e2e` | Playwright only |
+| `bun run admin:test:e2e` | Playwright integration only (no browser route mocks) |
+| `bun run admin:test:e2e:mocked` | Playwright mocked browser contracts |
 | `bun run guardian:dev` | Guardian server |
 | `bun run guardian:test` | Guardian tests |
 | `bun run sdk:test` | Channels SDK tests |
@@ -124,13 +162,19 @@ See [directory-structure.md](directory-structure.md) for the full tree.
 
 1. **Read the rules.** [core-principles.md](core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
 2. **Run the delivery checklist:**
+
    ```bash
    bun run check                   # Type check + SDK tests
    bun run guardian:test            # Guardian security tests
    ```
+
 3. **Docker builds** must follow the patterns in [docker-dependency-resolution.md](docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
+
+## npm Package Releases
+
+OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`core/admin`, `core/guardian`, `core/cli`) share a coordinated version managed by `scripts/release.sh`.
 
 ## Key docs for contributors
 

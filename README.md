@@ -131,45 +131,6 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 | Scripts | [scripts/README.md](scripts/README.md) |
 | Docs index | [docs/README.md](docs/README.md) |
 
-## Development
-
-```bash
-./scripts/dev-setup.sh --seed-env
-
-cd core/admin
-bun install
-bun run dev
-```
-
-Admin UI + API runs on `http://localhost:8100`.
-
-From the repo root, convenience scripts are available:
-
-```bash
-bun run admin:dev        # core/admin dev server
-bun run admin:check      # svelte-check + TypeScript
-bun run guardian:dev     # core/guardian server
-bun run guardian:test    # guardian tests
-bun run sdk:test         # packages/channels-sdk tests
-bun run cli:test         # core/cli tests
-bun run channel:chat:dev    # chat channel dev server
-bun run channel:api:dev     # api channel dev server
-bun run channel:discord:dev # discord channel dev server
-bun run dev:setup        # seed .dev/ dirs and configs
-bun run dev:stack        # start dev stack (pull images)
-bun run dev:build        # start dev stack (build from source)
-bun run test             # all non-admin tests (sdk, guardian, channels, cli)
-bun run check            # admin:check + sdk:test
-```
-
-`dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
-
-`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
-
-## npm Package Releases
-
-OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`core/admin`, `core/guardian`, `core/cli`) share a coordinated version managed by `scripts/release.sh`. Repository maintainers must set `NPM_TOKEN` in GitHub Actions secrets for publishing.
-
 ## License
 
 See [LICENSE](LICENSE).

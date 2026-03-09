@@ -12,6 +12,17 @@ Before running any stack tests (Tiers 4+), ensure:
 2. **Ollama running on host** with `nomic-embed-text` model pulled (768-dim embeddings)
 3. **Stack built and running:** `bun run dev:build`
 
+### Local no-skip rule (authoritative)
+
+When running E2E locally, use `bun run admin:test:e2e`.
+That script is intentionally configured to run the full integration suite with:
+- `RUN_DOCKER_STACK_TESTS=1`
+- `RUN_LLM_TESTS=1`
+- `ADMIN_TOKEN=dev-admin-token`
+- `PW_ENFORCE_NO_SKIP=1` (fails the run if any integration test is skipped)
+
+If you run Playwright directly (or from `core/admin`), you may get skipped groups due to missing env flags.
+
 Quick preflight checks (recommended):
 
 ```bash
@@ -67,15 +78,15 @@ bun run cli:test          # core/cli (1 file)
 
 ---
 
-## Tier 3: E2E Tests — No Stack
+## Tier 3: Browser Contract Tests (Mocked)
 
 **Time:** ~2min | **Prerequisites:** Admin build (`bun run admin:build`)
 
 ```bash
-bun run admin:test:e2e
+bun run admin:test:e2e:mocked
 ```
 
-Runs Playwright against a built admin app with mocked API endpoints. Tests the setup wizard flow, memory config UI, and connection management.
+Runs Playwright against a built admin app with mocked API endpoints. Tests setup wizard and UI contracts without depending on live backend services.
 
 Use `bun run admin:test` to run both unit + e2e together (builds automatically).
 
@@ -89,8 +100,8 @@ Use `bun run admin:test` to run both unit + e2e together (builds automatically).
 # 1. Start the dev stack
 bun run dev:build          # to rebuild images
 
-# 2. Run stack-dependent Playwright tests
-RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+# 2. Run integration Playwright tests (no browser route mocks)
+bun run admin:test:e2e
 ```
 
 **What it validates:**
@@ -99,11 +110,11 @@ RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
 - OpenCode API session management
 - Memory Ollama integration (config read/write via admin API)
 
-**Tests gated by:** `RUN_DOCKER_STACK_TESTS=1` env var (skipped otherwise).
+**Tests gated by:** `RUN_DOCKER_STACK_TESTS=1` env var (stack-only groups are skipped otherwise).
 
 **Important:** Always use `bun run admin:test:e2e` (not `npx playwright test` directly) to avoid Playwright version conflicts between root and admin `node_modules`.
 
-**Files:** `e2e/opencode-ui.test.ts`, `e2e/memory-config.test.ts`, `e2e/assistant-pipeline.test.ts` (groups 1-4)
+**Files:** `e2e/opencode-ui.test.ts`, `e2e/memory-config.test.ts`, `e2e/assistant-pipeline.test.ts`
 
 ---
 
@@ -112,10 +123,7 @@ RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
 **Time:** ~1min | **Prerequisites:** Running stack + LLM provider (Ollama or Model Runner)
 
 ```bash
-RUN_DOCKER_STACK_TESTS=1 \
-  RUN_LLM_TESTS=1 \
-  ADMIN_TOKEN=dev-admin-token \
-  bun run admin:test:e2e
+bun run admin:test:e2e
 ```
 
 **What it validates:**
@@ -129,7 +137,7 @@ RUN_DOCKER_STACK_TESTS=1 \
 
 **Files:** `e2e/assistant-pipeline.test.ts` (groups 5-6)
 
-**No-skip expectation:** with `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1`, Playwright should run all groups (current baseline: `100 passed`, `0 skipped`).
+**No-skip expectation:** `bun run admin:test:e2e` sets `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1` by default and should run only integration tests with no browser-route mocks.
 
 ---
 
@@ -142,7 +150,7 @@ In this environment, these can intermittently fail with Chromium `TimeoutError` 
 If this happens:
 
 1. Re-run `bun run admin:test:unit` once to check for flake.
-2. Run `RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e` to confirm full end-to-end behavior.
+2. Run `bun run admin:test:e2e` to confirm full end-to-end behavior.
 3. Treat repeated `page.svelte.spec.ts` timeouts as a browser-unit-test stability issue, separate from stack/LLM integration health.
 
 ---
@@ -178,10 +186,11 @@ This is the "nuclear option" — tests everything from a completely clean slate.
 | Speed | Command | Coverage |
 |-------|---------|----------|
 | Fastest (~30s) | `bun run check && bun run test && bun run admin:test:unit` | Types + all unit tests |
-| Medium (~5min) | Above + `bun run admin:test` | + E2E wizard flow |
+| Medium (~5min) | Above + `bun run admin:test` | + integration Playwright tests |
 | Thorough (~1min extra) | Above + stack tests (Tier 4) | + live service integration |
 | Full (~1min extra) | Above + LLM tests (Tier 5) | + real LLM inference |
-| No-skip E2E (~1min) | `RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e` | Full Playwright suite with no skips |
+| Mocked UI contracts (~2min) | `bun run admin:test:e2e:mocked` | Browser route-mocked wizard/UI contracts |
+| No-skip integration E2E (~1min) | `bun run admin:test:e2e` | Full integration Playwright suite with no mocked browser routes |
 | Nuclear (~60min) | `./scripts/dev-e2e-test.sh` | Everything from clean slate |
 
 ## Recommended Local Workflow
@@ -191,17 +200,20 @@ This is the "nuclear option" — tests everything from a completely clean slate.
 bun run check && bun run test && bun run admin:test:unit
 
 # 2. Full offline tests (run before pushing)
-bun run admin:test    # includes build + unit + e2e
+bun run admin:test    # includes build + unit + integration e2e
+
+# Optional: mocked browser contract coverage
+bun run admin:test:e2e:mocked
 
 # 3. Integration validation (run for stack-touching changes)
 bun run dev:build
-RUN_DOCKER_STACK_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+bun run admin:test:e2e
 
 # 4. Full pipeline validation (run for LLM/memory changes)
-RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+bun run admin:test:e2e
 
 # Optional: one-command consolidated Tier 1-5 pass (halts on first failure)
-bun run check && bun run test && bun run admin:test:unit && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token bun run admin:test:e2e
+bun run check && bun run test && bun run admin:test:unit && bun run admin:test:e2e
 
 # 5. Clean-slate validation (run before releases)
 ./scripts/dev-e2e-test.sh

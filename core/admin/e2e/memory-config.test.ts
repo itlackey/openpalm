@@ -140,7 +140,7 @@ async function openAddConnectionForm(page: import('@playwright/test').Page) {
 	await expect(page.locator('h3:has-text("Add connection")')).toBeVisible({ timeout: 5000 });
 }
 
-test.describe('Connections Tab UI', () => {
+test.describe('@mocked Connections Tab UI', () => {
 	test('connections tab shows Connections list and Memory Settings sections', async ({ page }) => {
 		await setupConsoleMocks(page);
 		await navigateToConnections(page);
@@ -448,7 +448,7 @@ test.describe('Memory Models API', () => {
 	});
 });
 
-test.describe('Connection Test & Model Selection UI', () => {
+test.describe('@mocked Connection Test & Model Selection UI', () => {
 	test('Add connection form shows provider and base URL fields', async ({ page }) => {
 		// Previously "Test Connection button fetches models from provider" — the test was checking
 		// that #conn-provider had value 'openai'. In the refactored UI the provider field lives
@@ -642,5 +642,29 @@ test.describe('Memory Ollama Integration', () => {
 		if (healthRes) {
 			expect(healthRes.ok()).toBeTruthy();
 		}
+	});
+
+	test('connection test endpoint succeeds against host Ollama without browser route mocks', async ({ request }) => {
+		const adminToken = process.env.ADMIN_TOKEN ?? '';
+		test.skip(!adminToken, 'Requires ADMIN_TOKEN for authenticated admin API calls');
+
+		const response = await request.post('http://localhost:8100/admin/connections/test', {
+			data: {
+				baseUrl: 'http://host.docker.internal:11434',
+				kind: 'local',
+			},
+			headers: {
+				'content-type': 'application/json',
+				'x-admin-token': adminToken,
+				'x-requested-by': 'test',
+				'x-request-id': crypto.randomUUID(),
+			},
+		});
+
+		expect(response.ok()).toBeTruthy();
+		const data = await response.json();
+		expect(data.ok).toBe(true);
+		expect(Array.isArray(data.models)).toBe(true);
+		expect(data.models.length).toBeGreaterThan(0);
 	});
 });
