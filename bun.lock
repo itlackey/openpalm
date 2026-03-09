@@ -10,7 +10,7 @@
     },
     "core/admin": {
       "name": "@openpalm/admin",
-      "version": "0.8.0-rc3",
+      "version": "0.8.0",
       "dependencies": {
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
@@ -44,14 +44,14 @@
     },
     "core/cli": {
       "name": "@openpalm/cli",
-      "version": "0.8.0-rc3",
+      "version": "0.8.0",
       "bin": {
         "openpalm": "./src/main.ts",
       },
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.8.0-rc3",
+      "version": "0.8.0",
       "dependencies": {
         "@openpalm/channels-sdk": "^0.8.0",
         "dotenv": "^16.4.7",
@@ -67,7 +67,7 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.11",
+      "version": "0.7.12",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },

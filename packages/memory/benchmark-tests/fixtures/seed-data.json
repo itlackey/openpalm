@@ -1,0 +1,93 @@
+{
+  "conversations": [
+    {
+      "id": "personal-prefs",
+      "text": "I love hiking in the mountains. My favorite season is autumn and I prefer trail running.",
+      "minFacts": 2,
+      "maxFacts": 4
+    },
+    {
+      "id": "work-info",
+      "text": "I work as a senior engineer at Google on the Cloud team. Been there 3 years.",
+      "minFacts": 2,
+      "maxFacts": 4
+    },
+    {
+      "id": "health",
+      "text": "I'm allergic to peanuts and lactose intolerant. I take vitamin D supplements daily.",
+      "minFacts": 2,
+      "maxFacts": 4
+    },
+    {
+      "id": "contradiction",
+      "text": "Actually I moved from New York to London last month. I no longer live in the US.",
+      "minFacts": 1,
+      "maxFacts": 3
+    },
+    {
+      "id": "compound",
+      "text": "I speak English, Spanish, and some Japanese. I learned Spanish in college and picked up Japanese from anime.",
+      "minFacts": 2,
+      "maxFacts": 5
+    }
+  ],
+  "searchQueries": [
+    { "id": "hobbies", "query": "What are the user's hobbies?" },
+    { "id": "work", "query": "Where does the user work?" },
+    { "id": "health", "query": "Any health conditions?" },
+    { "id": "languages", "query": "What languages does the user speak?" },
+    { "id": "location", "query": "Where does the user live?" }
+  ],
+  "seedMemories": [
+    "User likes TypeScript and uses it for all projects",
+    "User lives in San Francisco, California",
+    "User has a golden retriever named Max",
+    "User prefers dark mode in all applications",
+    "User's favorite food is sushi",
+    "User enjoys playing chess on weekends",
+    "User has a PhD in computer science",
+    "User drives a Tesla Model 3",
+    "User listens to jazz music while coding",
+    "User is vegetarian and avoids meat products",
+    "User runs 5 miles every morning",
+    "User works remotely from a home office",
+    "User prefers Linux over macOS and Windows",
+    "User has two cats named Luna and Milo",
+    "User is learning Rust as a hobby language",
+    "User graduated from MIT in 2018",
+    "User uses Vim keybindings in every editor",
+    "User drinks three cups of coffee per day",
+    "User is a fan of science fiction novels",
+    "User prefers tab indentation over spaces",
+    "User has traveled to 23 countries",
+    "User is married with one daughter",
+    "User practices meditation every evening",
+    "User has a standing desk setup",
+    "User is allergic to shellfish",
+    "User volunteers at a local food bank on Saturdays",
+    "User plays guitar in a band",
+    "User prefers PostgreSQL over MySQL",
+    "User has contributed to open source projects on GitHub",
+    "User speaks English, French, and Mandarin",
+    "User subscribes to The Economist and Wired",
+    "User's birthday is March 15th",
+    "User prefers agile methodology for project management",
+    "User has a home gym with free weights",
+    "User enjoys cooking Italian food",
+    "User is left-handed",
+    "User uses a mechanical keyboard with Cherry MX switches",
+    "User's favorite programming language is TypeScript",
+    "User has a pilot's license for small aircraft",
+    "User prefers tea over coffee in the afternoon",
+    "User has a master's degree in machine learning",
+    "User enjoys hiking in national parks",
+    "User follows a strict morning routine starting at 5 AM",
+    "User reads approximately 30 books per year",
+    "User is a certified scuba diver",
+    "User prefers minimalist interior design",
+    "User has been to every continent except Antarctica",
+    "User is training for a marathon next year",
+    "User enjoys board games especially Catan and Ticket to Ride",
+    "User has a sourdough bread baking hobby"
+  ]
+}

@@ -1,0 +1,5 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+mem0ai>=0.1.92
+ollama>=0.4
+python-dotenv>=1.0

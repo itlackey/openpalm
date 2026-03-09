@@ -1,0 +1,20 @@
+services:
+  memory-python-ref:
+    build:
+      context: ./python-reference
+    ports:
+      - "127.0.0.1:8766:8765"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      MEMORY_DATA_DIR: /data
+      MEMORY_CONFIG_PATH: /config/benchmark.json
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ./.benchmark-data/python-data:/data
+      - ./.benchmark-data/python-config.json:/config/benchmark.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/health')\""]
+      interval: 5s
+      timeout: 3s
+      retries: 15

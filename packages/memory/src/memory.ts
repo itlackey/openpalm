@@ -369,12 +369,15 @@ function vectorResultToMemoryItem(r: { id: string; payload: Record<string, unkno
 }
 
 function resolveId(
-  idOrIndex: string | undefined,
+  idOrIndex: string | number | undefined,
   indexMap: Map<string, string>,
 ): string | undefined {
-  if (!idOrIndex) return undefined;
-  // If the LLM returned a numeric index, resolve it
-  if (indexMap.has(idOrIndex)) return indexMap.get(idOrIndex);
+  if (idOrIndex === undefined || idOrIndex === null) return undefined;
+  // Coerce to string — LLM may return numeric JSON indices (0, 1, ...)
+  // which JSON.parse produces as numbers, not strings.
+  const key = String(idOrIndex);
+  // If the LLM returned a numeric index, resolve it to the real UUID
+  if (indexMap.has(key)) return indexMap.get(key);
   // Otherwise treat it as a direct ID
-  return idOrIndex;
+  return key;
 }
