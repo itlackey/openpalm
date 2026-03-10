@@ -228,8 +228,8 @@ test.describe('Memory Direct API', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-	test('docs endpoint responds', async ({ request }) => {
-		const res = await request.get(`${MEMORY_URL}/docs`, { timeout: 10_000 });
+	test('health endpoint responds', async ({ request }) => {
+		const res = await request.get(`${MEMORY_URL}/health`, { timeout: 10_000 });
 		expect(res.ok()).toBeTruthy();
 	});
 

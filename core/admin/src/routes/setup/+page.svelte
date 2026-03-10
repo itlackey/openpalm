@@ -1496,7 +1496,7 @@
             {/if}
           </div>
           {#if deployPhase === 'error'}
-            <section class="deploy-failure-card" aria-label="Deployment failure summary">
+            <section class="deploy-failure-card" role="alert" aria-label="Deployment failure summary">
               <div class="deploy-failure-header">
                 <span class="deploy-failure-kicker">Setup needs attention</span>
                 <h3>{deployFailureTitle}</h3>

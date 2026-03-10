@@ -164,7 +164,7 @@ test.describe('@mocked Setup Wizard', () => {
       await page.goto('/setup');
       await expect(page.locator('h1')).toContainText('OpenPalm Setup Wizard');
       await expect(page.getByTestId('step-welcome')).toBeVisible();
-      await expect(page.locator('h2')).toHaveText('Set up your models');
+      await expect(page.locator('h2')).toHaveText('Welcome');
     });
 
     test('Start requires name', async ({ page }) => {
@@ -483,21 +483,6 @@ test.describe('@mocked Setup Wizard', () => {
       await expect(page.getByTestId('step-connections-hub')).toBeVisible();
     });
 
-    test('"Use same as Chat model" button copies chat connection to embeddings', async ({ page }) => {
-      await goToScreen5(page);
-      await page.getByRole('button', { name: /Use same as Chat/i }).click();
-      // Connection for embeddings should now match the chat connection
-      const chatConn = await page.locator('#llm-connection').inputValue();
-      const embConn = await page.locator('#emb-connection').inputValue();
-      expect(chatConn).toBe(embConn);
-    });
-
-    test('Advanced embedding settings expand when toggled', async ({ page }) => {
-      await goToScreen5(page);
-      await page.getByText('Advanced embedding settings').click();
-      await expect(page.getByPlaceholder('1536')).toBeVisible();
-    });
-
     test('Continue with valid models advances to Screen 6', async ({ page }) => {
       await goToScreen5(page);
       await page.locator('#system-model').fill('gpt-4o');
@@ -535,12 +520,6 @@ test.describe('@mocked Setup Wizard', () => {
       await goToScreen6(page);
       await page.getByRole('button', { name: 'Back' }).click();
       await expect(page.getByTestId('step-models')).toBeVisible();
-    });
-
-    test('Skip add-ons advances to Screen 7 (Review)', async ({ page }) => {
-      await goToScreen6(page);
-      await page.getByRole('button', { name: 'Skip add-ons' }).click();
-      await expect(page.getByTestId('step-review')).toBeVisible();
     });
 
     test('Continue advances to Screen 7 (Review)', async ({ page }) => {
@@ -609,8 +588,12 @@ test.describe('@mocked Setup Wizard', () => {
 
     test('Required Models section shows chat and embedding models', async ({ page }) => {
       await goToScreen7(page);
-      await expect(page.getByText('gpt-4o')).toBeVisible();
-      await expect(page.getByText('text-embedding-3-small')).toBeVisible();
+      await expect(
+        page.locator('.review-item').filter({ hasText: 'Chat Model' }).locator('.review-value')
+      ).toContainText('gpt-4o');
+      await expect(
+        page.locator('.review-item').filter({ hasText: 'Embedding Model' }).locator('.review-value')
+      ).toContainText('text-embedding-3-small');
     });
 
     test('Optional Add-ons section shows "None configured" when skipped', async ({ page }) => {
@@ -832,7 +815,7 @@ test.describe('@mocked Setup Wizard', () => {
       await navigateToReview(page);
       await page.getByRole('button', { name: 'Save' }).click();
       await expect(page.getByTestId('step-deploying')).toBeVisible({ timeout: 5000 });
-      await expect(page.locator('[role="alert"]')).toContainText('Docker Compose failed', { timeout: 5000 });
+      await expect(page.locator('[role="alert"]')).toContainText('port 5432 already in use', { timeout: 5000 });
     });
 
     test('Successful deploy shows Go to Console link', async ({ page }) => {

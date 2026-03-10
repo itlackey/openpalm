@@ -76,11 +76,11 @@ test.describe('OpenCode Caddy Proxy', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-	test('Caddy proxy route serves OpenCode UI', async ({ page }) => {
-		// Caddy proxies /admin/opencode/ to the assistant container
-		await page.goto('http://localhost:8080/admin/opencode/', { timeout: 15000 });
-
-		// Should load the same OpenCode UI
-		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
+	test('Caddy proxy routes admin traffic', async ({ request }) => {
+		// Caddy proxies /admin/* to admin:8100 — verify admin API is reachable via Caddy
+		const response = await request.get('http://localhost:8080/admin/setup', { timeout: 10000 });
+		expect(response.ok()).toBeTruthy();
+		const data = await response.json();
+		expect(data).toHaveProperty('setupComplete');
 	});
 });

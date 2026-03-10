@@ -163,8 +163,8 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify the Add connection button is present in the profiles panel
 		await expect(page.getByRole('button', { name: 'Add connection' })).toBeVisible();
 
-		// Verify the existing mocked profile is shown in the table
-		await expect(page.getByText('OpenAI Production')).toBeVisible({ timeout: 5000 });
+		// Verify the existing mocked profile is shown in the table (scoped to the name column)
+		await expect(page.locator('.conn-name', { hasText: 'OpenAI Production' }).first()).toBeVisible({ timeout: 5000 });
 	});
 
 	test('saving memory settings sends correct data', async ({ page }) => {
@@ -501,7 +501,7 @@ test.describe('@mocked Connection Test & Model Selection UI', () => {
 		// Wait for error to appear — mapModelDiscoveryError converts the empty-models+error
 		// response into a human-readable string; network errors surface as 'Network error…'
 		await expect(
-			page.locator('.field-error').or(page.getByText(/network error|connection refused|unable to reach/i))
+			page.locator('.field-error').or(page.getByText(/network error|connection refused|unable to reach/i)).first()
 		).toBeVisible({ timeout: 5000 });
 	});
 
@@ -638,7 +638,7 @@ test.describe('Memory Ollama Integration', () => {
 	});
 
 	test('memory health check passes with configured provider', async ({ request }) => {
-		const healthRes = await request.get('http://localhost:8765/docs').catch(() => null);
+		const healthRes = await request.get('http://localhost:8765/health').catch(() => null);
 		if (healthRes) {
 			expect(healthRes.ok()).toBeTruthy();
 		}
