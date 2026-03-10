@@ -322,13 +322,56 @@ download_asset() {
 		rm -f "$dest"
 		die "Downloaded $filename is empty. Check --version and network."
 	fi
-	if head -c 50 "$dest" | grep -qi '<!doctype\|<html'; then
+	if head -c 50 "$dest" | grep -Eqi '<!doctype|<html'; then
 		rm -f "$dest"
 		die "Downloaded $filename appears to be an HTML error page, not the expected asset. Check --version."
 	fi
 }
 
 # ── Checksum verification ────────────────────────────────────────────
+
+# Cross-platform SHA-256 helper: tries sha256sum, then shasum, then openssl
+sha256_hash() {
+	local file="$1"
+	if command -v sha256sum &>/dev/null; then
+		sha256sum "$file" | awk '{print $1}'
+	elif command -v shasum &>/dev/null; then
+		shasum -a 256 "$file" | awk '{print $1}'
+	elif command -v openssl &>/dev/null; then
+		openssl dgst -sha256 "$file" | awk '{print $NF}'
+	else
+		warn "No SHA-256 tool found (sha256sum, shasum, or openssl) — skipping integrity check."
+		return 1
+	fi
+}
+
+verify_asset_checksum() {
+	local checksums_file="$1"
+	local asset_name="$2"
+	local asset_path="$3"
+
+	if [[ ! -f "$asset_path" ]]; then
+		return 0
+	fi
+
+	local expected
+	expected="$(grep -F "$asset_name" "$checksums_file" | awk '{print $1}')"
+	if [[ -z "$expected" ]]; then
+		return 0
+	fi
+
+	local actual
+	actual="$(sha256_hash "$asset_path")" || return 0
+	# Normalize to lowercase for comparison
+	expected="$(echo "$expected" | tr '[:upper:]' '[:lower:]')"
+	actual="$(echo "$actual" | tr '[:upper:]' '[:lower:]')"
+
+	if [[ "$actual" != "$expected" ]]; then
+		rm -f "$checksums_file"
+		die "Checksum mismatch for $asset_name — download may be corrupt. Delete and retry."
+	fi
+	ok "Checksum verified: $asset_name"
+}
 
 verify_checksums() {
 	# Only available for release tags (vX.Y.Z); skip for branch refs
@@ -349,19 +392,11 @@ verify_checksums() {
 
 	# Verify deploy bundle tarball if it exists locally
 	local bundle_name="openpalm-${OPT_VERSION#v}-deploy-bundle.tar.gz"
-	if [[ -f "${STATE_HOME}/artifacts/${bundle_name}" ]]; then
-		local expected
-		expected="$(grep "$bundle_name" "$checksums_file" | awk '{print $1}')"
-		if [[ -n "$expected" ]]; then
-			local actual
-			actual="$(sha256sum "${STATE_HOME}/artifacts/${bundle_name}" | awk '{print $1}')"
-			if [[ "$actual" != "$expected" ]]; then
-				rm -f "$checksums_file"
-				die "Checksum mismatch for $bundle_name — download may be corrupt. Delete and retry."
-			fi
-			ok "Checksum verified: $bundle_name"
-		fi
-	fi
+	verify_asset_checksum "$checksums_file" "$bundle_name" "${STATE_HOME}/artifacts/${bundle_name}"
+
+	# Verify the actually downloaded assets
+	verify_asset_checksum "$checksums_file" "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
+	verify_asset_checksum "$checksums_file" "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
 
 	rm -f "$checksums_file"
 }
@@ -394,9 +429,11 @@ cleanup() {
 	fi
 	[[ -n "${PULL_LOG:-}" ]] && rm -f "$PULL_LOG"
 
-	# Clean up any lingering temp files from interrupted downloads
-	rm -f "${DATA_HOME:-/tmp}/"*.tmp 2>/dev/null || true
-	rm -f "${DATA_HOME:-/tmp}/caddy/"*.tmp 2>/dev/null || true
+	# Clean up specific temp files from interrupted asset downloads
+	if [[ -n "${DATA_HOME:-}" ]]; then
+		rm -f "${DATA_HOME}/docker-compose.yml.tmp" 2>/dev/null || true
+		rm -f "${DATA_HOME}/caddy/Caddyfile.tmp" 2>/dev/null || true
+	fi
 
 	if [[ $exit_code -ne 0 ]]; then
 		printf "\n"

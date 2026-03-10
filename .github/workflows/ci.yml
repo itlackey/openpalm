@@ -50,6 +50,7 @@ jobs:
       - name: Validate registry YAML files
         run: |
           set -euo pipefail
+          pip install --quiet PyYAML
           errors=0
 
           # Validate all registry channel YAML files

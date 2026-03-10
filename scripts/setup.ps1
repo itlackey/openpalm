@@ -370,19 +370,29 @@ function Verify-Checksums {
   $bundleName = "openpalm-$version-deploy-bundle.tar.gz"
   $bundlePath = Join-Path $LocalStateHome "artifacts/$bundleName"
 
-  if (Test-Path -LiteralPath $bundlePath -PathType Leaf) {
-    $checksumLines = Get-Content -LiteralPath $tmpFile
-    $matchLine = $checksumLines | Where-Object { $_ -match $bundleName } | Select-Object -First 1
-    if ($matchLine) {
-      $expected = ($matchLine -split '\s+')[0]
-      $actual = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash.ToLowerInvariant()
-      if ($actual -ne $expected) {
-        Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
-        Die "Checksum mismatch for $bundleName — download may be corrupt. Delete and retry."
-      }
-      Ok "Checksum verified: $bundleName"
+  $checksumLines = Get-Content -LiteralPath $tmpFile
+
+  # Helper: verify a single asset against the checksums file
+  $verifyAsset = {
+    param([string]$AssetName, [string]$AssetPath)
+    if (-not (Test-Path -LiteralPath $AssetPath -PathType Leaf)) { return }
+    $line = $checksumLines | Where-Object { $_.Contains($AssetName) } | Select-Object -First 1
+    if (-not $line) { return }
+    $expected = ($line -split '\s+')[0].ToLowerInvariant()
+    $actual = (Get-FileHash -LiteralPath $AssetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+      Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
+      Die "Checksum mismatch for $AssetName — download may be corrupt. Delete and retry."
     }
+    Ok "Checksum verified: $AssetName"
   }
+
+  # Verify deploy bundle
+  & $verifyAsset $bundleName $bundlePath
+
+  # Verify actually downloaded assets
+  & $verifyAsset 'docker-compose.yml' (Join-Path $LocalDataHome 'docker-compose.yml')
+  & $verifyAsset 'Caddyfile' (Join-Path $LocalDataHome 'caddy/Caddyfile')
 
   Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
 }
@@ -651,10 +661,15 @@ function Cleanup {
     Remove-Job -Id $PullJob.Id -Force -ErrorAction SilentlyContinue
   }
 
-  # Clean up any lingering temp files from interrupted downloads
-  if ($LocalDataHome) {
-    Get-ChildItem -Path $LocalDataHome -Filter '*.tmp' -Recurse -ErrorAction SilentlyContinue |
-      Remove-Item -Force -ErrorAction SilentlyContinue
+  # Clean up specific temp files from interrupted asset downloads (only on failure)
+  if ($LocalDataHome -and -not $setupSuccess) {
+    $tempFiles = @(
+      (Join-Path $LocalDataHome 'docker-compose.yml.tmp'),
+      (Join-Path $LocalDataHome 'caddy/Caddyfile.tmp')
+    )
+    foreach ($tf in $tempFiles) {
+      Remove-Item -LiteralPath $tf -Force -ErrorAction SilentlyContinue
+    }
   }
 }
 
