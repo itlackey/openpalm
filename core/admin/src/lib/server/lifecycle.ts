@@ -197,7 +197,12 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 /**
  * Build the list of services that `docker compose up` should manage.
  *
- * Excludes **admin** — the admin cannot safely recreate its own container.
+ * Excludes **admin** — the admin cannot recreate its own container inline
+ * because doing so would kill the process mid-request. Instead, the upgrade
+ * endpoint schedules a deferred `selfRecreateAdmin()` call (in docker.ts)
+ * after the HTTP response is sent, which spawns a detached process to
+ * recreate the admin container with the new image.
+ *
  * Note: **docker-socket-proxy** is not in CORE_SERVICES by design, so it
  * is never included here. Both admin and docker-socket-proxy are started
  * by the host-side bootstrap (setup.sh) and must remain running throughout
