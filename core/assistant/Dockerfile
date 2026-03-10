@@ -38,6 +38,7 @@ WORKDIR /work
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/usr/local/bin:$PATH"
+RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/main/install.sh | bash
 
 EXPOSE 4096 22
 
