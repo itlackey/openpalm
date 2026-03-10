@@ -34,11 +34,19 @@ RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 USER root
 WORKDIR /work
 
-# Install Bun to /usr/local so it's on PATH for all users
+# Install Bun binary to /usr/local so it's on PATH for all users.
+# After install, reset BUN_INSTALL to a user-writable path so that
+# bun install -g and the install cache work for the unprivileged user.
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/usr/local/bin:$PATH"
-RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/main/install.sh | bash
+ENV BUN_INSTALL=/home/opencode/.bun
+ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
+ENV PATH="/home/opencode/.bun/bin:/usr/local/bin:$PATH"
+
+# Install agentikit CLI; fix permissions so bun-compiled binary is readable
+# by unprivileged users (bun-compiled binaries read themselves at runtime).
+RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/main/install.sh | bash \
+    && chmod 755 /usr/local/bin/akm
 
 EXPOSE 4096 22
 

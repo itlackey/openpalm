@@ -126,6 +126,15 @@ maybe_enable_ssh() {
 start_opencode() {
   cd /work
 
+  # Ensure bun's user-writable directories exist (set via Dockerfile ENV).
+  mkdir -p "${BUN_INSTALL:-/home/opencode/.bun}/bin" \
+           "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
+  if [ "$(id -u)" = "0" ]; then
+    chown -R "$TARGET_UID:$TARGET_GID" \
+      "${BUN_INSTALL:-/home/opencode/.bun}" \
+      "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
+  fi
+
   if [ "$(id -u)" = "0" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
