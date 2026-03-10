@@ -322,10 +322,16 @@ download_asset() {
 		rm -f "$dest"
 		die "Downloaded $filename is empty. Check --version and network."
 	fi
-	if head -c 50 "$dest" | grep -Eqi '<!doctype|<html'; then
+	# Avoid head|grep pipeline — with set -eo pipefail, grep returning 1
+	# (no match) can cause older bash versions to exit even inside `if`.
+	local file_head
+	file_head="$(head -c 50 "$dest" 2>/dev/null)" || true
+	case "$file_head" in
+	*'<!doctype'* | *'<!DOCTYPE'* | *'<html'* | *'<HTML'*)
 		rm -f "$dest"
 		die "Downloaded $filename appears to be an HTML error page, not the expected asset. Check --version."
-	fi
+		;;
+	esac
 }
 
 # ── Checksum verification ────────────────────────────────────────────
@@ -740,10 +746,12 @@ main() {
 	resolve_paths
 	check_existing
 	create_directories
+
+	trap cleanup EXIT
+
 	download_assets
 
 	# Background: pull admin image while we prompt for config
-	trap cleanup EXIT
 	start_admin_pull
 	prompt_admin_token
 
