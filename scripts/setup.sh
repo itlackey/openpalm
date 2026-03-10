@@ -643,12 +643,19 @@ compose_up_admin() {
 		return 0
 	fi
 
-	info "Starting admin container..."
-	# Start only the admin and its Docker socket proxy; skip other services
-	# since the setup wizard hasn't configured API keys yet.
-	compose_cmd up -d docker-socket-proxy admin
+	if [[ $IS_UPDATE -eq 1 ]]; then
+		info "Starting all services..."
+		# Update: API keys are already configured, restart the full stack
+		# so all services pick up the latest compose file and images.
+		compose_cmd up -d
+	else
+		info "Starting admin container..."
+		# Fresh install: start only admin and its Docker socket proxy;
+		# the setup wizard will configure API keys and start remaining services.
+		compose_cmd up -d docker-socket-proxy admin
+	fi
 
-	ok "Admin service started"
+	ok "Services started"
 }
 
 # ── Health check ──────────────────────────────────────────────────────

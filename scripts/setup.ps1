@@ -584,9 +584,20 @@ function Compose-UpAdmin {
     return
   }
 
-  Info 'Starting admin container...'
-  Compose-Cmd @('up', '-d', 'docker-socket-proxy', 'admin')
-  Ok 'Admin service started'
+  if ($IsUpdate) {
+    Info 'Starting all services...'
+    # Update: API keys are already configured, restart the full stack
+    # so all services pick up the latest compose file and images.
+    Compose-Cmd @('up', '-d')
+  }
+  else {
+    Info 'Starting admin container...'
+    # Fresh install: start only admin and its Docker socket proxy;
+    # the setup wizard will configure API keys and start remaining services.
+    Compose-Cmd @('up', '-d', 'docker-socket-proxy', 'admin')
+  }
+
+  Ok 'Services started'
 }
 
 function Wait-Healthy {
