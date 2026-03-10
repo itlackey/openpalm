@@ -46,6 +46,7 @@ type OllamaTaskStatus = {
 };
 
 let ollamaTask: OllamaTaskStatus | null = null;
+let ollamaTaskRunning = false;
 
 /** Clear stale task state so GET stops returning active: true. */
 function clearOllamaTask(): void {
@@ -189,6 +190,8 @@ async function runOllamaEnableBackground(requestId: string): Promise<void> {
     task.phase = "error";
     task.message = err instanceof Error ? err.message : String(err);
     logger.error("Ollama background enable failed", { requestId, error: task.message });
+  } finally {
+    ollamaTaskRunning = false;
   }
 }
 
@@ -243,6 +246,10 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdminOrSetupToken(event, requestId);
   if (authError) return authError;
 
+  if (ollamaTaskRunning) {
+    return jsonResponse(409, { error: 'ollama_task_in_progress', message: 'An Ollama setup task is already running' }, requestId);
+  }
+
   // If a task is already running, return its current status
   if (ollamaTask && (ollamaTask.phase === "starting" || ollamaTask.phase === "waiting" || ollamaTask.phase === "pulling")) {
     return jsonResponse(200, {
@@ -277,6 +284,7 @@ export const POST: RequestHandler = async (event) => {
   };
 
   // Fire and forget — runs in background
+  ollamaTaskRunning = true;
   void runOllamaEnableBackground(requestId);
 
   return jsonResponse(

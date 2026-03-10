@@ -109,7 +109,7 @@ describe("askAssistant", () => {
     await withMockFetch(
       (async () => new Response("bad request", { status: 400 })) as typeof fetch,
       async () => {
-        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("assistant POST /session 400");
+        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("assistant POST /session failed: 400");
       },
     );
   });
@@ -137,7 +137,7 @@ describe("askAssistant", () => {
         return new Response("upstream error", { status: 502 });
       }) as typeof fetch,
       async () => {
-        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("/message 502");
+        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("/message failed: 502");
       },
     );
   });

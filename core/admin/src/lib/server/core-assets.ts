@@ -12,15 +12,10 @@ import { createLogger } from "./logger.js";
 
 const logger = createLogger("core-assets");
 
-// @ts-ignore — raw asset imports bundled by Vite at build time
 import coreComposeAsset from "$assets/docker-compose.yml?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
 import caddyfileAsset from "$assets/Caddyfile?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
 import opencodeConfigAsset from "$assets/opencode.jsonc?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
 import agentsMdAsset from "$assets/AGENTS.md?raw";
-// @ts-ignore — raw asset imports bundled by Vite at build time
 import ollamaComposeAsset from "$assets/ollama.yml?raw";
 
 // ── Constants ──────────────────────────────────────────────────────────

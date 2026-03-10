@@ -2,7 +2,7 @@
  * Shared helpers for SvelteKit API server routes.
  */
 import type { RequestEvent } from "@sveltejs/kit";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
 import { normalizeCaller } from "./lifecycle.js";
 import { isSetupComplete } from './setup-status.js';
@@ -16,10 +16,9 @@ import {
 export function safeTokenCompare(a: string, b: string): boolean {
   if (typeof a !== "string" || typeof b !== "string") return false;
   if (!a || !b) return false;
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
 }
 
 /** Standard JSON response with request ID header */
@@ -57,9 +56,19 @@ export function getRequestId(event: RequestEvent): string {
   return event.request.headers.get("x-request-id") || crypto.randomUUID();
 }
 
+/** Guard: returns 503 if admin token has not been configured yet. */
+export function requireNonEmptyAdminToken(state: { adminToken: string }): Response | null {
+  if (!state.adminToken) {
+    return jsonResponse(503, { error: 'admin_not_configured', message: 'Admin token has not been set. Complete setup first.' });
+  }
+  return null;
+}
+
 /** Check admin token — returns error Response or null if OK */
 export function requireAdmin(event: RequestEvent, requestId: string): Response | null {
   const state = getState();
+  const notConfigured = requireNonEmptyAdminToken(state);
+  if (notConfigured) return notConfigured;
   const token = event.request.headers.get("x-admin-token");
   if (!safeTokenCompare(token ?? "", state.adminToken)) {
     return errorResponse(
@@ -91,11 +100,20 @@ export function requireAdminOrSetupToken(event: RequestEvent, requestId: string)
   return null;
 }
 
-/** Extract actor from request — derived from auth state, not caller-controlled */
-export function getActor(event: RequestEvent): string {
+/**
+ * Extract actor from request — derived from auth state, not caller-controlled.
+ *
+ * When `state` is provided, the token is verified against `state.adminToken`
+ * using constant-time comparison. Without `state`, any non-empty token is
+ * treated as "admin" (callers should migrate to pass state for verified
+ * actor identification).
+ */
+export function getActor(event: RequestEvent, state?: { adminToken: string }): string {
   const token = event.request.headers.get("x-admin-token");
-  if (token) return "admin";
-  return "unauthenticated";
+  if (!token) return "unauthenticated";
+  if (state && safeTokenCompare(token, state.adminToken)) return "admin";
+  if (!state && token) return "admin";
+  return "unknown";
 }
 
 /** Extract caller type from request */
@@ -103,11 +121,16 @@ export function getCallerType(event: RequestEvent): CallerType {
   return normalizeCaller(event.request.headers.get("x-requested-by"));
 }
 
-/** Parse JSON body safely — returns null on parse failure */
+/** Parse JSON body safely — returns null on parse failure or if body exceeds maxBytes */
 export async function parseJsonBody(
-  request: Request
+  request: Request,
+  maxBytes = 1_048_576
 ): Promise<Record<string, unknown> | null> {
   try {
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > maxBytes) {
+      return null;
+    }
     return (await request.json()) as Record<string, unknown>;
   } catch {
     return null;

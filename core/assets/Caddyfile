@@ -14,7 +14,18 @@
 (public_access) {
 }
 
+(security_headers) {
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
 :80 {
+	import security_headers
 	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────
 	handle /admin/* {
 		import lan_only

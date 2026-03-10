@@ -10,6 +10,7 @@
 export const ERROR_CODES = {
   INVALID_JSON: "invalid_json",
   INVALID_PAYLOAD: "invalid_payload",
+  PAYLOAD_TOO_LARGE: "payload_too_large",
   CHANNEL_NOT_CONFIGURED: "channel_not_configured",
   INVALID_SIGNATURE: "invalid_signature",
   REPLAY_DETECTED: "replay_detected",
@@ -67,11 +68,26 @@ export function validatePayload(body: unknown): ValidationResult {
   const valid =
     typeof o.userId === "string" && !!o.userId.trim() &&
     typeof o.channel === "string" && !!o.channel.trim() &&
-    typeof o.text === "string" && !!o.text.trim() && o.text.length <= 10_000 &&
+    typeof o.text === "string" && !!o.text.trim() &&
     typeof o.nonce === "string" && !!o.nonce.trim() &&
     typeof o.timestamp === "number";
   if (!valid) {
     return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
   }
+
+  // Field length bounds to prevent abuse
+  if ((o.userId as string).length > 256) {
+    return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
+  }
+  if ((o.channel as string).length > 64) {
+    return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
+  }
+  if ((o.nonce as string).length > 128) {
+    return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
+  }
+  if ((o.text as string).length > 10_000) {
+    return { ok: false, error: ERROR_CODES.INVALID_PAYLOAD };
+  }
+
   return { ok: true, payload: o as unknown as ChannelPayload };
 }

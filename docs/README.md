@@ -8,6 +8,7 @@ Documentation index for OpenPalm.
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
+| [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
 | [manual-setup.md](manual-setup.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
@@ -28,11 +29,18 @@ Documentation index for OpenPalm.
 | [bunjs-rules.md](bunjs-rules.md) | Guardian, channels, channels-sdk |
 | [sveltekit-rules.md](sveltekit-rules.md) | Admin UI (`core/admin/`) |
 
+## Release notes
+
+| Document | Description |
+|---|---|
+| [CHANGELOG.md](../CHANGELOG.md) | Version history in Keep a Changelog format |
+
 ## Reference
 
 | Document | Description |
 |---|---|
 | [api-spec.md](api-spec.md) | Admin API endpoint contract |
+| [backup-restore.md](backup-restore.md) | Backup, restore, and migration procedures |
 | [environment-and-mounts.md](environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](opencode-configuration.md) | OpenCode runtime integration |
 | [community-channels.md](community-channels.md) | BaseChannel SDK for custom adapters |

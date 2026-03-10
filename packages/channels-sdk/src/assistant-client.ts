@@ -64,8 +64,7 @@ export async function createSession(
       body: JSON.stringify({ title }),
     });
     if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(`assistant POST /session ${resp.status}: ${body}`);
+      throw new Error(`assistant POST /session failed: ${resp.status}`);
     }
     const session = (await resp.json()) as SessionCreateResponse;
     const sessionId = session.id;
@@ -101,9 +100,8 @@ export async function sendMessage(
       }),
     });
     if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
       throw new Error(
-        `assistant POST /session/${sessionId}/message ${resp.status}: ${body}`,
+        `assistant POST /session/${sessionId}/message failed: ${resp.status}`,
       );
     }
     const data = (await resp.json()) as MessageResponse;
