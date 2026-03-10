@@ -12,6 +12,7 @@ Documentation index for OpenPalm.
 | [manual-setup.md](manual-setup.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, channels, secrets, access control, automations |
+| [discord-setup.md](discord-setup.md) | Discord bot setup — create app, install channel, invite bot |
 
 ## Architecture (must-read for contributors)
 
@@ -45,4 +46,5 @@ Documentation index for OpenPalm.
 | [opencode-configuration.md](opencode-configuration.md) | OpenCode runtime integration |
 | [community-channels.md](community-channels.md) | BaseChannel SDK for custom adapters |
 | [docker-socket-proxy-migration.md](docker-socket-proxy-migration.md) | Socket proxy design and allowlist |
+| [memory-privacy.md](memory-privacy.md) | Memory service data privacy — what is stored, external calls, how to wipe |
 | [prd.md](prd.md) | MVP product requirements |

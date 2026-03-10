@@ -34,6 +34,23 @@ Returns admin health:
 { "status": "ok", "service": "admin" }
 ```
 
+### `GET /guardian/health`
+
+Proxy for guardian health. Returns the guardian service status based on
+in-memory container state (not a direct proxy to the guardian process).
+
+```json
+{ "status": "ok", "service": "guardian" }
+```
+
+When the guardian is not running:
+
+```json
+{ "status": "unavailable", "service": "guardian" }
+```
+
+Status code is `200` when running, `503` when unavailable.
+
 ## Lifecycle Endpoints
 
 Policy for this section:
@@ -91,9 +108,40 @@ Response:
 { "ok": true, "stopped": ["caddy", "assistant"], "dockerAvailable": true }
 ```
 
+### `POST /admin/upgrade`
+
+Full upgrade sequence: fetches the latest image tag, downloads fresh core assets
+from GitHub, backs up changed files, stages artifacts, pulls images, and
+recreates all containers. After responding, schedules a deferred self-recreation
+of the admin container so the HTTP response is flushed first.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "imageTag": "0.9.0",
+  "backupDir": "/home/user/.local/state/openpalm/backups/2025-01-01T00-00-00",
+  "assetsUpdated": ["docker-compose.yml", "Caddyfile"],
+  "restarted": ["caddy", "guardian"],
+  "adminRecreateScheduled": true
+}
+```
+
+Error responses:
+
+- `502 image_tag_update_failed` — Failed to resolve latest image tag.
+- `502 asset_download_failed` — Failed to download fresh assets from GitHub.
+- `503 docker_unavailable` — Docker is not reachable.
+- `502 pull_failed` — `docker compose pull` failed.
+- `502 up_failed` — Images pulled but container recreation failed.
+
 ## Container Operations
 
 ### `GET /admin/containers/list`
+
+Returns in-memory service state synced with live Docker container data when
+Docker is available.
 
 Response:
 
@@ -113,8 +161,10 @@ Response:
 Response:
 
 ```json
-{ "ok": true, "pulled": "...", "started": "..." }
+{ "ok": true, "pulled": "...", "started": ["caddy", "memory", "assistant", "guardian"] }
 ```
+
+Note: `started` is an array of managed service names.
 
 Error responses:
 
@@ -181,6 +231,18 @@ Behavior:
 - Ensures system-managed channel secret exists.
 - Re-stages artifacts and runs compose up.
 
+Response:
+
+```json
+{
+  "ok": true,
+  "channel": "chat",
+  "service": "channel-chat",
+  "dockerAvailable": true,
+  "composeResult": { "ok": true, "stderr": "" }
+}
+```
+
 ### `POST /admin/channels/uninstall`
 
 Body:
@@ -194,6 +256,173 @@ Behavior:
 - Removes channel `.yml` and optional `.caddy` from `CONFIG_HOME/channels/`.
 - Removes system-managed channel secret from runtime state.
 - Re-stages artifacts and stops the channel service.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "channel": "chat",
+  "service": "channel-chat",
+  "dockerAvailable": true,
+  "composeResult": { "ok": true, "stderr": "" }
+}
+```
+
+## Registry
+
+Unified registry for channels and automations. Tries the cloned registry repo
+(`STATE_HOME/registry-repo/registry/`) first, then falls back to build-time
+bundled assets.
+
+### `GET /admin/registry`
+
+Lists all registry items (channels and automations) with install status.
+
+Response:
+
+```json
+{
+  "channels": [
+    { "name": "chat", "type": "channel", "installed": true, "hasRoute": true, "description": "..." }
+  ],
+  "automations": [
+    { "name": "daily-summary", "type": "automation", "installed": false, "description": "...", "schedule": "0 9 * * *" }
+  ],
+  "source": "remote"
+}
+```
+
+`source` is `"remote"` when using the cloned registry repo, `"bundled"` when
+falling back to build-time assets.
+
+### `POST /admin/registry/install`
+
+Install a registry item (channel or automation).
+
+Body:
+
+```json
+{ "name": "chat", "type": "channel" }
+```
+
+- `name` (required) — Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
+- `type` (required) — Must be `"channel"` or `"automation"`.
+
+For channels: copies `.yml` and optional `.caddy` into `CONFIG_HOME/channels/`,
+generates HMAC secret, re-stages artifacts, and runs compose up.
+
+For automations: copies `.yml` into `CONFIG_HOME/automations/` and reloads
+the scheduler.
+
+Response (channel):
+
+```json
+{
+  "ok": true,
+  "name": "chat",
+  "type": "channel",
+  "dockerAvailable": true,
+  "composeResult": { "ok": true, "stderr": "" }
+}
+```
+
+Response (automation):
+
+```json
+{ "ok": true, "name": "daily-summary", "type": "automation" }
+```
+
+Error responses:
+
+- `400 invalid_input` — Invalid name, invalid type, item not found in registry,
+  or item already installed.
+
+### `POST /admin/registry/refresh`
+
+Pulls the latest registry from GitHub via `git pull` on the cloned repo.
+
+Response:
+
+```json
+{ "ok": true, "updated": true }
+```
+
+Error responses:
+
+- `500 registry_sync_error` — Git pull failed.
+
+### `POST /admin/registry/uninstall`
+
+Uninstall a registry item (channel or automation).
+
+Body:
+
+```json
+{ "name": "chat", "type": "channel" }
+```
+
+For channels: removes files from `CONFIG_HOME/channels/`, clears channel secret,
+re-stages artifacts, and stops the Docker service.
+
+For automations: removes `.yml` from `CONFIG_HOME/automations/` and reloads
+the scheduler.
+
+Response (channel):
+
+```json
+{
+  "ok": true,
+  "name": "chat",
+  "type": "channel",
+  "dockerAvailable": true,
+  "composeResult": { "ok": true, "stderr": "" }
+}
+```
+
+Response (automation):
+
+```json
+{ "ok": true, "name": "daily-summary", "type": "automation" }
+```
+
+## Automations
+
+### `GET /admin/automations`
+
+Lists all automation configs from `STATE_HOME` with scheduler status and
+execution logs.
+
+Response:
+
+```json
+{
+  "automations": [
+    {
+      "name": "daily-summary",
+      "description": "Generate a daily summary",
+      "schedule": "0 9 * * *",
+      "timezone": "UTC",
+      "enabled": true,
+      "action": {
+        "type": "http",
+        "method": "POST",
+        "path": "/admin/...",
+        "url": null,
+        "content": null,
+        "agent": null
+      },
+      "on_failure": "log",
+      "fileName": "daily-summary.yml",
+      "logs": []
+    }
+  ],
+  "scheduler": {
+    "running": true,
+    "jobCount": 1
+  }
+}
+```
 
 ## Access Scope
 
@@ -218,7 +447,7 @@ Body:
 { "scope": "host" }
 ```
 
-Accepted values: `"host"` or `"lan"`. The value `"custom"` is read-only —
+Accepted values: `"host"` or `"lan"`. The value `"custom"` is read-only --
 it cannot be set via POST.
 
 Behavior:
@@ -231,7 +460,7 @@ Behavior:
 **Warning:** If the current scope is `"custom"` (user-edited IP ranges),
 a POST to this endpoint will overwrite those custom ranges with the
 standard `host` or `lan` pattern. Custom ranges cannot be restored via the
-API after being overwritten — they must be re-applied by editing the
+API after being overwritten -- they must be re-applied by editing the
 Caddyfile directly.
 
 Response:
@@ -244,7 +473,7 @@ Response:
 
 Manage LLM provider credentials and related configuration stored in
 `CONFIG_HOME/secrets.env`. Values are patched in-place by `patchSecretsEnvFile`
-— existing keys not in the allowed set are never removed or overwritten.
+-- existing keys not in the allowed set are never removed or overwritten.
 
 ### `GET /admin/connections`
 
@@ -316,7 +545,7 @@ Allowed keys (`ALLOWED_CONNECTION_KEYS`):
 
 ### `POST /admin/connections`
 
-Supports two payload shapes:
+Supports three payload shapes:
 
 1) **Canonical DTO (preferred)**
 
@@ -340,14 +569,29 @@ Supports two payload shapes:
       "embeddingDims": 1536
     }
   },
+  "memoryUserId": "default_user",
+  "customInstructions": "",
+  "memoryModel": ""
+}
+```
+
+2) **Unified save (has `provider` key)**
+
+```json
+{
+  "provider": "openai",
   "apiKey": "sk-...",
+  "baseUrl": "",
+  "systemModel": "gpt-4o-mini",
+  "embeddingModel": "text-embedding-3-small",
+  "embeddingDims": 1536,
   "memoryUserId": "default_user",
   "customInstructions": "",
   "capabilities": ["llm", "embeddings"]
 }
 ```
 
-2) **Legacy key patch (compatibility)**
+3) **Legacy key patch (compatibility)**
 
 Patches one or more allowed keys into `CONFIG_HOME/secrets.env`. Keys not in
 `ALLOWED_CONNECTION_KEYS` are silently ignored. Existing keys outside the
@@ -360,7 +604,7 @@ allowed set are preserved.
 }
 ```
 
-Response (canonical and unified save paths):
+Response (canonical DTO and unified save paths):
 
 ```json
 {
@@ -380,8 +624,8 @@ Response (legacy key patch path):
 
 Error responses:
 
-- `400 bad_request` — No valid connection keys were provided.
-- `500 internal_error` — Failed to write `secrets.env`.
+- `400 bad_request` -- No valid connection keys were provided.
+- `500 internal_error` -- Failed to write `secrets.env`.
 
 ### `GET /admin/connections/status`
 
@@ -396,6 +640,47 @@ Response:
 ```
 
 `complete` is `true` when provider and model are set; `false` with `missing` listing what's absent.
+
+### `POST /admin/connections/test`
+
+Tests a connection endpoint by fetching models from the given base URL. Derives
+the provider type from the URL (Ollama for URLs containing `ollama` or `:11434`,
+otherwise OpenAI-compatible). Accepts setup token or admin token.
+
+Body:
+
+```json
+{
+  "baseUrl": "http://host.docker.internal:11434",
+  "apiKey": "",
+  "kind": "openai_compatible_local"
+}
+```
+
+- `baseUrl` (required) -- The endpoint to test.
+- `apiKey` -- Optional API key for authentication.
+- `kind` -- Connection kind hint (informational).
+
+Response:
+
+```json
+{
+  "ok": true,
+  "models": ["llama3.2:3b", "nomic-embed-text"],
+  "error": null,
+  "errorCode": null
+}
+```
+
+On failure:
+
+```json
+{
+  "ok": false,
+  "error": "Connection refused",
+  "errorCode": "connection_error"
+}
+```
 
 ### `GET /admin/connections/profiles`
 
@@ -436,9 +721,13 @@ Create a profile.
 }
 ```
 
+When `auth.mode` is `"api_key"`, the profile payload may include a top-level
+`apiKey` field with the raw key. The handler derives the `apiKeySecretRef`
+from the provider and patches the key into `secrets.env`.
+
 ### `PUT /admin/connections/profiles`
 
-Update an existing profile by id.
+Update an existing profile by id (id provided inside `profile` object).
 
 ### `DELETE /admin/connections/profiles`
 
@@ -450,9 +739,73 @@ Delete by id:
 
 Error responses:
 
-- `400 bad_request` — malformed profile payload.
-- `404 not_found` — profile id not found.
-- `409 conflict` — duplicate create or profile currently referenced by assignments.
+- `400 bad_request` -- malformed profile payload.
+- `404 not_found` -- profile id not found.
+- `409 conflict` -- duplicate create or profile currently referenced by assignments.
+
+### `GET /admin/connections/profiles/:id`
+
+Returns a single profile by URL parameter id.
+
+```json
+{
+  "profile": {
+    "id": "primary",
+    "name": "Primary connection",
+    "kind": "openai_compatible_remote",
+    "provider": "openai",
+    "baseUrl": "https://api.openai.com",
+    "auth": {
+      "mode": "api_key",
+      "apiKeySecretRef": "env:OPENAI_API_KEY"
+    }
+  }
+}
+```
+
+Error responses:
+
+- `404 not_found` -- profile id not found.
+
+### `PUT /admin/connections/profiles/:id`
+
+Update a profile by URL parameter id. The `id` from the URL takes precedence
+over any id in the request body.
+
+Body:
+
+```json
+{
+  "profile": {
+    "name": "Updated Name",
+    "kind": "openai_compatible_local",
+    "provider": "ollama",
+    "baseUrl": "http://host.docker.internal:11434",
+    "auth": { "mode": "none" }
+  }
+}
+```
+
+Response:
+
+```json
+{ "ok": true, "profile": { "id": "primary", "..." : "..." } }
+```
+
+### `DELETE /admin/connections/profiles/:id`
+
+Delete a profile by URL parameter id. No request body needed.
+
+Response:
+
+```json
+{ "ok": true, "id": "primary" }
+```
+
+Error responses:
+
+- `404 not_found` -- profile id not found.
+- `409 conflict` -- profile currently referenced by assignments.
 
 ### `GET /admin/connections/assignments`
 
@@ -473,8 +826,43 @@ Returns canonical capability assignments:
 
 ### `POST /admin/connections/assignments`
 
-Save canonical assignments. If any `connectionId` does not exist in profiles,
-returns `409 conflict`.
+Save canonical assignments. Also writes the OpenCode provider config as a
+side effect. If any `connectionId` does not exist in profiles, returns
+`409 conflict`.
+
+Response:
+
+```json
+{ "ok": true, "assignments": { "llm": { "..." : "..." }, "embeddings": { "..." : "..." } } }
+```
+
+### `GET /admin/connections/export/mem0`
+
+Exports the mem0 config derived from current connection profiles and assignments.
+Returns the config as a downloadable JSON file (`mem0-config.json`).
+
+Auth: admin token or setup token.
+
+Response: `application/json` with `Content-Disposition: attachment; filename="mem0-config.json"`.
+
+Error responses:
+
+- `404 not_found` -- No connection profiles found.
+- `409 conflict` -- LLM or embeddings connection profile not found.
+
+### `GET /admin/connections/export/opencode`
+
+Exports the generated `opencode.json` config from `CONFIG_HOME/assistant/opencode.json`.
+Returns the config as a downloadable JSON file with `_nextSteps` guidance.
+
+Auth: admin token or setup token.
+
+Response: `application/json` with `Content-Disposition: attachment; filename="opencode.json"`.
+
+Error responses:
+
+- `404 not_found` -- opencode.json has not been generated yet.
+- `500 internal_error` -- Failed to read opencode.json.
 
 ### Setup-token route variants
 
@@ -530,12 +918,23 @@ Body: A complete `MemoryConfig` object (same shape as `config` in the GET respon
 Response:
 
 ```json
-{ "ok": true, "persisted": true, "pushed": true }
+{
+  "ok": true,
+  "persisted": true,
+  "pushed": true,
+  "pushError": null,
+  "dimensionWarning": null,
+  "dimensionMismatch": false
+}
 ```
+
+- `dimensionMismatch` is `true` when the new config's embedding dimensions
+  differ from the previously persisted config. Requires a collection reset.
+- `dimensionWarning` is a human-readable message when `dimensionMismatch` is `true`.
 
 Error responses:
 
-- `400 bad_request` — Missing or invalid `mem0` structure.
+- `400 bad_request` -- Missing or invalid `mem0` structure.
 
 ### `POST /admin/memory/models`
 
@@ -552,10 +951,10 @@ Body:
 }
 ```
 
-- `provider` (required) — Must be a recognized LLM or embedding provider name.
-- `apiKeyRef` — Raw API key or `env:VAR_NAME` reference resolved from
+- `provider` (required) -- Must be a recognized LLM or embedding provider name.
+- `apiKeyRef` -- Raw API key or `env:VAR_NAME` reference resolved from
   `process.env` then `CONFIG_HOME/secrets.env`.
-- `baseUrl` — Provider API base URL. Falls back to provider defaults when empty.
+- `baseUrl` -- Provider API base URL. Falls back to provider defaults when empty.
 
 Provider API conventions:
 
@@ -568,7 +967,7 @@ Provider API conventions:
 Response:
 
 ```json
-{ "models": ["gpt-4o", "gpt-4o-mini"], "error": undefined }
+{ "models": ["gpt-4o", "gpt-4o-mini"], "error": null }
 ```
 
 On failure (unreachable provider, timeout, etc.):
@@ -579,7 +978,30 @@ On failure (unreachable provider, timeout, etc.):
 
 Error responses:
 
-- `400 bad_request` — Invalid or missing provider name.
+- `400 bad_request` -- Invalid or missing provider name.
+
+### `POST /admin/memory/reset-collection`
+
+Deletes the embedded Qdrant vector data so the memory service recreates the
+collection with the correct embedding dimensions on next restart. This is a
+destructive operation that deletes all stored memories.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "collection": "memory",
+  "restartRequired": true
+}
+```
+
+The memory container must be restarted after a successful reset for the new
+collection to be created.
+
+Error responses:
+
+- `502 collection_reset_failed` -- Failed to delete the Qdrant data directory.
 
 ### Ollama Integration Notes
 
@@ -714,25 +1136,114 @@ The endpoint:
 1. Writes credentials to `CONFIG_HOME/secrets.env`
 2. Persists connection profiles and capability assignments
 3. Builds and writes Memory config
-4. Runs `docker compose up` to start the stack
-5. Pushes config to Memory and provisions the user (fire-and-forget)
+4. Starts background deployment: pulls images per-service, then runs `docker compose up`
+5. Pushes config to Memory and provisions the user (fire-and-forget, after containers start)
 
 Response:
 
 ```json
 {
   "ok": true,
+  "async": true,
   "started": ["caddy", "memory", "assistant", "guardian"],
-  "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
+  "dockerAvailable": true
 }
 ```
 
+The `async: true` flag indicates deployment runs in the background. Poll
+`GET /admin/setup/deploy-status` for progress.
+
+Error responses:
+
+- `400 bad_request` -- Missing or invalid connections/assignments.
+- `503 docker_unavailable` -- Docker is not available.
+
 ### `POST /admin/setup/models`
 
-Proxy endpoint for listing available models during setup. Same behavior as
-`POST /admin/memory/models` but accepts the ephemeral setup token for
-first-run authentication.
+Proxy endpoint for listing available models during setup. Accepts the ephemeral
+setup token for first-run authentication. Body and response same as
+`POST /admin/memory/models`, but also accepts an optional `capability` field
+(`"llm"` or `"embeddings"`) and validates the provider is within wizard scope.
+
+### `GET /admin/setup/deploy-status`
+
+Poll background deployment progress during setup. Auth: setup token during
+wizard, admin token after setup.
+
+Response (active deployment):
+
+```json
+{
+  "active": true,
+  "services": [
+    { "service": "caddy", "label": "Caddy (reverse proxy)", "imageReady": true, "running": false }
+  ],
+  "allImagesReady": false,
+  "allRunning": false,
+  "error": null
+}
+```
+
+Response (no active deployment):
+
+```json
+{ "active": false }
+```
+
+### `GET /admin/setup/ollama`
+
+Poll background Ollama enable status. Returns the current phase of the
+Ollama enable task. Auth: setup token or admin token.
+
+Response (no active task):
+
+```json
+{ "active": false }
+```
+
+Response (active or terminal):
+
+```json
+{
+  "active": true,
+  "phase": "pulling",
+  "message": "Pulling default models...",
+  "ollamaUrl": "http://ollama:11434",
+  "models": {
+    "qwen2.5-coder:3b": { "ok": true },
+    "nomic-embed-text": { "ok": false, "error": "..." }
+  },
+  "allModelsPulled": false,
+  "defaultChatModel": "qwen2.5-coder:3b",
+  "defaultEmbeddingModel": "nomic-embed-text"
+}
+```
+
+Phases: `starting`, `waiting`, `pulling`, `done`, `error`.
+Terminal states (`done`, `error`) are cleared after being consumed by one GET.
+
+### `POST /admin/setup/ollama`
+
+Starts the Ollama enable sequence in the background. Configures Ollama in
+`stack.env`, starts the Ollama container, waits for health, and pulls default
+models. Returns immediately. Poll `GET /admin/setup/ollama` for progress.
+
+Auth: setup token or admin token.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "async": true,
+  "phase": "starting",
+  "message": "Ollama enable started in background. Poll GET /admin/setup/ollama for status."
+}
+```
+
+Error responses:
+
+- `503 docker_unavailable` -- Docker is not available.
 
 ## Local Provider Detection
 
