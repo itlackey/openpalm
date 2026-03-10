@@ -361,7 +361,14 @@ export async function composePullService(
   const args = buildComposeArgs(stateDir, options);
   args.push("pull", service);
 
-  return run(args, stateDir, 300_000);
+  // Merge env file values so Docker Compose resolves the correct image tag,
+  // not the stale value from the admin container's process.env.
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  return run(args, stateDir, 300_000, envOverrides);
 }
 
 /**
@@ -374,7 +381,14 @@ export async function composePull(
   const args = buildComposeArgs(stateDir, options);
   args.push("pull");
 
-  return run(args, stateDir, 300_000);
+  // Merge env file values so Docker Compose resolves the correct image tag,
+  // not the stale value from the admin container's process.env.
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  return run(args, stateDir, 300_000, envOverrides);
 }
 
 /**
@@ -401,11 +415,18 @@ export function selfRecreateAdmin(
     Object.assign(envOverrides, parseEnvFile(ef));
   }
 
-  const child = spawn("docker", args, {
-    cwd: stateDir,
-    stdio: "ignore",
-    detached: true,
-    env: { ...process.env, ...envOverrides }
-  });
-  child.unref();
+  try {
+    const child = spawn("docker", args, {
+      cwd: stateDir,
+      stdio: "ignore",
+      detached: true,
+      env: { ...process.env, ...envOverrides }
+    });
+    child.on("error", (err) => {
+      console.error("[selfRecreateAdmin] spawn error:", err.message);
+    });
+    child.unref();
+  } catch (err) {
+    console.error("[selfRecreateAdmin] failed to spawn:", err instanceof Error ? err.message : err);
+  }
 }
