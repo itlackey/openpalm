@@ -7,6 +7,7 @@ Documentation index for OpenPalm.
 | Document | Description |
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
+| [system-requirements.md](system-requirements.md) | CPU, RAM, disk, network — minimum and recommended specs |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
 | [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
 | [manual-setup.md](manual-setup.md) | Step-by-step manual host configuration (no scripts) |
