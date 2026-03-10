@@ -66,11 +66,18 @@ rm -f .dev/data/stack.env
 rm -f .dev/data/docker-compose.yml
 rm -rf .dev/data/backups
 
-# Root-owned data from containers (qdrant, caddy)
+# Config — remove generated assistant config so the wizard writes a fresh one
+rm -f .dev/config/assistant/opencode.json
+
+# Root-owned data from containers (qdrant, caddy, opencode logs)
 docker run --rm -v "$ROOT_DIR/.dev/data/memory:/c" alpine sh -c \
   "rm -rf /c/qdrant" 2>/dev/null || true
 docker run --rm -v "$ROOT_DIR/.dev/data/caddy:/c" alpine sh -c \
   "rm -rf /c/data /c/config" 2>/dev/null || true
+docker run --rm -v "$ROOT_DIR/.dev/data/opencode:/c" alpine sh -c \
+  "find /c -user root -delete" 2>/dev/null || true
+docker run --rm -v "$ROOT_DIR/.dev/config/assistant:/c" alpine sh -c \
+  "find /c -user root -delete" 2>/dev/null || true
 
 # State artifacts
 rm -f .dev/state/artifacts/secrets.env
@@ -90,73 +97,71 @@ pass "State cleaned"
 echo ""
 echo "=== Step 3: Seed config ==="
 ./scripts/dev-setup.sh --seed-env --force
-pass "Config seeded"
 
-# ── Step 3b: Ensure local models available ───────────────────────────
+# Clear ADMIN_TOKEN from seeded secrets so admin starts in first-boot state.
+# dev-setup seeds it for convenience, but the e2e test needs to verify the wizard sets it.
+sed -i 's/^ADMIN_TOKEN=.*/ADMIN_TOKEN=/' .dev/config/secrets.env
+sed -i 's/^ADMIN_TOKEN=.*/ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
+
+# Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
+# built images with remote ones (e.g. an older Python-based memory:latest).
+sed -i 's/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=dev/' .dev/data/stack.env
+sed -i 's/^OPENPALM_IMAGE_TAG=.*/OPENPALM_IMAGE_TAG=dev/' .dev/state/artifacts/stack.env
+
+pass "Config seeded (ADMIN_TOKEN cleared, image tag set to dev)"
+
+# ── Step 3b: Ensure local models available on Ollama ─────────────────
 echo ""
-echo "=== Step 3b: Ensure local models in Docker Model Runner ==="
+echo "=== Step 3b: Ensure Ollama models available ==="
 
-MODELS_DIR="$ROOT_DIR/.dev/data/models"
-mkdir -p "$MODELS_DIR"
+OLLAMA_URL="http://localhost:11434"
+SYSTEM_MODEL="qwen2.5-coder:3b"
+EMBED_MODEL="nomic-embed-text:latest"
 
-# System LLM model
-SYSTEM_GGUF="$MODELS_DIR/Qwen3.5-4B-Q4_K_M.gguf"
-SYSTEM_MODEL_REF="huggingface.co/unsloth/qwen3.5-4b-gguf"
-SYSTEM_GGUF_URL="https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
+# Verify Ollama is running
+if ! curl -sf "$OLLAMA_URL/api/tags" > /dev/null 2>&1; then
+  fail "Ollama is not running at $OLLAMA_URL"
+  echo "ABORTING — Ollama is required for e2e tests"
+  exit 1
+fi
 
-# Embedding model
-EMBED_GGUF="$MODELS_DIR/bge-base-en-v1.5-q4_k_m.gguf"
-EMBED_MODEL_REF="huggingface.co/compendiumlabs/bge-base-en-v1.5-gguf"
-EMBED_GGUF_URL="https://huggingface.co/CompendiumLabs/bge-base-en-v1.5-gguf/resolve/main/bge-base-en-v1.5-q4_k_m.gguf"
-
-# Download GGUF files if not present
-for gguf_info in "$SYSTEM_GGUF|$SYSTEM_GGUF_URL|System LLM" "$EMBED_GGUF|$EMBED_GGUF_URL|Embedding"; do
-  IFS='|' read -r gguf_file gguf_url gguf_label <<< "$gguf_info"
-  if [ ! -f "$gguf_file" ]; then
-    echo "  Downloading $gguf_label GGUF..."
-    curl -L -o "$gguf_file" "$gguf_url" 2>&1 | tail -1
+# Pull models if not already available (idempotent)
+for model_info in "$SYSTEM_MODEL|System LLM" "$EMBED_MODEL|Embedding"; do
+  IFS='|' read -r model_name model_label <<< "$model_info"
+  available=$(curl -sf "$OLLAMA_URL/api/tags" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if any(m['name']=='$model_name' for m in d.get('models',[])) else 'no')" 2>/dev/null || echo "no")
+  if [ "$available" = "yes" ]; then
+    echo "  $model_label model already available: $model_name"
   else
-    echo "  $gguf_label GGUF already present: $(basename "$gguf_file")"
-  fi
-done
-
-# Package into Docker Model Runner (idempotent — overwrites if exists)
-for pkg_info in "$SYSTEM_GGUF|$SYSTEM_MODEL_REF" "$EMBED_GGUF|$EMBED_MODEL_REF"; do
-  IFS='|' read -r gguf_file model_ref <<< "$pkg_info"
-  if [ -f "$gguf_file" ]; then
-    echo "  Packaging $(basename "$gguf_file") as $model_ref..."
-    docker model rm "$model_ref" 2>/dev/null || true
-    docker model package --gguf "$gguf_file" "$model_ref" 2>&1 | tail -1
-  else
-    fail "GGUF file missing: $gguf_file"
+    echo "  Pulling $model_label model: $model_name..."
+    curl -sf "$OLLAMA_URL/api/pull" -d "{\"name\":\"$model_name\"}" > /dev/null 2>&1
   fi
 done
 
 # Verify models are available
-AVAILABLE_MODELS=$(curl -sf http://localhost:12434/engines/v1/models 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(m['id'] for m in d.get('data',[])))" 2>/dev/null || echo "")
-if echo "$AVAILABLE_MODELS" | grep -q "qwen3.5"; then
-  pass "System model available in Model Runner"
+AVAILABLE_MODELS=$(curl -sf "$OLLAMA_URL/api/tags" | python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(m['name'] for m in d.get('models',[])))" 2>/dev/null || echo "")
+if echo "$AVAILABLE_MODELS" | grep -q "qwen2.5-coder:3b"; then
+  pass "System model available in Ollama"
 else
-  fail "System model not found in Model Runner. Available: $AVAILABLE_MODELS"
+  fail "System model not found in Ollama. Available: $AVAILABLE_MODELS"
 fi
-if echo "$AVAILABLE_MODELS" | grep -q "bge-base"; then
-  pass "Embedding model available in Model Runner"
+if echo "$AVAILABLE_MODELS" | grep -q "nomic-embed-text"; then
+  pass "Embedding model available in Ollama"
 else
-  fail "Embedding model not found in Model Runner. Available: $AVAILABLE_MODELS"
+  fail "Embedding model not found in Ollama. Available: $AVAILABLE_MODELS"
 fi
 
-# ── Step 4: Build admin ─────────────────────────────────────────────
+# ── Step 4: Build all images from source ──────────────────────────
 if [ "$SKIP_BUILD" -eq 0 ]; then
   echo ""
-  echo "=== Step 4: Build admin ==="
+  echo "=== Step 4: Build all images from source ==="
   npm run admin:build 2>&1 | tail -3
   docker compose --project-directory . \
     -f .dev/state/artifacts/docker-compose.yml \
     -f compose.dev.yaml \
     --env-file .dev/state/artifacts/stack.env \
     --env-file .dev/state/artifacts/secrets.env \
-    --project-name openpalm build admin 2>&1 | tail -3
-  pass "Admin built"
+    --project-name openpalm build 2>&1 | tail -5
+  pass "All images built"
 else
   echo ""
   echo "=== Step 4: Skipping build (--skip-build) ==="
@@ -211,11 +216,26 @@ SETUP_RESULT=$(curl -s -X POST http://localhost:8100/admin/setup \
   -d "{
     \"adminToken\": \"dev-admin-token\",
     \"memoryUserId\": \"node\",
-    \"llmProvider\": \"model-runner\",
-    \"llmBaseUrl\": \"http://host.docker.internal:12434/engines\",
-    \"systemModel\": \"huggingface.co/unsloth/qwen3.5-4b-gguf\",
-    \"embeddingModel\": \"hf.co/CompendiumLabs/bge-base-en-v1.5-gguf\",
-    \"embeddingDims\": 768
+    \"connections\": [
+      {
+        \"id\": \"ollama-local\",
+        \"name\": \"Ollama\",
+        \"provider\": \"ollama\",
+        \"baseUrl\": \"http://host.docker.internal:11434\",
+        \"apiKey\": \"\"
+      }
+    ],
+    \"assignments\": {
+      \"llm\": {
+        \"connectionId\": \"ollama-local\",
+        \"model\": \"qwen2.5-coder:3b\"
+      },
+      \"embeddings\": {
+        \"connectionId\": \"ollama-local\",
+        \"model\": \"nomic-embed-text:latest\",
+        \"embeddingDims\": 768
+      }
+    }
   }" 2>&1)
 
 SETUP_OK=$(echo "$SETUP_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "False")
@@ -237,11 +257,39 @@ fi
 # ── Step 8: Wait for containers ──────────────────────────────────────
 echo ""
 echo "=== Step 8: Wait for all containers healthy ==="
-echo "  Waiting 30s for containers to stabilize..."
-sleep 30
+
+# Poll until all services are ready (max 120s)
+# Healthchecked services must be "healthy"; caddy (no healthcheck) must be "running".
+HEALTHCHECK_SVCS="admin memory assistant guardian docker-socket-proxy"
+MAX_WAIT=120
+ELAPSED=0
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+  ALL_UP=true
+  WAIT_MSG=""
+  for svc in $HEALTHCHECK_SVCS; do
+    status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
+    if [ "$status" != "healthy" ]; then
+      ALL_UP=false
+      WAIT_MSG="$svc is $status"
+      break
+    fi
+  done
+  # Also check caddy is running
+  caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
+  if [ "$caddy_status" != "running" ]; then
+    ALL_UP=false
+    WAIT_MSG="caddy is $caddy_status"
+  fi
+  if [ "$ALL_UP" = "true" ]; then
+    break
+  fi
+  echo "  Waiting... ($ELAPSED/${MAX_WAIT}s) — $WAIT_MSG"
+  sleep 10
+  ELAPSED=$((ELAPSED + 10))
+done
 
 ALL_HEALTHY=true
-for svc in admin memory assistant guardian docker-socket-proxy; do
+for svc in $HEALTHCHECK_SVCS; do
   status=$(docker inspect --format '{{.State.Health.Status}}' "openpalm-${svc}-1" 2>/dev/null || echo "missing")
   if [ "$status" = "healthy" ]; then
     pass "$svc is healthy"
@@ -252,11 +300,11 @@ for svc in admin memory assistant guardian docker-socket-proxy; do
 done
 
 # Caddy doesn't have a healthcheck — check if running
-status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
-if [ "$status" = "running" ]; then
+caddy_status=$(docker inspect --format '{{.State.Status}}' "openpalm-caddy-1" 2>/dev/null || echo "missing")
+if [ "$caddy_status" = "running" ]; then
   pass "caddy is running"
 else
-  fail "caddy status: $status"
+  fail "caddy status: $caddy_status"
   ALL_HEALTHY=false
 fi
 
@@ -289,10 +337,9 @@ check_env_val() {
 
 check_env_val "ADMIN_TOKEN" "dev-admin-token"
 check_env_val "MEMORY_USER_ID" "node"
-check_env_val "SYSTEM_LLM_PROVIDER" "model-runner"
-check_env_val "SYSTEM_LLM_MODEL" "huggingface.co/unsloth/qwen3.5-4b-gguf"
-check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:12434/engines"
-check_env_val "OPENAI_BASE_URL" "http://host.docker.internal:12434/engines/v1"
+check_env_val "SYSTEM_LLM_PROVIDER" "ollama"
+check_env_val "SYSTEM_LLM_MODEL" "qwen2.5-coder:3b"
+check_env_val "SYSTEM_LLM_BASE_URL" "http://host.docker.internal:11434"
 
 # ── Step 11: Verify assistant env ────────────────────────────────────
 echo ""
@@ -324,11 +371,13 @@ fi
 echo ""
 echo "=== Step 12: Verify Memory user provisioned ==="
 
-# Use POST /api/v1/memories/filter (GET /memories/ has an upstream pagination bug)
+# Check memory API is responding (curl from host since memory port is published)
 OM_STATUS="error"
 for attempt in 1 2 3 4 5 6; do
-  OM_STATUS=$(docker exec openpalm-memory-1 python3 -c \
-    "import requests; r=requests.post('http://localhost:8765/api/v1/memories/filter', json={'user_id': 'node'}); print(r.status_code)" 2>/dev/null || echo "error")
+  OM_STATUS=$(curl -sf -o /dev/null -w '%{http_code}' \
+    -X POST http://localhost:8765/api/v1/memories/filter \
+    -H 'content-type: application/json' \
+    -d '{"user_id": "node"}' 2>/dev/null || echo "error")
   if [ "$OM_STATUS" = "200" ]; then
     break
   fi

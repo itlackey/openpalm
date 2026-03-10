@@ -32,7 +32,13 @@ export class SqliteVecStore implements VectorStore {
 
     this.db = new Database(dbPath);
     this.db.exec('PRAGMA journal_mode=WAL');
-    sqliteVec.load(this.db);
+    // bun:sqlite's loadExtension appends the platform suffix (.so/.dylib/.dll)
+    // automatically, but sqlite-vec's load() passes the full path including the
+    // suffix, causing a double extension (vec0.so.so). Load directly with the
+    // suffix stripped so bun:sqlite can append it correctly.
+    const extPath = sqliteVec.getLoadablePath();
+    const stripped = extPath.replace(/\.(so|dylib|dll)$/, '');
+    this.db.loadExtension(stripped);
   }
 
   /** Expose the underlying Database instance (for sharing with HistoryManager). */

@@ -271,6 +271,10 @@ export const POST: RequestHandler = async (event) => {
   updates.SYSTEM_LLM_MODEL = llmModel;
   if (llmConnection.baseUrl) {
     updates.SYSTEM_LLM_BASE_URL = llmConnection.baseUrl;
+    // OPENAI_BASE_URL is used by OpenCode (assistant) and memory containers.
+    // Append /v1 for OpenAI-compatible endpoints if not already present.
+    const normalizedUrl = llmConnection.baseUrl.replace(/\/+$/, '');
+    updates.OPENAI_BASE_URL = normalizedUrl.endsWith('/v1') ? normalizedUrl : `${normalizedUrl}/v1`;
   }
 
   updates.MEMORY_USER_ID = memoryUserId;

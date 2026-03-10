@@ -45,7 +45,7 @@ services:
       - "${OPENPALM_MEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory:/data
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json:ro
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json
     networks: [assistant_net]
     healthcheck:
       test: ["CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1"]

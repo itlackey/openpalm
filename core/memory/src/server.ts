@@ -55,6 +55,9 @@ function configToMemoryConfig(raw: Record<string, unknown>): MemoryConfig {
     (vectorStore?.config?.path ? join(String(vectorStore.config.path), 'memory.db') : undefined) ??
     join(DATA_DIR, 'memory.db');
 
+  // Ensure parent directory exists (e.g. /data/qdrant/) so SQLite can create the file
+  mkdirSync(dirname(dbPath), { recursive: true });
+
   const dimensions = (vectorStore?.config?.embedding_model_dims as number) ??
     (vectorStore?.config?.dimensions as number) ??
     1536;
@@ -65,7 +68,7 @@ function configToMemoryConfig(raw: Record<string, unknown>): MemoryConfig {
       config: {
         model: llm.config?.model as string,
         apiKey: (llm.config?.api_key ?? llm.config?.apiKey) as string,
-        baseUrl: (llm.config?.base_url ?? llm.config?.baseUrl) as string,
+        baseUrl: (llm.config?.openai_base_url ?? llm.config?.base_url ?? llm.config?.baseUrl) as string,
         temperature: llm.config?.temperature as number,
         maxTokens: (llm.config?.max_tokens ?? llm.config?.maxTokens) as number,
       },
@@ -75,7 +78,7 @@ function configToMemoryConfig(raw: Record<string, unknown>): MemoryConfig {
       config: {
         model: embedder.config?.model as string,
         apiKey: (embedder.config?.api_key ?? embedder.config?.apiKey) as string,
-        baseUrl: (embedder.config?.base_url ?? embedder.config?.baseUrl) as string,
+        baseUrl: (embedder.config?.openai_base_url ?? embedder.config?.base_url ?? embedder.config?.baseUrl) as string,
         dimensions,
       },
     } : undefined,

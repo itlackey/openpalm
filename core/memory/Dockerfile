@@ -2,7 +2,7 @@
 #
 # Build context must be the repo root (context: .) so compose.dev.yaml paths work.
 
-FROM oven/bun:1-alpine
+FROM oven/bun:1-debian
 
 LABEL org.opencontainers.image.name="openpalm/memory"
 
@@ -13,7 +13,8 @@ WORKDIR /app
 COPY packages/memory /app/node_modules/@openpalm/memory
 
 # Copy server package
-COPY core/memory/package.json core/memory/src/ ./
+COPY core/memory/package.json ./
+COPY core/memory/src/ src/
 
 # Install @openpalm/memory's own dependencies so transitive imports resolve at runtime.
 RUN cd /app/node_modules/@openpalm/memory && bun install --production
