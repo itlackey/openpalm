@@ -17,9 +17,11 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import type { DockerResult } from "./docker.js";
 
 const execFileMock = vi.fn();
+const spawnMock = vi.fn();
 
 vi.mock("node:child_process", () => ({
-  execFile: execFileMock
+  execFile: execFileMock,
+  spawn: spawnMock
 }));
 
 // docker.ts also imports existsSync and readFileSync; mock existsSync but
@@ -258,6 +260,32 @@ describe("composeUp", () => {
 
     const args = capturedArgs();
     expect(args).not.toContain("--force-recreate");
+  });
+
+  test("includes --remove-orphans when removeOrphans is true", async () => {
+    existsSyncMock.mockReturnValue(true);
+    mockExecSuccess();
+
+    const { composeUp } = await import("./docker.js");
+    await composeUp("/state", { removeOrphans: true });
+
+    const args = capturedArgs();
+    expect(args).toContain("--remove-orphans");
+    // Should appear after "up" and "-d"
+    const upIdx = args.indexOf("up");
+    const orphanIdx = args.indexOf("--remove-orphans");
+    expect(orphanIdx).toBeGreaterThan(upIdx);
+  });
+
+  test("omits --remove-orphans by default", async () => {
+    existsSyncMock.mockReturnValue(true);
+    mockExecSuccess();
+
+    const { composeUp } = await import("./docker.js");
+    await composeUp("/state");
+
+    const args = capturedArgs();
+    expect(args).not.toContain("--remove-orphans");
   });
 
   test("merges env file values into process env for compose", async () => {
@@ -506,6 +534,95 @@ describe("composePull", () => {
     expect(args).toContain("pull");
     expect(args).toContain("--project-name");
     expect(args).toContain("openpalm");
+  });
+
+  test("merges env file values into process env for pull", async () => {
+    const tmpEnvFile = `/tmp/docker-pull-test-${Date.now()}.env`;
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    realFs.writeFileSync(tmpEnvFile, "OPENPALM_IMAGE_TAG=v1.2.3\nOPENPALM_IMAGE_NAMESPACE=myns\n");
+
+    existsSyncMock.mockReturnValue(true);
+    mockExecSuccess();
+
+    const { composePull } = await import("./docker.js");
+    await composePull("/state", { envFiles: [tmpEnvFile] });
+
+    // The env passed to execFile should contain the env file values
+    const call = execFileMock.mock.calls[0];
+    const opts = call[2] as { env: Record<string, string> };
+    expect(opts.env.OPENPALM_IMAGE_TAG).toBe("v1.2.3");
+    expect(opts.env.OPENPALM_IMAGE_NAMESPACE).toBe("myns");
+
+    realFs.unlinkSync(tmpEnvFile);
+  });
+});
+
+describe("selfRecreateAdmin", () => {
+  beforeEach(() => {
+    spawnMock.mockReset();
+    existsSyncMock.mockReset().mockReturnValue(true);
+  });
+
+  function mockSpawn() {
+    const fakeChild = { on: vi.fn(), unref: vi.fn() };
+    spawnMock.mockReturnValue(fakeChild);
+    return fakeChild;
+  }
+
+  test("builds correct args with force-recreate, remove-orphans, and admin service", async () => {
+    const fakeChild = mockSpawn();
+
+    const { selfRecreateAdmin } = await import("./docker.js");
+    selfRecreateAdmin("/state");
+
+    expect(spawnMock).toHaveBeenCalledOnce();
+    const [cmd, args] = spawnMock.mock.calls[0];
+    expect(cmd).toBe("docker");
+    expect(args).toContain("compose");
+    expect(args).toContain("up");
+    expect(args).toContain("-d");
+    expect(args).toContain("--force-recreate");
+    expect(args).toContain("--remove-orphans");
+    expect(args).toContain("admin");
+    expect(fakeChild.unref).toHaveBeenCalled();
+  });
+
+  test("spawns detached with stdio ignored", async () => {
+    mockSpawn();
+
+    const { selfRecreateAdmin } = await import("./docker.js");
+    selfRecreateAdmin("/state");
+
+    const opts = spawnMock.mock.calls[0][2];
+    expect(opts.detached).toBe(true);
+    expect(opts.stdio).toBe("ignore");
+  });
+
+  test("merges env file values into spawn env", async () => {
+    mockSpawn();
+
+    const tmpEnvFile = `/tmp/docker-self-recreate-test-${Date.now()}.env`;
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    realFs.writeFileSync(tmpEnvFile, "OPENPALM_IMAGE_TAG=v2.0.0\n");
+
+    existsSyncMock.mockReturnValue(true);
+
+    const { selfRecreateAdmin } = await import("./docker.js");
+    selfRecreateAdmin("/state", { envFiles: [tmpEnvFile] });
+
+    const opts = spawnMock.mock.calls[0][2];
+    expect(opts.env.OPENPALM_IMAGE_TAG).toBe("v2.0.0");
+
+    realFs.unlinkSync(tmpEnvFile);
+  });
+
+  test("registers error handler on spawned child", async () => {
+    const fakeChild = mockSpawn();
+
+    const { selfRecreateAdmin } = await import("./docker.js");
+    selfRecreateAdmin("/state");
+
+    expect(fakeChild.on).toHaveBeenCalledWith("error", expect.any(Function));
   });
 });
 

@@ -8,7 +8,7 @@
  * Security: All commands use execFile with argument arrays to prevent
  * command injection. No user input is ever interpolated into shell strings.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
 export type DockerResult = {
@@ -148,6 +148,7 @@ export async function composeUp(
     services?: string[];
     envFiles?: string[];
     forceRecreate?: boolean;
+    removeOrphans?: boolean;
   } = {}
 ): Promise<DockerResult> {
   const primaryFile = options.files?.[0] ?? composeFile(stateDir);
@@ -172,6 +173,10 @@ export async function composeUp(
 
   if (options.forceRecreate) {
     args.push("--force-recreate");
+  }
+
+  if (options.removeOrphans) {
+    args.push("--remove-orphans");
   }
 
   if (options.services && options.services.length > 0) {
@@ -356,7 +361,14 @@ export async function composePullService(
   const args = buildComposeArgs(stateDir, options);
   args.push("pull", service);
 
-  return run(args, stateDir, 300_000);
+  // Merge env file values so Docker Compose resolves the correct image tag,
+  // not the stale value from the admin container's process.env.
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  return run(args, stateDir, 300_000, envOverrides);
 }
 
 /**
@@ -369,5 +381,52 @@ export async function composePull(
   const args = buildComposeArgs(stateDir, options);
   args.push("pull");
 
-  return run(args, stateDir, 300_000);
+  // Merge env file values so Docker Compose resolves the correct image tag,
+  // not the stale value from the admin container's process.env.
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  return run(args, stateDir, 300_000, envOverrides);
+}
+
+/**
+ * Fire-and-forget recreation of the admin container.
+ *
+ * Spawns `docker compose up -d --force-recreate admin` as a detached process
+ * so the current admin process can finish sending its HTTP response before
+ * Docker replaces the container. The spawned process is fully detached
+ * (stdio ignored, unref'd) so it survives the old container being stopped.
+ *
+ * This is intentionally NOT awaited — the calling code should return the
+ * HTTP response and let this run asynchronously.
+ */
+export function selfRecreateAdmin(
+  stateDir: string,
+  options: { files?: string[]; envFiles?: string[] } = {}
+): void {
+  const args = buildComposeArgs(stateDir, options);
+  args.push("up", "-d", "--force-recreate", "--remove-orphans", "admin");
+
+  // Merge env file values so the child process resolves the new image tag
+  const envOverrides: Record<string, string> = {};
+  for (const ef of options.envFiles ?? []) {
+    Object.assign(envOverrides, parseEnvFile(ef));
+  }
+
+  try {
+    const child = spawn("docker", args, {
+      cwd: stateDir,
+      stdio: "ignore",
+      detached: true,
+      env: { ...process.env, ...envOverrides }
+    });
+    child.on("error", (err) => {
+      console.error("[selfRecreateAdmin] spawn error:", err.message);
+    });
+    child.unref();
+  } catch (err) {
+    console.error("[selfRecreateAdmin] failed to spawn:", err instanceof Error ? err.message : err);
+  }
 }
