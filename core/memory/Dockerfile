@@ -8,24 +8,25 @@ LABEL org.opencontainers.image.name="openpalm/memory"
 
 WORKDIR /app
 
-# Copy workspace root files needed for bun workspace resolution
-COPY package.json bun.lock ./
-
-# Copy workspace package sources first for better layer caching
-COPY packages/memory/package.json packages/memory/
-COPY packages/memory/src/ packages/memory/src/
-COPY packages/memory/tsconfig.json packages/memory/
+# Copy @openpalm/memory source directly into node_modules (same approach as guardian).
+# Bun workspace symlinks are not available inside Docker builds.
+COPY packages/memory /app/node_modules/@openpalm/memory
 
 # Copy server package
-COPY core/memory/package.json core/memory/
-COPY core/memory/src/ core/memory/src/
+COPY core/memory/package.json core/memory/src/ ./
 
-# Install dependencies (workspace resolution requires root package.json + bun.lock)
-RUN bun install --frozen-lockfile
+# Install @openpalm/memory's own dependencies so transitive imports resolve at runtime.
+RUN cd /app/node_modules/@openpalm/memory && bun install --production
+
+# Strip workspace:* dep (pre-installed via COPY above) and remove the workspace
+# lockfile so bun install resolves remaining deps without frozen-lockfile enforcement.
+RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.parse(readFileSync('package.json','utf8'));delete p.dependencies['@openpalm/memory'];writeFileSync('package.json',JSON.stringify(p,null,2))" \
+    && rm -f bun.lock bun.lockb \
+    && bun install --production
 
 RUN chown -R bun:bun /app
 
 USER bun
 
 EXPOSE 8765
-CMD ["bun", "run", "core/memory/src/server.ts"]
+CMD ["bun", "run", "src/server.ts"]
