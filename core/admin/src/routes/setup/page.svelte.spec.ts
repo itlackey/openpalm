@@ -205,7 +205,7 @@ describe('/setup page — models screen URL restoration guard', () => {
     window.history.replaceState({}, '', '?screen=models');
     render(Page, { props: { data: mockData } });
 
-    const heading = page.getByRole('heading', { name: 'Set up your models' });
+    const heading = page.getByRole('heading', { name: 'Welcome' });
     await expect.element(heading).toBeInTheDocument();
 
     guard.expectNoErrors();
@@ -227,7 +227,7 @@ describe('/setup page — review screen URL restoration guard', () => {
     window.history.replaceState({}, '', '?screen=review');
     render(Page, { props: { data: mockData } });
 
-    const heading = page.getByRole('heading', { name: 'Set up your models' });
+    const heading = page.getByRole('heading', { name: 'Welcome' });
     await expect.element(heading).toBeInTheDocument();
 
     guard.expectNoErrors();
@@ -266,7 +266,7 @@ describe('/setup page', () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
-		const welcomeHeading = page.getByRole('heading', { name: 'Set up your models' });
+		const welcomeHeading = page.getByRole('heading', { name: 'Welcome' });
 		await expect.element(welcomeHeading).toBeInTheDocument();
 
 		guard.expectNoErrors();
