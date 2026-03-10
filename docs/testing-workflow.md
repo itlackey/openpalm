@@ -34,7 +34,6 @@ curl -sS -H "x-admin-token: dev-admin-token" http://localhost:8100/admin/memory/
 ```
 
 > **Common pitfalls (already fixed in code/scripts):**
-> - Memory container needs `ollama` Python package (in `requirements.txt`) — without it, mem0's Ollama embedder crashes with EOFError
 > - Memory config must use `http://host.docker.internal:11434` for Ollama (not `localhost`, not `ollama:11434`) — Ollama runs on host, not in compose
 > - Embedding model dimensions must match config: `nomic-embed-text` = 768, `qwen3-embedding:0.6b` = 1024
 > - `ADMIN_TOKEN` in `secrets.env` must be `dev-admin-token` to match test expectations
@@ -74,7 +73,7 @@ bun run cli:test          # core/cli (1 file)
 
 **What it validates:** SDK contracts, guardian HMAC/replay/rate-limiting, channel adapters, CLI parsing, admin server logic (docker wrapper, helpers, secrets, env management), admin client components.
 
-**Test count:** ~487 admin unit tests + ~112 guardian/sdk/channel/cli tests.
+**Test count:** ~572 admin unit tests + ~112 guardian/sdk/channel/cli tests.
 
 ---
 
@@ -138,20 +137,6 @@ bun run admin:test:e2e
 **Files:** `e2e/assistant-pipeline.test.ts` (groups 5-6)
 
 **No-skip expectation:** `bun run admin:test:e2e` sets `RUN_DOCKER_STACK_TESTS=1` and `RUN_LLM_TESTS=1` by default and should run only integration tests with no browser-route mocks.
-
----
-
-## Known Caveat: Admin Browser Unit Tests
-
-`bun run admin:test:unit` includes browser-mode Vitest tests in `core/admin/src/routes/setup/page.svelte.spec.ts`.
-
-In this environment, these can intermittently fail with Chromium `TimeoutError` on the setup wizard `Next` button while server unit tests and full Playwright E2E still pass.
-
-If this happens:
-
-1. Re-run `bun run admin:test:unit` once to check for flake.
-2. Run `bun run admin:test:e2e` to confirm full end-to-end behavior.
-3. Treat repeated `page.svelte.spec.ts` timeouts as a browser-unit-test stability issue, separate from stack/LLM integration health.
 
 ---
 

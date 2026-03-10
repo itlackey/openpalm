@@ -60,9 +60,8 @@ The source-of-truth core Caddyfile is system-managed at
 | `$DATA_HOME/memory` | `/data` | rw | Memory service persistent data |
 | `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
 
-Memory is a lightweight FastAPI wrapper around the mem0 Python SDK. It uses
-embedded Qdrant (file-based) for vector storage — all data is stored within
-`$DATA_HOME/memory/`.
+Memory is a Bun.js service (`@openpalm/memory`) using sqlite-vec for vector
+storage — all data is stored within `$DATA_HOME/memory/`.
 
 ### 2.3 Assistant (OpenCode Runtime)
 
@@ -244,9 +243,9 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
 | `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
 
-Memory uses the mem0 Python SDK with embedded Qdrant (configured via
-`default_config.json` with `path: "/data/qdrant"`) for vector storage. No
-external database servers needed.
+Memory uses the `@openpalm/memory` Bun.js package with sqlite-vec for vector
+storage (configured via `default_config.json`). No external database servers
+needed.
 
 ---
 
