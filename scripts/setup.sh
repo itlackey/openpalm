@@ -299,18 +299,106 @@ create_directories() {
 download_asset() {
 	local filename="$1"
 	local dest="$2"
+	local tmp="${dest}.tmp"
 
 	# Try GitHub release first, then fall back to raw.githubusercontent.com
 	local release_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/${filename}"
 	local raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/core/assets/${filename}"
 
-	if curl -fsSL --retry 2 -o "$dest" "$release_url" 2>/dev/null; then
+	# Download to a temp file first to avoid leaving corrupt files on interrupt
+	if curl -fsSL --retry 2 -o "$tmp" "$release_url" 2>/dev/null; then
+		mv -f "$tmp" "$dest"
 		ok "Downloaded $filename (release)"
-	elif curl -fsSL --retry 2 -o "$dest" "$raw_url" 2>/dev/null; then
+	elif curl -fsSL --retry 2 -o "$tmp" "$raw_url" 2>/dev/null; then
+		mv -f "$tmp" "$dest"
 		ok "Downloaded $filename (raw)"
 	else
+		rm -f "$tmp"
 		die "Failed to download $filename from GitHub. Check network and --version."
 	fi
+
+	# Sanity check: downloaded file should not be empty or an HTML error page
+	if [[ ! -s "$dest" ]]; then
+		rm -f "$dest"
+		die "Downloaded $filename is empty. Check --version and network."
+	fi
+	if head -c 50 "$dest" | grep -Eqi '<!doctype|<html'; then
+		rm -f "$dest"
+		die "Downloaded $filename appears to be an HTML error page, not the expected asset. Check --version."
+	fi
+}
+
+# ── Checksum verification ────────────────────────────────────────────
+
+# Cross-platform SHA-256 helper: tries sha256sum, then shasum, then openssl
+sha256_hash() {
+	local file="$1"
+	if command -v sha256sum &>/dev/null; then
+		sha256sum "$file" | awk '{print $1}'
+	elif command -v shasum &>/dev/null; then
+		shasum -a 256 "$file" | awk '{print $1}'
+	elif command -v openssl &>/dev/null; then
+		openssl dgst -sha256 "$file" | awk '{print $NF}'
+	else
+		warn "No SHA-256 tool found (sha256sum, shasum, or openssl) — skipping integrity check."
+		return 1
+	fi
+}
+
+verify_asset_checksum() {
+	local checksums_file="$1"
+	local asset_name="$2"
+	local asset_path="$3"
+
+	if [[ ! -f "$asset_path" ]]; then
+		return 0
+	fi
+
+	local expected
+	expected="$(grep -F "$asset_name" "$checksums_file" | awk '{print $1}')"
+	if [[ -z "$expected" ]]; then
+		return 0
+	fi
+
+	local actual
+	actual="$(sha256_hash "$asset_path")" || return 0
+	# Normalize to lowercase for comparison
+	expected="$(echo "$expected" | tr '[:upper:]' '[:lower:]')"
+	actual="$(echo "$actual" | tr '[:upper:]' '[:lower:]')"
+
+	if [[ "$actual" != "$expected" ]]; then
+		rm -f "$checksums_file"
+		die "Checksum mismatch for $asset_name — download may be corrupt. Delete and retry."
+	fi
+	ok "Checksum verified: $asset_name"
+}
+
+verify_checksums() {
+	# Only available for release tags (vX.Y.Z); skip for branch refs
+	case "$OPT_VERSION" in
+	v[0-9]*) ;;
+	*) return 0 ;;
+	esac
+
+	local checksums_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/checksums-sha256.txt"
+	local checksums_file
+	checksums_file="$(mktemp)"
+
+	if ! curl -fsSL --retry 2 -o "$checksums_file" "$checksums_url" 2>/dev/null; then
+		rm -f "$checksums_file"
+		warn "Could not download checksums for ${OPT_VERSION} — skipping integrity check."
+		return 0
+	fi
+
+	# Verify deploy bundle tarball if it exists locally
+	local bundle_name="openpalm-${OPT_VERSION#v}-deploy-bundle.tar.gz"
+	verify_asset_checksum "$checksums_file" "$bundle_name" "${STATE_HOME}/artifacts/${bundle_name}"
+
+	# Verify the actually downloaded assets
+	verify_asset_checksum "$checksums_file" "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
+	verify_asset_checksum "$checksums_file" "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
+
+	rm -f "$checksums_file"
 }
 
 download_assets() {
@@ -319,6 +407,9 @@ download_assets() {
 	# DATA_HOME — seed core assets (source of truth for admin staging)
 	download_asset "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
 	download_asset "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
+
+	# Verify checksums when installing from a release tag
+	verify_checksums
 
 	# Bootstrap staging: copy to STATE so compose can start admin before first apply
 	cp "${DATA_HOME}/docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"
@@ -331,11 +422,28 @@ PULL_PID=""
 PULL_LOG=""
 
 cleanup() {
+	local exit_code=$?
 	if [[ -n "${PULL_PID:-}" ]] && kill -0 "$PULL_PID" 2>/dev/null; then
 		kill "$PULL_PID" 2>/dev/null || true
 		wait "$PULL_PID" 2>/dev/null || true
 	fi
 	[[ -n "${PULL_LOG:-}" ]] && rm -f "$PULL_LOG"
+
+	# Clean up specific temp files from interrupted asset downloads
+	if [[ -n "${DATA_HOME:-}" ]]; then
+		rm -f "${DATA_HOME}/docker-compose.yml.tmp" 2>/dev/null || true
+		rm -f "${DATA_HOME}/caddy/Caddyfile.tmp" 2>/dev/null || true
+	fi
+
+	if [[ $exit_code -ne 0 ]]; then
+		printf "\n"
+		warn "Setup did not complete successfully (exit code $exit_code)."
+		warn "Your existing data and secrets have not been modified."
+		warn "To retry, re-run the same setup command."
+		if [[ -n "${STATE_HOME:-}" ]]; then
+			warn "For troubleshooting, check: ${STATE_HOME}/artifacts/"
+		fi
+	fi
 }
 
 start_admin_pull() {

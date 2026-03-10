@@ -306,13 +306,16 @@ function Create-Directories {
 
 function Download-Asset([string]$Filename, [string]$Destination) {
   $releaseUrl = "https://github.com/$Repo/releases/download/$OptVersion/$Filename"
-  $rawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/assets/$Filename"
+  $rawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/core/assets/$Filename"
+  $tmpDest = "$Destination.tmp"
 
   $success = $false
   foreach ($url in @($releaseUrl, $rawUrl)) {
     for ($attempt = 0; $attempt -lt 3; $attempt++) {
       try {
-        Invoke-WebRequest -Uri $url -OutFile $Destination -UseBasicParsing
+        # Download to temp file first to avoid leaving corrupt files on interrupt
+        Invoke-WebRequest -Uri $url -OutFile $tmpDest -UseBasicParsing
+        Move-Item -LiteralPath $tmpDest -Destination $Destination -Force
         $success = $true
         if ($url -eq $releaseUrl) {
           Ok "Downloaded $Filename (release)"
@@ -323,6 +326,7 @@ function Download-Asset([string]$Filename, [string]$Destination) {
         break
       }
       catch {
+        Remove-Item -LiteralPath $tmpDest -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 1
       }
     }
@@ -332,6 +336,65 @@ function Download-Asset([string]$Filename, [string]$Destination) {
   if (-not $success) {
     Die "Failed to download $Filename from GitHub. Check network and --version."
   }
+
+  # Sanity check: downloaded file should not be empty or an HTML error page
+  $fileInfo = Get-Item -LiteralPath $Destination
+  if ($fileInfo.Length -eq 0) {
+    Remove-Item -LiteralPath $Destination -Force
+    Die "Downloaded $Filename is empty. Check --version and network."
+  }
+  $head = Get-Content -LiteralPath $Destination -TotalCount 1 -ErrorAction SilentlyContinue
+  if ($head -and ($head -match '(?i)<!doctype|<html')) {
+    Remove-Item -LiteralPath $Destination -Force
+    Die "Downloaded $Filename appears to be an HTML error page, not the expected asset. Check --version."
+  }
+}
+
+function Verify-Checksums {
+  # Only available for release tags (vX.Y.Z); skip for branch refs
+  if ($OptVersion -notmatch '^v\d+') { return }
+
+  $checksumsUrl = "https://github.com/$Repo/releases/download/$OptVersion/checksums-sha256.txt"
+  $tmpFile = [System.IO.Path]::GetTempFileName()
+
+  try {
+    Invoke-WebRequest -Uri $checksumsUrl -OutFile $tmpFile -UseBasicParsing -ErrorAction Stop
+  }
+  catch {
+    Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
+    Warn "Could not download checksums for $OptVersion — skipping integrity check."
+    return
+  }
+
+  $version = $OptVersion.TrimStart('v')
+  $bundleName = "openpalm-$version-deploy-bundle.tar.gz"
+  $bundlePath = Join-Path $LocalStateHome "artifacts/$bundleName"
+
+  $checksumLines = Get-Content -LiteralPath $tmpFile
+
+  # Helper: verify a single asset against the checksums file
+  $verifyAsset = {
+    param([string]$AssetName, [string]$AssetPath)
+    if (-not (Test-Path -LiteralPath $AssetPath -PathType Leaf)) { return }
+    $line = $checksumLines | Where-Object { $_.Contains($AssetName) } | Select-Object -First 1
+    if (-not $line) { return }
+    $expected = ($line -split '\s+')[0].ToLowerInvariant()
+    $actual = (Get-FileHash -LiteralPath $AssetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+      Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
+      Die "Checksum mismatch for $AssetName — download may be corrupt. Delete and retry."
+    }
+    Ok "Checksum verified: $AssetName"
+  }
+
+  # Verify deploy bundle
+  & $verifyAsset $bundleName $bundlePath
+
+  # Verify actually downloaded assets
+  & $verifyAsset 'docker-compose.yml' (Join-Path $LocalDataHome 'docker-compose.yml')
+  & $verifyAsset 'Caddyfile' (Join-Path $LocalDataHome 'caddy/Caddyfile')
+
+  Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
 }
 
 function Download-Assets {
@@ -339,6 +402,9 @@ function Download-Assets {
 
   Download-Asset 'docker-compose.yml' (Join-Path $LocalDataHome 'docker-compose.yml')
   Download-Asset 'Caddyfile' (Join-Path $LocalDataHome 'caddy/Caddyfile')
+
+  # Verify checksums when installing from a release tag
+  Verify-Checksums
 
   Copy-Item -LiteralPath (Join-Path $LocalDataHome 'docker-compose.yml') -Destination (Join-Path $LocalStateHome 'artifacts/docker-compose.yml') -Force
   Copy-Item -LiteralPath (Join-Path $LocalDataHome 'caddy/Caddyfile') -Destination (Join-Path $LocalStateHome 'artifacts/Caddyfile') -Force
@@ -519,7 +585,7 @@ function Compose-UpAdmin {
   }
 
   Info 'Starting admin container...'
-  Compose-Cmd @('up', '-d', '--no-deps', 'admin')
+  Compose-Cmd @('up', '-d', 'docker-socket-proxy', 'admin')
   Ok 'Admin service started'
 }
 
@@ -594,10 +660,32 @@ function Cleanup {
     }
     Remove-Job -Id $PullJob.Id -Force -ErrorAction SilentlyContinue
   }
+
+  # Clean up specific temp files from interrupted asset downloads (only on failure)
+  if ($LocalDataHome -and -not $setupSuccess) {
+    $tempFiles = @(
+      (Join-Path $LocalDataHome 'docker-compose.yml.tmp'),
+      (Join-Path $LocalDataHome 'caddy/Caddyfile.tmp')
+    )
+    foreach ($tf in $tempFiles) {
+      Remove-Item -LiteralPath $tf -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+function Show-FailureMessage {
+  Write-Host ''
+  Warn 'Setup did not complete successfully.'
+  Warn 'Your existing data and secrets have not been modified.'
+  Warn 'To retry, re-run the same setup command.'
+  if ($LocalStateHome) {
+    Warn "For troubleshooting, check: $LocalStateHome\artifacts\"
+  }
 }
 
 Write-Host "`nOpenPalm Setup`n" -ForegroundColor White
 
+$setupSuccess = $false
 try {
   Parse-Args $args
   Preflight-Checks
@@ -615,7 +703,11 @@ try {
   Wait-Healthy
   Open-Browser
   Print-Summary
+  $setupSuccess = $true
 }
 finally {
   Cleanup
+  if (-not $setupSuccess) {
+    Show-FailureMessage
+  }
 }
