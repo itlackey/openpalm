@@ -29,7 +29,7 @@
 
   let { data }: Props = $props();
   // svelte-ignore state_referenced_locally
-  const { setupToken = '', detectedUserId = 'default_user' } = data;
+  const { detectedUserId = 'default_user' } = data;
 
   // ── Wizard state ────────────────────────────────────────────────────────
   const initialDraft = createInitialDraft(detectedUserId);
@@ -42,7 +42,7 @@
   let ownerName = $state('');
   let ownerEmail = $state('');
   let adminToken = $state('');
-  let setupSessionToken = $state(setupToken);
+  let setupSessionToken = $state('');
 
   // ── Multi-connection state ──────────────────────────────────────────────
   let connections: WizardConnectionDraft[] = $state([]);
@@ -1069,6 +1069,11 @@
           <h2>{SETUP_WIZARD_COPY.welcomeTitle}</h2>
           <p class="step-description">{SETUP_WIZARD_COPY.welcomeBody}</p>
           <div class="field-group">
+            <label for="setup-token">Setup Token</label>
+            <input id="setup-token" type="password" bind:value={setupSessionToken} placeholder="Paste the token shown in your terminal" autocomplete="off" />
+            <p class="field-hint">Enter the setup token displayed by the setup script. Lost it? Check <code>~/.local/state/openpalm/setup-token.txt</code></p>
+          </div>
+          <div class="field-group">
             <label for="owner-name">Your Name</label>
             <input id="owner-name" type="text" bind:value={ownerName} placeholder="Jane Doe" autocomplete="name" />
             <p class="field-hint">Used as the default Memory user ID.</p>
@@ -1088,6 +1093,7 @@
           {/if}
           <div class="step-actions">
             <button class="btn btn-primary" onclick={() => {
+              if (!setupSessionToken.trim()) { tokenError = 'Setup token is required. Check your terminal output.'; return; }
               if (!ownerName.trim()) { tokenError = 'Name is required.'; return; }
               if (!adminToken.trim()) { tokenError = 'Admin token is required.'; return; }
               if (adminToken.trim().length < 8) { tokenError = 'Admin token must be at least 8 characters.'; return; }

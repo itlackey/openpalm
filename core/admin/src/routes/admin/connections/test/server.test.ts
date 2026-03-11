@@ -137,13 +137,80 @@ describe('POST /admin/connections/test', () => {
       reason: 'none',
     });
 
-    const res = await POST(makeEvent({ baseUrl: 'http://localhost:11434', kind: 'local' }));
+    const res = await POST(makeEvent({ baseUrl: 'http://host.docker.internal:11434', kind: 'local' }));
     expect(res.status).toBe(200);
     expect(vi.mocked(fetchProviderModels)).toHaveBeenCalledWith(
       'ollama',
       expect.any(String),
-      'http://localhost:11434',
+      'http://host.docker.internal:11434',
       expect.any(String)
     );
+  });
+
+  test('blocks cloud metadata IPs (SSRF protection)', async () => {
+    const res = await POST(makeEvent({ baseUrl: 'http://169.254.169.254/latest/meta-data' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('blocked_url');
+  });
+
+  test('blocks loopback IPs (wrong target inside Docker)', async () => {
+    const res = await POST(makeEvent({ baseUrl: 'http://127.0.0.1:1234/v1' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('blocked_url');
+  });
+
+  test('blocks Docker service names (SSRF protection)', async () => {
+    const res = await POST(makeEvent({ baseUrl: 'http://memory:8765' }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('blocked_url');
+  });
+
+  test('allows host.docker.internal (host services)', async () => {
+    vi.mocked(fetchProviderModels).mockResolvedValueOnce({
+      models: ['llama3.2'],
+      status: 'ok',
+      reason: 'none',
+    });
+
+    const res = await POST(makeEvent({ baseUrl: 'http://host.docker.internal:11434' }));
+    expect(res.status).toBe(200);
+  });
+
+  test('allows LAN IPs for local AI services', async () => {
+    vi.mocked(fetchProviderModels).mockResolvedValueOnce({
+      models: ['llama3.2'],
+      status: 'ok',
+      reason: 'none',
+    });
+
+    const res = await POST(makeEvent({ baseUrl: 'http://192.168.1.100:1234/v1' }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  test('allows 10.x LAN IPs', async () => {
+    vi.mocked(fetchProviderModels).mockResolvedValueOnce({
+      models: ['model-a'],
+      status: 'ok',
+      reason: 'none',
+    });
+
+    const res = await POST(makeEvent({ baseUrl: 'http://10.0.0.50:8000/v1' }));
+    expect(res.status).toBe(200);
+  });
+
+  test('allows custom hostnames for LAN machines', async () => {
+    vi.mocked(fetchProviderModels).mockResolvedValueOnce({
+      models: ['model-a'],
+      status: 'ok',
+      reason: 'none',
+    });
+
+    const res = await POST(makeEvent({ baseUrl: 'http://gpu-server:1234/v1' }));
+    expect(res.status).toBe(200);
   });
 });

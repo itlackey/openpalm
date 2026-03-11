@@ -327,43 +327,19 @@ export async function composeLogs(
 }
 
 /**
- * Reload Caddy configuration without restarting.
+ * Reload Caddy configuration by restarting the container.
  *
- * Uses Caddy's admin API (POST /load) to reload the configuration,
- * avoiding the need for `docker compose exec` and the Docker EXEC API
- * permission on the socket proxy. The admin container reaches Caddy's
- * admin API at caddy:2019 over the shared assistant_net network.
- *
- * Falls back to `docker compose restart caddy` if the admin API call
- * fails (e.g. Caddy is not yet running or the admin endpoint is
- * unreachable).
+ * Caddy's admin API is bound to localhost inside the container, so it is
+ * not reachable from other containers (security hardening: CRIT-1).
+ * Config changes are applied by restarting the caddy service, which
+ * re-reads the mounted Caddyfile on startup. This causes a ~1-2s
+ * interruption, acceptable for self-hosted use where config changes
+ * are infrequent.
  */
 export async function caddyReload(
   stateDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const caddyfilePath = `${stateDir}/artifacts/Caddyfile`;
-  try {
-    const caddyfileContent = readFileSync(caddyfilePath, "utf-8");
-    const res = await fetch("http://caddy:2019/load", {
-      method: "POST",
-      headers: { "Content-Type": "text/caddyfile" },
-      body: caddyfileContent
-    });
-    if (res.ok) {
-      return { ok: true, stdout: "Caddy config reloaded via admin API", stderr: "", code: 0 };
-    }
-    const body = await res.text().catch(() => "");
-    // Fall through to restart fallback
-    console.error(`[caddyReload] admin API returned ${res.status}: ${body}`);
-  } catch (err) {
-    console.error(
-      "[caddyReload] admin API unreachable, falling back to restart:",
-      err instanceof Error ? err.message : err
-    );
-  }
-
-  // Fallback: restart the caddy service (picks up mounted Caddyfile on start)
   return composeRestart(stateDir, ["caddy"], options);
 }
 

@@ -407,6 +407,15 @@ if [[ $IS_UPDATE -eq 1 ]]; then
 	printf "${BOLD}Admin Console:${NC} http://localhost:8100/\n"
 else
 	printf "${BOLD}Setup Wizard:${NC}  http://localhost:8100/setup\n"
+
+	# Display the setup token for the wizard
+	SETUP_TOKEN_FILE="${STATE_HOME}/setup-token.txt"
+	if [[ -f "$SETUP_TOKEN_FILE" ]]; then
+		SETUP_TOKEN="$(cat "$SETUP_TOKEN_FILE")"
+		printf "\n"
+		printf "${BOLD}${YELLOW}Setup Token:${NC}   ${BOLD}%s${NC}\n" "$SETUP_TOKEN"
+		info "Paste this token into the setup wizard to authenticate."
+	fi
 fi
 printf "\n"
 printf "${BOLD}Config:${NC}        %s\n" "$CONFIG_HOME"

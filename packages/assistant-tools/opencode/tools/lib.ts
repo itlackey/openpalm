@@ -3,6 +3,7 @@ import { GLOBAL_USER_ID, STACK_USER_ID } from "../plugins/memory-lib.ts";
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
 const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || "";
 const MEMORY_URL = process.env.MEMORY_API_URL || "http://memory:8765";
+const MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN || "";
 export const USER_ID = process.env.MEMORY_USER_ID || "default_user";
 export { GLOBAL_USER_ID, STACK_USER_ID };
 
@@ -12,9 +13,12 @@ type ProvisionResult = { ok: true } | { ok: false; error: string };
 
 async function provisionMemoryUser(userId: string): Promise<ProvisionResult> {
   try {
+    const authHeaders: Record<string, string> = MEMORY_AUTH_TOKEN
+      ? { authorization: `Bearer ${MEMORY_AUTH_TOKEN}` }
+      : {};
     const res = await fetch(`${MEMORY_URL}/api/v1/users`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...authHeaders },
       body: JSON.stringify({ user_id: userId }),
       signal: AbortSignal.timeout(5_000),
     });
@@ -62,9 +66,12 @@ export async function adminFetch(path: string, options?: RequestInit): Promise<s
 export async function memoryFetch(path: string, options?: RequestInit): Promise<string> {
   try {
     await ensureMemoryUserProvisioned();
+    const authHeaders: Record<string, string> = MEMORY_AUTH_TOKEN
+      ? { authorization: `Bearer ${MEMORY_AUTH_TOKEN}` }
+      : {};
     const res = await fetch(`${MEMORY_URL}${path}`, {
       ...options,
-      headers: { "content-type": "application/json", ...options?.headers },
+      headers: { "content-type": "application/json", ...authHeaders, ...options?.headers },
       signal: options?.signal ?? AbortSignal.timeout(30_000),
     });
     const body = await res.text();

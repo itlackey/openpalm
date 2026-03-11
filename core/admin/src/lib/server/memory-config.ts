@@ -403,17 +403,24 @@ function getMemoryApiBases(): string[] {
   return Array.from(new Set(bases.map((base) => base.replace(/\/+$/, ""))));
 }
 
+function getMemoryAuthHeaders(): Record<string, string> {
+  const token = process.env.MEMORY_AUTH_TOKEN?.trim();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 async function callMemoryApi(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
   const bases = getMemoryApiBases();
+  const authHeaders = getMemoryAuthHeaders();
   let lastError: unknown;
 
   for (let i = 0; i < bases.length; i++) {
     const url = `${bases[i]}${path}`;
     try {
-      return await fetch(url, init);
+      const headers = { ...authHeaders, ...(init?.headers as Record<string, string>) };
+      return await fetch(url, { ...init, headers });
     } catch (err) {
       lastError = err;
       if (i === bases.length - 1) throw err;

@@ -315,14 +315,27 @@ async function executeHttpAction(action: AutomationAction): Promise<void> {
   }
 }
 
+/** Safe env vars allowlisted for shell automation actions. */
+const SHELL_SAFE_ENV_KEYS = [
+  "PATH", "HOME", "LANG", "LC_ALL", "TZ", "NODE_ENV",
+  "OPENPALM_CONFIG_HOME", "OPENPALM_STATE_HOME", "OPENPALM_DATA_HOME",
+];
+
 /** Execute a shell action — uses execFile with argument array (no shell interpolation). */
 function executeShellAction(action: AutomationAction): Promise<void> {
   const cmd = action.command!;
+
+  // Build a minimal env from the allowlist — never leak secrets to shell commands
+  const safeEnv: Record<string, string> = {};
+  for (const key of SHELL_SAFE_ENV_KEYS) {
+    if (process.env[key]) safeEnv[key] = process.env[key]!;
+  }
+
   return new Promise((resolve, reject) => {
     execFile(
       cmd[0],
       cmd.slice(1),
-      { env: { ...process.env }, timeout: action.timeout ?? 30_000 },
+      { env: safeEnv, timeout: action.timeout ?? 30_000 },
       (error, _stdout, stderr) => {
         if (error) {
           reject(new Error(`shell command failed: ${stderr || error.message}`));

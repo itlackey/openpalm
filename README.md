@@ -36,12 +36,12 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 
 **Mac or Linux** — open Terminal and paste:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
 **Windows (PowerShell)** — open PowerShell and paste:
 ```powershell
-irm https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.ps1 | iex
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```
 
 No config files to edit. Re-run the same command to update — your secrets are never overwritten.

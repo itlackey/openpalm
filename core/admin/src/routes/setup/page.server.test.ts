@@ -40,13 +40,13 @@ describe("/setup page server load", () => {
     return {} as Parameters<typeof load>[0];
   }
 
-  test("returns bootstrap setup token for server-rendered page", async () => {
+  test("returns detectedUserId but no setupToken", async () => {
     resetState();
-    const result = await load(makeLoadEvent()) as { setupToken: string };
+    const result = await load(makeLoadEvent()) as Record<string, unknown>;
 
-    expect(typeof result.setupToken).toBe("string");
-    expect(result.setupToken.length).toBeGreaterThan(0);
-    expect(result.setupToken).toMatch(/^[a-f0-9]{32}$/);
+    // setupToken must NOT be exposed to the browser
+    expect(result).not.toHaveProperty("setupToken");
+    expect(typeof result.detectedUserId).toBe("string");
   });
 
   test("redirects to home when OPENPALM_SETUP_COMPLETE=true in stack.env", async () => {

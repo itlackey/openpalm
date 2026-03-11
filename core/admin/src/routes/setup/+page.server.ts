@@ -10,7 +10,6 @@ export const load: PageServerLoad = async () => {
   }
 
   return {
-    setupToken: state.setupToken,
     detectedUserId: detectUserId()
   };
 };

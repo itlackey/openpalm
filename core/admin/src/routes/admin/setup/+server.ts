@@ -29,6 +29,7 @@ import {
   pushConfigToMemory,
   provisionMemoryUser,
   buildMem0Mapping,
+  writeSetupTokenFile,
 } from "$lib/server/control-plane.js";
 import {
   PROVIDER_KEY_MAP,
@@ -78,7 +79,6 @@ export const GET: RequestHandler = async (event) => {
     {
       setupComplete,
       installed,
-      ...(setupComplete ? {} : { setupToken: state.setupToken }),
       detectedUserId: detectUserId(),
       configured: {
         OPENAI_API_KEY: keys.OPENAI_API_KEY === true,
@@ -311,6 +311,8 @@ export const POST: RequestHandler = async (event) => {
 
   if (updates.ADMIN_TOKEN) {
     state.adminToken = updates.ADMIN_TOKEN;
+    // Remove the setup-token.txt file now that setup is complete
+    writeSetupTokenFile(state);
   }
 
   // ── Build and persist Memory config ───────────────────────────────

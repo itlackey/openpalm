@@ -21,6 +21,7 @@ const OPENCODE_URL = 'http://localhost:4096';
 const MEMORY_URL = 'http://localhost:8765';
 const MEMORY_USER_ID = process.env.MEMORY_USER_ID ?? 'default_user';
 const E2E_TAG = 'e2e-test';
+const MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN ?? '';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
@@ -35,10 +36,22 @@ function openCodeHeaders(): Record<string, string> {
 	return h;
 }
 
+/** Build Memory API auth headers. */
+function memoryHeaders(): Record<string, string> {
+	const h: Record<string, string> = { 'content-type': 'application/json' };
+	if (MEMORY_AUTH_TOKEN) {
+		h['authorization'] = `Bearer ${MEMORY_AUTH_TOKEN}`;
+	}
+	return h;
+}
+
 /** Check if OpenCode has LLM providers configured. */
 async function hasLlmProvider(request: APIRequestContext): Promise<boolean> {
 	try {
-		const res = await request.get(`${OPENCODE_URL}/provider`, { timeout: 10_000 });
+		const res = await request.get(`${OPENCODE_URL}/provider`, {
+			headers: openCodeHeaders(),
+			timeout: 10_000
+		});
 		if (!res.ok()) return false;
 		const data = await res.json();
 		return Array.isArray(data?.all) && data.all.length > 0;
@@ -95,7 +108,7 @@ async function searchMemories(
 	query: string
 ): Promise<{ results: Array<{ id: string; memory: string; metadata?: Record<string, unknown> }> }> {
 	const res = await request.post(`${MEMORY_URL}/api/v1/memories/filter`, {
-		headers: { 'content-type': 'application/json' },
+		headers: memoryHeaders(),
 		data: { user_id: MEMORY_USER_ID, search_query: query, page: 1, size: 20 },
 		timeout: 30_000
 	});
@@ -125,7 +138,7 @@ async function addMemory(
 	for (let attempt = 0; attempt <= retries; attempt++) {
 		if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt));
 		const res = await request.post(`${MEMORY_URL}/api/v1/memories/`, {
-			headers: { 'content-type': 'application/json' },
+			headers: memoryHeaders(),
 			data: {
 				user_id: MEMORY_USER_ID,
 				text,
@@ -165,7 +178,7 @@ async function deleteMemories(
 ): Promise<void> {
 	if (memoryIds.length === 0) return;
 	await request.delete(`${MEMORY_URL}/api/v1/memories/`, {
-		headers: { 'content-type': 'application/json' },
+		headers: memoryHeaders(),
 		data: { memory_ids: memoryIds, user_id: MEMORY_USER_ID },
 		timeout: 30_000
 	}).catch(() => {});
@@ -198,7 +211,10 @@ test.describe('OpenCode Server Health', () => {
 	});
 
 	test('provider endpoint returns configured providers', async ({ request }) => {
-		const res = await request.get(`${OPENCODE_URL}/provider`, { timeout: 10_000 });
+		const res = await request.get(`${OPENCODE_URL}/provider`, {
+			headers: openCodeHeaders(),
+			timeout: 10_000
+		});
 		expect(res.ok()).toBeTruthy();
 		const contentType = res.headers()['content-type'] ?? '';
 		expect(contentType).toContain('application/json');
@@ -236,7 +252,7 @@ test.describe('Memory Direct API', () => {
 	test('stats endpoint returns valid response', async ({ request }) => {
 		const res = await request.get(
 			`${MEMORY_URL}/api/v1/stats/?user_id=${MEMORY_USER_ID}`,
-			{ timeout: 10_000 }
+			{ headers: memoryHeaders(), timeout: 10_000 }
 		);
 		expect(res.ok()).toBeTruthy();
 		const data = await res.json();
