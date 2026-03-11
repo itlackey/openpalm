@@ -25,10 +25,13 @@ describe('connection profiles storage', () => {
     expect(path).toBe(join(configDir, 'connections', 'profiles.json'));
   });
 
-  test('readConnectionProfilesDocument throws when file does not exist', () => {
+  test('readConnectionProfilesDocument returns empty default when file does not exist', () => {
     const configDir = trackDir(makeTempDir());
     ensureConnectionProfilesStore(configDir);
-    expect(() => readConnectionProfilesDocument(configDir)).toThrow('does not exist');
+    const doc = readConnectionProfilesDocument(configDir);
+    expect(doc.profiles).toEqual([]);
+    expect(doc.assignments.llm.connectionId).toBe('');
+    expect(doc.assignments.embeddings.connectionId).toBe('');
   });
 
   test('writeConnectionsDocument creates valid canonical document', () => {

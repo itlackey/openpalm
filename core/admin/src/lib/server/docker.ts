@@ -328,26 +328,43 @@ export async function composeLogs(
 
 /**
  * Reload Caddy configuration without restarting.
- * Uses `docker compose exec` to trigger a graceful config reload.
+ *
+ * Uses Caddy's admin API (POST /load) to reload the configuration,
+ * avoiding the need for `docker compose exec` and the Docker EXEC API
+ * permission on the socket proxy. The admin container reaches Caddy's
+ * admin API at caddy:2019 over the shared assistant_net network.
+ *
+ * Falls back to `docker compose restart caddy` if the admin API call
+ * fails (e.g. Caddy is not yet running or the admin endpoint is
+ * unreachable).
  */
 export async function caddyReload(
   stateDir: string,
   options: { files?: string[]; envFiles?: string[] } = {}
 ): Promise<DockerResult> {
-  const args = buildComposeArgs(stateDir, options);
-  args.push(
-    "exec",
-    "-T",
-    "caddy",
-    "caddy",
-    "reload",
-    "--config",
-    "/etc/caddy/Caddyfile",
-    "--adapter",
-    "caddyfile"
-  );
+  const caddyfilePath = `${stateDir}/artifacts/Caddyfile`;
+  try {
+    const caddyfileContent = readFileSync(caddyfilePath, "utf-8");
+    const res = await fetch("http://caddy:2019/load", {
+      method: "POST",
+      headers: { "Content-Type": "text/caddyfile" },
+      body: caddyfileContent
+    });
+    if (res.ok) {
+      return { ok: true, stdout: "Caddy config reloaded via admin API", stderr: "", code: 0 };
+    }
+    const body = await res.text().catch(() => "");
+    // Fall through to restart fallback
+    console.error(`[caddyReload] admin API returned ${res.status}: ${body}`);
+  } catch (err) {
+    console.error(
+      "[caddyReload] admin API unreachable, falling back to restart:",
+      err instanceof Error ? err.message : err
+    );
+  }
 
-  return run(args, stateDir);
+  // Fallback: restart the caddy service (picks up mounted Caddyfile on start)
+  return composeRestart(stateDir, ["caddy"], options);
 }
 
 /**

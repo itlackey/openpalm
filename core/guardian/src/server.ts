@@ -46,7 +46,7 @@ function parseChannelSecrets(content: string): Record<string, string> {
 
 // Cache for file-based secrets to avoid reading on every request
 let secretsCache: { mtime: number; loadedAt: number; secrets: Record<string, string> } | null = null;
-const SECRETS_CACHE_TTL_MS = Number(Bun.env.GUARDIAN_SECRETS_CACHE_TTL_MS ?? 30_000);
+const SECRETS_CACHE_TTL_MS = Math.max(5000, Number(Bun.env.GUARDIAN_SECRETS_CACHE_TTL_MS) || 30_000);
 
 async function loadChannelSecrets(): Promise<Record<string, string>> {
   if (SECRETS_PATH) {
@@ -82,13 +82,24 @@ async function loadChannelSecrets(): Promise<Record<string, string>> {
 
 const buckets = new Map<string, { count: number; start: number }>();
 
+// NOTE: This is a fixed-window rate limiter. A client can send `limit` requests
+// at the end of one window and `limit` at the start of the next, achieving 2x burst
+// in a short span. This is acceptable for the guardian's use case (LAN-first,
+// secondary to HMAC auth), but could be upgraded to a sliding window if needed.
 function allow(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
 
   // Evict stale buckets when map is too large
-  if (buckets.size > 10000) {
+  if (buckets.size > 10_000) {
     for (const [k, b] of buckets) {
       if (now - b.start > windowMs) buckets.delete(k);
+    }
+
+    // Hard cap: if still over 10,000 after pruning expired, delete oldest entries first
+    if (buckets.size > 10_000) {
+      const sorted = [...buckets.entries()].sort((a, b) => a[1].start - b[1].start);
+      const toRemove = sorted.slice(0, sorted.length - 10_000);
+      for (const [k] of toRemove) buckets.delete(k);
     }
   }
 
@@ -107,17 +118,31 @@ function allow(key: string, limit: number, windowMs: number): boolean {
 const CLOCK_SKEW = 300_000;
 const seen = new Map<string, number>();
 
+function pruneNonceCache(): void {
+  const cutoff = Date.now() - CLOCK_SKEW;
+  for (const [k, v] of seen) {
+    if (v < cutoff) seen.delete(k);
+  }
+
+  // Hard cap: if still over 50,000 after pruning expired, delete oldest entries first
+  if (seen.size > 50_000) {
+    const sorted = [...seen.entries()].sort((a, b) => a[1] - b[1]);
+    const toRemove = sorted.slice(0, sorted.length - 50_000);
+    for (const [k] of toRemove) seen.delete(k);
+  }
+}
+
+// Periodic pruning every 60 seconds regardless of map size
+setInterval(pruneNonceCache, 60_000);
+
 function checkNonce(nonce: string, ts: number): boolean {
   if (Math.abs(Date.now() - ts) > CLOCK_SKEW) return false;
   if (seen.has(nonce)) return false;
   seen.set(nonce, ts);
 
-  // Time-based pruning: clean expired entries periodically
-  if (seen.size > 100) {
-    const cutoff = Date.now() - CLOCK_SKEW;
-    for (const [k, v] of seen) {
-      if (v < cutoff) seen.delete(k);
-    }
+  // Time-based pruning: clean expired entries when map grows large
+  if (seen.size > 10_000) {
+    pruneNonceCache();
   }
   return true;
 }
@@ -127,15 +152,20 @@ function checkNonce(nonce: string, ts: number): boolean {
 // Ensure audit directory exists (Bun has no built-in mkdir; shell out once at startup)
 const auditDir = AUDIT_PATH.slice(0, AUDIT_PATH.lastIndexOf("/"));
 if (auditDir) {
-  Bun.spawnSync(["mkdir", "-p", auditDir]);
+  const result = Bun.spawnSync(["mkdir", "-p", auditDir]);
+  if (result.exitCode !== 0) console.error("Failed to create audit directory:", auditDir);
 }
 
 // Use Bun.file().writer() for efficient append-only audit logging
 const auditWriter = Bun.file(AUDIT_PATH).writer();
 
 function audit(event: Record<string, unknown>) {
-  auditWriter.write(JSON.stringify({ ts: new Date().toISOString(), ...event }) + "\n");
-  auditWriter.flush();
+  try {
+    auditWriter.write(JSON.stringify({ ts: new Date().toISOString(), ...event }) + "\n");
+    auditWriter.flush();
+  } catch (err) {
+    console.error("Audit flush failed:", err);
+  }
 }
 
 // ── Assistant client ────────────────────────────────────────────────────
@@ -152,11 +182,18 @@ const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 
 const sessionCache = new Map<string, { sessionId: string; lastUsed: number }>();
 
-// Periodic cleanup of expired sessions
+// Periodic cleanup of expired sessions + hard cap at 10,000
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of sessionCache) {
     if (now - entry.lastUsed > SESSION_TTL_MS) sessionCache.delete(key);
+  }
+
+  // Hard cap: if still over 10,000 after pruning expired, delete oldest entries first
+  if (sessionCache.size > 10_000) {
+    const sorted = [...sessionCache.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    const toRemove = sorted.slice(0, sorted.length - 10_000);
+    for (const [k] of toRemove) sessionCache.delete(k);
   }
 }, 5 * 60_000);
 
@@ -215,7 +252,18 @@ Bun.serve({
     }
 
     if (url.pathname === "/channel/inbound" && req.method === "POST") {
+      // H8: Request body size limit (100KB)
+      const contentLength = req.headers.get("content-length");
+      if (contentLength && Number(contentLength) > 102_400) {
+        return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
+      }
+
       const raw = await req.text();
+
+      if (raw.length > 102_400) {
+        return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
+      }
+
       let parsed: unknown;
       try { parsed = JSON.parse(raw); } catch { return json(400, { error: ERROR_CODES.INVALID_JSON, requestId: rid }); }
 
@@ -223,19 +271,23 @@ Bun.serve({
       if (!validation.ok) return json(400, { error: validation.error, requestId: rid });
       const payload = validation.payload;
 
+      // C1: Use dummy secret for unknown channels to prevent channel name enumeration.
+      // Both unknown channels and bad signatures return invalid_signature.
       const channelSecrets = await loadChannelSecrets();
       const secret = channelSecrets[payload.channel] ?? "";
-      if (!secret) return json(403, { error: ERROR_CODES.CHANNEL_NOT_CONFIGURED, requestId: rid });
 
       const sig = req.headers.get("x-channel-signature") ?? "";
-      if (!verifySignature(secret, raw, sig)) return json(403, { error: ERROR_CODES.INVALID_SIGNATURE, requestId: rid });
+      if (!verifySignature(secret || "dummy-secret-for-timing-parity", raw, sig)) {
+        return json(403, { error: ERROR_CODES.INVALID_SIGNATURE, requestId: rid });
+      }
 
-      if (!checkNonce(payload.nonce, payload.timestamp)) return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
-
+      // H3: Rate limit before nonce check to prevent nonce consumption for rate-limited requests
       if (!allow(payload.userId, 120, 60_000) || !allow(`ch:${payload.channel}`, 200, 60_000)) {
         audit({ requestId: rid, action: "inbound", status: "denied", reason: ERROR_CODES.RATE_LIMITED, channel: payload.channel });
         return json(429, { error: ERROR_CODES.RATE_LIMITED, requestId: rid });
       }
+
+      if (!checkNonce(payload.nonce, payload.timestamp)) return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
 
       try {
         const { answer, sessionId } = await askAssistant(payload.text, payload.userId, payload.channel);

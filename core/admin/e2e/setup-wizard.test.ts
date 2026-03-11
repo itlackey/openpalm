@@ -392,7 +392,7 @@ test.describe('@mocked Setup Wizard', () => {
           return route.fulfill({
             status: 401,
             contentType: 'application/json',
-            body: JSON.stringify({ error: 'unauthorized', message: 'Unauthorized. This endpoint may require a valid API key.' })
+            body: JSON.stringify({ error: 'unauthorized', message: 'Invalid API key. The provider rejected the credentials — double-check the key and try again.' })
           });
         }
         return route.continue();

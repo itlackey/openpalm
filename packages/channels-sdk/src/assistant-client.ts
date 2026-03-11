@@ -29,6 +29,40 @@ interface MessageResponse {
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
+/**
+ * Produce a short human-readable description for an assistant HTTP error.
+ * Prefers the response body when it contains a useful message; otherwise
+ * maps common status codes to plain-language descriptions.
+ */
+function describeAssistantError(status: number, body: string): string {
+  // Try to extract a structured error message from the body
+  if (body) {
+    try {
+      const json = JSON.parse(body) as Record<string, unknown>;
+      if (typeof json.message === 'string' && json.message) return json.message;
+      if (typeof json.error === 'string' && json.error) return json.error;
+      if (
+        typeof json.error === 'object' && json.error !== null &&
+        typeof (json.error as Record<string, unknown>).message === 'string'
+      ) {
+        return (json.error as Record<string, unknown>).message as string;
+      }
+    } catch {
+      // Not JSON — use the raw body if it is short enough to be useful
+      if (body.length <= 200) return body;
+    }
+  }
+  switch (status) {
+    case 401: return 'Authentication failed — check assistant credentials';
+    case 403: return 'Access denied by the assistant';
+    case 404: return 'Assistant endpoint not found — verify assistant is running';
+    case 502: return 'Assistant upstream error — the LLM provider may be unreachable or returned an error';
+    case 503: return 'Assistant is temporarily unavailable';
+    case 504: return 'Assistant request timed out — the LLM provider may be slow or unreachable';
+    default:  return body || `Unexpected error (HTTP ${status})`;
+  }
+}
+
 function buildAuthHeader(username: string, password: string): string {
   const credentials = `${username}:${password}`;
   const encoded = Buffer.from(credentials, "utf8").toString("base64");
@@ -65,7 +99,9 @@ export async function createSession(
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
-      throw new Error(`assistant POST /session ${resp.status}: ${body}`);
+      throw new Error(
+        `Assistant session creation failed (HTTP ${resp.status}): ${describeAssistantError(resp.status, body)}`,
+      );
     }
     const session = (await resp.json()) as SessionCreateResponse;
     const sessionId = session.id;
@@ -103,7 +139,7 @@ export async function sendMessage(
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
       throw new Error(
-        `assistant POST /session/${sessionId}/message ${resp.status}: ${body}`,
+        `Assistant message failed (HTTP ${resp.status}): ${describeAssistantError(resp.status, body)}`,
       );
     }
     const data = (await resp.json()) as MessageResponse;

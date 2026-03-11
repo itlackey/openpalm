@@ -255,11 +255,17 @@ export function loadAutomations(stateDir: string): AutomationConfig[] {
 
 // ── Action Execution ──────────────────────────────────────────────────
 
+const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
+
 /** Execute an API action — auto-injects admin token and base URL. */
 async function executeApiAction(
   action: AutomationAction,
   adminToken: string
 ): Promise<void> {
+  if (!action.path || !SAFE_PATH_RE.test(action.path) || action.path.includes('..')) {
+    logger.warn(`Scheduler: rejecting unsafe action path: ${action.path}`);
+    return;
+  }
   const url = `http://localhost:8100${action.path}`;
   const headers: Record<string, string> = {
     "x-admin-token": adminToken,

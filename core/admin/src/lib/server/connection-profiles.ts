@@ -94,7 +94,14 @@ export function writeConnectionProfilesDocument(
 export function readConnectionProfilesDocument(configDir: string): CanonicalConnectionsDocument {
   const path = getConnectionProfilesPath(configDir);
   if (!existsSync(path)) {
-    throw new Error('connections/profiles.json does not exist');
+    return {
+      version: 1,
+      profiles: [],
+      assignments: {
+        llm: { connectionId: '', model: '' },
+        embeddings: { connectionId: '', model: '' },
+      },
+    };
   }
 
   let parsed: unknown;
@@ -288,8 +295,12 @@ export function deleteConnectionProfile(
   if (!existing) {
     return { ok: false, status: 404, message: `profile not found: ${id}` };
   }
-  if (document.assignments.llm.connectionId === id || document.assignments.embeddings.connectionId === id) {
-    return { ok: false, status: 409, message: `profile is in use by assignments: ${id}` };
+  const assignmentFields = ['llm', 'embeddings', 'reranking', 'tts', 'stt'] as const;
+  for (const field of assignmentFields) {
+    const assignment = document.assignments[field];
+    if (assignment && 'connectionId' in assignment && assignment.connectionId === id) {
+      return { ok: false, status: 409, message: `Cannot delete profile: it is assigned to ${field}` };
+    }
   }
 
   writeConnectionProfilesDocument(configDir, {

@@ -20,3 +20,4 @@ test-results/.last-run.json
 .opencode/
 core/cli/dist/
 package-lock.json
+.svelte-kit/

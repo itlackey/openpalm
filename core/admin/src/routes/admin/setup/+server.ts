@@ -52,6 +52,9 @@ import type { RequestHandler } from "./$types";
 
 const logger = createLogger("setup");
 
+/** Safe env var key pattern: uppercase alphanumeric + underscores, starting with a letter */
+const SAFE_ENV_KEY_RE = /^[A-Z][A-Z0-9_]*$/;
+
 /**
  * GET /admin/setup — no auth required.
  *
@@ -169,8 +172,8 @@ export const POST: RequestHandler = async (event) => {
     const apiKey = typeof c.apiKey === 'string' ? c.apiKey : '';
 
     if (!id) return errorResponse(400, "bad_request", `connections[${i}].id is required`, {}, requestId);
-    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
-      return errorResponse(400, "bad_request", `connections[${i}].id contains invalid characters (allowed: A-Z, a-z, 0-9, _, -)`, {}, requestId);
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
+      return errorResponse(400, "bad_request", `connections[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`, {}, requestId);
     }
     if (!provider) return errorResponse(400, "bad_request", `connections[${i}].provider is required`, {}, requestId);
     if (!isWizardProviderInScope(provider)) {
@@ -253,6 +256,13 @@ export const POST: RequestHandler = async (event) => {
       // Second connection with same provider — use namespaced var
       envVarName = `${envVarName}_${conn.id}`;
     }
+    // Validate the generated key against a safe pattern after uppercasing
+    const upperKey = envVarName.toUpperCase();
+    if (!SAFE_ENV_KEY_RE.test(upperKey)) {
+      logger.warn("skipping connection with unsafe env var key", { connectionId: conn.id, envVarName });
+      continue;
+    }
+    envVarName = upperKey;
     claimedEnvVars.add(envVarName);
     connEnvVarMap.set(conn.id, envVarName);
   }

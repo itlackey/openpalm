@@ -88,6 +88,48 @@ export type ProviderModelsResult = {
   error?: string;
 };
 
+/** Map common HTTP status codes to short human-readable descriptions. */
+function describeHttpStatus(status: number): string {
+  switch (status) {
+    case 401: return 'Invalid or missing API key';
+    case 403: return 'Access denied — check API key permissions';
+    case 404: return 'Endpoint not found — verify the base URL';
+    case 429: return 'Rate limited — try again shortly';
+    case 500: return 'Provider internal error';
+    case 502: return 'Provider returned a bad gateway error';
+    case 503: return 'Provider is temporarily unavailable';
+    default:  return `HTTP ${status}`;
+  }
+}
+
+/**
+ * Try to extract a human-readable error message from a provider error response.
+ * OpenAI returns `{ error: { message: "..." } }`, others vary.
+ * Returns the message string or empty string if unparseable.
+ */
+async function extractProviderErrorDetail(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    const json = JSON.parse(text) as Record<string, unknown>;
+    // OpenAI / OpenAI-compatible: { error: { message: "..." } }
+    if (
+      typeof json.error === 'object' && json.error !== null &&
+      typeof (json.error as Record<string, unknown>).message === 'string'
+    ) {
+      return (json.error as Record<string, unknown>).message as string;
+    }
+    // Some providers return { error: "string" }
+    if (typeof json.error === 'string') return json.error;
+    // Anthropic: { error: { type: "...", message: "..." } }
+    if (typeof json.message === 'string') return json.message;
+    // Fall back to the detail field (FastAPI, etc.)
+    if (typeof json.detail === 'string') return json.detail;
+    return '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Fetch available models from a provider's API.
  * Returns { models, error? } — never throws.
@@ -116,7 +158,7 @@ export async function fetchProviderModels(
           models: [],
           status: 'recoverable_error',
           reason: 'provider_http',
-          error: `Ollama API returned ${res.status}`,
+          error: `Ollama API returned ${res.status}: ${describeHttpStatus(res.status)}`,
         };
       }
       const data = (await res.json()) as { models?: { name: string }[] };
@@ -143,11 +185,14 @@ export async function fetchProviderModels(
 
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
     if (!res.ok) {
+      const detail = await extractProviderErrorDetail(res);
       return {
         models: [],
         status: 'recoverable_error',
         reason: 'provider_http',
-        error: `Provider API returned ${res.status}`,
+        error: detail
+          ? `Provider API returned ${res.status}: ${detail}`
+          : `Provider API returned ${res.status}: ${describeHttpStatus(res.status)}`,
       };
     }
     const data = (await res.json()) as { data?: { id: string }[] };

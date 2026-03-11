@@ -98,6 +98,7 @@ export {
   readOllamaCompose,
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
+  ensureCoreAutomations,
   isOllamaEnabled,
   stagedEnvFile,
   stagedStackEnvFile,

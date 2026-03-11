@@ -41,9 +41,13 @@ RUN npm install --omit=dev
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
+# ── Pinned installer versions ────────────────────────────────────────────────
+# Bump this ARG when upgrading; keeps curl|bash install reproducible.
+ARG BUN_VERSION=bun-v1.3.10
+
 # Install Bun to /usr/local so it's on PATH for all users
 ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV PATH="/usr/local/bin:$PATH"
 
 USER node

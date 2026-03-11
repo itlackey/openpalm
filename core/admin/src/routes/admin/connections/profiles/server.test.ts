@@ -213,7 +213,7 @@ describe('/admin/connections/profiles route', () => {
     expect(res.status).toBe(409);
 
     const body = await res.json() as { error: string; message: string };
-    expect(body.message).toMatch(/in use/i);
+    expect(body.message).toMatch(/assigned to/i);
   });
 
   test('DELETE returns 404 for an id that was never created', async () => {

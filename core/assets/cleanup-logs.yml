@@ -1,13 +1,11 @@
-# cleanup-logs.yml — Trim old audit log entries
+# cleanup-logs.yml — Core automation: trim old audit log entries
 #
-# Runs every Sunday at 4 AM. Keeps only the last 10,000 lines of each
+# Runs every Sunday at 4 AM UTC. Keeps only the last 10,000 lines of each
 # audit log file to prevent unbounded disk growth.
 #
-# NOTE: This automation is now a core automation, installed by default.
-# The canonical version lives in core/assets/cleanup-logs.yml and is
-# seeded to DATA_HOME/automations/ on startup. This registry copy is
-# kept for reference. To customize, place a copy in
-# ~/.config/openpalm/automations/cleanup-logs.yml.
+# This is a core automation — installed by default. To customize, copy this
+# file to ~/.config/openpalm/automations/cleanup-logs.yml and edit there.
+# User copies in CONFIG_HOME override the system version.
 
 name: Cleanup Logs
 description: Trim old audit log entries to prevent unbounded disk growth

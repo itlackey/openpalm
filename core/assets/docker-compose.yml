@@ -150,7 +150,7 @@ services:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
-      EXEC: 1
+      EXEC: 0
       POST: 1
       INFO: 1
     volumes:

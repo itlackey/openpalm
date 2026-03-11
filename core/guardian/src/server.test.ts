@@ -175,12 +175,12 @@ describe("Guardian security contract", () => {
     expect(data.error).toBe("invalid_signature");
   });
 
-  it("unknown channel name → 403 channel_not_configured", async () => {
+  it("unknown channel name → 403 invalid_signature (no enumeration oracle)", async () => {
     const payload = makePayload({ channel: "nonexistent" });
     const resp = await signedRequest(guardianUrl, payload, "any-secret");
     expect(resp.status).toBe(403);
     const data = await resp.json();
-    expect(data.error).toBe("channel_not_configured");
+    expect(data.error).toBe("invalid_signature");
   });
 
   it("replay (same nonce twice) → first 200, second 409", async () => {

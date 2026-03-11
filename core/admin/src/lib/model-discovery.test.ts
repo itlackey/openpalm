@@ -26,7 +26,7 @@ describe('mapModelDiscoveryError', () => {
 
   test('falls back to generic network copy', () => {
     expect(mapModelDiscoveryError({ reason: 'network', error: 'connection refused' })).toBe(
-      'Network error — unable to reach admin API.'
+      'Network error — unable to reach the provider. Verify the base URL and that the service is running.'
     );
   });
 });
@@ -68,19 +68,19 @@ describe('mapDiscoveryResultToErrorCode', () => {
 describe('mapConnectionTestError', () => {
   test('maps unauthorized errors', () => {
     expect(mapConnectionTestError({ errorCode: 'unauthorized' })).toBe(
-      'Unauthorized. This endpoint may require a valid API key.'
+      'Invalid API key. The provider rejected the credentials — double-check the key and try again.'
     );
   });
 
   test('maps not found errors', () => {
     expect(mapConnectionTestError({ errorCode: 'not_found' })).toBe(
-      'Endpoint not found. Verify the Base URL includes /v1.'
+      'Endpoint not found. Verify the Base URL is correct (most providers need a /v1 path).'
     );
   });
 
   test('maps timeout errors', () => {
     expect(mapConnectionTestError({ errorCode: 'timeout' })).toBe(
-      "Couldn't reach the server. Confirm it's running and accessible."
+      "Couldn't reach the server — it may be down or the URL may be wrong. Confirm it's running and accessible."
     );
   });
 

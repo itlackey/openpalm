@@ -95,4 +95,4 @@ bun test packages/memory/
 
 ## License
 
-CC-BY-4.0
+MPL-2.0

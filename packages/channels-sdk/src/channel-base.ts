@@ -142,7 +142,10 @@ export abstract class BaseChannel {
       try {
         result = await this.handleRequest(req);
       } catch (err) {
-        return this.json(400, { error: "invalid_request", detail: String(err) });
+        this.logger.error("Request handling error", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return this.json(400, { error: "invalid_request" });
       }
 
       // null = skip forwarding (e.g., webhook verification)
@@ -161,7 +164,10 @@ export abstract class BaseChannel {
       try {
         guardianResp = await this.forward(result, fetchFn);
       } catch (err) {
-        return this.json(502, { error: `guardian_error: ${err}` });
+        this.logger.error("Guardian communication error", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return this.json(502, { error: "guardian_error" });
       }
 
       if (!guardianResp.ok) {

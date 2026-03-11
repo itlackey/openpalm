@@ -79,7 +79,7 @@ The proxy allowlist is defined in the `docker-socket-proxy` service's
 | `CONTAINERS` | `docker compose up/down/restart/ps/logs`, container lifecycle | Yes |
 | `IMAGES` | Image pulls (`docker compose pull`, implicit in `up -d`) | Yes |
 | `NETWORKS` | Network creation for channel overlays | Yes |
-| `EXEC` | Caddy config reload (`docker compose exec caddy ...`) | Yes |
+| `EXEC` | Not used — Caddy reloads via its admin API (`POST /load`) | No |
 | `POST` | Write operations (create, start, stop, remove, etc.) | Yes |
 | `INFO` | `docker info` for daemon diagnostics | Yes |
 | `PING` | Healthcheck (`/_ping`) | Yes (default) |

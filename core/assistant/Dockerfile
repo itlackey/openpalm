@@ -5,6 +5,12 @@
 
 FROM node:lts-trixie
 
+# ── Pinned installer versions ────────────────────────────────────────────────
+# Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
+ARG OPENCODE_VERSION=1.2.24
+ARG BUN_VERSION=bun-v1.3.10
+ARG AGENTIKIT_VERSION=v0.0.15
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu \
         python3 python3-pip \
@@ -18,7 +24,7 @@ RUN apt-get update \
 
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
-RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path
+RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
 ENV PATH="/usr/local/.opencode/bin:$PATH"
 
 RUN mkdir -p /home/opencode/.cache /work \
@@ -38,14 +44,16 @@ WORKDIR /work
 # After install, reset BUN_INSTALL to a user-writable path so that
 # bun install -g and the install cache work for the unprivileged user.
 ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV PATH="/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 # Install agentikit CLI; fix permissions so bun-compiled binary is readable
 # by unprivileged users (bun-compiled binaries read themselves at runtime).
-RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/main/install.sh | bash \
+# The install script downloads a checksums.txt from the release and verifies
+# the binary SHA-256 before installing.
+RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/"$AGENTIKIT_VERSION"/install.sh | bash -s -- "$AGENTIKIT_VERSION" \
     && chmod 755 /usr/local/bin/akm
 
 EXPOSE 4096 22

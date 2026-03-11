@@ -22,6 +22,10 @@ import opencodeConfigAsset from "$assets/opencode.jsonc?raw";
 import agentsMdAsset from "$assets/AGENTS.md?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import ollamaComposeAsset from "$assets/ollama.yml?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import cleanupLogsAsset from "$assets/cleanup-logs.yml?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import cleanupDataAsset from "$assets/cleanup-data.yml?raw";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -201,6 +205,38 @@ function writeIfChanged(path: string, content: string): void {
   const basename = path.split("/").pop()!;
   copyFileSync(path, join(backupDir, `${basename}.${ts}`));
   writeFileSync(path, content);
+}
+
+// ── Core Automations (DATA_HOME source of truth) ────────────────────
+
+/**
+ * Core automation definitions bundled into the admin image.
+ * Each entry maps a filename to its bundled content.
+ *
+ * Core automations are seeded to DATA_HOME/automations/ on startup.
+ * They are non-destructive: existing files are only updated if the bundled
+ * version has changed (same write-if-changed pattern as other core assets).
+ * Users can override any core automation by placing a file with the same
+ * name in CONFIG_HOME/automations/.
+ */
+const CORE_AUTOMATIONS: { filename: string; content: string }[] = [
+  { filename: "cleanup-logs.yml", content: cleanupLogsAsset },
+  { filename: "cleanup-data.yml", content: cleanupDataAsset }
+];
+
+/**
+ * Ensure core automation files exist in DATA_HOME/automations/.
+ * Seeds on first run; updates if the bundled version has changed.
+ * This follows the same write-if-changed + backup pattern used by
+ * ensureCoreCompose and ensureOpenCodeSystemConfig.
+ */
+export function ensureCoreAutomations(): void {
+  const dir = `${resolveDataHome()}/automations`;
+  mkdirSync(dir, { recursive: true });
+
+  for (const { filename, content } of CORE_AUTOMATIONS) {
+    writeIfChanged(join(dir, filename), content);
+  }
 }
 
 // ── Asset Refresh (GitHub download) ──────────────────────────────────
