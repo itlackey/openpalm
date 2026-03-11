@@ -1,5 +1,4 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "opencode/big-pickle",
   "plugin": ["@openpalm/assistant-tools", "agentikit-opencode"]
 }

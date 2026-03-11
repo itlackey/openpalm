@@ -256,7 +256,6 @@ async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
     JSON.stringify(
       {
         "$schema": "https://opencode.ai/config.json",
-        "model": "opencode/big-pickle",
         "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
       },
       null,
