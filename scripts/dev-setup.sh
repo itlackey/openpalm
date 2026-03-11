@@ -22,141 +22,92 @@ for arg in "$@"; do
 	case "$arg" in
 	--seed-env) seed_env=1 ;;
 	--force) force=1 ;;
-	-h | --help)
-		usage
-		exit 0
-		;;
-	*)
-		echo "Unknown option: $arg" >&2
-		usage >&2
-		exit 1
-		;;
+	-h | --help) usage; exit 0 ;;
+	*) echo "Unknown option: $arg" >&2; usage >&2; exit 1 ;;
 	esac
 done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# ── Init submodules (memory source for dev builds) ──────────────
+# ── Init submodules ──────────────────────────────────────────────
 if [ -f "$ROOT_DIR/.gitmodules" ]; then
 	git -C "$ROOT_DIR" submodule update --init --depth 1
 fi
 
 DEV_ROOT="$ROOT_DIR/.dev"
-
-CONFIG_DIR="$DEV_ROOT/config/assistant"
-CHANNELS_DIR="$DEV_ROOT/config/channels"
+CONFIG_DIR="$DEV_ROOT/config"
 STATE_DIR="$DEV_ROOT/state"
 DATA_DIR="$DEV_ROOT/data"
 
-CADDY_SRC="$ROOT_DIR/core/assets/Caddyfile"
-CADDY_CORE_DEST="$DATA_DIR/caddy/Caddyfile"
-COMPOSE_SRC="$ROOT_DIR/core/assets/docker-compose.yml"
-COMPOSE_CORE_DEST="$DATA_DIR/docker-compose.yml"
-ENV_SRC="$ROOT_DIR/core/assets/secrets.env"
-ENV_DEST="$DEV_ROOT/config/secrets.env"
-SECRETS_ENV_DEST="$STATE_DIR/artifacts/secrets.env"
-STACK_ENV_DATA="$DATA_DIR/stack.env"
-STACK_ENV_DEST="$STATE_DIR/artifacts/stack.env"
-mkdir -p "$CONFIG_DIR" "$CHANNELS_DIR" "$DEV_ROOT/config/automations" \
-	"$STATE_DIR/artifacts" "$STATE_DIR/artifacts/channels/public" \
-	"$STATE_DIR/artifacts/channels/lan" \
+mkdir -p \
+	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
+	"$CONFIG_DIR/channels" "$CONFIG_DIR/automations" "$CONFIG_DIR/stash" \
+	"$STATE_DIR/artifacts/channels/public" "$STATE_DIR/artifacts/channels/lan" \
 	"$STATE_DIR/audit" "$STATE_DIR/automations" "$STATE_DIR/opencode" \
-	"$DATA_DIR/memory" \
-	"$DATA_DIR/assistant" "$DATA_DIR/assistant/.config/opencode" \
-	"$DATA_DIR/guardian" \
-	"$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
+	"$DATA_DIR/memory" "$DATA_DIR/assistant/.config/opencode" \
+	"$DATA_DIR/guardian" "$DATA_DIR/caddy/data" "$DATA_DIR/caddy/config" \
 	"$DATA_DIR/automations" "$DATA_DIR/models" "$DATA_DIR/opencode" \
-	"$DEV_ROOT/work" \
-	"$DEV_ROOT/config/stash"
+	"$DEV_ROOT/work"
 
-# Seed core assets to DATA_HOME (source of truth) — write-once unless --force
-if [[ ! -f "$CADDY_CORE_DEST" || $force -eq 1 ]]; then
-	cp "$CADDY_SRC" "$CADDY_CORE_DEST"
-fi
-if [[ ! -f "$COMPOSE_CORE_DEST" || $force -eq 1 ]]; then
-	cp "$COMPOSE_SRC" "$COMPOSE_CORE_DEST"
-fi
+# ── Seed core assets to DATA_HOME (write-once unless --force) ────
+CADDY_DEST="$DATA_DIR/caddy/Caddyfile"
+COMPOSE_DEST="$DATA_DIR/docker-compose.yml"
 
-# Bootstrap staging: always copy to STATE so compose works before admin's first apply
-cp "$COMPOSE_CORE_DEST" "$STATE_DIR/artifacts/docker-compose.yml"
-cp "$CADDY_CORE_DEST" "$STATE_DIR/artifacts/Caddyfile"
-# Ensure secrets.env exists (compose requires it even if empty)
-touch "$SECRETS_ENV_DEST"
+[[ ! -f "$CADDY_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/core/assets/Caddyfile" "$CADDY_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/core/assets/docker-compose.yml" "$COMPOSE_DEST"
 
+# Bootstrap staging: copy to STATE so compose works before admin's first apply
+cp "$COMPOSE_DEST" "$STATE_DIR/artifacts/docker-compose.yml"
+cp "$CADDY_DEST" "$STATE_DIR/artifacts/Caddyfile"
+touch "$STATE_DIR/artifacts/secrets.env"
+
+# ── Seed environment files ───────────────────────────────────────
 if [[ $seed_env -eq 1 ]]; then
-	# ── User secrets (CONFIG_HOME) ─────────────────────────────────────
-	# Only contains ADMIN_TOKEN and LLM provider keys. No paths or infra config.
-	if [[ ! -f "$ENV_DEST" || $force -eq 1 ]]; then
-		cp "$ENV_SRC" "$ENV_DEST"
-		# Seed a dev admin token so stack tests work out of the box
-		sed -i 's/^ADMIN_TOKEN=$/ADMIN_TOKEN=dev-admin-token/' "$ENV_DEST"
+	env_dest="$CONFIG_DIR/secrets.env"
+	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
+		cp "$ROOT_DIR/core/assets/secrets.env" "$env_dest"
+		sed -i 's/^ADMIN_TOKEN=$/ADMIN_TOKEN=dev-admin-token/' "$env_dest"
 	fi
-	if [[ -f "$ENV_DEST" ]]; then
-		cp "$ENV_DEST" "$SECRETS_ENV_DEST"
-	fi
+	[[ -f "$env_dest" ]] && cp "$env_dest" "$STATE_DIR/artifacts/secrets.env"
 
-	# ── System stack config (STATE_HOME/artifacts/stack.env) ──────────
-	# Auto-detected infrastructure config — paths, UID/GID, image, networking,
-	# and channel HMAC secrets. The admin regenerates this on every apply;
-	# dev-setup.sh seeds it so the full stack can start before the admin
-	# has run for the first time.
-	if [[ ! -f "$STACK_ENV_DATA" || $force -eq 1 ]]; then
-		uid=$(id -u)
-		gid=$(id -g)
-
-		# Detect Docker socket path from the active docker context (supports
-		# OrbStack, Colima, Rancher Desktop, etc.)
+	stack_env="$DATA_DIR/stack.env"
+	if [[ ! -f "$stack_env" || $force -eq 1 ]]; then
+		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
 		docker_sock="/var/run/docker.sock"
 		if host_url="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"; then
 			case "$host_url" in
 			unix://*)
 				detected_sock="${host_url#unix://}"
-				if [[ -S "$detected_sock" ]]; then
-					docker_sock=$detected_sock
-				fi
+				[[ -S "$detected_sock" ]] && docker_sock=$detected_sock
 				;;
 			esac
 		fi
 
-		cat >"$STACK_ENV_DATA" <<EOF
+		cat >"$stack_env" <<EOF
 # OpenPalm Stack Configuration — system-managed, do not edit
-# Generated by scripts/dev-setup.sh. Overwritten by admin on each apply.
 
-# ── XDG Paths ──────────────────────────────────────────────────────
 OPENPALM_CONFIG_HOME=$DEV_ROOT/config
 OPENPALM_DATA_HOME=$DEV_ROOT/data
 OPENPALM_STATE_HOME=$DEV_ROOT/state
 OPENPALM_WORK_DIR=$DEV_ROOT/work
 
-# ── User/Group ──────────────────────────────────────────────────────
-OPENPALM_UID=$uid
-OPENPALM_GID=$gid
+OPENPALM_UID=$(id -u)
+OPENPALM_GID=$(id -g)
 
-# ── Docker Socket ───────────────────────────────────────────────────
 OPENPALM_DOCKER_SOCK=$docker_sock
 
-# ── Images ──────────────────────────────────────────────────────────
 OPENPALM_IMAGE_NAMESPACE=openpalm
 OPENPALM_IMAGE_TAG=latest
 
-# ── Networking ──────────────────────────────────────────────────────
 OPENPALM_INGRESS_BIND_ADDRESS=127.0.0.1
 OPENPALM_INGRESS_PORT=8080
-
-# ── Channel HMAC Secrets ─────────────────────────────────────────────
-# Generated by admin when channels are installed. Empty on initial setup.
 EOF
 	fi
 
-	# Stage to STATE_HOME/artifacts/ for compose consumption
-	# Runs outside the conditional so clearing .dev/state is recovered
-	if [[ -f "$STACK_ENV_DATA" ]]; then
-		cp "$STACK_ENV_DATA" "$STACK_ENV_DEST"
-	fi
-
+	[[ -f "$stack_env" ]] && cp "$stack_env" "$STATE_DIR/artifacts/stack.env"
 fi
 
-# ── Seed Memory default config ───────────────────────────────────────────
+# ── Seed Memory default config ───────────────────────────────────
 if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
 	cat >"$DATA_DIR/memory/default_config.json" <<'OMEOF'
 {
@@ -195,8 +146,9 @@ if [ ! -f "$DATA_DIR/memory/default_config.json" ]; then
 OMEOF
 fi
 
+# ── Fix ownership ────────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-	chown -R "$(id -u):$(id -g)" "$DATA_DIR" "$CONFIG_DIR" "$CHANNELS_DIR" "$STATE_DIR"
+	chown -R "$(id -u):$(id -g)" "$DATA_DIR" "$CONFIG_DIR" "$STATE_DIR"
 else
 	echo "Note: running as root; ownership left as-is." >&2
 fi
