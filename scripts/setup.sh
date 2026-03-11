@@ -202,18 +202,25 @@ header "Downloading assets"
 
 download_asset() {
 	local filename="$1" dest="$2"
+	local tmp="${dest}.tmp"
 	local release_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/${filename}"
 	local raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/core/assets/${filename}"
 
-	if curl -fsSL --retry 2 -o "$dest" "$release_url" 2>/dev/null; then
+	if curl -fsSL --retry 2 -o "$tmp" "$release_url" 2>/dev/null; then
 		ok "Downloaded $filename (release)"
-	elif curl -fsSL --retry 2 -o "$dest" "$raw_url" 2>/dev/null; then
+	elif curl -fsSL --retry 2 -o "$tmp" "$raw_url" 2>/dev/null; then
 		ok "Downloaded $filename (raw)"
 	else
+		rm -f "$tmp"
 		die "Failed to download $filename from GitHub. Check network and --version."
 	fi
 
-	[[ -s "$dest" ]] || die "Downloaded $filename is empty. Check --version and network."
+	if [[ ! -s "$tmp" ]]; then
+		rm -f "$tmp"
+		die "Downloaded $filename is empty. Check --version and network."
+	fi
+
+	mv -f "$tmp" "$dest"
 }
 
 download_asset "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"

@@ -182,11 +182,12 @@ Header 'Downloading assets'
 function Download-Asset([string]$Filename, [string]$Destination) {
   $releaseUrl = "https://github.com/$Repo/releases/download/$OptVersion/$Filename"
   $rawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/core/assets/$Filename"
+  $tmp = "$Destination.tmp"
 
   $success = $false
   foreach ($url in @($releaseUrl, $rawUrl)) {
     try {
-      Invoke-WebRequest -Uri $url -OutFile $Destination -UseBasicParsing -ErrorAction Stop
+      Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
       $label = if ($url -eq $releaseUrl) { 'release' } else { 'raw' }
       Ok "Downloaded $Filename ($label)"
       $success = $true
@@ -194,13 +195,17 @@ function Download-Asset([string]$Filename, [string]$Destination) {
     } catch { }
   }
 
-  if (-not $success) { Die "Failed to download $Filename from GitHub. Check network and --version." }
+  if (-not $success) {
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    Die "Failed to download $Filename from GitHub. Check network and --version."
+  }
 
-  $fileInfo = Get-Item -LiteralPath $Destination
-  if ($fileInfo.Length -eq 0) {
-    Remove-Item -LiteralPath $Destination -Force
+  if ((Get-Item -LiteralPath $tmp).Length -eq 0) {
+    Remove-Item -LiteralPath $tmp -Force
     Die "Downloaded $Filename is empty. Check --version and network."
   }
+
+  Move-Item -LiteralPath $tmp -Destination $Destination -Force
 }
 
 Download-Asset 'docker-compose.yml' (Join-Path $LocalDataHome 'docker-compose.yml')
