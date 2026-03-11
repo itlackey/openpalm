@@ -271,6 +271,33 @@ describe('getMemory initialization pattern', () => {
     expect(r3).toBe('initialized');
     expect(callCount).toBe(1); // Only one init call
   });
+
+  test('serialized memory queue prevents reset from closing active work', async () => {
+    // Mirrors the production race: a config update triggers resetMemory()
+    // while another request is still mid-operation against the same DB.
+    let queue: Promise<void> = Promise.resolve();
+    const order: string[] = [];
+
+    function withMemoryLock<T>(operation: () => Promise<T>): Promise<T> {
+      const run = queue.then(operation, operation);
+      queue = run.then(() => undefined, () => undefined);
+      return run;
+    }
+
+    const activeRequest = withMemoryLock(async () => {
+      order.push('request:start');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      order.push('request:end');
+      return 'ok';
+    });
+
+    const reset = withMemoryLock(async () => {
+      order.push('reset');
+    });
+
+    await Promise.all([activeRequest, reset]);
+    expect(order).toEqual(['request:start', 'request:end', 'reset']);
+  });
 });
 
 // ── Error leakage prevention ──────────────────────────────────────────

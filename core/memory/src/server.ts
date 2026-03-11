@@ -17,6 +17,15 @@ const PORT = parseInt(process.env.MEMORY_PORT ?? '8765', 10);
 
 let _memory: Memory | null = null;
 let _memoryInit: Promise<Memory> | null = null;
+// Serialize memory operations so a config-driven reset cannot close the
+// sqlite-backed Memory instance while another request is still using it.
+let _memoryQueue: Promise<void> = Promise.resolve();
+
+function withMemoryLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = _memoryQueue.then(operation, operation);
+  _memoryQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 function loadConfig(): Record<string, unknown> {
   if (!existsSync(CONFIG_PATH)) return {};
@@ -238,32 +247,41 @@ async function handleRequest(req: Request): Promise<Response> {
     const authError = checkAuth(req);
     if (authError) return authError;
 
-    // POST /api/v1/memories/
-    if (path === '/api/v1/memories/' && method === 'POST') {
-      const body = await readBody(req);
-      if (!body.text || typeof body.text !== 'string' || body.text.trim() === '') {
-        return errorResponse(400, 'text is required and must be a non-empty string');
+    return await withMemoryLock(async () => {
+      // POST /api/v1/memories/
+      if (path === '/api/v1/memories/' && method === 'POST') {
+        const body = await readBody(req);
+        if (!body.text || typeof body.text !== 'string' || body.text.trim() === '') {
+          return errorResponse(400, 'text is required and must be a non-empty string');
+        }
+        const m = await getMemory();
+        const result = await m.add(body.text as string, {
+          userId: (body.user_id as string) ?? 'default_user',
+          agentId: body.agent_id as string,
+          runId: body.run_id as string,
+          metadata: body.metadata as Record<string, unknown>,
+          infer: body.infer !== false,
+        });
+        const firstId = (result.results as { id?: string }[])?.find(r => r.id)?.id ?? null;
+        return json({ ...result, id: firstId });
       }
-      const m = await getMemory();
-      const result = await m.add(body.text as string, {
-        userId: (body.user_id as string) ?? 'default_user',
-        agentId: body.agent_id as string,
-        runId: body.run_id as string,
-        metadata: body.metadata as Record<string, unknown>,
-        infer: body.infer !== false,
-      });
-      // Include top-level id for clients that read response.id (e.g. memory-lib.ts)
-      const firstId = (result.results as { id?: string }[])?.find(r => r.id)?.id ?? null;
-      return json({ ...result, id: firstId });
-    }
 
-    // POST /api/v1/memories/filter
-    if (path === '/api/v1/memories/filter' && method === 'POST') {
-      const body = await readBody(req);
-      const m = await getMemory();
+      // POST /api/v1/memories/filter
+      if (path === '/api/v1/memories/filter' && method === 'POST') {
+        const body = await readBody(req);
+        const m = await getMemory();
 
-      if (body.search_query) {
-        const results = await m.search(body.search_query as string, {
+        if (body.search_query) {
+          const results = await m.search(body.search_query as string, {
+            userId: (body.user_id as string) ?? 'default_user',
+            agentId: body.agent_id as string,
+            runId: body.run_id as string,
+            limit: (body.size as number) ?? 10,
+          });
+          return json({ items: results.map(normalizeMemory) });
+        }
+
+        const results = await m.getAll({
           userId: (body.user_id as string) ?? 'default_user',
           agentId: body.agent_id as string,
           runId: body.run_id as string,
@@ -272,52 +290,43 @@ async function handleRequest(req: Request): Promise<Response> {
         return json({ items: results.map(normalizeMemory) });
       }
 
-      const results = await m.getAll({
-        userId: (body.user_id as string) ?? 'default_user',
-        agentId: body.agent_id as string,
-        runId: body.run_id as string,
-        limit: (body.size as number) ?? 10,
-      });
-      return json({ items: results.map(normalizeMemory) });
-    }
+      // POST /api/v2/memories/search
+      if (path === '/api/v2/memories/search' && method === 'POST') {
+        const body = await readBody(req);
+        const query = (body.query ?? body.search_query) as string;
+        if (!query) return errorResponse(400, 'query is required');
 
-    // POST /api/v2/memories/search
-    if (path === '/api/v2/memories/search' && method === 'POST') {
-      const body = await readBody(req);
-      const query = (body.query ?? body.search_query) as string;
-      if (!query) return errorResponse(400, 'query is required');
-
-      const m = await getMemory();
-      const results = await m.search(query, {
-        userId: (body.user_id as string) ?? 'default_user',
-        agentId: body.agent_id as string,
-        runId: body.run_id as string,
-        limit: (body.size as number) ?? 10,
-      });
-      return json({ results: results.map(normalizeMemory) });
-    }
-
-    // GET /api/v1/memories/:id
-    const getMatch = path.match(/^\/api\/v1\/memories\/([^/]+)$/);
-    if (getMatch && method === 'GET') {
-      const memoryId = decodeURIComponent(getMatch[1]);
-      const m = await getMemory();
-      const result = await m.get(memoryId);
-      if (!result) return errorResponse(404, 'Memory not found');
-      return json(normalizeMemory(result));
-    }
-
-    // PUT /api/v1/memories/:id
-    if (getMatch && method === 'PUT') {
-      const memoryId = decodeURIComponent(getMatch[1]);
-      const body = await readBody(req);
-      if (!body.data || typeof body.data !== 'string' || body.data.trim() === '') {
-        return errorResponse(400, 'data is required and must be a non-empty string');
+        const m = await getMemory();
+        const results = await m.search(query, {
+          userId: (body.user_id as string) ?? 'default_user',
+          agentId: body.agent_id as string,
+          runId: body.run_id as string,
+          limit: (body.size as number) ?? 10,
+        });
+        return json({ results: results.map(normalizeMemory) });
       }
-      const m = await getMemory();
-      const result = await m.update(memoryId, body.data as string);
-      return json(result);
-    }
+
+      // GET /api/v1/memories/:id
+      const getMatch = path.match(/^\/api\/v1\/memories\/([^/]+)$/);
+      if (getMatch && method === 'GET') {
+        const memoryId = decodeURIComponent(getMatch[1]);
+        const m = await getMemory();
+        const result = await m.get(memoryId);
+        if (!result) return errorResponse(404, 'Memory not found');
+        return json(normalizeMemory(result));
+      }
+
+      // PUT /api/v1/memories/:id
+      if (getMatch && method === 'PUT') {
+        const memoryId = decodeURIComponent(getMatch[1]);
+        const body = await readBody(req);
+        if (!body.data || typeof body.data !== 'string' || body.data.trim() === '') {
+          return errorResponse(400, 'data is required and must be a non-empty string');
+        }
+        const m = await getMemory();
+        const result = await m.update(memoryId, body.data as string);
+        return json(result);
+      }
 
     // POST /api/v1/memories/:id/feedback
     const feedbackMatch = path.match(/^\/api\/v1\/memories\/([^/]+)\/feedback$/);
@@ -343,69 +352,70 @@ async function handleRequest(req: Request): Promise<Response> {
       return json({ status: 'ok' });
     }
 
-    // DELETE /api/v1/memories/
-    if (path === '/api/v1/memories/' && method === 'DELETE') {
-      const body = await readBody(req);
-      const m = await getMemory();
-      if (body.memory_id) {
-        await m.delete(body.memory_id as string);
-        return json({ status: 'ok', deleted: body.memory_id });
-      }
-      if (body.memory_ids && Array.isArray(body.memory_ids)) {
-        for (const id of body.memory_ids) {
-          await m.delete(id as string);
+      // DELETE /api/v1/memories/
+      if (path === '/api/v1/memories/' && method === 'DELETE') {
+        const body = await readBody(req);
+        const m = await getMemory();
+        if (body.memory_id) {
+          await m.delete(body.memory_id as string);
+          return json({ status: 'ok', deleted: body.memory_id });
         }
-        return json({ status: 'ok', deleted: body.memory_ids });
+        if (body.memory_ids && Array.isArray(body.memory_ids)) {
+          for (const id of body.memory_ids) {
+            await m.delete(id as string);
+          }
+          return json({ status: 'ok', deleted: body.memory_ids });
+        }
+        if (body.user_id) {
+          await m.deleteAll({ userId: body.user_id as string });
+          return json({ status: 'ok', deleted_all_for: body.user_id });
+        }
+        return errorResponse(400, 'memory_id or user_id required');
       }
-      if (body.user_id) {
-        await m.deleteAll({ userId: body.user_id as string });
-        return json({ status: 'ok', deleted_all_for: body.user_id });
+
+      // GET /api/v1/stats/
+      if (path === '/api/v1/stats/' && method === 'GET') {
+        const userId = url.searchParams.get('user_id') ?? 'default_user';
+        const m = await getMemory();
+        const limit = 10000;
+        const items = await m.getAll({ userId, limit });
+        const count = items.length;
+        return json({
+          total_memories: count,
+          total_apps: 1,
+          approximate: true,
+          max_sampled: limit,
+          capped: count >= limit,
+        });
       }
-      return errorResponse(400, 'memory_id or user_id required');
-    }
 
-    // GET /api/v1/stats/
-    if (path === '/api/v1/stats/' && method === 'GET') {
-      const userId = url.searchParams.get('user_id') ?? 'default_user';
-      const m = await getMemory();
-      const limit = 10000;
-      const items = await m.getAll({ userId, limit });
-      const count = items.length;
-      return json({
-        total_memories: count,
-        total_apps: 1,
-        approximate: true,
-        max_sampled: limit,
-        capped: count >= limit,
-      });
-    }
-
-    // GET /api/v1/config/
-    if (path === '/api/v1/config/' && method === 'GET') {
-      if (existsSync(CONFIG_PATH)) {
-        const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
-        return json(redactApiKeys(raw));
+      // GET /api/v1/config/
+      if (path === '/api/v1/config/' && method === 'GET') {
+        if (existsSync(CONFIG_PATH)) {
+          const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+          return json(redactApiKeys(raw));
+        }
+        return json({});
       }
-      return json({});
-    }
 
-    // PUT /api/v1/config/
-    if (path === '/api/v1/config/' && method === 'PUT') {
-      const body = await readBody(req);
-      const validated = validateConfigStructure(body);
-      mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-      writeFileSync(CONFIG_PATH, JSON.stringify(validated, null, 2) + '\n');
-      await resetMemory();
-      return json({ status: 'ok' });
-    }
+      // PUT /api/v1/config/
+      if (path === '/api/v1/config/' && method === 'PUT') {
+        const body = await readBody(req);
+        const validated = validateConfigStructure(body);
+        mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+        writeFileSync(CONFIG_PATH, JSON.stringify(validated, null, 2) + '\n');
+        await resetMemory();
+        return json({ status: 'ok' });
+      }
 
-    // POST /api/v1/users
-    if (path === '/api/v1/users' && method === 'POST') {
-      const body = await readBody(req);
-      return json({ status: 'ok', user_id: (body.user_id as string) ?? 'default_user' });
-    }
+      // POST /api/v1/users
+      if (path === '/api/v1/users' && method === 'POST') {
+        const body = await readBody(req);
+        return json({ status: 'ok', user_id: (body.user_id as string) ?? 'default_user' });
+      }
 
-    return errorResponse(404, 'Not found');
+      return errorResponse(404, 'Not found');
+    });
   } catch (err) {
     console.error('Request error:', err);
     return errorResponse(500, 'Internal server error');
