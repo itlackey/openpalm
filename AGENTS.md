@@ -9,7 +9,11 @@
 ## Project Overview
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose, Caddy, and OpenCode.
-Key components: `core/admin/` (SvelteKit admin UI + API), `core/guardian/` (HMAC-signed ingress), `core/channel/` (unified channel image), `channels/chat/` (OpenAI-compatible adapter), `core/assistant/` (OpenCode runtime config).
+Key components: `packages/admin/` (SvelteKit admin UI + API), `core/guardian/` (HMAC-signed ingress), `core/channel/` (unified channel image), `channels/chat/` (OpenAI-compatible adapter), `core/assistant/` (OpenCode runtime config).
+
+Repo layout convention:
+- `packages/*` contains app/package source workspaces.
+- `core/*` contains container/runtime assembly assets and image build contexts.
 
 See [`docs/core-principles.md`](docs/core-principles.md) for the filesystem/volume-mount contract.
 
@@ -21,11 +25,11 @@ See [`docs/core-principles.md`](docs/core-principles.md) for the filesystem/volu
 
 ```bash
 # Install UI dependencies
-cd core/admin && npm install
+cd packages/admin && npm install
 
 # Run UI dev server (port 5173)
 bun run admin:dev
-# or: cd core/admin && npm run dev
+# or: cd packages/admin && npm run dev
 
 # Build UI
 bun run admin:build
@@ -44,13 +48,13 @@ cd channels/chat && bun run server.ts
 
 ```bash
 # Type-check UI + Svelte components
-cd core/admin && npm run check
-# or: cd core/admin && bun run check
+cd packages/admin && npm run check
+# or: cd packages/admin && bun run check
 ```
 
 ### Tests
 
-Tests use Bun's built-in test runner (`bun:test`). No test files exist yet; add them in `core/guardian/src/` for guardian/channel code and `core/admin/tests/` for UI (Vitest/Playwright).
+Tests use Bun's built-in test runner (`bun:test`). No test files exist yet; add them in `core/guardian/src/` for guardian/channel code and `packages/admin/tests/` for UI (Vitest/Playwright).
 
 ```bash
 # Run all guardian tests
@@ -108,7 +112,7 @@ Read these before making significant changes. They are the authoritative sources
   ```
 - Use `import type` for type-only imports
 - SvelteKit path aliases: `$lib/`, `$lib/server/`, `$app/environment`
-- Custom Vite aliases: `$assets` → `core/assets/`, `$registry` → `registry/` (channel registry)
+- Custom Vite aliases: `$assets` → `assets/`, `$registry` → `registry/` (channel registry)
 - **Prefer Bun and Web Platform built-ins** before adding third-party dependencies (see `docs/bunjs-rules.md`)
 
 ### Naming
@@ -184,7 +188,7 @@ No Prettier or ESLint configured. Match the existing file style:
 
 Before submitting any change:
 
-- [ ] `cd core/admin && npm run check` passes (UI type correctness)
+- [ ] `cd packages/admin && npm run check` passes (UI type correctness)
 - [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/core-principles.md` remain intact
@@ -201,11 +205,11 @@ Before submitting any change:
 | `docs/code-quality-principles.md` | Engineering invariants and quality contracts |
 | `docs/bunjs-rules.md` | Bun built-in API rules |
 | `docs/sveltekit-rules.md` | SvelteKit-specific implementation rules |
-| `core/admin/src/lib/server/control-plane.ts` | Core state, types, business logic |
-| `core/admin/src/lib/server/helpers.ts` | Shared request/response utilities |
-| `core/admin/src/lib/server/docker.ts` | Docker Compose shell-out wrapper |
+| `packages/admin/src/lib/server/control-plane.ts` | Core state, types, business logic |
+| `packages/admin/src/lib/server/helpers.ts` | Shared request/response utilities |
+| `packages/admin/src/lib/server/docker.ts` | Docker Compose shell-out wrapper |
 | `core/guardian/src/server.ts` | HMAC-signed message guardian |
 | `core/channel/Dockerfile` | Unified `channel` image build |
-| `core/assets/` | Bundled compose files, Caddyfile, channel overlays |
+| `assets/` | Bundled compose files, Caddyfile, channel overlays |
 | `core/assistant/AGENTS.md` | Assistant persona and operational guidelines |
 | `.opencode/opencode.json` | OpenCode project configuration |

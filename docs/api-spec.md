@@ -1,7 +1,7 @@
 # OpenPalm Admin API Spec (Current Implementation)
 
 This document describes the Admin API routes currently implemented in
-`core/admin/src/routes/**/+server.ts`.
+`packages/admin/src/routes/**/+server.ts`.
 
 ## Conventions
 

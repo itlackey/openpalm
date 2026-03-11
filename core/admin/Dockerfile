@@ -7,18 +7,18 @@ FROM node:lts-trixie-slim AS build
 WORKDIR /workspace
 
 # Install admin deps at workspace root so node_modules lands at /workspace/.
-# Standard Node module resolution from core/admin/ walks up to
+# Standard Node module resolution from packages/admin/ walks up to
 # /workspace/node_modules/ — no symlinks, no workspace protocol.
-COPY core/admin/package.json .
+COPY packages/admin/package.json .
 RUN npm install
 
 # Copy source into monorepo layout
-COPY core/admin/ core/admin/
-COPY core/assets/ core/assets/
+COPY packages/admin/ packages/admin/
+COPY assets/ assets/
 COPY registry/ registry/
 
 # Build SvelteKit (adapter-node produces self-contained build/)
-WORKDIR /workspace/core/admin
+WORKDIR /workspace/packages/admin
 ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
@@ -35,8 +35,8 @@ RUN apt-get update \
 
 
 WORKDIR /app
-COPY --from=build /workspace/core/admin/build ./build
-COPY --from=build /workspace/core/admin/package.json ./
+COPY --from=build /workspace/packages/admin/build ./build
+COPY --from=build /workspace/packages/admin/package.json ./
 RUN npm install --omit=dev
 
 RUN mkdir -p /state /data && chown node:node /state /data

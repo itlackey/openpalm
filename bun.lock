@@ -8,9 +8,25 @@
         "@vitest/coverage-v8": "^4.0.18",
       },
     },
-    "core/admin": {
+    "core/guardian": {
+      "name": "@openpalm/guardian",
+      "version": "0.9.0-rc6",
+      "dependencies": {
+        "@openpalm/channels-sdk": "^0.8.0",
+        "dotenv": "^16.4.7",
+      },
+    },
+    "core/memory": {
+      "name": "@openpalm/memory-server",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openpalm/memory": "workspace:*",
+        "sqlite-vec": "^0.1.7-alpha.2",
+      },
+    },
+    "packages/admin": {
       "name": "@openpalm/admin",
-      "version": "0.9.0-rc3",
+      "version": "0.9.0-rc6",
       "dependencies": {
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
@@ -42,32 +58,9 @@
         "vitest-browser-svelte": "^2.0.2",
       },
     },
-    "core/cli": {
-      "name": "@openpalm/cli",
-      "version": "0.9.0-rc3",
-      "bin": {
-        "openpalm": "./src/main.ts",
-      },
-    },
-    "core/guardian": {
-      "name": "@openpalm/guardian",
-      "version": "0.9.0-rc3",
-      "dependencies": {
-        "@openpalm/channels-sdk": "^0.8.0",
-        "dotenv": "^16.4.7",
-      },
-    },
-    "core/memory": {
-      "name": "@openpalm/memory-server",
-      "version": "0.1.0",
-      "dependencies": {
-        "@openpalm/memory": "workspace:*",
-        "sqlite-vec": "^0.1.7-alpha.2",
-      },
-    },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.12",
+      "version": "0.7.13",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },
@@ -105,6 +98,13 @@
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
       "version": "0.8.1",
+    },
+    "packages/cli": {
+      "name": "@openpalm/cli",
+      "version": "0.9.0-rc6",
+      "bin": {
+        "openpalm": "./src/main.ts",
+      },
     },
     "packages/memory": {
       "name": "@openpalm/memory",
@@ -222,7 +222,7 @@
 
     "@opencode-ai/sdk": ["@opencode-ai/sdk@1.2.15", "", {}, "sha512-NUJNlyBCdZ4R0EBLjJziEQOp2XbRPJosaMcTcWSWO5XJPKGUpz0u8ql+5cR8K+v2RJ+hp2NobtNwpjEYfe6BRQ=="],
 
-    "@openpalm/admin": ["@openpalm/admin@workspace:core/admin"],
+    "@openpalm/admin": ["@openpalm/admin@workspace:packages/admin"],
 
     "@openpalm/assistant-tools": ["@openpalm/assistant-tools@workspace:packages/assistant-tools"],
 
@@ -234,7 +234,7 @@
 
     "@openpalm/channels-sdk": ["@openpalm/channels-sdk@workspace:packages/channels-sdk"],
 
-    "@openpalm/cli": ["@openpalm/cli@workspace:core/cli"],
+    "@openpalm/cli": ["@openpalm/cli@workspace:packages/cli"],
 
     "@openpalm/guardian": ["@openpalm/guardian@workspace:core/guardian"],
 

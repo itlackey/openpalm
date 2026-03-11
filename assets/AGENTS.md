@@ -75,7 +75,7 @@ When adding memories manually, include a category in the metadata:
 
 Docker builds run outside the Bun workspace and must resolve service dependencies explicitly. **This pattern is mandatory** — see `docs/docker-dependency-resolution.md` for full details.
 
-* **Admin Dockerfile**: uses plain `npm install` at a workspace root so `node_modules/` is at a common ancestor of `core/admin/` build sources. No Bun, no symlinks.
+* **Admin Dockerfile**: uses plain `npm install` at a workspace root so `node_modules/` is at a common ancestor of `packages/admin/` build sources. No Bun, no symlinks.
 * **Guardian + Channel Dockerfiles**: copy `packages/channels-sdk` source, then run `bun install --production` inside the copied sdk to install its declared dependencies.
 * **Never use Bun to install deps in admin Docker** — Bun's symlink-based node_modules breaks Node/Vite resolution.
 * **Never skip the sdk dep install step** in guardian or channel Dockerfiles — sdk transitive dependencies won't resolve without it.

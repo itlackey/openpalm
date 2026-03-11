@@ -175,7 +175,7 @@ async function isStackRunning(): Promise<boolean> {
 
 async function fetchAsset(repoRef: string, filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/core/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/assets/${filename}`;
 
   const releaseResponse = await fetch(releaseUrl, { signal: AbortSignal.timeout(30000) });
   if (releaseResponse.ok) {

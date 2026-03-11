@@ -219,7 +219,7 @@ Header 'Downloading assets'
 # Try to download SHA256SUMS for checksum verification
 $ChecksumsContent = $null
 $checksumsReleaseUrl = "https://github.com/$Repo/releases/download/$OptVersion/SHA256SUMS"
-$checksumsRawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/core/assets/SHA256SUMS"
+$checksumsRawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/assets/SHA256SUMS"
 foreach ($csUrl in @($checksumsReleaseUrl, $checksumsRawUrl)) {
   try {
     $ChecksumsContent = (Invoke-WebRequest -Uri $csUrl -UseBasicParsing -ErrorAction Stop).Content
@@ -238,7 +238,7 @@ if (-not $ChecksumsContent) {
 
 function Download-Asset([string]$Filename, [string]$Destination) {
   $releaseUrl = "https://github.com/$Repo/releases/download/$OptVersion/$Filename"
-  $rawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/core/assets/$Filename"
+  $rawUrl = "https://raw.githubusercontent.com/$Repo/$OptVersion/assets/$Filename"
   $tmp = "$Destination.tmp"
 
   $success = $false

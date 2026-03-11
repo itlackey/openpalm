@@ -19,8 +19,8 @@ Install admin's dependencies at the **workspace root** (`/workspace/`) so
 ```
 /workspace/
 ├── node_modules/        ← npm install puts deps here (real dirs, no symlinks)
-├── core/admin/          ← SvelteKit source + vite.config.ts
-├── core/assets/
+├── packages/admin/          ← SvelteKit source + vite.config.ts
+├── assets/
 └── registry/
 ```
 
@@ -28,7 +28,7 @@ Key details:
 - `npm install` (not Bun) creates standard flat `node_modules/` — real
   directories, no symlinks
 - `ENV PATH="/workspace/node_modules/.bin:$PATH"` makes build tool binaries
-  (svelte-kit, vite) available to `npm run build` from the `core/admin/` subdirectory
+  (svelte-kit, vite) available to `npm run build` from the `packages/admin/` subdirectory
 - No Bun binary, no workspace protocol, no lockfile coupling
 - The output is a self-contained SvelteKit adapter-node bundle — no runtime
   `node_modules` needed

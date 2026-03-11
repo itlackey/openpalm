@@ -53,7 +53,7 @@ Aborts if the working tree is dirty or the tag already exists.
 
 ### `bump-platform.sh`
 
-Updates platform `package.json` files (root, `core/admin`, `core/guardian`, `core/cli`) to a new semver version. Does not touch npm packages or dependency cross-references.
+Updates platform `package.json` files (root, `packages/admin`, `core/guardian`, `packages/cli`) to a new semver version. Does not touch npm packages or dependency cross-references.
 
 ```bash
 ./scripts/bump-platform.sh 1.2.3

@@ -274,7 +274,7 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
  */
 async function downloadAsset(filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO}/releases/download/${VERSION}/${filename}`;
-  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/core/assets/${filename}`;
+  const rawUrl = `https://raw.githubusercontent.com/${REPO}/${VERSION}/assets/${filename}`;
 
   for (const url of [releaseUrl, rawUrl]) {
     try {

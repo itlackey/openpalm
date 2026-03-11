@@ -72,7 +72,7 @@ categories that `docker compose` uses.
 ## Endpoint allowlist
 
 The proxy allowlist is defined in the `docker-socket-proxy` service's
-`environment:` block in `core/assets/docker-compose.yml`.
+`environment:` block in `assets/docker-compose.yml`.
 
 | Endpoint group | Used for | Enabled |
 |---|---|---|

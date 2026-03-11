@@ -124,7 +124,7 @@ export function getCallerType(event: RequestEvent): CallerType {
 // ── SSRF Protection ────────────────────────────────────────────────────
 
 /**
- * Known Docker Compose service names from core/assets/docker-compose.yml.
+ * Known Docker Compose service names from assets/docker-compose.yml.
  * These are the internal service hostnames that must never be probed
  * via user-supplied connection URLs.
  */

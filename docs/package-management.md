@@ -14,7 +14,7 @@ This repo uses **one lock file**: the root `bun.lock`. All other lock files (`pa
 
 1. **`bun install` at repo root** is the only install command that modifies the lock file.
 2. **`--frozen-lockfile`** is used in CI to catch forgotten installs after dependency changes.
-3. **`.npmrc`** at repo root contains `package-lock=false` to prevent npm from generating `package-lock.json` when `npm install` runs inside `core/admin/`.
+3. **`.npmrc`** at repo root contains `package-lock=false` to prevent npm from generating `package-lock.json` when `npm install` runs inside `packages/admin/`.
 4. **`package-lock.json`** is in `.gitignore` as a safety net.
 
 ### Adding or updating a dependency
@@ -40,7 +40,7 @@ All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `pe
 
 ### Keeping ranges in sync
 
-Platform packages (root, `core/admin`, `core/guardian`, `core/cli`) share a coordinated version bumped by `scripts/bump-platform.sh`. npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant-tools`) are versioned independently via per-package publish workflows. Cross-references between the two groups use real semver ranges and are updated manually when a dependency's API changes.
+Platform packages (root, `packages/admin`, `core/guardian`, `packages/cli`) share a coordinated version bumped by `scripts/bump-platform.sh`. npm packages (`packages/channels-sdk`, `packages/channel-*`, `packages/assistant-tools`) are versioned independently via per-package publish workflows. Cross-references between the two groups use real semver ranges and are updated manually when a dependency's API changes.
 
 ### Why Docker builds don't use lock files
 

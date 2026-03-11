@@ -5,14 +5,14 @@
 #
 # Manual equivalent (from project root):
 #   docker compose --project-directory . \
-#     -f core/assets/docker-compose.yml \
+#     -f assets/docker-compose.yml \
 #     -f compose.dev.yaml \
 #     --env-file .dev/state/artifacts/stack.env \
 #     --env-file .dev/state/artifacts/secrets.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the core compose file lives
-# in a different directory (core/assets/ or .dev/state/artifacts/). Without it,
+# in a different directory (assets/ or .dev/state/artifacts/). Without it,
 # Docker Compose resolves build contexts relative to the first -f file's
 # directory, which breaks builds.
 

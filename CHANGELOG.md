@@ -40,7 +40,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   over an isolated network instead of mounting the socket directly. Eliminates
   socket permission and GID issues across Docker Desktop, OrbStack, Colima, and
   Podman.
-- **CLI** (`core/cli/`) — cross-platform CLI for setup, status, and stack
+- **CLI** (`packages/cli/`) — cross-platform CLI for setup, status, and stack
   management. Builds native binaries for Linux, macOS, and Windows via Bun.
 - **One-line installer** — `setup.sh` (Mac/Linux) and `setup.ps1` (Windows)
   scripts that bootstrap the XDG directory tree, download core assets, generate

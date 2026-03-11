@@ -10,7 +10,7 @@ For the automated path, see [setup-guide.md](setup-guide.md). For the developer 
 
 - Docker Engine 24+ with Compose V2 (`docker compose` subcommand)
 - `openssl` (for generating secrets)
-- The `core/assets/` files from this repository (or download them from a GitHub release)
+- The `assets/` files from this repository (or download them from a GitHub release)
 
 ---
 
@@ -66,24 +66,24 @@ mkdir -p ~/openpalm
 
 ## 3. Place the core assets
 
-Two files from `core/assets/` are needed: the Docker Compose definition and the Caddyfile.
+Two files from `assets/` are needed: the Docker Compose definition and the Caddyfile.
 
 Copy them to DATA_HOME (source of truth) **and** stage them to STATE_HOME (runtime):
 
 ```bash
 # Source of truth (DATA_HOME)
-cp core/assets/docker-compose.yml ~/.local/share/openpalm/docker-compose.yml
-cp core/assets/Caddyfile           ~/.local/share/openpalm/caddy/Caddyfile
+cp assets/docker-compose.yml ~/.local/share/openpalm/docker-compose.yml
+cp assets/Caddyfile           ~/.local/share/openpalm/caddy/Caddyfile
 
 # Staged for runtime (STATE_HOME)
-cp core/assets/docker-compose.yml ~/.local/state/openpalm/artifacts/docker-compose.yml
-cp core/assets/Caddyfile           ~/.local/state/openpalm/artifacts/Caddyfile
+cp assets/docker-compose.yml ~/.local/state/openpalm/artifacts/docker-compose.yml
+cp assets/Caddyfile           ~/.local/state/openpalm/artifacts/Caddyfile
 ```
 
 If you don't have a local clone, download them from GitHub:
 
 ```bash
-BASE_URL="https://raw.githubusercontent.com/itlackey/openpalm/main/core/assets"
+BASE_URL="https://raw.githubusercontent.com/itlackey/openpalm/main/assets"
 curl -fsSL "$BASE_URL/docker-compose.yml" -o ~/.local/share/openpalm/docker-compose.yml
 curl -fsSL "$BASE_URL/Caddyfile"           -o ~/.local/share/openpalm/caddy/Caddyfile
 
@@ -95,10 +95,10 @@ cp ~/.local/share/openpalm/caddy/Caddyfile    ~/.local/state/openpalm/artifacts/
 
 ## 4. Create secrets.env
 
-This file holds your admin token and LLM provider keys. Copy the template from `core/assets/secrets.env` and fill in the values:
+This file holds your admin token and LLM provider keys. Copy the template from `assets/secrets.env` and fill in the values:
 
 ```bash
-cp core/assets/secrets.env ~/.config/openpalm/secrets.env
+cp assets/secrets.env ~/.config/openpalm/secrets.env
 ```
 
 Or create it manually:
