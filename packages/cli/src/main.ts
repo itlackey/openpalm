@@ -18,9 +18,10 @@ type Command =
   | 'restart'
   | 'logs'
   | 'status'
-  | 'service';
+  | 'service'
+  | 'validate';
 
-const COMMANDS: readonly Command[] = ['install', 'uninstall', 'update', 'start', 'stop', 'restart', 'logs', 'status', 'service'];
+const COMMANDS: readonly Command[] = ['install', 'uninstall', 'update', 'start', 'stop', 'restart', 'logs', 'status', 'service', 'validate'];
 
 type InstallOptions = {
   force: boolean;
@@ -28,6 +29,16 @@ type InstallOptions = {
   noStart: boolean;
   noOpen: boolean;
 };
+
+export interface HostInfo {
+  platform: string;
+  arch: string;
+  docker: { available: boolean; running: boolean };
+  ollama: { running: boolean; url: string };
+  lmstudio: { running: boolean; url: string };
+  llamacpp: { running: boolean; url: string };
+  timestamp: string;
+}
 
 function defaultConfigHome(): string {
   if (process.env.OPENPALM_CONFIG_HOME) return process.env.OPENPALM_CONFIG_HOME;
@@ -127,6 +138,7 @@ function printUsage(): void {
   console.log('  logs [service...]    View container logs');
   console.log('  status               Show container status');
   console.log('  service              Service lifecycle operations');
+  console.log('  validate              Validate configuration against schema');
 }
 
 function parseInstallOptions(args: string[]): InstallOptions {
@@ -211,6 +223,7 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
     join(stateHome, 'artifacts', 'channels'),
     join(stateHome, 'automations'),
     join(stateHome, 'opencode'),
+    join(stateHome, 'bin'),
     workDir,
   ];
 
@@ -336,6 +349,86 @@ async function openBrowser(url: string): Promise<void> {
   }
 }
 
+/**
+ * Downloads varlock binary via install script and caches it in STATE_HOME/bin/.
+ * Skips download if binary already exists.
+ *
+ * @param stateHome - Path to STATE_HOME directory
+ * @returns Absolute path to the varlock binary
+ */
+async function ensureVarlock(stateHome: string): Promise<string> {
+  const binDir = join(stateHome, 'bin');
+  const varlockBin = join(binDir, 'varlock');
+
+  if (await Bun.file(varlockBin).exists()) {
+    return varlockBin;
+  }
+
+  await mkdir(binDir, { recursive: true });
+
+  // The install script requires a shell pipe (curl | sh), which cannot be expressed
+  // as a plain argument array. We use sh -c here since no user input is interpolated.
+  const proc = Bun.spawn(
+    ['sh', '-c', 'curl -sSfL https://varlock.dev/install.sh | sh -s -- --force-no-brew'],
+    {
+      env: { ...process.env, VARLOCK_INSTALL_DIR: binDir },
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
+
+  const code = await proc.exited;
+  if (code !== 0) {
+    throw new Error(`Failed to download varlock (install script exited with code ${code})`);
+  }
+
+  if (!(await Bun.file(varlockBin).exists())) {
+    throw new Error(`varlock binary not found at ${varlockBin} after install`);
+  }
+
+  return varlockBin;
+}
+
+/**
+ * Detects host system information including platform, Docker availability,
+ * and local AI service endpoints.
+ */
+export async function detectHostInfo(): Promise<HostInfo> {
+  // Docker detection
+  const dockerAvailable = Boolean(Bun.which('docker'));
+  let dockerRunning = false;
+  if (dockerAvailable) {
+    const proc = Bun.spawn(['docker', 'info'], { stdout: 'ignore', stderr: 'ignore' });
+    dockerRunning = (await proc.exited) === 0;
+  }
+
+  // HTTP probes for local AI services
+  async function probeHttp(url: string): Promise<boolean> {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  const [ollamaRunning, lmstudioRunning, llamacppRunning] = await Promise.all([
+    probeHttp('http://localhost:11434/api/tags'),
+    probeHttp('http://localhost:1234/v1/models'),
+    probeHttp('http://localhost:8080/health'),
+  ]);
+
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    docker: { available: dockerAvailable, running: dockerRunning },
+    ollama: { running: ollamaRunning, url: 'http://localhost:11434' },
+    lmstudio: { running: lmstudioRunning, url: 'http://localhost:1234' },
+    llamacpp: { running: llamacppRunning, url: 'http://localhost:8080' },
+    timestamp: new Date().toISOString(),
+  };
+}
+
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   if (!Bun.which('docker')) {
     throw new Error('Docker is not installed. Install Docker first: https://docs.docker.com/get-docker/');
@@ -364,6 +457,14 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   await ensureDirectoryTree(configHome, dataHome, stateHome, workDir);
 
+  // Detect host system info (non-fatal)
+  try {
+    const hostInfo = await detectHostInfo();
+    await Bun.write(join(dataHome, 'host.json'), JSON.stringify(hostInfo, null, 2) + '\n');
+  } catch {
+    // Host detection failure is non-fatal
+  }
+
   const composeContent = await fetchAsset(options.version, 'docker-compose.yml');
   const caddyContent = await fetchAsset(options.version, 'Caddyfile');
   await Bun.write(join(dataHome, 'docker-compose.yml'), composeContent);
@@ -371,10 +472,36 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'docker-compose.yml'), composeContent);
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 
+  const secretsSchemaContent = await fetchAsset(options.version, 'secrets.env.schema');
+  const stackSchemaContent = await fetchAsset(options.version, 'stack.env.schema');
+  await Bun.write(join(stateHome, 'artifacts', 'secrets.env.schema'), secretsSchemaContent);
+  await Bun.write(join(stateHome, 'artifacts', 'stack.env.schema'), stackSchemaContent);
+
   await ensureSecrets(configHome);
   await ensureStackEnv(configHome, dataHome, stateHome, workDir);
   await ensureOpenCodeConfig(configHome);
   await ensureOpenCodeSystemConfig(dataHome);
+
+  // Non-fatal validation
+  try {
+    const varlockBin = await ensureVarlock(stateHome);
+    const schemaPath = join(stateHome, 'artifacts', 'secrets.env.schema');
+    const envPath = join(configHome, 'secrets.env');
+    if (await Bun.file(schemaPath).exists()) {
+      const proc = Bun.spawn([varlockBin, 'load', '--schema', schemaPath, '--env-file', envPath, '--quiet'], {
+        stdout: 'ignore',
+        stderr: 'ignore',
+      });
+      const code = await proc.exited;
+      if (code === 0) {
+        console.log('Configuration validated.');
+      } else {
+        console.warn('Configuration has validation warnings (non-fatal on first install).');
+      }
+    }
+  } catch {
+    // Varlock install/execution failures are non-fatal during install
+  }
 
   if (options.noStart) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');
@@ -520,6 +647,26 @@ async function runServiceCommand(args: string[]): Promise<void> {
   throw new Error(`Unknown subcommand: ${subcommand}`);
 }
 
+async function runValidate(args: string[]): Promise<void> {
+  void args; // reserved for future flags
+  const stateHome = defaultStateHome();
+  const configHome = defaultConfigHome();
+  const varlockBin = await ensureVarlock(stateHome);
+
+  const primarySchema = join(stateHome, 'artifacts', 'secrets.env.schema');
+  const fallbackSchema = join(stateHome, 'artifacts', 'stack.env.schema');
+  const envPath = join(configHome, 'secrets.env');
+
+  const schemaPath = (await Bun.file(primarySchema).exists()) ? primarySchema : fallbackSchema;
+
+  const proc = Bun.spawn(
+    [varlockBin, 'load', '--schema', schemaPath, '--env-file', envPath],
+    { stdout: 'inherit', stderr: 'inherit' },
+  );
+  const code = await proc.exited;
+  process.exit(code);
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const [rawCommand, ...args] = argv;
 
@@ -575,6 +722,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 
   if (command === 'service') {
     await runServiceCommand(args);
+    return;
+  }
+
+  if (command === 'validate') {
+    await runValidate(args);
     return;
   }
 

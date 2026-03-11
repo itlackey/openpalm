@@ -26,6 +26,10 @@ import ollamaComposeAsset from "$assets/ollama.yml?raw";
 import cleanupLogsAsset from "$assets/cleanup-logs.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import cleanupDataAsset from "$assets/cleanup-data.yml?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import secretsSchemaAsset from "$assets/secrets.env.schema?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
+import stackSchemaAsset from "$assets/stack.env.schema?raw";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -63,6 +67,34 @@ export function ensureCoreCaddyfile(): string {
 export function readCoreCaddyfile(): string {
   const path = ensureCoreCaddyfile();
   return readFileSync(path, "utf-8");
+}
+
+// ── Env Schema Files (DATA_HOME root) ────────────────────────────────
+
+/**
+ * Ensure the secrets.env.schema file exists in DATA_HOME.
+ * Seeds the bundled asset on first run; leaves the existing file intact
+ * on subsequent runs.
+ */
+export function ensureSecretsSchema(): string {
+  const path = `${resolveDataHome()}/secrets.env.schema`;
+  if (!existsSync(path)) {
+    writeFileSync(path, secretsSchemaAsset);
+  }
+  return path;
+}
+
+/**
+ * Ensure the stack.env.schema file exists in DATA_HOME.
+ * Seeds the bundled asset on first run; leaves the existing file intact
+ * on subsequent runs.
+ */
+export function ensureStackSchema(): string {
+  const path = `${resolveDataHome()}/stack.env.schema`;
+  if (!existsSync(path)) {
+    writeFileSync(path, stackSchemaAsset);
+  }
+  return path;
 }
 
 export function detectAccessScope(rawCaddyfile: string): "host" | "lan" | "custom" {
@@ -265,7 +297,9 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
   { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
   { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" },
-  { dataRelPath: "ollama.yml", githubFilename: "ollama.yml" }
+  { dataRelPath: "ollama.yml", githubFilename: "ollama.yml" },
+  { dataRelPath: "secrets.env.schema", githubFilename: "secrets.env.schema" },
+  { dataRelPath: "stack.env.schema", githubFilename: "stack.env.schema" }
 ];
 
 /**

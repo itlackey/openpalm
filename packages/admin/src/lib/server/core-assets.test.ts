@@ -361,6 +361,12 @@ describe("refreshCoreAssets", () => {
       if (url.includes("ollama.yml")) {
         return new Response("services:\n  ollama:\n    image: ollama/ollama\n", { status: 200 });
       }
+      if (url.includes("secrets.env.schema")) {
+        return new Response("# @defaultSensitive=true\n", { status: 200 });
+      }
+      if (url.includes("stack.env.schema")) {
+        return new Response("# @defaultSensitive=false\n", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
@@ -370,6 +376,8 @@ describe("refreshCoreAssets", () => {
     expect(result.updated).toContain("assistant/opencode.jsonc");
     expect(result.updated).toContain("assistant/AGENTS.md");
     expect(result.updated).toContain("ollama.yml");
+    expect(result.updated).toContain("secrets.env.schema");
+    expect(result.updated).toContain("stack.env.schema");
     expect(result.backupDir).toBeNull(); // no existing files to back up
 
     expect(existsSync(join(dataHome, "docker-compose.yml"))).toBe(true);
@@ -377,6 +385,8 @@ describe("refreshCoreAssets", () => {
     expect(existsSync(join(dataHome, "assistant/opencode.jsonc"))).toBe(true);
     expect(existsSync(join(dataHome, "assistant/AGENTS.md"))).toBe(true);
     expect(existsSync(join(dataHome, "ollama.yml"))).toBe(true);
+    expect(existsSync(join(dataHome, "secrets.env.schema"))).toBe(true);
+    expect(existsSync(join(dataHome, "stack.env.schema"))).toBe(true);
   });
 
   test("backs up changed files before overwriting", async () => {
@@ -407,11 +417,17 @@ describe("refreshCoreAssets", () => {
       if (url.includes("ollama.yml")) {
         return new Response("new-ollama-content", { status: 200 });
       }
+      if (url.includes("secrets.env.schema")) {
+        return new Response("new-secrets-schema-content", { status: 200 });
+      }
+      if (url.includes("stack.env.schema")) {
+        return new Response("new-stack-schema-content", { status: 200 });
+      }
       return new Response("Not found", { status: 404 });
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(5);
+    expect(result.updated).toHaveLength(7);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -447,6 +463,8 @@ describe("refreshCoreAssets", () => {
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), content);
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), content);
     writeFileSync(join(dataHome, "ollama.yml"), content);
+    writeFileSync(join(dataHome, "secrets.env.schema"), content);
+    writeFileSync(join(dataHome, "stack.env.schema"), content);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       return new Response(content, { status: 200 });
