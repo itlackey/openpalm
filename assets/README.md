@@ -9,7 +9,7 @@ This directory contains the static infrastructure configuration for OpenPalm. Th
 operations are non-destructive for existing user config files and only seed
 missing defaults. Allowed writers: user direct edits; explicit admin UI/API
 config actions; authenticated, allowlisted assistant calls on user request.
-See [docs/core-principles.md](../docs/core-principles.md) for the full
+See [docs/core-principles.md](../docs/technical/core-principles.md) for the full
 filesystem contract.
 
 ## File Layout

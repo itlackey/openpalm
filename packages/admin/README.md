@@ -62,7 +62,7 @@ bun run admin:check
 
 ## API
 
-All endpoints require `x-admin-token: <ADMIN_TOKEN>` (except `/health` and `/setup/*`). Full spec: [`docs/api-spec.md`](../../docs/api-spec.md).
+All endpoints require `x-admin-token: <ADMIN_TOKEN>` (except `/health` and `/setup/*`). Full spec: [`docs/api-spec.md`](../../docs/technical/api-spec.md).
 
 ## Key environment variables
 

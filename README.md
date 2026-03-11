@@ -84,7 +84,7 @@ Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/auto
 <p>OpenPalm has defense built into its core. It has many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
 </div>
 
-![Architecture](docs/architecture.svg)
+![Architecture](docs/technical/architecture.svg)
 
 - **Admin** (`packages/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
@@ -99,7 +99,7 @@ Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/auto
 - The **Assistant** is fully isolated — no Docker socket, no host filesystem beyond designated mounts.
 - **LAN-first by default** — nothing is publicly exposed without explicit opt-in.
 
-See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture walkthrough and [`docs/core-principles.md`](docs/core-principles.md) for security invariants.
+See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture walkthrough and [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for security invariants.
 
 ## Documentation
 
@@ -112,11 +112,11 @@ Repo layout convention:
 | [Setup Guide](docs/setup-guide.md) | Installation, updating, troubleshooting, and first steps |
 | [How It Works](docs/how-it-works.md) | Architecture overview and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Configuration, channels, secrets, access control |
-| [Core Principles](docs/core-principles.md) | Security invariants and architectural rules |
-| [Directory Structure](docs/directory-structure.md) | Host paths, XDG tiers, volume design |
+| [Core Principles](docs/technical/core-principles.md) | Security invariants and architectural rules |
+| [Directory Structure](docs/technical/directory-structure.md) | Host paths, XDG tiers, volume design |
 | [Community Channels](docs/community-channels.md) | BaseChannel SDK for building custom adapters |
-| [API Spec](docs/api-spec.md) | Admin API endpoint contract |
-| [PRD](docs/prd.md) | MVP requirements and constraints |
+| [API Spec](docs/technical/api-spec.md) | Admin API endpoint contract |
+| [PRD](docs/technical/prd.md) | MVP requirements and constraints |
 
 ### Project READMEs
 

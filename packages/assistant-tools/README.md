@@ -32,4 +32,4 @@ bun build src/index.ts --outdir dist --format esm --target node
 
 `@opencode-ai/plugin` — OpenCode plugin interface. Tools call the admin API via standard `fetch`; no other runtime dependencies.
 
-See [`AGENTS.md`](AGENTS.md) for the assistant persona, [`docs/core-principles.md`](../../docs/core-principles.md) for architectural rules.
+See [`AGENTS.md`](AGENTS.md) for the assistant persona, [`docs/core-principles.md`](../../docs/technical/core-principles.md) for architectural rules.

@@ -1,6 +1,6 @@
 # AGENTS.md — OpenPalm MVP
 
-> **CRITICAL:** All work must comply with [`docs/core-principles.md`](docs/core-principles.md).
+> **CRITICAL:** All work must comply with [`docs/technical/core-principles.md`](docs/technical/core-principles.md).
 > That document is the **authoritative source of architectural rules** for this project.
 > No implementation may violate its Core Goals, Security Invariants, or Filesystem Contract.
 
@@ -15,7 +15,7 @@ Repo layout convention:
 - `packages/*` contains app/package source workspaces.
 - `core/*` contains container/runtime assembly assets and image build contexts.
 
-See [`docs/core-principles.md`](docs/core-principles.md) for the filesystem/volume-mount contract.
+See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for the filesystem/volume-mount contract.
 
 ---
 
@@ -83,14 +83,14 @@ Read these before making significant changes. They are the authoritative sources
 
 | Document | Scope |
 |---|---|
-| [`docs/core-principles.md`](docs/core-principles.md) | Architectural rules, security invariants, filesystem contract |
-| [`docs/code-quality-principles.md`](docs/code-quality-principles.md) | Engineering invariants, Bun and SvelteKit quality contracts, delivery checklist |
-| [`docs/bunjs-rules.md`](docs/bunjs-rules.md) | Bun-specific implementation rules, built-in API preference list |
-| [`docs/sveltekit-rules.md`](docs/sveltekit-rules.md) | SvelteKit-specific rules, server/client boundaries, routing, UX |
-| [`docs/api-spec.md`](docs/api-spec.md) | Full Admin API spec, endpoint contracts, error shapes |
-| [`docs/directory-structure.md`](docs/directory-structure.md) | XDG three-tier layout, volume mounts, network topology |
-| [`docs/environment-and-mounts.md`](docs/environment-and-mounts.md) | Every env var and mount point per service |
-| [`docs/opencode-configuration.md`](docs/opencode-configuration.md) | OpenCode integration, tools, plugins, startup flow |
+| [`docs/technical/core-principles.md`](docs/technical/core-principles.md) | Architectural rules, security invariants, filesystem contract |
+| [`docs/technical/code-quality-principles.md`](docs/technical/code-quality-principles.md) | Engineering invariants, Bun and SvelteKit quality contracts, delivery checklist |
+| [`docs/technical/bunjs-rules.md`](docs/technical/bunjs-rules.md) | Bun-specific implementation rules, built-in API preference list |
+| [`docs/technical/sveltekit-rules.md`](docs/technical/sveltekit-rules.md) | SvelteKit-specific rules, server/client boundaries, routing, UX |
+| [`docs/technical/api-spec.md`](docs/technical/api-spec.md) | Full Admin API spec, endpoint contracts, error shapes |
+| [`docs/technical/directory-structure.md`](docs/technical/directory-structure.md) | XDG three-tier layout, volume mounts, network topology |
+| [`docs/technical/environment-and-mounts.md`](docs/technical/environment-and-mounts.md) | Every env var and mount point per service |
+| [`docs/technical/opencode-configuration.md`](docs/technical/opencode-configuration.md) | OpenCode integration, tools, plugins, startup flow |
 
 ---
 
@@ -113,7 +113,7 @@ Read these before making significant changes. They are the authoritative sources
 - Use `import type` for type-only imports
 - SvelteKit path aliases: `$lib/`, `$lib/server/`, `$app/environment`
 - Custom Vite aliases: `$assets` → `assets/`, `$registry` → `registry/` (channel registry)
-- **Prefer Bun and Web Platform built-ins** before adding third-party dependencies (see `docs/bunjs-rules.md`)
+- **Prefer Bun and Web Platform built-ins** before adding third-party dependencies (see `docs/technical/bunjs-rules.md`)
 
 ### Naming
 
@@ -168,7 +168,7 @@ No Prettier or ESLint configured. Match the existing file style:
 
 ---
 
-## Architecture Rules (summary — full detail in `docs/core-principles.md`)
+## Architecture Rules (summary — full detail in `docs/technical/core-principles.md`)
 
 - **File assembly, not rendering.** Copy whole files between tiers; no string interpolation or template generation.
 - **CONFIG_HOME policy.** `CONFIG_HOME` is the user-owned persistent source of truth.
@@ -191,7 +191,7 @@ Before submitting any change:
 - [ ] `cd packages/admin && npm run check` passes (UI type correctness)
 - [ ] `cd core/guardian && bun test` passes (security-critical branches covered)
 - [ ] No new dependency duplicates a built-in Bun/platform capability
-- [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/core-principles.md` remain intact
+- [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
 - [ ] No secrets leak through client bundles or logs
 
@@ -201,10 +201,10 @@ Before submitting any change:
 
 | Path | Purpose |
 |---|---|
-| `docs/core-principles.md` | **Authoritative architectural rules** |
-| `docs/code-quality-principles.md` | Engineering invariants and quality contracts |
-| `docs/bunjs-rules.md` | Bun built-in API rules |
-| `docs/sveltekit-rules.md` | SvelteKit-specific implementation rules |
+| `docs/technical/core-principles.md` | **Authoritative architectural rules** |
+| `docs/technical/code-quality-principles.md` | Engineering invariants and quality contracts |
+| `docs/technical/bunjs-rules.md` | Bun built-in API rules |
+| `docs/technical/sveltekit-rules.md` | SvelteKit-specific implementation rules |
 | `packages/admin/src/lib/server/control-plane.ts` | Core state, types, business logic |
 | `packages/admin/src/lib/server/helpers.ts` | Shared request/response utilities |
 | `packages/admin/src/lib/server/docker.ts` | Docker Compose shell-out wrapper |

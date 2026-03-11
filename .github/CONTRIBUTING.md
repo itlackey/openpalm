@@ -150,7 +150,7 @@ All scripts are defined in the root [`package.json`](package.json):
 
 ## Dev directory layout
 
-Dev mode mirrors the production [XDG three-tier layout](docs/directory-structure.md) under `.dev/`:
+Dev mode mirrors the production [XDG three-tier layout](docs/technical/directory-structure.md) under `.dev/`:
 
 ```
 .dev/
@@ -160,11 +160,11 @@ Dev mode mirrors the production [XDG three-tier layout](docs/directory-structure
     └── artifacts/   # stack.env, secrets.env, docker-compose.yml
 ```
 
-See [docs/directory-structure.md](docs/directory-structure.md) for the full tree.
+See [docs/technical/directory-structure.md](docs/technical/directory-structure.md) for the full tree.
 
 ## Before submitting a PR
 
-1. **Read the rules.** [docs/core-principles.md](docs/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
+1. **Read the rules.** [docs/technical/core-principles.md](docs/technical/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
 2. **Run the delivery checklist:**
 
    ```bash
@@ -172,7 +172,7 @@ See [docs/directory-structure.md](docs/directory-structure.md) for the full tree
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** must follow the patterns in [docs/docker-dependency-resolution.md](docs/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
+3. **Docker builds** must follow the patterns in [docs/technical/docker-dependency-resolution.md](docs/technical/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 
@@ -184,12 +184,12 @@ OpenPalm publishes npm packages on an independent release cycle from Docker imag
 
 | Document | What you'll find |
 |----------|-----------------|
-| [docs/core-principles.md](docs/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
-| [docs/code-quality-principles.md](docs/code-quality-principles.md) | TypeScript strictness, module design, error handling |
-| [docs/docker-dependency-resolution.md](docs/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
-| [docs/directory-structure.md](docs/directory-structure.md) | XDG tiers, volume mounts, dev vs. production paths |
-| [docs/api-spec.md](docs/api-spec.md) | Admin API endpoint contract |
-| [docs/bunjs-rules.md](docs/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
-| [docs/sveltekit-rules.md](docs/sveltekit-rules.md) | SvelteKit patterns (admin UI) |
+| [docs/technical/core-principles.md](docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
+| [docs/technical/code-quality-principles.md](docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
+| [docs/technical/docker-dependency-resolution.md](docs/technical/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
+| [docs/technical/directory-structure.md](docs/technical/directory-structure.md) | XDG tiers, volume mounts, dev vs. production paths |
+| [docs/technical/api-spec.md](docs/technical/api-spec.md) | Admin API endpoint contract |
+| [docs/technical/bunjs-rules.md](docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
+| [docs/technical/sveltekit-rules.md](docs/technical/sveltekit-rules.md) | SvelteKit patterns (admin UI) |
 | [docs/community-channels.md](docs/community-channels.md) | BaseChannel SDK for building custom channel adapters |
-| [docs/environment-and-mounts.md](docs/environment-and-mounts.md) | All environment variables and volume mounts |
+| [docs/technical/environment-and-mounts.md](docs/technical/environment-and-mounts.md) | All environment variables and volume mounts |

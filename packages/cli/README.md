@@ -36,7 +36,7 @@ Bun CLI for bootstrapping and managing an OpenPalm installation. Handles the ini
 1. **Bootstrap** (no stack running) — creates XDG directory tree, downloads `docker-compose.yml` + `Caddyfile` from GitHub, seeds `secrets.env` and `stack.env`, starts core services via `docker compose`
 2. **Running stack** — all commands delegate to the Admin API (`/admin/install`, `/admin/containers/*`, etc.) using `x-admin-token` auth
 
-Follows the file-assembly principle: copies whole files, never renders templates. See [`docs/core-principles.md`](../../docs/core-principles.md).
+Follows the file-assembly principle: copies whole files, never renders templates. See [`docs/core-principles.md`](../../docs/technical/core-principles.md).
 
 ## Building
 
