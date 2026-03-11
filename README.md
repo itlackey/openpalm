@@ -84,6 +84,8 @@ Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/auto
 <p>OpenPalm has defense built into its core. It has many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
 </div>
 
+![Architecture](docs/architecture.svg)
+
 - **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
 - **Assistant** (`core/assistant/`) — OpenCode runtime. No Docker socket. Calls Admin API for stack operations.
