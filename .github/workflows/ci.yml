@@ -37,7 +37,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Type check admin UI
-        run: cd core/admin && bun run check
+        run: cd packages/admin && bun run check
 
       - name: Test (sdk + guardian + channels)
         run: bun run test
@@ -45,7 +45,7 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           ADMIN_TOKEN: ci-placeholder
-        run: docker compose -f core/assets/docker-compose.yml -f compose.dev.yaml config -q
+        run: docker compose -f assets/docker-compose.yml -f compose.dev.yaml config -q
 
       - name: Validate registry YAML files
         run: |
@@ -56,7 +56,7 @@ jobs:
           # Validate all registry channel YAML files
           for f in registry/channels/*.yml; do
             if [ ! -f "$f" ]; then continue; fi
-            if ! docker compose -f core/assets/docker-compose.yml -f "$f" config -q 2>/dev/null; then
+            if ! docker compose -f assets/docker-compose.yml -f "$f" config -q 2>/dev/null; then
               echo "::error file=$f::Invalid compose overlay: $f"
               errors=$((errors + 1))
             fi

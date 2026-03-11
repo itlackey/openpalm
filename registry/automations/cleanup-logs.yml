@@ -4,7 +4,7 @@
 # audit log file to prevent unbounded disk growth.
 #
 # NOTE: This automation is now a core automation, installed by default.
-# The canonical version lives in core/assets/cleanup-logs.yml and is
+# The canonical version lives in assets/cleanup-logs.yml and is
 # seeded to DATA_HOME/automations/ on startup. This registry copy is
 # kept for reference. To customize, place a copy in
 # ~/.config/openpalm/automations/cleanup-logs.yml.

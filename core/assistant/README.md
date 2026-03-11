@@ -34,8 +34,8 @@ Plugins are installed by Bun at container startup and cached ephemerally. The fi
 | Location | Source | Purpose |
 |---|---|---|
 | `packages/assistant-tools/` | Git repo | Plugin source: tools, plugins, skills, AGENTS.md |
-| `core/assets/opencode.jsonc` | Git repo | System config (model + plugins) — seeded to DATA_HOME/assistant/ |
-| `core/assets/AGENTS.md` | Git repo | Assistant persona — seeded to DATA_HOME/assistant/ |
+| `assets/opencode.jsonc` | Git repo | System config (model + plugins) — seeded to DATA_HOME/assistant/ |
+| `assets/AGENTS.md` | Git repo | Assistant persona — seeded to DATA_HOME/assistant/ |
 | `DATA_HOME/assistant/` | Runtime mount | System config mounted at `/etc/opencode` |
 | `CONFIG_HOME/assistant/` | Runtime mount | User extensions mounted at `~/.config/opencode` |
 | `~/.cache/opencode/node_modules/` | Container ephemeral | Plugins auto-installed from config on startup |

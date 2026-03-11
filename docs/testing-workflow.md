@@ -21,7 +21,7 @@ That script is intentionally configured to run the full integration suite with:
 - `ADMIN_TOKEN=dev-admin-token`
 - `PW_ENFORCE_NO_SKIP=1` (fails the run if any integration test is skipped)
 
-If you run Playwright directly (or from `core/admin`), you may get skipped groups due to missing env flags.
+If you run Playwright directly (or from `packages/admin`), you may get skipped groups due to missing env flags.
 
 Quick preflight checks (recommended):
 
@@ -88,7 +88,7 @@ bun run admin:test:unit
 # Or run individually:
 bun run sdk:test          # packages/channels-sdk (3 test files)
 bun run guardian:test     # core/guardian security tests (1 file)
-bun run cli:test          # core/cli (1 file)
+bun run cli:test          # packages/cli (1 file)
 ```
 
 **What it validates:** SDK contracts, guardian HMAC/replay/rate-limiting, channel adapters, CLI parsing, admin server logic (docker wrapper, helpers, secrets, env management), admin client components.

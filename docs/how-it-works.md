@@ -200,7 +200,7 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 CONFIG_HOME/channels/chat.yml   ──copy──▶  STATE_HOME/artifacts/channels/chat.yml
 CONFIG_HOME/channels/chat.caddy ──copy──▶  STATE_HOME/artifacts/channels/lan/chat.caddy
 CONFIG_HOME/secrets.env         ──copy──▶  STATE_HOME/artifacts/secrets.env
-core/assets/docker-compose.yml  ──copy──▶  STATE_HOME/artifacts/docker-compose.yml
+assets/docker-compose.yml  ──copy──▶  STATE_HOME/artifacts/docker-compose.yml
 DATA_HOME/caddy/Caddyfile       ──copy──▶  STATE_HOME/artifacts/Caddyfile
 ```
 
@@ -220,7 +220,7 @@ stages into `STATE_HOME/artifacts/Caddyfile`.
 
 Three copies of the Caddyfile exist in the system:
 
-1. **`core/assets/Caddyfile`** — Immutable template bundled into the admin image.
+1. **`assets/Caddyfile`** — Immutable template bundled into the admin image.
    Used to seed `DATA_HOME/caddy/Caddyfile` on first install. Contains
    `import lan_only` snippets for default LAN access control.
 2. **`DATA_HOME/caddy/Caddyfile`** — Mutable system-managed source of truth.

@@ -1,4 +1,4 @@
-<img src="core/admin/static/banner.png" alt="OpenPalm" width="500" />
+<img src="packages/admin/static/banner.png" alt="OpenPalm" width="500" />
 
 <p>
   <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
@@ -80,13 +80,13 @@ Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/auto
 
 ## How It Works
 
-<img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
+<img src="packages/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
 <p>OpenPalm has defense built into its core. It has many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
 </div>
 
 ![Architecture](docs/architecture.svg)
 
-- **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
+- **Admin** (`packages/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
 - **Assistant** (`core/assistant/`) — OpenCode runtime. No Docker socket. Calls Admin API for stack operations.
 - **Channel runtime** (`core/channel/`) — Unified `channel` image entrypoint used by registry channel overlays.
@@ -103,6 +103,10 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 
 ## Documentation
 
+Repo layout convention:
+- `packages/*` contains app and package source code (for example `packages/admin/` and `packages/cli/`).
+- `core/*` contains container/runtime assembly assets and service image build contexts.
+
 | Guide | What's inside |
 |---|---|
 | [Setup Guide](docs/setup-guide.md) | Installation, updating, troubleshooting, and first steps |
@@ -118,14 +122,14 @@ See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture wal
 
 | Component | README |
 |---|---|
-| Assets (compose, Caddyfile) | [core/assets/README.md](core/assets/README.md) |
-| Admin (UI + API) | [core/admin/README.md](core/admin/README.md) |
+| Assets (compose, Caddyfile) | [assets/README.md](assets/README.md) |
+| Admin (UI + API) | [packages/admin/README.md](packages/admin/README.md) |
 | Guardian | [core/guardian/README.md](core/guardian/README.md) |
 | Assistant | [core/assistant/README.md](core/assistant/README.md) |
 | Channel runtime | [core/channel/README.md](core/channel/README.md) |
 | Channels SDK | [packages/channels-sdk/README.md](packages/channels-sdk/README.md) |
 | Assistant tools | [packages/assistant-tools/README.md](packages/assistant-tools/README.md) |
-| CLI | [core/cli/README.md](core/cli/README.md) |
+| CLI | [packages/cli/README.md](packages/cli/README.md) |
 | Channel: API | [packages/channel-api/README.md](packages/channel-api/README.md) |
 | Channel: Chat | [packages/channel-chat/README.md](packages/channel-chat/README.md) |
 | Channel: Discord | [packages/channel-discord/README.md](packages/channel-discord/README.md) |

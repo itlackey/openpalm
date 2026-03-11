@@ -2,6 +2,10 @@
 
 Documentation index for OpenPalm.
 
+Repo layout convention:
+- `packages/*` contains app/package source code.
+- `core/*` contains container/runtime assembly assets and Docker build contexts.
+
 ## Getting started
 
 | Document | Description |
@@ -30,7 +34,7 @@ Documentation index for OpenPalm.
 |---|---|
 | [code-quality-principles.md](code-quality-principles.md) | All code |
 | [bunjs-rules.md](bunjs-rules.md) | Guardian, channels, channels-sdk |
-| [sveltekit-rules.md](sveltekit-rules.md) | Admin UI (`core/admin/`) |
+| [sveltekit-rules.md](sveltekit-rules.md) | Admin UI (`packages/admin/`) |
 
 ## Release notes
 

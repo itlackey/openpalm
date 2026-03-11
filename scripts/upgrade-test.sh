@@ -264,8 +264,8 @@ OPENPALM_INGRESS_PORT=8180
 EOF
 
 # Seed compose and Caddyfile to DATA_HOME (source of truth)
-cp "${ROOT_DIR}/core/assets/docker-compose.yml" "${OPENPALM_DATA_HOME}/docker-compose.yml"
-cp "${ROOT_DIR}/core/assets/Caddyfile" "${OPENPALM_DATA_HOME}/caddy/Caddyfile"
+cp "${ROOT_DIR}/assets/docker-compose.yml" "${OPENPALM_DATA_HOME}/docker-compose.yml"
+cp "${ROOT_DIR}/assets/Caddyfile" "${OPENPALM_DATA_HOME}/caddy/Caddyfile"
 
 # Stage artifacts for compose
 cp "${OPENPALM_DATA_HOME}/docker-compose.yml" "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml"
@@ -518,8 +518,8 @@ mkdir -p \
 
 # Step 2: Re-download assets (simulate by copying from source)
 # In a real upgrade, setup.sh downloads from GitHub. We copy from local assets.
-cp "${ROOT_DIR}/core/assets/docker-compose.yml" "${OPENPALM_DATA_HOME}/docker-compose.yml"
-cp "${ROOT_DIR}/core/assets/Caddyfile" "${OPENPALM_DATA_HOME}/caddy/Caddyfile"
+cp "${ROOT_DIR}/assets/docker-compose.yml" "${OPENPALM_DATA_HOME}/docker-compose.yml"
+cp "${ROOT_DIR}/assets/Caddyfile" "${OPENPALM_DATA_HOME}/caddy/Caddyfile"
 
 # Step 3: Stage artifacts (same as setup.sh)
 cp "${OPENPALM_DATA_HOME}/docker-compose.yml" "${OPENPALM_STATE_HOME}/artifacts/docker-compose.yml"

@@ -2,6 +2,10 @@
 
 Quick-start cheatsheet for getting a dev environment running and submitting changes.
 
+Repo layout convention:
+- `packages/*` = app/package source workspaces
+- `core/*` = container/runtime assembly assets and image build contexts
+
 ## Prerequisites
 
 | Tool | Version | Why |
@@ -15,7 +19,7 @@ Quick-start cheatsheet for getting a dev environment running and submitting chan
 ```bash
 ./scripts/dev-setup.sh --seed-env
 
-cd core/admin
+cd packages/admin
 bun install
 bun run dev
 ```
@@ -25,12 +29,12 @@ Admin UI + API runs on `http://localhost:8100`.
 From the repo root, convenience scripts are available:
 
 ```bash
-bun run admin:dev        # core/admin dev server
+bun run admin:dev        # packages/admin dev server
 bun run admin:check      # svelte-check + TypeScript
 bun run guardian:dev     # core/guardian server
 bun run guardian:test    # guardian tests
 bun run sdk:test         # packages/channels-sdk tests
-bun run cli:test         # core/cli tests
+bun run cli:test         # packages/cli tests
 bun run channel:chat:dev    # chat channel dev server
 bun run channel:api:dev     # api channel dev server
 bun run channel:discord:dev # discord channel dev server
@@ -43,7 +47,7 @@ bun run check            # admin:check + sdk:test
 
 `dev:stack` pulls pre-built images from the registry — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yaml` — use it when developing services or testing Dockerfile changes.
 
-`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `core/assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
+`dev-setup.sh --seed-env` seeds `.dev/config/secrets.env` from `assets/secrets.env` and sets the `OPENPALM_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
 
 ## 1. Clone and bootstrap
 
@@ -57,7 +61,7 @@ bun run dev:setup      # Creates .dev/ dirs, seeds secrets.env and stack.env
 `dev:setup` runs [`scripts/dev-setup.sh --seed-env`](scripts/dev-setup.sh), which:
 
 - Creates the `.dev/config`, `.dev/data`, and `.dev/state` directories
-- Seeds `.dev/config/secrets.env` from [`core/assets/secrets.env`](core/assets/secrets.env)
+- Seeds `.dev/config/secrets.env` from [`assets/secrets.env`](assets/secrets.env)
 - Generates `.dev/state/artifacts/stack.env` with auto-detected host values
 
 After setup, edit `.dev/config/secrets.env` to add your `ADMIN_TOKEN` and any LLM provider keys.
@@ -65,7 +69,7 @@ After setup, edit `.dev/config/secrets.env` to add your `ADMIN_TOKEN` and any LL
 ## 2. Run the admin UI (no Docker needed)
 
 ```bash
-cd core/admin && npm install && npm run dev
+cd packages/admin && npm install && npm run dev
 ```
 
 Admin UI + API starts on `http://localhost:8100`. The dev server reads `.env` (copy from [`.env.example`](.env.example)) and the seeded `.dev/` paths automatically.
@@ -123,7 +127,7 @@ All scripts are defined in the root [`package.json`](package.json):
 
 | Script | Description |
 |--------|-------------|
-| `bun run admin:dev` | Admin dev server (core/admin) |
+| `bun run admin:dev` | Admin dev server (packages/admin) |
 | `bun run admin:build` | Admin production build |
 | `bun run admin:check` | svelte-check + TypeScript |
 | `bun run admin:test` | Vitest + Playwright (requires build) |
@@ -174,7 +178,7 @@ See [docs/directory-structure.md](docs/directory-structure.md) for the full tree
 
 ## npm Package Releases
 
-OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`core/admin`, `core/guardian`, `core/cli`) share a coordinated version managed by `scripts/release.sh`.
+OpenPalm publishes npm packages on an independent release cycle from Docker images and the platform. Each publishable package (`packages/channels-sdk`, `packages/assistant-tools`, `packages/channel-*`) has its own GitHub Actions workflow that publishes to npm when its version field changes on `main`. Platform packages (`packages/admin`, `core/guardian`, `packages/cli`) share a coordinated version managed by `scripts/release.sh`.
 
 ## Key docs for contributors
 

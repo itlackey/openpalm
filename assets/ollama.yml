@@ -1,0 +1,20 @@
+# OpenPalm — Ollama service overlay
+#
+# Merged into the compose stack when the user enables Ollama from the setup wizard.
+# Usage: docker compose -f docker-compose.yml -f ollama.yml up -d
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${OPENPALM_OLLAMA_BIND_ADDRESS:-127.0.0.1}:11434:11434"
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/ollama:/root/.ollama
+    networks: [assistant_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

@@ -206,7 +206,7 @@ download_asset() {
 	local filename="$1" dest="$2"
 	local tmp="${dest}.tmp"
 	local release_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/${filename}"
-	local raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/core/assets/${filename}"
+	local raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/assets/${filename}"
 
 	if curl -fsSL --retry 2 -o "$tmp" "$release_url" 2>/dev/null; then
 		ok "Downloaded $filename (release)"
@@ -244,7 +244,7 @@ download_asset() {
 CHECKSUMS_FILE=""
 checksums_tmp="$(mktemp 2>/dev/null || echo "/tmp/openpalm-checksums.$$")"
 checksums_release_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/SHA256SUMS"
-checksums_raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/core/assets/SHA256SUMS"
+checksums_raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/assets/SHA256SUMS"
 if curl -fsSL --retry 1 -o "$checksums_tmp" "$checksums_release_url" 2>/dev/null && [[ -s "$checksums_tmp" ]]; then
 	CHECKSUMS_FILE="$checksums_tmp"
 	ok "Downloaded SHA256SUMS (release)"

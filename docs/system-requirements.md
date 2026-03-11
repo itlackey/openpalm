@@ -54,7 +54,7 @@ For larger models (13B+ parameters), 32 GB RAM or a GPU with 8+ GB VRAM is recom
 
 ## Per-Service Resource Profile
 
-The core compose file (`core/assets/docker-compose.yml`) does not currently define `deploy.resources.limits`, so containers are unconstrained by default. The table below shows typical observed usage under light workloads.
+The core compose file (`assets/docker-compose.yml`) does not currently define `deploy.resources.limits`, so containers are unconstrained by default. The table below shows typical observed usage under light workloads.
 
 | Service | Base Image | Runtime | Typical Idle RAM | Typical Active RAM | Purpose |
 |---|---|---|---|---|---|

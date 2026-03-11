@@ -1,7 +1,7 @@
 # Environment Variables & Container Mount Points
 
 This document describes every environment variable and volume mount used by the
-OpenPalm stack. The `core/assets/docker-compose.yml` is the source of truth —
+OpenPalm stack. The `assets/docker-compose.yml` is the source of truth —
 this document mirrors its content for reference.
 
 **Canonical sources:** Volume mounts and directory layout are also described in

@@ -31,7 +31,7 @@ Or manually: copy the `.yml` (and optionally `.caddy`) to `~/.config/openpalm/ch
 
 The `channel` image (`core/channel/`) runs any npm package that extends `BaseChannel`. Set `CHANNEL_PACKAGE` in the overlay's `environment:` block.
 
-See [`core/assets/README.md`](../core/assets/README.md) and [`docs/community-channels.md`](../docs/community-channels.md) for full details.
+See [`assets/README.md`](../assets/README.md) and [`docs/community-channels.md`](../docs/community-channels.md) for full details.
 
 ## Automations (`registry/automations/`)
 

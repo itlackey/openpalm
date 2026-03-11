@@ -97,7 +97,7 @@ jobs:
           git checkout "${BRANCH}"
           git pull --ff-only origin "${BRANCH}"
 
-          for pkg in package.json core/admin/package.json core/guardian/package.json core/cli/package.json; do
+          for pkg in package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json; do
             jq --arg v "${VERSION}" '.version = $v' "${pkg}" > "${pkg}.tmp" && mv "${pkg}.tmp" "${pkg}"
             echo "Bumped ${pkg} to ${VERSION}"
           done
@@ -107,7 +107,7 @@ jobs:
           sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
           echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
 
-          git add package.json core/*/package.json scripts/setup.sh scripts/setup.ps1
+          git add package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json scripts/setup.sh scripts/setup.ps1
           git commit -m "chore: bump version to ${VERSION}"
           git push origin "${BRANCH}"
 
@@ -223,13 +223,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build CLI binary
-        run: bun run --cwd core/cli ${{ matrix.script }}
+        run: bun run --cwd packages/cli ${{ matrix.script }}
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: core/cli/dist/${{ matrix.artifact }}
+          path: packages/cli/dist/${{ matrix.artifact }}
 
   release:
     name: Publish GitHub release
@@ -250,6 +250,7 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf dist/openpalm-${{ needs.prepare-tag.outputs.version }}-deploy-bundle.tar.gz \
+            assets \
             core \
             packages \
             registry \

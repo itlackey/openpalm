@@ -8,7 +8,7 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env   Copy core/assets/secrets.env to .dev/config/secrets.env if missing,
+  --seed-env   Copy assets/secrets.env to .dev/config/secrets.env if missing,
                and generate STATE_HOME/artifacts/stack.env with auto-detected values.
   --force      Overwrite seeded files even if they already exist.
   -h, --help   Show this help
@@ -53,8 +53,8 @@ mkdir -p \
 CADDY_DEST="$DATA_DIR/caddy/Caddyfile"
 COMPOSE_DEST="$DATA_DIR/docker-compose.yml"
 
-[[ ! -f "$CADDY_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/core/assets/Caddyfile" "$CADDY_DEST"
-[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/core/assets/docker-compose.yml" "$COMPOSE_DEST"
+[[ ! -f "$CADDY_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/Caddyfile" "$CADDY_DEST"
+[[ ! -f "$COMPOSE_DEST" || $force -eq 1 ]] && cp "$ROOT_DIR/assets/docker-compose.yml" "$COMPOSE_DEST"
 
 # Bootstrap staging: copy to STATE so compose works before admin's first apply
 cp "$COMPOSE_DEST" "$STATE_DIR/artifacts/docker-compose.yml"
@@ -65,7 +65,7 @@ touch "$STATE_DIR/artifacts/secrets.env"
 if [[ $seed_env -eq 1 ]]; then
 	env_dest="$CONFIG_DIR/secrets.env"
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
-		cp "$ROOT_DIR/core/assets/secrets.env" "$env_dest"
+		cp "$ROOT_DIR/assets/secrets.env" "$env_dest"
 		sed -i 's/^ADMIN_TOKEN=$/ADMIN_TOKEN=dev-admin-token/' "$env_dest"
 		# Seed Ollama as default LLM backend for dev
 		sed -i 's/^OPENAI_API_KEY=$/OPENAI_API_KEY=ollama/' "$env_dest"
