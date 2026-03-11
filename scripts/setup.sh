@@ -9,9 +9,9 @@ set -euo pipefail
 
 # ── Constants ─────────────────────────────────────────────────────────
 
-SCRIPT_VERSION="0.9.0-rc6"
+SCRIPT_VERSION="0.9.0-rc9"
 REPO="itlackey/openpalm"
-SCRIPT_VERSION="0.9.0-rc6"          # Stamped at release time by CI
+SCRIPT_VERSION="0.9.0-rc9"          # Stamped at release time by CI
 DEFAULT_VERSION="v${SCRIPT_VERSION}"
 HEALTH_TIMEOUT=120
 HEALTH_INTERVAL=3
