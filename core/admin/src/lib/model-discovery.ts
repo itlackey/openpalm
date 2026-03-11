@@ -15,7 +15,7 @@ export function mapModelDiscoveryError(result: ModelDiscoveryLike): string {
   if (result.reason === 'provider_http') {
     return result.error;
   }
-  return 'Network error — unable to reach admin API.';
+  return 'Network error — unable to reach the provider. Verify the base URL and that the service is running.';
 }
 
 export type ConnectionTestErrorCode =
@@ -32,11 +32,13 @@ export function mapConnectionTestError(result: {
 }): string {
   switch (result.errorCode) {
     case 'unauthorized':
-      return 'Unauthorized. This endpoint may require a valid API key.';
+      return 'Invalid API key. The provider rejected the credentials — double-check the key and try again.';
     case 'not_found':
-      return 'Endpoint not found. Verify the Base URL includes /v1.';
+      return 'Endpoint not found. Verify the Base URL is correct (most providers need a /v1 path).';
     case 'timeout':
-      return "Couldn't reach the server. Confirm it's running and accessible.";
+      return "Couldn't reach the server — it may be down or the URL may be wrong. Confirm it's running and accessible.";
+    case 'network':
+      return 'Unable to connect to the provider. Verify the base URL and that the service is running.';
     case 'missing_base_url':
       return 'Base URL is required for this provider.';
     default:

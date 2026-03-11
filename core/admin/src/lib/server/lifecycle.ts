@@ -11,7 +11,7 @@ import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled } from "./staging.js";
-import { refreshCoreAssets, ensureMemoryDir } from "./core-assets.js";
+import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
@@ -79,6 +79,7 @@ function reconcileCore(
     for (const s of CORE_SERVICES) state.services[s] = "running";
   }
   ensureMemoryDir();
+  ensureCoreAutomations();
   if (opts.seedMemoryConfig) ensureMemoryConfig(state.dataDir);
 
   const active: string[] = [];

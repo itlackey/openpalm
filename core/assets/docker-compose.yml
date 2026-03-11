@@ -6,9 +6,6 @@
 # Docker Compose reads variable values from .env (standalone) or via --env-file (admin-managed).
 # Copy .env.example to .env and fill in the required values.
 #
-# NOTE: Resource limits (deploy.resources.limits) require Docker Compose v2.24+
-# or DOCKER_ENABLE_RESOURCE_LIMITS=1 on older v2 versions.
-#
 # Directory model:
 #   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, assistant/
 #   DATA_HOME   (~/.local/share/openpalm) — opaque service data (memory, etc.)
@@ -29,11 +26,6 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/config:/config/caddy
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [assistant_net, channel_lan, channel_public]
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1"
 
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
@@ -60,11 +52,6 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: "2"
 
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
@@ -113,11 +100,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: "4"
 
   # ── Guardian ────────────────────────────────────────────────────────
   guardian:
@@ -152,11 +134,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1"
 
   # ── Docker Socket Proxy ───────────────────────────────────────────
   # Filtered proxy for the Docker daemon socket. Only the proxy mounts
@@ -173,7 +150,7 @@ services:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
-      EXEC: 1
+      EXEC: 0
       POST: 1
       INFO: 1
     volumes:
@@ -185,11 +162,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: "0.5"
 
   # ── Admin ──────────────────────────────────────────────────────────
   admin:
@@ -233,11 +205,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: "2"
 
 # Channel networks: services join channel_lan (LAN-restricted) or
 # channel_public (publicly accessible) to control Caddy access.

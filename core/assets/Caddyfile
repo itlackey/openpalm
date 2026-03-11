@@ -6,6 +6,11 @@
 # Access control: the (lan_only) snippet restricts access to private networks.
 # For host-only access, replace the IP ranges with: 127.0.0.1 ::1
 
+{
+	# Admin API on the Docker network for config reloads (not exposed to host).
+	admin 0.0.0.0:2019
+}
+
 (lan_only) {
 	@denied not remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1 fc00::/7 fe80::/10
 	abort @denied
@@ -14,18 +19,7 @@
 (public_access) {
 }
 
-(security_headers) {
-	header {
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		-Server
-	}
-}
-
 :80 {
-	import security_headers
 	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────
 	handle /admin/* {
 		import lan_only

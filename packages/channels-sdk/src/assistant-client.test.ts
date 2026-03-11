@@ -24,7 +24,7 @@ describe("createSession", () => {
     await withMockFetch(
       (async () => new Response("bad", { status: 500 })) as typeof fetch,
       async () => {
-        await expect(createSession({ baseUrl: "http://assistant" }, "t")).rejects.toThrow("500");
+        await expect(createSession({ baseUrl: "http://assistant" }, "t")).rejects.toThrow("session creation failed");
       },
     );
   });
@@ -64,7 +64,7 @@ describe("sendMessage", () => {
     await withMockFetch(
       (async () => new Response("err", { status: 502 })) as typeof fetch,
       async () => {
-        await expect(sendMessage({ baseUrl: "http://assistant" }, "sess1", "p")).rejects.toThrow("502");
+        await expect(sendMessage({ baseUrl: "http://assistant" }, "sess1", "p")).rejects.toThrow("message failed");
       },
     );
   });
@@ -109,7 +109,7 @@ describe("askAssistant", () => {
     await withMockFetch(
       (async () => new Response("bad request", { status: 400 })) as typeof fetch,
       async () => {
-        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("assistant POST /session failed: 400");
+        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("session creation failed");
       },
     );
   });
@@ -137,7 +137,7 @@ describe("askAssistant", () => {
         return new Response("upstream error", { status: 502 });
       }) as typeof fetch,
       async () => {
-        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("/message failed: 502");
+        await expect(askAssistant({ baseUrl: "http://assistant" }, "title", "prompt")).rejects.toThrow("message failed");
       },
     );
   });
