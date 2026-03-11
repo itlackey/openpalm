@@ -11,7 +11,7 @@ Set-StrictMode -Version Latest
 
 # ── Constants ─────────────────────────────────────────────────────────
 
-$ScriptVersion = '0.9.0-rc9'
+$ScriptVersion = '0.9.0-rc10'
 $Repo = 'itlackey/openpalm'
 $DefaultVersion = "v$ScriptVersion"
 $HealthTimeout = 120
