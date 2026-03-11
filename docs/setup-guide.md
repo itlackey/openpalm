@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
 2. Creates the XDG directory tree and downloads core assets (compose file, Caddyfile)
 3. Generates an admin token (or lets you set your own) and seeds missing default config files
 4. Pulls and starts the admin service, then opens the setup wizard in your browser
-5. The wizard walks you through connecting your AI provider and choosing channels
+5. The wizard walks you through connecting your AI provider and choosing channels (see [Setup Walkthrough](setup-walkthrough.md) for a detailed screen-by-screen guide)
 6. When you finish the wizard, the full stack starts automatically
 
 No code to clone. You can run fully from the UI if you want, and edit files directly any time. Existing user config files in `CONFIG_HOME` are never overwritten on subsequent runs; only missing defaults are seeded.
@@ -254,6 +254,7 @@ irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 |
 
 | Guide | What's inside |
 |---|---|
+| [Setup Walkthrough](setup-walkthrough.md) | Detailed screen-by-screen walkthrough of the setup wizard |
 | [Managing OpenPalm](managing-openpalm.md) | Day-to-day administration: secrets, channels, access control, extensions |
 | [How It Works](how-it-works.md) | Architecture overview and data flow |
 | [Directory Structure](directory-structure.md) | Host paths, XDG tiers, volume mounts |

@@ -2,15 +2,17 @@
 # OpenPalm — Production Setup Script
 #
 # One-liner install:
-#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
 #
 # Re-run to update (assets are re-downloaded, secrets are never overwritten).
 set -euo pipefail
 
 # ── Constants ─────────────────────────────────────────────────────────
 
+SCRIPT_VERSION="1.0.0"
 REPO="itlackey/openpalm"
-DEFAULT_VERSION="main"
+SCRIPT_VERSION="0.9.0-rc5"          # Stamped at release time by CI
+DEFAULT_VERSION="v${SCRIPT_VERSION}"
 HEALTH_TIMEOUT=120
 HEALTH_INTERVAL=3
 
@@ -32,14 +34,14 @@ header() { printf "\n${BOLD}── %s ──${NC}\n\n" "$*"; }
 # ── Usage ─────────────────────────────────────────────────────────────
 
 usage() {
-	cat <<'EOF'
+	cat <<EOF
 Usage: setup.sh [OPTIONS]
 
 Install or update the OpenPalm stack using published Docker Hub images.
 
 Options:
   --force       Skip confirmation prompts (for updates)
-  --version TAG GitHub ref to download assets from (default: main)
+  --version TAG GitHub ref to download assets from (default: v${SCRIPT_VERSION})
   --no-start    Set up files but don't start Docker services
   --no-open     Don't open the admin UI in a browser after install
   -h, --help    Show this help
@@ -52,7 +54,7 @@ Environment overrides:
 
 Examples:
   # Standard install
-  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v${SCRIPT_VERSION}/scripts/setup.sh | bash
 
   # Install with custom paths
   OPENPALM_CONFIG_HOME=/opt/openpalm/config bash setup.sh
@@ -220,11 +222,45 @@ download_asset() {
 		die "Downloaded $filename is empty. Check --version and network."
 	fi
 
+	# Checksum verification — validate against SHA256SUMS if available
+	if [[ -n "${CHECKSUMS_FILE:-}" ]]; then
+		local expected
+		expected="$(grep -F "$filename" "$CHECKSUMS_FILE" 2>/dev/null | awk '{print $1}')"
+		if [[ -n "$expected" ]]; then
+			local actual
+			actual="$(sha256sum "$tmp" | awk '{print $1}')"
+			if [[ "$actual" != "$expected" ]]; then
+				rm -f "$tmp"
+				die "Checksum mismatch for $filename (expected=$expected, got=$actual)"
+			fi
+			ok "Checksum verified: $filename"
+		fi
+	fi
+
 	mv -f "$tmp" "$dest"
 }
 
+# Try to download SHA256SUMS for checksum verification
+CHECKSUMS_FILE=""
+checksums_tmp="$(mktemp 2>/dev/null || echo "/tmp/openpalm-checksums.$$")"
+checksums_release_url="https://github.com/${REPO}/releases/download/${OPT_VERSION}/SHA256SUMS"
+checksums_raw_url="https://raw.githubusercontent.com/${REPO}/${OPT_VERSION}/core/assets/SHA256SUMS"
+if curl -fsSL --retry 1 -o "$checksums_tmp" "$checksums_release_url" 2>/dev/null && [[ -s "$checksums_tmp" ]]; then
+	CHECKSUMS_FILE="$checksums_tmp"
+	ok "Downloaded SHA256SUMS (release)"
+elif curl -fsSL --retry 1 -o "$checksums_tmp" "$checksums_raw_url" 2>/dev/null && [[ -s "$checksums_tmp" ]]; then
+	CHECKSUMS_FILE="$checksums_tmp"
+	ok "Downloaded SHA256SUMS (raw)"
+else
+	rm -f "$checksums_tmp"
+	info "No SHA256SUMS found — skipping checksum verification"
+fi
+
 download_asset "docker-compose.yml" "${DATA_HOME}/docker-compose.yml"
 download_asset "Caddyfile" "${DATA_HOME}/caddy/Caddyfile"
+
+# Clean up checksums temp file
+[[ -n "${CHECKSUMS_FILE:-}" ]] && rm -f "$CHECKSUMS_FILE"
 
 # Bootstrap staging: copy to STATE so compose can start admin before first apply
 cp "${DATA_HOME}/docker-compose.yml" "${STATE_HOME}/artifacts/docker-compose.yml"

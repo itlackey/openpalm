@@ -270,7 +270,7 @@ mismatch between the new admin image and the old staged files.
    ```bash
    rm -rf ~/.local/state/openpalm/artifacts
    # Re-run the installer
-   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
    ```
 4. Pull the latest images explicitly:
    ```bash
@@ -300,7 +300,7 @@ docker compose down -v
 rm -rf ~/.config/openpalm ~/.local/share/openpalm ~/.local/state/openpalm
 
 # Re-run the installer
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
 ```
 
 On Windows (PowerShell):
@@ -310,7 +310,7 @@ docker compose down -v
 Remove-Item -Recurse -Force "$env:USERPROFILE\.config\openpalm", `
   "$env:USERPROFILE\.local\share\openpalm", `
   "$env:USERPROFILE\.local\state\openpalm"
-irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+irm https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.ps1 | iex
 ```
 
 This removes all configuration, data, and state. Back up CONFIG_HOME and

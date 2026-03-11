@@ -20,8 +20,8 @@ OpenCode supports a layered configuration model. OpenPalm uses three layers:
    This is the lowest-precedence layer.
 2. **System config** — persisted on the host at
    `$OPENPALM_DATA_HOME/assistant/` and bind-mounted into the container at
-   `/etc/opencode/` via `OPENCODE_CONFIG_DIR`. Contains the model selection,
-   plugin declarations, and persona (AGENTS.md). Overrides user config.
+   `/etc/opencode/` via `OPENCODE_CONFIG_DIR`. Contains plugin declarations
+   and persona (AGENTS.md). Overrides user config for keys it sets.
 3. **Project config** — an `opencode.json` in the `/work` directory (if present).
    Highest precedence, overrides everything.
 
@@ -122,15 +122,20 @@ and overwritten when the bundled version changes (with backup).
 
 ### opencode.jsonc
 
-Selects the default model and declares plugins for auto-install:
+Declares plugins for auto-install. The model is not set here; it comes
+from the user's connection setup (see below):
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "opencode/big-pickle",
   "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
 }
 ```
+
+The model is **not** set in the system config. It is determined by the
+user's connection setup: the setup wizard or admin UI writes the selected
+model to `CONFIG_HOME/assistant/opencode.json`, which OpenCode picks up
+as the user config layer.
 
 ### AGENTS.md
 

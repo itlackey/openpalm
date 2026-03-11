@@ -36,12 +36,12 @@ Copy-paste **one** command into your terminal and the installer does the rest:
 
 **Mac or Linux** — open Terminal and paste:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
 ```
 
 **Windows (PowerShell)** — open PowerShell and paste:
 ```powershell
-irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+irm https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.ps1 | iex
 ```
 
 No config files to edit. Re-run the same command to update — your secrets are never overwritten.
@@ -83,6 +83,8 @@ Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/auto
 <img src="core/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
 <p>OpenPalm has defense built into its core. It has many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
 </div>
+
+![Architecture](docs/architecture.svg)
 
 - **Admin** (`core/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
 - **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.

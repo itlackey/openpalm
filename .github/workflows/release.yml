@@ -102,7 +102,12 @@ jobs:
             echo "Bumped ${pkg} to ${VERSION}"
           done
 
-          git add package.json core/*/package.json
+          # Stamp SCRIPT_VERSION into setup scripts so curl|bash defaults to this release
+          sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
+          sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+          echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
+
+          git add package.json core/*/package.json scripts/setup.sh scripts/setup.ps1
           git commit -m "chore: bump version to ${VERSION}"
           git push origin "${BRANCH}"
 
@@ -295,7 +300,7 @@ jobs:
             ## Quick Install
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v${{ needs.prepare-tag.outputs.version }}/scripts/setup.sh | bash
             ```
 
             ## What's Changed

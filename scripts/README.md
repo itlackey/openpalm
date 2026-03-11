@@ -10,10 +10,10 @@ One-liner installer for Mac/Linux and Windows respectively.
 
 ```bash
 # Mac / Linux
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh | bash
 
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+irm https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.ps1 | iex
 ```
 
 Re-run to update — secrets are never overwritten. Options:
@@ -21,7 +21,7 @@ Re-run to update — secrets are never overwritten. Options:
 | Flag | Effect |
 |---|---|
 | `--force` | Skip confirmation prompts |
-| `--version TAG` | Install a specific release tag (default: `main`) |
+| `--version TAG` | Install a specific release tag (default: current release) |
 | `--no-start` | Set up files but don't start Docker services |
 | `--no-open` | Don't open the admin UI after install |
 
@@ -30,7 +30,7 @@ Re-run to update — secrets are never overwritten. Options:
 Installs the compiled OpenPalm CLI binary from GitHub Releases into `~/.local/bin/openpalm` by default.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/install.sh | bash
 ```
 
 Options:
