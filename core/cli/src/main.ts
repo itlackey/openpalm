@@ -7,6 +7,8 @@ const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
 
+const IS_WINDOWS = process.platform === 'win32';
+
 type Command =
   | 'install'
   | 'uninstall'
@@ -28,15 +30,32 @@ type InstallOptions = {
 };
 
 function defaultConfigHome(): string {
-  return process.env.OPENPALM_CONFIG_HOME || join(homedir(), '.config', 'openpalm');
+  if (process.env.OPENPALM_CONFIG_HOME) return process.env.OPENPALM_CONFIG_HOME;
+  if (IS_WINDOWS) {
+    return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'openpalm');
+  }
+  return join(homedir(), '.config', 'openpalm');
 }
 
 function defaultDataHome(): string {
-  return process.env.OPENPALM_DATA_HOME || join(homedir(), '.local', 'share', 'openpalm');
+  if (process.env.OPENPALM_DATA_HOME) return process.env.OPENPALM_DATA_HOME;
+  if (IS_WINDOWS) {
+    return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'openpalm', 'data');
+  }
+  return join(homedir(), '.local', 'share', 'openpalm');
 }
 
 function defaultStateHome(): string {
-  return process.env.OPENPALM_STATE_HOME || join(homedir(), '.local', 'state', 'openpalm');
+  if (process.env.OPENPALM_STATE_HOME) return process.env.OPENPALM_STATE_HOME;
+  if (IS_WINDOWS) {
+    return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'openpalm', 'state');
+  }
+  return join(homedir(), '.local', 'state', 'openpalm');
+}
+
+function defaultDockerSock(): string {
+  if (process.env.OPENPALM_DOCKER_SOCK) return process.env.OPENPALM_DOCKER_SOCK;
+  return IS_WINDOWS ? '//./pipe/docker_engine' : '/var/run/docker.sock';
 }
 
 function defaultWorkDir(): string {
@@ -216,7 +235,7 @@ async function ensureStackEnv(configHome: string, dataHome: string, stateHome: s
   const dataStackEnv = join(dataHome, 'stack.env');
   const stagedStackEnv = join(stateHome, 'artifacts', 'stack.env');
   if (!(await Bun.file(dataStackEnv).exists())) {
-    const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=/var/run/docker.sock\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG || 'latest'}\n`;
+    const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=${defaultDockerSock()}\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG || 'latest'}\n`;
     await Bun.write(dataStackEnv, content);
   }
   await Bun.write(stagedStackEnv, Bun.file(dataStackEnv));

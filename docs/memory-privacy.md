@@ -66,6 +66,15 @@ Every time a fact is stored or a search query is executed, the text is sent to t
 
 **To keep all data on your local network**, configure both the LLM and embedding providers to use a local Ollama instance. When using remote providers (OpenAI, Anthropic, etc.), the fact text and search queries are sent to those external APIs.
 
+### Assistant model (chat completions)
+
+The assistant service (OpenCode) sends conversation messages to the configured chat model for inference. Which model is used depends entirely on operator configuration during setup:
+
+- **Local provider (Ollama):** All inference stays on the local network. No data leaves the host.
+- **Remote provider (OpenAI, Anthropic, Groq, etc.):** Conversation content is sent to that provider's API. Each provider has its own data retention and usage policies. Consult the provider's terms of service and privacy policy for details.
+
+OpenPalm does not default to any specific model. The setup wizard requires the operator to choose a provider and model before the stack starts. This ensures the operator makes a conscious decision about where their data is processed.
+
 ## How to view stored memories
 
 ### Admin API

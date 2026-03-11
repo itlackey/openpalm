@@ -114,7 +114,7 @@ pass `-f` with the path to `STATE_HOME/artifacts/docker-compose.yml`.
 4. Download the installer without starting the stack:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
+   curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/v0.9.0-rc5/scripts/setup.sh \
      -o setup.sh
    bash setup.sh --no-start
    ```
