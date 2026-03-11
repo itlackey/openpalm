@@ -129,7 +129,12 @@ export function getCallerType(event: RequestEvent): CallerType {
  * via user-supplied connection URLs.
  */
 const DOCKER_SERVICE_NAMES = new Set([
-  "caddy", "memory", "assistant", "guardian", "admin",
+  "caddy",
+  "memory",
+  "assistant",
+  "guardian",
+  "admin",
+  "docker-socket-proxy",
 ]);
 
 /**
