@@ -138,6 +138,7 @@ export {
 // ── lifecycle.ts ──────────────────────────────────────────────────────
 export {
   createState,
+  writeSetupTokenFile,
   applyInstall,
   applyUpdate,
   updateStackEnvToLatestImageTag,

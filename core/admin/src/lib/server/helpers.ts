@@ -121,6 +121,97 @@ export function getCallerType(event: RequestEvent): CallerType {
   return normalizeCaller(event.request.headers.get("x-requested-by"));
 }
 
+// ── SSRF Protection ────────────────────────────────────────────────────
+
+/**
+ * Known Docker Compose service names from core/assets/docker-compose.yml.
+ * These are the internal service hostnames that must never be probed
+ * via user-supplied connection URLs.
+ */
+const DOCKER_SERVICE_NAMES = new Set([
+  "caddy",
+  "memory",
+  "assistant",
+  "guardian",
+  "admin",
+  "docker-socket-proxy",
+]);
+
+/**
+ * Validate a URL is safe for external HTTP requests (SSRF protection).
+ *
+ * Blocks:
+ * - Cloud metadata IPs (169.254.x.x link-local range)
+ * - Loopback addresses (127.x, ::1) — wrong target from inside Docker
+ * - Known Docker Compose service names (memory, caddy, etc.)
+ * - Non-http(s) schemes
+ *
+ * Allows:
+ * - LAN IPs (192.168.x, 10.x, 172.16-31.x) — LAN-first design
+ * - `host.docker.internal` — host services (Ollama, LM Studio)
+ * - Custom hostnames (gpu-server, my-nas.local, etc.)
+ *
+ * Returns null if valid, or an error message string if blocked.
+ */
+export function validateExternalUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "Invalid URL";
+  }
+
+  // Only http/https
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return `Blocked scheme: ${parsed.protocol}`;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block known Docker service names
+  if (DOCKER_SERVICE_NAMES.has(hostname)) {
+    return `Blocked internal service: ${hostname}`;
+  }
+
+  // Block loopback and dangerous IPs (but allow LAN IPs)
+  if (isDangerousIp(hostname)) {
+    return `Blocked address: ${hostname}`;
+  }
+
+  return null;
+}
+
+/**
+ * Check if a hostname is a dangerous IP that should never be a connection target.
+ *
+ * Blocks loopback (127.x — points at the container itself, never what the user
+ * intends) and link-local/metadata IPs (169.254.x — cloud metadata SSRF).
+ *
+ * Deliberately allows private LAN ranges (10.x, 172.16-31.x, 192.168.x)
+ * because OpenPalm is LAN-first and users commonly run AI services on
+ * other machines in their network.
+ */
+function isDangerousIp(hostname: string): boolean {
+  // IPv4 patterns
+  const parts = hostname.split(".");
+  if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+    const octets = parts.map(Number);
+    if (octets.some((o) => o < 0 || o > 255)) return false;
+
+    // 127.0.0.0/8 — loopback (inside Docker, this is the container itself)
+    if (octets[0] === 127) return true;
+    // 169.254.0.0/16 — link-local / cloud metadata endpoint
+    if (octets[0] === 169 && octets[1] === 254) return true;
+    // 0.0.0.0
+    if (octets.every((o) => o === 0)) return true;
+  }
+
+  // IPv6 loopback
+  if (hostname === "::1" || hostname === "[::1]") return true;
+
+  return false;
+}
+
 /** Parse JSON body safely — returns null on parse failure or if body exceeds maxBytes */
 export async function parseJsonBody(
   request: Request,

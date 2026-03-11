@@ -67,6 +67,14 @@ if [[ $seed_env -eq 1 ]]; then
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		cp "$ROOT_DIR/core/assets/secrets.env" "$env_dest"
 		sed -i 's/^ADMIN_TOKEN=$/ADMIN_TOKEN=dev-admin-token/' "$env_dest"
+		# Seed Ollama as default LLM backend for dev
+		sed -i 's/^OPENAI_API_KEY=$/OPENAI_API_KEY=ollama/' "$env_dest"
+		sed -i 's|^OPENAI_BASE_URL=$|OPENAI_BASE_URL=http://host.docker.internal:11434/v1|' "$env_dest"
+		# Generate service auth tokens (matches admin's ensureSecrets())
+		mem_token=$(openssl rand -hex 32)
+		oc_password=$(openssl rand -hex 32)
+		printf '\n# Service auth tokens (auto-generated)\nMEMORY_AUTH_TOKEN=%s\nOPENCODE_SERVER_PASSWORD=%s\n' \
+			"$mem_token" "$oc_password" >>"$env_dest"
 	fi
 	[[ -f "$env_dest" ]] && cp "$env_dest" "$STATE_DIR/artifacts/secrets.env"
 
@@ -105,6 +113,35 @@ EOF
 	fi
 
 	[[ -f "$stack_env" ]] && cp "$stack_env" "$STATE_DIR/artifacts/stack.env"
+fi
+
+# ── Seed OpenCode user config (Ollama for dev) ──────────────────
+# OpenCode has two config files:
+#   - Project config (DATA_HOME/assistant/opencode.jsonc) — $schema + plugin ONLY.
+#     Seeded by admin's ensureOpenCodeSystemConfig(). Does NOT accept providers,
+#     model, or smallModel keys (causes ConfigInvalidError).
+#   - User config (CONFIG_HOME/assistant/opencode.json) — $schema + model ONLY.
+#     v1.2.24 rejects providers, smallModel, and any other unrecognized keys
+#     with a fatal ConfigInvalidError.
+#
+# OpenCode's "lmstudio" provider uses the Chat Completions API
+# (/v1/chat/completions) which Ollama supports. However, the provider
+# has a hardcoded base URL of http://127.0.0.1:1234/v1 and a static
+# model catalog. The entrypoint.sh uses socat to proxy port 1234
+# to the actual LLM provider when LMSTUDIO_BASE_URL is set.
+#
+# The model name must match one of lmstudio's catalog entries:
+#   - qwen/qwen3-30b-a3b-2507, qwen/qwen3-coder-30b, openai/gpt-oss-20b
+# For Ollama, create a model alias: ollama cp <your-model> qwen/qwen3-coder-30b
+
+OC_CONFIG="$CONFIG_DIR/assistant/opencode.json"
+if [[ ! -f "$OC_CONFIG" || $force -eq 1 ]]; then
+	cat >"$OC_CONFIG" <<'OCEOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "lmstudio/qwen/qwen3-coder-30b"
+}
+OCEOF
 fi
 
 # ── Seed Memory default config ───────────────────────────────────

@@ -4,7 +4,7 @@
  * State factory, apply* lifecycle transitions, compose file list builders,
  * and caller/action validation.
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -13,6 +13,7 @@ import { loadSecretsEnvFile } from "./secrets.js";
 import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled } from "./staging.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
+import { isSetupComplete } from "./setup-status.js";
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -39,9 +40,10 @@ export function createState(
   const persistedSecrets = loadPersistedChannelSecrets(dataDir);
   const channelSecrets: Record<string, string> = { ...persistedSecrets };
 
-  return {
+  const setupToken = randomHex(16);
+  const state: ControlPlaneState = {
     adminToken: resolvedAdminToken,
-    setupToken: randomHex(16),
+    setupToken,
     stateDir,
     configDir,
     dataDir,
@@ -51,6 +53,30 @@ export function createState(
     audit: [],
     channelSecrets
   };
+
+  // Write setup token to disk so the setup script can display it.
+  // Delete it if setup is already complete.
+  writeSetupTokenFile(state);
+
+  return state;
+}
+
+/**
+ * Write or remove the setup-token.txt file based on setup completion state.
+ * The file is written to STATE_HOME/setup-token.txt so the host-side
+ * setup script can read and display it to the user.
+ */
+export function writeSetupTokenFile(state: ControlPlaneState): void {
+  const tokenPath = `${state.stateDir}/setup-token.txt`;
+  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
+
+  if (setupComplete) {
+    // Clean up — don't leave the token on disk after setup is done
+    try { unlinkSync(tokenPath); } catch { /* already gone */ }
+  } else {
+    mkdirSync(state.stateDir, { recursive: true });
+    writeFileSync(tokenPath, state.setupToken + "\n", { mode: 0o600 });
+  }
 }
 
 // ── Private Loaders ───────────────────────────────────────────────────

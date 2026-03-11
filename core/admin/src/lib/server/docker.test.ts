@@ -9,7 +9,7 @@
  * 5. composeRestart, composeStop, composeStart build correct commands
  * 6. composePs handles missing compose file fallback
  * 7. composeLogs respects tail and service filters
- * 8. caddyReload uses Caddy admin API with restart fallback
+ * 8. caddyReload restarts caddy via compose restart
  * 9. composePull builds pull command
  * 10. All commands use execFile (no shell injection — core security invariant)
  */
@@ -492,74 +492,23 @@ describe("composeLogs", () => {
 });
 
 describe("caddyReload", () => {
-  const originalFetch = globalThis.fetch;
-
   beforeEach(() => {
     execFileMock.mockReset();
     existsSyncMock.mockReset();
   });
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  test("reloads via Caddy admin API when available", async () => {
+  test("restarts caddy via compose restart", async () => {
     existsSyncMock.mockReturnValue(true);
-
-    // Mock fetch to simulate successful Caddy admin API response
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("") }) as unknown as typeof fetch;
-
-    // readFileSync is NOT mocked (uses real fs), so create the Caddyfile
-    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    const caddyDir = "/tmp/caddyreload-test-state/artifacts";
-    realFs.mkdirSync(caddyDir, { recursive: true });
-    realFs.writeFileSync(`${caddyDir}/Caddyfile`, ":80 { respond 200 }");
+    mockExecSuccess();
 
     const { caddyReload } = await import("./docker.js");
     const result = await caddyReload("/tmp/caddyreload-test-state");
 
     expect(result.ok).toBe(true);
-    expect(result.stdout).toContain("admin API");
-    // Should NOT have called docker compose exec
-    expect(execFileMock).not.toHaveBeenCalled();
-
-    // Verify fetch was called with the Caddy admin API URL
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      "http://caddy:2019/load",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "text/caddyfile" },
-        body: ":80 { respond 200 }"
-      })
-    );
-
-    realFs.rmSync("/tmp/caddyreload-test-state", { recursive: true, force: true });
-  });
-
-  test("falls back to compose restart when admin API is unreachable", async () => {
-    existsSyncMock.mockReturnValue(true);
-    mockExecSuccess();
-
-    // Mock fetch to simulate unreachable Caddy admin API
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED")) as unknown as typeof fetch;
-
-    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
-    const caddyDir = "/tmp/caddyreload-fallback-test/artifacts";
-    realFs.mkdirSync(caddyDir, { recursive: true });
-    realFs.writeFileSync(`${caddyDir}/Caddyfile`, ":80 {}");
-
-    const { caddyReload } = await import("./docker.js");
-    const result = await caddyReload("/tmp/caddyreload-fallback-test");
-
-    expect(result.ok).toBe(true);
-    // Should have fallen back to compose restart
+    // Should call compose restart caddy (no fetch to admin API)
     const args = capturedArgs();
     expect(args).toContain("restart");
     expect(args).toContain("caddy");
-    // Should NOT contain "exec"
-    expect(args).not.toContain("exec");
-
-    realFs.rmSync("/tmp/caddyreload-fallback-test", { recursive: true, force: true });
   });
 });
 

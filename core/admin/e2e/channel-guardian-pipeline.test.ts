@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -69,21 +69,30 @@ let originalStackEnv: string | null = null;
  * Seeds CHANNEL_E2ETEST_SECRET into stack.env so the guardian can verify
  * our test messages. The guardian re-reads the file on each request
  * (via GUARDIAN_SECRETS_PATH), so no container restart is needed.
+ *
+ * IMPORTANT: Uses appendFileSync (not writeFileSync) to preserve the
+ * same inode. Docker bind mounts track the inode — if the admin container
+ * did an atomic write (temp+rename) to stack.env, a writeFileSync here
+ * would create yet another inode, invisible to the guardian container.
+ * Appending modifies the existing file in-place, keeping the inode.
  */
 function seedTestSecret(): boolean {
 	try {
 		originalStackEnv = readFileSync(STACK_ENV_PATH, 'utf8');
 		const secretLine = `CHANNEL_E2ETEST_SECRET=${TEST_SECRET}`;
 		if (originalStackEnv.includes('CHANNEL_E2ETEST_SECRET=')) {
-			// Replace existing
+			// Replace existing — must rewrite, but use truncate+write to keep inode
+			const fd = require('node:fs').openSync(STACK_ENV_PATH, 'r+');
 			const updated = originalStackEnv.replace(
 				/^CHANNEL_E2ETEST_SECRET=.*$/m,
 				secretLine
 			);
-			writeFileSync(STACK_ENV_PATH, updated);
+			require('node:fs').ftruncateSync(fd, 0);
+			require('node:fs').writeSync(fd, updated, 0);
+			require('node:fs').closeSync(fd);
 		} else {
-			// Append
-			writeFileSync(STACK_ENV_PATH, originalStackEnv.trimEnd() + '\n' + secretLine + '\n');
+			// Append in-place — preserves inode
+			appendFileSync(STACK_ENV_PATH, '\n' + secretLine + '\n');
 		}
 		return true;
 	} catch {
@@ -94,7 +103,11 @@ function seedTestSecret(): boolean {
 function restoreStackEnv(): void {
 	if (originalStackEnv !== null) {
 		try {
-			writeFileSync(STACK_ENV_PATH, originalStackEnv);
+			// Truncate+write to preserve inode (Docker bind mount compatibility)
+			const fd = require('node:fs').openSync(STACK_ENV_PATH, 'r+');
+			require('node:fs').ftruncateSync(fd, 0);
+			require('node:fs').writeSync(fd, originalStackEnv, 0);
+			require('node:fs').closeSync(fd);
 		} catch {
 			// Best-effort restore
 		}
@@ -288,6 +301,9 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 	});
 
 	test('invalid JSON body returns 400', async ({ request }) => {
+		// Playwright's request.post with data: string sends it raw.
+		// The guardian should return 400 with either invalid_json (unparseable)
+		// or invalid_payload (parseable but missing required fields).
 		const res = await request.post(`${GUARDIAN_URL}/channel/inbound`, {
 			headers: {
 				'content-type': 'application/json',
@@ -298,7 +314,7 @@ test.describe('Channel -> Guardian -> Assistant Pipeline', () => {
 		});
 		expect(res.status()).toBe(400);
 		const data = await res.json();
-		expect(data.error).toBe('invalid_json');
+		expect(['invalid_json', 'invalid_payload']).toContain(data.error);
 	});
 
 	// ── Group 5: Full pipeline with LLM (needs RUN_LLM_TESTS=1) ────

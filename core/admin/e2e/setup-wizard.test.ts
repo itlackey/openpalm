@@ -107,8 +107,9 @@ async function mockExports(page: Page) {
 /** Fill Screen 1 (Welcome) and click Start. */
 async function completeWelcome(
   page: Page,
-  opts: { name?: string; email?: string; token?: string } = {}
+  opts: { name?: string; email?: string; token?: string; setupToken?: string } = {}
 ) {
+  await page.locator('#setup-token').fill(opts.setupToken ?? 'test-setup-token');
   await page.locator('#owner-name').fill(opts.name ?? 'Test User');
   if (opts.email) await page.locator('#owner-email').fill(opts.email);
   await page.locator('#admin-token').fill(opts.token ?? 'supersecrettoken');
@@ -167,8 +168,18 @@ test.describe('@mocked Setup Wizard', () => {
       await expect(page.locator('h2')).toHaveText('Welcome');
     });
 
+    test('Start requires setup token', async ({ page }) => {
+      await page.goto('/setup');
+      await page.locator('#owner-name').fill('Test User');
+      await page.locator('#admin-token').fill('supersecrettoken');
+      await page.getByRole('button', { name: 'Start' }).click();
+      await expect(page.locator('[role="alert"]')).toContainText('Setup token is required');
+      await expect(page.getByTestId('step-welcome')).toBeVisible();
+    });
+
     test('Start requires name', async ({ page }) => {
       await page.goto('/setup');
+      await page.locator('#setup-token').fill('test-setup-token');
       await page.getByRole('button', { name: 'Start' }).click();
       await expect(page.locator('[role="alert"]')).toContainText('Name is required.');
       await expect(page.getByTestId('step-welcome')).toBeVisible();
@@ -176,6 +187,7 @@ test.describe('@mocked Setup Wizard', () => {
 
     test('Start requires admin token', async ({ page }) => {
       await page.goto('/setup');
+      await page.locator('#setup-token').fill('test-setup-token');
       await page.locator('#owner-name').fill('Test User');
       await page.getByRole('button', { name: 'Start' }).click();
       await expect(page.locator('[role="alert"]')).toContainText('Admin token is required.');
@@ -184,6 +196,7 @@ test.describe('@mocked Setup Wizard', () => {
 
     test('Start requires token of at least 8 characters', async ({ page }) => {
       await page.goto('/setup');
+      await page.locator('#setup-token').fill('test-setup-token');
       await page.locator('#owner-name').fill('Test User');
       await page.locator('#admin-token').fill('short');
       await page.getByRole('button', { name: 'Start' }).click();
@@ -199,6 +212,7 @@ test.describe('@mocked Setup Wizard', () => {
 
     test('email field is optional — Start succeeds without it', async ({ page }) => {
       await page.goto('/setup');
+      await page.locator('#setup-token').fill('test-setup-token');
       await page.locator('#owner-name').fill('No Email User');
       await page.locator('#admin-token').fill('securetokenok');
       await page.getByRole('button', { name: 'Start' }).click();

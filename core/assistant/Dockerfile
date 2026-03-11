@@ -12,7 +12,7 @@ ARG BUN_VERSION=bun-v1.3.10
 ARG AGENTIKIT_VERSION=v0.0.15
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu \
+    && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat \
         python3 python3-pip \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \

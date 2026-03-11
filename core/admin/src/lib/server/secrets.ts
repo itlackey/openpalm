@@ -5,6 +5,7 @@
  * and OpenCode config seeding.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigHome } from "./paths.js";
@@ -35,6 +36,8 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "EMBEDDING_MODEL",
   "EMBEDDING_DIMS",
   "MEMORY_USER_ID",
+  "MEMORY_AUTH_TOKEN",
+  "OPENCODE_SERVER_PASSWORD",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
@@ -99,6 +102,10 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("");
   secretLines.push("# Memory");
   secretLines.push(`MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
+  secretLines.push("");
+  secretLines.push("# Service auth tokens (auto-generated)");
+  secretLines.push(`MEMORY_AUTH_TOKEN=${randomBytes(32).toString("hex")}`);
+  secretLines.push(`OPENCODE_SERVER_PASSWORD=${randomBytes(32).toString("hex")}`);
   secretLines.push("");
   secretLines.push("# Owner");
   secretLines.push(`OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);

@@ -6,7 +6,6 @@ import Page from './+page.svelte';
 
 const mockData = {
 	detectedUserId: 'test_user',
-	setupToken: 'test_token'
 };
 
 describe('/setup page — step indicators', () => {
@@ -46,10 +45,25 @@ describe('/setup page — Welcome screen validation', () => {
   let guard: ConsoleGuard;
   afterEach(() => { guard?.cleanup(); });
 
+  it('shows error when Setup Token is empty on Next click', async () => {
+    guard = useConsoleGuard();
+    render(Page, { props: { data: mockData } });
+
+    await page.getByLabelText('Your Name').fill('Alice');
+    await page.getByRole('textbox', { name: 'Admin Token' }).fill('secure-pass');
+    await page.getByRole('button', { name: 'Start' }).click();
+
+    const errorMsg = page.getByRole('alert');
+    await expect.element(errorMsg).toHaveTextContent('Setup token is required');
+
+    guard.expectNoErrors();
+  });
+
   it('shows error when Name is empty on Next click', async () => {
     guard = useConsoleGuard();
     render(Page, { props: { data: mockData } });
 
+    await page.getByRole('textbox', { name: 'Setup Token' }).fill('test-token');
     await page.getByRole('textbox', { name: 'Admin Token' }).fill('secure-pass');
     await page.getByRole('button', { name: 'Start' }).click();
 
@@ -63,6 +77,7 @@ describe('/setup page — Welcome screen validation', () => {
     guard = useConsoleGuard();
     render(Page, { props: { data: mockData } });
 
+    await page.getByRole('textbox', { name: 'Setup Token' }).fill('test-token');
     await page.getByLabelText('Your Name').fill('Alice');
     await page.getByRole('button', { name: 'Start' }).click();
 
@@ -76,6 +91,7 @@ describe('/setup page — Welcome screen validation', () => {
     guard = useConsoleGuard();
     render(Page, { props: { data: mockData } });
 
+    await page.getByRole('textbox', { name: 'Setup Token' }).fill('test-token');
     await page.getByLabelText('Your Name').fill('Alice');
     await page.getByRole('textbox', { name: 'Admin Token' }).fill('short');
     await page.getByRole('button', { name: 'Start' }).click();
@@ -95,6 +111,7 @@ describe('/setup page — connection-type screen', () => {
   afterEach(() => { guard?.cleanup(); });
 
   async function advancePastToken(): Promise<void> {
+    await page.getByRole('textbox', { name: 'Setup Token' }).fill('test-token');
     await page.getByLabelText('Your Name').fill('Alice');
     await page.getByRole('textbox', { name: 'Admin Token' }).fill('token-secure-123');
     await page.getByRole('button', { name: 'Start' }).click();
@@ -289,6 +306,7 @@ describe('/setup page', () => {
 		guard = useConsoleGuard();
 		render(Page, { props: { data: mockData } });
 
+		await page.getByRole('textbox', { name: 'Setup Token' }).fill('test-token');
 		await page.getByLabelText('Your Name').fill('Alice');
 		await page.getByRole('textbox', { name: 'Admin Token' }).fill('token-secure-123');
 		await page.getByRole('button', { name: 'Start' }).click();

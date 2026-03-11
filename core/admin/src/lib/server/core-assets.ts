@@ -180,6 +180,12 @@ export function readOllamaCompose(): string {
  * Seeds opencode.jsonc and AGENTS.md from bundled assets. On subsequent
  * runs, overwrites if the bundled version has changed (e.g. after an
  * image rebuild). Backs up stale files before overwriting.
+ *
+ * IMPORTANT: The project config (opencode.jsonc) only accepts a limited
+ * set of keys: $schema, plugin. Provider configuration (providers,
+ * model, smallModel) belongs in the USER config (opencode.json) at
+ * CONFIG_HOME/assistant/. Provider base URLs are configured via env vars
+ * (e.g. LMSTUDIO_BASE_URL) set in compose.dev.yaml or docker-compose.yml.
  */
 export function ensureOpenCodeSystemConfig(): void {
   const dir = `${resolveDataHome()}/assistant`;

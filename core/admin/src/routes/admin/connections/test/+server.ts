@@ -6,6 +6,7 @@ import {
   getRequestId,
   parseJsonBody,
   requireAdminOrSetupToken,
+  validateExternalUrl,
 } from '$lib/server/helpers.js';
 import { fetchProviderModels } from '$lib/server/memory-config.js';
 import { createLogger } from '$lib/server/logger.js';
@@ -29,6 +30,11 @@ export const POST: RequestHandler = async (event) => {
 
   if (!baseUrl) {
     return errorResponse(400, 'invalid_input', 'baseUrl is required', {}, requestId);
+  }
+
+  const ssrfError = validateExternalUrl(baseUrl);
+  if (ssrfError) {
+    return errorResponse(400, 'blocked_url', ssrfError, {}, requestId);
   }
 
   const state = getState();

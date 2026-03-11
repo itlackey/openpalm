@@ -202,6 +202,25 @@ function redactApiKeys(obj: unknown): unknown {
   return obj;
 }
 
+// ── Auth middleware ────────────────────────────────────────────────────
+
+const MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN ?? '';
+
+function checkAuth(req: Request): Response | null {
+  // Skip auth if no token configured (backward compat)
+  if (!MEMORY_AUTH_TOKEN) return null;
+
+  const authHeader = req.headers.get('authorization') ?? '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : '';
+
+  if (token !== MEMORY_AUTH_TOKEN) {
+    return errorResponse(401, 'Unauthorized');
+  }
+  return null;
+}
+
 // ── Route handler ─────────────────────────────────────────────────────
 
 async function handleRequest(req: Request): Promise<Response> {
@@ -210,10 +229,14 @@ async function handleRequest(req: Request): Promise<Response> {
   const method = req.method;
 
   try {
-    // Health
+    // Health — no auth required
     if (path === '/health' && method === 'GET') {
       return json({ status: 'ok' });
     }
+
+    // Auth check on all other endpoints
+    const authError = checkAuth(req);
+    if (authError) return authError;
 
     // POST /api/v1/memories/
     if (path === '/api/v1/memories/' && method === 'POST') {

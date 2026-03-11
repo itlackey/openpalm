@@ -123,6 +123,41 @@ maybe_enable_ssh() {
     -o StrictModes=yes
 }
 
+maybe_proxy_lmstudio() {
+  # OpenCode v1.2.24's lmstudio provider has hardcoded base URL 127.0.0.1:1234.
+  # The "providers" config key is not supported (causes ConfigInvalidError).
+  # Workaround: if LMSTUDIO_BASE_URL points to a remote host, start a TCP
+  # proxy from 127.0.0.1:1234 to that host so lmstudio requests reach Ollama
+  # or other local LLM providers running outside the container.
+  local base_url="${LMSTUDIO_BASE_URL:-}"
+  if [ -z "$base_url" ]; then
+    return 0
+  fi
+
+  # Strip scheme and /v1 path suffix to extract host:port
+  local hostport
+  hostport="${base_url#http://}"
+  hostport="${hostport#https://}"
+  hostport="${hostport%%/*}"
+
+  # Skip if already pointing at localhost:1234 (no proxy needed)
+  case "$hostport" in
+    127.0.0.1:1234|localhost:1234) return 0 ;;
+  esac
+
+  local target_host="${hostport%%:*}"
+  local target_port="${hostport##*:}"
+  # Default to port 80 if no port specified
+  if [ "$target_port" = "$target_host" ]; then
+    target_port=80
+  fi
+
+  if command -v socat >/dev/null 2>&1; then
+    echo "Starting LLM proxy: 127.0.0.1:1234 → ${target_host}:${target_port}"
+    socat TCP-LISTEN:1234,reuseaddr,fork TCP:"${target_host}":"${target_port}" &
+  fi
+}
+
 start_opencode() {
   cd /work
 
@@ -140,7 +175,10 @@ start_opencode() {
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
       exit 1
     fi
-    exec gosu "$TARGET_UID:$TARGET_GID" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+    # gosu resets HOME from /etc/passwd (UID 1000 → /home/node in node:lts).
+    # OpenCode resolves user config via HOME, so we must preserve it.
+    export HOME=/home/opencode
+    exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 
   exec opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
@@ -150,4 +188,5 @@ ensure_user_mapping
 ensure_home_layout
 maybe_set_memory_user_id
 maybe_enable_ssh
+maybe_proxy_lmstudio
 start_opencode

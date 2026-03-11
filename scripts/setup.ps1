@@ -434,6 +434,15 @@ if ($IsUpdate) {
   Write-Host "Admin Console: http://localhost:8100/"
 } else {
   Write-Host "Setup Wizard:  http://localhost:8100/setup"
+
+  # Display the setup token for the wizard
+  $setupTokenFile = Join-Path $LocalStateHome 'setup-token.txt'
+  if (Test-Path -LiteralPath $setupTokenFile -PathType Leaf) {
+    $setupToken = (Get-Content -LiteralPath $setupTokenFile -Raw).Trim()
+    Write-Host ''
+    Write-Host "Setup Token:   $setupToken" -ForegroundColor Yellow
+    Info 'Paste this token into the setup wizard to authenticate.'
+  }
 }
 
 Write-Host ''

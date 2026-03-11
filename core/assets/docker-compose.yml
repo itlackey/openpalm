@@ -39,6 +39,7 @@ services:
       MEMORY_DATA_DIR: /data
       HOME: /data
       MEM0_DIR: /data/.mem0
+      MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:
@@ -63,13 +64,15 @@ services:
     environment:
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
-      OPENCODE_AUTH: "false"
+      OPENCODE_AUTH: "true"
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
       HOME: /home/opencode
       AKM_STASH_DIR: /stash
       OPENPALM_ADMIN_API_URL: http://admin:8100
       OPENPALM_ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
+      MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       OPENPALM_UID: ${OPENPALM_UID:-1000}
       OPENPALM_GID: ${OPENPALM_GID:-1000}
@@ -108,11 +111,14 @@ services:
     environment:
       PORT: "8080"
       OPENPALM_ASSISTANT_URL: http://assistant:4096
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       OPENCODE_TIMEOUT_MS: "120000"
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       # Guardian reads CHANNEL_*_SECRET from this file on every inbound request,
       # so channel secrets take effect without a container restart or recreation.
+      # Uses a directory mount (not a file mount) so writes by the admin container
+      # don't break the bind mount when the file inode changes.
       GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
     # env_file loads stack.env at container startup so CHANNEL_*_SECRET are available
     # immediately. The bind-mount + GUARDIAN_SECRETS_PATH allows re-reading at runtime.
@@ -122,7 +128,7 @@ services:
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/guardian:/app/data
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/audit:/app/audit
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/stack.env:/app/secrets/stack.env:ro
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts:/app/secrets:ro
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [channel_lan, channel_public, assistant_net]
     depends_on:
@@ -177,6 +183,8 @@ services:
     environment:
       PORT: "8100"
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       GUARDIAN_URL: http://guardian:8080
       OPENPALM_ASSISTANT_URL: http://assistant:4096
       OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}

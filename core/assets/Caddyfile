@@ -7,8 +7,9 @@
 # For host-only access, replace the IP ranges with: 127.0.0.1 ::1
 
 {
-	# Admin API on the Docker network for config reloads (not exposed to host).
-	admin 0.0.0.0:2019
+	# Admin API on localhost only — accessible via `docker exec` for debugging,
+	# but unreachable from other containers on the network.
+	admin localhost:2019
 }
 
 (lan_only) {
