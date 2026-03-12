@@ -188,6 +188,15 @@ start_opencode() {
       "${BUN_INSTALL_CACHE_DIR:-/home/opencode/.cache/bun/install}"
   fi
 
+  # Resolve varlock for runtime secret redaction.
+  # The schema is staged by admin to DATA_HOME/assistant/env-schema/
+  # and mounted into the container at /etc/opencode/env-schema/.
+  VARLOCK_SCHEMA="/etc/opencode/env-schema/secrets.env.schema"
+  VARLOCK_CMD=""
+  if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA" ]; then
+    VARLOCK_CMD="varlock run --schema $VARLOCK_SCHEMA --"
+  fi
+
   if [ "$(id -u)" = "0" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
@@ -196,10 +205,11 @@ start_opencode() {
     # gosu resets HOME from /etc/passwd (UID 1000 → /home/node in node:lts).
     # OpenCode resolves user config via HOME, so we must preserve it.
     export HOME=/home/opencode
-    exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+    exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode \
+      $VARLOCK_CMD opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 
-  exec opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+  exec $VARLOCK_CMD opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
 }
 
 ensure_user_mapping

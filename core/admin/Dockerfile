@@ -26,7 +26,7 @@ RUN npm run build
 # Isolated stage so the download layer is cached independently of the app build.
 # Pinned version; bump ARG to upgrade. Uses --retry-all-errors to handle
 # transient GitHub CDN failures (502/503).
-FROM node:lts-trixie-slim AS varlock-fetch
+FROM debian:trixie-slim AS varlock-fetch
 ARG VARLOCK_VERSION=0.4.0
 ARG VARLOCK_SHA256=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
@@ -61,6 +61,7 @@ RUN mkdir -p /state /data && chown node:node /state /data
 
 # Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
+COPY assets/secrets.env.schema /app/secrets.env.schema
 
 USER node
 
@@ -70,4 +71,4 @@ EXPOSE 8100
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
-CMD ["node", "build/index.js"]
+CMD ["varlock", "run", "--schema", "/app/secrets.env.schema", "--", "node", "build/index.js"]
