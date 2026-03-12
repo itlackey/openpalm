@@ -15,6 +15,8 @@ import {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,
+  ensureSecretsSchema,
+  ensureStackSchema,
   stageArtifacts,
   persistArtifacts,
   appendAudit,
@@ -40,6 +42,8 @@ function runStartupApply(): void {
     ensureOpenCodeSystemConfig();
     ensureMemoryDir();
     ensureCoreAutomations();
+    ensureSecretsSchema();
+    ensureStackSchema();
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
 

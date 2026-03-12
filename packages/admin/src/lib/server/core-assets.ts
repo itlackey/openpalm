@@ -27,6 +27,8 @@ import cleanupLogsAsset from "$assets/cleanup-logs.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import cleanupDataAsset from "$assets/cleanup-data.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
+import validateConfigAsset from "$assets/validate-config.yml?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
 import secretsSchemaAsset from "$assets/secrets.env.schema?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import stackSchemaAsset from "$assets/stack.env.schema?raw";
@@ -259,7 +261,8 @@ function writeIfChanged(path: string, content: string): void {
  */
 const CORE_AUTOMATIONS: { filename: string; content: string }[] = [
   { filename: "cleanup-logs.yml", content: cleanupLogsAsset },
-  { filename: "cleanup-data.yml", content: cleanupDataAsset }
+  { filename: "cleanup-data.yml", content: cleanupDataAsset },
+  { filename: "validate-config.yml", content: validateConfigAsset }
 ];
 
 /**

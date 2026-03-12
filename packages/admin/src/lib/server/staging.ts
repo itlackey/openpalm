@@ -37,6 +37,8 @@ export {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,
+  ensureSecretsSchema,
+  ensureStackSchema,
   refreshCoreAssets
 } from "./core-assets.js";
 
