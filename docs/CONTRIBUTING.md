@@ -34,7 +34,7 @@ bun run dev:stack   # start the full stack
 
 ## Pre-commit Secret Scanning
 
-OpenPalm uses [varlock](https://varlock.dev) to scan staged files for secrets before each commit. The schema at `assets/secrets.env.schema` defines the patterns to detect.
+OpenPalm uses [varlock](https://varlock.dev) to scan for secrets before each commit. The schema at `assets/secrets.env.schema` defines the patterns to detect.
 
 ### Install varlock
 

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Install OpenPalm git hooks for this repository.
 # Run this once after cloning: ./scripts/install-hooks.sh
 

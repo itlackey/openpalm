@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # OpenPalm pre-commit hook — prevents committing leaked secrets.
 # Install via: ./scripts/install-hooks.sh
 #
@@ -49,7 +49,7 @@ fi
 # ── Fallback: grep for known key prefixes ───────────────────────────
 # When varlock is not available (new contributor, CI-like environment),
 # do a best-effort pattern match on staged additions.
-PATTERN='(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_\-]{35})'
+PATTERN='(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35})'
 
 STAGED=$(git diff --staged --unified=0 | grep '^+' | grep -v '^+++' || true)
 

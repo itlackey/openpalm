@@ -21,6 +21,9 @@ import { isSetupComplete } from "./setup-status.js";
 
 const execFileAsync = promisify(execFile);
 
+/** Resolve the varlock binary path — honours VARLOCK_BIN for dev environments. */
+const VARLOCK_BIN = process.env.VARLOCK_BIN || "varlock";
+
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
@@ -355,7 +358,7 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
       copyFileSync(schemaFile, join(tmpDir, ".env.schema"));
       copyFileSync(envFile, join(tmpDir, ".env"));
       await execFileAsync(
-        "varlock",
+        VARLOCK_BIN,
         ["load", "--path", `${tmpDir}/`],
         { timeout: 10000 }
       );

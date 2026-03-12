@@ -104,7 +104,7 @@ describe("validateEnvironment", () => {
     expect(result.warnings[0]).toContain("WARN");
   });
 
-  test("returns { ok: false } gracefully on execFile failure with empty stderr", async () => {
+  test("handles validation failure with empty stderr", async () => {
     mockExecFileAllFail("");
 
     const state = makeTestState();

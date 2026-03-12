@@ -53,7 +53,7 @@ jobs:
           if git diff "$DIFF_RANGE" --unified=0 \
               | grep '^+' | grep -v '^+++' \
               | grep -vi 'sha256\|sha_256\|checksum\|digest' \
-              | grep -qP '(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_\-]{35}|(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f]))'; then
+              | grep -qE '(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|(^|[^0-9a-f])[0-9a-f]{64}([^0-9a-f]|$))'; then
             echo "::error::Potential API key or secret detected in PR diff"
             exit 1
           fi

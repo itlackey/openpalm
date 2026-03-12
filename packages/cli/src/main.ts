@@ -441,7 +441,7 @@ async function ensureVarlock(stateHome: string): Promise<string> {
   const downloadProc = Bun.spawn(
     ['curl', '-fsSL', '--retry', '5', '--retry-delay', '10', '--retry-all-errors', tarballUrl, '-o', tarballPath],
     {
-      env: { HOME: process.env.HOME ?? '' },
+      env: { ...process.env, HOME: process.env.HOME ?? '' },
       stdout: 'inherit',
       stderr: 'inherit',
     },
@@ -469,7 +469,7 @@ async function ensureVarlock(stateHome: string): Promise<string> {
   const extractProc = Bun.spawn(
     ['tar', 'xzf', tarballPath, '--strip-components=1', '-C', binDir],
     {
-      env: { HOME: process.env.HOME ?? '' },
+      env: { ...process.env, HOME: process.env.HOME ?? '' },
       stdout: 'inherit',
       stderr: 'inherit',
     },
@@ -483,7 +483,7 @@ async function ensureVarlock(stateHome: string): Promise<string> {
   try { await unlink(tarballPath); } catch { /* best effort */ }
 
   // Set executable bit (no-op on Windows, but varlock ships as .zip there which is unsupported).
-  const chmodProc = Bun.spawn(['chmod', '+x', varlockBin], { env: {} });
+  const chmodProc = Bun.spawn(['chmod', '+x', varlockBin]);
   await chmodProc.exited;
 
   if (!(await Bun.file(varlockBin).exists())) {
@@ -760,10 +760,16 @@ async function runScan(args: string[]): Promise<void> {
   void args; // reserved for future flags
   const stateHome = defaultStateHome();
   const configHome = defaultConfigHome();
-  const varlockBin = await ensureVarlock(stateHome);
 
   const schemaPath = join(stateHome, 'artifacts', 'secrets.env.schema');
   const envPath = join(configHome, 'secrets.env');
+
+  if (!(await Bun.file(schemaPath).exists())) {
+    console.error(
+      `Error: secrets.env.schema not found at ${schemaPath}.\nRun 'openpalm install' first to stage schema files.`,
+    );
+    process.exit(1);
+  }
 
   if (!(await Bun.file(envPath).exists())) {
     console.error(
@@ -771,6 +777,8 @@ async function runScan(args: string[]): Promise<void> {
     );
     process.exit(1);
   }
+
+  const varlockBin = await ensureVarlock(stateHome);
 
   // Co-locate schema + env in a temp dir so varlock can discover them.
   // varlock scan resolves sensitive values from the config, then scans
@@ -792,7 +800,6 @@ async function runValidate(args: string[]): Promise<void> {
   void args; // reserved for future flags
   const stateHome = defaultStateHome();
   const configHome = defaultConfigHome();
-  const varlockBin = await ensureVarlock(stateHome);
 
   const primarySchema = join(stateHome, 'artifacts', 'secrets.env.schema');
   const envPath = join(configHome, 'secrets.env');
@@ -803,6 +810,15 @@ async function runValidate(args: string[]): Promise<void> {
     );
     process.exit(1);
   }
+
+  if (!(await Bun.file(envPath).exists())) {
+    console.error(
+      `Error: secrets.env not found at ${envPath}.\nRun 'openpalm install' first.`,
+    );
+    process.exit(1);
+  }
+
+  const varlockBin = await ensureVarlock(stateHome);
   const tmpDir = await prepareVarlockDir(primarySchema, envPath);
   try {
     const proc = Bun.spawn(

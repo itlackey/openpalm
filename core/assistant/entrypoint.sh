@@ -171,6 +171,8 @@ maybe_unset_unused_provider_keys() {
     groq)      unset OPENAI_API_KEY ANTHROPIC_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
     mistral)   unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY GOOGLE_API_KEY ;;
     google)    unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY ;;
+    # OpenAI-compatible providers that use OPENAI_API_KEY with a different base URL
+    together|deepseek|xai) unset ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
     # ollama, lmstudio, model-runner, or unset: no cloud provider key needed
     *)         unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
   esac
