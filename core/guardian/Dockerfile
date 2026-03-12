@@ -50,6 +50,7 @@ COPY assets/redact.env.schema /app/.env.schema
 RUN mkdir -p /app/data && chown -R bun:bun /app
 USER bun
 
+ENV HOME=/app/data
 ENV PORT=8080
 EXPOSE 8080
 
