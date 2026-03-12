@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/guardian",
-  "version": "0.9.0-rc10",
+  "version": "0.9.0-rc11",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",

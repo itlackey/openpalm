@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = 'itlackey/openpalm'
 $Binary = 'openpalm-windows-x64.exe'
-$ScriptVersion = 'main'
+$ScriptVersion = '0.9.0-rc11'
 
 # Version resolution
 $Version = $env:OPENPALM_VERSION
