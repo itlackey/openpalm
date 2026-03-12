@@ -254,7 +254,8 @@ system-managed set.
 The assistant has access to API keys and tokens at runtime (they are in
 its process environment). When those credentials appear in tool output
 (error messages, debug traces, env dumps), they enter the LLM context
-window. Two layers prevent this:
+window. Two layers currently prevent this (MCP server wrapping is planned as a
+future layer):
 
 ### Layer 1: Shell Wrapper (varlock-shell)
 
@@ -273,7 +274,7 @@ to plain `/bin/bash` with no redaction.
 - `core/assistant/varlock-shell.sh` -- the wrapper script
 - `core/assistant/entrypoint.sh` -- sets `SHELL` before starting OpenCode
 
-### Layer 3: Permission Deny on Credential Files
+### Layer 2: Permission Deny on Credential Files
 
 The system config (`opencode.jsonc`) includes `permission.read` deny
 rules that block the assistant from reading OpenCode's own credential

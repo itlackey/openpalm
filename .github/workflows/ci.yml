@@ -33,9 +33,24 @@ jobs:
         # Patterns: OpenAI (sk-*), Groq (gsk_*), Google (AIza*), 64-char hex tokens.
         run: |
           set -euo pipefail
-          BASE_REF="${{ github.base_ref || 'main' }}"
-          git fetch origin "${BASE_REF}" --depth=1
-          if git diff "origin/${BASE_REF}"...HEAD --unified=0 \
+          EVENT_NAME="${{ github.event_name }}"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_REF="${{ github.base_ref || 'main' }}"
+            git fetch origin "${BASE_REF}" --depth=1
+            DIFF_RANGE="origin/${BASE_REF}...HEAD"
+          else
+            BEFORE="${{ github.event.before }}"
+            SHA="${{ github.sha }}"
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+              DIFF_RANGE="${BEFORE}...${SHA}"
+            else
+              # Initial commit or force-push with no 'before' — scan last commit
+              DIFF_RANGE="HEAD~1...HEAD"
+            fi
+          fi
+
+          if git diff "$DIFF_RANGE" --unified=0 \
               | grep '^+' | grep -v '^+++' \
               | grep -vi 'sha256\|sha_256\|checksum\|digest' \
               | grep -qP '(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_\-]{35}|(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f]))'; then

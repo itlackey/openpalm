@@ -16,8 +16,6 @@ const VARLOCK_VERSION = '0.4.0';
 const VARLOCK_CHECKSUMS: Record<string, string> = {
   'varlock-linux-x64.tar.gz': '820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab',
   'varlock-linux-arm64.tar.gz': 'e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8',
-  'varlock-linux-musl-x64.tar.gz': 'c1697993ca1596e74e92d729295750445d3a8325743ebd8d0b7c8379f5a6abec',
-  'varlock-linux-musl-arm64.tar.gz': '7e4987a628206ca07b1079da71c049df8101d2118921cf5f991cb543b0ea6070',
   'varlock-macos-x64.tar.gz': 'e6abf0d97da8ff7c98b0e9044a8b71f48fbf74a0d7bfc2543a81575a07b7a03b',
   'varlock-macos-arm64.tar.gz': '228e4c2666b9fa50a83a8713a848e7a0f0044d7fd7c9d441d43e6ebccad2f4a3',
 };

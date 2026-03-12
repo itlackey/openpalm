@@ -89,7 +89,7 @@ describe("validateEnvironment", () => {
     expect(result.warnings[0]).toContain("WARN");
   });
 
-  test("returns { ok: false } gracefully on execFile timeout (empty stderr)", async () => {
+  test("returns { ok: false } gracefully on execFile failure with empty stderr", async () => {
     mockExecFileAllFail("");
 
     const state = makeTestState();
