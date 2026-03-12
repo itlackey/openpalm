@@ -25,6 +25,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Scan for leaked secrets
+        run: |
+          curl -sSfL https://varlock.dev/install.sh | sh -s -- --force-no-brew
+          export PATH="${HOME}/.varlock/bin:${PATH}"
+          varlock scan --schema assets/secrets.env.schema
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 

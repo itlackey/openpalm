@@ -607,7 +607,7 @@ Create a skill file that teaches the assistant to use the validation API and sch
 
 | | |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `completed` |
 | **Depends** | P1-T1 |
 | **Agent** | general-purpose |
 | **Files** | `.github/workflows/ci.yml` (edit) |
@@ -628,7 +628,7 @@ Add a CI step that installs varlock and runs `varlock scan --schema assets/secre
 
 | | |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `completed` |
 | **Depends** | P1-T1 |
 | **Agent** | documentation-writer |
 | **Files** | `docs/CONTRIBUTING.md` (edit or new) |
