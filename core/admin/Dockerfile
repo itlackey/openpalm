@@ -79,4 +79,4 @@ EXPOSE 8100
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
-CMD ["varlock", "run", "--", "node", "build/index.js"]
+CMD ["varlock", "run", "--path", "/app/", "--", "node", "build/index.js"]

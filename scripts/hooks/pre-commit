@@ -35,15 +35,18 @@ if [ -n "$VARLOCK_BIN" ] && [ -f "$SECRETS_ENV" ]; then
   # OPENAI_API_KEY value in a committed file, it catches it — regardless
   # of whether the key matches a known prefix pattern.
   #
-  # varlock discovers .env.schema files via --path. We point it at the
-  # secrets.env file; varlock looks for .env.schema in the same directory.
-  # If the schema hasn't been staged yet, we copy it alongside secrets.env.
-  SECRETS_DIR="$(dirname "$SECRETS_ENV")"
-  if [ -f "$SCHEMA" ] && [ ! -f "$SECRETS_DIR/.env.schema" ]; then
-    cp "$SCHEMA" "$SECRETS_DIR/.env.schema" 2>/dev/null || true
+  # varlock expects --path <dir>/ with .env + .env.schema inside.
+  # Stage secrets.env as .env in a temp dir to match the convention used
+  # by the CLI and admin validation.
+  TMP_ENV_DIR="$(mktemp -d 2>/dev/null || true)"
+  if [ -n "$TMP_ENV_DIR" ] && [ -d "$TMP_ENV_DIR" ]; then
+    cp "$SECRETS_ENV" "$TMP_ENV_DIR/.env" 2>/dev/null || true
+    if [ -f "$SCHEMA" ]; then
+      cp "$SCHEMA" "$TMP_ENV_DIR/.env.schema" 2>/dev/null || true
+    fi
+    exec "$VARLOCK_BIN" scan --path "$TMP_ENV_DIR/"
+    # exec replaces this process — if we get here, varlock scan ran.
   fi
-  exec "$VARLOCK_BIN" scan --path "$SECRETS_ENV"
-  # exec replaces this process — if we get here, varlock scan ran.
 fi
 
 # ── Fallback: grep for known key prefixes ───────────────────────────
