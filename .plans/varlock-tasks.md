@@ -543,7 +543,7 @@ Add unit tests for `validateEnvironment()` and e2e tests for the validation endp
 
 | | |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `completed` |
 | **Depends** | P1-T1, P1-T2 |
 | **Agent** | bunjs-typescript-coder |
 | **Files** | `packages/admin/src/lib/server/staging.ts` (edit) |
@@ -563,7 +563,7 @@ During the admin apply flow, copy schema files to `DATA_HOME/assistant/env-schem
 
 | | |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `completed` |
 | **Depends** | P4-T1 |
 | **Agent** | general-purpose |
 | **Files** | `assets/opencode.jsonc` (edit) |
@@ -582,7 +582,7 @@ Add `/etc/opencode/env-schema/**` to the context include patterns in the baked-i
 
 | | |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `completed` |
 | **Depends** | P4-T1 |
 | **Agent** | general-purpose |
 | **Files** | `core/assistant/skills/config-diagnostics.md` (new) |
