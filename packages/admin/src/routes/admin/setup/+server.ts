@@ -142,6 +142,9 @@ export const POST: RequestHandler = async (event) => {
 
   const updates: Record<string, string> = {};
   if (typeof body.adminToken === "string" && body.adminToken) {
+    if (body.adminToken.length < 8) {
+      return errorResponse(400, "invalid_input", "adminToken must be at least 8 characters", { field: "adminToken" }, requestId);
+    }
     updates.ADMIN_TOKEN = body.adminToken;
   }
 

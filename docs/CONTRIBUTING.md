@@ -13,6 +13,12 @@ Quick reference:
 git clone https://github.com/itlackey/openpalm.git
 cd openpalm
 
+# Install git hooks (pre-commit secret scanning)
+./scripts/install-hooks.sh
+
+# Install varlock for comprehensive secret scanning (optional but recommended)
+openpalm install
+
 # Admin UI
 cd packages/admin && npm install && npm run dev
 
@@ -28,7 +34,7 @@ bun run dev:stack   # start the full stack
 
 ## Pre-commit Secret Scanning
 
-OpenPalm uses [varlock](https://varlock.dev) to scan staged files for secrets before each commit. The schema at `assets/secrets.env.schema` defines the patterns to detect.
+OpenPalm uses [varlock](https://varlock.dev) to scan for secrets before each commit. The schema at `assets/secrets.env.schema` defines the patterns to detect.
 
 ### Install varlock
 
@@ -39,12 +45,15 @@ curl -fsSL https://varlock.dev/install.sh | sh
 ### Set up the pre-commit hook
 
 ```bash
-varlock scan --setup-hook --schema assets/secrets.env.schema
+./scripts/install-hooks.sh
 ```
 
-This writes a `.git/hooks/pre-commit` script that runs before every `git commit`. The hook scans all staged files against the patterns defined in `assets/secrets.env.schema` — variable types marked `@sensitive=true` (or governed by `@defaultSensitive=true`) are used to build the detection patterns. If any staged file contains a value matching a sensitive variable pattern, the commit is aborted and the offending file and line are reported.
+The hook uses two strategies depending on what's available:
 
-The hook runs locally only. The same scan also runs in CI (see `.github/workflows/ci.yml`) as a second line of defence.
+1. **varlock scan** (preferred) — resolves actual `@sensitive` values from your local `secrets.env` and searches the working tree (all tracked files) for those literal values. Catches any secret format, not just known prefixes. Requires `openpalm install` to install the varlock binary.
+2. **grep fallback** — pattern-matches staged additions for known provider key formats (OpenAI `sk-*`, Groq `gsk_*`, Google `AIza*`). Used when varlock is not installed.
+
+CI uses grep patterns on the PR diff (see `.github/workflows/ci.yml`) since there are no real secrets in the Actions environment. The pre-commit hook is where varlock scan provides the most value — it catches your actual secret values regardless of format.
 
 ### Why this matters
 

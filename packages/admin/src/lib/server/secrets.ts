@@ -94,11 +94,14 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("ADMIN_TOKEN=");
   secretLines.push("");
   secretLines.push("# LLM provider keys");
-  secretLines.push(`OPENAI_API_KEY=${process.env.OPENAI_API_KEY ?? ""}`);
-  secretLines.push(`OPENAI_BASE_URL=${process.env.OPENAI_BASE_URL ?? ""}`);
-  secretLines.push(`GROQ_API_KEY=${process.env.GROQ_API_KEY ?? ""}`);
-  secretLines.push(`MISTRAL_API_KEY=${process.env.MISTRAL_API_KEY ?? ""}`);
-  secretLines.push(`GOOGLE_API_KEY=${process.env.GOOGLE_API_KEY ?? ""}`);
+  // API keys are intentionally left blank — they must be set via the setup wizard,
+  // never silently inherited from the host shell environment.
+  secretLines.push("OPENAI_API_KEY=");
+  secretLines.push("OPENAI_BASE_URL=");
+  secretLines.push("ANTHROPIC_API_KEY=");
+  secretLines.push("GROQ_API_KEY=");
+  secretLines.push("MISTRAL_API_KEY=");
+  secretLines.push("GOOGLE_API_KEY=");
   secretLines.push("");
   secretLines.push("# Memory");
   secretLines.push(`MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);

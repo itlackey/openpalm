@@ -4,7 +4,9 @@
  * State factory, apply* lifecycle transitions, compose file list builders,
  * and caller/action validation.
  */
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
@@ -18,6 +20,21 @@ import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
 
 const execFileAsync = promisify(execFile);
+
+/** Resolve the varlock binary path — honours VARLOCK_BIN for dev environments. */
+const envVarlockBin = process.env.VARLOCK_BIN;
+let VARLOCK_BIN = "varlock";
+if (envVarlockBin) {
+  if (envVarlockBin === "varlock" || envVarlockBin.startsWith("/")) {
+    VARLOCK_BIN = envVarlockBin;
+  } else {
+    // Invalid relative path — fall back to PATH-resolved "varlock" and warn.
+    console.warn(
+      `Unsafe VARLOCK_BIN value: ${envVarlockBin}. Falling back to "varlock". ` +
+      "Must be \"varlock\" or an absolute path.",
+    );
+  }
+}
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -306,7 +323,9 @@ export function isAllowedAction(action: string): boolean {
 
 /**
  * Validate the environment configuration using varlock.
- * Runs `varlock load --schema <schema> --env-file <env> --quiet`.
+ * Runs `varlock load --path <tmpdir>/` with the schema and env file
+ * co-located in a temp directory (varlock discovers .env.schema files
+ * from the --path directory).
  * Returns { ok, errors, warnings }.
  * Never throws — returns { ok: false } on any error.
  */
@@ -318,27 +337,76 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
   const schemaPath = `${state.dataDir}/secrets.env.schema`;
   const envPath = `${state.configDir}/secrets.env`;
 
-  try {
-    await execFileAsync(
-      "varlock",
-      ["load", "--schema", schemaPath, "--env-file", envPath, "--quiet"],
-      { timeout: 10000 }
-    );
-    return { ok: true, errors: [], warnings: [] };
-  } catch (err: unknown) {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    if (err && typeof err === "object" && "stderr" in err) {
-      const stderr = String((err as { stderr: string }).stderr);
-      for (const line of stderr.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed.includes("ERROR")) errors.push(trimmed);
-        else if (trimmed.includes("WARN")) warnings.push(trimmed);
-      }
-    }
-
-    return { ok: false, errors, warnings };
+  // Redact potential secret values from varlock diagnostic output before logging/returning.
+  function sanitizeVarlockMessage(msg: string): string {
+    return msg
+      .replace(/sk-[A-Za-z0-9]{20,}/g, "[REDACTED]")
+      .replace(/gsk_[A-Za-z0-9]{30,}/g, "[REDACTED]")
+      .replace(/AIza[A-Za-z0-9_\-]{35}/g, "[REDACTED]")
+      .replace(/[0-9a-f]{32,}/gi, "[REDACTED]")
+      .replace(/value '([^']*)'/g, "value '[REDACTED]'");
   }
+
+  function collectVarlockOutput(stderr: string, errors: string[], warnings: string[]): void {
+    for (const line of stderr.split("\n")) {
+      const trimmed = sanitizeVarlockMessage(line.trim());
+      if (!trimmed) continue;
+      if (trimmed.includes("ERROR")) errors.push(trimmed);
+      else if (trimmed.includes("WARN")) warnings.push(trimmed);
+    }
+  }
+
+  /**
+   * Run varlock load with a schema and env file that may be in different
+   * directories. Varlock discovers .env.schema alongside the --path target,
+   * so we create a temp directory with both files co-located.
+   */
+  async function runVarlockLoad(
+    schemaFile: string,
+    envFile: string,
+  ): Promise<void> {
+    const tmpDir = mkdtempSync(join(tmpdir(), "varlock-"));
+    try {
+      copyFileSync(schemaFile, join(tmpDir, ".env.schema"));
+      copyFileSync(envFile, join(tmpDir, ".env"));
+      await execFileAsync(
+        VARLOCK_BIN,
+        ["load", "--path", `${tmpDir}/`],
+        { timeout: 10000 }
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  let anyFailed = false;
+
+  // Validate secrets.env against DATA_HOME/secrets.env.schema
+  try {
+    await runVarlockLoad(schemaPath, envPath);
+  } catch (err: unknown) {
+    anyFailed = true;
+    if (err && typeof err === "object" && "stderr" in err) {
+      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
+    }
+  }
+
+  // Validate stack.env against DATA_HOME/stack.env.schema.
+  // NOTE: CHANNEL_*_SECRET dynamic keys will only partially validate (varlock cannot
+  // validate wildcard patterns); the server-side entropy guarantee from persistArtifacts()
+  // is the primary mitigation for those keys.
+  const stackSchemaPath = `${state.dataDir}/stack.env.schema`;
+  const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
+  try {
+    await runVarlockLoad(stackSchemaPath, stackEnvPath);
+  } catch (err: unknown) {
+    anyFailed = true;
+    if (err && typeof err === "object" && "stderr" in err) {
+      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
+    }
+  }
+
+  return { ok: !anyFailed && errors.length === 0, errors, warnings };
 }

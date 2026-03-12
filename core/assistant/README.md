@@ -22,7 +22,7 @@ Core assistant extensions (tools, plugins, skills) are published as the [`@openp
 
 ```
 opencode.jsonc
-  → "plugin": ["@itlackey/openkit", "@openpalm/assistant-tools"]
+  → "plugin": ["@openpalm/assistant-tools", "akm-opencode"]
   → OpenCode installs from npm on startup
   → Tools, plugins, skills registered via the plugin entry point
 ```

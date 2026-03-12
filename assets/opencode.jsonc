@@ -1,4 +1,14 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "agentikit-opencode"]
+  "plugin": ["@openpalm/assistant-tools", "akm-opencode"],
+  // Layer 3: Block the assistant from reading credential files.
+  // auth.json and mcp-auth.json contain session tokens that must not
+  // enter the LLM context window. The varlock shell wrapper (Layer 1)
+  // handles redaction of stdout/stderr; this blocks direct file reads.
+  "permission": {
+    "read": {
+      "/home/opencode/.local/share/opencode/auth.json": "deny",
+      "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+    }
+  }
 }

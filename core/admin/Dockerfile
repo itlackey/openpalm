@@ -26,14 +26,24 @@ RUN npm run build
 # Isolated stage so the download layer is cached independently of the app build.
 # Pinned version; bump ARG to upgrade. Uses --retry-all-errors to handle
 # transient GitHub CDN failures (502/503).
-FROM node:lts-trixie-slim AS varlock-fetch
+FROM debian:trixie-slim AS varlock-fetch
+ARG TARGETARCH
 ARG VARLOCK_VERSION=0.4.0
+ARG VARLOCK_SHA256_AMD64=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
+ARG VARLOCK_SHA256_ARM64=e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL \
-      --retry 5 --retry-delay 10 --retry-all-errors \
-      "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-x64.tar.gz" \
-      -o /tmp/varlock.tar.gz \
+RUN set -e; \
+  if [ "$TARGETARCH" = "arm64" ]; then \
+    VARLOCK_ARCH=arm64; VARLOCK_SHA256="$VARLOCK_SHA256_ARM64"; \
+  else \
+    VARLOCK_ARCH=x64; VARLOCK_SHA256="$VARLOCK_SHA256_AMD64"; \
+  fi \
+  && curl -fsSL \
+       --retry 5 --retry-delay 10 --retry-all-errors \
+       "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-${VARLOCK_ARCH}.tar.gz" \
+       -o /tmp/varlock.tar.gz \
+  && echo "${VARLOCK_SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
   && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
   && chmod +x /usr/local/bin/varlock \
   && rm /tmp/varlock.tar.gz
@@ -59,6 +69,7 @@ RUN mkdir -p /state /data && chown node:node /state /data
 
 # Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
+COPY assets/redact.env.schema /app/.env.schema
 
 USER node
 
@@ -68,4 +79,4 @@ EXPOSE 8100
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
-CMD ["node", "build/index.js"]
+CMD ["varlock", "run", "--path", "/app/", "--", "node", "build/index.js"]

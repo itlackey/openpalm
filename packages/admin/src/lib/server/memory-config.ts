@@ -430,6 +430,11 @@ async function callMemoryApi(
   throw lastError ?? new Error("Memory API request failed");
 }
 
+// SECURITY NOTE: resolved config may include raw API key values.
+// This call is made over plain HTTP within the Docker internal network (assistant_net).
+// Docker bridge networking is not susceptible to external interception, but any
+// container on assistant_net with network sniffing capability could observe these values.
+// The memory service must never echo config values back in error responses.
 export async function pushConfigToMemory(
   config: MemoryConfig
 ): Promise<{ ok: boolean; error?: string }> {

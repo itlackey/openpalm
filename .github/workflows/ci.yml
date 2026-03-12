@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - 'release/**'
 
 permissions:
   contents: read
@@ -25,11 +26,44 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Scan for leaked secrets
+      - name: Scan for leaked API keys
+        # CI has no real secrets, so varlock scan has nothing to resolve.
+        # Use grep patterns on the PR diff for provider-specific key formats.
+        # Developers get full varlock scan coverage via the pre-commit hook
+        # (install with ./scripts/install-hooks.sh + openpalm install).
+        # Patterns: OpenAI (sk-*), Groq (gsk_*), Google (AIza*), 64-char hex tokens.
         run: |
-          curl -sSfL https://varlock.dev/install.sh | sh -s -- --force-no-brew
-          export PATH="${HOME}/.varlock/bin:${PATH}"
-          varlock scan --schema assets/secrets.env.schema
+          set -euo pipefail
+          EVENT_NAME="${{ github.event_name }}"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_REF="${{ github.base_ref || 'main' }}"
+            git fetch origin "${BASE_REF}" --depth=1
+            DIFF_RANGE="origin/${BASE_REF}...HEAD"
+          else
+            BEFORE="${{ github.event.before }}"
+            SHA="${{ github.sha }}"
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+              DIFF_RANGE="${BEFORE}...${SHA}"
+            else
+              # Initial commit or force-push with no 'before' — scan last commit
+              if git rev-parse HEAD~1 >/dev/null 2>&1; then
+                DIFF_RANGE="HEAD~1...HEAD"
+              else
+                echo "Single-commit history — scanning full HEAD"
+                DIFF_RANGE="HEAD"
+              fi
+            fi
+          fi
+
+          if git diff "$DIFF_RANGE" --unified=0 \
+              | grep '^+' | grep -v '^+++' \
+              | grep -viE 'sha256|sha_256|checksum|digest|\.tar\.gz|VARLOCK_CHECKSUMS' \
+              | grep -qE '(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|(^|[^0-9a-f])[0-9a-f]{64}([^0-9a-f]|$))'; then
+            echo "::error::Potential API key or secret detected in PR diff"
+            exit 1
+          fi
+          echo "No obvious API key patterns found."
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

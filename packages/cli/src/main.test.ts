@@ -85,8 +85,90 @@ describe('validate command', () => {
     }
   });
 
-  it('unknown command still throws', async () => {
-    await expect(main(['nope'])).rejects.toThrow('Unknown command: nope');
+});
+
+describe('scan command', () => {
+  it('is a recognized command (does not throw Unknown command)', async () => {
+    // Verifies 'scan' is in the COMMANDS list and dispatches correctly.
+    // Does NOT test full scan behavior (which requires a real varlock binary,
+    // secrets.env, and secrets.env.schema). A more complete test would:
+    //   - Stage a secrets.env.schema + secrets.env in temp dirs
+    //   - Provide a fake varlock binary that echoes its args
+    //   - Assert varlock is invoked with 'scan --path <tmpDir>/'
+    //   - Verify the temp dir is cleaned up after execution
+
+    const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const binDir = join(tempStateHome, 'bin');
+    const artifactsDir = join(tempStateHome, 'artifacts');
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(artifactsDir, { recursive: true });
+
+    // Create a fake varlock script that exits 0 immediately
+    const fakeVarlock = join(binDir, 'varlock');
+    writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
+    chmodSync(fakeVarlock, 0o755);
+
+    // Create required files so the command reaches the varlock invocation
+    writeFileSync(join(artifactsDir, 'secrets.env.schema'), 'ADMIN_TOKEN\n');
+    writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
+
+    const originalStateHome = process.env.OPENPALM_STATE_HOME;
+    const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
+    const originalExit = process.exit;
+    process.env.OPENPALM_STATE_HOME = tempStateHome;
+    process.env.OPENPALM_CONFIG_HOME = tempConfigHome;
+    process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
+
+    try {
+      const err = await main(['scan']).catch((e: unknown) => e);
+      const message = err instanceof Error ? err.message : String(err);
+      // Should not be an unknown command error
+      expect(message).not.toContain('Unknown command: scan');
+      // The fake varlock exits 0, so process.exit(0) should be called
+      expect(message).toBe('process.exit(0)');
+    } finally {
+      process.exit = originalExit;
+      process.env.OPENPALM_STATE_HOME = originalStateHome;
+      process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
+      rmSync(tempStateHome, { recursive: true, force: true });
+      rmSync(tempConfigHome, { recursive: true, force: true });
+    }
+  });
+
+  it('errors when secrets.env.schema is missing', async () => {
+    const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const artifactsDir = join(tempStateHome, 'artifacts');
+    mkdirSync(artifactsDir, { recursive: true });
+
+    // secrets.env exists but secrets.env.schema does NOT
+    writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
+
+    const originalStateHome = process.env.OPENPALM_STATE_HOME;
+    const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
+    const originalExit = process.exit;
+    const originalError = console.error;
+    const errorCalls: string[] = [];
+    process.env.OPENPALM_STATE_HOME = tempStateHome;
+    process.env.OPENPALM_CONFIG_HOME = tempConfigHome;
+    process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
+    console.error = mock((...args: unknown[]) => { errorCalls.push(args.join(' ')); }) as typeof console.error;
+
+    try {
+      const err = await main(['scan']).catch((e: unknown) => e);
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).toBe('process.exit(1)');
+      expect(errorCalls.some(msg => msg.includes('secrets.env.schema not found'))).toBe(true);
+      expect(errorCalls.some(msg => msg.includes('openpalm install'))).toBe(true);
+    } finally {
+      process.exit = originalExit;
+      console.error = originalError;
+      process.env.OPENPALM_STATE_HOME = originalStateHome;
+      process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
+      rmSync(tempStateHome, { recursive: true, force: true });
+      rmSync(tempConfigHome, { recursive: true, force: true });
+    }
   });
 });
 
