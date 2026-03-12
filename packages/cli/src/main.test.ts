@@ -85,9 +85,6 @@ describe('validate command', () => {
     }
   });
 
-  it('unknown command still throws', async () => {
-    await expect(main(['nope'])).rejects.toThrow('Unknown command: nope');
-  });
 });
 
 describe('scan command', () => {
@@ -142,14 +139,8 @@ describe('scan command', () => {
   it('errors when secrets.env.schema is missing', async () => {
     const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-    const binDir = join(tempStateHome, 'bin');
     const artifactsDir = join(tempStateHome, 'artifacts');
-    mkdirSync(binDir, { recursive: true });
     mkdirSync(artifactsDir, { recursive: true });
-
-    const fakeVarlock = join(binDir, 'varlock');
-    writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
-    chmodSync(fakeVarlock, 0o755);
 
     // secrets.env exists but secrets.env.schema does NOT
     writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');

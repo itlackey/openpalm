@@ -194,9 +194,9 @@ start_opencode() {
   # The redaction schema (.env.schema) is baked into the image at
   # /usr/local/etc/varlock/ — varlock discovers it via --path.
   VARLOCK_SCHEMA_DIR="/usr/local/etc/varlock"
-  VARLOCK_CMD=""
+  VARLOCK_CMD=()
   if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
-    VARLOCK_CMD="varlock run --path $VARLOCK_SCHEMA_DIR/ --"
+    VARLOCK_CMD=(varlock run --path "$VARLOCK_SCHEMA_DIR/" --)
   fi
 
   # Layer 1: Context window protection — set SHELL to the varlock-shell
@@ -217,10 +217,10 @@ start_opencode() {
     # SHELL must also be forwarded for the varlock-shell wrapper (Layer 1).
     export HOME=/home/opencode
     exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode SHELL="$SHELL" \
-      $VARLOCK_CMD opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+      "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 
-  exec $VARLOCK_CMD opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
+  exec "${VARLOCK_CMD[@]}" opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
 }
 
 ensure_user_mapping

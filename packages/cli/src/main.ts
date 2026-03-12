@@ -484,7 +484,10 @@ async function ensureVarlock(stateHome: string): Promise<string> {
 
   // Set executable bit (no-op on Windows, but varlock ships as .zip there which is unsupported).
   const chmodProc = Bun.spawn(['chmod', '+x', varlockBin]);
-  await chmodProc.exited;
+  const chmodCode = await chmodProc.exited;
+  if (chmodCode !== 0) {
+    throw new Error(`chmod +x failed for varlock binary (exit code ${chmodCode})`);
+  }
 
   if (!(await Bun.file(varlockBin).exists())) {
     throw new Error(`varlock binary not found at ${varlockBin} after install`);
@@ -784,16 +787,17 @@ async function runScan(args: string[]): Promise<void> {
   // varlock scan resolves sensitive values from the config, then scans
   // the current working directory for plaintext occurrences.
   const tmpDir = await prepareVarlockDir(schemaPath, envPath);
+  let exitCode = 1;
   try {
     const proc = Bun.spawn([varlockBin, 'scan', '--path', `${tmpDir}/`], {
       stdout: 'inherit',
       stderr: 'inherit',
     });
-    const code = await proc.exited;
-    process.exit(code);
+    exitCode = await proc.exited;
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
+  process.exit(exitCode);
 }
 
 async function runValidate(args: string[]): Promise<void> {
@@ -820,16 +824,17 @@ async function runValidate(args: string[]): Promise<void> {
 
   const varlockBin = await ensureVarlock(stateHome);
   const tmpDir = await prepareVarlockDir(primarySchema, envPath);
+  let exitCode = 1;
   try {
     const proc = Bun.spawn(
       [varlockBin, 'load', '--path', `${tmpDir}/`],
       { stdout: 'inherit', stderr: 'inherit' },
     );
-    const code = await proc.exited;
-    process.exit(code);
+    exitCode = await proc.exited;
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
+  process.exit(exitCode);
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {

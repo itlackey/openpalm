@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 # Install the channel npm package if specified
@@ -9,6 +9,6 @@ fi
 
 # Run the channel entrypoint, wrapping with varlock for secret redaction if available
 if command -v varlock >/dev/null 2>&1 && [ -f /app/.env.schema ]; then
-  exec varlock run -- bun run node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts
+  exec varlock run --path /app/ -- bun run node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts
 fi
 exec bun run node_modules/@openpalm/channels-sdk/src/channel-entrypoint.ts

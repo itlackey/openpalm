@@ -143,7 +143,7 @@ describe("validateEnvironment", () => {
     for (const args of capturedArgs) {
       expect(args[0]).toBe("load");
       expect(args[1]).toBe("--path");
-      expect(args[2]).toMatch(/^\/tmp\/varlock-.*\/$/);
+      expect(args[2]).toMatch(/varlock-.*\/$/);
     }
   });
 

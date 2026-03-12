@@ -22,7 +22,12 @@ import { isSetupComplete } from "./setup-status.js";
 const execFileAsync = promisify(execFile);
 
 /** Resolve the varlock binary path — honours VARLOCK_BIN for dev environments. */
-const VARLOCK_BIN = process.env.VARLOCK_BIN || "varlock";
+const rawVarlockBin = process.env.VARLOCK_BIN || "varlock";
+// Only allow "varlock" (PATH-resolved) or absolute paths under /usr/local/bin/ or /usr/bin/
+if (rawVarlockBin !== "varlock" && !/^\/usr\/(local\/)?bin\/varlock$/.test(rawVarlockBin)) {
+  throw new Error(`Unsafe VARLOCK_BIN value: ${rawVarlockBin}. Must be "varlock" or an absolute path under /usr/bin/ or /usr/local/bin/.`);
+}
+const VARLOCK_BIN = rawVarlockBin;
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;

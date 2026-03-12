@@ -347,10 +347,13 @@ is inferred from whether the variable has a default value).
 secrets) and `@defaultRequired=true` (all system-managed vars are always present).
 
 The schema files are used by the [Varlock](https://varlock.dev) CLI for validation
-(`varlock load --schema assets/secrets.env.schema`) and secret-leak scanning
-(`varlock scan --schema assets/secrets.env.schema`). See the Varlock integration
-plan at [`.plans/openpalm-varlock-plan.md`](../../.plans/openpalm-varlock-plan.md)
-for the full rollout roadmap.
+(`varlock load --path <dir>/`) and secret-leak scanning
+(`varlock scan --path <dir>/`). In practice, the schema (`.env.schema`) and its
+corresponding `.env` file are copied into a temporary directory, and varlock is
+invoked with `--path <tmpDir>/` so it discovers both files together. See the
+Varlock integration plan at
+[`.plans/openpalm-varlock-plan.md`](../../.plans/openpalm-varlock-plan.md) for
+the full rollout roadmap.
 
 ---
 
