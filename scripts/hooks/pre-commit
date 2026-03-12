@@ -1,24 +1,52 @@
 #!/bin/sh
-# OpenPalm pre-commit hook — scans staged additions for common API key patterns.
+# OpenPalm pre-commit hook — prevents committing leaked secrets.
 # Install via: ./scripts/install-hooks.sh
 #
-# Uses grep-based detection rather than varlock scan to avoid false positives
-# from common default values (UIDs, path strings) that varlock picks up from
-# schema defaults and the process environment.
+# Strategy:
+#   1. If varlock is available and secrets.env exists, use varlock scan.
+#      This resolves actual @sensitive values and searches for them —
+#      catches ANY secret format, not just known prefixes.
+#   2. Fall back to grep pattern matching for provider-specific key formats
+#      when varlock is not installed or no secrets.env exists.
 
 set -e
 
-# Patterns known to indicate real credentials. Limited to provider-specific
-# key formats with high specificity (low false-positive risk):
-#   sk-*   OpenAI API keys
-#   gsk_*  Groq API keys
-#   AIza*  Google API keys
-# 64-char hex is intentionally excluded: it matches SHA-256 hashes and other
-# legitimate digests (e.g. VARLOCK_SHA256 in Dockerfile / CI). MEMORY_AUTH_TOKEN
-# and OPENCODE_SERVER_PASSWORD are generated at runtime and never committed.
+# ── Try varlock scan first ──────────────────────────────────────────
+VARLOCK_BIN=""
+STATE_HOME="${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}"
+CONFIG_HOME="${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}"
+SECRETS_ENV="${CONFIG_HOME}/secrets.env"
+SCHEMA="${STATE_HOME}/artifacts/secrets.env.schema"
+
+# Check common locations for the varlock binary
+for candidate in \
+    "${STATE_HOME}/bin/varlock" \
+    "${HOME}/.varlock/bin/varlock" \
+    "$(command -v varlock 2>/dev/null || true)"; do
+  if [ -x "$candidate" ]; then
+    VARLOCK_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -n "$VARLOCK_BIN" ] && [ -f "$SECRETS_ENV" ]; then
+  # varlock scan resolves @sensitive values from secrets.env and searches
+  # the working tree for plaintext occurrences. If it finds your actual
+  # OPENAI_API_KEY value in a committed file, it catches it — regardless
+  # of whether the key matches a known prefix pattern.
+  if [ -f "$SCHEMA" ]; then
+    exec "$VARLOCK_BIN" scan --schema "$SCHEMA" --env-file "$SECRETS_ENV"
+  else
+    exec "$VARLOCK_BIN" scan --env-file "$SECRETS_ENV"
+  fi
+  # exec replaces this process — if we get here, varlock scan ran.
+fi
+
+# ── Fallback: grep for known key prefixes ───────────────────────────
+# When varlock is not available (new contributor, CI-like environment),
+# do a best-effort pattern match on staged additions.
 PATTERN='(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_\-]{35})'
 
-# Only inspect added/modified lines (lines starting with +, excluding diff headers).
 STAGED=$(git diff --staged --unified=0 | grep '^+' | grep -v '^+++' || true)
 
 if [ -z "$STAGED" ]; then
@@ -26,9 +54,10 @@ if [ -z "$STAGED" ]; then
 fi
 
 if echo "$STAGED" | grep -qP "$PATTERN" 2>/dev/null; then
-  echo "pre-commit: potential API key or secret detected in staged changes." >&2
-  echo "  Review the diff below and remove any real credentials before committing." >&2
-  echo "  If this is a false positive, you can bypass with: git commit --no-verify" >&2
+  echo "pre-commit: potential API key detected in staged changes." >&2
+  echo "  Install varlock for comprehensive secret scanning:" >&2
+  echo "    openpalm validate  # installs varlock automatically" >&2
+  echo "  Or bypass with: git commit --no-verify" >&2
   echo "" >&2
   git diff --staged --unified=0 | grep -P "$PATTERN" >&2 || true
   exit 1

@@ -90,6 +90,44 @@ describe('validate command', () => {
   });
 });
 
+describe('scan command', () => {
+  it('is a recognized command (does not throw Unknown command)', async () => {
+    const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+    const binDir = join(tempStateHome, 'bin');
+    const artifactsDir = join(tempStateHome, 'artifacts');
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(artifactsDir, { recursive: true });
+
+    // Create a fake varlock script that exits 0 immediately
+    const fakeVarlock = join(binDir, 'varlock');
+    writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
+    chmodSync(fakeVarlock, 0o755);
+
+    // Create a fake secrets.env so the command doesn't error on missing file
+    writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
+
+    const originalStateHome = process.env.OPENPALM_STATE_HOME;
+    const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
+    const originalExit = process.exit;
+    process.env.OPENPALM_STATE_HOME = tempStateHome;
+    process.env.OPENPALM_CONFIG_HOME = tempConfigHome;
+    process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
+
+    try {
+      const err = await main(['scan']).catch((e: unknown) => e);
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).not.toContain('Unknown command: scan');
+    } finally {
+      process.exit = originalExit;
+      process.env.OPENPALM_STATE_HOME = originalStateHome;
+      process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
+      rmSync(tempStateHome, { recursive: true, force: true });
+      rmSync(tempConfigHome, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('detectHostInfo', () => {
   it('returns valid HostInfo structure', async () => {
     const originalFetch = globalThis.fetch;

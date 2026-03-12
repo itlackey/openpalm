@@ -26,9 +26,10 @@ jobs:
           fetch-depth: 0
 
       - name: Scan for leaked API keys
-        # grep-based scan: catches high-entropy API key formats without false positives
-        # from common default values (UIDs, path strings) that varlock picks up from
-        # schema defaults. varlock scan requires a varlock.config.js to suppress those.
+        # CI has no real secrets, so varlock scan has nothing to resolve.
+        # Use grep patterns on the PR diff for provider-specific key formats.
+        # Developers get full varlock scan coverage via the pre-commit hook
+        # (install with ./scripts/install-hooks.sh + openpalm validate).
         # Patterns: OpenAI (sk-*), Groq (gsk_*), Google (AIza*), 64-char hex tokens.
         run: |
           if git diff origin/${{ github.base_ref || 'main' }}...HEAD --unified=0 \

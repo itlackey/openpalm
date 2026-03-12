@@ -23,9 +23,10 @@ type Command =
   | 'logs'
   | 'status'
   | 'service'
-  | 'validate';
+  | 'validate'
+  | 'scan';
 
-const COMMANDS: readonly Command[] = ['install', 'uninstall', 'update', 'start', 'stop', 'restart', 'logs', 'status', 'service', 'validate'];
+const COMMANDS: readonly Command[] = ['install', 'uninstall', 'update', 'start', 'stop', 'restart', 'logs', 'status', 'service', 'validate', 'scan'];
 
 type InstallOptions = {
   force: boolean;
@@ -142,7 +143,8 @@ function printUsage(): void {
   console.log('  logs [service...]    View container logs');
   console.log('  status               Show container status');
   console.log('  service              Service lifecycle operations');
-  console.log('  validate              Validate configuration against schema');
+  console.log('  validate             Validate configuration against schema');
+  console.log('  scan                 Scan codebase for leaked secrets (requires local secrets.env)');
 }
 
 function parseInstallOptions(args: string[]): InstallOptions {
@@ -691,6 +693,33 @@ async function runServiceCommand(args: string[]): Promise<void> {
   throw new Error(`Unknown subcommand: ${subcommand}`);
 }
 
+async function runScan(args: string[]): Promise<void> {
+  void args; // reserved for future flags
+  const stateHome = defaultStateHome();
+  const configHome = defaultConfigHome();
+  const varlockBin = await ensureVarlock(stateHome);
+
+  const schemaPath = join(stateHome, 'artifacts', 'secrets.env.schema');
+  const envPath = join(configHome, 'secrets.env');
+
+  if (!(await Bun.file(envPath).exists())) {
+    console.error(
+      `Error: secrets.env not found at ${envPath}.\nRun 'openpalm install' first.`,
+    );
+    process.exit(1);
+  }
+
+  const scanArgs = [varlockBin, 'scan'];
+  if (await Bun.file(schemaPath).exists()) {
+    scanArgs.push('--schema', schemaPath);
+  }
+  scanArgs.push('--env-file', envPath);
+
+  const proc = Bun.spawn(scanArgs, { stdout: 'inherit', stderr: 'inherit' });
+  const code = await proc.exited;
+  process.exit(code);
+}
+
 async function runValidate(args: string[]): Promise<void> {
   void args; // reserved for future flags
   const stateHome = defaultStateHome();
@@ -776,6 +805,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 
   if (command === 'validate') {
     await runValidate(args);
+    return;
+  }
+
+  if (command === 'scan') {
+    await runScan(args);
     return;
   }
 
