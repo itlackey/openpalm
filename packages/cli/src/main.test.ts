@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { mkdirSync, writeFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { detectHostInfo, main } from './main.ts';
+import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag } from './main.ts';
 
 describe('cli main', () => {
   const originalFetch = globalThis.fetch;
@@ -213,5 +213,23 @@ describe('detectHostInfo', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe('install image tag pinning', () => {
+  it('normalizes semver refs to image tags', () => {
+    expect(resolveRequestedImageTag('0.9.0-rc10')).toBe('v0.9.0-rc10');
+    expect(resolveRequestedImageTag('v0.9.0-rc10')).toBe('v0.9.0-rc10');
+    expect(resolveRequestedImageTag('main')).toBeNull();
+  });
+
+  it('pins existing stack.env image tag to the requested release tag', () => {
+    const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
+    expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10')).toContain('OPENPALM_IMAGE_TAG=v0.9.0-rc10');
+  });
+
+  it('does not overwrite existing stack.env image tag for main installs', () => {
+    const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
+    expect(reconcileStackEnvImageTag(original, 'main')).toBe(original);
   });
 });

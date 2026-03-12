@@ -6,6 +6,8 @@
 #
 set -euo pipefail
 
+SCRIPT_VERSION="main"
+
 # ── Colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info() { printf "${BLUE}▸${NC} %s\n" "$*"; }
@@ -27,8 +29,12 @@ esac
 # ── Version resolution ─────────────────────────────────────────────────
 VERSION="${OPENPALM_VERSION:-}"
 if [ -z "${VERSION}" ]; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
-  [ -n "${VERSION}" ] || die "Could not determine latest release version"
+  if [ "${SCRIPT_VERSION}" != "main" ]; then
+    VERSION="v${SCRIPT_VERSION}"
+  else
+    VERSION="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    [ -n "${VERSION}" ] || die "Could not determine latest release version"
+  fi
 fi
 
 # ── Download ──────────────────────────────────────────────────────────
@@ -42,4 +48,4 @@ chmod +x "${DEST}"
 ok "Installed openpalm to ${DEST}"
 
 # ── Run install ───────────────────────────────────────────────────────
-exec "${DEST}" install "$@"
+exec "${DEST}" install --version "${VERSION}" "$@"

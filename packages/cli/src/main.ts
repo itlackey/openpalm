@@ -2,6 +2,7 @@
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, unlink, copyFile, mkdtemp, rm } from 'node:fs/promises';
+import cliPkg from '../package.json' with { type: 'json' };
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
@@ -81,6 +82,9 @@ type InstallOptions = {
   noStart: boolean;
   noOpen: boolean;
 };
+
+const RELEASE_TAG_RE = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
 
 export interface HostInfo {
   platform: string;
@@ -196,7 +200,7 @@ function printUsage(): void {
 
 function parseInstallOptions(args: string[]): InstallOptions {
   let force = false;
-  let version = 'main';
+  let version = DEFAULT_INSTALL_REF;
   let noStart = false;
   let noOpen = false;
 
@@ -224,6 +228,34 @@ function parseInstallOptions(args: string[]): InstallOptions {
   }
 
   return { force, version, noStart, noOpen };
+}
+
+export function resolveRequestedImageTag(repoRef: string): string | null {
+  const trimmed = repoRef.trim();
+  if (!trimmed || trimmed === 'main') return null;
+  if (!RELEASE_TAG_RE.test(trimmed)) return null;
+  return trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
+}
+
+function upsertEnvValue(content: string, key: string, value: string): string {
+  const line = `${key}=${value}`;
+  const pattern = new RegExp(`^${key}=.*$`, 'm');
+  if (pattern.test(content)) {
+    return content.replace(pattern, line);
+  }
+
+  const suffix = content.endsWith('\n') || content.length === 0 ? '' : '\n';
+  return `${content}${suffix}${line}\n`;
+}
+
+export function reconcileStackEnvImageTag(
+  content: string,
+  repoRef: string,
+  explicitImageTag?: string,
+): string {
+  const desiredImageTag = explicitImageTag || resolveRequestedImageTag(repoRef);
+  if (!desiredImageTag) return content;
+  return upsertEnvValue(content, 'OPENPALM_IMAGE_TAG', desiredImageTag);
 }
 
 async function isStackRunning(): Promise<boolean> {
@@ -297,12 +329,19 @@ async function ensureSecrets(configHome: string): Promise<void> {
   await Bun.write(secretsPath, content);
 }
 
-async function ensureStackEnv(configHome: string, dataHome: string, stateHome: string, workDir: string): Promise<void> {
+async function ensureStackEnv(configHome: string, dataHome: string, stateHome: string, workDir: string, repoRef: string): Promise<void> {
   const dataStackEnv = join(dataHome, 'stack.env');
   const stagedStackEnv = join(stateHome, 'artifacts', 'stack.env');
   if (!(await Bun.file(dataStackEnv).exists())) {
-    const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=${defaultDockerSock()}\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG || 'latest'}\n`;
+    const defaultImageTag = process.env.OPENPALM_IMAGE_TAG || resolveRequestedImageTag(repoRef) || 'latest';
+    const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=${defaultDockerSock()}\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${defaultImageTag}\n`;
     await Bun.write(dataStackEnv, content);
+  } else {
+    const current = await Bun.file(dataStackEnv).text();
+    const reconciled = reconcileStackEnvImageTag(current, repoRef, process.env.OPENPALM_IMAGE_TAG);
+    if (reconciled !== current) {
+      await Bun.write(dataStackEnv, reconciled);
+    }
   }
   await Bun.write(stagedStackEnv, Bun.file(dataStackEnv));
 
@@ -585,7 +624,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'stack.env.schema'), stackSchemaContent);
 
   await ensureSecrets(configHome);
-  await ensureStackEnv(configHome, dataHome, stateHome, workDir);
+  await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version);
   await ensureOpenCodeConfig(configHome);
   await ensureOpenCodeSystemConfig(dataHome);
 
