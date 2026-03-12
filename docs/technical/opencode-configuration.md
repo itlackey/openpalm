@@ -262,9 +262,10 @@ future layer):
 OpenCode resolves its bash tool shell via the `$SHELL` environment
 variable. The entrypoint sets `SHELL=/usr/local/bin/varlock-shell`, a
 wrapper script that runs all bash tool commands through `varlock run`.
-Varlock reads `secrets.env.schema` to identify sensitive variable names
-and redacts their values from command output before OpenCode passes
-the output to the LLM.
+Varlock reads the redaction schema (`.env.schema` at
+`/usr/local/etc/varlock/`) to identify sensitive variable names and
+redacts their values from command output before OpenCode passes the
+output to the LLM.
 
 **Graceful fallback:** If `varlock` is not installed or the schema file
 is missing (e.g. older image, custom builds), `varlock-shell` falls back

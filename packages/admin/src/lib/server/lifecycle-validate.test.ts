@@ -2,11 +2,15 @@
  * Tests for validateEnvironment() in lifecycle.ts.
  * Mocks node:child_process to avoid requiring the varlock binary.
  *
- * validateEnvironment() makes two execFile calls:
- *   1. secrets.env validation (CONFIG_HOME/secrets.env against DATA_HOME/secrets.env.schema)
- *   2. stack.env validation  (STATE_HOME/artifacts/stack.env against DATA_HOME/stack.env.schema)
+ * validateEnvironment() co-locates schema + env files in a temp directory
+ * (varlock discovers .env.schema alongside --path), then makes two execFile
+ * calls:
+ *   1. secrets.env validation (CONFIG_HOME/secrets.env + DATA_HOME/secrets.env.schema)
+ *   2. stack.env validation  (STATE_HOME/artifacts/stack.env + DATA_HOME/stack.env.schema)
  */
 import { describe, test, expect, afterEach, vi } from "vitest";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import * as childProcess from "node:child_process";
 
 vi.mock("node:child_process", () => ({
@@ -17,6 +21,15 @@ import { validateEnvironment } from "./lifecycle.js";
 import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
+
+/** Seed the schema and env files that validateEnvironment expects. */
+function seedValidationFiles(state: { dataDir: string; configDir: string; stateDir: string }): void {
+  writeFileSync(join(state.dataDir, "secrets.env.schema"), "# test schema\nADMIN_TOKEN=\n");
+  writeFileSync(join(state.configDir, "secrets.env"), "ADMIN_TOKEN=test\n");
+  writeFileSync(join(state.dataDir, "stack.env.schema"), "# test schema\nPORT=\n");
+  mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
+  writeFileSync(join(state.stateDir, "artifacts", "stack.env"), "PORT=8100\n");
+}
 
 // Helper: mock all execFile calls to succeed.
 function mockExecFileSuccess(): void {
@@ -68,6 +81,7 @@ describe("validateEnvironment", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
+    seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
     expect(result).toEqual({ ok: true, errors: [], warnings: [] });
@@ -80,6 +94,7 @@ describe("validateEnvironment", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
+    seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
     expect(result.ok).toBe(false);
@@ -96,6 +111,7 @@ describe("validateEnvironment", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
+    seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
     expect(result.ok).toBe(false);
@@ -103,7 +119,7 @@ describe("validateEnvironment", () => {
     expect(result.warnings).toHaveLength(0);
   });
 
-  test("uses correct schema and env paths for both validation calls", async () => {
+  test("uses --path with a temp directory for both validation calls", async () => {
     const capturedArgs: string[][] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(childProcess.execFile).mockImplementation((...args: any[]) => {
@@ -118,22 +134,17 @@ describe("validateEnvironment", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
+    seedValidationFiles(state);
 
     await validateEnvironment(state);
 
-    // First call: secrets.env validation
-    expect(capturedArgs[0]).toContain("--schema");
-    expect(capturedArgs[0]).toContain(`${state.dataDir}/secrets.env.schema`);
-    expect(capturedArgs[0]).toContain("--env-file");
-    expect(capturedArgs[0]).toContain(`${state.configDir}/secrets.env`);
-    expect(capturedArgs[0]).toContain("--quiet");
-
-    // Second call: stack.env validation
-    expect(capturedArgs[1]).toContain("--schema");
-    expect(capturedArgs[1]).toContain(`${state.dataDir}/stack.env.schema`);
-    expect(capturedArgs[1]).toContain("--env-file");
-    expect(capturedArgs[1]).toContain(`${state.stateDir}/artifacts/stack.env`);
-    expect(capturedArgs[1]).toContain("--quiet");
+    // Both calls should use "load" with "--path" pointing to a temp directory
+    expect(capturedArgs).toHaveLength(2);
+    for (const args of capturedArgs) {
+      expect(args[0]).toBe("load");
+      expect(args[1]).toBe("--path");
+      expect(args[2]).toMatch(/^\/tmp\/varlock-.*\/$/);
+    }
   });
 
   test("sanitizes API key patterns in varlock error output", async () => {
@@ -147,6 +158,7 @@ describe("validateEnvironment", () => {
     trackDir(state.stateDir);
     trackDir(state.configDir);
     trackDir(state.dataDir);
+    seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
     expect(result.errors[0]).not.toContain(fakeKey);

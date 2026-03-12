@@ -81,8 +81,10 @@ ENV PATH="/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 RUN curl -fsSL https://raw.githubusercontent.com/itlackey/agentikit/"$AGENTIKIT_VERSION"/install.sh | bash -s -- "$AGENTIKIT_VERSION" \
     && chmod 755 /usr/local/bin/akm
 
-# ── Varlock binary for runtime secret redaction ──────────────────────────────
+# ── Varlock binary + redaction schema for runtime secret redaction ────────────
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
+RUN mkdir -p /usr/local/etc/varlock
+COPY assets/redact.env.schema /usr/local/etc/varlock/.env.schema
 
 EXPOSE 4096 22
 

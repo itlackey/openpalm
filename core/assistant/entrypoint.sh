@@ -189,12 +189,12 @@ start_opencode() {
   fi
 
   # Resolve varlock for runtime secret redaction.
-  # The schema is staged by admin to DATA_HOME/assistant/env-schema/
-  # and mounted into the container at /etc/opencode/env-schema/.
-  VARLOCK_SCHEMA="/etc/opencode/env-schema/secrets.env.schema"
+  # The redaction schema (.env.schema) is baked into the image at
+  # /usr/local/etc/varlock/ — varlock discovers it via --path.
+  VARLOCK_SCHEMA_DIR="/usr/local/etc/varlock"
   VARLOCK_CMD=""
-  if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA" ]; then
-    VARLOCK_CMD="varlock run --schema $VARLOCK_SCHEMA --"
+  if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
+    VARLOCK_CMD="varlock run --path $VARLOCK_SCHEMA_DIR/ --"
   fi
 
   # Layer 1: Context window protection — set SHELL to the varlock-shell

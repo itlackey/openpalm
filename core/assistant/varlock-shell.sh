@@ -15,10 +15,10 @@
 # OpenCode then calls: varlock-shell -c "some command"
 # which becomes:       varlock run --schema <schema> -- /bin/bash -c "some command"
 
-VARLOCK_SCHEMA="${VARLOCK_SHELL_SCHEMA:-/etc/opencode/env-schema/secrets.env.schema}"
+VARLOCK_SCHEMA_DIR="${VARLOCK_SHELL_SCHEMA_DIR:-/usr/local/etc/varlock}"
 
-if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA" ]; then
-  exec varlock run --schema "$VARLOCK_SCHEMA" -- /bin/bash "$@"
+if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
+  exec varlock run --path "$VARLOCK_SCHEMA_DIR/" -- /bin/bash "$@"
 else
   exec /bin/bash "$@"
 fi

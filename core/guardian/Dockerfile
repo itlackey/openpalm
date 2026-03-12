@@ -45,7 +45,7 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
     && bun install --production
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/secrets.env.schema /app/secrets.env.schema
+COPY assets/redact.env.schema /app/.env.schema
 
 RUN mkdir -p /app/data && chown -R bun:bun /app
 USER bun
@@ -56,4 +56,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -sf http://localhost:8080/health || exit 1
 
-CMD ["varlock", "run", "--schema", "/app/secrets.env.schema", "--", "bun", "run", "src/server.ts"]
+CMD ["varlock", "run", "--", "bun", "run", "src/server.ts"]

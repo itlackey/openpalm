@@ -1,13 +1,26 @@
 #!/usr/bin/env bun
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, unlink, copyFile, mkdtemp, rm } from 'node:fs/promises';
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
 
 const IS_WINDOWS = process.platform === 'win32';
+
+/**
+ * Co-locate a schema and env file in a temp directory so varlock can discover them.
+ * Varlock discovers .env.schema files alongside the --path target. Since the schema
+ * and env file live in separate XDG directories, we stage them into a temp dir.
+ * Returns the temp dir path (caller must clean up with rm).
+ */
+async function prepareVarlockDir(schemaPath: string, envPath: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'varlock-'));
+  await copyFile(schemaPath, join(dir, '.env.schema'));
+  await copyFile(envPath, join(dir, '.env'));
+  return dir;
+}
 
 // Single source of truth for the pinned varlock version and per-platform SHA-256 checksums.
 const VARLOCK_VERSION = '0.4.0';
@@ -579,15 +592,20 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const schemaPath = join(stateHome, 'artifacts', 'secrets.env.schema');
     const envPath = join(configHome, 'secrets.env');
     if (await Bun.file(schemaPath).exists()) {
-      const proc = Bun.spawn([varlockBin, 'load', '--schema', schemaPath, '--env-file', envPath, '--quiet'], {
-        stdout: 'ignore',
-        stderr: 'ignore',
-      });
-      const code = await proc.exited;
-      if (code === 0) {
-        console.log('Configuration validated.');
-      } else {
-        console.warn('Configuration has validation warnings (non-fatal on first install).');
+      const tmpDir = await prepareVarlockDir(schemaPath, envPath);
+      try {
+        const proc = Bun.spawn([varlockBin, 'load', '--path', `${tmpDir}/`], {
+          stdout: 'ignore',
+          stderr: 'ignore',
+        });
+        const code = await proc.exited;
+        if (code === 0) {
+          console.log('Configuration validated.');
+        } else {
+          console.warn('Configuration has validation warnings (non-fatal on first install).');
+        }
+      } finally {
+        await rm(tmpDir, { recursive: true, force: true });
       }
     }
   } catch {
@@ -754,15 +772,20 @@ async function runScan(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const scanArgs = [varlockBin, 'scan'];
-  if (await Bun.file(schemaPath).exists()) {
-    scanArgs.push('--schema', schemaPath);
+  // Co-locate schema + env in a temp dir so varlock can discover them.
+  // varlock scan resolves sensitive values from the config, then scans
+  // the current working directory for plaintext occurrences.
+  const tmpDir = await prepareVarlockDir(schemaPath, envPath);
+  try {
+    const proc = Bun.spawn([varlockBin, 'scan', '--path', `${tmpDir}/`], {
+      stdout: 'inherit',
+      stderr: 'inherit',
+    });
+    const code = await proc.exited;
+    process.exit(code);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
   }
-  scanArgs.push('--env-file', envPath);
-
-  const proc = Bun.spawn(scanArgs, { stdout: 'inherit', stderr: 'inherit' });
-  const code = await proc.exited;
-  process.exit(code);
 }
 
 async function runValidate(args: string[]): Promise<void> {
@@ -780,14 +803,17 @@ async function runValidate(args: string[]): Promise<void> {
     );
     process.exit(1);
   }
-  const schemaPath = primarySchema;
-
-  const proc = Bun.spawn(
-    [varlockBin, 'load', '--schema', schemaPath, '--env-file', envPath],
-    { stdout: 'inherit', stderr: 'inherit' },
-  );
-  const code = await proc.exited;
-  process.exit(code);
+  const tmpDir = await prepareVarlockDir(primarySchema, envPath);
+  try {
+    const proc = Bun.spawn(
+      [varlockBin, 'load', '--path', `${tmpDir}/`],
+      { stdout: 'inherit', stderr: 'inherit' },
+    );
+    const code = await proc.exited;
+    process.exit(code);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {

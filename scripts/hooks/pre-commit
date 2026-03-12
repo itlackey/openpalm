@@ -30,15 +30,19 @@ for candidate in \
 done
 
 if [ -n "$VARLOCK_BIN" ] && [ -f "$SECRETS_ENV" ]; then
-  # varlock scan resolves @sensitive values from secrets.env and searches
+  # varlock scan resolves @sensitive values from .env files and searches
   # the working tree for plaintext occurrences. If it finds your actual
   # OPENAI_API_KEY value in a committed file, it catches it — regardless
   # of whether the key matches a known prefix pattern.
-  if [ -f "$SCHEMA" ]; then
-    exec "$VARLOCK_BIN" scan --schema "$SCHEMA" --env-file "$SECRETS_ENV"
-  else
-    exec "$VARLOCK_BIN" scan --env-file "$SECRETS_ENV"
+  #
+  # varlock discovers .env.schema files via --path. We point it at the
+  # secrets.env file; varlock looks for .env.schema in the same directory.
+  # If the schema hasn't been staged yet, we copy it alongside secrets.env.
+  SECRETS_DIR="$(dirname "$SECRETS_ENV")"
+  if [ -f "$SCHEMA" ] && [ ! -f "$SECRETS_DIR/.env.schema" ]; then
+    cp "$SCHEMA" "$SECRETS_DIR/.env.schema" 2>/dev/null || true
   fi
+  exec "$VARLOCK_BIN" scan --path "$SECRETS_ENV"
   # exec replaces this process — if we get here, varlock scan ran.
 fi
 

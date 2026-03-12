@@ -49,11 +49,11 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
     && bun install --production
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/secrets.env.schema /app/secrets.env.schema
+COPY assets/redact.env.schema /app/.env.schema
 
 RUN chown -R bun:bun /app
 
 USER bun
 
 EXPOSE 8765
-CMD ["varlock", "run", "--schema", "/app/secrets.env.schema", "--", "bun", "run", "src/server.ts"]
+CMD ["varlock", "run", "--", "bun", "run", "src/server.ts"]

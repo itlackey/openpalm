@@ -42,7 +42,7 @@ COPY core/channel/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/secrets.env.schema /app/secrets.env.schema
+COPY assets/redact.env.schema /app/.env.schema
 
 RUN chown -R bun:bun /app
 

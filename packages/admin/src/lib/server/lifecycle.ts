@@ -4,7 +4,9 @@
  * State factory, apply* lifecycle transitions, compose file list builders,
  * and caller/action validation.
  */
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
@@ -306,7 +308,9 @@ export function isAllowedAction(action: string): boolean {
 
 /**
  * Validate the environment configuration using varlock.
- * Runs `varlock load --schema <schema> --env-file <env> --quiet`.
+ * Runs `varlock load --path <tmpdir>/` with the schema and env file
+ * co-located in a temp directory (varlock discovers .env.schema files
+ * from the --path directory).
  * Returns { ok, errors, warnings }.
  * Never throws — returns { ok: false } on any error.
  */
@@ -337,17 +341,36 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
     }
   }
 
+  /**
+   * Run varlock load with a schema and env file that may be in different
+   * directories. Varlock discovers .env.schema alongside the --path target,
+   * so we create a temp directory with both files co-located.
+   */
+  async function runVarlockLoad(
+    schemaFile: string,
+    envFile: string,
+  ): Promise<void> {
+    const tmpDir = mkdtempSync(join(tmpdir(), "varlock-"));
+    try {
+      copyFileSync(schemaFile, join(tmpDir, ".env.schema"));
+      copyFileSync(envFile, join(tmpDir, ".env"));
+      await execFileAsync(
+        "varlock",
+        ["load", "--path", `${tmpDir}/`],
+        { timeout: 10000 }
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
   const errors: string[] = [];
   const warnings: string[] = [];
   let anyFailed = false;
 
-  // Validate secrets.env against CONFIG_HOME/secrets.env.schema
+  // Validate secrets.env against DATA_HOME/secrets.env.schema
   try {
-    await execFileAsync(
-      "varlock",
-      ["load", "--schema", schemaPath, "--env-file", envPath, "--quiet"],
-      { timeout: 10000 }
-    );
+    await runVarlockLoad(schemaPath, envPath);
   } catch (err: unknown) {
     anyFailed = true;
     if (err && typeof err === "object" && "stderr" in err) {
@@ -362,11 +385,7 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
   const stackSchemaPath = `${state.dataDir}/stack.env.schema`;
   const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
   try {
-    await execFileAsync(
-      "varlock",
-      ["load", "--schema", stackSchemaPath, "--env-file", stackEnvPath, "--quiet"],
-      { timeout: 10000 }
-    );
+    await runVarlockLoad(stackSchemaPath, stackEnvPath);
   } catch (err: unknown) {
     anyFailed = true;
     if (err && typeof err === "object" && "stderr" in err) {

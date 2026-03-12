@@ -69,7 +69,7 @@ RUN mkdir -p /state /data && chown node:node /state /data
 
 # Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
-COPY assets/secrets.env.schema /app/secrets.env.schema
+COPY assets/redact.env.schema /app/.env.schema
 
 USER node
 
@@ -79,4 +79,4 @@ EXPOSE 8100
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
-CMD ["varlock", "run", "--schema", "/app/secrets.env.schema", "--", "node", "build/index.js"]
+CMD ["varlock", "run", "--", "node", "build/index.js"]
