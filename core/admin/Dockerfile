@@ -42,13 +42,22 @@ RUN npm install --omit=dev
 RUN mkdir -p /state /data && chown node:node /state /data
 
 # ── Pinned installer versions ────────────────────────────────────────────────
-# Bump this ARG when upgrading; keeps curl|bash install reproducible.
+# Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
 ARG BUN_VERSION=bun-v1.3.10
+ARG VARLOCK_VERSION=latest
 
 # Install Bun to /usr/local so it's on PATH for all users
 ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV PATH="/usr/local/bin:$PATH"
+
+# Install Varlock for environment validation
+# VARLOCK_VERSION env var is honored by the install script for version pinning.
+# chmod -R a+rX ensures the varlock binary and its parent dirs are readable/traversable
+# by the node user after the USER switch (Debian slim sets /root to mode 700 by default).
+RUN VARLOCK_VERSION="$VARLOCK_VERSION" curl -sSfL https://varlock.dev/install.sh | sh -s -- --force-no-brew \
+  && chmod -R a+rX /root/.varlock \
+  && ln -s /root/.varlock/bin/varlock /usr/local/bin/varlock
 
 USER node
 

@@ -5,6 +5,8 @@
  * and caller/action validation.
  */
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
@@ -14,6 +16,8 @@ import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex,
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
+
+const execFileAsync = promisify(execFile);
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -296,4 +300,45 @@ const ALLOWED_ACTIONS = new Set([
 
 export function isAllowedAction(action: string): boolean {
   return ALLOWED_ACTIONS.has(action);
+}
+
+// ── Environment Validation ─────────────────────────────────────────────
+
+/**
+ * Validate the environment configuration using varlock.
+ * Runs `varlock load --schema <schema> --env-file <env> --quiet`.
+ * Returns { ok, errors, warnings }.
+ * Never throws — returns { ok: false } on any error.
+ */
+export async function validateEnvironment(state: ControlPlaneState): Promise<{
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+}> {
+  const schemaPath = `${state.dataDir}/secrets.env.schema`;
+  const envPath = `${state.configDir}/secrets.env`;
+
+  try {
+    await execFileAsync(
+      "varlock",
+      ["load", "--schema", schemaPath, "--env-file", envPath, "--quiet"],
+      { timeout: 10000 }
+    );
+    return { ok: true, errors: [], warnings: [] };
+  } catch (err: unknown) {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (err && typeof err === "object" && "stderr" in err) {
+      const stderr = String((err as { stderr: string }).stderr);
+      for (const line of stderr.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.includes("ERROR")) errors.push(trimmed);
+        else if (trimmed.includes("WARN")) warnings.push(trimmed);
+      }
+    }
+
+    return { ok: false, errors, warnings };
+  }
 }

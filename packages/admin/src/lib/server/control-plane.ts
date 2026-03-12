@@ -99,6 +99,8 @@ export {
   ensureOpenCodeSystemConfig,
   ensureMemoryDir,
   ensureCoreAutomations,
+  ensureSecretsSchema,
+  ensureStackSchema,
   isOllamaEnabled,
   stagedEnvFile,
   stagedStackEnvFile,
@@ -147,7 +149,8 @@ export {
   buildComposeFileList,
   buildManagedServices,
   normalizeCaller,
-  isAllowedAction
+  isAllowedAction,
+  validateEnvironment
 } from "./lifecycle.js";
 
 // ── connection-profiles.ts ────────────────────────────────────────────
