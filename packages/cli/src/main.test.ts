@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { mkdirSync, writeFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag } from './main.ts';
+import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
 
 describe('cli main', () => {
   const originalFetch = globalThis.fetch;
@@ -221,6 +221,13 @@ describe('install image tag pinning', () => {
     expect(resolveRequestedImageTag('0.9.0-rc10')).toBe('v0.9.0-rc10');
     expect(resolveRequestedImageTag('v0.9.0-rc10')).toBe('v0.9.0-rc10');
     expect(resolveRequestedImageTag('main')).toBeNull();
+    expect(resolveRequestedImageTag('   ')).toBeNull();
+    expect(resolveRequestedImageTag('1.2')).toBeNull();
+    expect(resolveRequestedImageTag('v1.x.y')).toBeNull();
+    expect(resolveRequestedImageTag('invalid')).toBeNull();
+    expect(resolveRequestedImageTag('v1.0.0-rc..10')).toBeNull();
+    expect(resolveRequestedImageTag('v1.0.0..1')).toBeNull();
+    expect(resolveRequestedImageTag('v1.0.0-rc_10')).toBeNull();
   });
 
   it('pins existing stack.env image tag to the requested release tag', () => {
@@ -233,5 +240,36 @@ describe('install image tag pinning', () => {
   it('does not overwrite existing stack.env image tag for main installs', () => {
     const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
     expect(reconcileStackEnvImageTag(original, 'main')).toBe(original);
+  });
+
+  it('prefers an explicit image tag over the requested release ref', () => {
+    const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
+    expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10', 'v9.9.9-test')).toBe(
+      'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v9.9.9-test\n',
+    );
+  });
+
+  it('updates an existing key in env content', () => {
+    expect(upsertEnvValue('OPENPALM_IMAGE_TAG=latest\n', 'OPENPALM_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
+      'OPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    );
+  });
+
+  it('inserts a new key into empty env content', () => {
+    expect(upsertEnvValue('', 'OPENPALM_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
+      'OPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    );
+  });
+
+  it('inserts a new key when the original content lacks a trailing newline', () => {
+    expect(upsertEnvValue('OPENPALM_IMAGE_NAMESPACE=openpalm', 'OPENPALM_IMAGE_TAG', 'v0.9.0-rc10')).toBe(
+      'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    );
+  });
+
+  it('treats regex characters in keys literally when updating env content', () => {
+    expect(upsertEnvValue('KEY.WITH-HYPHEN=old\n', 'KEY.WITH-HYPHEN', 'new')).toBe(
+      'KEY.WITH-HYPHEN=new\n',
+    );
   });
 });

@@ -83,7 +83,7 @@ type InstallOptions = {
   noOpen: boolean;
 };
 
-const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+](?:[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?$/;
 const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
 
 export interface HostInfo {
@@ -237,9 +237,9 @@ export function resolveRequestedImageTag(repoRef: string): string | null {
   return trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
 }
 
-function upsertEnvValue(content: string, key: string, value: string): string {
+export function upsertEnvValue(content: string, key: string, value: string): string {
   const line = `${key}=${value}`;
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedKey = key.replace(/[|\\{}()[\]^$+*?.-]/g, '\\$&');
   const pattern = new RegExp(`^${escapedKey}=.*$`, 'm');
   if (pattern.test(content)) {
     return content.replace(pattern, line);
@@ -333,13 +333,21 @@ async function ensureSecrets(configHome: string): Promise<void> {
 async function ensureStackEnv(configHome: string, dataHome: string, stateHome: string, workDir: string, repoRef: string): Promise<void> {
   const dataStackEnv = join(dataHome, 'stack.env');
   const stagedStackEnv = join(stateHome, 'artifacts', 'stack.env');
+  const explicitImageTag = process.env.OPENPALM_IMAGE_TAG;
+  const hasExplicitImageTag = explicitImageTag !== undefined && explicitImageTag !== '';
   if (!(await Bun.file(dataStackEnv).exists())) {
-    const defaultImageTag = process.env.OPENPALM_IMAGE_TAG || resolveRequestedImageTag(repoRef) || 'latest';
+    const defaultImageTag = hasExplicitImageTag
+      ? explicitImageTag
+      : (resolveRequestedImageTag(repoRef) || 'latest');
     const content = `# OpenPalm Stack Bootstrap — system-managed, do not edit\nOPENPALM_CONFIG_HOME=${configHome}\nOPENPALM_DATA_HOME=${dataHome}\nOPENPALM_STATE_HOME=${stateHome}\nOPENPALM_WORK_DIR=${workDir}\nOPENPALM_UID=${process.getuid?.() ?? 1000}\nOPENPALM_GID=${process.getgid?.() ?? 1000}\nOPENPALM_DOCKER_SOCK=${defaultDockerSock()}\nOPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE || 'openpalm'}\nOPENPALM_IMAGE_TAG=${defaultImageTag}\n`;
     await Bun.write(dataStackEnv, content);
   } else {
     const current = await Bun.file(dataStackEnv).text();
-    const reconciled = reconcileStackEnvImageTag(current, repoRef, process.env.OPENPALM_IMAGE_TAG);
+    const reconciled = reconcileStackEnvImageTag(
+      current,
+      repoRef,
+      hasExplicitImageTag ? explicitImageTag : undefined,
+    );
     if (reconciled !== current) {
       await Bun.write(dataStackEnv, reconciled);
     }

@@ -30,7 +30,11 @@ esac
 VERSION="${OPENPALM_VERSION:-}"
 if [ -z "${VERSION}" ]; then
   if [ "${SCRIPT_VERSION}" != "main" ]; then
-    VERSION="v${SCRIPT_VERSION}"
+    if [ "${SCRIPT_VERSION#v}" != "${SCRIPT_VERSION}" ]; then
+      VERSION="${SCRIPT_VERSION}"
+    else
+      VERSION="v${SCRIPT_VERSION}"
+    fi
   else
     VERSION="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
     [ -n "${VERSION}" ] || die "Could not determine latest release version"

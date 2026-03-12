@@ -12,7 +12,11 @@ $ScriptVersion = 'main'
 $Version = $env:OPENPALM_VERSION
 if (-not $Version) {
     if ($ScriptVersion -ne 'main') {
-        $Version = "v$ScriptVersion"
+        if ($ScriptVersion.StartsWith('v')) {
+            $Version = $ScriptVersion
+        } else {
+            $Version = "v$ScriptVersion"
+        }
     } else {
         $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $release.tag_name
