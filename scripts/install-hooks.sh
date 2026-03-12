@@ -9,18 +9,18 @@ HOOKS_SRC="${REPO_ROOT}/scripts/hooks"
 HOOKS_DEST="${REPO_ROOT}/.git/hooks"
 
 install_hook() {
-  local name="$1"
-  local src="${HOOKS_SRC}/${name}"
-  local dest="${HOOKS_DEST}/${name}"
+  hook_name="$1"
+  hook_src="${HOOKS_SRC}/${hook_name}"
+  hook_dest="${HOOKS_DEST}/${hook_name}"
 
-  if [ ! -f "$src" ]; then
-    echo "install-hooks: source not found: $src" >&2
+  if [ ! -f "$hook_src" ]; then
+    echo "install-hooks: source not found: $hook_src" >&2
     return 1
   fi
 
-  cp "$src" "$dest"
-  chmod +x "$dest"
-  echo "Installed: .git/hooks/${name}"
+  cp "$hook_src" "$hook_dest"
+  chmod +x "$hook_dest"
+  echo "Installed: .git/hooks/${hook_name}"
 }
 
 install_hook pre-commit

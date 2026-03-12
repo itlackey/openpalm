@@ -344,7 +344,7 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
   // Validate secrets.env against CONFIG_HOME/secrets.env.schema
   try {
     await execFileAsync(
-      "/usr/local/bin/varlock",
+      "varlock",
       ["load", "--schema", schemaPath, "--env-file", envPath, "--quiet"],
       { timeout: 10000 }
     );
@@ -363,7 +363,7 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
   const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
   try {
     await execFileAsync(
-      "/usr/local/bin/varlock",
+      "varlock",
       ["load", "--schema", stackSchemaPath, "--env-file", stackEnvPath, "--quiet"],
       { timeout: 10000 }
     );

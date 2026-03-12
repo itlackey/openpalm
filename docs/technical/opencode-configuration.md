@@ -122,15 +122,25 @@ and overwritten when the bundled version changes (with backup).
 
 ### opencode.jsonc
 
-Declares plugins for auto-install. The model is not set here; it comes
-from the user's connection setup (see below):
+Declares plugins for auto-install and security rules. The model is not
+set here; it comes from the user's connection setup (see below):
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
+  "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"],
+  "permission": {
+    "read": {
+      "/home/opencode/.local/share/opencode/auth.json": "deny",
+      "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+    }
+  }
 }
 ```
+
+The `permission.read` deny rules prevent the assistant from reading
+credential files that contain session tokens. This is part of the
+context window protection strategy (see below).
 
 The model is **not** set in the system config. It is determined by the
 user's connection setup: the setup wizard or admin UI writes the selected
@@ -236,6 +246,45 @@ The config file is never overwritten once it exists, so user edits are safe.
 OpenCode merges configuration from both `~/.config/opencode/` (user) and
 `OPENCODE_CONFIG_DIR` (system), so user-added extensions complement the
 system-managed set.
+
+---
+
+## Context Window Protection
+
+The assistant has access to API keys and tokens at runtime (they are in
+its process environment). When those credentials appear in tool output
+(error messages, debug traces, env dumps), they enter the LLM context
+window. Two layers prevent this:
+
+### Layer 1: Shell Wrapper (varlock-shell)
+
+OpenCode resolves its bash tool shell via the `$SHELL` environment
+variable. The entrypoint sets `SHELL=/usr/local/bin/varlock-shell`, a
+wrapper script that runs all bash tool commands through `varlock run`.
+Varlock reads `secrets.env.schema` to identify sensitive variable names
+and redacts their values from command output before OpenCode passes
+the output to the LLM.
+
+**Graceful fallback:** If `varlock` is not installed or the schema file
+is missing (e.g. older image, custom builds), `varlock-shell` falls back
+to plain `/bin/bash` with no redaction.
+
+**Files:**
+- `core/assistant/varlock-shell.sh` -- the wrapper script
+- `core/assistant/entrypoint.sh` -- sets `SHELL` before starting OpenCode
+
+### Layer 3: Permission Deny on Credential Files
+
+The system config (`opencode.jsonc`) includes `permission.read` deny
+rules that block the assistant from reading OpenCode's own credential
+stores:
+
+- `/home/opencode/.local/share/opencode/auth.json` -- session tokens
+- `/home/opencode/.local/share/opencode/mcp-auth.json` -- MCP auth tokens
+
+These files contain tokens that the assistant never needs to read
+directly. The deny rules ensure they cannot enter the context window
+through OpenCode's file read tool.
 
 ---
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, unlink } from 'node:fs/promises';
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
@@ -9,9 +9,45 @@ const REPO_NAME = 'openpalm';
 
 const IS_WINDOWS = process.platform === 'win32';
 
-// Single source of truth for the pinned varlock version and its SHA-256 checksum.
+// Single source of truth for the pinned varlock version and per-platform SHA-256 checksums.
 const VARLOCK_VERSION = '0.4.0';
-const VARLOCK_SHA256 = '820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab';
+
+/** Maps artifact filename to its SHA-256 checksum (from checksums.txt in the release). */
+const VARLOCK_CHECKSUMS: Record<string, string> = {
+  'varlock-linux-x64.tar.gz': '820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab',
+  'varlock-linux-arm64.tar.gz': 'e830baaa901b6389ecf281bdd2449bfaf7586e91fd3a7a038ec06f78e6fa92f8',
+  'varlock-linux-musl-x64.tar.gz': 'c1697993ca1596e74e92d729295750445d3a8325743ebd8d0b7c8379f5a6abec',
+  'varlock-linux-musl-arm64.tar.gz': '7e4987a628206ca07b1079da71c049df8101d2118921cf5f991cb543b0ea6070',
+  'varlock-macos-x64.tar.gz': 'e6abf0d97da8ff7c98b0e9044a8b71f48fbf74a0d7bfc2543a81575a07b7a03b',
+  'varlock-macos-arm64.tar.gz': '228e4c2666b9fa50a83a8713a848e7a0f0044d7fd7c9d441d43e6ebccad2f4a3',
+};
+
+/**
+ * Resolves the varlock tarball filename for the current platform and architecture.
+ * Maps Node.js process.platform / process.arch to the release artifact name.
+ */
+function varlockArtifactName(): string {
+  const platformMap: Record<string, string> = {
+    linux: 'linux',
+    darwin: 'macos',
+  };
+  const archMap: Record<string, string> = {
+    x64: 'x64',
+    arm64: 'arm64',
+  };
+
+  const os = platformMap[process.platform];
+  const arch = archMap[process.arch];
+
+  if (!os || !arch) {
+    throw new Error(
+      `Unsupported platform/arch for varlock: ${process.platform}/${process.arch}. ` +
+        `Supported: linux/x64, linux/arm64, darwin/x64, darwin/arm64.`,
+    );
+  }
+
+  return `varlock-${os}-${arch}.tar.gz`;
+}
 
 type Command =
   | 'install'
@@ -294,7 +330,13 @@ async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
     JSON.stringify(
       {
         "$schema": "https://opencode.ai/config.json",
-        "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"]
+        "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"],
+        "permission": {
+          "read": {
+            "/home/opencode/.local/share/opencode/auth.json": "deny",
+            "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+          }
+        }
       },
       null,
       2,
@@ -372,7 +414,16 @@ async function ensureVarlock(stateHome: string): Promise<string> {
 
   await mkdir(binDir, { recursive: true });
 
-  const tarballUrl = `https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-x64.tar.gz`;
+  const artifact = varlockArtifactName();
+  const expectedHash = VARLOCK_CHECKSUMS[artifact];
+  if (!expectedHash) {
+    throw new Error(
+      `No SHA-256 checksum on record for ${artifact}. ` +
+        `Cannot verify download integrity.`,
+    );
+  }
+
+  const tarballUrl = `https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/${artifact}`;
   const tarballPath = join(binDir, 'varlock.tar.gz');
 
   // Download pinned tarball using argument array (no shell string interpolation).
@@ -389,21 +440,18 @@ async function ensureVarlock(stateHome: string): Promise<string> {
     throw new Error(`Failed to download varlock tarball (curl exited with code ${downloadCode})`);
   }
 
-  // Verify SHA-256 integrity before extracting.
-  const hashProc = Bun.spawn(
-    ['sh', '-c', `echo "${VARLOCK_SHA256}  ${tarballPath}" | sha256sum -c -`],
-    {
-      env: { HOME: process.env.HOME ?? '' },
-      stdout: 'inherit',
-      stderr: 'inherit',
-    },
-  );
-  const hashCode = await hashProc.exited;
-  if (hashCode !== 0) {
+  // Verify SHA-256 integrity using Bun built-in crypto (cross-platform).
+  const hasher = new Bun.CryptoHasher('sha256');
+  hasher.update(await Bun.file(tarballPath).arrayBuffer());
+  const actualHash = hasher.digest('hex');
+  if (actualHash !== expectedHash) {
     // Remove the suspect file before throwing.
-    const rmProc = Bun.spawn(['rm', '-f', tarballPath], { env: {} });
-    await rmProc.exited;
-    throw new Error(`varlock tarball SHA-256 verification failed — download may be corrupted`);
+    try { await unlink(tarballPath); } catch { /* best effort */ }
+    throw new Error(
+      `varlock tarball SHA-256 verification failed — download may be corrupted.\n` +
+        `  Expected: ${expectedHash}\n` +
+        `  Actual:   ${actualHash}`,
+    );
   }
 
   // Extract the binary.
@@ -421,10 +469,9 @@ async function ensureVarlock(stateHome: string): Promise<string> {
   }
 
   // Remove tarball after extraction.
-  const rmProc = Bun.spawn(['rm', '-f', tarballPath], { env: {} });
-  await rmProc.exited;
+  try { await unlink(tarballPath); } catch { /* best effort */ }
 
-  // Set executable bit.
+  // Set executable bit (no-op on Windows, but varlock ships as .zip there which is unsupported).
   const chmodProc = Bun.spawn(['chmod', '+x', varlockBin], { env: {} });
   await chmodProc.exited;
 

@@ -197,6 +197,14 @@ start_opencode() {
     VARLOCK_CMD="varlock run --schema $VARLOCK_SCHEMA --"
   fi
 
+  # Layer 1: Context window protection — set SHELL to the varlock-shell
+  # wrapper so OpenCode's bash tool runs all commands through varlock.
+  # This redacts secret values in tool output before they enter the LLM
+  # context window. Falls back to /bin/bash if varlock is unavailable.
+  if [ -x /usr/local/bin/varlock-shell ]; then
+    export SHELL=/usr/local/bin/varlock-shell
+  fi
+
   if [ "$(id -u)" = "0" ]; then
     if ! command -v gosu >/dev/null 2>&1; then
       echo "ERROR: gosu not found — cannot drop privileges. Install gosu in the Dockerfile." >&2
@@ -204,8 +212,9 @@ start_opencode() {
     fi
     # gosu resets HOME from /etc/passwd (UID 1000 → /home/node in node:lts).
     # OpenCode resolves user config via HOME, so we must preserve it.
+    # SHELL must also be forwarded for the varlock-shell wrapper (Layer 1).
     export HOME=/home/opencode
-    exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode \
+    exec gosu "$TARGET_UID:$TARGET_GID" env HOME=/home/opencode SHELL="$SHELL" \
       $VARLOCK_CMD opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs
   fi
 

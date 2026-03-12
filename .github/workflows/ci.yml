@@ -32,7 +32,10 @@ jobs:
         # (install with ./scripts/install-hooks.sh + openpalm validate).
         # Patterns: OpenAI (sk-*), Groq (gsk_*), Google (AIza*), 64-char hex tokens.
         run: |
-          if git diff origin/${{ github.base_ref || 'main' }}...HEAD --unified=0 \
+          set -euo pipefail
+          BASE_REF="${{ github.base_ref || 'main' }}"
+          git fetch origin "${BASE_REF}" --depth=1
+          if git diff "origin/${BASE_REF}"...HEAD --unified=0 \
               | grep '^+' | grep -v '^+++' \
               | grep -vi 'sha256\|sha_256\|checksum\|digest' \
               | grep -qP '(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_\-]{35}|(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f]))'; then
