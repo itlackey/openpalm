@@ -14,27 +14,56 @@ info() { printf "${BLUE}▸${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}✓${NC} %s\n" "$*"; }
 die()  { printf "${RED}✗${NC} %s\n" "$*" >&2; exit 1; }
 
+# ── Helpers ───────────────────────────────────────────────────────────
+normalize_version() {
+  if [ "${1#v}" != "$1" ]; then
+    printf '%s\n' "$1"
+  else
+    printf 'v%s\n' "$1"
+  fi
+}
+
 # ── Platform detection ────────────────────────────────────────────────
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "${OS}-${ARCH}" in
-  Linux-x86_64)   BINARY="openpalm-linux-x64" ;;
-  Linux-aarch64)  BINARY="openpalm-linux-arm64" ;;
-  Darwin-x86_64)  BINARY="openpalm-darwin-x64" ;;
-  Darwin-arm64)   BINARY="openpalm-darwin-arm64" ;;
+  Linux-x86_64)   BINARY="openpalm-cli-linux-x64" ;;
+  Linux-aarch64)  BINARY="openpalm-cli-linux-arm64" ;;
+  Darwin-x86_64)  BINARY="openpalm-cli-darwin-x64" ;;
+  Darwin-arm64)   BINARY="openpalm-cli-darwin-arm64" ;;
   *) die "Unsupported platform: ${OS}-${ARCH}" ;;
 esac
 
 # ── Version resolution ─────────────────────────────────────────────────
-VERSION="${OPENPALM_VERSION:-}"
+REQUESTED_VERSION="${OPENPALM_VERSION:-}"
+PASSTHROUGH_ARGS=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --version)
+      [ "$#" -ge 2 ] || die "--version requires a value"
+      REQUESTED_VERSION="$2"
+      shift 2
+      ;;
+    --version=*)
+      REQUESTED_VERSION="${1#--version=}"
+      shift
+      ;;
+    *)
+      PASSTHROUGH_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+VERSION=''
+if [ -n "${REQUESTED_VERSION}" ]; then
+  VERSION="$(normalize_version "${REQUESTED_VERSION}")"
+fi
 if [ -z "${VERSION}" ]; then
   if [ "${SCRIPT_VERSION}" != "main" ]; then
-    if [ "${SCRIPT_VERSION#v}" != "${SCRIPT_VERSION}" ]; then
-      VERSION="${SCRIPT_VERSION}"
-    else
-      VERSION="v${SCRIPT_VERSION}"
-    fi
+    VERSION="$(normalize_version "${SCRIPT_VERSION}")"
   else
     VERSION="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
     [ -n "${VERSION}" ] || die "Could not determine latest release version"
@@ -52,4 +81,4 @@ chmod +x "${DEST}"
 ok "Installed openpalm to ${DEST}"
 
 # ── Run install ───────────────────────────────────────────────────────
-exec "${DEST}" install --version "${VERSION}" "$@"
+exec "${DEST}" install --version "${VERSION}" "${PASSTHROUGH_ARGS[@]}"
