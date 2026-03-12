@@ -1,4 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "agentikit-opencode"]
+  "plugin": ["@openpalm/assistant-tools", "agentikit-opencode"],
+  // Env schema files are staged to /etc/opencode/env-schema/ during admin apply.
+  // The assistant can read schema metadata (variable names, types, descriptions)
+  // without ever seeing actual .env values.
+  "context": {
+    "include": [
+      "/etc/opencode/env-schema/**"
+    ]
+  }
 }

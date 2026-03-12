@@ -5,7 +5,7 @@
  * Caddyfile/compose staging, env staging, channel/automation file staging,
  * and artifact persistence.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import adminPkg from "../../../package.json" with { type: "json" };
@@ -18,6 +18,8 @@ import {
   readCoreCaddyfile,
   readCoreCompose,
   readOllamaCompose,
+  ensureSecretsSchema,
+  ensureStackSchema,
   PUBLIC_ACCESS_IMPORT,
   LAN_ONLY_IMPORT
 } from "./core-assets.js";
@@ -366,6 +368,26 @@ function stageAutomationFiles(state: ControlPlaneState): void {
   }
 }
 
+// ── Env Schema Staging ────────────────────────────────────────────────
+
+/**
+ * Stage schema files to DATA_HOME/assistant/env-schema/ so the assistant
+ * container can read them for configuration reasoning.
+ *
+ * The assistant reads schema files to understand variable types and
+ * descriptions — it never reads actual .env values.
+ */
+function stageEnvSchemas(state: ControlPlaneState): void {
+  const destDir = `${state.dataDir}/assistant/env-schema`;
+  mkdirSync(destDir, { recursive: true });
+
+  const secretsSchemaPath = ensureSecretsSchema();
+  const stackSchemaPath = ensureStackSchema();
+
+  copyFileSync(secretsSchemaPath, `${destDir}/secrets.env.schema`);
+  copyFileSync(stackSchemaPath, `${destDir}/stack.env.schema`);
+}
+
 // ── Top-Level Staging ─────────────────────────────────────────────────
 
 export function stageArtifacts(state: ControlPlaneState): {
@@ -430,6 +452,7 @@ export function persistArtifacts(state: ControlPlaneState): void {
   stageChannelYmlFiles(state);
   stageChannelCaddyfiles(state);
   stageAutomationFiles(state);
+  stageEnvSchemas(state);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
   writeFileSync(
