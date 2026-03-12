@@ -22,6 +22,22 @@ WORKDIR /workspace/packages/admin
 ENV PATH="/workspace/node_modules/.bin:$PATH"
 RUN npm run build
 
+# ── Varlock Fetch ─────────────────────────────────────────────────────────────
+# Isolated stage so the download layer is cached independently of the app build.
+# Pinned version; bump ARG to upgrade. Uses --retry-all-errors to handle
+# transient GitHub CDN failures (502/503).
+FROM node:lts-trixie-slim AS varlock-fetch
+ARG VARLOCK_VERSION=0.4.0
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL \
+      --retry 5 --retry-delay 10 --retry-all-errors \
+      "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-x64.tar.gz" \
+      -o /tmp/varlock.tar.gz \
+  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
+  && chmod +x /usr/local/bin/varlock \
+  && rm /tmp/varlock.tar.gz
+
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM node:lts-trixie-slim
 RUN apt-get update \
@@ -41,23 +57,8 @@ RUN npm install --omit=dev
 
 RUN mkdir -p /state /data && chown node:node /state /data
 
-# ── Pinned installer versions ────────────────────────────────────────────────
-# Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
-ARG BUN_VERSION=bun-v1.3.10
-ARG VARLOCK_VERSION=latest
-
-# Install Bun to /usr/local so it's on PATH for all users
-ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
-ENV PATH="/usr/local/bin:$PATH"
-
-# Install Varlock for environment validation
-# VARLOCK_VERSION env var is honored by the install script for version pinning.
-# chmod -R a+rX ensures the varlock binary and its parent dirs are readable/traversable
-# by the node user after the USER switch (Debian slim sets /root to mode 700 by default).
-RUN VARLOCK_VERSION="$VARLOCK_VERSION" curl -sSfL https://varlock.dev/install.sh | sh -s -- --force-no-brew \
-  && chmod -R a+rX /root/.varlock \
-  && ln -s /root/.varlock/bin/varlock /usr/local/bin/varlock
+# Copy varlock binary from fetch stage — no Bun required (standalone ELF binary)
+COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 
 USER node
 
