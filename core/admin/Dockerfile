@@ -28,12 +28,14 @@ RUN npm run build
 # transient GitHub CDN failures (502/503).
 FROM node:lts-trixie-slim AS varlock-fetch
 ARG VARLOCK_VERSION=0.4.0
+ARG VARLOCK_SHA256=820295b271cece2679b2b9701b5285ce39354fc2f35797365fa36c70125f51ab
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL \
       --retry 5 --retry-delay 10 --retry-all-errors \
       "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-x64.tar.gz" \
       -o /tmp/varlock.tar.gz \
+  && echo "${VARLOCK_SHA256}  /tmp/varlock.tar.gz" | sha256sum -c - \
   && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
   && chmod +x /usr/local/bin/varlock \
   && rm /tmp/varlock.tar.gz

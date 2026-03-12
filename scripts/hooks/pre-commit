@@ -1,0 +1,35 @@
+#!/bin/sh
+# OpenPalm pre-commit hook — scans staged additions for common API key patterns.
+# Install via: ./scripts/install-hooks.sh
+#
+# Uses grep-based detection rather than varlock scan to avoid false positives
+# from common default values (UIDs, path strings) that varlock picks up from
+# schema defaults and the process environment.
+
+set -e
+
+# Patterns known to indicate real credentials. Limited to provider-specific
+# key formats with high specificity (low false-positive risk):
+#   sk-*   OpenAI API keys
+#   gsk_*  Groq API keys
+#   AIza*  Google API keys
+# 64-char hex is intentionally excluded: it matches SHA-256 hashes and other
+# legitimate digests (e.g. VARLOCK_SHA256 in Dockerfile / CI). MEMORY_AUTH_TOKEN
+# and OPENCODE_SERVER_PASSWORD are generated at runtime and never committed.
+PATTERN='(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_\-]{35})'
+
+# Only inspect added/modified lines (lines starting with +, excluding diff headers).
+STAGED=$(git diff --staged --unified=0 | grep '^+' | grep -v '^+++' || true)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+if echo "$STAGED" | grep -qP "$PATTERN" 2>/dev/null; then
+  echo "pre-commit: potential API key or secret detected in staged changes." >&2
+  echo "  Review the diff below and remove any real credentials before committing." >&2
+  echo "  If this is a false positive, you can bypass with: git commit --no-verify" >&2
+  echo "" >&2
+  git diff --staged --unified=0 | grep -P "$PATTERN" >&2 || true
+  exit 1
+fi

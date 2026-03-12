@@ -318,27 +318,61 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
   const schemaPath = `${state.dataDir}/secrets.env.schema`;
   const envPath = `${state.configDir}/secrets.env`;
 
+  // Redact potential secret values from varlock diagnostic output before logging/returning.
+  function sanitizeVarlockMessage(msg: string): string {
+    return msg
+      .replace(/sk-[A-Za-z0-9]{20,}/g, "[REDACTED]")
+      .replace(/gsk_[A-Za-z0-9]{30,}/g, "[REDACTED]")
+      .replace(/AIza[A-Za-z0-9_\-]{35}/g, "[REDACTED]")
+      .replace(/[0-9a-f]{32,}/gi, "[REDACTED]")
+      .replace(/value '([^']*)'/g, "value '[REDACTED]'");
+  }
+
+  function collectVarlockOutput(stderr: string, errors: string[], warnings: string[]): void {
+    for (const line of stderr.split("\n")) {
+      const trimmed = sanitizeVarlockMessage(line.trim());
+      if (!trimmed) continue;
+      if (trimmed.includes("ERROR")) errors.push(trimmed);
+      else if (trimmed.includes("WARN")) warnings.push(trimmed);
+    }
+  }
+
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  let anyFailed = false;
+
+  // Validate secrets.env against CONFIG_HOME/secrets.env.schema
   try {
     await execFileAsync(
-      "varlock",
+      "/usr/local/bin/varlock",
       ["load", "--schema", schemaPath, "--env-file", envPath, "--quiet"],
       { timeout: 10000 }
     );
-    return { ok: true, errors: [], warnings: [] };
   } catch (err: unknown) {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
+    anyFailed = true;
     if (err && typeof err === "object" && "stderr" in err) {
-      const stderr = String((err as { stderr: string }).stderr);
-      for (const line of stderr.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed.includes("ERROR")) errors.push(trimmed);
-        else if (trimmed.includes("WARN")) warnings.push(trimmed);
-      }
+      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
     }
-
-    return { ok: false, errors, warnings };
   }
+
+  // Validate stack.env against DATA_HOME/stack.env.schema.
+  // NOTE: CHANNEL_*_SECRET dynamic keys will only partially validate (varlock cannot
+  // validate wildcard patterns); the server-side entropy guarantee from persistArtifacts()
+  // is the primary mitigation for those keys.
+  const stackSchemaPath = `${state.dataDir}/stack.env.schema`;
+  const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
+  try {
+    await execFileAsync(
+      "/usr/local/bin/varlock",
+      ["load", "--schema", stackSchemaPath, "--env-file", stackEnvPath, "--quiet"],
+      { timeout: 10000 }
+    );
+  } catch (err: unknown) {
+    anyFailed = true;
+    if (err && typeof err === "object" && "stderr" in err) {
+      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
+    }
+  }
+
+  return { ok: !anyFailed && errors.length === 0, errors, warnings };
 }

@@ -234,7 +234,8 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
   const uid = typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000;
   const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
 
-  const home = process.env.HOME ?? "/tmp";
+  // /home/node is the correct default HOME for the `node` user in node:lts Docker images.
+  const home = process.env.HOME ?? "/home/node";
   const workDir = process.env.OPENPALM_WORK_DIR ?? `${home}/openpalm`;
 
   return [
@@ -259,6 +260,7 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
     `OPENPALM_IMAGE_TAG=${process.env.OPENPALM_IMAGE_TAG ?? DEFAULT_IMAGE_TAG}`,
     "",
     "# ── Networking ──────────────────────────────────────────────────────",
+    "# SECURITY: Bind addresses default to 127.0.0.1. Changing to 0.0.0.0 exposes services publicly.",
     `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
     `OPENPALM_INGRESS_PORT=${process.env.OPENPALM_INGRESS_PORT ?? "8080"}`,
     "",

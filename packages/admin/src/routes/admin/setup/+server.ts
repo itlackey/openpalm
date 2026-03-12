@@ -142,6 +142,9 @@ export const POST: RequestHandler = async (event) => {
 
   const updates: Record<string, string> = {};
   if (typeof body.adminToken === "string" && body.adminToken) {
+    if (body.adminToken.length < 16) {
+      return jsonResponse(400, { error: "adminToken must be at least 16 characters" }, requestId);
+    }
     updates.ADMIN_TOKEN = body.adminToken;
   }
 

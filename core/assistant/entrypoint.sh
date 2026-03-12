@@ -158,6 +158,24 @@ maybe_proxy_lmstudio() {
   fi
 }
 
+maybe_unset_unused_provider_keys() {
+  # Unset LLM provider keys that are not needed for the configured provider.
+  # This limits the blast radius if the assistant process is compromised —
+  # only the active provider's key remains in the environment.
+  # Note: docker-compose.yml cannot conditionally include keys (no template rendering
+  # per architecture rules), so this mitigation is applied at the process level.
+  local provider="${SYSTEM_LLM_PROVIDER:-}"
+  case "$provider" in
+    openai)    unset ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
+    anthropic) unset OPENAI_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
+    groq)      unset OPENAI_API_KEY ANTHROPIC_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
+    mistral)   unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY GOOGLE_API_KEY ;;
+    google)    unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY ;;
+    # ollama, lmstudio, model-runner, or unset: no cloud provider key needed
+    *)         unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY GOOGLE_API_KEY ;;
+  esac
+}
+
 start_opencode() {
   cd /work
 
@@ -189,4 +207,5 @@ ensure_home_layout
 maybe_set_memory_user_id
 maybe_enable_ssh
 maybe_proxy_lmstudio
+maybe_unset_unused_provider_keys
 start_opencode
