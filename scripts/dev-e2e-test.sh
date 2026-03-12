@@ -280,16 +280,42 @@ else
 	fi
 fi
 
+# The wizard's composeUp runs as a background job (fire-and-forget) that
+# continues after the POST /admin/setup response is returned. We must wait
+# for it to fully finish before force-recreating the assistant; otherwise
+# the background deploy will overwrite our overlay after we apply it.
+echo "  Waiting for wizard background deploy to finish..."
+DEPLOY_DONE=0
+for _i in $(seq 1 30); do
+	deploy_status=$(curl -s http://localhost:8100/admin/setup/deploy-status \
+		-H "x-admin-token: dev-admin-token" 2>/dev/null |
+		python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('active','?'), d.get('phase','?'))" 2>/dev/null || echo "? ?")
+	active=$(echo "$deploy_status" | cut -d' ' -f1)
+	phase=$(echo "$deploy_status" | cut -d' ' -f2)
+	if [ "$active" = "False" ] || [ "$phase" = "ready" ] || [ "$phase" = "error" ]; then
+		echo "  Deploy finished (active=$active phase=$phase)"
+		DEPLOY_DONE=1
+		break
+	fi
+	echo "    Polling deploy status... (active=$active phase=$phase)"
+	sleep 3
+done
+if [ "$DEPLOY_DONE" -eq 0 ]; then
+	echo "  WARN: deploy status timed out — proceeding anyway"
+fi
+
 # Setup is applied by the admin using the staged compose files only.
 # In dev mode we also need the local override from compose.dev.yaml so the
 # assistant keeps its dev-only provider wiring (LMSTUDIO_BASE_URL, blanked
 # cloud keys, etc.). Re-apply the assistant service with the dev override.
+# --no-deps: only recreate the assistant, not its dependencies.
+# Errors are surfaced (no || true) so we can detect silent failures.
 docker compose --project-directory . \
 	-f .dev/state/artifacts/docker-compose.yml \
 	-f compose.dev.yaml \
 	--env-file .dev/state/artifacts/stack.env \
 	--env-file .dev/state/artifacts/secrets.env \
-	--project-name openpalm up -d --force-recreate assistant >/dev/null 2>&1 || true
+	--project-name openpalm up -d --force-recreate --no-deps assistant
 
 # ── Step 8: Wait for containers ──────────────────────────────────────
 echo ""
@@ -418,6 +444,15 @@ if echo "$BASE_URL" | grep -q "/v1$"; then
 	pass "assistant OPENAI_BASE_URL ends with /v1: $BASE_URL"
 else
 	fail "assistant OPENAI_BASE_URL should end with /v1, got: $BASE_URL"
+fi
+
+# LMSTUDIO_BASE_URL must be set (from compose.dev.yaml overlay) so the socat
+# proxy can forward lmstudio provider requests to Ollama.
+LMSTUDIO_URL=$(docker exec openpalm-assistant-1 printenv LMSTUDIO_BASE_URL 2>/dev/null || echo "")
+if [ -n "$LMSTUDIO_URL" ]; then
+	pass "assistant LMSTUDIO_BASE_URL=$LMSTUDIO_URL"
+else
+	fail "assistant LMSTUDIO_BASE_URL is not set — compose.dev.yaml overlay may not have been applied"
 fi
 
 # ── Step 12: Verify Memory user provisioned ──────────────────────

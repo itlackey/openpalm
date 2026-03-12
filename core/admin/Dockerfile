@@ -34,7 +34,7 @@ RUN curl -fsSL \
       --retry 5 --retry-delay 10 --retry-all-errors \
       "https://github.com/dmno-dev/varlock/releases/download/varlock%40${VARLOCK_VERSION}/varlock-linux-x64.tar.gz" \
       -o /tmp/varlock.tar.gz \
-  && tar xzf /tmp/varlock.tar.gz -C /usr/local/bin/ varlock \
+  && tar xzf /tmp/varlock.tar.gz --strip-components=1 -C /usr/local/bin/ \
   && chmod +x /usr/local/bin/varlock \
   && rm /tmp/varlock.tar.gz
 
