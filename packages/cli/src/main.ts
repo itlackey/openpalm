@@ -698,10 +698,15 @@ async function runValidate(args: string[]): Promise<void> {
   const varlockBin = await ensureVarlock(stateHome);
 
   const primarySchema = join(stateHome, 'artifacts', 'secrets.env.schema');
-  const fallbackSchema = join(stateHome, 'artifacts', 'stack.env.schema');
   const envPath = join(configHome, 'secrets.env');
 
-  const schemaPath = (await Bun.file(primarySchema).exists()) ? primarySchema : fallbackSchema;
+  if (!(await Bun.file(primarySchema).exists())) {
+    console.error(
+      `Error: secrets.env.schema not found at ${primarySchema}.\nRun 'openpalm install' first to stage schema files.`,
+    );
+    process.exit(1);
+  }
+  const schemaPath = primarySchema;
 
   const proc = Bun.spawn(
     [varlockBin, 'load', '--schema', schemaPath, '--env-file', envPath],
