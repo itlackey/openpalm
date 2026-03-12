@@ -195,6 +195,7 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     const content = readCoreCompose();
     expect(content).toBeTruthy();
     expect(typeof content).toBe("string");
+    expect(content).toContain("HOME: /app/data");
   });
 });
 

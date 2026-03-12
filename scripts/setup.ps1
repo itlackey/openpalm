@@ -6,13 +6,22 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = 'itlackey/openpalm'
 $Binary = 'openpalm-windows-x64.exe'
+$ScriptVersion = 'main'
 
 # Version resolution
 $Version = $env:OPENPALM_VERSION
 if (-not $Version) {
-    $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
-    $Version = $release.tag_name
-    if (-not $Version) { throw "Could not determine latest release version" }
+    if ($ScriptVersion -ne 'main') {
+        if ($ScriptVersion.StartsWith('v')) {
+            $Version = $ScriptVersion
+        } else {
+            $Version = "v$ScriptVersion"
+        }
+    } else {
+        $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
+        $Version = $release.tag_name
+        if (-not $Version) { throw "Could not determine latest release version" }
+    }
 }
 
 # Install directory
@@ -29,4 +38,4 @@ Write-Host "✓ Installed openpalm to $Dest" -ForegroundColor Green
 $env:PATH = "$InstallDir;$env:PATH"
 
 # Run install
-& $Dest install @args
+& $Dest install --version $Version @args

@@ -109,6 +109,7 @@ services:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
+      HOME: /app/data
       PORT: "8080"
       OPENPALM_ASSISTANT_URL: http://assistant:4096
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
