@@ -295,6 +295,7 @@ async function ensureDirectoryTree(configHome: string, dataHome: string, stateHo
     join(configHome, 'assistant'),
     join(configHome, 'automations'),
     dataHome,
+    join(dataHome, 'admin'),
     join(dataHome, 'memory'),
     join(dataHome, 'assistant'),
     join(dataHome, 'guardian'),

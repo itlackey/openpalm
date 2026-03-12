@@ -73,6 +73,7 @@ COPY assets/redact.env.schema /app/.env.schema
 
 USER node
 
+ENV HOME=/tmp
 ENV PORT=8100
 EXPOSE 8100
 

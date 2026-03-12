@@ -66,6 +66,7 @@ STATE_HOME (~/.local/state/openpalm/)
 
 DATA_HOME (~/.local/share/openpalm/)
 ├── stack.env                # Source of truth for host-detected infrastructure config
+├── admin/                   # Admin runtime home (varlock state, future per-admin cache)
 ├── memory/              # Memory persistent data (SQLite + embedded Qdrant)
 ├── assistant/               # System-managed OpenCode config (opencode.jsonc, AGENTS.md)
 ├── opencode/                # OpenCode data directory
