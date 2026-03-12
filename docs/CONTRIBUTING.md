@@ -17,7 +17,7 @@ cd openpalm
 ./scripts/install-hooks.sh
 
 # Install varlock for comprehensive secret scanning (optional but recommended)
-openpalm validate
+openpalm install
 
 # Admin UI
 cd packages/admin && npm install && npm run dev
@@ -50,7 +50,7 @@ curl -fsSL https://varlock.dev/install.sh | sh
 
 The hook uses two strategies depending on what's available:
 
-1. **varlock scan** (preferred) — resolves actual `@sensitive` values from your local `secrets.env` and searches the working tree (all tracked files) for those literal values. Catches any secret format, not just known prefixes. Requires `openpalm validate` to install the varlock binary.
+1. **varlock scan** (preferred) — resolves actual `@sensitive` values from your local `secrets.env` and searches the working tree (all tracked files) for those literal values. Catches any secret format, not just known prefixes. Requires `openpalm install` to install the varlock binary.
 2. **grep fallback** — pattern-matches staged additions for known provider key formats (OpenAI `sk-*`, Groq `gsk_*`, Google `AIza*`). Used when varlock is not installed.
 
 CI uses grep patterns on the PR diff (see `.github/workflows/ci.yml`) since there are no real secrets in the Actions environment. The pre-commit hook is where varlock scan provides the most value — it catches your actual secret values regardless of format.

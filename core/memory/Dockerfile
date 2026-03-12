@@ -56,4 +56,4 @@ RUN chown -R bun:bun /app
 USER bun
 
 EXPOSE 8765
-CMD ["varlock", "run", "--", "bun", "run", "src/server.ts"]
+CMD ["varlock", "run", "--path", "/app/", "--", "bun", "run", "src/server.ts"]

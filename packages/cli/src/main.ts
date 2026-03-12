@@ -341,7 +341,7 @@ async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
     JSON.stringify(
       {
         "$schema": "https://opencode.ai/config.json",
-        "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"],
+        "plugin": ["@openpalm/assistant-tools", "akm-opencode"],
         "permission": {
           "read": {
             "/home/opencode/.local/share/opencode/auth.json": "deny",

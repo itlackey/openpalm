@@ -26,7 +26,7 @@ OpenCode supports a layered configuration model. OpenPalm uses three layers:
    Highest precedence, overrides everything.
 
 Plugins declared in the system config (`@openpalm/assistant-tools`,
-`@itlackey/openkit`) are auto-installed by OpenCode at startup via `bun` —
+`akm-opencode`) are auto-installed by OpenCode at startup via `bun` —
 no `npm install` in the Dockerfile.
 
 ---
@@ -128,7 +128,7 @@ set here; it comes from the user's connection setup (see below):
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "@itlackey/openkit"],
+  "plugin": ["@openpalm/assistant-tools", "akm-opencode"],
   "permission": {
     "read": {
       "/home/opencode/.local/share/opencode/auth.json": "deny",
