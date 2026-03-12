@@ -225,7 +225,9 @@ describe('install image tag pinning', () => {
 
   it('pins existing stack.env image tag to the requested release tag', () => {
     const original = 'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=latest\n';
-    expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10')).toContain('OPENPALM_IMAGE_TAG=v0.9.0-rc10');
+    expect(reconcileStackEnvImageTag(original, 'v0.9.0-rc10')).toBe(
+      'OPENPALM_IMAGE_NAMESPACE=openpalm\nOPENPALM_IMAGE_TAG=v0.9.0-rc10\n',
+    );
   });
 
   it('does not overwrite existing stack.env image tag for main installs', () => {

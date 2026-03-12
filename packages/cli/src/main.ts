@@ -83,7 +83,7 @@ type InstallOptions = {
   noOpen: boolean;
 };
 
-const RELEASE_TAG_RE = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const RELEASE_TAG_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
 
 export interface HostInfo {
@@ -233,13 +233,14 @@ function parseInstallOptions(args: string[]): InstallOptions {
 export function resolveRequestedImageTag(repoRef: string): string | null {
   const trimmed = repoRef.trim();
   if (!trimmed || trimmed === 'main') return null;
-  if (!RELEASE_TAG_RE.test(trimmed)) return null;
+  if (!RELEASE_TAG_REGEX.test(trimmed)) return null;
   return trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
 }
 
 function upsertEnvValue(content: string, key: string, value: string): string {
   const line = `${key}=${value}`;
-  const pattern = new RegExp(`^${key}=.*$`, 'm');
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^${escapedKey}=.*$`, 'm');
   if (pattern.test(content)) {
     return content.replace(pattern, line);
   }
