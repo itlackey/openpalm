@@ -27,6 +27,6 @@ install_hook pre-commit
 
 echo ""
 echo "The hook uses varlock scan when available (catches any secret format)."
-echo "Run 'openpalm validate' once to install the varlock binary."
+echo "Run 'openpalm install' to set up varlock and required secrets files."
 echo ""
 echo "Done. Git hooks installed."

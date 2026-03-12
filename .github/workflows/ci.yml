@@ -30,7 +30,7 @@ jobs:
         # CI has no real secrets, so varlock scan has nothing to resolve.
         # Use grep patterns on the PR diff for provider-specific key formats.
         # Developers get full varlock scan coverage via the pre-commit hook
-        # (install with ./scripts/install-hooks.sh + openpalm validate).
+        # (install with ./scripts/install-hooks.sh + openpalm install).
         # Patterns: OpenAI (sk-*), Groq (gsk_*), Google (AIza*), 64-char hex tokens.
         run: |
           set -euo pipefail
