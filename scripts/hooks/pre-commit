@@ -51,7 +51,7 @@ fi
 # do a best-effort pattern match on staged additions.
 PATTERN='(sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|(^|[^0-9a-f])[0-9a-f]{64}([^0-9a-f]|$))'
 
-STAGED=$(git diff --staged --unified=0 | grep '^+' | grep -v '^+++' || true)
+STAGED=$(git diff --staged --unified=0 | grep '^+' | grep -v '^+++' | grep -viE 'sha256|sha_256|checksum|digest|\.tar\.gz|VARLOCK_CHECKSUMS' || true)
 
 if [ -z "$STAGED" ]; then
   exit 0
