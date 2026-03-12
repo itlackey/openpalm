@@ -73,6 +73,8 @@ COPY assets/redact.env.schema /app/.env.schema
 
 USER node
 
+# Fallback for direct `docker run`; Compose overrides HOME to DATA_HOME/admin
+# so varlock writes into a user-writable bind mount at runtime.
 ENV HOME=/tmp
 ENV PORT=8100
 EXPOSE 8100
