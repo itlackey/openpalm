@@ -72,9 +72,8 @@ if [[ $seed_env -eq 1 ]]; then
 		sed -i 's|^OPENAI_BASE_URL=$|OPENAI_BASE_URL=http://host.docker.internal:11434/v1|' "$env_dest"
 		# Generate service auth tokens (matches admin's ensureSecrets())
 		mem_token=$(openssl rand -hex 32)
-		oc_password=$(openssl rand -hex 32)
-		printf '\n# Service auth tokens (auto-generated)\nMEMORY_AUTH_TOKEN=%s\nOPENCODE_SERVER_PASSWORD=%s\n' \
-			"$mem_token" "$oc_password" >>"$env_dest"
+		printf '\n# Service auth tokens (auto-generated)\nMEMORY_AUTH_TOKEN=%s\n' \
+			"$mem_token" >>"$env_dest"
 	fi
 	[[ -f "$env_dest" ]] && cp "$env_dest" "$STATE_DIR/artifacts/secrets.env"
 

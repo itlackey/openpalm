@@ -25,15 +25,9 @@ const MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN ?? '';
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
-/** Build OpenCode auth headers (matches guardian/src/server.ts:140-144). */
+/** Build OpenCode request headers. Auth is disabled by default (host-only binding). */
 function openCodeHeaders(): Record<string, string> {
-	const h: Record<string, string> = { 'content-type': 'application/json' };
-	const pw = process.env.OPENCODE_SERVER_PASSWORD;
-	if (pw) {
-		const user = process.env.OPENCODE_SERVER_USERNAME ?? 'opencode';
-		h['authorization'] = `Basic ${Buffer.from(`${user}:${pw}`).toString('base64')}`;
-	}
-	return h;
+	return { 'content-type': 'application/json' };
 }
 
 /** Build Memory API auth headers. */

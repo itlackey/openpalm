@@ -111,7 +111,7 @@ OpenPalm is **LAN-first by default**. No inbound ports need to be opened on your
 |---|---|---|---|
 | 8080 | `127.0.0.1` (default) | Caddy ingress | Configurable via `OPENPALM_INGRESS_BIND_ADDRESS` and `OPENPALM_INGRESS_PORT` |
 | 8100 | `127.0.0.1` | Admin API (direct) | Always localhost-only |
-| 4096 | `127.0.0.1` | Assistant (OpenCode) | Direct access; normally proxied through Caddy |
+| 4096 | `127.0.0.1` | Assistant (OpenCode) | Host-only access; no auth required (bind address is the security boundary) |
 | 8765 | `127.0.0.1` | Memory API | Direct access; normally accessed by assistant internally |
 | 2222 | `127.0.0.1` | Assistant SSH | Optional SSH access to OpenCode; disabled by default |
 

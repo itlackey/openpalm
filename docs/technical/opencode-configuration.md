@@ -94,7 +94,7 @@ Five non-overlapping mounts, each at a distinct container path:
 |---|---|---|
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | System config directory (overrides user config) |
 | `OPENCODE_PORT` | `4096` | Web-server listen port |
-| `OPENCODE_AUTH` | `false` | Auth handled by Caddy / Admin — disabled in OpenCode |
+| `OPENCODE_AUTH` | `false` | Disabled — host-only binding (127.0.0.1) provides the security boundary |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server (disabled by default, toggleable) |
 | `HOME` | `/home/opencode` | User home for dotfiles, caches, and user config |
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API base URL (used by admin tools) |

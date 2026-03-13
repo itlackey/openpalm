@@ -5,28 +5,10 @@ import { expect, test } from '@playwright/test';
  *
  * These hit the assistant container directly on port 4096 (and the Caddy proxy on 8080)
  * rather than the admin preview server, since OpenCode runs in its own container.
+ *
+ * OpenCode auth is disabled by default — the host-only bind address (127.0.0.1)
+ * provides the security boundary. No Basic auth headers are needed.
  */
-
-/** Build OpenCode auth headers. */
-function openCodeHeaders(): Record<string, string> {
-	const h: Record<string, string> = { 'content-type': 'application/json' };
-	const pw = process.env.OPENCODE_SERVER_PASSWORD;
-	if (pw) {
-		const user = process.env.OPENCODE_SERVER_USERNAME ?? 'opencode';
-		h['authorization'] = `Basic ${Buffer.from(`${user}:${pw}`).toString('base64')}`;
-	}
-	return h;
-}
-
-/** Build OpenCode URL with embedded Basic auth credentials for browser navigation. */
-function openCodeUrl(path = ''): string {
-	const pw = process.env.OPENCODE_SERVER_PASSWORD;
-	if (pw) {
-		const user = process.env.OPENCODE_SERVER_USERNAME ?? 'opencode';
-		return `http://${user}:${pw}@localhost:4096${path}`;
-	}
-	return `http://localhost:4096${path}`;
-}
 
 test.describe('OpenCode Web UI', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
@@ -34,18 +16,18 @@ test.describe('OpenCode Web UI', () => {
 
 	test('health check endpoint responds', async ({ request }) => {
 		const response = await request.get('http://localhost:4096', {
-			headers: openCodeHeaders()
+			headers: { 'content-type': 'application/json' }
 		});
 		expect(response.status()).toBeLessThan(500);
 	});
 
 	test('web UI loads and shows OpenCode', async ({ page }) => {
-		await page.goto(openCodeUrl(), { timeout: 15000 });
+		await page.goto('http://localhost:4096', { timeout: 15000 });
 		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
 	});
 
 	test('core UI elements are present', async ({ page }) => {
-		await page.goto(openCodeUrl(), { timeout: 15000 });
+		await page.goto('http://localhost:4096', { timeout: 15000 });
 		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
 
 		// Home screen shows project picker — click into the first project
@@ -72,7 +54,7 @@ test.describe('OpenCode Web UI', () => {
 	test('new session can be created', async ({ request }) => {
 		// Use the API directly to verify session creation — avoids flaky UI overlay issues
 		const res = await request.post('http://localhost:4096/session', {
-			headers: openCodeHeaders(),
+			headers: { 'content-type': 'application/json' },
 			data: { title: 'e2e-new-session-test' },
 			timeout: 10000
 		});
@@ -83,7 +65,7 @@ test.describe('OpenCode Web UI', () => {
 
 	test('assistant plugins loaded', async ({ request }) => {
 		const response = await request.get('http://localhost:4096/config', {
-			headers: openCodeHeaders(),
+			headers: { 'content-type': 'application/json' },
 			timeout: 10000
 		});
 

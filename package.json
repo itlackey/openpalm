@@ -21,7 +21,7 @@
     "admin:check": "bun run --cwd packages/admin check",
     "admin:test": "cd packages/admin && npm test",
     "admin:test:unit": "cd packages/admin && npm run test:unit -- --run",
-    "admin:test:e2e": "cd packages/admin && export $(grep -E '^(OPENCODE_SERVER_PASSWORD|MEMORY_AUTH_TOKEN)=' ../../.dev/state/artifacts/secrets.env | xargs) 2>/dev/null; RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token npm run test:e2e",
+    "admin:test:e2e": "cd packages/admin && export $(grep -E '^MEMORY_AUTH_TOKEN=' ../../.dev/state/artifacts/secrets.env | xargs) 2>/dev/null; RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 ADMIN_TOKEN=dev-admin-token npm run test:e2e",
     "admin:test:e2e:mocked": "cd packages/admin && npm run test:e2e:mocked",
     "admin:test:stack": "cd packages/admin && RUN_DOCKER_STACK_TESTS=1 npm run test:e2e",
     "admin:test:llm": "cd packages/admin && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 npm run test:e2e",

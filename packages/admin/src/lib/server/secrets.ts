@@ -37,7 +37,6 @@ export const ALLOWED_CONNECTION_KEYS = new Set([
   "EMBEDDING_DIMS",
   "MEMORY_USER_ID",
   "MEMORY_AUTH_TOKEN",
-  "OPENCODE_SERVER_PASSWORD",
   "OWNER_NAME",
   "OWNER_EMAIL",
 ]);
@@ -108,7 +107,6 @@ export function ensureSecrets(state: ControlPlaneState): void {
   secretLines.push("");
   secretLines.push("# Service auth tokens (auto-generated)");
   secretLines.push(`MEMORY_AUTH_TOKEN=${randomBytes(32).toString("hex")}`);
-  secretLines.push(`OPENCODE_SERVER_PASSWORD=${randomBytes(32).toString("hex")}`);
   secretLines.push("");
   secretLines.push("# Owner");
   secretLines.push(`OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);
