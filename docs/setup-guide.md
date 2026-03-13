@@ -118,7 +118,7 @@ All ports are localhost-bound by default. Nothing is publicly exposed unless you
 `CONFIG_HOME` (default `~/.config/openpalm`) is your persistent source of truth.
 Allowed writers are: direct edits, explicit admin UI/API config actions, and
 authenticated assistant API actions on user request. See
-[core-principles.md](core-principles.md) for the full filesystem contract.
+[core-principles.md](technical/core-principles.md) for the full filesystem contract.
 All of those paths write the same files:
 
 | Path | Purpose |
@@ -126,9 +126,9 @@ All of those paths write the same files:
 | `secrets.env` | Admin token and LLM provider API keys |
 | `channels/` | Channel compose overlays (`.yml`) and Caddy routes (`.caddy`) |
 | `automations/` | Scheduled automations — see [Managing OpenPalm](managing-openpalm.md#automations) |
-| `opencode/` | OpenCode extensions — tools, plugins, skills, and config |
+| `assistant/` | OpenCode extensions — tools, plugins, skills, and config |
 
-You normally do not need to touch the other two directories directly. `DATA_HOME` is managed by the admin and services (stack.env, caddy, memory, etc.); `STATE_HOME` is the assembled runtime assembled by the admin. See [directory-structure.md](directory-structure.md) for the complete layout.
+You normally do not need to touch the other two directories directly. `DATA_HOME` is managed by the admin and services (stack.env, caddy, memory, etc.); `STATE_HOME` is the assembled runtime assembled by the admin. See [directory-structure.md](technical/directory-structure.md) for the complete layout.
 
 ### XDG path defaults
 
@@ -257,7 +257,7 @@ irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 |
 | [Setup Walkthrough](setup-walkthrough.md) | Detailed screen-by-screen walkthrough of the setup wizard |
 | [Managing OpenPalm](managing-openpalm.md) | Day-to-day administration: secrets, channels, access control, extensions |
 | [How It Works](how-it-works.md) | Architecture overview and data flow |
-| [Directory Structure](directory-structure.md) | Host paths, XDG tiers, volume mounts |
+| [Directory Structure](technical/directory-structure.md) | Host paths, XDG tiers, volume mounts |
 | [Community Channels](community-channels.md) | Building custom channel adapters |
-| [Core Principles](core-principles.md) | Security invariants and architectural rules |
-| [API Spec](api-spec.md) | Admin API endpoint reference |
+| [Core Principles](technical/core-principles.md) | Security invariants and architectural rules |
+| [API Spec](technical/api-spec.md) | Admin API endpoint reference |

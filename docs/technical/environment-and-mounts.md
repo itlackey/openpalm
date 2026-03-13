@@ -217,7 +217,7 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 
 | Variable | Value | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/opt/opencode` | Built-in config, tools, plugins, skills |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Built-in config, tools, plugins, skills |
 | `OPENCODE_PORT` | `4096` | Web-server listen port |
 | `OPENCODE_AUTH` | `false` | Disabled — host-only binding (127.0.0.1) provides the security boundary |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server toggle |
@@ -351,10 +351,7 @@ The schema files are used by the [Varlock](https://varlock.dev) CLI for validati
 (`varlock load --path <dir>/`) and secret-leak scanning
 (`varlock scan --path <dir>/`). In practice, the schema (`.env.schema`) and its
 corresponding `.env` file are copied into a temporary directory, and varlock is
-invoked with `--path <tmpDir>/` so it discovers both files together. See the
-Varlock integration plan at
-[`.plans/openpalm-varlock-plan.md`](../../.plans/openpalm-varlock-plan.md) for
-the full rollout roadmap.
+invoked with `--path <tmpDir>/` so it discovers both files together.
 
 ---
 

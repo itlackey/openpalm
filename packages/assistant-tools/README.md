@@ -20,7 +20,7 @@ AGENTS.md                 # Assistant persona and behavioral guidelines
 
 ## How it loads
 
-The assistant's `opencode.jsonc` lists this package in its `"plugin"` array. OpenCode installs it from npm on startup (offline fallback at `/opt/opencode/node_modules/`). See [`core/assistant/README.md`](../../core/assistant/README.md) for the full plugin architecture.
+The assistant's `opencode.jsonc` lists this package in its `"plugin"` array. OpenCode installs it from npm on startup (offline fallback at `/etc/opencode/node_modules/`). See [`core/assistant/README.md`](../../core/assistant/README.md) for the full plugin architecture.
 
 ## Building
 

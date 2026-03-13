@@ -29,12 +29,12 @@ OpenPalm uses three host directories following the [XDG Base Directory Specifica
 user direct edits, explicit admin UI/API config actions, and assistant actions
 through authenticated/allowlisted admin APIs on user request. Automatic
 lifecycle operations are non-destructive for existing user config files and
-only seed missing defaults. See [core-principles.md](core-principles.md) for
+only seed missing defaults. See [core-principles.md](technical/core-principles.md) for
 the full filesystem contract.
 
 The rest of this guide uses the defaults. Substitute your own paths if needed.
 
-See [directory-structure.md](directory-structure.md) for the full tree and rationale.
+See [directory-structure.md](technical/directory-structure.md) for the full tree and rationale.
 
 ---
 
@@ -44,7 +44,7 @@ See [directory-structure.md](directory-structure.md) for the full tree and ratio
 # CONFIG_HOME
 mkdir -p ~/.config/openpalm/channels
 mkdir -p ~/.config/openpalm/automations
-mkdir -p ~/.config/openpalm/opencode/{tools,plugins,skills}
+mkdir -p ~/.config/openpalm/assistant/{tools,plugins,skills}
 
 # DATA_HOME
 mkdir -p ~/.local/share/openpalm/admin
@@ -289,7 +289,7 @@ When the admin container starts, it automatically runs an **apply** that:
 This startup apply does not overwrite existing user files in `CONFIG_HOME`; it
 only seeds missing defaults and restages runtime artifacts.
 
-After the first apply, the admin manages `stack.env` and `STATE_HOME` — you only need to edit files in `CONFIG_HOME` and restart the admin (or call the apply API) to pick up changes. See [directory-structure.md](directory-structure.md) for the full staging flow.
+After the first apply, the admin manages `stack.env` and `STATE_HOME` — you only need to edit files in `CONFIG_HOME` and restart the admin (or call the apply API) to pick up changes. See [directory-structure.md](technical/directory-structure.md) for the full staging flow.
 
 ---
 
@@ -322,7 +322,8 @@ After completing all steps, your host should have:
 ├── secrets.env                      # ADMIN_TOKEN + LLM keys
 ├── channels/                        # Channel overlays (.yml + .caddy)
 ├── automations/                     # User automation definitions
-└── opencode/                        # OpenCode extensions
+└── assistant/                       # OpenCode extensions
+    ├── opencode.json
     ├── tools/
     ├── plugins/
     └── skills/
@@ -357,8 +358,8 @@ After completing all steps, your host should have:
 
 ## Further reading
 
-- [directory-structure.md](directory-structure.md) — Full tree, volume mounts, networks
-- [environment-and-mounts.md](environment-and-mounts.md) — Every env var and mount point
-- [core-principles.md](core-principles.md) — Security invariants and architectural rules
+- [directory-structure.md](technical/directory-structure.md) — Full tree, volume mounts, networks
+- [environment-and-mounts.md](technical/environment-and-mounts.md) — Every env var and mount point
+- [core-principles.md](technical/core-principles.md) — Security invariants and architectural rules
 - [managing-openpalm.md](managing-openpalm.md) — Channels, secrets, access control, automations
 - [setup-guide.md](setup-guide.md) — Automated installer reference

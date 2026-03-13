@@ -58,10 +58,10 @@ bun install            # Installs all workspace dependencies
 bun run dev:setup      # Creates .dev/ dirs, seeds secrets.env and stack.env
 ```
 
-`dev:setup` runs [`scripts/dev-setup.sh --seed-env`](scripts/dev-setup.sh), which:
+`dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
 
 - Creates the `.dev/config`, `.dev/data`, and `.dev/state` directories
-- Seeds `.dev/config/secrets.env` from [`assets/secrets.env`](assets/secrets.env)
+- Seeds `.dev/config/secrets.env` from [`assets/secrets.env`](../assets/secrets.env)
 - Generates `.dev/state/artifacts/stack.env` with auto-detected host values
 
 After setup, edit `.dev/config/secrets.env` to add your `ADMIN_TOKEN` and any LLM provider keys.
@@ -72,7 +72,7 @@ After setup, edit `.dev/config/secrets.env` to add your `ADMIN_TOKEN` and any LL
 cd packages/admin && npm install && npm run dev
 ```
 
-Admin UI + API starts on `http://localhost:8100`. The dev server reads `.env` (copy from [`.env.example`](.env.example)) and the seeded `.dev/` paths automatically.
+Admin UI + API starts on `http://localhost:8100`. The dev server reads `.env` (copy from [`.env.example`](../packages/admin/.env.example)) and the seeded `.dev/` paths automatically.
 
 ## 3. Start the full stack
 
@@ -81,7 +81,7 @@ Two options depending on what you're working on:
 | Script | What it does |
 |--------|--------------|
 | `bun run dev:stack` | Pulls pre-built images from the registry. Fast start for testing admin workflows. |
-| `bun run dev:build` | Builds all images from local source via [`compose.dev.yaml`](compose.dev.yaml). Use when developing services or testing Dockerfile changes. |
+| `bun run dev:build` | Builds all images from local source via [`compose.dev.yaml`](../compose.dev.yaml). Use when developing services or testing Dockerfile changes. |
 
 Both scripts read env files from `.dev/state/artifacts/`.
 
@@ -90,9 +90,6 @@ Both scripts read env files from `.dev/state/artifacts/`.
 ```bash
 # Type check the admin UI
 bun run admin:check
-
-# Validate setup wizard scope docs stay aligned
-bun run docs:check:wizard-scope
 
 # Non-admin tests (sdk, guardian, channels, cli)
 bun run test
@@ -123,7 +120,7 @@ bun run channel:discord:dev  # Discord channel
 
 ## Convenience scripts (full list)
 
-All scripts are defined in the root [`package.json`](package.json):
+All scripts are defined in the root [`package.json`](../package.json):
 
 | Script | Description |
 |--------|-------------|
@@ -144,13 +141,12 @@ All scripts are defined in the root [`package.json`](package.json):
 | `bun run dev:setup` | Seed `.dev/` dirs and configs |
 | `bun run dev:stack` | Start dev stack (pull images) |
 | `bun run dev:build` | Start dev stack (build from source) |
-| `bun run docs:check:wizard-scope` | Validate wizard scope/copy docs consistency |
 | `bun run test` | All non-admin tests |
 | `bun run check` | admin:check + sdk:test |
 
 ## Dev directory layout
 
-Dev mode mirrors the production [XDG three-tier layout](docs/technical/directory-structure.md) under `.dev/`:
+Dev mode mirrors the production [XDG three-tier layout](../docs/technical/directory-structure.md) under `.dev/`:
 
 ```
 .dev/
@@ -160,11 +156,11 @@ Dev mode mirrors the production [XDG three-tier layout](docs/technical/directory
     └── artifacts/   # stack.env, secrets.env, docker-compose.yml
 ```
 
-See [docs/technical/directory-structure.md](docs/technical/directory-structure.md) for the full tree.
+See [docs/technical/directory-structure.md](../docs/technical/directory-structure.md) for the full tree.
 
 ## Before submitting a PR
 
-1. **Read the rules.** [docs/technical/core-principles.md](docs/technical/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
+1. **Read the rules.** [docs/technical/core-principles.md](../docs/technical/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
 2. **Run the delivery checklist:**
 
    ```bash
@@ -172,7 +168,7 @@ See [docs/technical/directory-structure.md](docs/technical/directory-structure.m
    bun run guardian:test            # Guardian security tests
    ```
 
-3. **Docker builds** must follow the patterns in [docs/technical/docker-dependency-resolution.md](docs/technical/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
+3. **Docker builds** must follow the patterns in [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) (no Bun in admin Docker, no symlink-based node_modules).
 4. **No secrets** in client bundles or logs.
 5. **No new dependencies** that duplicate a built-in Bun or platform capability.
 
@@ -184,12 +180,12 @@ OpenPalm publishes npm packages on an independent release cycle from Docker imag
 
 | Document | What you'll find |
 |----------|-----------------|
-| [docs/technical/core-principles.md](docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
-| [docs/technical/code-quality-principles.md](docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
-| [docs/technical/docker-dependency-resolution.md](docs/technical/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
-| [docs/technical/directory-structure.md](docs/technical/directory-structure.md) | XDG tiers, volume mounts, dev vs. production paths |
-| [docs/technical/api-spec.md](docs/technical/api-spec.md) | Admin API endpoint contract |
-| [docs/technical/bunjs-rules.md](docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
-| [docs/technical/sveltekit-rules.md](docs/technical/sveltekit-rules.md) | SvelteKit patterns (admin UI) |
-| [docs/community-channels.md](docs/community-channels.md) | BaseChannel SDK for building custom channel adapters |
-| [docs/technical/environment-and-mounts.md](docs/technical/environment-and-mounts.md) | All environment variables and volume mounts |
+| [docs/technical/core-principles.md](../docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
+| [docs/technical/code-quality-principles.md](../docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
+| [docs/technical/docker-dependency-resolution.md](../docs/technical/docker-dependency-resolution.md) | **Mandatory.** How Docker builds resolve deps across the monorepo |
+| [docs/technical/directory-structure.md](../docs/technical/directory-structure.md) | XDG tiers, volume mounts, dev vs. production paths |
+| [docs/technical/api-spec.md](../docs/technical/api-spec.md) | Admin API endpoint contract |
+| [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
+| [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (admin UI) |
+| [docs/community-channels.md](../docs/community-channels.md) | BaseChannel SDK for building custom channel adapters |
+| [docs/technical/environment-and-mounts.md](../docs/technical/environment-and-mounts.md) | All environment variables and volume mounts |

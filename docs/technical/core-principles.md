@@ -29,7 +29,7 @@ These are hard constraints that must never be violated during development:
 
 ## Filesystem contract (file assembly, not rendering)
 
-Configuration is managed by **copying whole files** between tiers — never by string interpolation, template expansion, or dynamic code generation. The admin acts as a **file assembler**: it stages user files (from CONFIG) and system defaults into STATE, and Docker/Caddy read from STATE at runtime. OpenCode core config is image-baked at `/opt/opencode`, with user extensions mounted from CONFIG.
+Configuration is managed by **copying whole files** between tiers — never by string interpolation, template expansion, or dynamic code generation. The admin acts as a **file assembler**: it stages user files (from CONFIG) and system defaults into STATE, and Docker/Caddy read from STATE at runtime. OpenCode core config is image-baked at `/etc/opencode`, with user extensions mounted from CONFIG.
 
 ### 1) Config (authoritative, user-owned)
 
@@ -81,11 +81,11 @@ The stack is defined by combining a base Compose file with channel overlays usin
 Caddy loads a stable root Caddyfile that uses `import` (with globs) to include snippets from `channels/`. ([Caddy Web Server][4])
 **Implication:** adding an HTTP route for a channel is dropping a `.caddy` snippet into `config/channels/`, then running an explicit apply action that stages snippets into `state/` and reloads Caddy from staged files. If no `.caddy` file is present, the channel has no HTTP route and is only accessible on the Docker network.
 
-### C) OpenCode: core precedence via baked-in `/opt/opencode`
+### C) OpenCode: core precedence via baked-in `/etc/opencode`
 
-* The assistant container includes core extensions/config at **`/opt/opencode`**.
-* The assistant container sets **`OPENCODE_CONFIG_DIR=/opt/opencode`** so OpenCode discovers core agents/commands/tools/skills/plugins from that directory. ([OpenCode][1])
-* Advanced users *may* bind-mount a host directory over `/opt/opencode` to override core behavior, but this is discouraged because bind-mounting replaces/obscures the container’s original contents. ([Docker Documentation][5])
+* The assistant container includes core extensions/config at **`/etc/opencode`**.
+* The assistant container sets **`OPENCODE_CONFIG_DIR=/etc/opencode`** so OpenCode discovers core agents/commands/tools/skills/plugins from that directory. ([OpenCode][1])
+* Advanced users *may* bind-mount a host directory over `/etc/opencode` to override core behavior, but this is discouraged because bind-mounting replaces/obscures the container’s original contents. ([Docker Documentation][5])
 
 ### D) Non-destructive lifecycle sync is enforced by tier boundaries
 
@@ -138,7 +138,7 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 
 * **Add a channel:** drop a `.yml` compose overlay (required) and optional `.caddy` route snippet into `config/channels/`. The `.yml` defines the channel service; the `.caddy` file, if present, gives it an HTTP route through Caddy. Without a `.caddy` file, the channel is only accessible on the Docker network. ([Docker Documentation][3], [Caddy Web Server][4])
 * **Add an extension (user):** copy OpenCode assets into `config/opencode/...` following OpenCode’s directory structure. ([OpenCode][1])
-* **Core precedence:** core extensions live in `/opt/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
+* **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
 * **Apply changes (required):** runtime components never consume channel source files directly from CONFIG_HOME. The admin applies configuration by copying files from CONFIG_HOME (user) plus system-managed sources (`assets/` and `DATA_HOME/caddy/Caddyfile`) into STATE_HOME, then runs `docker compose` and reloads/restarts services from STATE_HOME as needed. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is a non-destructive sync and must not overwrite existing user configuration files in CONFIG_HOME; it may seed missing defaults. Explicit config mutation actions (for example channel install/uninstall, admin UI/API config updates, and authenticated/allowlisted assistant calls made on user request) may intentionally modify CONFIG_HOME. No string interpolation or template expansion — just whole-file copies and Compose native `--env-file` substitution. Compose is always invoked with two staged env files: `STATE_HOME/artifacts/stack.env` (system-managed config: paths, UID/GID, image tags, networking, Memory URLs, database password, and channel HMAC secrets) and `STATE_HOME/artifacts/secrets.env` (a staged copy of the user's `CONFIG_HOME/secrets.env`, conventionally `ADMIN_TOKEN` and LLM provider keys).
 * **Backup/restore:** archive `config/` + `data/` (and optionally `state/` for logs/history) per XDG semantics. ([Freedesktop Specifications][2])
 

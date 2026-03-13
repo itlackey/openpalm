@@ -24,17 +24,17 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [core-principles.md](core-principles.md) | **Authoritative.** 9 core goals, 4 security invariants, filesystem + volume-mount contracts |
-| [directory-structure.md](directory-structure.md) | XDG three-tier layout (CONFIG / DATA / STATE) |
-| [docker-dependency-resolution.md](docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
+| [core-principles.md](technical/core-principles.md) | **Authoritative.** 9 core goals, 4 security invariants, filesystem + volume-mount contracts |
+| [directory-structure.md](technical/directory-structure.md) | XDG three-tier layout (CONFIG / DATA / STATE) |
+| [docker-dependency-resolution.md](technical/docker-dependency-resolution.md) | **Mandatory.** Docker build patterns — no Bun in admin, no symlinks |
 
 ## Implementation rules
 
 | Document | Applies to |
 |---|---|
-| [code-quality-principles.md](code-quality-principles.md) | All code |
-| [bunjs-rules.md](bunjs-rules.md) | Guardian, channels, channels-sdk |
-| [sveltekit-rules.md](sveltekit-rules.md) | Admin UI (`packages/admin/`) |
+| [code-quality-principles.md](technical/code-quality-principles.md) | All code |
+| [bunjs-rules.md](technical/bunjs-rules.md) | Guardian, channels, channels-sdk |
+| [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/admin/`) |
 
 ## Release notes
 
@@ -46,11 +46,10 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [api-spec.md](api-spec.md) | Admin API endpoint contract |
+| [api-spec.md](technical/api-spec.md) | Admin API endpoint contract |
 | [backup-restore.md](backup-restore.md) | Backup, restore, and migration procedures |
-| [environment-and-mounts.md](environment-and-mounts.md) | All env vars and volume mounts |
-| [opencode-configuration.md](opencode-configuration.md) | OpenCode runtime integration |
+| [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
+| [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-channels.md](community-channels.md) | BaseChannel SDK for custom adapters |
-| [docker-socket-proxy-migration.md](docker-socket-proxy-migration.md) | Socket proxy design and allowlist |
 | [memory-privacy.md](memory-privacy.md) | Memory service data privacy — what is stored, external calls, how to wipe |
-| [prd.md](prd.md) | MVP product requirements |
+| [prd.md](technical/prd.md) | MVP product requirements |

@@ -2,7 +2,7 @@
 
 This document covers day-to-day administration: configuration, channels, secrets,
 access control, and extensions. For architecture rationale see
-[core-principles.md](./core-principles.md).
+[core-principles.md](./technical/core-principles.md).
 
 ---
 
@@ -36,7 +36,7 @@ those files into runtime state in `~/.local/state/openpalm/`. You never edit
 ├── automations/             # Scheduled automations (drop files here)
 │   └── backup
 │
-└── opencode/
+└── assistant/
     ├── opencode.json        # OpenCode config (LLM provider, settings)
     ├── tools/               # Drop custom tools here
     ├── plugins/             # Drop custom plugins here
@@ -283,22 +283,22 @@ The source of truth is the system-managed core Caddyfile at:
 ## OpenCode / Assistant Extensions
 
 The assistant runs OpenCode. Core extensions are baked into the container
-(`/opt/opencode`). User extensions overlay on top — no rebuild needed.
+(`/etc/opencode`). User extensions overlay on top — no rebuild needed.
 
 **To add a tool/plugin/skill:**
 
 ```bash
 # Drop files into the matching subdirectory:
-~/.config/openpalm/opencode/tools/my-tool.ts
-~/.config/openpalm/opencode/plugins/my-plugin.ts
-~/.config/openpalm/opencode/skills/my-skill/SKILL.md
+~/.config/openpalm/assistant/tools/my-tool.ts
+~/.config/openpalm/assistant/plugins/my-plugin.ts
+~/.config/openpalm/assistant/skills/my-skill/SKILL.md
 ```
 
 OpenCode picks them up on next restart of the assistant container.
 
 **To configure OpenCode (LLM provider, models, etc.):**
 
-Edit `~/.config/openpalm/opencode/opencode.json` directly. If you use explicit
+Edit `~/.config/openpalm/assistant/opencode.json` directly. If you use explicit
 admin UI/API config actions (including assistant-triggered admin actions), they
 write to the same `CONFIG_HOME` files.
 
@@ -371,7 +371,7 @@ All ports are `127.0.0.1`-bound by default. Caddy at `:8080` is the main ingress
 
 **Add a new LLM provider:**
 1. Add the API key to `secrets.env`
-2. Edit `~/.config/openpalm/opencode/opencode.json` to configure the provider
+2. Edit `~/.config/openpalm/assistant/opencode.json` to configure the provider
 3. Restart assistant: `docker compose restart assistant`
 
 **Rotate the admin token:**

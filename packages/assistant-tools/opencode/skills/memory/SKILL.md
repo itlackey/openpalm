@@ -113,7 +113,7 @@ Write memories as clear, self-contained statements that will make sense out of c
 **Good:**
 - "User prefers TypeScript with strict mode enabled for all projects"
 - "OpenPalm admin API authenticates with x-admin-token header, not Authorization Bearer"
-- "The assistant container uses OPENCODE_CONFIG_DIR=/opt/opencode for immutable config"
+- "The assistant container uses OPENCODE_CONFIG_DIR=/etc/opencode for immutable config"
 
 **Bad:**
 - "Use TypeScript" (too vague)
