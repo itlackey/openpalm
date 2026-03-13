@@ -219,7 +219,7 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 |---|---|---|
 | `OPENCODE_CONFIG_DIR` | `/opt/opencode` | Built-in config, tools, plugins, skills |
 | `OPENCODE_PORT` | `4096` | Web-server listen port |
-| `OPENCODE_AUTH` | `false` | Auth handled externally — disabled in OpenCode |
+| `OPENCODE_AUTH` | `false` | Disabled — host-only binding (127.0.0.1) provides the security boundary |
 | `OPENCODE_ENABLE_SSH` | `0` (default) | SSH server toggle |
 | `HOME` | `/home/opencode` | User home directory |
 | `OPENPALM_ADMIN_API_URL` | `http://admin:8100` | Admin API URL for admin tools |

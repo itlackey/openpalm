@@ -33,7 +33,7 @@ FROM node:lts-trixie
 # Bump these ARGs when upgrading; keeps curl|bash installs reproducible.
 ARG OPENCODE_VERSION=1.2.24
 ARG BUN_VERSION=bun-v1.3.10
-ARG AGENTIKIT_VERSION=v0.0.15
+ARG AGENTIKIT_VERSION=v0.0.21
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat \

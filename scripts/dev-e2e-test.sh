@@ -498,11 +498,8 @@ fi
 echo ""
 echo "=== Step 14: Verify assistant pipeline ==="
 
-OPENCODE_PASSWORD=$(grep '^OPENCODE_SERVER_PASSWORD=' "$secrets" 2>/dev/null | head -1 | cut -d= -f2-)
-OPENCODE_AUTH=$(printf 'opencode:%s' "$OPENCODE_PASSWORD" | base64 | tr -d '\n')
-
+# OpenCode auth is disabled by default (host-only binding provides security)
 SESSION_ID=$(curl -sf http://localhost:4096/session \
-	-H "Authorization: Basic $OPENCODE_AUTH" \
 	-H 'content-type: application/json' \
 	-d '{"title":"tier6-assistant-pipeline"}' |
 	python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null || echo "")
@@ -510,7 +507,6 @@ SESSION_ID=$(curl -sf http://localhost:4096/session \
 MESSAGE_RESPONSE=""
 if [ -n "$SESSION_ID" ]; then
 	MESSAGE_RESPONSE=$(curl -sf http://localhost:4096/session/$SESSION_ID/message \
-		-H "Authorization: Basic $OPENCODE_AUTH" \
 		-H 'content-type: application/json' \
 		-d '{"parts":[{"type":"text","text":"Reply with exactly ok"}]}' \
 		2>/dev/null || echo "")

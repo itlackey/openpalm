@@ -1,26 +1,54 @@
 <img src="packages/admin/static/banner.png" alt="OpenPalm" width="500" />
 
 <p>
-  <strong>Your own AI assistant — private, secure, and ready in minutes.</strong><br/>
-  Talk to it from Discord, web chat, or any channel you add. It remembers what matters and forgets what it should.
+  <strong>A foundation for building your own AI assistant — private, extensible, and yours to keep.</strong>
 </p>
 
 ---
 
-## Why OpenPalm?
+## You deserve your own assistant
 
-Most AI assistants live on someone else's servers. OpenPalm runs on yours. Your conversations, your memory, your rules — nothing leaves your network unless you want it to.
+AI assistants shouldn't be someone else's product. They should be something you own, shape, and trust. OpenPalm exists because we believe everyone should have a DIY assistant that runs on their own hardware, remembers what they care about, and works the way they want it to.
 
-- **Simple to run** — a single Docker Compose stack on Linux, macOS, or Windows.
-- **Connect your channels** — web chat and Discord are built in. Add more by dropping files — no code changes.
-- **Long-term memory** — your assistant remembers context across conversations. Secrets are never stored.
-- **Admin dashboard** — manage everything from a browser: services, channels, access control.
-- **Automations** — schedule recurring tasks like updates, health checks, and assistant prompts by dropping a file.
-- **Built for safety** — defense-in-depth security: HMAC-signed messages, guardian validation, assistant isolation, LAN-first by default.
+OpenPalm isn't a finished product you consume. It's a starter kit — a secure, modular foundation you build on top of. Swap models, add channels, wire in your own tools, and make it yours. The architecture is designed so you can go as far as you want without fighting the framework.
 
-## Prerequisites
+## What makes the core strong
 
-You need **one thing** installed before starting: a container runtime.
+OpenPalm's value isn't in any single feature. It's in the decisions baked into the architecture:
+
+- **Defense in depth** — Every message passes through HMAC-signed verification, replay detection, and rate limiting before reaching the assistant. The assistant itself has no Docker socket and no host access. Nothing is exposed beyond your LAN unless you explicitly opt in.
+- **File-drop modularity** — Adding a channel, automation, or service means dropping a file. No code changes, no rebuilds, no pull requests. The admin assembles everything at runtime from plain files.
+- **Memory that persists** — Your assistant remembers context across conversations. Secrets are never stored in memory. You control what it knows and what it forgets.
+- **Single-command setup** — One copy-paste command gets you a running stack. Re-run to update. Your config is never overwritten.
+
+## Extend it with integrations
+
+OpenPalm is built to integrate, not to lock you in.
+
+### Varlock — secret protection at every layer
+
+[Varlock](https://varlock.dev) is an open-source secret management and redaction tool integrated throughout the stack:
+
+- **Validation** — Environment files are checked against schemas before the stack starts, catching missing or malformed secrets early.
+- **Leak scanning** — Pre-commit hooks and CLI commands scan for accidentally committed keys before they reach your repo.
+- **Runtime redaction** — Every bash command the assistant runs is wrapped through Varlock, stripping API keys and tokens from output before they enter the LLM context window.
+
+If Varlock isn't installed, the system falls back gracefully — nothing breaks, you just lose the protection layer. It's a safety net, not a hard dependency.
+
+### AKM — agent knowledge management
+
+[AKM](https://github.com/itlackey/akm) is an OpenCode plugin that extends the assistant with structured knowledge capabilities. It's auto-installed alongside OpenPalm's own assistant tools, giving your assistant a stash of reusable context that persists across sessions. Customize it by adding your own knowledge, skills, and tools to the stash directory.
+
+### Bring your own everything
+
+- **Models** — Connect any OpenAI-compatible endpoint: local (LM Studio, Ollama) or remote (OpenAI, Groq, any provider).
+- **Channels** — Web chat and Discord are built in. Build your own adapter with the Channels SDK, or drop in a community channel.
+- **Tools and skills** — The assistant runs on OpenCode, so any OpenCode plugin works out of the box.
+- **Automations** — Schedule recurring tasks (updates, health checks, prompts) by dropping a YAML file.
+
+## Get started
+
+You need **one thing** installed: a container runtime.
 
 | Your computer | What to install | Link |
 |---|---|---|
@@ -28,84 +56,57 @@ You need **one thing** installed before starting: a container runtime.
 | **Mac** | Docker Desktop _or_ OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
 | **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com \| sh` |
 
-After installing, open the app and wait for it to finish starting (you'll see a green/running indicator).
+Then copy-paste **one** command:
 
-## Get Started
-
-Copy-paste **one** command into your terminal and the installer does the rest:
-
-**Mac or Linux** — open Terminal and paste:
+**Mac or Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-**Windows (PowerShell)** — open PowerShell and paste:
+**Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```
 
-No config files to edit. Re-run the same command to update — your secrets are never overwritten.
+No config files to edit. Re-run the same command to update — your secrets are never overwritten. See the [setup guide](docs/setup-guide.md) for details.
 
-See the [setup guide](docs/setup-guide.md) for details.
-
-## What You Get
-
-### Talk from anywhere
-
-Connect Discord, a web chat widget, or build your own channel adapter. Each channel runs as a lightweight Docker container — your assistant's core logic stays the same regardless of where the message comes from.
-
-### It remembers
-
-OpenPalm includes a built-in memory system. Your assistant recalls past conversations, preferences, and context. Secrets are never saved to memory.
-
-### Admin dashboard
-
-A web-based control panel lets you:
-- Start, stop, and restart services
-- Install and manage channels
-- Toggle channel access between LAN-only and public
-- Monitor system health
-
-All admin operations require an admin token (`x-admin-token` header). The admin panel is only accessible from your local network by default.
-
-### Add channels by file-drop
-
-Adding a channel requires no code changes — just drop a Docker Compose overlay (`.yml`) and an optional Caddy route (`.caddy`) into the registry. The admin stages these into the runtime automatically. Built-in channels include web chat and Discord, with community channels documented in [`docs/community-channels.md`](docs/community-channels.md).
-
-### Automations
-
-Schedule recurring tasks by dropping a `.yml` file into `~/.config/openpalm/automations/`. OpenPalm ships ready-to-use examples for auto-updating containers, health checks, sending prompts to the assistant, and log cleanup. Browse and install automations from the Registry tab in the admin console, or copy any example from `registry/automations/` to get started. See [`docs/managing-openpalm.md`](docs/managing-openpalm.md#automations) for details.
+## How it works
 
 <div>
-
-## How It Works
-
 <img src="packages/admin/static/fu-128.png" alt="OpenPalm" width="90" style="float: right; shape-margin: 0.25rem;" />
-<p>OpenPalm has defense built into its core. It has many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
+<p>OpenPalm has defense built into its core — many layers working together to protect your system and your secrets from malicious activity, destructive actions, and other common disasters that can occur with unattended AI assistants.</p>
 </div>
 
 ![Architecture](docs/technical/architecture.svg)
 
-- **Admin** (`packages/admin/`) — SvelteKit app: operator UI + API + control plane. Only component with Docker socket access.
-- **Guardian** (`core/guardian/`) — Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic.
-- **Assistant** (`core/assistant/`) — OpenCode runtime. No Docker socket. Calls Admin API for stack operations.
-- **Channel runtime** (`core/channel/`) — Unified `channel` image entrypoint used by registry channel overlays.
-- **Channel packages** (`packages/channel-*/`) — Translate external protocols into signed guardian messages.
-- **Channels SDK** (`packages/channels-sdk/`) — `BaseChannel` abstract class, HMAC crypto, logger, and payload types.
+| Component | Role |
+|---|---|
+| **Admin** (`packages/admin/`) | SvelteKit app: operator UI + API + control plane. Sole component with Docker socket access. |
+| **Guardian** (`core/guardian/`) | Bun HTTP server: HMAC verification, replay detection, rate limiting for all channel traffic. |
+| **Assistant** (`core/assistant/`) | OpenCode runtime with tools/skills. No Docker socket. Calls Admin API for stack operations. |
+| **Channel runtime** (`core/channel/`) | Unified image entrypoint for registry channel overlays. |
+| **Channel packages** (`packages/channel-*/`) | Translate external protocols (Discord, OpenAI API, web chat) into signed guardian messages. |
+| **Channels SDK** (`packages/channels-sdk/`) | `BaseChannel` abstract class, HMAC crypto, logger, and payload types for building adapters. |
 
-**Key rules:**
-- The **Admin API** is the sole orchestrator — no other component runs Docker commands.
-- The **Guardian** is the sole ingress for channel traffic — all messages are HMAC-verified before reaching the assistant.
+**Architectural invariants:**
+- The **Admin** is the sole orchestrator — no other component runs Docker commands.
+- The **Guardian** is the sole ingress — all channel traffic is HMAC-verified before reaching the assistant.
 - The **Assistant** is fully isolated — no Docker socket, no host filesystem beyond designated mounts.
 - **LAN-first by default** — nothing is publicly exposed without explicit opt-in.
 
-See [`docs/how-it-works.md`](docs/how-it-works.md) for the full architecture walkthrough and [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for security invariants.
+See [`docs/how-it-works.md`](docs/how-it-works.md) for the full walkthrough and [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for security invariants.
+
+## Make it yours
+
+OpenPalm is a starting point. Here's how people build on it:
+
+- **Drop in a channel** — Write a Compose overlay + optional Caddy route. The admin picks it up automatically.
+- **Add assistant tools** — Any OpenCode plugin works. Install from npm or build your own.
+- **Customize memory** — Choose your embedding model, enable reranking, set custom instructions for how memories are processed.
+- **Schedule automations** — Drop a YAML file to run health checks, send prompts, clean logs, or anything else on a cron schedule.
+- **Swap the model** — Point at a different provider or local model at any time through the admin dashboard.
 
 ## Documentation
-
-Repo layout convention:
-- `packages/*` contains app and package source code (for example `packages/admin/` and `packages/cli/`).
-- `core/*` contains container/runtime assembly assets and service image build contexts.
 
 | Guide | What's inside |
 |---|---|
@@ -116,9 +117,8 @@ Repo layout convention:
 | [Directory Structure](docs/technical/directory-structure.md) | Host paths, XDG tiers, volume design |
 | [Community Channels](docs/community-channels.md) | BaseChannel SDK for building custom adapters |
 | [API Spec](docs/technical/api-spec.md) | Admin API endpoint contract |
-| [PRD](docs/technical/prd.md) | MVP requirements and constraints |
 
-### Project READMEs
+### Component READMEs
 
 | Component | README |
 |---|---|
@@ -139,4 +139,4 @@ Repo layout convention:
 
 ## License
 
-See [LICENSE](LICENSE).
+See [MPL-2.0](LICENSE).

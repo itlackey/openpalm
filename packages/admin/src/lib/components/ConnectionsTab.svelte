@@ -83,6 +83,7 @@
   let dimensionWarning = $state('');
   let resetting = $state(false);
   let resetSuccess = $state(false);
+  let settingsTab = $state<'memory' | 'models'>('models');
 
   let selectedConnectionIds = $derived(
     [...new Set([
@@ -734,13 +735,219 @@
     </section>
   {/if}
 
-  <!-- ── Memory Settings ────────────────────────────────────────── -->
-  <form onsubmit={(e) => { e.preventDefault(); void saveSettings('memory'); }} novalidate>
-    <section class="panel connections-section">
-      <div class="panel-header">
-        <h3>Memory Settings</h3>
+  <!-- ── Settings (tabbed: Models / Memory) ────────────────────── -->
+  <section class="panel connections-section">
+    <div class="panel-header">
+      <div class="settings-tabs" role="tablist">
+        <button
+          class="settings-tab"
+          class:settings-tab--active={settingsTab === 'models'}
+          role="tab"
+          aria-selected={settingsTab === 'models'}
+          aria-controls="settings-panel-models"
+          type="button"
+          onclick={() => settingsTab = 'models'}
+        >Models</button>
+        <button
+          class="settings-tab"
+          class:settings-tab--active={settingsTab === 'memory'}
+          role="tab"
+          aria-selected={settingsTab === 'memory'}
+          aria-controls="settings-panel-memory"
+          type="button"
+          onclick={() => settingsTab = 'memory'}
+        >Memory</button>
       </div>
-      <div class="panel-body">
+      <div class="panel-header-actions">
+        {#if settingsTab === 'memory'}
+          {#if memorySaveSuccess}
+            <span class="header-save-status header-save-status--success">Saved</span>
+          {/if}
+          {#if memorySaveError}
+            <span class="header-save-status header-save-status--error" title={memorySaveError}>Error</span>
+          {/if}
+          <button
+            class="btn btn-primary btn-sm"
+            type="button"
+            disabled={memorySaving}
+            onclick={() => void saveSettings('memory')}
+          >
+            {#if memorySaving}<span class="spinner"></span>{/if}
+            Save
+          </button>
+        {:else}
+          {#if modelSaveSuccess}
+            <span class="header-save-status header-save-status--success">Saved</span>
+          {/if}
+          {#if modelSaveError}
+            <span class="header-save-status header-save-status--error" title={modelSaveError}>Error</span>
+          {/if}
+          <button
+            class="btn btn-primary btn-sm"
+            type="button"
+            disabled={modelSaving}
+            onclick={() => void saveSettings('model')}
+          >
+            {#if modelSaving}<span class="spinner"></span>{/if}
+            Save
+          </button>
+        {/if}
+      </div>
+    </div>
+
+    <!-- ── Models tab ──────────────────────────────────────────── -->
+    {#if settingsTab === 'models'}
+      <div id="settings-panel-models" role="tabpanel" class="panel-body settings-stack">
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <span class="settings-card-title">Chat Models</span>
+            <span class="settings-card-help">Choose the default chat and small models used by OpenCode.</span>
+          </div>
+
+          <div class="field-group">
+            <label for="chat-connection-admin">Connection</label>
+            <select id="chat-connection-admin" bind:value={llmConnectionId}>
+              <option value="">- select connection -</option>
+              {#each profiles as profile}
+                <option value={profile.id}>{profile.name}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="chat-model-admin">Chat model</label>
+            <ModelSelector
+              id="chat-model-admin"
+              value={chatModel}
+              options={getModelOptions(llmConnectionId)}
+              placeholder="gpt-4o-mini"
+              onChange={(value) => chatModel = value}
+            />
+            <span class="field-hint">{getSelectedModelCopy('Chat model', llmConnectionId, chatModel)}</span>
+            {#if modelListLoading[llmConnectionId]}
+              <span class="field-status">Loading models from {getConnectionName(llmConnectionId)}...</span>
+            {:else if getModelDiscoveryError(llmConnectionId)}
+              <div class="field-status-row">
+                <span class="field-status field-status--warning">{getModelDiscoveryError(llmConnectionId)}</span>
+                <button class="btn-link-inline" type="button" onclick={() => void loadModelsForConnection(llmConnectionId, true)}>Retry</button>
+              </div>
+            {/if}
+          </div>
+
+          <div class="field-group">
+            <label for="small-model-admin">Small model</label>
+            <ModelSelector
+              id="small-model-admin"
+              value={smallModel}
+              options={getModelOptions(llmConnectionId)}
+              placeholder="Defaults to the chat model when left blank"
+              onChange={(value) => smallModel = value}
+            />
+            <p class="field-hint">{getSelectedModelCopy('Small model', llmConnectionId, smallModel)} Use a cheaper or faster model for lightweight tasks.</p>
+          </div>
+        </div>
+
+        <div class="addon-row" class:addon-row--active={ttsEnabled}>
+          <div class="addon-toggle-row">
+            <label class="addon-toggle-label">
+              <input type="checkbox" bind:checked={ttsEnabled} />
+              <span class="addon-label-text">Enable text-to-speech</span>
+            </label>
+            <span class="addon-help">Turns responses into audio.</span>
+          </div>
+          {#if ttsEnabled}
+            <div class="addon-fields">
+              <div class="field-group">
+                <label for="tts-connection-admin">Connection</label>
+                <select id="tts-connection-admin" bind:value={ttsConnectionId}>
+                  <option value="">- select connection -</option>
+                  {#each profiles as profile}
+                    <option value={profile.id}>{profile.name}</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="tts-model-admin">Model</label>
+                <ModelSelector
+                  id="tts-model-admin"
+                  value={ttsModel}
+                  options={getModelOptions(ttsConnectionId)}
+                  placeholder="e.g., tts-1"
+                  onChange={(value) => ttsModel = value}
+                />
+                <span class="field-hint">{getSelectedModelCopy('Text-to-speech model', ttsConnectionId, ttsModel)}</span>
+                {#if modelListLoading[ttsConnectionId]}
+                  <span class="field-status">Loading models from {getConnectionName(ttsConnectionId)}...</span>
+                {:else if getModelDiscoveryError(ttsConnectionId)}
+                  <div class="field-status-row">
+                    <span class="field-status field-status--warning">{getModelDiscoveryError(ttsConnectionId)}</span>
+                    <button class="btn-link-inline" type="button" onclick={() => void loadModelsForConnection(ttsConnectionId, true)}>Retry</button>
+                  </div>
+                {/if}
+              </div>
+              <div class="field-group">
+                <label for="tts-voice-admin">Voice</label>
+                <input id="tts-voice-admin" type="text" bind:value={ttsVoice} placeholder="e.g., alloy" />
+              </div>
+              <div class="field-group">
+                <label for="tts-format-admin">Output format</label>
+                <input id="tts-format-admin" type="text" bind:value={ttsFormat} placeholder="e.g., mp3" />
+              </div>
+            </div>
+          {/if}
+        </div>
+
+        <div class="addon-row" class:addon-row--active={sttEnabled}>
+          <div class="addon-toggle-row">
+            <label class="addon-toggle-label">
+              <input type="checkbox" bind:checked={sttEnabled} />
+              <span class="addon-label-text">Enable speech-to-text</span>
+            </label>
+            <span class="addon-help">Transcribes audio into text.</span>
+          </div>
+          {#if sttEnabled}
+            <div class="addon-fields">
+              <div class="field-group">
+                <label for="stt-connection-admin">Connection</label>
+                <select id="stt-connection-admin" bind:value={sttConnectionId}>
+                  <option value="">- select connection -</option>
+                  {#each profiles as profile}
+                    <option value={profile.id}>{profile.name}</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="stt-model-admin">Model</label>
+                <ModelSelector
+                  id="stt-model-admin"
+                  value={sttModel}
+                  options={getModelOptions(sttConnectionId)}
+                  placeholder="e.g., whisper-1"
+                  onChange={(value) => sttModel = value}
+                />
+                <span class="field-hint">{getSelectedModelCopy('Speech-to-text model', sttConnectionId, sttModel)}</span>
+                {#if modelListLoading[sttConnectionId]}
+                  <span class="field-status">Loading models from {getConnectionName(sttConnectionId)}...</span>
+                {:else if getModelDiscoveryError(sttConnectionId)}
+                  <div class="field-status-row">
+                    <span class="field-status field-status--warning">{getModelDiscoveryError(sttConnectionId)}</span>
+                    <button class="btn-link-inline" type="button" onclick={() => void loadModelsForConnection(sttConnectionId, true)}>Retry</button>
+                  </div>
+                {/if}
+              </div>
+              <div class="field-group">
+                <label for="stt-language-admin">Language</label>
+                <input id="stt-language-admin" type="text" bind:value={sttLanguage} placeholder="e.g., en" />
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
+    <!-- ── Memory tab ──────────────────────────────────────────── -->
+    {#if settingsTab === 'memory'}
+      <div id="settings-panel-memory" role="tabpanel" class="panel-body">
         <div class="form-grid">
           <div class="form-field">
             <label for="conn-memory-user-id" class="form-label">Memory User ID</label>
@@ -896,242 +1103,8 @@
           </div>
         </div>
       </div>
-    </section>
-
-    {#if memorySaveSuccess}
-      <div class="feedback feedback--success" role="status" aria-live="polite">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-          <polyline points="22 4 12 14.01 9 11.01" />
-        </svg>
-        <span>Memory settings saved.</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => memorySaveSuccess = false}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
     {/if}
-
-    {#if memorySaveError}
-      <div class="feedback feedback--error" role="alert" aria-live="assertive">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <span>{memorySaveError}</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => memorySaveError = ''}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    {/if}
-
-    <div class="form-actions">
-      <button class="btn btn-primary" type="submit" disabled={memorySaving}>
-        {#if memorySaving}
-          <span class="spinner"></span>
-        {/if}
-        Save Memory Settings
-      </button>
-    </div>
-  </form>
-
-  <form onsubmit={(e) => { e.preventDefault(); void saveSettings('model'); }} novalidate>
-    <section class="panel connections-section">
-      <div class="panel-header">
-        <h3>Model Settings</h3>
-      </div>
-      <div class="panel-body settings-stack">
-        <div class="settings-card">
-          <div class="settings-card-header">
-            <span class="settings-card-title">Chat Models</span>
-            <span class="settings-card-help">Choose the default chat and small models used by OpenCode.</span>
-          </div>
-
-          <div class="field-group">
-            <label for="chat-connection-admin">Connection</label>
-            <select id="chat-connection-admin" bind:value={llmConnectionId}>
-              <option value="">- select connection -</option>
-              {#each profiles as profile}
-                <option value={profile.id}>{profile.name}</option>
-              {/each}
-            </select>
-          </div>
-
-          <div class="field-group">
-            <label for="chat-model-admin">Chat model</label>
-            <ModelSelector
-              id="chat-model-admin"
-              value={chatModel}
-              options={getModelOptions(llmConnectionId)}
-              placeholder="gpt-4o-mini"
-              onChange={(value) => chatModel = value}
-            />
-            <span class="field-hint">{getSelectedModelCopy('Chat model', llmConnectionId, chatModel)}</span>
-            {#if modelListLoading[llmConnectionId]}
-              <span class="field-status">Loading models from {getConnectionName(llmConnectionId)}...</span>
-            {:else if getModelDiscoveryError(llmConnectionId)}
-              <div class="field-status-row">
-                <span class="field-status field-status--warning">{getModelDiscoveryError(llmConnectionId)}</span>
-                <button class="btn-link-inline" type="button" onclick={() => void loadModelsForConnection(llmConnectionId, true)}>Retry</button>
-              </div>
-            {/if}
-          </div>
-
-          <div class="field-group">
-            <label for="small-model-admin">Small model</label>
-            <ModelSelector
-              id="small-model-admin"
-              value={smallModel}
-              options={getModelOptions(llmConnectionId)}
-              placeholder="Defaults to the chat model when left blank"
-              onChange={(value) => smallModel = value}
-            />
-            <p class="field-hint">{getSelectedModelCopy('Small model', llmConnectionId, smallModel)} Use a cheaper or faster model for lightweight tasks.</p>
-          </div>
-        </div>
-
-        <div class="addon-row" class:addon-row--active={ttsEnabled}>
-          <div class="addon-toggle-row">
-            <label class="addon-toggle-label">
-              <input type="checkbox" bind:checked={ttsEnabled} />
-              <span class="addon-label-text">Enable text-to-speech</span>
-            </label>
-            <span class="addon-help">Turns responses into audio.</span>
-          </div>
-          {#if ttsEnabled}
-            <div class="addon-fields">
-              <div class="field-group">
-                <label for="tts-connection-admin">Connection</label>
-                <select id="tts-connection-admin" bind:value={ttsConnectionId}>
-                  <option value="">- select connection -</option>
-                  {#each profiles as profile}
-                    <option value={profile.id}>{profile.name}</option>
-                  {/each}
-                </select>
-              </div>
-              <div class="field-group">
-                <label for="tts-model-admin">Model</label>
-                <ModelSelector
-                  id="tts-model-admin"
-                  value={ttsModel}
-                  options={getModelOptions(ttsConnectionId)}
-                  placeholder="e.g., tts-1"
-                  onChange={(value) => ttsModel = value}
-                />
-                <span class="field-hint">{getSelectedModelCopy('Text-to-speech model', ttsConnectionId, ttsModel)}</span>
-                {#if modelListLoading[ttsConnectionId]}
-                  <span class="field-status">Loading models from {getConnectionName(ttsConnectionId)}...</span>
-                {:else if getModelDiscoveryError(ttsConnectionId)}
-                  <div class="field-status-row">
-                    <span class="field-status field-status--warning">{getModelDiscoveryError(ttsConnectionId)}</span>
-                    <button class="btn-link-inline" type="button" onclick={() => void loadModelsForConnection(ttsConnectionId, true)}>Retry</button>
-                  </div>
-                {/if}
-              </div>
-              <div class="field-group">
-                <label for="tts-voice-admin">Voice</label>
-                <input id="tts-voice-admin" type="text" bind:value={ttsVoice} placeholder="e.g., alloy" />
-              </div>
-              <div class="field-group">
-                <label for="tts-format-admin">Output format</label>
-                <input id="tts-format-admin" type="text" bind:value={ttsFormat} placeholder="e.g., mp3" />
-              </div>
-            </div>
-          {/if}
-        </div>
-
-        <div class="addon-row" class:addon-row--active={sttEnabled}>
-          <div class="addon-toggle-row">
-            <label class="addon-toggle-label">
-              <input type="checkbox" bind:checked={sttEnabled} />
-              <span class="addon-label-text">Enable speech-to-text</span>
-            </label>
-            <span class="addon-help">Transcribes audio into text.</span>
-          </div>
-          {#if sttEnabled}
-            <div class="addon-fields">
-              <div class="field-group">
-                <label for="stt-connection-admin">Connection</label>
-                <select id="stt-connection-admin" bind:value={sttConnectionId}>
-                  <option value="">- select connection -</option>
-                  {#each profiles as profile}
-                    <option value={profile.id}>{profile.name}</option>
-                  {/each}
-                </select>
-              </div>
-              <div class="field-group">
-                <label for="stt-model-admin">Model</label>
-                <ModelSelector
-                  id="stt-model-admin"
-                  value={sttModel}
-                  options={getModelOptions(sttConnectionId)}
-                  placeholder="e.g., whisper-1"
-                  onChange={(value) => sttModel = value}
-                />
-                <span class="field-hint">{getSelectedModelCopy('Speech-to-text model', sttConnectionId, sttModel)}</span>
-                {#if modelListLoading[sttConnectionId]}
-                  <span class="field-status">Loading models from {getConnectionName(sttConnectionId)}...</span>
-                {:else if getModelDiscoveryError(sttConnectionId)}
-                  <div class="field-status-row">
-                    <span class="field-status field-status--warning">{getModelDiscoveryError(sttConnectionId)}</span>
-                    <button class="btn-link-inline" type="button" onclick={() => void loadModelsForConnection(sttConnectionId, true)}>Retry</button>
-                  </div>
-                {/if}
-              </div>
-              <div class="field-group">
-                <label for="stt-language-admin">Language</label>
-                <input id="stt-language-admin" type="text" bind:value={sttLanguage} placeholder="e.g., en" />
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-    </section>
-
-    {#if modelSaveSuccess}
-      <div class="feedback feedback--success" role="status" aria-live="polite">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-          <polyline points="22 4 12 14.01 9 11.01" />
-        </svg>
-        <span>Model settings saved.</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => modelSaveSuccess = false}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    {/if}
-
-    {#if modelSaveError}
-      <div class="feedback feedback--error" role="alert" aria-live="assertive">
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <span>{modelSaveError}</span>
-        <button class="btn-dismiss" type="button" aria-label="Dismiss" onclick={() => modelSaveError = ''}>
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    {/if}
-
-    <div class="form-actions">
-      <button class="btn btn-primary" type="submit" disabled={modelSaving}>
-        {#if modelSaving}
-          <span class="spinner"></span>
-        {/if}
-        Save Model Settings
-      </button>
-    </div>
-  </form>
+  </section>
 </section>
 
 <style>
@@ -1493,12 +1466,53 @@
     cursor: pointer;
   }
 
-  /* ── Form Actions ────────────────────────────────────────────── */
+  /* ── Settings Tabs ──────────────────────────────────────────── */
 
-  .form-actions {
+  .settings-tabs {
     display: flex;
-    justify-content: flex-end;
+    gap: 0;
+  }
+
+  .settings-tab {
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    font-family: inherit;
+    color: var(--color-text-secondary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .settings-tab:hover {
+    color: var(--color-text);
+  }
+
+  .settings-tab--active {
+    color: var(--color-text);
+    font-weight: var(--font-semibold);
+    border-bottom-color: var(--color-primary);
+  }
+
+  .panel-header-actions {
+    display: flex;
+    align-items: center;
     gap: var(--space-3);
+  }
+
+  .header-save-status {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+  }
+
+  .header-save-status--success {
+    color: var(--color-success, #40c057);
+  }
+
+  .header-save-status--error {
+    color: var(--color-danger);
   }
 
   /* ── Buttons ─────────────────────────────────────────────────── */

@@ -64,9 +64,9 @@ services:
     environment:
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
-      OPENCODE_AUTH: "true"
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
+      OPENCODE_AUTH: "false"
       OPENCODE_ENABLE_SSH: ${OPENCODE_ENABLE_SSH:-0}
+      TERM: xterm-256color
       HOME: /home/opencode
       AKM_STASH_DIR: /stash
       OPENPALM_ADMIN_API_URL: http://admin:8100
@@ -112,7 +112,6 @@ services:
       HOME: /app/data
       PORT: "8080"
       OPENPALM_ASSISTANT_URL: http://assistant:4096
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       OPENCODE_TIMEOUT_MS: "120000"
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
@@ -186,7 +185,6 @@ services:
       HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       GUARDIAN_URL: http://guardian:8080
       OPENPALM_ASSISTANT_URL: http://assistant:4096
       OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}

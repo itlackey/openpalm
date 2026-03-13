@@ -17,8 +17,15 @@
 
 VARLOCK_SCHEMA_DIR="${VARLOCK_SHELL_SCHEMA_DIR:-/usr/local/etc/varlock}"
 
-if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
-  exec varlock run --path "$VARLOCK_SCHEMA_DIR/" -- /bin/bash "$@"
-else
-  exec /bin/bash "$@"
-fi
+# Only wrap with varlock for non-interactive invocations (bash -c "command")
+# used by OpenCode's bash tool. Interactive PTY terminals (no -c flag) must
+# run plain bash so readline, escape sequences, and job control work correctly.
+case "$1" in
+  -c)
+    if command -v varlock >/dev/null 2>&1 && [ -f "$VARLOCK_SCHEMA_DIR/.env.schema" ]; then
+      exec varlock run --path "$VARLOCK_SCHEMA_DIR/" -- /bin/bash "$@"
+    fi
+    ;;
+esac
+
+exec /bin/bash "$@"
