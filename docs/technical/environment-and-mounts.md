@@ -194,6 +194,7 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 | `ADMIN_TOKEN` | from secrets.env | Bearer token for Admin API |
 | `GUARDIAN_URL` | `http://guardian:8080` | Internal URL to guardian |
 | `OPENPALM_ASSISTANT_URL` | `http://assistant:4096` | Internal URL to assistant |
+| `HOME` | `${OPENPALM_DATA_HOME}/admin` | Writable home directory for varlock runtime state (`~/.varlock`) |
 | `OPENPALM_CONFIG_HOME` | Same as host path | In-container path to CONFIG_HOME (same-path mount) |
 | `OPENPALM_DATA_HOME` | Same as host path | In-container path to DATA_HOME (same-path mount) |
 | `OPENPALM_STATE_HOME` | Same as host path | In-container path to STATE_HOME (same-path mount) |

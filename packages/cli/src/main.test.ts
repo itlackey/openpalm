@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { mkdirSync, writeFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
@@ -7,10 +7,18 @@ import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageT
 describe('cli main', () => {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
+  const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
+  const originalDataHome = process.env.OPENPALM_DATA_HOME;
+  const originalStateHome = process.env.OPENPALM_STATE_HOME;
+  const originalWorkDir = process.env.OPENPALM_WORK_DIR;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
+    process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
+    process.env.OPENPALM_DATA_HOME = originalDataHome;
+    process.env.OPENPALM_STATE_HOME = originalStateHome;
+    process.env.OPENPALM_WORK_DIR = originalWorkDir;
   });
 
   it('calls containers pull for update', async () => {
@@ -48,6 +56,49 @@ describe('cli main', () => {
 
   it('throws for unknown command', async () => {
     await expect(main(['nope'])).rejects.toThrow('Unknown command: nope');
+  });
+
+  it('creates the admin data directory during bootstrap install', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
+    const configHome = join(base, 'config');
+    const dataHome = join(base, 'data');
+    const stateHome = join(base, 'state');
+    const workDir = join(base, 'work');
+    const binDir = join(stateHome, 'bin');
+
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(binDir, 'varlock'), 0o755);
+
+    process.env.OPENPALM_CONFIG_HOME = configHome;
+    process.env.OPENPALM_DATA_HOME = dataHome;
+    process.env.OPENPALM_STATE_HOME = stateHome;
+    process.env.OPENPALM_WORK_DIR = workDir;
+
+    globalThis.fetch = mock(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) {
+        throw new TypeError('fetch failed');
+      }
+      if (url.includes('/docker-compose.yml')) {
+        return new Response('services: {}\n', { status: 200 });
+      }
+      if (url.includes('/Caddyfile')) {
+        return new Response(':80 {\n}\n', { status: 200 });
+      }
+      if (url.includes('/secrets.env.schema') || url.includes('/stack.env.schema')) {
+        return new Response('KEY=string\n', { status: 200 });
+      }
+      return new Response('', { status: 503 });
+    }) as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+
+    try {
+      await main(['install', '--no-start', '--force', '--no-open']);
+      expect(existsSync(join(dataHome, 'admin'))).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 

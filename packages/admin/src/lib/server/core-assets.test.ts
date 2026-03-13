@@ -196,6 +196,7 @@ describe("ensureCoreCompose / readCoreCompose", () => {
     expect(content).toBeTruthy();
     expect(typeof content).toBe("string");
     expect(content).toContain("HOME: /app/data");
+    expect(content).toContain("HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin");
   });
 });
 

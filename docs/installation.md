@@ -26,7 +26,7 @@ The script detects your platform and architecture, downloads the correct `openpa
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```
 
-The script downloads `openpalm-windows-x64.exe` from the GitHub release and places it in `%LOCALAPPDATA%\openpalm\bin\openpalm.exe`, then runs `openpalm install`.
+The script downloads the matching Windows CLI binary from the GitHub release and places it in `%LOCALAPPDATA%\openpalm\bin\openpalm.exe`, then runs `openpalm install`.
 
 ---
 

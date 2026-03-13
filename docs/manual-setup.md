@@ -47,6 +47,7 @@ mkdir -p ~/.config/openpalm/automations
 mkdir -p ~/.config/openpalm/opencode/{tools,plugins,skills}
 
 # DATA_HOME
+mkdir -p ~/.local/share/openpalm/admin
 mkdir -p ~/.local/share/openpalm/memory
 mkdir -p ~/.local/share/openpalm/assistant
 mkdir -p ~/.local/share/openpalm/guardian

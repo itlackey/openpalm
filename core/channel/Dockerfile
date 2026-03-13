@@ -44,8 +44,10 @@ RUN chmod +x /app/start.sh
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY assets/redact.env.schema /app/.env.schema
 
-RUN chown -R bun:bun /app
+RUN mkdir -p /home/bun \
+    && chown -R bun:bun /app /home/bun
 
+ENV HOME=/home/bun
 ENV PORT=8080
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \

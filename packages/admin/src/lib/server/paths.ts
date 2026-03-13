@@ -54,6 +54,7 @@ export function ensureXdgDirs(): void {
 
     // DATA_HOME — persistent service data (pre-created to avoid root-owned dirs)
     dataHome,
+    `${dataHome}/admin`,
     `${dataHome}/memory`,
     `${dataHome}/assistant`,
     `${dataHome}/guardian`,

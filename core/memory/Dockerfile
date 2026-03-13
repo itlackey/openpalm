@@ -51,9 +51,11 @@ RUN bun -e "import {readFileSync,writeFileSync} from 'node:fs';const p=JSON.pars
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY assets/redact.env.schema /app/.env.schema
 
-RUN chown -R bun:bun /app
+RUN mkdir -p /home/bun \
+    && chown -R bun:bun /app /home/bun
 
 USER bun
 
+ENV HOME=/home/bun
 EXPOSE 8765
 CMD ["varlock", "run", "--path", "/app/", "--", "bun", "run", "src/server.ts"]

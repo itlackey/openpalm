@@ -9,6 +9,7 @@ export OPENPALM_WORK_DIR='/var/lib/openpalm/work'
 
 mkdir -p "$OPENPALM_CONFIG_HOME" "$OPENPALM_STATE_HOME" "$OPENPALM_DATA_HOME" "$OPENPALM_WORK_DIR"
 mkdir -p "$OPENPALM_CONFIG_HOME/stash"
+mkdir -p "$OPENPALM_DATA_HOME/admin"
 
 if [[ ! -f "$OPENPALM_CONFIG_HOME/secrets.env" ]]; then
 	cp "$OPENPALM_HOME/assets/secrets.env" "$OPENPALM_CONFIG_HOME/secrets.env"

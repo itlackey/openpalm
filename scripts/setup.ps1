@@ -5,18 +5,51 @@
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'itlackey/openpalm'
-$Binary = 'openpalm-windows-x64.exe'
+$Binary = 'openpalm-cli-windows-x64.exe'
 $ScriptVersion = '0.9.0-rc11'
 
+function Normalize-Version {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Value
+    )
+
+    if ($Value.StartsWith('v')) {
+        return $Value
+    }
+
+    return "v$Value"
+}
+
 # Version resolution
-$Version = $env:OPENPALM_VERSION
+$RequestedVersion = $env:OPENPALM_VERSION
+$PassthroughArgs = @()
+
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $arg = $args[$i]
+
+    if ($arg -eq '--version') {
+        if ($i + 1 -ge $args.Count) {
+            throw '--version requires a value'
+        }
+
+        $RequestedVersion = $args[$i + 1]
+        $i++
+        continue
+    }
+
+    if ($arg.StartsWith('--version=')) {
+        $RequestedVersion = $arg.Substring('--version='.Length)
+        continue
+    }
+
+    $PassthroughArgs += $arg
+}
+
+$Version = if ($RequestedVersion) { Normalize-Version $RequestedVersion } else { $null }
 if (-not $Version) {
     if ($ScriptVersion -ne 'main') {
-        if ($ScriptVersion.StartsWith('v')) {
-            $Version = $ScriptVersion
-        } else {
-            $Version = "v$ScriptVersion"
-        }
+        $Version = Normalize-Version $ScriptVersion
     } else {
         $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
         $Version = $release.tag_name
@@ -38,4 +71,4 @@ Write-Host "✓ Installed openpalm to $Dest" -ForegroundColor Green
 $env:PATH = "$InstallDir;$env:PATH"
 
 # Run install
-& $Dest install --version $Version @args
+& $Dest install --version $Version @PassthroughArgs

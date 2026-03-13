@@ -183,6 +183,7 @@ services:
       - "127.0.0.1:8100:8100"
     environment:
       PORT: "8100"
+      HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
