@@ -1,4 +1,6 @@
-# Channel: Discord — Discord bot adapter
+# Channel: Discord — Gateway-based Discord bot adapter
+# Connects outbound to Discord via WebSocket (no public URL needed).
+# Requires Message Content Intent enabled in Discord Developer Portal.
 services:
   channel-discord:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
@@ -9,8 +11,6 @@ services:
       CHANNEL_NAME: "Discord Bot"
       CHANNEL_PACKAGE: "@openpalm/channel-discord"
       CHANNEL_DISCORD_SECRET: ${CHANNEL_DISCORD_SECRET}
-      DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY:-}
-      DISCORD_ALLOW_UNSIGNED_INTERACTIONS: ${DISCORD_ALLOW_UNSIGNED_INTERACTIONS:-false}
       DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_REGISTER_COMMANDS: ${DISCORD_REGISTER_COMMANDS:-true}

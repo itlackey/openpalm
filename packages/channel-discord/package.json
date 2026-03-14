@@ -1,14 +1,17 @@
 {
   "name": "@openpalm/channel-discord",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "type": "module",
   "license": "MPL-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/itlackey/openpalm",
+    "url": "https://github.com/itlackey/openpalm.git",
     "directory": "packages/channel-discord"
   },
   "main": "src/index.ts",
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  },
   "peerDependencies": {
     "@openpalm/channels-sdk": "^0.8.0"
   },
