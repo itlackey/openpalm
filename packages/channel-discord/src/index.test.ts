@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { signPayload } from "@openpalm/channels-sdk";
 import {
   BUILTIN_COMMANDS,
@@ -29,6 +29,48 @@ function testUser(overrides: Partial<UserInfo> = {}): UserInfo {
     ...overrides,
   };
 }
+
+type TestInteraction = {
+  commandName: string;
+  channelId: string;
+  guildId: string;
+  channel?: { id: string; isThread: () => boolean };
+  user: { id: string; username: string };
+  member: { roles: { cache: Map<string, { id: string }> } };
+  options: { data: Array<{ name: string; value?: string }> };
+  reply: ReturnType<typeof mock>;
+  deferReply: ReturnType<typeof mock>;
+  editReply: ReturnType<typeof mock>;
+  followUp: ReturnType<typeof mock>;
+};
+
+function createInteraction(overrides: Partial<TestInteraction> = {}): TestInteraction {
+  const roleEntries = [["role-1", { id: "role-1" }]];
+  return {
+    commandName: "ask",
+    channelId: "channel-1",
+    guildId: "guild-1",
+    channel: { id: "channel-1", isThread: () => false },
+    user: { id: "user-1", username: "testuser" },
+    member: {
+      roles: {
+        cache: {
+          map: <T>(fn: (role: { id: string }) => T) => roleEntries.map(([, role]) => fn(role)),
+        },
+      },
+    },
+    options: { data: [{ name: "message", value: "hello" }] },
+    reply: mock(async () => {}),
+    deferReply: mock(async () => {}),
+    editReply: mock(async () => {}),
+    followUp: mock(async () => {}),
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  Bun.env.DISCORD_CUSTOM_COMMANDS = undefined;
+});
 
 describe("health endpoint", () => {
   it("GET /health returns 200 with service info", async () => {
@@ -170,6 +212,7 @@ describe("commands", () => {
     const { all, registrationPayload } = buildCommandRegistry([]);
     expect(all.length).toBe(BUILTIN_COMMANDS.length);
     expect(registrationPayload.length).toBe(BUILTIN_COMMANDS.length);
+    expect(all.some((cmd) => cmd.name === "queue")).toBe(true);
   });
 
   it("buildCommandRegistry includes custom commands", () => {
@@ -196,6 +239,108 @@ describe("commands", () => {
   it("findCommand returns undefined for unknown command", () => {
     const cmd = findCommand(BUILTIN_COMMANDS, "nonexistent");
     expect(cmd).toBeUndefined();
+  });
+});
+
+describe("discord command behavior", () => {
+  it("/clear forwards a clearSession request with session metadata", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const interaction = createInteraction({ commandName: "clear" });
+
+    Object.assign(channel, { forward });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(forward).toHaveBeenCalledTimes(1);
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({
+      userId: "discord:user-1",
+      text: "clear session",
+      metadata: {
+        command: "clear",
+        channelId: "channel-1",
+        guildId: "guild-1",
+        username: "testuser",
+        sessionKey: "discord:channel:channel-1:user:user-1",
+        clearSession: true,
+      },
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith("Conversation cleared.");
+  });
+
+  it("thread slash commands include a thread session key", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 }));
+    const interaction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-1", isThread: () => true },
+    });
+
+    Object.assign(channel, { forward });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({
+      metadata: {
+        command: "ask",
+        channelId: "parent-channel",
+        sessionKey: "discord:thread:thread-1",
+      },
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith("done");
+  });
+
+  it("/queue replies immediately when conversation is busy and sends result later", async () => {
+    const channel = new DiscordChannel();
+    let release = () => {};
+    const forward = mock(
+      () =>
+        new Promise<Response>((resolve) => {
+          if (forward.mock.calls.length === 1) {
+            release = () => resolve(new Response(JSON.stringify({ answer: "first" }), { status: 200 }));
+            return;
+          }
+
+          resolve(new Response(JSON.stringify({ answer: "second" }), { status: 200 }));
+        }),
+    );
+    Object.assign(channel, { forward });
+
+    const askInteraction = createInteraction({ commandName: "ask" });
+    const queueInteraction = createInteraction({
+      commandName: "queue",
+      options: { data: [{ name: "message", value: "follow-up" }] },
+      reply: mock(async () => {}),
+      followUp: mock(async () => {}),
+    });
+
+    const firstRun = (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      askInteraction,
+    );
+    await Bun.sleep(0);
+
+    const secondRun = (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      queueInteraction,
+    );
+    await Bun.sleep(0);
+
+    expect(queueInteraction.reply).toHaveBeenCalledWith({
+      content: "Queued. I will run that next.",
+      ephemeral: true,
+    });
+
+    release();
+    await firstRun;
+    await secondRun;
+    await Bun.sleep(0);
+
+    expect(queueInteraction.followUp).toHaveBeenCalledWith({ content: "second", ephemeral: true });
   });
 });
 

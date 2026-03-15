@@ -2,7 +2,7 @@
 
 This guide walks through connecting a Discord bot to your OpenPalm instance. By the
 end, users in your Discord server will be able to interact with your assistant
-using slash commands like `/ask`.
+using slash commands like `/ask` or by mentioning the bot in a channel.
 
 ---
 
@@ -119,20 +119,47 @@ and Read Message History (1024). Adjust if you need additional permissions.
 ## 6. Verify It Works
 
 1. In the OpenPalm admin UI, go to the **Channels** page and confirm the Discord
-   channel shows as **running**.
+    channel shows as **running**.
 2. In your Discord server, type `/ask` followed by a message. The bot should
-   respond with the assistant's reply.
+    respond with the assistant's reply.
 3. Try `/health` to check the assistant connection status.
 4. Try `/help` to see all available commands.
+5. Mention the bot in a regular channel. The adapter should create a thread for
+   that conversation and continue replying inside the thread.
+
+### Thread and session behavior
+
+- Mentioning the bot in a normal channel starts a Discord thread named from the
+  first line of your message.
+- Once the bot is active in that thread, replies inside the thread do not need a
+  fresh mention.
+- Mention-driven thread conversations map to a thread-scoped backend session.
+- `/ask` stays inline as a slash-command response; it does not create a thread.
+- Slash-command conversations use the current thread when one exists; otherwise
+  they use a channel-plus-user backend session scope.
+- `/clear` clears the active backend conversation for the current Discord
+  conversation scope.
+
+### Request feedback and queue behavior
+
+- Mention-driven conversations show Discord typing indicators while OpenPalm is
+  working.
+- Slash commands use Discord's deferred reply flow so requests can run longer than
+  the 3-second interaction deadline.
+- Replies longer than Discord's message limit are split into multiple messages.
+- `/queue` lets you queue a follow-up prompt for the current conversation.
+- If a user posts another message in an active tracked thread while the bot is
+  still processing, the follow-up is queued automatically.
 
 ### Built-in Slash Commands
 
 | Command  | Description                                        |
 |----------|----------------------------------------------------|
 | `/ask`   | Send a message to the assistant                    |
+| `/queue` | Queue a follow-up for the current conversation     |
 | `/health`| Check the assistant's health status                |
 | `/help`  | Show available commands and usage information       |
-| `/clear` | Start a fresh conversation (clears session context) |
+| `/clear` | Clear the current conversation scope and drop queued follow-ups for it |
 
 ---
 
@@ -175,6 +202,10 @@ Custom commands are registered with Discord automatically on startup (unless
 built-in commands (`ask`, `health`, `help`, `clear`) are ignored. A maximum of
 20 custom commands are supported.
 
+Custom commands follow the same execution model as `/ask`: they defer the slash
+command response, send a prompt to OpenPalm, and reply inline rather than opening
+a Discord thread.
+
 ---
 
 ## Troubleshooting
@@ -185,6 +216,8 @@ built-in commands (`ask`, `health`, `help`, `clear`) are ignored. A maximum of
   under Bot > Privileged Gateway Intents.
 - Check that `DISCORD_BOT_TOKEN` is set correctly. Tokens are long strings that
   look like `MTIz...abc`.
+- In channel conversations, make sure you either mention the bot to start a new
+  thread or continue inside a thread the bot already started tracking.
 - Confirm the Discord channel container is running:
   ```bash
   curl http://localhost:8100/admin/containers/list \
@@ -216,6 +249,8 @@ built-in commands (`ask`, `health`, `help`, `clear`) are ignored. A maximum of
   ```bash
   docker compose logs channel-discord --tail 50
   ```
+- If `/clear` fails, check guardian and channel logs to confirm the clear request
+  reached guardian successfully.
 
 ### Rate limiting
 

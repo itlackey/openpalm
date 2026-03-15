@@ -14,6 +14,11 @@ import {
 } from "discord.js";
 import { buildCommandRegistry, parseCustomCommands, resolvePromptTemplate } from "./commands.ts";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
+import {
+  buildThreadSessionKey,
+  ConversationQueue,
+  resolveInteractionSessionKey,
+} from "./session.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 const log = createLogger("channel-discord");
@@ -28,6 +33,7 @@ export default class DiscordChannel extends BaseChannel {
   private commandRegistry = buildCommandRegistry(
     parseCustomCommands(Bun.env.DISCORD_CUSTOM_COMMANDS),
   );
+  private conversationQueue = new ConversationQueue();
 
   /** Thread IDs the bot is actively participating in. */
   private activeThreads = new Set<string>();
@@ -162,6 +168,45 @@ export default class DiscordChannel extends BaseChannel {
     };
   }
 
+  private async sendTypingLoop(channel: ThreadChannel): Promise<() => void> {
+    await channel.sendTyping();
+    const typingInterval = setInterval(() => {
+      channel.sendTyping().catch(() => {});
+    }, 5000);
+
+    return () => clearInterval(typingInterval);
+  }
+
+  private async runThreadConversation(
+    thread: ThreadChannel,
+    userInfo: UserInfo,
+    text: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    const stopTyping = await this.sendTypingLoop(thread);
+
+    try {
+      const answer = await this.forwardToGuardian(userInfo.userId, text, metadata);
+      stopTyping();
+      await this.sendSplitMessage(thread, answer);
+      log.info("message_completed", {
+        userId: userInfo.userId,
+        guildId: userInfo.guildId,
+        threadId: thread.id,
+        sessionKey: metadata.sessionKey,
+      });
+    } catch (error) {
+      stopTyping();
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("message_error", {
+        error: errMsg,
+        userId: userInfo.userId,
+        sessionKey: metadata.sessionKey,
+      });
+      await thread.send(`Error: ${errMsg}`);
+    }
+  }
+
   private async onMessage(message: Message): Promise<void> {
     if (message.author.bot) return;
     if (!message.content) return;
@@ -181,7 +226,6 @@ export default class DiscordChannel extends BaseChannel {
     }
 
     try {
-      // Get or create thread
       let thread: ThreadChannel;
       if (message.channel.isThread()) {
         thread = message.channel as ThreadChannel;
@@ -195,31 +239,22 @@ export default class DiscordChannel extends BaseChannel {
 
       this.activeThreads.add(thread.id);
 
-      // Show typing indicator
-      await thread.sendTyping();
-      const typingInterval = setInterval(() => {
-        thread.sendTyping().catch(() => {});
-      }, 5000);
-
-      try {
-        const answer = await this.forwardToGuardian(userInfo.userId, text, {
-          guildId: userInfo.guildId,
-          username: userInfo.username,
-          channelId: message.channelId,
-        });
-        clearInterval(typingInterval);
-        await this.sendSplitMessage(thread, answer);
-        log.info("message_completed", {
-          userId: userInfo.userId,
-          guildId: userInfo.guildId,
-          threadId: thread.id,
-        });
-      } catch (error) {
-        clearInterval(typingInterval);
-        const errMsg = error instanceof Error ? error.message : String(error);
-        log.error("message_error", { error: errMsg, userId: userInfo.userId });
-        await thread.send(`Error: ${errMsg}`);
-      }
+      const sessionKey = buildThreadSessionKey(thread.id);
+      await this.conversationQueue.runOrQueue(sessionKey, {
+        onQueued: async () => {
+          if (message.channel.isThread()) {
+            await thread.send("Queued. I will pick this up next.");
+          }
+        },
+        run: async () => {
+          await this.runThreadConversation(thread, userInfo, text, {
+            guildId: userInfo.guildId,
+            username: userInfo.username,
+            channelId: message.channelId,
+            sessionKey,
+          });
+        },
+      });
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       log.error("thread_error", { error: errMsg });
@@ -274,10 +309,10 @@ export default class DiscordChannel extends BaseChannel {
         await this.handleHelpCommand(interaction);
         return;
       case "clear":
-        await interaction.reply({
-          content: "Session cleared. Start a new conversation by mentioning me or using `/ask`.",
-          ephemeral: true,
-        });
+        await this.handleClearCommand(interaction, userInfo);
+        return;
+      case "queue":
+        await this.handleAskCommand(interaction, commandName, userInfo, true);
         return;
       case "health":
         await this.handleHealthCommand(interaction, userInfo.userId);
@@ -327,6 +362,7 @@ export default class DiscordChannel extends BaseChannel {
     interaction: ChatInputCommandInteraction,
     commandName: string,
     userInfo: UserInfo,
+    forceQueue = false,
   ): Promise<void> {
     const commandDef = this.commandRegistry.all.find((c) => c.name === commandName);
     const optionValues: Record<string, string> = {};
@@ -348,30 +384,102 @@ export default class DiscordChannel extends BaseChannel {
       return;
     }
 
-    await interaction.deferReply();
+    const sessionKey = resolveInteractionSessionKey({
+      channelId: interaction.channelId,
+      userId: userInfo.userId,
+      threadId: interaction.channel?.isThread() ? interaction.channel.id : null,
+    });
+    const isBusy = this.conversationQueue.isProcessing(sessionKey);
+    const shouldQueue = forceQueue && isBusy;
+
+    if (shouldQueue) {
+      await interaction.reply({ content: "Queued. I will run that next.", ephemeral: true });
+    } else {
+      await interaction.deferReply();
+    }
+
+    await this.conversationQueue.runOrQueue(sessionKey, {
+      run: async () => {
+        try {
+          const answer = await this.forwardToGuardian(userInfo.userId, text, {
+            guildId: userInfo.guildId,
+            username: userInfo.username,
+            command: commandName,
+            channelId: interaction.channelId,
+            sessionKey,
+          });
+
+          const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
+
+          if (shouldQueue) {
+            await interaction.followUp({ content: chunks[0], ephemeral: true });
+            for (let i = 1; i < chunks.length; i++) {
+              await interaction.followUp({ content: chunks[i], ephemeral: true });
+            }
+          } else {
+            await interaction.editReply(chunks[0]);
+            for (let i = 1; i < chunks.length; i++) {
+              await interaction.followUp(chunks[i]);
+            }
+          }
+
+          log.info("command_completed", {
+            command: commandName,
+            userId: userInfo.userId,
+            guildId: userInfo.guildId,
+            sessionKey,
+          });
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
+          log.error("command_error", { command: commandName, error: errMsg, sessionKey });
+          if (shouldQueue) {
+            await interaction.followUp({ content: `Error: ${errMsg}`, ephemeral: true });
+          } else {
+            await interaction.editReply(`Error: ${errMsg}`);
+          }
+        }
+      },
+    });
+  }
+
+  private async handleClearCommand(
+    interaction: ChatInputCommandInteraction,
+    userInfo: UserInfo,
+  ): Promise<void> {
+    await interaction.deferReply({ ephemeral: true });
+
+    const sessionKey = resolveInteractionSessionKey({
+      channelId: interaction.channelId,
+      userId: userInfo.userId,
+      threadId: interaction.channel?.isThread() ? interaction.channel.id : null,
+    });
+
     try {
-      const answer = await this.forwardToGuardian(userInfo.userId, text, {
-        guildId: userInfo.guildId,
-        username: userInfo.username,
-        command: commandName,
-        channelId: interaction.channelId,
+      const resp = await this.forward({
+        userId: `discord:${userInfo.userId}`,
+        text: "clear session",
+        metadata: {
+          command: "clear",
+          channelId: interaction.channelId,
+          guildId: userInfo.guildId,
+          username: userInfo.username,
+          sessionKey,
+          clearSession: true,
+        },
       });
 
-      const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
-      await interaction.editReply(chunks[0]);
-      for (let i = 1; i < chunks.length; i++) {
-        await interaction.followUp(chunks[i]);
+      if (!resp.ok) {
+        await interaction.editReply("Could not clear this conversation right now.");
+        return;
       }
 
-      log.info("command_completed", {
-        command: commandName,
-        userId: userInfo.userId,
-        guildId: userInfo.guildId,
-      });
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      log.error("command_error", { command: commandName, error: errMsg });
-      await interaction.editReply(`Error: ${errMsg}`);
+      const droppedQueued = this.conversationQueue.clear(sessionKey);
+
+      await interaction.editReply(
+        droppedQueued > 0 ? "Conversation cleared. Dropped queued follow-ups." : "Conversation cleared.",
+      );
+    } catch {
+      await interaction.editReply("Could not clear this conversation right now.");
     }
   }
 
