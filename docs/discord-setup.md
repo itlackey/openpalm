@@ -199,7 +199,7 @@ DISCORD_CUSTOM_COMMANDS='[{"name":"summarize","description":"Summarize a topic",
 
 Custom commands are registered with Discord automatically on startup (unless
 `DISCORD_REGISTER_COMMANDS=false`). Commands with names that conflict with
-built-in commands (`ask`, `health`, `help`, `clear`) are ignored. A maximum of
+built-in commands (`ask`, `health`, `help`, `clear`, `queue`) are ignored. A maximum of
 20 custom commands are supported.
 
 Custom commands follow the same execution model as `/ask`: they defer the slash

@@ -262,7 +262,6 @@ function shouldClearSession(metadata: unknown): boolean {
 
 async function withSessionLock<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
   const previous = sessionLocks.get(cacheKey) ?? Promise.resolve();
-  await previous.catch(() => {});
 
   let release = () => {};
   const current = new Promise<void>((resolve) => {
@@ -270,6 +269,8 @@ async function withSessionLock<T>(cacheKey: string, fn: () => Promise<T>): Promi
   });
   const chain = current.catch(() => {});
   sessionLocks.set(cacheKey, chain);
+
+  await previous.catch(() => {});
 
   try {
     return await fn();
@@ -465,7 +466,13 @@ Bun.serve({
       const sessionTarget = resolveSessionTarget(payload.userId, payload.channel, payload.metadata);
 
       if (shouldClearSession(payload.metadata)) {
-        await clearAssistantSessions(sessionTarget);
+        try {
+          await clearAssistantSessions(sessionTarget);
+        } catch (err) {
+          countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);
+          audit({ requestId: rid, action: "clear_session", status: "error", error: String(err) });
+          return json(502, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
+        }
         audit({
           requestId: rid,
           action: "clear_session",

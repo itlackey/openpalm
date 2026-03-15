@@ -478,7 +478,15 @@ export default class DiscordChannel extends BaseChannel {
       await interaction.editReply(
         droppedQueued > 0 ? "Conversation cleared. Dropped queued follow-ups." : "Conversation cleared.",
       );
-    } catch {
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log.error("clear_error", {
+        error: errMsg,
+        sessionKey,
+        userId: userInfo.userId,
+        guildId: userInfo.guildId,
+        channelId: interaction.channelId,
+      });
       await interaction.editReply("Could not clear this conversation right now.");
     }
   }
