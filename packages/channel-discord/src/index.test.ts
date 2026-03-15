@@ -6,7 +6,8 @@ import {
   parseCustomCommands,
   resolvePromptTemplate,
 } from "./commands.ts";
-import DiscordChannel, { splitMessage } from "./index.ts";
+import { splitMessage } from "@openpalm/channels-sdk";
+import DiscordChannel from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
 import { buildThreadSessionKey } from "./session.ts";
 import type { CustomCommandDef, PermissionConfig, UserInfo } from "./types.ts";
@@ -881,9 +882,9 @@ describe("splitMessage", () => {
     }
   });
 
-  it("returns empty-ish for empty string", () => {
+  it("returns empty array for empty string", () => {
     const chunks = splitMessage("", 2000);
-    expect(chunks).toEqual([""]);
+    expect(chunks).toEqual([]);
   });
 
   it("handles single character", () => {

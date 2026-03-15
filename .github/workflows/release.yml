@@ -296,6 +296,8 @@ jobs:
             - [@openpalm/channel-chat](https://www.npmjs.com/package/@openpalm/channel-chat)
             - [@openpalm/channel-api](https://www.npmjs.com/package/@openpalm/channel-api)
             - [@openpalm/channel-discord](https://www.npmjs.com/package/@openpalm/channel-discord)
+            - [@openpalm/channel-slack](https://www.npmjs.com/package/@openpalm/channel-slack)
+            - [@openpalm/cli](https://www.npmjs.com/package/@openpalm/cli)
             - [@openpalm/assistant-tools](https://www.npmjs.com/package/@openpalm/assistant-tools)
 
             ## Quick Install

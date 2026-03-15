@@ -25,6 +25,59 @@ export function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 /**
+ * Split a long message into chunks that respect a character limit.
+ * Preserves code block boundaries — unclosed blocks are closed at the
+ * split point and reopened (with language hint) in the continuation chunk.
+ * Prefers splitting at paragraph boundaries (double newline), then single
+ * newlines, before falling back to hard splits.
+ */
+export function splitMessage(content: string, maxLength: number): string[] {
+  if (!content) return [];
+  if (content.length <= maxLength) return [content];
+
+  const chunks: string[] = [];
+  let remaining = content;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    let splitIndex = maxLength;
+    const beforeSplit = remaining.slice(0, splitIndex);
+    const codeBlockStarts = (beforeSplit.match(/```/g) || []).length;
+    const inCodeBlock = codeBlockStarts % 2 === 1;
+
+    if (inCodeBlock) {
+      const newlineIndex = remaining.lastIndexOf("\n", splitIndex);
+      if (newlineIndex > maxLength / 2) splitIndex = newlineIndex;
+    } else {
+      const doubleNewline = remaining.lastIndexOf("\n\n", splitIndex);
+      const singleNewline = remaining.lastIndexOf("\n", splitIndex);
+      if (doubleNewline > maxLength / 2) splitIndex = doubleNewline + 2;
+      else if (singleNewline > maxLength / 2) splitIndex = singleNewline + 1;
+    }
+
+    let chunk = remaining.slice(0, splitIndex);
+    remaining = remaining.slice(splitIndex);
+
+    // Handle unclosed code blocks
+    const chunkCodeBlocks = (chunk.match(/```/g) || []).length;
+    if (chunkCodeBlocks % 2 === 1) {
+      chunk += "\n```";
+      const match = chunk.match(/```(\w+)?/);
+      const lang = match?.[1] || "";
+      remaining = "```" + lang + "\n" + remaining;
+    }
+
+    chunks.push(chunk.trim());
+  }
+
+  return chunks.filter((c) => c.length > 0);
+}
+
+/**
  * Extract the last user message text from an OpenAI or Anthropic messages array.
  * Supports both plain string content and content-block arrays.
  */
