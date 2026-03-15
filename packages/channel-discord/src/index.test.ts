@@ -9,6 +9,7 @@ import {
 } from "./commands.ts";
 import DiscordChannel, { splitMessage } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
+import { buildThreadSessionKey } from "./session.ts";
 import type { PermissionConfig, UserInfo } from "./types.ts";
 
 function emptyPermissions(): PermissionConfig {
@@ -341,6 +342,57 @@ describe("discord command behavior", () => {
     await Bun.sleep(0);
 
     expect(queueInteraction.followUp).toHaveBeenCalledWith({ content: "second", ephemeral: true });
+  });
+
+  it("thread slash commands in different threads do not share a session key", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 }));
+    Object.assign(channel, { forward });
+
+    const firstInteraction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-1", isThread: () => true },
+    });
+    const secondInteraction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-2", isThread: () => true },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(firstInteraction);
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(secondInteraction);
+
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-1") } });
+    expect(forward.mock.calls[1]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-2") } });
+  });
+
+  it("thread ask and clear use the same thread session key", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 }));
+    Object.assign(channel, { forward });
+
+    const askInteraction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-77", isThread: () => true },
+    });
+    const clearInteraction = createInteraction({
+      commandName: "clear",
+      channelId: "parent-channel",
+      channel: { id: "thread-77", isThread: () => true },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(askInteraction);
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(clearInteraction);
+
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-77") } });
+    expect(forward.mock.calls[1]?.[0]).toMatchObject({
+      metadata: {
+        sessionKey: buildThreadSessionKey("thread-77"),
+        clearSession: true,
+      },
+    });
   });
 });
 
