@@ -61,11 +61,7 @@ export class ConversationQueue {
 
     if (state.processing) {
       state.queue.push(task);
-      try {
-        await task.onQueued?.();
-      } catch {
-        // best-effort notification; task stays queued
-      }
+      await this.notifyQueued(task);
       return "queued";
     }
 
@@ -85,27 +81,37 @@ export class ConversationQueue {
   }
 
   private async drain(sessionKey: string): Promise<void> {
-    const state = this.states.get(sessionKey);
-    if (!state || state.processing) return;
+    while (true) {
+      const state = this.states.get(sessionKey);
+      if (!state || state.processing) return;
 
-    const next = state.queue.shift();
-    if (!next) {
-      this.states.delete(sessionKey);
-      return;
-    }
-
-    state.processing = true;
-    try {
-      await next.run();
-    } catch {
-      // errors are handled by the task itself; continue draining
-    } finally {
-      state.processing = false;
-      if (state.queue.length > 0) {
-        void this.drain(sessionKey);
-      } else {
+      const next = state.queue.shift();
+      if (!next) {
         this.states.delete(sessionKey);
+        return;
       }
+
+      state.processing = true;
+      try {
+        await next.run();
+      } catch {
+        // errors are handled by the task itself; continue draining
+      } finally {
+        state.processing = false;
+      }
+
+      if (state.queue.length === 0) {
+        this.states.delete(sessionKey);
+        return;
+      }
+    }
+  }
+
+  private async notifyQueued(task: SessionTask): Promise<void> {
+    try {
+      await task.onQueued?.();
+    } catch {
+      // best-effort notification; task stays queued
     }
   }
 }

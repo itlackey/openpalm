@@ -77,6 +77,73 @@ describe("ConversationQueue", () => {
     expect(queue.isProcessing("session-1")).toBe(false);
   });
 
+  it("keeps queued work when onQueued fails", async () => {
+    const queue = new ConversationQueue();
+    const blocker = deferred();
+    const events: string[] = [];
+
+    const first = queue.runOrQueue("session-1", {
+      run: async () => {
+        events.push("first:start");
+        await blocker.promise;
+        events.push("first:end");
+      },
+    });
+
+    const second = queue.runOrQueue("session-1", {
+      onQueued: async () => {
+        events.push("second:queued");
+        throw new Error("notify failed");
+      },
+      run: async () => {
+        events.push("second:run");
+      },
+    });
+
+    expect(await second).toBe("queued");
+    blocker.resolve();
+    await first;
+    await Bun.sleep(0);
+
+    expect(events).toEqual(["first:start", "second:queued", "first:end", "second:run"]);
+    expect(queue.isProcessing("session-1")).toBe(false);
+  });
+
+  it("continues draining queued work after a task failure", async () => {
+    const queue = new ConversationQueue();
+    const blocker = deferred();
+    const events: string[] = [];
+
+    const first = queue.runOrQueue("session-1", {
+      run: async () => {
+        events.push("first:start");
+        await blocker.promise;
+        events.push("first:end");
+      },
+    });
+
+    await queue.runOrQueue("session-1", {
+      run: async () => {
+        events.push("second:run");
+        throw new Error("second failed");
+      },
+    });
+
+    await queue.runOrQueue("session-1", {
+      run: async () => {
+        events.push("third:run");
+      },
+    });
+
+    blocker.resolve();
+    await first;
+    await Bun.sleep(0);
+
+    expect(events).toEqual(["first:start", "first:end", "second:run", "third:run"]);
+    expect(queue.queuedCount("session-1")).toBe(0);
+    expect(queue.isProcessing("session-1")).toBe(false);
+  });
+
   it("drops queued work when cleared", async () => {
     const queue = new ConversationQueue();
     const blocker = deferred();
