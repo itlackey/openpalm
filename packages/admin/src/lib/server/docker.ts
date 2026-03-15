@@ -389,6 +389,47 @@ export async function composePull(
 }
 
 /**
+ * Get resource usage stats for all containers in the project.
+ *
+ * Runs `docker compose stats --no-stream --format json` which outputs
+ * one JSON object per line (not a JSON array). The caller must parse
+ * the JSONL output.
+ */
+export async function composeStats(
+  stateDir: string,
+  options: { files?: string[]; envFiles?: string[] } = {}
+): Promise<DockerResult> {
+  const args = buildComposeArgs(stateDir, options);
+  args.push("stats", "--no-stream", "--format", "json");
+
+  return run(args, stateDir);
+}
+
+/**
+ * Get recent Docker events for the compose project.
+ *
+ * Uses `docker events` (not compose) with a label filter for bounded results.
+ * Output is JSONL — one JSON object per line.
+ *
+ * @param projectName - Docker Compose project name (label filter)
+ * @param since - How far back to look (default "1h"), e.g. "1h", "30m", "2h"
+ */
+export async function getDockerEvents(
+  projectName: string,
+  since = "1h"
+): Promise<DockerResult> {
+  const args = [
+    "events",
+    "--filter", `label=com.docker.compose.project=${projectName}`,
+    "--since", since,
+    "--until", "now",
+    "--format", "json"
+  ];
+
+  return run(args, undefined, 15_000);
+}
+
+/**
  * Fire-and-forget recreation of the admin container.
  *
  * Spawns `docker compose up -d --force-recreate admin` as a detached process
