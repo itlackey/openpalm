@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, mock, spyOn } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   BUILTIN_COMMANDS,
   buildCommandRegistry,
@@ -8,6 +8,7 @@ import {
 } from "./commands.ts";
 import DiscordChannel, { splitMessage } from "./index.ts";
 import { checkPermissions, loadPermissionConfig, parseIdList } from "./permissions.ts";
+import { buildThreadSessionKey } from "./session.ts";
 import type { CustomCommandDef, PermissionConfig, UserInfo } from "./types.ts";
 import { CommandOptionType } from "./types.ts";
 
@@ -31,6 +32,48 @@ function testUser(overrides: Partial<UserInfo> = {}): UserInfo {
     ...overrides,
   };
 }
+
+type TestInteraction = {
+  commandName: string;
+  channelId: string;
+  guildId: string;
+  channel?: { id: string; isThread: () => boolean };
+  user: { id: string; username: string };
+  member: { roles: { cache: Map<string, { id: string }> } };
+  options: { data: Array<{ name: string; value?: string }> };
+  reply: ReturnType<typeof mock>;
+  deferReply: ReturnType<typeof mock>;
+  editReply: ReturnType<typeof mock>;
+  followUp: ReturnType<typeof mock>;
+};
+
+function createInteraction(overrides: Partial<TestInteraction> = {}): TestInteraction {
+  const roleEntries = [["role-1", { id: "role-1" }]];
+  return {
+    commandName: "ask",
+    channelId: "channel-1",
+    guildId: "guild-1",
+    channel: { id: "channel-1", isThread: () => false },
+    user: { id: "user-1", username: "testuser" },
+    member: {
+      roles: {
+        cache: {
+          map: <T>(fn: (role: { id: string }) => T) => roleEntries.map(([, role]) => fn(role)),
+        },
+      },
+    },
+    options: { data: [{ name: "message", value: "hello" }] },
+    reply: mock(async () => {}),
+    deferReply: mock(async () => {}),
+    editReply: mock(async () => {}),
+    followUp: mock(async () => {}),
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  Bun.env.DISCORD_CUSTOM_COMMANDS = undefined;
+});
 
 // ── Health Endpoint ─────────────────────────────────────────────────────────
 
@@ -440,6 +483,7 @@ describe("buildCommandRegistry", () => {
     const { all, registrationPayload } = buildCommandRegistry([]);
     expect(all.length).toBe(BUILTIN_COMMANDS.length);
     expect(registrationPayload.length).toBe(BUILTIN_COMMANDS.length);
+    expect(all.some((cmd) => cmd.name === "queue")).toBe(true);
   });
 
   it("includes custom commands after builtins", () => {
@@ -544,6 +588,223 @@ describe("findCommand", () => {
       { name: "custom", description: "Custom" },
     ];
     expect(findCommand(all, "custom")?.name).toBe("custom");
+  });
+});
+
+describe("discord command behavior", () => {
+  it("/clear forwards a clearSession request with session metadata", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const interaction = createInteraction({ commandName: "clear" });
+
+    Object.assign(channel, { forward });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(forward).toHaveBeenCalledTimes(1);
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({
+      userId: "discord:user-1",
+      text: "clear session",
+      metadata: {
+        command: "clear",
+        channelId: "channel-1",
+        guildId: "guild-1",
+        username: "testuser",
+        sessionKey: "discord:channel:channel-1:user:user-1",
+        clearSession: true,
+      },
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith("Conversation cleared.");
+  });
+
+  it("thread slash commands include a thread session key", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 }));
+    const interaction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-1", isThread: () => true },
+    });
+
+    Object.assign(channel, { forward });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({
+      metadata: {
+        command: "ask",
+        channelId: "parent-channel",
+        sessionKey: "discord:thread:thread-1",
+      },
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith("done");
+  });
+
+  it("/queue replies immediately when conversation is busy and sends result later", async () => {
+    const channel = new DiscordChannel();
+    let release = () => {};
+    const forward = mock(
+      () =>
+        new Promise<Response>((resolve) => {
+          if (forward.mock.calls.length === 1) {
+            release = () => resolve(new Response(JSON.stringify({ answer: "first" }), { status: 200 }));
+            return;
+          }
+
+          resolve(new Response(JSON.stringify({ answer: "second" }), { status: 200 }));
+        }),
+    );
+    Object.assign(channel, { forward });
+
+    const askInteraction = createInteraction({ commandName: "ask" });
+    const queueInteraction = createInteraction({
+      commandName: "queue",
+      options: { data: [{ name: "message", value: "follow-up" }] },
+      reply: mock(async () => {}),
+      followUp: mock(async () => {}),
+    });
+
+    const firstRun = (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      askInteraction,
+    );
+    await Bun.sleep(0);
+
+    const secondRun = (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      queueInteraction,
+    );
+    await Bun.sleep(0);
+
+    expect(queueInteraction.reply).toHaveBeenCalledWith({
+      content: "Queued. I will run that next.",
+      ephemeral: true,
+    });
+
+    release();
+    await firstRun;
+    await secondRun;
+    await Bun.sleep(0);
+
+    expect(queueInteraction.followUp).toHaveBeenCalledWith({ content: "second", ephemeral: true });
+  });
+
+  it("thread slash commands in different threads do not share a session key", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 }));
+    Object.assign(channel, { forward });
+
+    const firstInteraction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-1", isThread: () => true },
+    });
+    const secondInteraction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-2", isThread: () => true },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(firstInteraction);
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(secondInteraction);
+
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-1") } });
+    expect(forward.mock.calls[1]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-2") } });
+  });
+
+  it("thread ask and clear use the same thread session key", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ answer: "done" }), { status: 200 }));
+    Object.assign(channel, { forward });
+
+    const askInteraction = createInteraction({
+      commandName: "ask",
+      channelId: "parent-channel",
+      channel: { id: "thread-77", isThread: () => true },
+    });
+    const clearInteraction = createInteraction({
+      commandName: "clear",
+      channelId: "parent-channel",
+      channel: { id: "thread-77", isThread: () => true },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(askInteraction);
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(clearInteraction);
+
+    expect(forward.mock.calls[0]?.[0]).toMatchObject({ metadata: { sessionKey: buildThreadSessionKey("thread-77") } });
+    expect(forward.mock.calls[1]?.[0]).toMatchObject({
+      metadata: {
+        sessionKey: buildThreadSessionKey("thread-77"),
+        clearSession: true,
+      },
+    });
+  });
+});
+
+// ── Timeout behavior ────────────────────────────────────────────────────────
+
+describe("timeout handling", () => {
+  it("forwardToGuardian surfaces timeout errors as message_error", async () => {
+    const channel = new DiscordChannel();
+    // Simulate a timeout by having forward reject with an abort error
+    const forward = mock(async () => {
+      throw new Error("The operation timed out.");
+    });
+    Object.assign(channel, { forward });
+
+    const interaction = createInteraction({
+      commandName: "ask",
+      options: { data: [{ name: "message", value: "long running task" }] },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    // Should have deferred, then edited with the error
+    expect(interaction.deferReply).toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      "Error: The operation timed out.",
+    );
+  });
+
+  it("thread message surfaces timeout error in thread", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => {
+      throw new Error("The operation timed out.");
+    });
+    Object.assign(channel, { forward });
+
+    const sentMessages: string[] = [];
+    const fakeThread = {
+      id: "thread-timeout",
+      send: mock(async (msg: string) => { sentMessages.push(msg); }),
+      sendTyping: mock(async () => {}),
+    };
+
+    // Directly test runThreadConversation
+    const runConvo = (channel as unknown as {
+      runThreadConversation: (
+        thread: unknown,
+        userInfo: UserInfo,
+        text: string,
+        metadata: Record<string, unknown>,
+      ) => Promise<void>;
+    }).runThreadConversation.bind(channel);
+
+    await runConvo(
+      fakeThread,
+      testUser(),
+      "long running task",
+      { sessionKey: "test-key" },
+    );
+
+    // Should send the error to the thread
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0]).toContain("The operation timed out.");
   });
 });
 

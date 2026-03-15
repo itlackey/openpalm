@@ -14,12 +14,17 @@ export interface AssistantClientOptions {
   password?: string;
   /** Timeout for the session-create request (ms). Default: 10 000. */
   createTimeoutMs?: number;
-  /** Timeout for the message request (ms). Default: 120 000. */
+  /** Timeout for the message request (ms). Default: 0 (no timeout). Set to a positive value to enable. */
   messageTimeoutMs?: number;
 }
 
 interface SessionCreateResponse {
   id: string;
+}
+
+interface SessionListItemResponse {
+  id?: unknown;
+  title?: unknown;
 }
 
 interface MessageResponse {
@@ -28,6 +33,11 @@ interface MessageResponse {
 }
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+export interface AssistantSessionSummary {
+  id: string;
+  title: string;
+}
 
 /**
  * Produce a short human-readable description for an assistant HTTP error.
@@ -115,6 +125,83 @@ export async function createSession(
 }
 
 /**
+ * List assistant sessions and return their IDs and titles.
+ */
+export async function listSessions(
+  opts: AssistantClientOptions,
+): Promise<AssistantSessionSummary[]> {
+  const { baseUrl, createTimeoutMs = 10_000 } = opts;
+  const headers = buildHeaders(opts);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), createTimeoutMs);
+  try {
+    const resp = await fetch(`${baseUrl}/session`, {
+      method: "GET",
+      headers,
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(
+        `Assistant session listing failed (HTTP ${resp.status}): ${describeAssistantError(resp.status, body)}`,
+      );
+    }
+
+    const data = await resp.json() as unknown;
+    if (!Array.isArray(data)) {
+      throw new Error("Invalid session list from assistant");
+    }
+
+    const sessions: AssistantSessionSummary[] = [];
+    for (const item of data) {
+      const record = item as SessionListItemResponse;
+      if (typeof record.id !== "string" || !SESSION_ID_RE.test(record.id)) continue;
+      if (typeof record.title !== "string") continue;
+      sessions.push({ id: record.id, title: record.title });
+    }
+    return sessions;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Delete an assistant session. Returns false when the session no longer exists.
+ */
+export async function deleteSession(
+  opts: AssistantClientOptions,
+  sessionId: string,
+): Promise<boolean> {
+  if (typeof sessionId !== "string" || !SESSION_ID_RE.test(sessionId)) {
+    throw new Error("Invalid session ID for deletion");
+  }
+  const { baseUrl, createTimeoutMs = 10_000 } = opts;
+  const headers = buildHeaders(opts);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), createTimeoutMs);
+  try {
+    const encodedSessionId = encodeURIComponent(sessionId);
+    const resp = await fetch(`${baseUrl}/session/${encodedSessionId}`, {
+      method: "DELETE",
+      headers,
+      signal: ctrl.signal,
+    });
+    if (resp.status === 404) return false;
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(
+        `Assistant session deletion failed (HTTP ${resp.status}): ${describeAssistantError(resp.status, body)}`,
+      );
+    }
+    return true;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Send a message to an existing assistant session. Returns the answer text.
  */
 export async function sendMessage(
@@ -122,16 +209,17 @@ export async function sendMessage(
   sessionId: string,
   prompt: string,
 ): Promise<string> {
-  const { baseUrl, messageTimeoutMs = 120_000 } = opts;
+  const { baseUrl, messageTimeoutMs = 0 } = opts;
   const headers = buildHeaders(opts);
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), messageTimeoutMs);
+  const ctrl = messageTimeoutMs > 0 ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), messageTimeoutMs) : null;
   try {
-    const resp = await fetch(`${baseUrl}/session/${sessionId}/message`, {
+    const encodedSessionId = encodeURIComponent(sessionId);
+    const resp = await fetch(`${baseUrl}/session/${encodedSessionId}/message`, {
       method: "POST",
       headers,
-      signal: ctrl.signal,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
       body: JSON.stringify({
         parts: [{ type: "text", text: prompt }],
       }),
@@ -154,11 +242,11 @@ export async function sendMessage(
     for (const part of data.parts ?? []) {
       if (part.type === "text" && part.text) {
         texts.push(part.text);
-      }
+    }
     }
     return texts.join("\n") || "(no response)";
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

@@ -18,6 +18,7 @@ import { parse as dotenvParse } from "dotenv";
 import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
 import { verifySignature } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
+import { asRecord } from "@openpalm/channels-sdk/utils";
 
 const logger = createLogger("guardian");
 
@@ -196,14 +197,18 @@ function audit(event: Record<string, unknown>) {
 
 import {
   createSession,
+  deleteSession,
+  listSessions,
   sendMessage,
 } from "@openpalm/channels-sdk/assistant-client";
 import type { AssistantClientOptions } from "@openpalm/channels-sdk/assistant-client";
 
-const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 120_000);
+const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 0);
 const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
+const SESSION_KEY_MAX_LENGTH = 256;
 
 const sessionCache = new Map<string, { sessionId: string; lastUsed: number }>();
+const sessionLocks = new Map<string, Promise<unknown>>();
 
 // Periodic cleanup of expired sessions + hard cap at 10,000
 setInterval(() => {
@@ -229,33 +234,143 @@ function clientOpts(): AssistantClientOptions {
   };
 }
 
-async function askAssistant(
-  message: string,
-  userId: string,
-  channel: string,
-): Promise<{ answer: string; sessionId: string }> {
-  const cacheKey = `${channel}:${userId}`;
-  const opts = clientOpts();
-  const cached = sessionCache.get(cacheKey);
+type SessionTarget = {
+  cacheKey: string;
+  sessionKey: string;
+  title: string;
+};
 
-  // Try reusing cached session
-  if (cached && Date.now() - cached.lastUsed < SESSION_TTL_MS) {
-    try {
-      const answer = await sendMessage(opts, cached.sessionId, message);
-      cached.lastUsed = Date.now();
-      return { answer, sessionId: cached.sessionId };
-    } catch {
-      // Session expired or invalid — fall through to create new one
-      sessionCache.delete(cacheKey);
+function resolveSessionTarget(userId: string, channel: string, metadata: unknown): SessionTarget {
+  const meta = asRecord(metadata);
+  const metadataSessionKey = typeof meta?.sessionKey === "string"
+    ? meta.sessionKey.trim()
+    : "";
+  const sessionKey = metadataSessionKey && metadataSessionKey.length <= SESSION_KEY_MAX_LENGTH
+    ? metadataSessionKey
+    : userId;
+
+  return {
+    cacheKey: `${channel}:${sessionKey}`,
+    sessionKey,
+    title: `${channel}/${sessionKey}`,
+  };
+}
+
+function shouldClearSession(metadata: unknown): boolean {
+  return asRecord(metadata)?.clearSession === true;
+}
+
+async function withSessionLock<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
+  const previous = sessionLocks.get(cacheKey) ?? Promise.resolve();
+
+  let release = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chain = current.catch(() => {});
+  sessionLocks.set(cacheKey, chain);
+
+  await previous.catch(() => {});
+
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (sessionLocks.get(cacheKey) === chain) {
+      sessionLocks.delete(cacheKey);
     }
   }
+}
 
-  // Create new session
-  const title = `${channel}/${userId}`;
-  const sessionId = await createSession(opts, title);
-  const answer = await sendMessage(opts, sessionId, message);
-  sessionCache.set(cacheKey, { sessionId, lastUsed: Date.now() });
-  return { answer, sessionId };
+const SESSION_LIST_CACHE_TTL_MS = 60_000;
+const sessionTitleCache = new Map<string, string>();
+let sessionListCacheLastLoaded = 0;
+
+async function findExistingSessionId(sessionTarget: SessionTarget): Promise<string | null> {
+  const now = Date.now();
+  const cachedId = sessionTitleCache.get(sessionTarget.title);
+  if (cachedId && now - sessionListCacheLastLoaded < SESSION_LIST_CACHE_TTL_MS) {
+    return cachedId;
+  }
+
+  // Re-fetch if TTL expired OR if the title is not in the cache (a miss
+  // should trigger a refresh so externally-created sessions are discovered).
+  if (!cachedId || now - sessionListCacheLastLoaded >= SESSION_LIST_CACHE_TTL_MS) {
+    const opts = clientOpts();
+    const sessions = await listSessions(opts);
+
+    sessionTitleCache.clear();
+    for (const session of sessions) {
+      if (session.title) {
+        sessionTitleCache.set(session.title, session.id);
+      }
+    }
+
+    sessionListCacheLastLoaded = now;
+  }
+
+  return sessionTitleCache.get(sessionTarget.title) ?? null;
+}
+
+async function askAssistant(
+  message: string,
+  sessionTarget: SessionTarget,
+): Promise<{ answer: string; sessionId: string }> {
+  return withSessionLock(sessionTarget.cacheKey, async () => {
+    const cacheKey = sessionTarget.cacheKey;
+    const opts = clientOpts();
+    const cached = sessionCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.lastUsed < SESSION_TTL_MS) {
+      try {
+        const answer = await sendMessage(opts, cached.sessionId, message);
+        cached.lastUsed = Date.now();
+        sessionTitleCache.set(sessionTarget.title, cached.sessionId);
+        return { answer, sessionId: cached.sessionId };
+      } catch {
+        sessionCache.delete(cacheKey);
+      }
+    }
+
+    const existingSessionId = await findExistingSessionId(sessionTarget);
+    if (existingSessionId) {
+      try {
+        const answer = await sendMessage(opts, existingSessionId, message);
+        sessionCache.set(cacheKey, { sessionId: existingSessionId, lastUsed: Date.now() });
+        sessionTitleCache.set(sessionTarget.title, existingSessionId);
+        return { answer, sessionId: existingSessionId };
+      } catch {
+        sessionCache.delete(cacheKey);
+      }
+    }
+
+    const sessionId = await createSession(opts, sessionTarget.title);
+    const answer = await sendMessage(opts, sessionId, message);
+    sessionCache.set(cacheKey, { sessionId, lastUsed: Date.now() });
+    sessionTitleCache.set(sessionTarget.title, sessionId);
+    return { answer, sessionId };
+  });
+}
+
+async function clearAssistantSessions(sessionTarget: SessionTarget): Promise<void> {
+  await withSessionLock(sessionTarget.cacheKey, async () => {
+    sessionCache.delete(sessionTarget.cacheKey);
+    sessionTitleCache.delete(sessionTarget.title);
+    // Force the next findExistingSessionId to re-fetch the session list
+    sessionListCacheLastLoaded = 0;
+
+    const opts = clientOpts();
+    const sessions = await listSessions(opts);
+    const matching = sessions.filter((session) => session.title === sessionTarget.title);
+
+    for (const session of matching) {
+      try {
+        await deleteSession(opts, session.id);
+      } catch {
+        // best-effort cleanup; cache removal already ensures a fresh mapping next turn
+      }
+    }
+  });
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────
@@ -377,10 +492,43 @@ Bun.serve({
         return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
       }
 
+      const sessionTarget = resolveSessionTarget(payload.userId, payload.channel, payload.metadata);
+
+      if (shouldClearSession(payload.metadata)) {
+        try {
+          await clearAssistantSessions(sessionTarget);
+        } catch (err) {
+          countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);
+          audit({ requestId: rid, action: "clear_session", status: "error", error: String(err) });
+          return json(502, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
+        }
+        audit({
+          requestId: rid,
+          action: "clear_session",
+          status: "ok",
+          channel: payload.channel,
+          userId: payload.userId,
+          sessionKey: sessionTarget.sessionKey,
+        });
+        return json(200, {
+          requestId: rid,
+          cleared: true,
+          userId: payload.userId,
+        });
+      }
+
       try {
-        const { answer, sessionId } = await askAssistant(payload.text, payload.userId, payload.channel);
+        const { answer, sessionId } = await askAssistant(payload.text, sessionTarget);
         countRequest("ok", payload.channel);
-        audit({ requestId: rid, sessionId, action: "inbound", status: "ok", channel: payload.channel, userId: payload.userId });
+        audit({
+          requestId: rid,
+          sessionId,
+          action: "inbound",
+          status: "ok",
+          channel: payload.channel,
+          userId: payload.userId,
+          sessionKey: sessionTarget.sessionKey,
+        });
         return json(200, { requestId: rid, sessionId, answer, userId: payload.userId });
       } catch (err) {
         countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);

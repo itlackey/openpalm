@@ -17,6 +17,18 @@ export const BUILTIN_COMMANDS: CustomCommandDef[] = [
     ],
   },
   {
+    name: "queue",
+    description: "Queue a follow-up for the current conversation",
+    options: [
+      {
+        name: "message",
+        description: "Your follow-up message or question",
+        type: CommandOptionType.STRING,
+        required: true,
+      },
+    ],
+  },
+  {
     name: "health",
     description: "Check the assistant's health status",
     ephemeral: true,

@@ -151,8 +151,8 @@ test.describe('@mocked Connections Tab UI', () => {
 		// Verify the Connections profiles panel heading
 		await expect(page.locator('h3:has-text("Connections")')).toBeVisible();
 
-		// Verify the Memory Settings section exists
-		await expect(page.locator('h3:has-text("Memory Settings")')).toBeVisible();
+		// Memory settings are now behind a "Memory" tab in the settings panel
+		await page.getByRole('tab', { name: 'Memory' }).click();
 
 		// Verify Memory User ID field is present (the one remaining persisted field)
 		await expect(page.locator('#conn-memory-user-id')).toBeVisible();
@@ -217,16 +217,19 @@ test.describe('@mocked Connections Tab UI', () => {
 
 		await navigateToConnections(page);
 
+		// Switch to the Memory tab in the settings panel
+		await page.getByRole('tab', { name: 'Memory' }).click();
+
 		// Update the Memory User ID field
 		const userIdField = page.locator('#conn-memory-user-id');
 		await userIdField.clear();
 		await userIdField.fill('test_user');
 
-		// Save via "Save Memory Settings" button
-		await page.getByRole('button', { name: 'Save Memory Settings' }).click();
+		// Save via the Save button in the panel header (visible when Memory tab is active)
+		await page.locator('.panel-header-actions').getByRole('button', { name: 'Save' }).click();
 
-		// Verify success message
-		await expect(page.getByText('Memory settings saved.')).toBeVisible({ timeout: 5000 });
+		// Verify success indicator (header shows "Saved" status)
+		await expect(page.locator('.header-save-status--success')).toBeVisible({ timeout: 5000 });
 
 		// Verify the posted payload includes the provider from the first profile
 		expect(savedPayload).not.toBeNull();

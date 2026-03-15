@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { askAssistant, createSession, sendMessage } from "./assistant-client.ts";
+import { askAssistant, createSession, deleteSession, listSessions, sendMessage } from "./assistant-client.ts";
 
 // ── Helper ─────────────────────────────────────────────────────────────
 
@@ -36,6 +36,54 @@ describe("createSession", () => {
         await expect(createSession({ baseUrl: "http://assistant" }, "t")).rejects.toThrow("Invalid session ID");
       },
     );
+  });
+});
+
+describe("listSessions", () => {
+  it("returns valid session summaries", async () => {
+    const result = await withMockFetch(
+      (async () => new Response(JSON.stringify([
+        { id: "sess_1", title: "discord/thread-1" },
+        { id: "bad/id", title: "ignored" },
+        { id: "sess_2", title: 123 },
+      ]), { status: 200 })) as typeof fetch,
+      () => listSessions({ baseUrl: "http://assistant" }),
+    );
+
+    expect(result).toEqual([{ id: "sess_1", title: "discord/thread-1" }]);
+  });
+
+  it("throws on invalid response body", async () => {
+    await withMockFetch(
+      (async () => new Response(JSON.stringify({ nope: true }), { status: 200 })) as typeof fetch,
+      async () => {
+        await expect(listSessions({ baseUrl: "http://assistant" })).rejects.toThrow("Invalid session list");
+      },
+    );
+  });
+});
+
+describe("deleteSession", () => {
+  it("returns true on success", async () => {
+    const result = await withMockFetch(
+      (async () => new Response("true", { status: 200 })) as typeof fetch,
+      () => deleteSession({ baseUrl: "http://assistant" }, "sess_1"),
+    );
+    expect(result).toBe(true);
+  });
+
+  it("returns false on 404", async () => {
+    const result = await withMockFetch(
+      (async () => new Response("missing", { status: 404 })) as typeof fetch,
+      () => deleteSession({ baseUrl: "http://assistant" }, "sess_1"),
+    );
+    expect(result).toBe(false);
+  });
+
+  it("throws on invalid session id", async () => {
+    await expect(
+      deleteSession({ baseUrl: "http://assistant" }, "../escape"),
+    ).rejects.toThrow("Invalid session ID");
   });
 });
 
