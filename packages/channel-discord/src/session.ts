@@ -61,13 +61,19 @@ export class ConversationQueue {
 
     if (state.processing) {
       state.queue.push(task);
-      await task.onQueued?.();
+      try {
+        await task.onQueued?.();
+      } catch {
+        // best-effort notification; task stays queued
+      }
       return "queued";
     }
 
     state.processing = true;
     try {
       await task.run();
+    } catch {
+      // caller already handles the error at the command layer
     } finally {
       state.processing = false;
       if (state.queue.length > 0) {
@@ -93,6 +99,8 @@ export class ConversationQueue {
     state.processing = true;
     try {
       await next.run();
+    } catch {
+      // errors are handled by the task itself; continue draining
     } finally {
       state.processing = false;
       if (state.queue.length > 0) {

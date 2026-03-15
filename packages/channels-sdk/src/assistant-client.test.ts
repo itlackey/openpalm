@@ -79,6 +79,12 @@ describe("deleteSession", () => {
     );
     expect(result).toBe(false);
   });
+
+  it("throws on invalid session id", async () => {
+    await expect(
+      deleteSession({ baseUrl: "http://assistant" }, "../escape"),
+    ).rejects.toThrow("Invalid session ID");
+  });
 });
 
 // ── sendMessage tests ──────────────────────────────────────────────────

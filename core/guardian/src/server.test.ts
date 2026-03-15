@@ -205,7 +205,7 @@ describe("Guardian security contract", () => {
     expect(messageCount).toBe(2);
   });
 
-  it("metadata.clearSession clears the resolved cached session without calling assistant", async () => {
+  it("metadata.clearSession clears the resolved cached session and matching assistant sessions", async () => {
     resetAssistantCounters();
 
     const sessionKey = `clear-${crypto.randomUUID()}`;

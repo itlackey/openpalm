@@ -173,6 +173,9 @@ export async function deleteSession(
   opts: AssistantClientOptions,
   sessionId: string,
 ): Promise<boolean> {
+  if (typeof sessionId !== "string" || !SESSION_ID_RE.test(sessionId)) {
+    throw new Error("Invalid session ID for deletion");
+  }
   const { baseUrl, createTimeoutMs = 10_000 } = opts;
   const headers = buildHeaders(opts);
 
