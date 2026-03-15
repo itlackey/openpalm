@@ -176,6 +176,30 @@ describe("BaseChannel guardian errors", () => {
   });
 });
 
+describe("BaseChannel timeout handling", () => {
+  it("returns 502 when guardian fetch times out (abort error)", async () => {
+    const timeoutFetch = (async () => {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }) as typeof fetch;
+    const channel = new TestChannel(async () => ({ userId: "u1", text: "hi" }));
+    const handler = channel.createFetch(timeoutFetch);
+    const resp = await handler(postRequest("/webhook", {}));
+    expect(resp.status).toBe(502);
+    const body = await resp.json() as Record<string, unknown>;
+    expect(body.error).toBe("guardian_error");
+  });
+
+  it("returns 502 when guardian fetch times out (timeout error)", async () => {
+    const timeoutFetch = (async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    }) as typeof fetch;
+    const channel = new TestChannel(async () => ({ userId: "u1", text: "hi" }));
+    const handler = channel.createFetch(timeoutFetch);
+    const resp = await handler(postRequest("/webhook", {}));
+    expect(resp.status).toBe(502);
+  });
+});
+
 describe("BaseChannel custom routing", () => {
   it("custom route returns response", async () => {
     const channel = new RoutedChannel();

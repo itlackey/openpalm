@@ -744,6 +744,70 @@ describe("discord command behavior", () => {
   });
 });
 
+// ── Timeout behavior ────────────────────────────────────────────────────────
+
+describe("timeout handling", () => {
+  it("forwardToGuardian surfaces timeout errors as message_error", async () => {
+    const channel = new DiscordChannel();
+    // Simulate a timeout by having forward reject with an abort error
+    const forward = mock(async () => {
+      throw new Error("The operation timed out.");
+    });
+    Object.assign(channel, { forward });
+
+    const interaction = createInteraction({
+      commandName: "ask",
+      options: { data: [{ name: "message", value: "long running task" }] },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    // Should have deferred, then edited with the error
+    expect(interaction.deferReply).toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      "Error: The operation timed out.",
+    );
+  });
+
+  it("thread message surfaces timeout error in thread", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => {
+      throw new Error("The operation timed out.");
+    });
+    Object.assign(channel, { forward });
+
+    const sentMessages: string[] = [];
+    const fakeThread = {
+      id: "thread-timeout",
+      send: mock(async (msg: string) => { sentMessages.push(msg); }),
+      sendTyping: mock(async () => {}),
+    };
+
+    // Directly test runThreadConversation
+    const runConvo = (channel as unknown as {
+      runThreadConversation: (
+        thread: unknown,
+        userInfo: UserInfo,
+        text: string,
+        metadata: Record<string, unknown>,
+      ) => Promise<void>;
+    }).runThreadConversation.bind(channel);
+
+    await runConvo(
+      fakeThread,
+      testUser(),
+      "long running task",
+      { sessionKey: "test-key" },
+    );
+
+    // Should send the error to the thread
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0]).toContain("The operation timed out.");
+  });
+});
+
 // ── splitMessage ────────────────────────────────────────────────────────────
 
 describe("splitMessage", () => {

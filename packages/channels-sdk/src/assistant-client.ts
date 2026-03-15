@@ -14,7 +14,7 @@ export interface AssistantClientOptions {
   password?: string;
   /** Timeout for the session-create request (ms). Default: 10 000. */
   createTimeoutMs?: number;
-  /** Timeout for the message request (ms). Default: 120 000. */
+  /** Timeout for the message request (ms). Default: 0 (no timeout). Set to a positive value to enable. */
   messageTimeoutMs?: number;
 }
 
@@ -209,17 +209,17 @@ export async function sendMessage(
   sessionId: string,
   prompt: string,
 ): Promise<string> {
-  const { baseUrl, messageTimeoutMs = 120_000 } = opts;
+  const { baseUrl, messageTimeoutMs = 0 } = opts;
   const headers = buildHeaders(opts);
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), messageTimeoutMs);
+  const ctrl = messageTimeoutMs > 0 ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), messageTimeoutMs) : null;
   try {
     const encodedSessionId = encodeURIComponent(sessionId);
     const resp = await fetch(`${baseUrl}/session/${encodedSessionId}/message`, {
       method: "POST",
       headers,
-      signal: ctrl.signal,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
       body: JSON.stringify({
         parts: [{ type: "text", text: prompt }],
       }),
@@ -246,7 +246,7 @@ export async function sendMessage(
     }
     return texts.join("\n") || "(no response)";
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

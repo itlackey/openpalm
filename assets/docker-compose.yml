@@ -128,7 +128,7 @@ services:
       HOME: /app/data
       PORT: "8080"
       OPENPALM_ASSISTANT_URL: http://assistant:4096
-      OPENCODE_TIMEOUT_MS: "1800000"
+      OPENCODE_TIMEOUT_MS: "0"
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       # Guardian reads CHANNEL_*_SECRET from this file on every inbound request,

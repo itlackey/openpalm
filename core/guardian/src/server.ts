@@ -203,7 +203,7 @@ import {
 } from "@openpalm/channels-sdk/assistant-client";
 import type { AssistantClientOptions } from "@openpalm/channels-sdk/assistant-client";
 
-const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 120_000);
+const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 0);
 const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
 const SESSION_KEY_MAX_LENGTH = 256;
 
