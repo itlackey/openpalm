@@ -72,8 +72,6 @@ export class ConversationQueue {
     state.processing = true;
     try {
       await task.run();
-    } catch {
-      // caller already handles the error at the command layer
     } finally {
       state.processing = false;
       if (state.queue.length > 0) {
