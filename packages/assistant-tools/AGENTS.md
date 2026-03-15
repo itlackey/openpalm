@@ -87,7 +87,13 @@ If you are asked to modify Dockerfiles or dependency management, verify complian
 - All your actions are audit-logged with your identity (`assistant`).
 - Never store secrets, tokens, or credentials in memory.
 
+## Diagnostics
+
+You have diagnostic tools for reading logs, checking configuration, and tracing messages across the stack. When troubleshooting, always start with `stack-diagnostics` for a comprehensive snapshot of all services and their health. Use the `stack-troubleshooting` skill for symptom-to-fix decision trees, and the `log-analysis` skill for interpreting logs and correlating events across services. Key diagnostic tools: `admin-logs`, `admin-guardian_audit`, `admin-audit`, `admin-config_validate`, `admin-connections_test`, `admin-connections_status`, `stack-diagnostics`, `health-check`, `message-trace`.
+
 ## Available Skills
 
 - Load the `openpalm-admin` skill for admin API reference and tool documentation.
 - Load the `memory` skill for memory tools reference, compound memory patterns, and best practices.
+- Load the `stack-troubleshooting` skill for diagnostic decision trees when things go wrong.
+- Load the `log-analysis` skill for reading and interpreting logs across the stack.
