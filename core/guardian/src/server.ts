@@ -293,7 +293,9 @@ async function findExistingSessionId(sessionTarget: SessionTarget): Promise<stri
     return cachedId;
   }
 
-  if (now - sessionListCacheLastLoaded >= SESSION_LIST_CACHE_TTL_MS) {
+  // Re-fetch if TTL expired OR if the title is not in the cache (a miss
+  // should trigger a refresh so externally-created sessions are discovered).
+  if (!cachedId || now - sessionListCacheLastLoaded >= SESSION_LIST_CACHE_TTL_MS) {
     const opts = clientOpts();
     const sessions = await listSessions(opts);
 
@@ -353,6 +355,9 @@ async function askAssistant(
 async function clearAssistantSessions(sessionTarget: SessionTarget): Promise<void> {
   await withSessionLock(sessionTarget.cacheKey, async () => {
     sessionCache.delete(sessionTarget.cacheKey);
+    sessionTitleCache.delete(sessionTarget.title);
+    // Force the next findExistingSessionId to re-fetch the session list
+    sessionListCacheLastLoaded = 0;
 
     const opts = clientOpts();
     const sessions = await listSessions(opts);

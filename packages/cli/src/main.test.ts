@@ -4,6 +4,35 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
 
+// Helpers to mock Bun.spawn and Bun.which for tests that would otherwise
+// shell out to `docker info` / `docker compose version` and block in CI.
+const originalBunSpawn = Bun.spawn;
+const originalBunWhich = Bun.which;
+
+function mockDockerCli(): void {
+  Bun.which = mock((_cmd: string) => '/usr/bin/docker') as typeof Bun.which;
+  Bun.spawn = mock((_cmd: string[] | readonly string[], _opts?: unknown) => ({
+    pid: 0,
+    exited: Promise.resolve(0),
+    exitCode: null,
+    signalCode: null,
+    killed: false,
+    stdin: null,
+    stdout: null,
+    stderr: null,
+    kill: () => {},
+    ref: () => {},
+    unref: () => {},
+    [Symbol.asyncDispose]: async () => {},
+    resourceUsage: () => undefined,
+  })) as unknown as typeof Bun.spawn;
+}
+
+function restoreDockerCli(): void {
+  Bun.spawn = originalBunSpawn;
+  Bun.which = originalBunWhich;
+}
+
 describe('cli main', () => {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
@@ -15,6 +44,7 @@ describe('cli main', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
+    restoreDockerCli();
     process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
     process.env.OPENPALM_DATA_HOME = originalDataHome;
     process.env.OPENPALM_STATE_HOME = originalStateHome;
@@ -75,6 +105,7 @@ describe('cli main', () => {
     process.env.OPENPALM_STATE_HOME = stateHome;
     process.env.OPENPALM_WORK_DIR = workDir;
 
+    mockDockerCli();
     globalThis.fetch = mock(async (input: string | URL) => {
       const url = String(input);
       if (url.endsWith('/health')) {
@@ -224,46 +255,41 @@ describe('scan command', () => {
 });
 
 describe('detectHostInfo', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    restoreDockerCli();
+  });
+
   it('returns valid HostInfo structure', async () => {
-    const originalFetch = globalThis.fetch;
+    mockDockerCli();
     globalThis.fetch = mock(async () => new Response('', { status: 503 })) as typeof fetch;
-    try {
-      const info = await detectHostInfo();
-      expect(info).toHaveProperty('platform');
-      expect(info).toHaveProperty('arch');
-      expect(info).toHaveProperty('docker');
-      expect(info).toHaveProperty('ollama');
-      expect(info).toHaveProperty('lmstudio');
-      expect(info).toHaveProperty('llamacpp');
-      expect(info).toHaveProperty('timestamp');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const info = await detectHostInfo();
+    expect(info).toHaveProperty('platform');
+    expect(info).toHaveProperty('arch');
+    expect(info).toHaveProperty('docker');
+    expect(info).toHaveProperty('ollama');
+    expect(info).toHaveProperty('lmstudio');
+    expect(info).toHaveProperty('llamacpp');
+    expect(info).toHaveProperty('timestamp');
   });
 
   it('platform and arch match process values', async () => {
-    const originalFetch = globalThis.fetch;
+    mockDockerCli();
     globalThis.fetch = mock(async () => new Response('', { status: 503 })) as typeof fetch;
-    try {
-      const info = await detectHostInfo();
-      expect(info.platform).toBe(process.platform);
-      expect(info.arch).toBe(process.arch);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const info = await detectHostInfo();
+    expect(info.platform).toBe(process.platform);
+    expect(info.arch).toBe(process.arch);
   });
 
   it('HTTP probes handle connection refused gracefully', async () => {
-    const originalFetch = globalThis.fetch;
+    mockDockerCli();
     globalThis.fetch = mock(async () => { throw new TypeError('fetch failed'); }) as typeof fetch;
-    try {
-      const info = await detectHostInfo();
-      expect(info.ollama.running).toBe(false);
-      expect(info.lmstudio.running).toBe(false);
-      expect(info.llamacpp.running).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const info = await detectHostInfo();
+    expect(info.ollama.running).toBe(false);
+    expect(info.lmstudio.running).toBe(false);
+    expect(info.llamacpp.running).toBe(false);
   });
 });
 
