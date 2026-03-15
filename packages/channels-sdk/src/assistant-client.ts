@@ -182,7 +182,8 @@ export async function deleteSession(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), createTimeoutMs);
   try {
-    const resp = await fetch(`${baseUrl}/session/${sessionId}`, {
+    const encodedSessionId = encodeURIComponent(sessionId);
+    const resp = await fetch(`${baseUrl}/session/${encodedSessionId}`, {
       method: "DELETE",
       headers,
       signal: ctrl.signal,
@@ -214,7 +215,8 @@ export async function sendMessage(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), messageTimeoutMs);
   try {
-    const resp = await fetch(`${baseUrl}/session/${sessionId}/message`, {
+    const encodedSessionId = encodeURIComponent(sessionId);
+    const resp = await fetch(`${baseUrl}/session/${encodedSessionId}/message`, {
       method: "POST",
       headers,
       signal: ctrl.signal,
@@ -240,7 +242,7 @@ export async function sendMessage(
     for (const part of data.parts ?? []) {
       if (part.type === "text" && part.text) {
         texts.push(part.text);
-      }
+    }
     }
     return texts.join("\n") || "(no response)";
   } finally {
