@@ -25,7 +25,7 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/data:/data/caddy
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/config:/config/caddy
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
-    networks: [assistant_net, channel_lan, channel_public]
+    networks: [ assistant_net, channel_lan, channel_public ]
 
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
@@ -47,12 +47,28 @@ services:
     volumes:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory:/data
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json
-    networks: [assistant_net]
+    networks: [ assistant_net ]
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1"]
+      test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1" ]
       interval: 15s
       timeout: 10s
       retries: 5
+
+  openviking:
+    image: ghcr.io/volcengine/openviking:latest
+    container_name: openviking
+    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
+    ports:
+      - "1933:1933"
+    environment:
+      OPENVIKING_CONFIG_FILE: /config/ov.conf
+      HOME: /tmp
+    volumes:
+      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/workspace:/workspace
+      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/ov.conf:/config/ov.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
 
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
@@ -93,12 +109,12 @@ services:
       - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/stash:/stash
     working_dir: /work
-    networks: [assistant_net]
+    networks: [ assistant_net ]
     depends_on:
       memory:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/4096' || exit 1"]
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/4096' || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -112,7 +128,7 @@ services:
       HOME: /app/data
       PORT: "8080"
       OPENPALM_ASSISTANT_URL: http://assistant:4096
-      OPENCODE_TIMEOUT_MS: "120000"
+      OPENCODE_TIMEOUT_MS: "1800000"
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
       # Guardian reads CHANNEL_*_SECRET from this file on every inbound request,
@@ -130,12 +146,12 @@ services:
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/audit:/app/audit
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts:/app/secrets:ro
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
-    networks: [channel_lan, channel_public, assistant_net]
+    networks: [ channel_lan, channel_public, assistant_net ]
     depends_on:
       assistant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"await fetch('http://localhost:8080/health')\" || exit 1"]
+      test: [ "CMD-SHELL", "bun -e \"await fetch('http://localhost:8080/health')\" || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -161,9 +177,9 @@ services:
       INFO: 1
     volumes:
       - ${OPENPALM_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
-    networks: [admin_docker_net]
+    networks: [ admin_docker_net ]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:2375/_ping || exit 1" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -203,12 +219,12 @@ services:
       - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
       - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-    networks: [assistant_net, admin_docker_net]
+    networks: [ assistant_net, admin_docker_net ]
     depends_on:
       docker-socket-proxy:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1"]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:8100/ || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -220,4 +236,4 @@ networks:
   channel_lan:
   channel_public:
   assistant_net:
-  admin_docker_net:   # Isolated: only admin + docker-socket-proxy
+  admin_docker_net: # Isolated: only admin + docker-socket-proxy

@@ -142,7 +142,13 @@ export async function sendMessage(
         `Assistant message failed (HTTP ${resp.status}): ${describeAssistantError(resp.status, body)}`,
       );
     }
-    const data = (await resp.json()) as MessageResponse;
+    // OpenCode may return an empty body (Content-Length: 0) when the LLM
+    // provider is unreachable. Guard against null/undefined from json().
+    const raw = await resp.text();
+    if (!raw) return "(no response)";
+
+    const data = JSON.parse(raw) as MessageResponse | null;
+    if (!data) return "(no response)";
 
     const texts: string[] = [];
     for (const part of data.parts ?? []) {
