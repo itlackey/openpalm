@@ -282,11 +282,32 @@ async function withSessionLock<T>(cacheKey: string, fn: () => Promise<T>): Promi
   }
 }
 
+const SESSION_LIST_CACHE_TTL_MS = 60_000;
+const sessionTitleCache = new Map<string, string>();
+let sessionListCacheLastLoaded = 0;
+
 async function findExistingSessionId(sessionTarget: SessionTarget): Promise<string | null> {
-  const opts = clientOpts();
-  const sessions = await listSessions(opts);
-  const existing = sessions.find((session) => session.title === sessionTarget.title);
-  return existing?.id ?? null;
+  const now = Date.now();
+  const cachedId = sessionTitleCache.get(sessionTarget.title);
+  if (cachedId && now - sessionListCacheLastLoaded < SESSION_LIST_CACHE_TTL_MS) {
+    return cachedId;
+  }
+
+  if (now - sessionListCacheLastLoaded >= SESSION_LIST_CACHE_TTL_MS) {
+    const opts = clientOpts();
+    const sessions = await listSessions(opts);
+
+    sessionTitleCache.clear();
+    for (const session of sessions) {
+      if (session.title) {
+        sessionTitleCache.set(session.title, session.id);
+      }
+    }
+
+    sessionListCacheLastLoaded = now;
+  }
+
+  return sessionTitleCache.get(sessionTarget.title) ?? null;
 }
 
 async function askAssistant(
@@ -302,6 +323,7 @@ async function askAssistant(
       try {
         const answer = await sendMessage(opts, cached.sessionId, message);
         cached.lastUsed = Date.now();
+        sessionTitleCache.set(sessionTarget.title, cached.sessionId);
         return { answer, sessionId: cached.sessionId };
       } catch {
         sessionCache.delete(cacheKey);
@@ -313,6 +335,7 @@ async function askAssistant(
       try {
         const answer = await sendMessage(opts, existingSessionId, message);
         sessionCache.set(cacheKey, { sessionId: existingSessionId, lastUsed: Date.now() });
+        sessionTitleCache.set(sessionTarget.title, existingSessionId);
         return { answer, sessionId: existingSessionId };
       } catch {
         sessionCache.delete(cacheKey);
@@ -322,6 +345,7 @@ async function askAssistant(
     const sessionId = await createSession(opts, sessionTarget.title);
     const answer = await sendMessage(opts, sessionId, message);
     sessionCache.set(cacheKey, { sessionId, lastUsed: Date.now() });
+    sessionTitleCache.set(sessionTarget.title, sessionId);
     return { answer, sessionId };
   });
 }
