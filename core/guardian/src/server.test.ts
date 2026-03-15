@@ -54,10 +54,12 @@ let guardianUrl: string;
 let tmpDir: string;
 let sessionCreateCount = 0;
 let messageCount = 0;
+const assistantSessions = new Map<string, { title: string }>();
 
 function resetAssistantCounters(): void {
   sessionCreateCount = 0;
   messageCount = 0;
+  assistantSessions.clear();
 }
 
 // Pick random ports to avoid conflicts
@@ -75,14 +77,28 @@ beforeAll(async () => {
   // Start mock assistant
   mockAssistantServer = Bun.serve({
     port: assistantPort,
-    fetch(req) {
+    async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/session" && req.method === "POST") {
         sessionCreateCount += 1;
-        return new Response(JSON.stringify({ id: `mock-session-${sessionCreateCount}` }), {
+        const sessionId = `mock-session-${sessionCreateCount}`;
+        const body = await req.json().catch(() => ({}));
+        const title = typeof (body as Record<string, unknown>).title === "string"
+          ? (body as Record<string, unknown>).title as string
+          : "";
+        assistantSessions.set(sessionId, { title });
+        return new Response(JSON.stringify({ id: sessionId }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
+      }
+      if (url.pathname === "/session" && req.method === "GET") {
+        return new Response(
+          JSON.stringify(
+            [...assistantSessions.entries()].map(([id, session]) => ({ id, title: session.title })),
+          ),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
       if (url.pathname.startsWith("/session/") && url.pathname.endsWith("/message") && req.method === "POST") {
         messageCount += 1;
@@ -93,6 +109,11 @@ beforeAll(async () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
+      }
+      if (url.pathname.startsWith("/session/") && req.method === "DELETE") {
+        const sessionId = url.pathname.split("/")[2] ?? "unknown-session";
+        assistantSessions.delete(sessionId);
+        return new Response("true", { status: 200, headers: { "content-type": "application/json" } });
       }
       return new Response("not found", { status: 404 });
     },
@@ -222,6 +243,65 @@ describe("Guardian security contract", () => {
     expect(afterClearData.answer).toBe("mock answer from mock-session-2");
     expect(sessionCreateCount).toBe(2);
     expect(messageCount).toBe(2);
+  });
+
+  it("different session keys create different assistant sessions", async () => {
+    resetAssistantCounters();
+
+    const firstResp = await signedRequest(guardianUrl, makePayload({
+      metadata: { sessionKey: "discord:thread:thread-a" },
+    }));
+    const secondResp = await signedRequest(guardianUrl, makePayload({
+      text: "thread b",
+      metadata: { sessionKey: "discord:thread:thread-b" },
+    }));
+
+    expect(firstResp.status).toBe(200);
+    expect(secondResp.status).toBe(200);
+
+    const firstData = await firstResp.json();
+    const secondData = await secondResp.json();
+
+    expect(firstData.sessionId).toBe("mock-session-1");
+    expect(secondData.sessionId).toBe("mock-session-2");
+    expect(sessionCreateCount).toBe(2);
+    expect(assistantSessions.get("mock-session-1")?.title).toBe("test/discord:thread:thread-a");
+    expect(assistantSessions.get("mock-session-2")?.title).toBe("test/discord:thread:thread-b");
+  });
+
+  it("clearSession deletes all assistant sessions for the same thread title", async () => {
+    resetAssistantCounters();
+
+    assistantSessions.set("orphan-1", { title: "test/discord:thread:thread-clear" });
+    assistantSessions.set("orphan-2", { title: "test/discord:thread:thread-clear" });
+    assistantSessions.set("other-thread", { title: "test/discord:thread:other" });
+
+    const clearResp = await signedRequest(guardianUrl, makePayload({
+      metadata: { sessionKey: "discord:thread:thread-clear", clearSession: true },
+    }));
+
+    expect(clearResp.status).toBe(200);
+    expect(assistantSessions.has("orphan-1")).toBe(false);
+    expect(assistantSessions.has("orphan-2")).toBe(false);
+    expect(assistantSessions.has("other-thread")).toBe(true);
+  });
+
+  it("reuses an existing assistant session after guardian cache is lost", async () => {
+    resetAssistantCounters();
+
+    assistantSessions.set("persisted-thread-session", {
+      title: "test/discord:thread:thread-persisted",
+    });
+
+    const resp = await signedRequest(guardianUrl, makePayload({
+      metadata: { sessionKey: "discord:thread:thread-persisted" },
+    }));
+
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    expect(data.sessionId).toBe("persisted-thread-session");
+    expect(sessionCreateCount).toBe(0);
+    expect(messageCount).toBe(1);
   });
 
   it("invalid signature → 403 invalid_signature", async () => {
@@ -384,11 +464,17 @@ describe("Guardian security contract", () => {
       // Restart the mock assistant
       mockAssistantServer = Bun.serve({
         port: assistantPort,
-        fetch(req) {
+        async fetch(req) {
           const url = new URL(req.url);
           if (url.pathname === "/session" && req.method === "POST") {
             sessionCreateCount += 1;
-            return new Response(JSON.stringify({ id: `mock-session-${sessionCreateCount}` }), {
+            const sessionId = `mock-session-${sessionCreateCount}`;
+            const body = await req.json().catch(() => ({}));
+            const title = typeof (body as Record<string, unknown>).title === "string"
+              ? (body as Record<string, unknown>).title as string
+              : "";
+            assistantSessions.set(sessionId, { title });
+            return new Response(JSON.stringify({ id: sessionId }), {
               status: 200,
               headers: { "content-type": "application/json" },
             });
