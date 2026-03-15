@@ -52,6 +52,13 @@ let guardianProc: Subprocess;
 let mockAssistantServer: ReturnType<typeof Bun.serve>;
 let guardianUrl: string;
 let tmpDir: string;
+let sessionCreateCount = 0;
+let messageCount = 0;
+
+function resetAssistantCounters(): void {
+  sessionCreateCount = 0;
+  messageCount = 0;
+}
 
 // Pick random ports to avoid conflicts
 const guardianPort = 19000 + Math.floor(Math.random() * 1000);
@@ -71,15 +78,18 @@ beforeAll(async () => {
     fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/session" && req.method === "POST") {
-        return new Response(JSON.stringify({ id: "mock-session-1" }), {
+        sessionCreateCount += 1;
+        return new Response(JSON.stringify({ id: `mock-session-${sessionCreateCount}` }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       }
       if (url.pathname.startsWith("/session/") && url.pathname.endsWith("/message") && req.method === "POST") {
+        messageCount += 1;
+        const sessionId = url.pathname.split("/")[2] ?? "unknown-session";
         return new Response(
           JSON.stringify({
-            parts: [{ type: "text", text: "mock answer" }],
+            parts: [{ type: "text", text: `mock answer from ${sessionId}` }],
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -138,13 +148,80 @@ describe("Guardian security contract", () => {
   });
 
   it("valid signed payload → 200 with answer", async () => {
+    resetAssistantCounters();
     const payload = makePayload();
     const resp = await signedRequest(guardianUrl, payload);
     expect(resp.status).toBe(200);
     const data = await resp.json();
-    expect(data.answer).toBe("mock answer");
+    expect(data.answer).toBe("mock answer from mock-session-1");
     expect(data.userId).toBe("user1");
     expect(typeof data.sessionId).toBe("string");
+  });
+
+  it("metadata.sessionKey reuses the same cached session across different userIds", async () => {
+    resetAssistantCounters();
+
+    const sessionKey = `thread-${crypto.randomUUID()}`;
+    const firstResp = await signedRequest(guardianUrl, makePayload({
+      userId: `user-a-${crypto.randomUUID()}`,
+      metadata: { sessionKey },
+    }));
+    expect(firstResp.status).toBe(200);
+    const firstData = await firstResp.json();
+
+    const secondResp = await signedRequest(guardianUrl, makePayload({
+      userId: `user-b-${crypto.randomUUID()}`,
+      text: "follow-up",
+      metadata: { sessionKey },
+    }));
+    expect(secondResp.status).toBe(200);
+    const secondData = await secondResp.json();
+
+    expect(firstData.sessionId).toBe("mock-session-1");
+    expect(secondData.sessionId).toBe("mock-session-1");
+    expect(secondData.answer).toBe("mock answer from mock-session-1");
+    expect(sessionCreateCount).toBe(1);
+    expect(messageCount).toBe(2);
+  });
+
+  it("metadata.clearSession clears the resolved cached session without calling assistant", async () => {
+    resetAssistantCounters();
+
+    const sessionKey = `clear-${crypto.randomUUID()}`;
+    const initialResp = await signedRequest(guardianUrl, makePayload({
+      userId: `user-clear-${crypto.randomUUID()}`,
+      metadata: { sessionKey },
+    }));
+    expect(initialResp.status).toBe(200);
+    const initialData = await initialResp.json();
+    expect(initialData.sessionId).toBe("mock-session-1");
+    expect(sessionCreateCount).toBe(1);
+    expect(messageCount).toBe(1);
+
+    const clearResp = await signedRequest(guardianUrl, makePayload({
+      userId: `other-user-${crypto.randomUUID()}`,
+      text: "clear session",
+      metadata: { sessionKey, clearSession: true },
+    }));
+    expect(clearResp.status).toBe(200);
+    const clearData = await clearResp.json();
+    expect(clearData.cleared).toBe(true);
+    expect(clearData.userId).toMatch(/^other-user-/);
+    expect(sessionCreateCount).toBe(1);
+    expect(messageCount).toBe(1);
+
+    const afterClearResp = await signedRequest(guardianUrl, makePayload({
+      userId: `third-user-${crypto.randomUUID()}`,
+      text: "new session after clear",
+      metadata: { sessionKey },
+    }));
+    expect(afterClearResp.status).toBe(200);
+    const afterClearData = await afterClearResp.json();
+
+    expect(afterClearData.sessionId).toBe("mock-session-2");
+    expect(afterClearData.answer).toBe("mock answer from mock-session-2");
+    expect(sessionCreateCount).toBe(2);
+    expect(messageCount).toBe(2);
   });
 
   it("invalid signature → 403 invalid_signature", async () => {
@@ -310,15 +387,18 @@ describe("Guardian security contract", () => {
         fetch(req) {
           const url = new URL(req.url);
           if (url.pathname === "/session" && req.method === "POST") {
-            return new Response(JSON.stringify({ id: "mock-session-1" }), {
+            sessionCreateCount += 1;
+            return new Response(JSON.stringify({ id: `mock-session-${sessionCreateCount}` }), {
               status: 200,
               headers: { "content-type": "application/json" },
             });
           }
           if (url.pathname.startsWith("/session/") && url.pathname.endsWith("/message") && req.method === "POST") {
+            messageCount += 1;
+            const sessionId = url.pathname.split("/")[2] ?? "unknown-session";
             return new Response(
               JSON.stringify({
-                parts: [{ type: "text", text: "mock answer" }],
+                parts: [{ type: "text", text: `mock answer from ${sessionId}` }],
               }),
               { status: 200, headers: { "content-type": "application/json" } },
             );

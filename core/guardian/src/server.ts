@@ -18,6 +18,7 @@ import { parse as dotenvParse } from "dotenv";
 import { ERROR_CODES, validatePayload } from "@openpalm/channels-sdk/channel";
 import { verifySignature } from "@openpalm/channels-sdk/crypto";
 import { createLogger } from "@openpalm/channels-sdk/logger";
+import { asRecord } from "@openpalm/channels-sdk/utils";
 
 const logger = createLogger("guardian");
 
@@ -202,6 +203,7 @@ import type { AssistantClientOptions } from "@openpalm/channels-sdk/assistant-cl
 
 const MESSAGE_TIMEOUT = Number(Bun.env.OPENCODE_TIMEOUT_MS ?? 120_000);
 const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
+const SESSION_KEY_MAX_LENGTH = 256;
 
 const sessionCache = new Map<string, { sessionId: string; lastUsed: number }>();
 
@@ -229,12 +231,37 @@ function clientOpts(): AssistantClientOptions {
   };
 }
 
+type SessionTarget = {
+  cacheKey: string;
+  sessionKey: string;
+};
+
+function resolveSessionTarget(userId: string, channel: string, metadata: unknown): SessionTarget {
+  const meta = asRecord(metadata);
+  const metadataSessionKey = typeof meta?.sessionKey === "string"
+    ? meta.sessionKey.trim()
+    : "";
+  const sessionKey = metadataSessionKey && metadataSessionKey.length <= SESSION_KEY_MAX_LENGTH
+    ? metadataSessionKey
+    : userId;
+
+  return {
+    cacheKey: `${channel}:${sessionKey}`,
+    sessionKey,
+  };
+}
+
+function shouldClearSession(metadata: unknown): boolean {
+  return asRecord(metadata)?.clearSession === true;
+}
+
 async function askAssistant(
   message: string,
   userId: string,
   channel: string,
+  sessionTarget: SessionTarget,
 ): Promise<{ answer: string; sessionId: string }> {
-  const cacheKey = `${channel}:${userId}`;
+  const cacheKey = sessionTarget.cacheKey;
   const opts = clientOpts();
   const cached = sessionCache.get(cacheKey);
 
@@ -377,10 +404,42 @@ Bun.serve({
         return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
       }
 
+      const sessionTarget = resolveSessionTarget(payload.userId, payload.channel, payload.metadata);
+
+      if (shouldClearSession(payload.metadata)) {
+        sessionCache.delete(sessionTarget.cacheKey);
+        audit({
+          requestId: rid,
+          action: "clear_session",
+          status: "ok",
+          channel: payload.channel,
+          userId: payload.userId,
+          sessionKey: sessionTarget.sessionKey,
+        });
+        return json(200, {
+          requestId: rid,
+          cleared: true,
+          userId: payload.userId,
+        });
+      }
+
       try {
-        const { answer, sessionId } = await askAssistant(payload.text, payload.userId, payload.channel);
+        const { answer, sessionId } = await askAssistant(
+          payload.text,
+          payload.userId,
+          payload.channel,
+          sessionTarget,
+        );
         countRequest("ok", payload.channel);
-        audit({ requestId: rid, sessionId, action: "inbound", status: "ok", channel: payload.channel, userId: payload.userId });
+        audit({
+          requestId: rid,
+          sessionId,
+          action: "inbound",
+          status: "ok",
+          channel: payload.channel,
+          userId: payload.userId,
+          sessionKey: sessionTarget.sessionKey,
+        });
         return json(200, { requestId: rid, sessionId, answer, userId: payload.userId });
       } catch (err) {
         countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);
