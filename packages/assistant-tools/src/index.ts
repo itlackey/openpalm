@@ -4,6 +4,18 @@ import { MemoryContextPlugin } from "../opencode/plugins/memory-context.ts";
 // Default-export tools (single tool per file)
 import healthCheck from "../opencode/tools/health-check.ts";
 import adminAudit from "../opencode/tools/admin-audit.ts";
+import adminLogs from "../opencode/tools/admin-logs.ts";
+import adminGuardianAudit from "../opencode/tools/admin-guardian-audit.ts";
+import adminConfigValidate from "../opencode/tools/admin-config-validate.ts";
+import adminConnectionsTest from "../opencode/tools/admin-connections-test.ts";
+import adminProvidersLocal from "../opencode/tools/admin-providers-local.ts";
+import adminMemoryModels from "../opencode/tools/admin-memory-models.ts";
+import adminContainersInspect from "../opencode/tools/admin-containers-inspect.ts";
+import adminContainersEvents from "../opencode/tools/admin-containers-events.ts";
+import adminGuardianStats from "../opencode/tools/admin-guardian-stats.ts";
+import adminNetworkCheck from "../opencode/tools/admin-network-check.ts";
+import stackDiagnostics from "../opencode/tools/stack-diagnostics.ts";
+import messageTrace from "../opencode/tools/message-trace.ts";
 import memorySearch from "../opencode/tools/memory-search.ts";
 import memoryAdd from "../opencode/tools/memory-add.ts";
 import memoryUpdate from "../opencode/tools/memory-update.ts";
@@ -34,6 +46,18 @@ export const plugin: Plugin = async (input) => {
       // Single tools
       "health-check": healthCheck,
       "admin-audit": adminAudit,
+      "admin-logs": adminLogs,
+      "admin-guardian_audit": adminGuardianAudit,
+      "admin-config_validate": adminConfigValidate,
+      "admin-connections_test": adminConnectionsTest,
+      "admin-providers_local": adminProvidersLocal,
+      "admin-memory_models": adminMemoryModels,
+      "admin-containers_inspect": adminContainersInspect,
+      "admin-containers_events": adminContainersEvents,
+      "admin-guardian_stats": adminGuardianStats,
+      "admin-network_check": adminNetworkCheck,
+      "stack-diagnostics": stackDiagnostics,
+      "message-trace": messageTrace,
       "memory-search": memorySearch,
       "memory-add": memoryAdd,
       "memory-update": memoryUpdate,
