@@ -243,6 +243,48 @@ describe("Guardian security contract", () => {
     expect(data.error).toBe("invalid_payload");
   });
 
+  it("GET /stats → 200 with diagnostic state", async () => {
+    const resp = await fetch(`${guardianUrl}/stats`);
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+
+    // Verify top-level structure
+    expect(typeof data.uptime_seconds).toBe("number");
+    expect(data.uptime_seconds).toBeGreaterThanOrEqual(0);
+
+    // Rate limits config + active counts
+    expect(data.rate_limits.user_window_ms).toBe(60_000);
+    expect(data.rate_limits.user_max_requests).toBe(120);
+    expect(data.rate_limits.channel_window_ms).toBe(60_000);
+    expect(data.rate_limits.channel_max_requests).toBe(200);
+    expect(typeof data.rate_limits.active_user_limiters).toBe("number");
+    expect(typeof data.rate_limits.active_channel_limiters).toBe("number");
+
+    // Nonce cache
+    expect(typeof data.nonce_cache.size).toBe("number");
+    expect(data.nonce_cache.max_size).toBe(50_000);
+    expect(data.nonce_cache.window_ms).toBe(300_000);
+
+    // Sessions
+    expect(typeof data.sessions.active).toBe("number");
+    expect(data.sessions.max_size).toBe(10_000);
+    expect(data.sessions.ttl_ms).toBe(15 * 60_000);
+
+    // Request counters (previous tests will have generated some)
+    expect(typeof data.requests.total).toBe("number");
+    expect(data.requests.total).toBeGreaterThan(0);
+    expect(typeof data.requests.by_status).toBe("object");
+    expect(typeof data.requests.by_channel).toBe("object");
+  });
+
+  it("GET /stats with valid admin token → 200", async () => {
+    // No OPENPALM_ADMIN_TOKEN is set in test env, so any request should succeed
+    const resp = await fetch(`${guardianUrl}/stats`, {
+      headers: { "x-admin-token": "any-value" },
+    });
+    expect(resp.status).toBe(200);
+  });
+
   it("unknown route → 404", async () => {
     const resp = await fetch(`${guardianUrl}/unknown`);
     expect(resp.status).toBe(404);

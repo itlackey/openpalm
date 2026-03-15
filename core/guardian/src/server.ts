@@ -27,6 +27,24 @@ const PORT = Number(Bun.env.PORT ?? 8080);
 const ASSISTANT_URL = Bun.env.OPENPALM_ASSISTANT_URL ?? "http://assistant:4096";
 const AUDIT_PATH = Bun.env.GUARDIAN_AUDIT_PATH ?? "/app/audit/guardian-audit.log";
 const SECRETS_PATH = Bun.env.GUARDIAN_SECRETS_PATH;
+const ADMIN_TOKEN = Bun.env.OPENPALM_ADMIN_TOKEN;
+
+// ── Uptime & request counters ───────────────────────────────────────────
+
+const startTime = Date.now();
+const requestCounters = {
+  total: 0,
+  byStatus: new Map<string, number>(),
+  byChannel: new Map<string, number>(),
+};
+
+function countRequest(status: string, channel?: string) {
+  requestCounters.total++;
+  requestCounters.byStatus.set(status, (requestCounters.byStatus.get(status) ?? 0) + 1);
+  if (channel) {
+    requestCounters.byChannel.set(channel, (requestCounters.byChannel.get(channel) ?? 0) + 1);
+  }
+}
 
 // ── Channel secrets ─────────────────────────────────────────────────────
 
@@ -79,6 +97,11 @@ async function loadChannelSecrets(): Promise<Record<string, string>> {
 }
 
 // ── Rate limiter ────────────────────────────────────────────────────────
+
+const USER_RATE_LIMIT = 120;
+const USER_RATE_WINDOW_MS = 60_000;
+const CHANNEL_RATE_LIMIT = 200;
+const CHANNEL_RATE_WINDOW_MS = 60_000;
 
 const buckets = new Map<string, { count: number; start: number }>();
 
@@ -251,24 +274,84 @@ Bun.serve({
       return json(200, { ok: true, service: "guardian", time: new Date().toISOString() });
     }
 
+    if (url.pathname === "/stats" && req.method === "GET") {
+      // Auth: require admin token if configured, otherwise allow (dev/LAN)
+      if (ADMIN_TOKEN) {
+        const token = req.headers.get("x-admin-token");
+        if (token !== ADMIN_TOKEN) {
+          return json(401, { error: "unauthorized" });
+        }
+      }
+
+      // Count active user vs channel rate limiters
+      const now = Date.now();
+      let activeUserLimiters = 0;
+      let activeChannelLimiters = 0;
+      for (const [key, b] of buckets) {
+        if (now - b.start > USER_RATE_WINDOW_MS) continue; // expired
+        if (key.startsWith("ch:")) {
+          activeChannelLimiters++;
+        } else {
+          activeUserLimiters++;
+        }
+      }
+
+      return json(200, {
+        uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
+        rate_limits: {
+          user_window_ms: USER_RATE_WINDOW_MS,
+          user_max_requests: USER_RATE_LIMIT,
+          channel_window_ms: CHANNEL_RATE_WINDOW_MS,
+          channel_max_requests: CHANNEL_RATE_LIMIT,
+          active_user_limiters: activeUserLimiters,
+          active_channel_limiters: activeChannelLimiters,
+        },
+        nonce_cache: {
+          size: seen.size,
+          max_size: 50_000,
+          window_ms: CLOCK_SKEW,
+        },
+        sessions: {
+          active: sessionCache.size,
+          max_size: 10_000,
+          ttl_ms: SESSION_TTL_MS,
+        },
+        requests: {
+          total: requestCounters.total,
+          by_status: Object.fromEntries(requestCounters.byStatus),
+          by_channel: Object.fromEntries(requestCounters.byChannel),
+        },
+      });
+    }
+
     if (url.pathname === "/channel/inbound" && req.method === "POST") {
       // H8: Request body size limit (100KB)
       const contentLength = req.headers.get("content-length");
       if (contentLength && Number(contentLength) > 102_400) {
+        countRequest(ERROR_CODES.PAYLOAD_TOO_LARGE);
         return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
       }
 
       const raw = await req.text();
 
       if (raw.length > 102_400) {
+        countRequest(ERROR_CODES.PAYLOAD_TOO_LARGE);
         return json(413, { error: ERROR_CODES.PAYLOAD_TOO_LARGE, requestId: rid });
       }
 
       let parsed: unknown;
-      try { parsed = JSON.parse(raw); } catch { return json(400, { error: ERROR_CODES.INVALID_JSON, requestId: rid }); }
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        countRequest(ERROR_CODES.INVALID_JSON);
+        return json(400, { error: ERROR_CODES.INVALID_JSON, requestId: rid });
+      }
 
       const validation = validatePayload(parsed);
-      if (!validation.ok) return json(400, { error: validation.error, requestId: rid });
+      if (!validation.ok) {
+        countRequest(validation.error);
+        return json(400, { error: validation.error, requestId: rid });
+      }
       const payload = validation.payload;
 
       // C1: Use dummy secret for unknown channels to prevent channel name enumeration.
@@ -278,22 +361,29 @@ Bun.serve({
 
       const sig = req.headers.get("x-channel-signature") ?? "";
       if (!verifySignature(secret || "dummy-secret-for-timing-parity", raw, sig)) {
+        countRequest(ERROR_CODES.INVALID_SIGNATURE, payload.channel);
         return json(403, { error: ERROR_CODES.INVALID_SIGNATURE, requestId: rid });
       }
 
       // H3: Rate limit before nonce check to prevent nonce consumption for rate-limited requests
-      if (!allow(payload.userId, 120, 60_000) || !allow(`ch:${payload.channel}`, 200, 60_000)) {
+      if (!allow(payload.userId, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) || !allow(`ch:${payload.channel}`, CHANNEL_RATE_LIMIT, CHANNEL_RATE_WINDOW_MS)) {
+        countRequest(ERROR_CODES.RATE_LIMITED, payload.channel);
         audit({ requestId: rid, action: "inbound", status: "denied", reason: ERROR_CODES.RATE_LIMITED, channel: payload.channel });
         return json(429, { error: ERROR_CODES.RATE_LIMITED, requestId: rid });
       }
 
-      if (!checkNonce(payload.nonce, payload.timestamp)) return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
+      if (!checkNonce(payload.nonce, payload.timestamp)) {
+        countRequest(ERROR_CODES.REPLAY_DETECTED, payload.channel);
+        return json(409, { error: ERROR_CODES.REPLAY_DETECTED, requestId: rid });
+      }
 
       try {
         const { answer, sessionId } = await askAssistant(payload.text, payload.userId, payload.channel);
+        countRequest("ok", payload.channel);
         audit({ requestId: rid, sessionId, action: "inbound", status: "ok", channel: payload.channel, userId: payload.userId });
         return json(200, { requestId: rid, sessionId, answer, userId: payload.userId });
       } catch (err) {
+        countRequest(ERROR_CODES.ASSISTANT_UNAVAILABLE, payload.channel);
         audit({ requestId: rid, action: "forward", status: "error", error: String(err) });
         return json(502, { error: ERROR_CODES.ASSISTANT_UNAVAILABLE, requestId: rid });
       }
