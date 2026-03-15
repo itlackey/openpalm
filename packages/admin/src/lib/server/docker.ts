@@ -314,10 +314,14 @@ export async function composeLogs(
   stateDir: string,
   services?: string[],
   tail = 100,
-  options: { files?: string[]; envFiles?: string[] } = {}
+  options: { files?: string[]; envFiles?: string[]; since?: string } = {}
 ): Promise<DockerResult> {
   const args = buildComposeArgs(stateDir, options);
   args.push("logs", "--tail", String(tail));
+
+  if (options.since) {
+    args.push("--since", options.since);
+  }
 
   if (services && services.length > 0) {
     args.push(...services);
