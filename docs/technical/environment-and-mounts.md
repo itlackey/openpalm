@@ -58,7 +58,7 @@ The source-of-truth core Caddyfile is system-managed at
 | Host Path | Container Path | Mode | Purpose |
 |---|---|---|---|
 | `$DATA_HOME/memory` | `/data` | rw | Memory service persistent data |
-| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
+| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | Memory service LLM/embedder config |
 
 Memory is a Bun.js service (`@openpalm/memory`) using sqlite-vec for vector
 storage — all data is stored within `$DATA_HOME/memory/`.
@@ -238,9 +238,9 @@ They are written into `DATA_HOME/stack.env` and staged to `STATE_HOME/artifacts/
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MEMORY_DATA_DIR` | `/data` | Base directory for Qdrant data and history DB |
-| `HOME` | `/data` | Home directory used by mem0 for user-scoped defaults |
-| `MEM0_DIR` | `/data/.mem0` | mem0 runtime directory for local state/config |
+| `MEMORY_DATA_DIR` | `/data` | Base directory for memory database and related files |
+| `HOME` | `/data` | Writable home directory inside the memory container |
+| `MEM0_DIR` | `/data/.mem0` | Compatibility directory retained for config/runtime interoperability |
 | `OPENAI_API_KEY` | pass-through | Required for embedding generation |
 | `OPENAI_BASE_URL` | pass-through | Custom OpenAI-compatible base URL |
 

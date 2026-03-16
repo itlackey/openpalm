@@ -14,7 +14,7 @@ OpenPalm runs as a Docker Compose stack with these services:
 | Service | Role |
 |---------|------|
 | **caddy** | Reverse proxy, TLS termination, access control |
-| **memory** | Memory service — lightweight mem0 SDK wrapper with embedded Qdrant |
+| **memory** | Memory service - Bun-based OpenPalm memory API backed by SQLite and `sqlite-vec` |
 | **assistant** | This OpenCode instance (you) |
 | **guardian** | Message routing with HMAC verification |
 | **admin** | Control plane API (protects Docker socket) |

@@ -838,7 +838,11 @@ Response:
 
 ### `GET /admin/connections/export/mem0`
 
-Exports the mem0 config derived from current connection profiles and assignments.
+Exports the compatibility-formatted memory config derived from current
+connection profiles and assignments. The route name remains `export/mem0`
+for backward compatibility, but the generated file configures OpenPalm's
+Bun-based memory service.
+
 Returns the config as a downloadable JSON file (`mem0-config.json`).
 
 Auth: admin token or setup token.
@@ -876,9 +880,13 @@ error semantics as their `/admin/connections/*` counterparts.
 
 ## Memory Configuration
 
-Manage the Memory (mem0) LLM and embedding provider configuration stored
-at `DATA_HOME/memory/default_config.json`. Changes are persisted to disk
-and pushed to the running Memory container via its REST API (`PUT /api/v1/config/`).
+Manage the Memory service LLM and embedding provider configuration stored at
+`DATA_HOME/memory/default_config.json`. The persisted file still uses a
+mem0-shaped JSON schema for compatibility, but the running service is the
+OpenPalm Bun-based memory API backed by SQLite and `sqlite-vec`.
+
+Changes are persisted to disk and pushed to the running Memory container via
+its REST API (`PUT /api/v1/config/`).
 
 ### `GET /admin/memory/config`
 
@@ -893,7 +901,7 @@ Response:
     "mem0": {
       "llm": { "provider": "openai", "config": { "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 2000, "api_key": "env:OPENAI_API_KEY" } },
       "embedder": { "provider": "openai", "config": { "model": "text-embedding-3-small", "api_key": "env:OPENAI_API_KEY" } },
-      "vector_store": { "provider": "qdrant", "config": { "collection_name": "memory", "path": "/data/qdrant", "embedding_model_dims": 1536 } }
+      "vector_store": { "provider": "sqlite-vec", "config": { "collection_name": "memory", "db_path": "/data/memory.db", "embedding_model_dims": 1536 } }
     },
     "memory": { "custom_instructions": "" }
   },
@@ -929,12 +937,12 @@ Response:
 ```
 
 - `dimensionMismatch` is `true` when the new config's embedding dimensions
-  differ from the previously persisted config. Requires a collection reset.
+  differ from the previously persisted config. Requires a vector-store reset.
 - `dimensionWarning` is a human-readable message when `dimensionMismatch` is `true`.
 
 Error responses:
 
-- `400 bad_request` -- Missing or invalid `mem0` structure.
+- `400 bad_request` -- Missing or invalid memory config structure.
 
 ### `POST /admin/memory/models`
 
@@ -982,9 +990,11 @@ Error responses:
 
 ### `POST /admin/memory/reset-collection`
 
-Deletes the embedded Qdrant vector data so the memory service recreates the
-collection with the correct embedding dimensions on next restart. This is a
-destructive operation that deletes all stored memories.
+Deletes the configured vector store data so the memory service recreates it
+with the correct embedding dimensions on next restart. In the current default
+configuration this removes the SQLite database and companion WAL/SHM files; it
+also removes any legacy Qdrant directory if one exists. This is a destructive
+operation that deletes all stored memories.
 
 Response:
 
@@ -1001,7 +1011,7 @@ collection to be created.
 
 Error responses:
 
-- `502 collection_reset_failed` -- Failed to delete the Qdrant data directory.
+- `502 collection_reset_failed` -- Failed to delete the configured vector-store data.
 
 ### Ollama Integration Notes
 
@@ -1015,7 +1025,7 @@ When using Ollama as the LLM or embedding provider with Memory:
    to reach `http://host.docker.internal:11434`. Docker Desktop (Mac/Windows)
    adds this automatically.
 
-3. **Embedding dimensions**: The Qdrant collection must be created with
+3. **Embedding dimensions**: The configured vector store must use
    `embedding_model_dims` matching the embedding model's output dimensions
    (e.g., 1024 for `qwen3-embedding:0.6b`, 768 for `nomic-embed-text`).
    A dimension mismatch causes silent insert failures.

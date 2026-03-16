@@ -4,7 +4,7 @@ This document describes what the OpenPalm memory service stores, where it stores
 
 ## What is stored
 
-The memory service stores **extracted facts**, not raw conversation transcripts. When the assistant sends a conversation to the memory service, an LLM extracts discrete factual statements (e.g., "User prefers TypeScript over JavaScript") and stores each one individually.
+The memory service stores **extracted facts**, not raw conversation transcripts. When the assistant sends conversation text to the memory service with `infer: true`, an LLM extracts discrete factual statements (for example, "User prefers TypeScript over JavaScript") and stores each one individually. When `infer: false`, the submitted text is stored directly as a single memory.
 
 Each memory record in the SQLite database contains:
 
@@ -37,7 +37,9 @@ Associated WAL and SHM files (`memory.db-wal`, `memory.db-shm`) may also exist a
 The memory configuration file is stored at:
 - `~/.local/share/openpalm/memory/default_config.json` (or `.dev/data/memory/default_config.json` in dev mode)
 
-**No data is synced to any cloud service.** The SQLite database and all memory data remain entirely on the host machine.
+The config file still uses a mem0-shaped JSON structure for compatibility, but the running service is OpenPalm's Bun-based memory API backed by SQLite and `sqlite-vec`.
+
+**No data is synced to any cloud service by OpenPalm itself.** The SQLite database and all memory data remain entirely on the host machine.
 
 ## What is NOT stored
 
@@ -76,18 +78,6 @@ The assistant service (OpenCode) sends conversation messages to the configured c
 OpenPalm does not default to any specific model. The setup wizard requires the operator to choose a provider and model before the stack starts. This ensures the operator makes a conscious decision about where their data is processed.
 
 ## How to view stored memories
-
-### Admin API
-
-List memories for a user (requires admin token):
-
-```bash
-# List all memories
-curl -X POST http://localhost:8100/admin/memory/filter \
-  -H "x-admin-token: YOUR_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "default_user"}'
-```
 
 ### Memory service API (direct)
 
@@ -139,7 +129,7 @@ docker compose start memory
 
 ### Option 2: Admin API reset endpoint
 
-The admin API provides a reset endpoint that deletes the SQLite database file and any legacy Qdrant data. The memory container must be restarted afterwards:
+The admin API provides a reset endpoint that deletes the configured SQLite-backed vector store files and any legacy Qdrant data. The memory container must be restarted afterwards:
 
 ```bash
 curl -X POST http://localhost:8100/admin/memory/reset-collection \
@@ -157,6 +147,11 @@ curl -X DELETE http://localhost:8765/api/v1/memories/ \
   -H "Content-Type: application/json" \
   -d '{"memory_id": "MEMORY_UUID"}'
 
+# Delete multiple memories by ID
+curl -X DELETE http://localhost:8765/api/v1/memories/ \
+  -H "Content-Type: application/json" \
+  -d '{"memory_ids": ["UUID1", "UUID2"]}'
+
 # Delete all memories for a user
 curl -X DELETE http://localhost:8765/api/v1/memories/ \
   -H "Content-Type: application/json" \
@@ -170,6 +165,7 @@ The assistant has a `memory-delete` tool that can remove individual memories by 
 ## Data retention
 
 - **No automatic expiry.** Memories persist indefinitely until explicitly deleted.
-- **No automatic cleanup.** The memory service does not prune old or low-confidence memories on its own.
+- **No automatic cleanup inside the memory service.** The storage API does not prune old or low-confidence memories on its own.
+- **Assistant-side hygiene may curate assistant-created memories.** When memory automation is enabled in the assistant plugin, duplicate and stale memories can be reviewed and pruned conservatively.
 - **User controls all data.** The operator has full control over when memories are created, updated, and deleted. The SQLite database is a regular file on disk that can be backed up, inspected, or removed at any time.
 - **History is retained alongside memories.** The mutation history table records all ADD, UPDATE, and DELETE operations. Resetting the collection (Option 2 above) or deleting the database file (Option 1) also removes all history records.

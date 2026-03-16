@@ -67,7 +67,7 @@ STATE_HOME (~/.local/state/openpalm/)
 DATA_HOME (~/.local/share/openpalm/)
 ├── stack.env                # Source of truth for host-detected infrastructure config
 ├── admin/                   # Admin runtime home (varlock state, future per-admin cache)
-├── memory/              # Memory persistent data (SQLite + embedded Qdrant)
+├── memory/              # Memory persistent data (SQLite + sqlite-vec, legacy Qdrant dir may exist)
 ├── assistant/               # System-managed OpenCode config (opencode.jsonc, AGENTS.md)
 ├── opencode/                # OpenCode data directory
 ├── guardian/                 # Guardian runtime data
@@ -109,7 +109,7 @@ system-managed by admin logic.
 | Host Path | Container Path | Mode | Purpose |
 |-----------|---------------|------|---------|
 | `$DATA_HOME/memory` | `/data` | rw | Memory service data |
-| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | mem0 LLM/embedder config |
+| `$DATA_HOME/memory/default_config.json` | `/app/default_config.json` | ro | Memory service LLM/embedder config |
 
 ### Assistant (OpenCode Runtime)
 
