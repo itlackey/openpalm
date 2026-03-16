@@ -190,24 +190,30 @@ jobs:
 
   build-cli-artifacts:
     name: Build CLI artifacts
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     needs: prepare-tag
     strategy:
       fail-fast: true
       matrix:
         include:
-          - script: build:linux-x64
+          - os: ubuntu-latest
+            script: build:linux-x64
             artifact: openpalm-cli-linux-x64
-          - script: build:linux-arm64
+          - os: ubuntu-latest
+            script: build:linux-arm64
             artifact: openpalm-cli-linux-arm64
-          - script: build:darwin-x64
+          - os: macos-latest
+            script: build:darwin-x64
             artifact: openpalm-cli-darwin-x64
-          - script: build:darwin-arm64
+          - os: macos-latest
+            script: build:darwin-arm64
             artifact: openpalm-cli-darwin-arm64
-          - script: build:windows-x64
+          - os: windows-latest
+            script: build:windows-x64
             artifact: openpalm-cli-windows-x64.exe
-          - script: build:windows-arm64
+          - os: windows-latest
+            script: build:windows-arm64
             artifact: openpalm-cli-windows-arm64.exe
 
     steps:
@@ -224,6 +230,10 @@ jobs:
 
       - name: Build CLI binary
         run: bun run --cwd packages/cli ${{ matrix.script }}
+
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --sign - packages/cli/dist/${{ matrix.artifact }}
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4

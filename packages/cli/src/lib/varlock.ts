@@ -116,6 +116,14 @@ export async function ensureVarlock(stateHome: string): Promise<string> {
     throw new Error(`chmod +x failed for varlock binary (exit code ${chmodCode})`);
   }
 
+  // macOS: clear quarantine flag and ad-hoc codesign so Gatekeeper does not kill the binary
+  if (process.platform === 'darwin') {
+    const xattr = Bun.spawn(['xattr', '-cr', varlockBin], { stdout: 'ignore', stderr: 'ignore' });
+    await xattr.exited;
+    const codesign = Bun.spawn(['codesign', '--force', '--sign', '-', varlockBin], { stdout: 'ignore', stderr: 'ignore' });
+    await codesign.exited;
+  }
+
   if (!(await Bun.file(varlockBin).exists())) {
     throw new Error(`varlock binary not found at ${varlockBin} after install`);
   }

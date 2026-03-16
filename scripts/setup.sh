@@ -12,6 +12,7 @@ SCRIPT_VERSION="0.9.1"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info() { printf "${BLUE}▸${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}✓${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}!${NC} %s\n" "$*"; }
 die()  { printf "${RED}✗${NC} %s\n" "$*" >&2; exit 1; }
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -78,7 +79,24 @@ info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."
 mkdir -p "${INSTALL_DIR}"
 curl -fsSL "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${DEST}"
 chmod +x "${DEST}"
+
+# macOS: clear quarantine flag and ad-hoc codesign so Gatekeeper does not kill the binary
+if [ "${OS}" = "Darwin" ]; then
+  xattr -cr "${DEST}" 2>/dev/null || true
+  codesign --force --sign - "${DEST}" 2>/dev/null || true
+fi
+
 ok "Installed openpalm to ${DEST}"
+
+# ── Ensure $INSTALL_DIR is on PATH ───────────────────────────────────
+case ":${PATH}:" in
+  *":${INSTALL_DIR}:"*) ;;
+  *)
+    warn "${INSTALL_DIR} is not on your PATH."
+    info "Add it by running:  export PATH=\"${INSTALL_DIR}:\$PATH\""
+    export PATH="${INSTALL_DIR}:${PATH}"
+    ;;
+esac
 
 # ── Run install ───────────────────────────────────────────────────────
 if [ "${#PASSTHROUGH_ARGS[@]}" -gt 0 ]; then

@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "openpalm",
@@ -117,7 +116,7 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.9.2",
+      "version": "0.9.3",
       "bin": {
         "openpalm": "./src/main.ts",
       },
