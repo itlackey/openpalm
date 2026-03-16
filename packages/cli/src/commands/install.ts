@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
-import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
-import { isStackRunning, adminRequest, waitForAdminHealthy } from '../lib/admin.ts';
+import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
+import { ADMIN_URL, isStackRunning, adminRequest, waitForAdminHealthy } from '../lib/admin.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, composeProjectArgs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, openBrowser } from '../lib/docker.ts';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -161,7 +161,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   ]);
 
   await waitForAdminHealthy();
-  const targetUrl = updateMode ? 'http://localhost:8100/' : 'http://localhost:8100/setup';
+  const targetUrl = updateMode ? `${ADMIN_URL}/` : `${ADMIN_URL}/setup`;
   if (!options.noOpen) {
     await openBrowser(targetUrl);
   }

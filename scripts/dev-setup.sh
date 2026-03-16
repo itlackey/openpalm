@@ -67,13 +67,14 @@ if [[ $seed_env -eq 1 ]]; then
 	if [[ ! -f "$env_dest" || $force -eq 1 ]]; then
 		cp "$ROOT_DIR/assets/secrets.env" "$env_dest"
 		sed -i 's/^export OPENPALM_ADMIN_TOKEN=$/export OPENPALM_ADMIN_TOKEN=dev-admin-token/' "$env_dest"
-		sed -i 's/^export ADMIN_TOKEN=$/export ADMIN_TOKEN=dev-admin-token/' "$env_dest"
+		# Uncomment and set the legacy ADMIN_TOKEN alias for dev parity
+		sed -i 's/^# export ADMIN_TOKEN=$/export ADMIN_TOKEN=dev-admin-token/' "$env_dest"
 		# Seed Ollama as default LLM backend for dev
 		sed -i 's/^export OPENAI_API_KEY=$/export OPENAI_API_KEY=ollama/' "$env_dest"
 		sed -i 's|^export OPENAI_BASE_URL=$|export OPENAI_BASE_URL=http://host.docker.internal:11434/v1|' "$env_dest"
 		# Generate service auth tokens (matches admin's ensureSecrets())
 		mem_token=$(openssl rand -hex 32)
-		printf '\n# Service auth tokens (auto-generated)\nMEMORY_AUTH_TOKEN=%s\n' \
+		printf '\n# Service auth tokens (auto-generated)\nexport MEMORY_AUTH_TOKEN=%s\n' \
 			"$mem_token" >>"$env_dest"
 	fi
 	[[ -f "$env_dest" ]] && cp "$env_dest" "$STATE_DIR/artifacts/secrets.env"

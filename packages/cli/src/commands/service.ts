@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
 import { adminRequest } from '../lib/admin.ts';
+import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
 import { runRestartAction } from './restart.ts';
@@ -33,11 +34,7 @@ const logsCmd = defineCommand({
   args: {
     services: { type: 'positional', description: 'Service names', required: false },
   },
-  async run({ args }) {
-    // Delegate to the top-level logs command logic
-    const { default: logsCommand } = await import('./logs.ts');
-    await logsCommand.run!({ args, rawArgs: args._ ?? [], cmd: logsCommand } as any);
-  },
+  async run({ args }) { await runLogsAction(args._ ?? []); },
 });
 
 const updateCmd = defineCommand({

@@ -1,13 +1,13 @@
 import { loadAdminToken } from './env.ts';
 
-const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
+export const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 
 /**
  * Returns true if the admin health endpoint is reachable.
  */
 export async function isStackRunning(): Promise<boolean> {
   try {
-    const response = await fetch('http://127.0.0.1:8100/health', {
+    const response = await fetch(`${ADMIN_URL}/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(2000),
     });
@@ -26,7 +26,7 @@ export async function adminRequest(path: string, init?: RequestInit): Promise<un
   if (!token) {
     throw new Error(
       'No admin token found. Set OPENPALM_ADMIN_TOKEN in your environment or ' +
-      'configure it in secrets.env via the setup wizard (http://localhost:8100/setup).',
+      `configure it in secrets.env via the setup wizard (${ADMIN_URL}/setup).`,
     );
   }
   const response = await fetch(`${ADMIN_URL}${path}`, {

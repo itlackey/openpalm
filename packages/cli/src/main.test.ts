@@ -132,7 +132,7 @@ describe('cli main', () => {
     await main(['install']);
 
     expect(calls).toEqual([
-      'http://127.0.0.1:8100/health',
+      'http://localhost:8100/health',
       'http://localhost:8100/admin/install',
     ]);
   });

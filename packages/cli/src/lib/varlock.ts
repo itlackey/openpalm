@@ -1,7 +1,6 @@
-import { mkdir, unlink, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { copyFile, mkdtemp } from 'node:fs/promises';
 
 const VARLOCK_VERSION = '0.4.0';
 

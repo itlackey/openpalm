@@ -1,6 +1,23 @@
 import { defineCommand } from 'citty';
 import { composeProjectArgs } from '../lib/docker.ts';
 
+export async function runLogsAction(services: string[]): Promise<void> {
+  const composeArgs = [
+    'compose',
+    ...composeProjectArgs(),
+    'logs',
+    '--tail',
+    '100',
+    ...services,
+  ];
+
+  const proc = Bun.spawn(['docker', ...composeArgs], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    throw new Error(`Docker compose logs command failed (exit code ${exitCode})`);
+  }
+}
+
 export default defineCommand({
   meta: {
     name: 'logs',
@@ -14,20 +31,6 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const services = args._ ?? [];
-    const composeArgs = [
-      'compose',
-      ...composeProjectArgs(),
-      'logs',
-      '--tail',
-      '100',
-      ...services,
-    ];
-
-    const proc = Bun.spawn(['docker', ...composeArgs], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' });
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      throw new Error(`Docker compose logs command failed (exit code ${exitCode})`);
-    }
+    await runLogsAction(args._ ?? []);
   },
 });
