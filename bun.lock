@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "openpalm",
@@ -17,7 +18,7 @@
     },
     "core/memory": {
       "name": "@openpalm/memory-server",
-      "version": "0.1.0",
+      "version": "0.9.0",
       "dependencies": {
         "@openpalm/memory": "workspace:*",
         "sqlite-vec": "^0.1.7-alpha.2",
@@ -59,14 +60,14 @@
     },
     "packages/assistant-tools": {
       "name": "@openpalm/assistant-tools",
-      "version": "0.7.19",
+      "version": "0.9.0",
       "dependencies": {
         "@opencode-ai/plugin": "1.2.15",
       },
     },
     "packages/channel-api": {
       "name": "@openpalm/channel-api",
-      "version": "0.7.7",
+      "version": "0.9.0",
       "devDependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
@@ -76,7 +77,7 @@
     },
     "packages/channel-chat": {
       "name": "@openpalm/channel-chat",
-      "version": "0.7.6",
+      "version": "0.9.0",
       "devDependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
@@ -86,7 +87,7 @@
     },
     "packages/channel-discord": {
       "name": "@openpalm/channel-discord",
-      "version": "0.7.8",
+      "version": "0.9.0",
       "dependencies": {
         "discord.js": "^14.16.3",
       },
@@ -116,14 +117,17 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.9.1",
+      "version": "0.9.2",
       "bin": {
         "openpalm": "./src/main.ts",
+      },
+      "dependencies": {
+        "citty": "^0.2.1",
       },
     },
     "packages/memory": {
       "name": "@openpalm/memory",
-      "version": "0.1.0",
+      "version": "0.9.0",
       "dependencies": {
         "sqlite-vec": "^0.1.7-alpha.2",
       },
@@ -496,6 +500,8 @@
     "chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
     "chokidar": ["chokidar@4.0.3", "", { "dependencies": { "readdirp": "^4.0.1" } }, "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA=="],
+
+    "citty": ["citty@0.2.1", "", {}, "sha512-kEV95lFBhQgtogAPlQfJJ0WGVSokvLr/UEoFPiKKOXF7pl98HfUVUD0ejsuTCld/9xH9vogSywZ5KqHzXrZpqg=="],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 

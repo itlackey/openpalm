@@ -38,11 +38,18 @@ export function mergeEnvContent(
     if (options.uncomment) {
       testLine = testLine.replace(/^#\s*/, '').trim();
     }
+    // Strip `export ` prefix so we can match the key name
+    const hadExport = testLine.startsWith('export ');
+    if (hadExport) {
+      testLine = testLine.slice(7).trimStart();
+    }
     const eq = testLine.indexOf('=');
     if (eq <= 0) continue;
     const key = testLine.slice(0, eq).trim();
     if (remaining.has(key)) {
-      lines[i] = `${key}=${quoteEnvValue(remaining.get(key)!)}`;
+      // Preserve the export prefix if the original line had one
+      const prefix = hadExport ? 'export ' : '';
+      lines[i] = `${prefix}${key}=${quoteEnvValue(remaining.get(key)!)}`;
       remaining.delete(key);
     }
   }
