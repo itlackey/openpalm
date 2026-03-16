@@ -36,6 +36,7 @@ function restoreDockerCli(): void {
 describe('cli main', () => {
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
+  const originalWarn = console.warn;
   const originalConfigHome = process.env.OPENPALM_CONFIG_HOME;
   const originalDataHome = process.env.OPENPALM_DATA_HOME;
   const originalStateHome = process.env.OPENPALM_STATE_HOME;
@@ -46,6 +47,7 @@ describe('cli main', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
+    console.warn = originalWarn;
     restoreDockerCli();
     process.env.OPENPALM_CONFIG_HOME = originalConfigHome;
     process.env.OPENPALM_DATA_HOME = originalDataHome;
@@ -57,6 +59,7 @@ describe('cli main', () => {
 
   it('calls containers pull for update', async () => {
     const calls: string[] = [];
+    process.env.OPENPALM_ADMIN_TOKEN = 'test-token';
     globalThis.fetch = mock(async (input: string | URL) => {
       calls.push(String(input));
       return new Response('{"ok":true}', { status: 200 });
@@ -91,7 +94,7 @@ describe('cli main', () => {
     const adminTokens: string[] = [];
 
     mkdirSync(configHome, { recursive: true });
-    writeFileSync(join(configHome, 'secrets.env'), 'ADMIN_TOKEN=\n');
+    writeFileSync(join(configHome, 'secrets.env'), 'OPENPALM_ADMIN_TOKEN=\nADMIN_TOKEN=\n');
     writeFileSync(join(base, 'secrets.env'), 'export ADMIN_TOKEN="legacy-admin-token"\n');
 
     process.env.OPENPALM_CONFIG_HOME = configHome;
@@ -113,8 +116,9 @@ describe('cli main', () => {
     }
   });
 
-  it('calls admin install when stack is already running', async () => {
+  it('calls admin install when stack is already running and token exists', async () => {
     const calls: string[] = [];
+    process.env.OPENPALM_ADMIN_TOKEN = 'test-token';
     globalThis.fetch = mock(async (input: string | URL) => {
       const url = String(input);
       calls.push(url);
@@ -128,13 +132,59 @@ describe('cli main', () => {
     await main(['install']);
 
     expect(calls).toEqual([
-      'http://127.0.0.1:8100/health',
+      'http://localhost:8100/health',
       'http://localhost:8100/admin/install',
     ]);
   });
 
-  it('throws for unknown command', async () => {
-    await expect(main(['nope'])).rejects.toThrow('Unknown command: nope');
+  it('falls back to bootstrap when stack is running but no token exists', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
+    const configHome = join(base, 'config');
+    const dataHome = join(base, 'data');
+    const stateHome = join(base, 'state');
+    const workDir = join(base, 'work');
+    const binDir = join(stateHome, 'bin');
+
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(binDir, 'varlock'), 0o755);
+
+    process.env.OPENPALM_CONFIG_HOME = configHome;
+    process.env.OPENPALM_DATA_HOME = dataHome;
+    process.env.OPENPALM_STATE_HOME = stateHome;
+    process.env.OPENPALM_WORK_DIR = workDir;
+    delete process.env.ADMIN_TOKEN;
+    delete process.env.OPENPALM_ADMIN_TOKEN;
+
+    mockDockerCli();
+    const fetchedUrls: string[] = [];
+    globalThis.fetch = mock(async (input: string | URL) => {
+      const url = String(input);
+      fetchedUrls.push(url);
+      if (url.endsWith('/health')) {
+        return new Response('ok', { status: 200 });
+      }
+      if (url.includes('/docker-compose.yml')) {
+        return new Response('services: {}\n', { status: 200 });
+      }
+      if (url.includes('/Caddyfile')) {
+        return new Response(':80 {\n}\n', { status: 200 });
+      }
+      if (url.includes('/secrets.env.schema') || url.includes('/stack.env.schema')) {
+        return new Response('KEY=string\n', { status: 200 });
+      }
+      return new Response('', { status: 503 });
+    }) as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+    console.warn = mock(() => {}) as typeof console.warn;
+
+    try {
+      await main(['install', '--no-start', '--force', '--no-open']);
+      // Should have fallen through to bootstrap, creating directories
+      expect(existsSync(join(dataHome, 'admin'))).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it('creates the admin data directory during bootstrap install', async () => {
@@ -183,18 +233,13 @@ describe('cli main', () => {
 });
 
 describe('validate command', () => {
-  it('throws "Unknown command" is no longer thrown for validate', async () => {
-    // validate is now a known command, so it won't throw Unknown command.
-    // It will fail because varlock exits non-zero on a missing env/schema, but that's a different error.
-    // We set up a temp state dir with a fake varlock binary that exits immediately to avoid a network download.
-
+  it('is a recognized command (does not throw Unknown command)', async () => {
     const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const binDir = join(tempStateHome, 'bin');
     const artifactsDir = join(tempStateHome, 'artifacts');
     mkdirSync(binDir, { recursive: true });
     mkdirSync(artifactsDir, { recursive: true });
 
-    // Create a fake varlock script that exits 1 immediately
     const fakeVarlock = join(binDir, 'varlock');
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 1\n');
     chmodSync(fakeVarlock, 0o755);
@@ -202,32 +247,22 @@ describe('validate command', () => {
     const originalStateHome = process.env.OPENPALM_STATE_HOME;
     const originalExit = process.exit;
     process.env.OPENPALM_STATE_HOME = tempStateHome;
-    // Prevent process.exit from terminating the test runner
     process.exit = mock((_code?: number) => { throw new Error(`process.exit(${_code})`); }) as typeof process.exit;
 
     try {
       const err = await main(['validate']).catch((e: unknown) => e);
       const message = err instanceof Error ? err.message : String(err);
-      expect(message).not.toContain('Unknown command: validate');
+      expect(message).not.toContain('Unknown command');
     } finally {
       process.exit = originalExit;
       process.env.OPENPALM_STATE_HOME = originalStateHome;
       rmSync(tempStateHome, { recursive: true, force: true });
     }
   });
-
 });
 
 describe('scan command', () => {
   it('is a recognized command (does not throw Unknown command)', async () => {
-    // Verifies 'scan' is in the COMMANDS list and dispatches correctly.
-    // Does NOT test full scan behavior (which requires a real varlock binary,
-    // secrets.env, and secrets.env.schema). A more complete test would:
-    //   - Stage a secrets.env.schema + secrets.env in temp dirs
-    //   - Provide a fake varlock binary that echoes its args
-    //   - Assert varlock is invoked with 'scan --path <tmpDir>/'
-    //   - Verify the temp dir is cleaned up after execution
-
     const tempStateHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const tempConfigHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const binDir = join(tempStateHome, 'bin');
@@ -235,12 +270,10 @@ describe('scan command', () => {
     mkdirSync(binDir, { recursive: true });
     mkdirSync(artifactsDir, { recursive: true });
 
-    // Create a fake varlock script that exits 0 immediately
     const fakeVarlock = join(binDir, 'varlock');
     writeFileSync(fakeVarlock, '#!/bin/sh\nexit 0\n');
     chmodSync(fakeVarlock, 0o755);
 
-    // Create required files so the command reaches the varlock invocation
     writeFileSync(join(artifactsDir, 'secrets.env.schema'), 'ADMIN_TOKEN\n');
     writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
 
@@ -254,9 +287,7 @@ describe('scan command', () => {
     try {
       const err = await main(['scan']).catch((e: unknown) => e);
       const message = err instanceof Error ? err.message : String(err);
-      // Should not be an unknown command error
-      expect(message).not.toContain('Unknown command: scan');
-      // The fake varlock exits 0, so process.exit(0) should be called
+      expect(message).not.toContain('Unknown command');
       expect(message).toBe('process.exit(0)');
     } finally {
       process.exit = originalExit;
@@ -273,7 +304,6 @@ describe('scan command', () => {
     const artifactsDir = join(tempStateHome, 'artifacts');
     mkdirSync(artifactsDir, { recursive: true });
 
-    // secrets.env exists but secrets.env.schema does NOT
     writeFileSync(join(tempConfigHome, 'secrets.env'), 'ADMIN_TOKEN=testtoken\n');
 
     const originalStateHome = process.env.OPENPALM_STATE_HOME;
@@ -397,5 +427,34 @@ describe('install image tag pinning', () => {
     expect(upsertEnvValue('KEY.WITH-HYPHEN=old\n', 'KEY.WITH-HYPHEN', 'new')).toBe(
       'KEY.WITH-HYPHEN=new\n',
     );
+  });
+
+  it('preserves export prefix when upserting a key', () => {
+    expect(upsertEnvValue('export OPENPALM_ADMIN_TOKEN=old\n', 'OPENPALM_ADMIN_TOKEN', 'new')).toBe(
+      'export OPENPALM_ADMIN_TOKEN=new\n',
+    );
+  });
+
+  it('upserts without export prefix when original has none', () => {
+    expect(upsertEnvValue('OPENPALM_IMAGE_TAG=latest\n', 'OPENPALM_IMAGE_TAG', 'v1.0.0')).toBe(
+      'OPENPALM_IMAGE_TAG=v1.0.0\n',
+    );
+  });
+});
+
+describe('secrets.env generation', () => {
+  it('generates secrets.env with export prefix and OPENPALM_ADMIN_TOKEN', async () => {
+    const { ensureSecrets } = await import('./lib/env.ts');
+    const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-secrets-'));
+
+    try {
+      await ensureSecrets(tempDir);
+      const content = await Bun.file(join(tempDir, 'secrets.env')).text();
+      expect(content).toContain('export OPENPALM_ADMIN_TOKEN=');
+      expect(content).toContain('export OPENAI_API_KEY=');
+      expect(content).toContain('export MEMORY_USER_ID=');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

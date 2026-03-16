@@ -81,36 +81,39 @@ export function ensureSecrets(state: ControlPlaneState): void {
     return;
   }
 
-  // Consolidated user secrets file — ADMIN_TOKEN + LLM keys only.
+  // Consolidated user secrets file — admin token + LLM keys only.
   // System-managed secrets live in DATA_HOME/stack.env, not here.
+  // Uses `export` prefix so the file can be sourced in a shell and is
+  // compatible with Docker Compose v2 env_file.
   const secretLines: string[] = [];
   secretLines.push("# OpenPalm Secrets");
   secretLines.push("# Edit this file to update admin token and LLM keys.");
   secretLines.push("# System-managed secrets (database + channel HMAC) do not belong here.");
   secretLines.push("");
-  // ADMIN_TOKEN is intentionally blank on first-run.
+  // OPENPALM_ADMIN_TOKEN is intentionally blank on first-run.
   // It is set by the setup wizard's final step.
-  secretLines.push("ADMIN_TOKEN=");
+  secretLines.push("export OPENPALM_ADMIN_TOKEN=");
+  secretLines.push("export ADMIN_TOKEN=");
   secretLines.push("");
   secretLines.push("# LLM provider keys");
   // API keys are intentionally left blank — they must be set via the setup wizard,
   // never silently inherited from the host shell environment.
-  secretLines.push("OPENAI_API_KEY=");
-  secretLines.push("OPENAI_BASE_URL=");
-  secretLines.push("ANTHROPIC_API_KEY=");
-  secretLines.push("GROQ_API_KEY=");
-  secretLines.push("MISTRAL_API_KEY=");
-  secretLines.push("GOOGLE_API_KEY=");
+  secretLines.push("export OPENAI_API_KEY=");
+  secretLines.push("export OPENAI_BASE_URL=");
+  secretLines.push("export ANTHROPIC_API_KEY=");
+  secretLines.push("export GROQ_API_KEY=");
+  secretLines.push("export MISTRAL_API_KEY=");
+  secretLines.push("export GOOGLE_API_KEY=");
   secretLines.push("");
   secretLines.push("# Memory");
-  secretLines.push(`MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
+  secretLines.push(`export MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
   secretLines.push("");
   secretLines.push("# Service auth tokens (auto-generated)");
-  secretLines.push(`MEMORY_AUTH_TOKEN=${randomBytes(32).toString("hex")}`);
+  secretLines.push(`export MEMORY_AUTH_TOKEN=${randomBytes(32).toString("hex")}`);
   secretLines.push("");
   secretLines.push("# Owner");
-  secretLines.push(`OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);
-  secretLines.push(`OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`);
+  secretLines.push(`export OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);
+  secretLines.push(`export OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`);
   writeFileSync(secretsPath, secretLines.join("\n") + "\n");
 }
 

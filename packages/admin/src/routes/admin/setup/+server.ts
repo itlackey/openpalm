@@ -145,6 +145,9 @@ export const POST: RequestHandler = async (event) => {
     if (body.adminToken.length < 8) {
       return errorResponse(400, "invalid_input", "adminToken must be at least 8 characters", { field: "adminToken" }, requestId);
     }
+    updates.OPENPALM_ADMIN_TOKEN = body.adminToken;
+    // Legacy alias — written alongside for backward compatibility with
+    // older compose files and services that still reference ADMIN_TOKEN.
     updates.ADMIN_TOKEN = body.adminToken;
   }
 
@@ -312,8 +315,8 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "config_save_failed", `Failed to update secrets.env: ${err instanceof Error ? err.message : String(err)}`, {}, requestId);
   }
 
-  if (updates.ADMIN_TOKEN) {
-    state.adminToken = updates.ADMIN_TOKEN;
+  if (updates.OPENPALM_ADMIN_TOKEN) {
+    state.adminToken = updates.OPENPALM_ADMIN_TOKEN;
     // Remove the setup-token.txt file now that setup is complete
     writeSetupTokenFile(state);
   }

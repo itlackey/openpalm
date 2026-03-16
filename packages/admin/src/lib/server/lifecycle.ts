@@ -48,7 +48,7 @@ export function createState(
   const configDir = resolveConfigHome();
   const fileEnv = loadSecretsEnvFile(configDir);
   const resolvedAdminToken =
-    adminToken ?? fileEnv.ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
+    adminToken ?? fileEnv.OPENPALM_ADMIN_TOKEN ?? fileEnv.ADMIN_TOKEN ?? process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
 
   // Initialize core services as stopped
   const services: Record<string, "running" | "stopped"> = {};
