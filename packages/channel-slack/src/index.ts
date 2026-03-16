@@ -18,6 +18,16 @@ export default class SlackChannel extends BaseChannel {
   /** Cache of Slack user ID → display name to avoid repeated API calls. */
   private usernameCache = new Map<string, string>();
 
+  /**
+   * Threads the bot is actively participating in.
+   * Map of "channel:thread_ts" → last activity timestamp (ms).
+   * Threads expire after threadTtlMs of inactivity.
+   */
+  private activeThreads = new Map<string, number>();
+
+  /** Thread inactivity TTL in ms. Default: 24 hours. */
+  private threadTtlMs = (Number(Bun.env.SLACK_THREAD_TTL_HOURS) || 24) * 3_600_000;
+
   get botToken(): string {
     return Bun.env.SLACK_BOT_TOKEN ?? "";
   }
@@ -93,6 +103,33 @@ export default class SlackChannel extends BaseChannel {
     });
   }
 
+  // ── Thread Tracking ─────────────────────────────────────────────────
+
+  private threadKey(channel: string, threadTs: string): string {
+    return `${channel}:${threadTs}`;
+  }
+
+  private isThreadActive(channel: string, threadTs: string): boolean {
+    const key = this.threadKey(channel, threadTs);
+    const lastActivity = this.activeThreads.get(key);
+    if (lastActivity === undefined) return false;
+    if (Date.now() - lastActivity > this.threadTtlMs) {
+      this.activeThreads.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  private touchThread(channel: string, threadTs: string): void {
+    this.activeThreads.set(this.threadKey(channel, threadTs), Date.now());
+    if (this.activeThreads.size > 100) {
+      const now = Date.now();
+      for (const [id, ts] of this.activeThreads) {
+        if (now - ts > this.threadTtlMs) this.activeThreads.delete(id);
+      }
+    }
+  }
+
   // ── Message Handling ──────────────────────────────────────────────────
 
   private async onMessage(
@@ -106,8 +143,12 @@ export default class SlackChannel extends BaseChannel {
     if (this.botUserId && event.user === this.botUserId) return;
     if (!event.text?.trim()) return;
 
-    // Only respond to DMs (channel type "im")
-    if (event.channel_type !== "im") return;
+    const isDM = event.channel_type === "im";
+    const inTrackedThread = event.thread_ts != null
+      && this.isThreadActive(event.channel, event.thread_ts);
+
+    // Respond to DMs and messages in threads the bot is already participating in
+    if (!isDM && !inTrackedThread) return;
 
     const userInfo = await this.extractUserInfo(event, client);
     const permResult = checkPermissions(this.permissions, userInfo);
@@ -116,20 +157,27 @@ export default class SlackChannel extends BaseChannel {
       return;
     }
 
-    const text = event.text.trim();
+    const text = this.stripMention(event.text.trim());
+    if (!text) return;
+
+    const threadTs = event.thread_ts ?? event.ts;
     const sessionKey = resolveSessionKey({
       channelId: event.channel,
       userId: event.user,
       threadTs: event.thread_ts,
-      isDM: true,
+      isDM,
     });
+
+    if (inTrackedThread) {
+      this.touchThread(event.channel, event.thread_ts!);
+    }
 
     await this.conversationQueue.runOrQueue(sessionKey, {
       onQueued: async () => {
-        await say({ text: "Queued. I will pick this up next.", thread_ts: event.thread_ts ?? event.ts });
+        await say({ text: "Queued. I will pick this up next.", thread_ts: threadTs });
       },
       run: async () => {
-        await this.runConversation(client, event.channel, event.thread_ts ?? event.ts, userInfo, text, sessionKey);
+        await this.runConversation(client, event.channel, threadTs, userInfo, text, sessionKey);
       },
     });
   }
@@ -164,6 +212,9 @@ export default class SlackChannel extends BaseChannel {
 
     // Always reply in thread — use existing thread or start new one
     const threadTs = event.thread_ts ?? event.ts;
+    // Track this thread so the bot responds to follow-up messages without a mention
+    this.touchThread(event.channel, threadTs);
+
     const sessionKey = resolveSessionKey({
       channelId: event.channel,
       userId: event.user,
@@ -365,17 +416,17 @@ export default class SlackChannel extends BaseChannel {
     text: string,
     sessionKey: string,
   ): Promise<void> {
-    // Add a "thinking" reaction
-    let reactionAdded = false;
+    // Post a visible "thinking" message in the thread
+    let thinkingTs: string | undefined;
     try {
-      await client.reactions.add({
+      const result = await client.chat.postMessage({
         channel,
-        timestamp: threadTs,
-        name: "hourglass",
+        text: `:hourglass: Processing your request...`,
+        thread_ts: threadTs,
       });
-      reactionAdded = true;
+      thinkingTs = result.ts;
     } catch {
-      // Reaction may fail if already added or permissions missing
+      // Best-effort indicator; continue even if it fails
     }
 
     try {
@@ -386,23 +437,23 @@ export default class SlackChannel extends BaseChannel {
         sessionKey,
       });
 
-      // Remove thinking reaction
-      if (reactionAdded) {
+      // Replace thinking message with first chunk, post remaining as follow-ups
+      const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
+      const firstChunk = chunks[0] ?? "No response received.";
+
+      if (thinkingTs) {
         try {
-          await client.reactions.remove({ channel, timestamp: threadTs, name: "hourglass" });
+          await client.chat.update({ channel, ts: thinkingTs, text: firstChunk });
         } catch {
-          // ignore
+          // If update fails, just post as new message
+          await client.chat.postMessage({ channel, text: firstChunk, thread_ts: threadTs });
         }
+      } else {
+        await client.chat.postMessage({ channel, text: firstChunk, thread_ts: threadTs });
       }
 
-      // Post response in thread
-      const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
-      for (const chunk of chunks) {
-        await client.chat.postMessage({
-          channel,
-          text: chunk,
-          thread_ts: threadTs,
-        });
+      for (let i = 1; i < chunks.length; i++) {
+        await client.chat.postMessage({ channel, text: chunks[i], thread_ts: threadTs });
       }
 
       log.info("message_completed", {
@@ -412,22 +463,19 @@ export default class SlackChannel extends BaseChannel {
         sessionKey,
       });
     } catch (error) {
-      // Remove thinking reaction on error too
-      if (reactionAdded) {
-        try {
-          await client.reactions.remove({ channel, timestamp: threadTs, name: "hourglass" });
-        } catch {
-          // ignore
-        }
-      }
-
       const errMsg = error instanceof Error ? error.message : String(error);
       log.error("message_error", { error: errMsg, userId: userInfo.userId, sessionKey });
-      await client.chat.postMessage({
-        channel,
-        text: `Error: ${errMsg}`,
-        thread_ts: threadTs,
-      });
+
+      // Replace thinking message with error, or post error as new message
+      if (thinkingTs) {
+        try {
+          await client.chat.update({ channel, ts: thinkingTs, text: `Error: ${errMsg}` });
+          return;
+        } catch {
+          // fall through to post as new message
+        }
+      }
+      await client.chat.postMessage({ channel, text: `Error: ${errMsg}`, thread_ts: threadTs });
     }
   }
 
@@ -504,10 +552,6 @@ type SlackClient = {
   chat: {
     postMessage: (args: { channel: string; text: string; thread_ts?: string }) => Promise<{ ts?: string }>;
     update: (args: { channel: string; ts: string; text: string }) => Promise<unknown>;
-  };
-  reactions: {
-    add: (args: { channel: string; timestamp: string; name: string }) => Promise<unknown>;
-    remove: (args: { channel: string; timestamp: string; name: string }) => Promise<unknown>;
   };
   users: {
     info: (args: { user: string }) => Promise<{ user?: { name?: string; real_name?: string } }>;

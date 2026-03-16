@@ -43,10 +43,6 @@ type MockClient = {
     postMessage: ReturnType<typeof mock>;
     update: ReturnType<typeof mock>;
   };
-  reactions: {
-    add: ReturnType<typeof mock>;
-    remove: ReturnType<typeof mock>;
-  };
   users: {
     info: ReturnType<typeof mock>;
   };
@@ -60,10 +56,6 @@ function createMockClient(): MockClient {
     },
     users: {
       info: mock(async ({ user }: { user: string }) => ({ user: { name: user } })),
-    },
-    reactions: {
-      add: mock(async () => ({})),
-      remove: mock(async () => ({})),
     },
   };
 }
@@ -832,10 +824,16 @@ describe("DM message handling", () => {
       userId: "slack:U123",
       text: "hello bot",
     });
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
+    // Thinking message posted, then updated with response
+    expect(client.chat.postMessage.mock.calls[0][0]).toMatchObject({
       channel: "D123",
-      text: "Hi there!",
+      text: ":hourglass: Processing your request...",
       thread_ts: "1.1",
+    });
+    expect(client.chat.update).toHaveBeenCalledWith({
+      channel: "D123",
+      ts: "1234567890.123456",
+      text: "Hi there!",
     });
   });
 
@@ -921,10 +919,16 @@ describe("app mention handling", () => {
     );
 
     expect(forward).toHaveBeenCalledTimes(1);
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
+    // Thinking message posted, then updated with response
+    expect(client.chat.postMessage.mock.calls[0][0]).toMatchObject({
       channel: "C456",
-      text: "mentioned!",
+      text: ":hourglass: Processing your request...",
       thread_ts: "1.1",
+    });
+    expect(client.chat.update).toHaveBeenCalledWith({
+      channel: "C456",
+      ts: "1234567890.123456",
+      text: "mentioned!",
     });
   });
 
@@ -1011,10 +1015,16 @@ describe("app mention handling", () => {
     expect(forward.mock.calls[0]?.[0].metadata).toMatchObject({
       sessionKey: "slack:thread:C456:1.1",
     });
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
+    // Thinking message posted in thread, then updated with response
+    expect(client.chat.postMessage.mock.calls[0][0]).toMatchObject({
       channel: "C456",
-      text: "threaded!",
+      text: ":hourglass: Processing your request...",
       thread_ts: "1.1",
+    });
+    expect(client.chat.update).toHaveBeenCalledWith({
+      channel: "C456",
+      ts: "1234567890.123456",
+      text: "threaded!",
     });
   });
 });
@@ -1297,7 +1307,7 @@ describe("/help command", () => {
 // ── Conversation runner ─────────────────────────────────────────────────────
 
 describe("runConversation", () => {
-  it("adds and removes hourglass reaction", async () => {
+  it("posts thinking message and updates it with response", async () => {
     const channel = new SlackChannel();
     const forward = mock(async () =>
       new Response(JSON.stringify({ answer: "done" }), { status: 200 }),
@@ -1313,19 +1323,21 @@ describe("runConversation", () => {
       ) => Promise<void>;
     }).runConversation(client, "C123", "1.1", testUser(), "hello", "key1");
 
-    expect(client.reactions.add).toHaveBeenCalledWith({
+    // First call: thinking message
+    expect(client.chat.postMessage.mock.calls[0][0]).toMatchObject({
       channel: "C123",
-      timestamp: "1.1",
-      name: "hourglass",
+      text: ":hourglass: Processing your request...",
+      thread_ts: "1.1",
     });
-    expect(client.reactions.remove).toHaveBeenCalledWith({
+    // Thinking message updated with response
+    expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C123",
-      timestamp: "1.1",
-      name: "hourglass",
+      ts: "1234567890.123456",
+      text: "done",
     });
   });
 
-  it("removes reaction on error too", async () => {
+  it("updates thinking message with error on failure", async () => {
     const channel = new SlackChannel();
     const forward = mock(async () => { throw new Error("timeout"); });
     Object.assign(channel, { forward });
@@ -1339,15 +1351,14 @@ describe("runConversation", () => {
       ) => Promise<void>;
     }).runConversation(client, "C123", "1.1", testUser(), "hello", "key1");
 
-    expect(client.reactions.remove).toHaveBeenCalled();
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
+    expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C123",
+      ts: "1234567890.123456",
       text: "Error: timeout",
-      thread_ts: "1.1",
     });
   });
 
-  it("continues even when reaction.add fails", async () => {
+  it("continues even when thinking message fails to post", async () => {
     const channel = new SlackChannel();
     const forward = mock(async () =>
       new Response(JSON.stringify({ answer: "still works" }), { status: 200 }),
@@ -1355,7 +1366,13 @@ describe("runConversation", () => {
     Object.assign(channel, { forward });
 
     const client = createMockClient();
-    client.reactions.add = mock(async () => { throw new Error("no permission"); });
+    // First postMessage (thinking) fails, second (response) succeeds
+    let callCount = 0;
+    client.chat.postMessage = mock(async (args: Record<string, unknown>) => {
+      callCount++;
+      if (callCount === 1) throw new Error("no permission");
+      return { ts: "1234567890.123456" };
+    });
 
     await (channel as unknown as {
       runConversation: (
@@ -1364,14 +1381,14 @@ describe("runConversation", () => {
       ) => Promise<void>;
     }).runConversation(client, "C123", "1.1", testUser(), "hello", "key1");
 
-    // Should still post the response even if reaction failed
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
+    // Should fall back to posting response as new message
+    expect(client.chat.postMessage.mock.calls[1][0]).toMatchObject({
       channel: "C123",
       text: "still works",
       thread_ts: "1.1",
     });
-    // Should NOT try to remove a reaction that was never added
-    expect(client.reactions.remove).not.toHaveBeenCalled();
+    // Should NOT try to update a message that was never posted
+    expect(client.chat.update).not.toHaveBeenCalled();
   });
 
   it("splits long responses into multiple messages", async () => {
@@ -1391,11 +1408,14 @@ describe("runConversation", () => {
       ) => Promise<void>;
     }).runConversation(client, "C123", "1.1", testUser(), "hello", "key1");
 
-    // Should have posted multiple messages
-    expect(client.chat.postMessage.mock.calls.length).toBeGreaterThan(1);
-    // All messages should be in the thread
-    for (const call of client.chat.postMessage.mock.calls) {
-      expect(call[0].thread_ts).toBe("1.1");
+    // First call is thinking message, then update replaces it with first chunk,
+    // then additional chunks posted as new messages
+    const postCalls = client.chat.postMessage.mock.calls;
+    // At least thinking message + follow-up chunks
+    expect(postCalls.length).toBeGreaterThan(1);
+    // Follow-up chunks should be in the thread
+    for (let i = 1; i < postCalls.length; i++) {
+      expect(postCalls[i][0].thread_ts).toBe("1.1");
     }
   });
 
@@ -1415,10 +1435,10 @@ describe("runConversation", () => {
       ) => Promise<void>;
     }).runConversation(client, "C123", "1.1", testUser(), "hello", "key1");
 
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
+    expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C123",
+      ts: "1234567890.123456",
       text: "No response received.",
-      thread_ts: "1.1",
     });
   });
 });
