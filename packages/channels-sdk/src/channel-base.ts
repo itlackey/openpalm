@@ -91,10 +91,15 @@ export abstract class BaseChannel {
   /**
    * Build, sign, and forward a message to the guardian.
    * Exposed as protected so subclasses can override if needed.
+   *
+   * @param timeoutMs - Optional request timeout in milliseconds.
+   *   Defaults to 0 (no timeout). When set, should be at least 12 hours
+   *   to avoid cutting off long-running assistant tasks.
    */
   protected async forward(
     result: HandleResult,
     fetchFn?: typeof fetch,
+    timeoutMs?: number,
   ): Promise<Response> {
     const fn = fetchFn ?? this._fetchFn;
     const payload: ChannelPayload = buildChannelMessage({
@@ -109,6 +114,7 @@ export abstract class BaseChannel {
       this.secret,
       payload,
       fn,
+      timeoutMs,
     );
   }
 

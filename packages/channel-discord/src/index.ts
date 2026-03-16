@@ -35,8 +35,21 @@ export default class DiscordChannel extends BaseChannel {
   );
   private conversationQueue = new ConversationQueue();
 
-  /** Thread IDs the bot is actively participating in. */
-  private activeThreads = new Set<string>();
+  /**
+   * Thread IDs the bot is actively participating in.
+   * Map of threadId → last activity timestamp (ms).
+   * Threads expire after threadTtlMs of inactivity.
+   */
+  private activeThreads = new Map<string, number>();
+
+  /** Thread inactivity TTL in ms. Default: 24 hours. */
+  private threadTtlMs = (Number(Bun.env.DISCORD_THREAD_TTL_HOURS) || 24) * 3_600_000;
+
+  /**
+   * Forward timeout in ms. Default: 0 (no timeout).
+   * When set, applied to guardian forwarding requests.
+   */
+  private forwardTimeoutMs = Number(Bun.env.DISCORD_FORWARD_TIMEOUT_MS) || 0;
 
   get botToken(): string {
     return Bun.env.DISCORD_BOT_TOKEN ?? "";
@@ -136,14 +149,46 @@ export default class DiscordChannel extends BaseChannel {
     }
   }
 
+  // ── Thread Tracking ────────────────────────────────────────────────────
+
+  /** Check if a thread has recent activity (within TTL). */
+  private isThreadActive(threadId: string): boolean {
+    const lastActivity = this.activeThreads.get(threadId);
+    if (lastActivity === undefined) return false;
+    if (Date.now() - lastActivity > this.threadTtlMs) {
+      this.activeThreads.delete(threadId);
+      return false;
+    }
+    return true;
+  }
+
+  /** Mark a thread as active (update timestamp). Prunes stale entries. */
+  private touchThread(threadId: string): void {
+    this.activeThreads.set(threadId, Date.now());
+    // Prune stale entries when map grows large
+    if (this.activeThreads.size > 100) {
+      const now = Date.now();
+      for (const [id, ts] of this.activeThreads) {
+        if (now - ts > this.threadTtlMs) {
+          this.activeThreads.delete(id);
+        }
+      }
+    }
+  }
+
+  /** Stop tracking a thread (used by /clear). */
+  private forgetThread(threadId: string): void {
+    this.activeThreads.delete(threadId);
+  }
+
   // ── Message Handling ────────────────────────────────────────────────────
 
   private shouldRespond(message: Message): boolean {
     if (!this.client?.user) return false;
     const botId = this.client.user.id;
 
-    // In a tracked thread: always respond
-    if (message.channel.isThread() && this.activeThreads.has(message.channel.id)) {
+    // In a tracked thread with recent activity: always respond
+    if (message.channel.isThread() && this.isThreadActive(message.channel.id)) {
       return true;
     }
 
@@ -237,7 +282,7 @@ export default class DiscordChannel extends BaseChannel {
         });
       }
 
-      this.activeThreads.add(thread.id);
+      this.touchThread(thread.id);
 
       const sessionKey = buildThreadSessionKey(thread.id);
       await this.conversationQueue.runOrQueue(sessionKey, {
@@ -476,6 +521,11 @@ export default class DiscordChannel extends BaseChannel {
 
       const droppedQueued = this.conversationQueue.clear(sessionKey);
 
+      // Stop tracking this thread so the bot won't auto-respond anymore
+      if (interaction.channel?.isThread()) {
+        this.forgetThread(interaction.channel.id);
+      }
+
       await interaction.editReply(
         droppedQueued > 0 ? "Conversation cleared. Dropped queued follow-ups." : "Conversation cleared.",
       );
@@ -499,11 +549,11 @@ export default class DiscordChannel extends BaseChannel {
     text: string,
     metadata: Record<string, unknown>,
   ): Promise<string> {
-    const resp = await this.forward({
-      userId: `discord:${userId}`,
-      text,
-      metadata,
-    });
+    const resp = await this.forward(
+      { userId: `discord:${userId}`, text, metadata },
+      undefined,
+      this.forwardTimeoutMs || undefined,
+    );
 
     if (!resp.ok) {
       throw new Error(`Guardian returned status ${resp.status}`);

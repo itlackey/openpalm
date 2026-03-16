@@ -979,6 +979,106 @@ describe("DiscordChannel", () => {
   });
 });
 
+// ── Thread TTL tracking ─────────────────────────────────────────────────────
+
+describe("thread TTL tracking", () => {
+  it("isThreadActive returns false for unknown thread", () => {
+    const channel = new DiscordChannel();
+    const isActive = (channel as unknown as { isThreadActive: (id: string) => boolean }).isThreadActive;
+    expect(isActive.call(channel, "unknown-thread")).toBe(false);
+  });
+
+  it("touchThread makes thread active", () => {
+    const channel = new DiscordChannel();
+    const touch = (channel as unknown as { touchThread: (id: string) => void }).touchThread;
+    const isActive = (channel as unknown as { isThreadActive: (id: string) => boolean }).isThreadActive;
+
+    touch.call(channel, "thread-1");
+    expect(isActive.call(channel, "thread-1")).toBe(true);
+  });
+
+  it("forgetThread makes thread inactive", () => {
+    const channel = new DiscordChannel();
+    const touch = (channel as unknown as { touchThread: (id: string) => void }).touchThread;
+    const forget = (channel as unknown as { forgetThread: (id: string) => void }).forgetThread;
+    const isActive = (channel as unknown as { isThreadActive: (id: string) => boolean }).isThreadActive;
+
+    touch.call(channel, "thread-1");
+    expect(isActive.call(channel, "thread-1")).toBe(true);
+
+    forget.call(channel, "thread-1");
+    expect(isActive.call(channel, "thread-1")).toBe(false);
+  });
+
+  it("expired thread is not active", () => {
+    const channel = new DiscordChannel();
+    // Set a very short TTL for testing
+    Object.assign(channel, { threadTtlMs: 1 });
+
+    const touch = (channel as unknown as { touchThread: (id: string) => void }).touchThread;
+    const isActive = (channel as unknown as { isThreadActive: (id: string) => boolean }).isThreadActive;
+    const activeThreads = (channel as unknown as { activeThreads: Map<string, number> }).activeThreads;
+
+    // Manually set an old timestamp
+    activeThreads.set("old-thread", Date.now() - 100);
+    expect(isActive.call(channel, "old-thread")).toBe(false);
+    // Should also be cleaned up from the map
+    expect(activeThreads.has("old-thread")).toBe(false);
+  });
+
+  it("touchThread prunes stale entries when map is large", () => {
+    const channel = new DiscordChannel();
+    Object.assign(channel, { threadTtlMs: 1 });
+
+    const touch = (channel as unknown as { touchThread: (id: string) => void }).touchThread;
+    const activeThreads = (channel as unknown as { activeThreads: Map<string, number> }).activeThreads;
+
+    // Add 101 stale entries
+    const staleTime = Date.now() - 100;
+    for (let i = 0; i < 101; i++) {
+      activeThreads.set(`stale-${i}`, staleTime);
+    }
+
+    // Touch a new thread — should trigger pruning
+    touch.call(channel, "fresh-thread");
+
+    // All stale entries should be pruned, only fresh one remains
+    expect(activeThreads.size).toBe(1);
+    expect(activeThreads.has("fresh-thread")).toBe(true);
+  });
+
+  it("/clear command forgets thread", async () => {
+    const channel = new DiscordChannel();
+    const forward = mock(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    Object.assign(channel, { forward });
+
+    // Touch a thread first
+    const touch = (channel as unknown as { touchThread: (id: string) => void }).touchThread;
+    const isActive = (channel as unknown as { isThreadActive: (id: string) => boolean }).isThreadActive;
+    touch.call(channel, "thread-clear");
+
+    expect(isActive.call(channel, "thread-clear")).toBe(true);
+
+    const interaction = createInteraction({
+      commandName: "clear",
+      channel: { id: "thread-clear", isThread: () => true },
+    });
+
+    await (channel as unknown as { onSlashCommand: (input: TestInteraction) => Promise<void> }).onSlashCommand(
+      interaction,
+    );
+
+    // Thread should no longer be active after /clear
+    expect(isActive.call(channel, "thread-clear")).toBe(false);
+  });
+
+  it("forward timeout defaults to 0 (off)", () => {
+    const channel = new DiscordChannel();
+    const timeoutMs = (channel as unknown as { forwardTimeoutMs: number }).forwardTimeoutMs;
+    expect(timeoutMs).toBe(0);
+  });
+});
+
 // ── CommandOptionType enum ──────────────────────────────────────────────────
 
 describe("CommandOptionType", () => {
