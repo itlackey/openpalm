@@ -143,6 +143,8 @@ async function loadAdminToken(): Promise<string> {
   const secretsPaths = [join(configHome, 'secrets.env')];
   if (basename(configHome) === 'openpalm') {
     secretsPaths.push(join(dirname(configHome), 'secrets.env'));
+  } else if (basename(dirname(configHome)) === 'openpalm') {
+    secretsPaths.push(join(dirname(configHome), 'secrets.env'));
   }
 
   for (const secretsPath of secretsPaths) {

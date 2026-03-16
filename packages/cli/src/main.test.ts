@@ -113,6 +113,34 @@ describe('cli main', () => {
     }
   });
 
+  it('falls back to the openpalm parent secrets.env when config home points to a nested subdirectory', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-config-'));
+    const configHome = join(base, 'openpalm');
+    const nestedConfigHome = join(configHome, 'stash');
+    const adminTokens: string[] = [];
+
+    mkdirSync(nestedConfigHome, { recursive: true });
+    writeFileSync(join(configHome, 'secrets.env'), 'ADMIN_TOKEN=nested-parent-token\n');
+
+    process.env.OPENPALM_CONFIG_HOME = nestedConfigHome;
+    delete process.env.ADMIN_TOKEN;
+    delete process.env.OPENPALM_ADMIN_TOKEN;
+
+    globalThis.fetch = mock(async (_input: string | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      adminTokens.push(headers.get('X-Admin-Token') ?? '');
+      return new Response('{"ok":true}', { status: 200 });
+    }) as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+
+    try {
+      await main(['update']);
+      expect(adminTokens).toEqual(['nested-parent-token']);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
   it('calls admin install when stack is already running', async () => {
     const calls: string[] = [];
     globalThis.fetch = mock(async (input: string | URL) => {
