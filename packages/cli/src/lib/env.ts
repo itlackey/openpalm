@@ -1,5 +1,5 @@
 import { basename, dirname, join } from 'node:path';
-import { defaultConfigHome } from './paths.ts';
+import { defaultConfigHome, defaultDockerSock } from './paths.ts';
 
 const EXPORT_ENV_PREFIX = 'export ';
 
@@ -73,13 +73,14 @@ export function unwrapQuotedEnvValue(value: string): string {
  * otherwise appends a new line.
  */
 export function upsertEnvValue(content: string, key: string, value: string): string {
-  const line = `${key}=${value}`;
   const escapedKey = key.replace(/[|\\{}()[\]^$+*?.-]/g, '\\$&');
-  const pattern = new RegExp(`^(?:export\\s+)?${escapedKey}=.*$`, 'm');
+  const pattern = new RegExp(`^((?:export\\s+)?)${escapedKey}=.*$`, 'm');
   if (pattern.test(content)) {
-    return content.replace(pattern, line);
+    // Preserve the `export ` prefix if the original line had one
+    return content.replace(pattern, `$1${key}=${value}`);
   }
 
+  const line = `${key}=${value}`;
   const suffix = content.endsWith('\n') || content.length === 0 ? '' : '\n';
   return `${content}${suffix}${line}\n`;
 }
@@ -157,7 +158,6 @@ export async function ensureStackEnv(
   workDir: string,
   repoRef: string,
 ): Promise<void> {
-  const { defaultDockerSock } = await import('./paths.ts');
   const dataStackEnv = join(dataHome, 'stack.env');
   const stagedStackEnv = join(stateHome, 'artifacts', 'stack.env');
   const explicitImageTag = process.env.OPENPALM_IMAGE_TAG;

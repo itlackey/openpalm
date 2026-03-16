@@ -145,7 +145,8 @@ export async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void
   await writeIfChanged(systemConfig, systemConfigContent);
 
   const agentsFile = join(opencodeSystemDir, 'AGENTS.md');
-  const assetsAgentsPath = join(import.meta.dir, '..', '..', '..', 'assets', 'AGENTS.md');
+  // import.meta.dir = packages/cli/src/lib/ → need 4 levels up to reach repo root
+  const assetsAgentsPath = join(import.meta.dir, '..', '..', '..', '..', 'assets', 'AGENTS.md');
   let agentsContent: string;
   if (await Bun.file(assetsAgentsPath).exists()) {
     agentsContent = await Bun.file(assetsAgentsPath).text();

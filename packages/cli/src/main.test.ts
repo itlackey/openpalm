@@ -429,9 +429,15 @@ describe('install image tag pinning', () => {
     );
   });
 
-  it('upserts a key that has an export prefix', () => {
+  it('preserves export prefix when upserting a key', () => {
     expect(upsertEnvValue('export OPENPALM_ADMIN_TOKEN=old\n', 'OPENPALM_ADMIN_TOKEN', 'new')).toBe(
-      'OPENPALM_ADMIN_TOKEN=new\n',
+      'export OPENPALM_ADMIN_TOKEN=new\n',
+    );
+  });
+
+  it('upserts without export prefix when original has none', () => {
+    expect(upsertEnvValue('OPENPALM_IMAGE_TAG=latest\n', 'OPENPALM_IMAGE_TAG', 'v1.0.0')).toBe(
+      'OPENPALM_IMAGE_TAG=v1.0.0\n',
     );
   });
 });
