@@ -236,11 +236,12 @@ export default class SlackChannel extends BaseChannel {
 
           // Replace thinking message with answer
           const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
+          const firstChunk = chunks[0] ?? "No response received.";
           if (thinkingTs) {
             await client.chat.update({
               channel: command.channel_id,
               ts: thinkingTs,
-              text: chunks[0],
+              text: firstChunk,
             });
           }
           // Thread follow-up chunks under the initial message

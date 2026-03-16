@@ -410,14 +410,15 @@ export default class DiscordChannel extends BaseChannel {
           });
 
           const chunks = splitMessage(answer, MAX_MESSAGE_LENGTH);
+          const firstChunk = chunks[0] ?? "No response received.";
 
           if (shouldQueue) {
-            await interaction.followUp({ content: chunks[0], ephemeral: true });
+            await interaction.followUp({ content: firstChunk, ephemeral: true });
             for (let i = 1; i < chunks.length; i++) {
               await interaction.followUp({ content: chunks[i], ephemeral: true });
             }
           } else {
-            await interaction.editReply(chunks[0]);
+            await interaction.editReply(firstChunk);
             for (let i = 1; i < chunks.length; i++) {
               await interaction.followUp(chunks[i]);
             }

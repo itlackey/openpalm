@@ -10,9 +10,9 @@
   },
   "main": "src/index.ts",
   "peerDependencies": {
-    "@openpalm/channels-sdk": "^0.8.0"
+    "@openpalm/channels-sdk": ">=0.8.0 <1.0.0"
   },
   "devDependencies": {
-    "@openpalm/channels-sdk": "^0.8.0"
+    "@openpalm/channels-sdk": ">=0.8.0 <1.0.0"
   }
 }
