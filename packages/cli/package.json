@@ -3,7 +3,7 @@
   "version": "0.9.1",
   "type": "module",
   "license": "MPL-2.0",
-  "description": "OpenPalm Bun CLI",
+  "description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
   "bin": {
     "openpalm": "./src/main.ts"
   },
