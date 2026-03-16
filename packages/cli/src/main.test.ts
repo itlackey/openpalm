@@ -40,6 +40,8 @@ describe('cli main', () => {
   const originalDataHome = process.env.OPENPALM_DATA_HOME;
   const originalStateHome = process.env.OPENPALM_STATE_HOME;
   const originalWorkDir = process.env.OPENPALM_WORK_DIR;
+  const originalAdminToken = process.env.ADMIN_TOKEN;
+  const originalOpenPalmAdminToken = process.env.OPENPALM_ADMIN_TOKEN;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -49,6 +51,8 @@ describe('cli main', () => {
     process.env.OPENPALM_DATA_HOME = originalDataHome;
     process.env.OPENPALM_STATE_HOME = originalStateHome;
     process.env.OPENPALM_WORK_DIR = originalWorkDir;
+    process.env.ADMIN_TOKEN = originalAdminToken;
+    process.env.OPENPALM_ADMIN_TOKEN = originalOpenPalmAdminToken;
   });
 
   it('calls containers pull for update', async () => {
@@ -62,6 +66,51 @@ describe('cli main', () => {
     await main(['update']);
 
     expect(calls).toEqual(['http://localhost:8100/admin/containers/pull']);
+  });
+
+  it('uses ADMIN_TOKEN from the environment for admin requests', async () => {
+    const adminTokens: string[] = [];
+    process.env.ADMIN_TOKEN = 'env-admin-token';
+    delete process.env.OPENPALM_ADMIN_TOKEN;
+
+    globalThis.fetch = mock(async (_input: string | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      adminTokens.push(headers.get('X-Admin-Token') ?? '');
+      return new Response('{"ok":true}', { status: 200 });
+    }) as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+
+    await main(['update']);
+
+    expect(adminTokens).toEqual(['env-admin-token']);
+  });
+
+  it('falls back to the legacy parent secrets.env for admin requests', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-config-'));
+    const configHome = join(base, 'openpalm');
+    const adminTokens: string[] = [];
+
+    mkdirSync(configHome, { recursive: true });
+    writeFileSync(join(configHome, 'secrets.env'), 'ADMIN_TOKEN=\n');
+    writeFileSync(join(base, 'secrets.env'), 'export ADMIN_TOKEN="legacy-admin-token"\n');
+
+    process.env.OPENPALM_CONFIG_HOME = configHome;
+    delete process.env.ADMIN_TOKEN;
+    delete process.env.OPENPALM_ADMIN_TOKEN;
+
+    globalThis.fetch = mock(async (_input: string | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      adminTokens.push(headers.get('X-Admin-Token') ?? '');
+      return new Response('{"ok":true}', { status: 200 });
+    }) as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+
+    try {
+      await main(['update']);
+      expect(adminTokens).toEqual(['legacy-admin-token']);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it('calls admin install when stack is already running', async () => {

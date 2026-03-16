@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { mkdir, unlink, copyFile, mkdtemp, rm } from 'node:fs/promises';
 import cliPkg from '../package.json' with { type: 'json' };
 
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
+const EXPORT_ENV_PREFIX = 'export ';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -134,25 +135,54 @@ async function loadAdminToken(): Promise<string> {
     return process.env.OPENPALM_ADMIN_TOKEN;
   }
 
-  const secretsPath = join(defaultConfigHome(), 'secrets.env');
+  if (process.env.ADMIN_TOKEN) {
+    return process.env.ADMIN_TOKEN;
+  }
+
+  const configHome = defaultConfigHome();
+  const secretsPaths = [join(configHome, 'secrets.env')];
+  if (basename(configHome) === 'openpalm') {
+    secretsPaths.push(join(dirname(configHome), 'secrets.env'));
+  }
+
+  for (const secretsPath of secretsPaths) {
+    const token = await readAdminTokenFromFile(secretsPath);
+    if (token) return token;
+  }
+
+  return '';
+}
+
+async function readAdminTokenFromFile(secretsPath: string): Promise<string | null> {
   try {
     const text = await Bun.file(secretsPath).text();
-    for (const line of text.split('\n')) {
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim();
       if (!line || line.startsWith('#')) continue;
-      const [key, ...rest] = line.split('=');
-      if (key === 'ADMIN_TOKEN') {
-        const value = rest.join('=').trim();
-        if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-          return value.slice(1, -1);
-        }
-        return value;
-      }
+      const lineWithoutExportPrefix = line.startsWith(EXPORT_ENV_PREFIX)
+        ? line.slice(EXPORT_ENV_PREFIX.length).trimStart()
+        : line;
+      const [key, ...rest] = lineWithoutExportPrefix.split('=');
+      if (key !== 'ADMIN_TOKEN') continue;
+      const value = unwrapQuotedEnvValue(rest.join('=').trim());
+      if (!value) return null;
+      return value;
     }
   } catch {
     // Best effort only.
   }
 
-  return '';
+  return null;
+}
+
+function unwrapQuotedEnvValue(value: string): string {
+  const isDoubleQuoted = value.startsWith('"') && value.endsWith('"');
+  const isSingleQuoted = value.startsWith('\'') && value.endsWith('\'');
+  if ((isDoubleQuoted || isSingleQuoted) && value.length >= 2) {
+    return value.slice(1, -1);
+  }
+
+  return value;
 }
 
 async function adminRequest(path: string, init?: RequestInit): Promise<unknown> {

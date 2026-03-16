@@ -81,4 +81,8 @@ chmod +x "${DEST}"
 ok "Installed openpalm to ${DEST}"
 
 # ── Run install ───────────────────────────────────────────────────────
-exec "${DEST}" install --version "${VERSION}" "${PASSTHROUGH_ARGS[@]}"
+if [ "${#PASSTHROUGH_ARGS[@]}" -gt 0 ]; then
+  exec "${DEST}" install --version "${VERSION}" "${PASSTHROUGH_ARGS[@]}"
+fi
+
+exec "${DEST}" install --version "${VERSION}"
