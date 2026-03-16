@@ -1,0 +1,22 @@
+name: Publish @openpalm/cli
+on:
+  push:
+    branches: [main]
+    paths: ['packages/cli/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.0, minor, prerelease). Leave empty for auto patch bump.'
+        required: false
+        type: string
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/cli
+      package-name: '@openpalm/cli'
+      version: ${{ inputs.version || '' }}

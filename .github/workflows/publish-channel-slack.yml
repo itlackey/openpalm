@@ -1,0 +1,22 @@
+name: Publish @openpalm/channel-slack
+on:
+  push:
+    branches: [main]
+    paths: ['packages/channel-slack/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.2.0, minor, prerelease). Leave empty for auto patch bump.'
+        required: false
+        type: string
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-npm-package.yml
+    with:
+      package-dir: packages/channel-slack
+      package-name: '@openpalm/channel-slack'
+      version: ${{ inputs.version || '' }}
