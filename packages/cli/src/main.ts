@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { mkdir, unlink, copyFile, mkdtemp, rm } from 'node:fs/promises';
 import cliPkg from '../package.json' with { type: 'json' };
 
@@ -134,22 +134,42 @@ async function loadAdminToken(): Promise<string> {
     return process.env.OPENPALM_ADMIN_TOKEN;
   }
 
-  const secretsPath = join(defaultConfigHome(), 'secrets.env');
-  try {
-    const text = await Bun.file(secretsPath).text();
-    for (const line of text.split('\n')) {
-      if (!line || line.startsWith('#')) continue;
-      const [key, ...rest] = line.split('=');
-      if (key === 'ADMIN_TOKEN') {
-        const value = rest.join('=').trim();
-        if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-          return value.slice(1, -1);
+  if (process.env.ADMIN_TOKEN) {
+    return process.env.ADMIN_TOKEN;
+  }
+
+  const configHome = defaultConfigHome();
+  const secretsPaths = [join(configHome, 'secrets.env')];
+  if (basename(configHome) === 'openpalm') {
+    secretsPaths.push(join(dirname(configHome), 'secrets.env'));
+  }
+
+  for (const secretsPath of secretsPaths) {
+    try {
+      const text = await Bun.file(secretsPath).text();
+      for (const rawLine of text.split('\n')) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) continue;
+        const normalized = line.startsWith('export ') ? line.slice('export '.length).trimStart() : line;
+        const [key, ...rest] = normalized.split('=');
+        if (key === 'ADMIN_TOKEN') {
+          const value = rest.join('=').trim();
+          if (!value) {
+            break;
+          }
+          if (
+            ((value.startsWith('"') && value.endsWith('"')) ||
+              (value.startsWith('\'') && value.endsWith('\''))) &&
+            value.length >= 2
+          ) {
+            return value.slice(1, -1);
+          }
+          return value;
         }
-        return value;
       }
+    } catch {
+      // Best effort only.
     }
-  } catch {
-    // Best effort only.
   }
 
   return '';
