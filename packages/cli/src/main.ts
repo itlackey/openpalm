@@ -7,6 +7,7 @@ import cliPkg from '../package.json' with { type: 'json' };
 const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost:8100';
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
+const EXPORT_ENV_PREFIX = 'export ';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -145,34 +146,43 @@ async function loadAdminToken(): Promise<string> {
   }
 
   for (const secretsPath of secretsPaths) {
-    try {
-      const text = await Bun.file(secretsPath).text();
-      for (const rawLine of text.split('\n')) {
-        const line = rawLine.trim();
-        if (!line || line.startsWith('#')) continue;
-        const normalized = line.startsWith('export ') ? line.slice('export '.length).trimStart() : line;
-        const [key, ...rest] = normalized.split('=');
-        if (key === 'ADMIN_TOKEN') {
-          const value = rest.join('=').trim();
-          if (!value) {
-            break;
-          }
-          if (
-            ((value.startsWith('"') && value.endsWith('"')) ||
-              (value.startsWith('\'') && value.endsWith('\''))) &&
-            value.length >= 2
-          ) {
-            return value.slice(1, -1);
-          }
-          return value;
-        }
-      }
-    } catch {
-      // Best effort only.
-    }
+    const token = await readAdminTokenFromFile(secretsPath);
+    if (token) return token;
   }
 
   return '';
+}
+
+async function readAdminTokenFromFile(secretsPath: string): Promise<string | null> {
+  try {
+    const text = await Bun.file(secretsPath).text();
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const lineWithoutExportPrefix = line.startsWith(EXPORT_ENV_PREFIX)
+        ? line.slice(EXPORT_ENV_PREFIX.length).trimStart()
+        : line;
+      const [key, ...rest] = lineWithoutExportPrefix.split('=');
+      if (key !== 'ADMIN_TOKEN') continue;
+      const value = unwrapQuotedEnvValue(rest.join('=').trim());
+      if (!value) return null;
+      return value;
+    }
+  } catch {
+    // Best effort only.
+  }
+
+  return null;
+}
+
+function unwrapQuotedEnvValue(value: string): string {
+  const isDoubleQuoted = value.startsWith('"') && value.endsWith('"');
+  const isSingleQuoted = value.startsWith('\'') && value.endsWith('\'');
+  if ((isDoubleQuoted || isSingleQuoted) && value.length >= 2) {
+    return value.slice(1, -1);
+  }
+
+  return value;
 }
 
 async function adminRequest(path: string, init?: RequestInit): Promise<unknown> {
