@@ -18,11 +18,11 @@ The memory service runs in the OpenPalm stack:
 
 | Service | Port | Role |
 |---------|------|------|
-| `memory` | 8765 | Lightweight FastAPI wrapper around the mem0 Python SDK with embedded Qdrant (file-based vectors) |
+| `memory` | 8765 | Bun-based OpenPalm memory API backed by SQLite and `sqlite-vec` |
 
 The assistant connects to `http://memory:8765` via REST API. The service
-wraps the mem0 SDK directly — no MCP SSE, no SQLAlchemy ORM.
-Configuration is read from `/app/default_config.json`.
+wraps the local `@openpalm/memory` library and preserves the older REST surface
+for compatibility. Configuration is read from `/app/default_config.json`.
 
 ## Available Tools
 

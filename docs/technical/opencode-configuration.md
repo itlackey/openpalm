@@ -200,18 +200,35 @@ These call the Memory API service at `$MEMORY_API_URL`.
 
 ### memory-context.ts
 
-The memory-context plugin provides "compound memory" — the assistant
-accumulates knowledge over time and recalls it automatically. It hooks into two
-OpenCode lifecycle events:
+The memory-context plugin provides "compound memory" - the assistant
+accumulates knowledge over time and recalls it automatically. The current
+implementation hooks into the full session lifecycle, not just compaction:
 
-**`experimental.session.compacting`** — When the context window is compacted,
-the plugin searches Memory for relevant context (user preferences, project
-decisions) and injects it into the compaction output so that memories survive
-the context window reset.
+- **`session.created`** - retrieves scoped memories in parallel and injects a
+  session context block. Retrieval includes personal semantic and procedural
+  memory, project-scoped context, stack procedural guidance (`user_id=openpalm`),
+  optional global procedures (`user_id=global`), and recent episodic notes.
+- **`command.executed`** - extracts stable preference signals from user commands
+  and stores them as personal semantic memory when novel.
+- **`session.idle`** - periodically consolidates tracked tool outcomes into
+  procedural learnings.
+- **`tool.execute.before`** - injects scoped procedural guidance before admin
+  and project/code tools, then records which memories were injected so outcome
+  feedback can be applied afterward.
+- **`tool.execute.after`** - reinforces or downranks injected memories based on
+  tool success or failure.
+- **`session.deleted`** - stores episodic summaries and cleans up per-session
+  tracking state.
+- **`experimental.session.compacting`** - injects only high-signal semantic and
+  procedural memories plus compact session state so useful context survives
+  window resets.
+- **`shell.env`** - injects `MEMORY_API_URL` and `MEMORY_USER_ID` into the
+  shell environment so child processes and tools can resolve the memory service.
 
-**`shell.env`** — Injects `MEMORY_API_URL` and `MEMORY_USER_ID` into
-the shell environment so that child processes and tools can resolve the memory
-service.
+Memory retrieval is intentionally scope-aware rather than hard-isolated by
+default. Writes include explicit identity (`user_id`, `agent_id`, `app_id`,
+optional `run_id`), while retrieval defaults to broader `user_id` scope unless
+more specific filters are provided.
 
 ---
 
