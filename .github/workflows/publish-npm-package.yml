@@ -132,4 +132,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "${{ inputs.package-dir }}/package.json"
           git commit -m "chore(${{ inputs.package-name }}): bump to $(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
-          git push
+          # Retry with rebase to handle concurrent publish workflows
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin "${{ github.ref_name }}" && git push && exit 0
+            echo "Push attempt $i failed, retrying in $((i * 2))s..."
+            sleep $((i * 2))
+          done
+          echo "::warning::Version bump commit failed after 5 attempts (package was published successfully)"
