@@ -101,6 +101,7 @@ rm -f .dev/state/artifacts/Caddyfile
 rm -f .dev/state/artifacts/local-models.yml
 rm -f .dev/state/artifacts/manifest.json
 rm -f .dev/state/setup-complete
+rm -f .dev/state/setup-token.txt
 rm -rf .dev/state/artifacts/channels
 rm -f .dev/state/audit/admin-audit.jsonl
 rm -f .dev/state/audit/guardian-audit.log
@@ -112,10 +113,13 @@ echo ""
 echo "=== Step 3: Seed config ==="
 ./scripts/dev-setup.sh --seed-env --force
 
-# Clear ADMIN_TOKEN from seeded secrets so admin starts in first-boot state.
-# dev-setup seeds it for convenience, but the e2e test needs to verify the wizard sets it.
-sed -i 's/^ADMIN_TOKEN=.*/ADMIN_TOKEN=/' .dev/config/secrets.env
-sed -i 's/^ADMIN_TOKEN=.*/ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
+# Clear admin tokens from seeded secrets so admin starts in first-boot state.
+# dev-setup seeds them for convenience, but the e2e test needs to verify the wizard sets them.
+# The secrets.env uses `export ` prefix, so match both with and without.
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/config/secrets.env
+sed -i 's/^\(export \)\{0,1\}ADMIN_TOKEN=.*/\1ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
+sed -i 's/^\(export \)\{0,1\}OPENPALM_ADMIN_TOKEN=.*/\1OPENPALM_ADMIN_TOKEN=/' .dev/config/secrets.env
+sed -i 's/^\(export \)\{0,1\}OPENPALM_ADMIN_TOKEN=.*/\1OPENPALM_ADMIN_TOKEN=/' .dev/state/artifacts/secrets.env
 
 # Use a dev-only image tag so the wizard's pull step doesn't overwrite locally
 # built images with remote ones (e.g. an older Python-based memory:latest).
@@ -174,6 +178,7 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 		-f compose.dev.yaml \
 		--env-file .dev/state/artifacts/stack.env \
 		--env-file .dev/state/artifacts/secrets.env \
+		--profile admin \
 		--project-name openpalm build 2>&1 | tail -5
 	pass "All images built"
 else
@@ -189,6 +194,7 @@ docker compose --project-directory . \
 	-f compose.dev.yaml \
 	--env-file .dev/state/artifacts/stack.env \
 	--env-file .dev/state/artifacts/secrets.env \
+	--profile admin \
 	--project-name openpalm up -d 2>&1 | tail -10
 
 # Wait for admin to be healthy
@@ -315,6 +321,7 @@ docker compose --project-directory . \
 	-f compose.dev.yaml \
 	--env-file .dev/state/artifacts/stack.env \
 	--env-file .dev/state/artifacts/secrets.env \
+	--profile admin \
 	--project-name openpalm up -d --force-recreate --no-deps assistant
 
 # ── Step 8: Wait for containers ──────────────────────────────────────
@@ -390,7 +397,8 @@ secrets=".dev/config/secrets.env"
 check_env_val() {
 	local key="$1" expected="$2"
 	local actual
-	actual=$(grep "^${key}=" "$secrets" 2>/dev/null | head -1 | cut -d= -f2-)
+	# Match both `KEY=val` and `export KEY=val` forms
+	actual=$(grep -E "^(export )?${key}=" "$secrets" 2>/dev/null | head -1 | sed "s/^export //" | cut -d= -f2-)
 	if [ "$actual" = "$expected" ]; then
 		pass "$key=$expected"
 	else
@@ -459,7 +467,7 @@ fi
 echo ""
 echo "=== Step 12: Verify Memory user provisioned ==="
 
-MEMORY_AUTH_TOKEN=$(grep '^MEMORY_AUTH_TOKEN=' "$secrets" 2>/dev/null | head -1 | cut -d= -f2-)
+MEMORY_AUTH_TOKEN=$(grep -E '^(export )?MEMORY_AUTH_TOKEN=' "$secrets" 2>/dev/null | head -1 | sed 's/^export //' | cut -d= -f2-)
 
 # Check memory API is responding (curl from host since memory port is published)
 OM_STATUS="error"

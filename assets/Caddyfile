@@ -28,9 +28,10 @@
 		import lan_only
 		reverse_proxy admin:8100 {
 			fail_duration 5s
-		}
-		handle_errors {
-			respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+			@admin_down status 502 503
+			handle_response @admin_down {
+				respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+			}
 		}
 	}
 
@@ -49,9 +50,10 @@
 		import lan_only
 		reverse_proxy admin:8100 {
 			fail_duration 5s
-		}
-		handle_errors {
-			respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+			@admin_down status 502 503
+			handle_response @admin_down {
+				respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+			}
 		}
 	}
 }
