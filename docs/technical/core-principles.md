@@ -20,16 +20,16 @@ For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; 
 
 These are hard constraints that must never be violated during development:
 
-1. **Admin is the sole orchestrator.** Only the admin container has Docker socket access. No other container may mount or access the Docker socket.
+1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant.
-3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `WORK_DIR`), and interacts with the stack exclusively through the admin API.
+3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `WORK_DIR`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
 4. **LAN-first by default.** Admin interfaces, dashboards, and channels are LAN-restricted by default. Nothing is publicly exposed without explicit user opt-in.
 
 ---
 
 ## Filesystem contract (file assembly, not rendering)
 
-Configuration is managed by **copying whole files** between tiers — never by string interpolation, template expansion, or dynamic code generation. The admin acts as a **file assembler**: it stages user files (from CONFIG) and system defaults into STATE, and Docker/Caddy read from STATE at runtime. OpenCode core config is image-baked at `/etc/opencode`, with user extensions mounted from CONFIG.
+Configuration is managed by **copying whole files** between tiers — never by string interpolation, template expansion, or dynamic code generation. The CLI or admin acts as a **file assembler**: it stages user files (from CONFIG) and system defaults into STATE, and Docker/Caddy read from STATE at runtime. All control-plane logic lives in `@openpalm/lib` — both CLI and admin import from this shared library. OpenCode core config is image-baked at `/etc/opencode`, with user extensions mounted from CONFIG.
 
 ### 1) Config (authoritative, user-owned)
 
@@ -51,21 +51,20 @@ Minimum required subtrees:
 
 **Rule:** every persistence-requiring container path is a bind mount into this tree.
 
-**Write policy:** DATA_HOME is admin- and service-writable. Containers own their
+**Write policy:** DATA_HOME is CLI/admin- and service-writable. Containers own their
 durable runtime data (memory, guardian, caddy TLS/config, opencode data).
-The admin manages system-policy files directly: `DATA_HOME/caddy/Caddyfile`,
+The CLI or admin manages system-policy files directly: `DATA_HOME/caddy/Caddyfile`,
 `DATA_HOME/stack.env`, and `DATA_HOME/automations/`. The assistant must not write
-to DATA_HOME directly — it interacts with the stack exclusively through the admin
-API, which mediates all DATA_HOME mutations on the assistant's behalf.
+to DATA_HOME directly — when admin is present, the assistant interacts with the stack through the admin API, which mediates all DATA_HOME mutations on the assistant's behalf.
 
 ### 3) State (assembled runtime)
 
 **Location:** `$XDG_STATE_HOME/openpalm` (default `~/.local/state/openpalm`). ([Freedesktop Specifications][2])
 **Purpose:** the assembled runtime consumed by Docker, Caddy, and OpenCode. Also holds logs and operational records (audit trail, history).
 
-The admin copies system defaults (bundled compose, Caddyfile) and user-provided files (channel configs, secrets) into this directory. Services read their configuration from STATE at runtime. Files here are overwritten on install/update — they are not user-edited.
+The CLI or admin copies system defaults (bundled compose, Caddyfile) and user-provided files (channel configs, secrets) into this directory. Services read their configuration from STATE at runtime. Files here are overwritten on install/update — they are not user-edited.
 
-**Rule:** STATE is system-writable. The admin may overwrite files here freely when applying changes.
+**Rule:** STATE is system-writable. The CLI or admin may overwrite files here freely when applying changes.
 
 ---
 
@@ -139,7 +138,7 @@ This ensures sdk transitive dependencies are available at runtime. Since these s
 * **Add a channel:** drop a `.yml` compose overlay (required) and optional `.caddy` route snippet into `config/channels/`. The `.yml` defines the channel service; the `.caddy` file, if present, gives it an HTTP route through Caddy. Without a `.caddy` file, the channel is only accessible on the Docker network. ([Docker Documentation][3], [Caddy Web Server][4])
 * **Add an extension (user):** copy OpenCode assets into `config/opencode/...` following OpenCode’s directory structure. ([OpenCode][1])
 * **Core precedence:** core extensions live in `/etc/opencode` inside the assistant container and are loaded via `OPENCODE_CONFIG_DIR`. ([OpenCode][1])
-* **Apply changes (required):** runtime components never consume channel source files directly from CONFIG_HOME. The admin applies configuration by copying files from CONFIG_HOME (user) plus system-managed sources (`assets/` and `DATA_HOME/caddy/Caddyfile`) into STATE_HOME, then runs `docker compose` and reloads/restarts services from STATE_HOME as needed. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is a non-destructive sync and must not overwrite existing user configuration files in CONFIG_HOME; it may seed missing defaults. Explicit config mutation actions (for example channel install/uninstall, admin UI/API config updates, and authenticated/allowlisted assistant calls made on user request) may intentionally modify CONFIG_HOME. No string interpolation or template expansion — just whole-file copies and Compose native `--env-file` substitution. Compose is always invoked with two staged env files: `STATE_HOME/artifacts/stack.env` (system-managed config: paths, UID/GID, image tags, networking, Memory URLs, database password, and channel HMAC secrets) and `STATE_HOME/artifacts/secrets.env` (a staged copy of the user's `CONFIG_HOME/secrets.env`, conventionally `ADMIN_TOKEN` and LLM provider keys).
+* **Apply changes (required):** runtime components never consume channel source files directly from CONFIG_HOME. The CLI or admin applies configuration by copying files from CONFIG_HOME (user) plus system-managed sources (`DATA_HOME/` assets and `DATA_HOME/caddy/Caddyfile`) into STATE_HOME, then runs `docker compose` and reloads/restarts services from STATE_HOME as needed. Automatic lifecycle apply (startup/install/update/setup reruns/upgrades) is a non-destructive sync and must not overwrite existing user configuration files in CONFIG_HOME; it may seed missing defaults. Explicit config mutation actions (for example channel install/uninstall, admin UI/API config updates, and authenticated/allowlisted assistant calls made on user request) may intentionally modify CONFIG_HOME. No string interpolation or template expansion — just whole-file copies and Compose native `--env-file` substitution. Compose is always invoked with two staged env files: `STATE_HOME/artifacts/stack.env` (system-managed config: paths, UID/GID, image tags, networking, Memory URLs, database password, and channel HMAC secrets) and `STATE_HOME/artifacts/secrets.env` (a staged copy of the user's `CONFIG_HOME/secrets.env`, conventionally `ADMIN_TOKEN` and LLM provider keys).
 * **Backup/restore:** archive `config/` + `data/` (and optionally `state/` for logs/history) per XDG semantics. ([Freedesktop Specifications][2])
 
 [1]: https://opencode.ai/docs/config/?utm_source=chatgpt.com "Config"

@@ -241,9 +241,9 @@ scope changes flow: API → `DATA_HOME/caddy/Caddyfile` → re-stage to
 
 | Invariant | Enforcement |
 |-----------|-------------|
-| Admin is sole orchestrator | Only `admin` container mounts `/var/run/docker.sock` |
+| Host CLI or admin is the orchestrator | CLI manages Docker Compose directly on host; admin (optional) uses docker-socket-proxy |
 | Guardian-only ingress | Channel adapters POST to Guardian only; Guardian HMAC-verifies every message |
-| Assistant isolation | `assistant` has no Docker socket; calls Admin API on allowlist only |
+| Assistant isolation | `assistant` has no Docker socket; when admin is present, calls Admin API on allowlist |
 | LAN-first by default | All ports bind to `127.0.0.1`; Caddy restricts by IP range; nothing public without opt-in |
 
 ### HMAC signing

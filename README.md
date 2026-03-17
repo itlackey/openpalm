@@ -89,7 +89,7 @@ No config files to edit. Re-run the same command to update — your secrets are 
 | **Channels SDK** (`packages/channels-sdk/`) | `BaseChannel` abstract class, HMAC crypto, logger, and payload types for building adapters. |
 
 **Architectural invariants:**
-- The **Admin** is the sole orchestrator — no other component runs Docker commands.
+- The **CLI** is the primary host-side orchestrator; the **Admin** is optional and provides a web UI via docker-socket-proxy.
 - The **Guardian** is the sole ingress — all channel traffic is HMAC-verified before reaching the assistant.
 - The **Assistant** is fully isolated — no Docker socket, no host filesystem beyond designated mounts.
 - **LAN-first by default** — nothing is publicly exposed without explicit opt-in.
