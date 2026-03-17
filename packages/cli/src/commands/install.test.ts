@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 const originalBunSpawn = Bun.spawn;
 const originalBunWhich = Bun.which;
+let tempBase = '';
 
 type DeployStatusEntry = {
   service: string;
@@ -31,7 +32,6 @@ function createSpawnResult() {
 }
 
 describe('bootstrapInstall', () => {
-  let tempBase: string;
   let configHome: string;
   let dataHome: string;
   let stateHome: string;
@@ -45,15 +45,9 @@ describe('bootstrapInstall', () => {
     workDir = join(tempBase, 'work');
 
     Bun.which = mock((_cmd: string) => '/usr/bin/docker') as typeof Bun.which;
-    Bun.spawn = mock((_cmd: string[] | readonly string[], _opts?: unknown) => (
+    Bun.spawn = mock((_: string[] | readonly string[], _opts?: unknown) => (
       createSpawnResult()
     )) as unknown as typeof Bun.spawn;
-  });
-
-  afterEach(() => {
-    Bun.spawn = originalBunSpawn;
-    Bun.which = originalBunWhich;
-    rmSync(tempBase, { recursive: true, force: true });
   });
 
   it('initializes setup deploy status before pulling services', async () => {
@@ -61,7 +55,7 @@ describe('bootstrapInstall', () => {
     const setDeployError = mock((_error: string) => {});
     const markAllRunning = mock(() => {});
     const stop = mock(() => {});
-    const runDockerCompose = mock(async (_args: string[]) => {});
+    const runDockerCompose = mock(async (_: string[]) => {});
 
     mock.module('citty', () => ({
       defineCommand: <T>(command: T) => command,
@@ -104,7 +98,7 @@ describe('bootstrapInstall', () => {
           mkdirSync(dir, { recursive: true });
         }
       },
-      fetchAsset: async (_repoRef: string, filename: string) => `${filename}\n`,
+      fetchAsset: async (_: string, filename: string) => `${filename}\n`,
       runDockerCompose,
       openBrowser: async () => {},
     }));
@@ -178,5 +172,14 @@ describe('bootstrapInstall', () => {
     expect(markAllRunning).toHaveBeenCalledTimes(1);
     expect(setDeployError).not.toHaveBeenCalled();
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  afterEach(() => {
+    Bun.spawn = originalBunSpawn;
+    Bun.which = originalBunWhich;
+    if (tempBase) {
+      rmSync(tempBase, { recursive: true, force: true });
+      tempBase = '';
+    }
   });
 });
