@@ -16,8 +16,8 @@ export default defineCommand({
     },
     'with-admin': {
       type: 'boolean',
-      description: 'Include admin UI and docker-socket-proxy',
-      default: false,
+      description: 'Include admin UI and docker-socket-proxy (use --no-with-admin to skip)',
+      default: true,
     },
   },
   async run({ args }) {

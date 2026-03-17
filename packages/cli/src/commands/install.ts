@@ -222,25 +222,29 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       const managedServices = buildManagedServiceNames(state);
 
       wizard.updateDeployStatus(
-        managedServices.map(s => ({ service: s, status: 'pending', label: 'Waiting...' })),
+        allServices.map(s => ({ service: s, status: 'pending', label: 'Waiting...' })),
       );
 
-      await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => {
+      // Include admin profile so admin + docker-socket-proxy start by default
+      const adminServices = ['admin', 'docker-socket-proxy'];
+      const allServices = [...managedServices, ...adminServices];
+
+      await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
         // Pull failure is non-fatal — images may already be cached
       });
 
       wizard.updateDeployStatus(
-        managedServices.map(s => ({ service: s, status: 'pulling', label: 'Starting...' })),
+        allServices.map(s => ({ service: s, status: 'pulling', label: 'Starting...' })),
       );
 
-      await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+      await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
 
       wizard.markAllRunning();
 
       console.log(JSON.stringify({
         ok: true,
         mode: 'install',
-        services: managedServices,
+        services: allServices,
       }, null, 2));
 
       // Give the browser a moment to poll the final status, then stop
@@ -264,12 +268,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const state = await ensureStagedState();
   const composeArgs = fullComposeArgs(state);
   const managedServices = buildManagedServiceNames(state);
+  const allServices = [...managedServices, 'admin', 'docker-socket-proxy'];
 
-  await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+  await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
 
   console.log(JSON.stringify({
     ok: true,
     mode: 'update',
-    services: managedServices,
+    services: allServices,
   }, null, 2));
 }

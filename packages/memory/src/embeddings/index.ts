@@ -11,6 +11,7 @@ export function createEmbedder(config: EmbedderProviderConfig): Embedder {
   switch (config.provider) {
     case 'openai':
     case 'azure_openai':
+    case 'lmstudio':
       return new OpenAIEmbedder(config.config);
     case 'ollama':
       return new OllamaEmbedder(config.config);

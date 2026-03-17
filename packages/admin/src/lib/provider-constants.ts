@@ -60,14 +60,16 @@ export const PROVIDER_LABELS: Record<string, string> = {
 };
 
 /**
- * Map provider name → mem0-compatible provider name.
- * mem0 doesn't know "model-runner" or "lmstudio" — both speak OpenAI protocol.
- * Ollama also maps to "openai" because Ollama exposes an OpenAI-compatible API
- * at /v1, and using provider "ollama" in mem0 requires the `ollama` Python
- * package which we don't install in the memory container.
+ * Map provider name → memory-package-compatible provider name.
+ * The memory package (@openpalm/memory) has native adapters for openai,
+ * ollama, and lmstudio. model-runner speaks OpenAI protocol so it maps
+ * to "openai". Ollama has its own adapter. LM Studio has its own adapter
+ * that avoids response_format (which LM Studio doesn't reliably support).
  */
 export function mem0ProviderName(provider: string): string {
-  if (provider === "model-runner" || provider === "lmstudio" || provider === "ollama") return "openai";
+  if (provider === "model-runner") return "openai";
+  if (provider === "ollama") return "ollama";
+  if (provider === "lmstudio") return "lmstudio";
   return provider;
 }
 

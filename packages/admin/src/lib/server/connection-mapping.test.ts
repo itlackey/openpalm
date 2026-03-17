@@ -43,7 +43,7 @@ describe('connection mapping', () => {
     expect(mapping.mem0.vector_store.config.embedding_model_dims).toBe(1536);
   });
 
-  test('buildMem0Mapping maps lmstudio to openai provider and keeps deterministic output', () => {
+  test('buildMem0Mapping maps lmstudio to lmstudio provider and keeps deterministic output', () => {
     const input = {
       llm: {
         provider: 'lmstudio',
@@ -64,7 +64,7 @@ describe('connection mapping', () => {
     const first = buildMem0Mapping(input);
     const second = buildMem0Mapping(input);
 
-    expect(first.mem0.llm.provider).toBe('openai');
+    expect(first.mem0.llm.provider).toBe('lmstudio');
     expect(first.mem0.llm.config.openai_base_url).toBe('http://host.docker.internal:1234/v1');
     expect(first).toEqual(second);
   });
@@ -99,7 +99,7 @@ describe('connection mapping', () => {
     expect(mapping.mem0.embedder.config.openai_base_url).toBe('https://api.openai.com/v1');
   });
 
-  test('buildMem0Mapping maps ollama to openai provider with openai_base_url', () => {
+  test('buildMem0Mapping maps ollama to ollama provider with openai_base_url', () => {
     const mapping = buildMem0Mapping({
       llm: {
         provider: 'ollama',
@@ -117,8 +117,8 @@ describe('connection mapping', () => {
       customInstructions: '',
     });
 
-    // LLM uses Ollama via OpenAI-compatible protocol (mem0 maps ollama → openai)
-    expect(mapping.mem0.llm.provider).toBe('openai');
+    // LLM uses Ollama with dedicated adapter
+    expect(mapping.mem0.llm.provider).toBe('ollama');
     expect(mapping.mem0.llm.config.model).toBe('llama3.2:3b');
     expect(mapping.mem0.llm.config.openai_base_url).toBe('http://ollama:11434/v1');
 
@@ -278,7 +278,7 @@ describe('connection mapping', () => {
       customInstructions: 'Be concise.',
     });
 
-    expect(mapping.mem0.llm.provider).toBe('openai');
+    expect(mapping.mem0.llm.provider).toBe('lmstudio');
     expect(mapping.mem0.llm.config.openai_base_url).toBe('http://host.docker.internal:1234/v1');
     expect(mapping.mem0.llm.config.model).toBe('mistral-7b');
 

@@ -41,6 +41,7 @@ export { SqliteVecStore } from './vector-stores/sqlite-vec.js';
 export { SqliteHistoryManager } from './storage/sqlite.js';
 export { OpenAILLM } from './llms/openai.js';
 export { OllamaLLM } from './llms/ollama.js';
+export { LMStudioLLM } from './llms/lmstudio.js';
 export { OpenAIEmbedder } from './embeddings/openai.js';
 export { OllamaEmbedder } from './embeddings/ollama.js';
 

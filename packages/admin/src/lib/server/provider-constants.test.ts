@@ -2,7 +2,7 @@
  * Tests for provider-constants.ts — shared LLM provider constants.
  *
  * Verifies:
- * 1. mem0ProviderName maps local providers to "openai" and passes cloud names through
+ * 1. mem0ProviderName maps local providers to their memory-package adapters
  * 2. PROVIDER_LABELS has an entry for every provider in LLM_PROVIDERS
  * 3. LOCAL_PROVIDER_HELP has help text for all local providers
  * 4. PROVIDER_DEFAULT_URLS has entries for model-runner and lmstudio
@@ -28,16 +28,16 @@ describe("mem0ProviderName", () => {
     expect(mem0ProviderName("model-runner")).toBe("openai");
   });
 
-  test("maps 'lmstudio' to 'openai'", () => {
-    expect(mem0ProviderName("lmstudio")).toBe("openai");
+  test("maps 'lmstudio' to 'lmstudio' (dedicated adapter, no response_format)", () => {
+    expect(mem0ProviderName("lmstudio")).toBe("lmstudio");
   });
 
   test("passes 'openai' through unchanged", () => {
     expect(mem0ProviderName("openai")).toBe("openai");
   });
 
-  test("maps 'ollama' to 'openai' (uses OpenAI-compatible API)", () => {
-    expect(mem0ProviderName("ollama")).toBe("openai");
+  test("maps 'ollama' to 'ollama' (dedicated adapter)", () => {
+    expect(mem0ProviderName("ollama")).toBe("ollama");
   });
 
   test("passes 'anthropic' through unchanged", () => {
