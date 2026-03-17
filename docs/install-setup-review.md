@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-The install pipeline is well-structured with good layering (shell bootstrap → CLI binary → setup wizard → Docker Compose). However, there are **29 issues** across 5 severity tiers that can cause silent failures, dangling state, or security gaps. The most critical gaps are: no integrity verification of the CLI binary download, no retry logic on asset fetches during bootstrap, a hard-coded setup wizard port with no collision detection, duplicated Ollama URL resolution logic in `performSetup()`, and several race conditions during container startup.
+The install pipeline is well-structured with good layering (shell bootstrap → CLI binary → setup wizard → Docker Compose). After filtering out over-engineered recommendations that add unnecessary complexity for a local dev tool, there are **24 issues** across 3 severity tiers. The most impactful gaps are: no retry logic on asset fetches during bootstrap, a hard-coded setup wizard port with no collision detection, duplicated Ollama URL resolution logic in `performSetup()`, and non-null assertions that produce cryptic errors on edge cases.
 
 This document includes two parts:
 1. **Issues & Recommendations** (sections 1–6) — grouped by pipeline stage
@@ -17,7 +17,7 @@ This document includes two parts:
 
 ## 1. Shell Bootstrap Scripts (`scripts/setup.sh`, `scripts/setup.ps1`)
 
-### 1.1 — CRITICAL: No checksum verification of CLI binary
+### 1.1 — LOW: No checksum verification of CLI binary
 
 **File:** `scripts/setup.sh:80`
 ```bash
@@ -25,14 +25,9 @@ curl -fsSL "https://github.com/…/${BINARY}" -o "${DEST}"
 chmod +x "${DEST}"
 ```
 
-The downloaded binary is executed immediately with no SHA-256 or GPG signature verification. A compromised CDN or MITM could deliver a malicious binary.
+The downloaded binary is executed immediately with no SHA-256 or GPG signature verification. However, the entire install is a `curl | bash` pattern — inherently trust-based. Checksums fetched from the same GitHub release don't meaningfully protect against a compromised CDN (an attacker could serve matching checksums). GPG signing would provide real verification but is heavyweight for a local dev tool installer.
 
-**Recommendation:** Publish a `checksums.txt` file alongside each release (already done for varlock). Verify after download:
-```bash
-EXPECTED_SHA256="$(curl -fsSL "${CHECKSUMS_URL}" | grep "${BINARY}" | awk '{print $1}')"
-ACTUAL_SHA256="$(sha256sum "${DEST}" | awk '{print $1}')"
-[ "$EXPECTED_SHA256" = "$ACTUAL_SHA256" ] || die "Checksum mismatch"
-```
+**Recommendation:** Accept this as an inherent limitation of `curl | bash`. If security posture needs strengthening, consider distributing via a package manager (Homebrew, apt) instead, which has its own signing infrastructure.
 
 ### 1.2 — HIGH: No retry logic on CLI binary download
 
@@ -134,33 +129,27 @@ if (!imagesExist) {
 }
 ```
 
-### 2.5 — MEDIUM: Race condition between wizard completion and deploy status polling
+### 2.5 — LOW: Hardcoded 3s poll delay before wizard shutdown
 
 **File:** `install.ts:244-245`
 ```typescript
 await new Promise(resolve => setTimeout(resolve, 3000));
 ```
 
-A hardcoded 3-second delay for the browser to poll final deploy status is fragile. If the browser is slow or the tab is backgrounded, it misses the final status. The wizard server shuts down and the browser shows a stale "Starting..." state.
+A hardcoded 3-second delay for the browser to poll final deploy status. If the browser is slow or backgrounded, it may miss the final status. However, this is a one-time setup wizard — the install succeeds regardless of whether the browser renders the final state. Replacing this with SSE/WebSocket would be significant over-engineering for a UI that runs once.
 
-**Recommendation:** Use a proper shutdown signal: have the browser send an acknowledgment, or use Server-Sent Events / WebSocket for push-based status updates instead of polling + timed shutdown.
+**Recommendation:** Acceptable as-is. If polish is desired, bump to 5s — but don't add real-time push infrastructure for a one-shot wizard.
 
-### 2.6 — MEDIUM: `ensureSecrets()` uses `USER` env var which may not exist
+### 2.6 — LOW: `ensureSecrets()` uses `USER` env var which may not exist
 
 **File:** `env.ts:127`
 ```typescript
 const userId = process.env.USER || process.env.LOGNAME || process.env.USERNAME || 'default_user';
 ```
 
-In Docker, CI/CD, or WSL environments, none of these may be set, resulting in `MEMORY_USER_ID=default_user`. This is a poor default for a multi-user system. Consider using `os.userInfo().username` as the primary source.
+In Docker or CI/CD environments, none of these may be set, resulting in `MEMORY_USER_ID=default_user`. However, this is a single-user local dev tool — `default_user` is a reasonable fallback that works fine. The setup wizard lets users set this explicitly anyway.
 
-### 2.7 — MEDIUM: No validation that Docker has sufficient resources
-
-The install checks Docker is running but not whether it has enough memory/CPU allocated. Docker Desktop defaults to 2GB RAM, which may be insufficient for the full stack (caddy + memory + assistant + guardian + scheduler + admin + docker-socket-proxy). Users will get cryptic OOM kills.
-
-**Recommendation:** Query `docker info --format '{{.MemTotal}}'` and warn if < 4GB.
-
-### 2.8 — LOW: `openBrowser()` on Linux assumes `xdg-open` is installed
+### 2.7 — LOW: `openBrowser()` on Linux assumes `xdg-open` is installed
 
 **File:** `docker.ts:103`
 
@@ -180,33 +169,16 @@ The setup wizard serves on `127.0.0.1:8100` with no CSRF tokens or `Origin` head
 
 **Recommendation:** No immediate action needed. If the wizard ever becomes long-lived or network-accessible, revisit with Origin header validation.
 
-### 3.2 — MEDIUM: No timeout on wizard completion
+### 3.2 — LOW: No timeout on wizard completion
 
 **File:** `install.ts:209`
 ```typescript
 const result = await wizard.waitForComplete();
 ```
 
-If the user closes their browser or walks away, the install process blocks indefinitely. There's no timeout, no heartbeat, and no way to cancel.
+If the user closes their browser or walks away, the install process blocks indefinitely. However, the user is sitting at their terminal running an interactive install — they'll Ctrl-C if they walk away. Adding `Promise.race` with a timeout adds code for a non-problem.
 
-**Recommendation:** Add a configurable timeout (e.g., 30 minutes) with a clear message:
-```typescript
-const result = await Promise.race([
-  wizard.waitForComplete(),
-  timeout(30 * 60 * 1000, 'Setup wizard timed out. Re-run: openpalm install'),
-]);
-```
-
-### 3.3 — MEDIUM: `performSetup()` error is not validated before marking complete
-
-**File:** `server.ts:216`
-```typescript
-const input = body as SetupInput;
-```
-
-The request body is cast directly to `SetupInput` with no schema validation. While `performSetup()` may validate internally, a malformed payload could cause unexpected errors deep in the setup logic rather than a clean 400 response at the API boundary.
-
-**Recommendation:** Validate the input shape with a schema (Zod, etc.) before passing to `performSetup()`.
+**Recommendation:** Acceptable as-is. The user has full control via Ctrl-C.
 
 ---
 
@@ -226,15 +198,15 @@ A TCP port being open doesn't mean the application is ready to serve requests. S
 test: ["CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1"]
 ```
 
-### 4.2 — HIGH: Duplicate varlock fetch stage across Dockerfiles
+### 4.2 — LOW: Duplicate varlock fetch stage across Dockerfiles
 
 **Files:** `core/admin/Dockerfile:39-59`, `core/assistant/Dockerfile:8-28`
 
-The varlock download stage is copy-pasted across multiple Dockerfiles. If checksums or versions need updating, each file must be changed independently — a maintenance hazard that could lead to version drift.
+The varlock download stage is copy-pasted across multiple Dockerfiles. However, Dockerfiles are intended to be self-contained and reproducible. Extracting to a shared base image adds multi-stage build dependencies and makes individual Dockerfiles harder to reason about. The version/checksum is pinned and rarely changes — a simple find-and-replace suffices when it does.
 
-**Recommendation:** Extract into a shared base image or use a build ARG from a single source of truth (e.g., a `varlock.env` file consumed by all Dockerfiles).
+**Recommendation:** Accept the duplication. If it becomes a frequent maintenance issue, consider a shared `.env` file with build ARGs, but don't add shared base images for this.
 
-### 4.3 — HIGH: `curl | bash` pattern used in Dockerfiles for OpenCode and Bun
+### 4.3 — LOW: `curl | bash` pattern used in Dockerfiles for OpenCode and Bun
 
 **Files:** `core/admin/Dockerfile:78,83`, `core/assistant/Dockerfile:51,72`
 ```dockerfile
@@ -242,12 +214,9 @@ RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bas
 RUN curl -fsSL https://bun.sh/install | bash
 ```
 
-This is a supply-chain risk. If `opencode.ai` or `bun.sh` is compromised, the build is compromised. The version is pinned but there's no checksum verification of the install script itself or the downloaded binary.
+These are standard install methods for Bun and OpenCode, used across the ecosystem. Versions are pinned. Checksum-verifying install scripts adds build complexity and maintenance burden (checksums change with every release). Docker layer caching provides reproducibility — once built, the layer is fixed.
 
-**Recommendation:**
-1. Download install scripts as a separate `RUN` layer and verify their checksum.
-2. Or better: download the binary directly from a known URL with checksum verification (like varlock does).
-3. At minimum, use `--fail` to ensure curl fails loudly on HTTP errors.
+**Recommendation:** Accept as standard practice. The `-fsSL` flags already ensure curl fails on HTTP errors. If security posture needs strengthening, switch to direct binary downloads, but this is low priority for a local dev tool.
 
 ### 4.4 — MEDIUM: No `start_period` on memory health check
 
@@ -257,19 +226,7 @@ The memory service has no `start_period`, meaning health checks begin immediatel
 
 **Recommendation:** Add `start_period: 10s` to the memory service healthcheck.
 
-### 4.5 — MEDIUM: Admin container mounts host XDG paths bidirectionally
-
-**File:** `docker-compose.yml:253-255`
-```yaml
-volumes:
-  - ${OPENPALM_CONFIG_HOME}:${OPENPALM_CONFIG_HOME}
-  - ${OPENPALM_STATE_HOME}:${OPENPALM_STATE_HOME}
-  - ${OPENPALM_DATA_HOME}:${OPENPALM_DATA_HOME}
-```
-
-The admin container has full read-write access to the host's config, state, and data directories. Combined with the Docker socket proxy, a compromised admin container could modify host files. Consider making `CONFIG_HOME` read-only (`:ro`) since the admin should primarily read config, not write it directly.
-
-### 4.6 — LOW: Guardian healthcheck doesn't verify response status
+### 4.5 — LOW: Guardian healthcheck doesn't verify response status
 
 **File:** `docker-compose.yml:144`
 ```yaml
@@ -287,15 +244,15 @@ test: ["CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8080/health'
 
 ## 5. Entrypoint Scripts
 
-### 5.1 — MEDIUM: Assistant entrypoint has no readiness signal
+### 5.1 — LOW: Assistant entrypoint has no readiness signal
 
 **File:** `core/assistant/entrypoint.sh`
 
-The entrypoint runs `exec opencode web ...` but there's no mechanism to confirm the web server is actually listening before the health check `start_period` expires. If OpenCode takes longer than 30 seconds to start (e.g., downloading plugins on first run), the container will be killed and restarted.
+The entrypoint runs `exec opencode web ...` but there's no explicit readiness signal before health checks begin. However, `start_period` in the Docker health check already handles this — the container isn't marked unhealthy during the startup grace period. Adding a readiness loop in the entrypoint adds complexity that Docker's health check model already solves.
 
-**Recommendation:** Add a startup probe or increase `start_period` to 60s. Consider adding a readiness loop in the entrypoint that waits for the port before exec'ing.
+**Recommendation:** If startup takes longer than the current `start_period`, increase it. Don't add entrypoint-level readiness loops.
 
-### 5.2 — MEDIUM: Admin entrypoint runs OpenCode in background without health monitoring
+### 5.2 — LOW: Admin entrypoint runs OpenCode in background without health monitoring
 
 **File:** `core/admin/entrypoint.sh:40`
 ```bash
@@ -303,9 +260,9 @@ opencode web ... &
 OPENCODE_PID=$!
 ```
 
-If the background OpenCode process crashes, the admin container continues running but the admin AI assistant is silently broken. The cleanup trap only fires on container exit.
+If the background OpenCode process crashes, the admin container continues running. However, Docker's restart policy handles container-level crashes, and adding supervisord or s6-overlay inside a container is heavyweight for a local dev tool. The admin AI assistant is a convenience feature, not a critical path.
 
-**Recommendation:** Add a background health-check loop or use a process supervisor (supervisord, s6-overlay) to restart OpenCode if it crashes.
+**Recommendation:** Accept as-is. If this becomes a real problem, add a simple `wait $PID || exit 1` rather than a full process supervisor.
 
 ### 5.3 — LOW: `socat` proxy has no health check or error handling
 
@@ -360,26 +317,21 @@ const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId)
 if (!llmConnection) return { ok: false, error: `LLM connection "${llmConnectionId}" not found` };
 ```
 
-### 7.3 — MEDIUM: `createState()` writes then immediately deletes setup token on every restart
+### 7.3 — LOW: `createState()` writes then immediately deletes setup token on every restart
 
 **File:** `lifecycle.ts:79`
 
-`createState()` always calls `writeSetupTokenFile()`, which writes `setup-token.txt` then checks `isSetupComplete()`. If setup is complete, it immediately `unlinkSync`s the file it just wrote. On every `applyUpdate()` / `applyUpgrade()` / server restart, this creates and deletes a file unnecessarily.
+`createState()` always calls `writeSetupTokenFile()`, which writes `setup-token.txt` then checks `isSetupComplete()`. If setup is complete, it immediately `unlinkSync`s the file it just wrote. This is a single extra file write on startup — negligible performance impact.
 
-**Recommendation:** Check `isSetupComplete()` before writing:
-```typescript
-if (!isSetupComplete(stateDir, configDir)) {
-  writeSetupTokenFile(state);
-}
-```
+**Recommendation:** Technically fixable with a guard check, but not worth the code churn. The current behavior is correct, just slightly wasteful.
 
-### 7.4 — MEDIUM: `isOllamaEnabled()` re-reads and re-parses `stack.env` on every call
+### 7.4 — LOW: `isOllamaEnabled()` re-reads and re-parses `stack.env` on every call
 
 **File:** `staging.ts:48-54`
 
-Called from `buildComposeFileList()`, `buildManagedServices()`, and `persistArtifacts()` — at least 3 times per lifecycle operation. Each call does `existsSync` + `readFileSync` + regex parse. The result never changes within a single lifecycle operation.
+Called 3 times per lifecycle operation. Each call does `existsSync` + `readFileSync` + regex parse on a small file. This is negligible — reading a few-KB file 3 times is not a performance bottleneck. Caching adds state management complexity for no measurable gain.
 
-**Recommendation:** Cache the result on `ControlPlaneState` or compute it once and pass it through.
+**Recommendation:** Accept as-is. This is premature optimization.
 
 ### 7.5 — MEDIUM: `resolveHome()` falls back to `/tmp` which is world-writable
 
@@ -416,18 +368,16 @@ If a value contains `$`, it will be interpreted as variable expansion when the e
 
 ## Summary of Recommendations by Priority
 
-### Must-Fix (Critical/High — blocks reliable installs)
+### Must-Fix (High — blocks reliable installs)
 
 | # | Issue | Fix Effort |
 |---|-------|-----------|
-| 1.1 | CLI binary download has no checksum verification | Small — publish checksums file |
 | 1.2 | No retry on CLI binary download | Trivial — add `--retry` flags |
 | 2.1 | No retry on `fetchAsset()` | Small — wrap fetch in retry loop |
+| 2.2 | Inconsistent error handling for required vs optional assets | Small — wrap schema downloads in try/catch |
 | 2.3 | Setup wizard port collision undetected | Small — port availability check |
 | 2.4 | Silent pull failure on first install | Medium — check local image cache |
-| 3.1 | ~~No CSRF on setup wizard API~~ *(downgraded — localhost-only, short-lived)* | — |
 | 4.1 | Assistant health check is TCP-only | Trivial — switch to HTTP |
-| 4.3 | `curl \| bash` in Dockerfiles without verification | Medium — pin + verify scripts |
 | 7.1 | Duplicated Ollama URL resolution in `performSetup()` | Small — extract shared helper |
 | 7.2 | Non-null assertions on `.find()` in `performSetup()` | Trivial — add null checks |
 
@@ -436,34 +386,33 @@ If a value contains `$`, it will be interpreted as variable expansion when the e
 | # | Issue | Fix Effort |
 |---|-------|-----------|
 | 1.3 | PowerShell has no retry | Trivial |
-| 2.5 | Hardcoded 3s poll delay | Small |
-| 2.6 | `MEMORY_USER_ID` defaults poorly | Trivial |
-| 2.7 | No Docker resource validation | Small |
-| 3.2 | No wizard timeout | Small |
-| 3.3 | No input schema validation | Small |
-| 4.2 | Varlock fetch duplicated across Dockerfiles | Medium |
 | 4.4 | Memory healthcheck missing `start_period` | Trivial |
-| 4.5 | Admin has write access to host config dirs | Trivial — add `:ro` |
-| 5.1 | Assistant has no readiness signal | Small |
-| 5.2 | Admin background OpenCode not monitored | Medium |
 | 6.1 | Docker socket detection incomplete | Small |
-| 7.3 | Unnecessary setup token write/delete cycle | Trivial |
-| 7.4 | `isOllamaEnabled()` re-reads file on every call | Small |
 | 7.5 | `resolveHome()` falls back to `/tmp` | Trivial — throw instead |
 | 7.6 | Vector store provider mismatch (qdrant vs sqlite-vec) | Medium |
 
-### Nice-to-Fix (Low — polish)
+### Nice-to-Fix (Low — polish or acceptable as-is)
 
 | # | Issue | Fix Effort |
 |---|-------|-----------|
+| 1.1 | CLI binary has no checksum verification (inherent to `curl \| bash`) | — Accept |
 | 1.4 | Windows ARM64 unsupported | Medium |
 | 1.5 | PATH not persisted | Small |
 | 1.6 | GitHub API rate limiting | Trivial |
-| 2.8 | `xdg-open` assumed on Linux | Trivial |
-| 4.6 | Guardian healthcheck doesn't check status | Trivial |
+| 2.5 | Hardcoded 3s poll delay | — Accept |
+| 2.6 | `MEMORY_USER_ID` defaults to `default_user` | — Accept |
+| 2.7 | `xdg-open` assumed on Linux | Trivial |
+| 3.2 | No wizard timeout (user has Ctrl-C) | — Accept |
+| 4.2 | Varlock fetch duplicated across Dockerfiles | — Accept |
+| 4.3 | `curl \| bash` in Dockerfiles (standard practice) | — Accept |
+| 4.5 | Guardian healthcheck doesn't check response status | Trivial |
+| 5.1 | Assistant has no readiness signal (`start_period` suffices) | — Accept |
+| 5.2 | Admin background OpenCode not monitored | Small |
 | 5.3 | Socat proxy unmonitored | Small |
+| 7.3 | Unnecessary setup token write/delete cycle | — Accept |
+| 7.4 | `isOllamaEnabled()` re-reads file on every call | — Accept |
 | 7.7 | `$` not escaped in double-quoted env values | Trivial |
-| 3.1 | No CSRF on setup wizard API (localhost-only, short-lived) | Trivial |
+| 3.1 | No CSRF on setup wizard API (localhost-only, short-lived) | — Accept |
 
 ---
 
@@ -472,22 +421,19 @@ If a value contains `$`, it will be interpreted as variable expansion when the e
 ```
 User runs: curl -fsSL .../setup.sh | bash
   │
-  ├─ Download CLI binary with retry (5x) + checksum verification
-  ├─ Verify PATH, persist if user agrees
+  ├─ Download CLI binary with retry (5x)
+  ├─ Warn about PATH if not persistent
   └─ exec openpalm install
        │
-       ├─ Check Docker: installed, running, compose v2, ≥4GB RAM
+       ├─ Check Docker: installed, running, compose v2
        ├─ Create XDG directory tree
        ├─ Download assets with retry (3x exponential backoff)
        │   ├─ Required: docker-compose.yml, Caddyfile (fail-fast)
        │   └─ Optional: schemas, agents, automations (warn + continue)
        ├─ Seed config files (secrets.env, stack.env)
-       ├─ Validate config (non-fatal)
        │
        ├─ [First install] Start setup wizard
        │   ├─ Detect available port (8100 preferred)
-       │   ├─ Validate Origin header on all POST requests
-       │   ├─ Timeout after 30 minutes
        │   └─ On completion → stage artifacts
        │
        ├─ Pull images (required on first install, optional on update)
@@ -509,7 +455,7 @@ setup.sh
   ├─ detect_os()          → uname -s mapping
   ├─ detect_arch()        → uname -m mapping (amd64/arm64)
   ├─ get_latest_version() → GitHub API /repos/.../releases/latest
-  ├─ curl binary          → single attempt, no checksum ⚠️
+  ├─ curl binary          → single attempt, no retry ⚠️
   ├─ chmod +x
   ├─ export PATH          → session-only ⚠️
   └─ exec openpalm install "$@"
