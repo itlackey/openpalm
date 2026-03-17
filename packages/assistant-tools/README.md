@@ -4,15 +4,17 @@ OpenCode plugin that registers all tools, hooks, and skills for the OpenPalm ass
 
 ## What it provides
 
-- **30+ tools** — admin operations (containers, channels, lifecycle, config, connections, artifacts, automations, audit) and memory operations (search, add, update, delete, list, stats, apps, feedback, exports, events)
+- **15 memory tools** — search, add, update, delete, get, list, stats, apps, feedback, exports, events, and health check
 - **Memory hooks** — `MemoryContextPlugin` injects scoped memories (personal/project/stack/global), feeds back outcomes, and exports memory env vars
-- **Skills** — reference guides for admin API and memory usage (`opencode/skills/`)
+- **Skills** — reference guide for memory usage (`opencode/skills/`)
+
+Admin operations tools (containers, channels, lifecycle, config, connections, artifacts, automations, audit) are in the separate [`@openpalm/admin-tools`](../admin-tools/README.md) package, loaded only when the admin container is present.
 
 ## Structure
 
 ```
 src/index.ts              # Plugin entry — registers all tools + memory hooks
-opencode/tools/           # One file per tool group (admin-containers.ts, memory-search.ts, etc.)
+opencode/tools/           # One file per tool (memory-search.ts, memory-add.ts, health-check.ts, etc.)
 opencode/plugins/         # memory-context.ts — automatic memory integration
 opencode/skills/          # SKILL.md reference guides
 AGENTS.md                 # Assistant persona and behavioral guidelines
@@ -30,6 +32,6 @@ bun build src/index.ts --outdir dist --format esm --target node
 
 ## Dependencies
 
-`@opencode-ai/plugin` — OpenCode plugin interface. Tools call the admin API via standard `fetch`; no other runtime dependencies.
+`@opencode-ai/plugin` — OpenCode plugin interface. Memory tools call the memory API via standard `fetch`; no admin dependency.
 
 See [`AGENTS.md`](AGENTS.md) for the assistant persona, [`docs/core-principles.md`](../../docs/technical/core-principles.md) for architectural rules.
