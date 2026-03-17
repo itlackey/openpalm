@@ -115,7 +115,15 @@ jobs:
         working-directory: ${{ inputs.package-dir }}
         run: bun run build
 
-      - name: Publish
+      - name: Pack with Bun
+        working-directory: ${{ inputs.package-dir }}
+        run: |
+          # bun pack resolves workspace:* refs to real versions in the tarball
+          TARBALL=$(bun pack 2>&1 | tail -1)
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+          echo "Packed: ${TARBALL}"
+
+      - name: Publish with npm
         working-directory: ${{ inputs.package-dir }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
@@ -123,7 +131,7 @@ jobs:
           if echo "${VERSION}" | grep -qE -- '-'; then
             TAG_ARGS="--tag next"
           fi
-          npm publish --provenance --access public ${TAG_ARGS} || {
+          npm publish "${TARBALL}" --provenance --access public ${TAG_ARGS} || {
             EXIT_CODE=$?
             # Treat "already published" as success so version bump commit still happens
             if npm view "${{ inputs.package-name }}@${VERSION}" version 2>/dev/null; then
