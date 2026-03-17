@@ -9,7 +9,7 @@
 ## CRITICAL (1)
 
 ### C1. Missing `MEMORY_AUTH_TOKEN` on fresh CLI install — memory service runs unauthenticated
-**Files:** `packages/cli/src/lib/env.ts:121-149` (CLI ensureSecrets), `packages/lib/src/control-plane/secrets.ts:55-88` (lib ensureSecrets)
+**Files:** `packages/cli/src/lib/env.ts:64-92` (CLI ensureSecrets), `packages/lib/src/control-plane/secrets.ts:55-88` (lib ensureSecrets)
 CLI's `ensureSecrets()` runs first (install.ts:148) and creates `secrets.env` without `MEMORY_AUTH_TOKEN`. Lib's `ensureSecrets()` then sees the file exists and returns early (line 58-60). `performSetup()` never adds `MEMORY_AUTH_TOKEN` to its updates. Result: memory service has no auth token.
 
 ---
