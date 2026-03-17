@@ -118,8 +118,8 @@ jobs:
       - name: Pack with Bun
         working-directory: ${{ inputs.package-dir }}
         run: |
-          # bun pack resolves workspace:* refs to real versions in the tarball
-          TARBALL=$(bun pack 2>&1 | tail -1)
+          # bun pm pack resolves workspace:* refs to real versions in the tarball
+          TARBALL=$(bun pm pack --quiet 2>&1 | tail -1)
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
           echo "Packed: ${TARBALL}"
 
