@@ -26,7 +26,7 @@ import {
   buildEnvFiles
 } from "$lib/server/control-plane.js";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
-import { reloadScheduler } from "$lib/server/scheduler.js";
+
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -63,7 +63,7 @@ export const POST: RequestHandler = async (event) => {
 
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
-    reloadScheduler(state.stateDir, state.adminToken);
+    // Scheduler sidecar auto-reloads via file watching
 
     const dockerCheck = await checkDocker();
     let dockerResult = null;
@@ -93,7 +93,7 @@ export const POST: RequestHandler = async (event) => {
 
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
-  reloadScheduler(state.stateDir, state.adminToken);
+  // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "registry.uninstall", { name, type }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, type }, requestId);

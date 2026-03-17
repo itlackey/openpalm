@@ -20,7 +20,7 @@ import {
   persistArtifacts
 } from "$lib/server/control-plane.js";
 import { pullRegistry } from "$lib/server/registry-sync.js";
-import { reloadScheduler } from "$lib/server/scheduler.js";
+
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -38,10 +38,9 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(500, "registry_sync_error", pullResult.error, {}, requestId);
   }
 
-  // Re-stage artifacts and reload scheduler
+  // Re-stage artifacts (scheduler sidecar auto-reloads via file watching)
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
-  reloadScheduler(state.stateDir, state.adminToken);
 
   appendAudit(state, actor, "registry.refresh", { updated: pullResult.updated }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, updated: pullResult.updated }, requestId);

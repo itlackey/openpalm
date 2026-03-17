@@ -73,8 +73,11 @@ function handleRequest(req: Request): Response | Promise<Response> {
     });
   }
 
-  // GET /automations
+  // GET /automations (authenticated — exposes automation topology)
   if (method === "GET" && path === "/automations") {
+    if (!requireAuth(req)) {
+      return json(401, { error: "unauthorized" });
+    }
     const status = getSchedulerStatus();
     const allLogs = getAllExecutionLogs();
     const automations = loadAutomations(STATE_DIR).map((c) => ({
@@ -101,8 +104,11 @@ function handleRequest(req: Request): Response | Promise<Response> {
     return json(200, { automations, scheduler: status });
   }
 
-  // GET /automations/:name/log
+  // GET /automations/:name/log (authenticated — exposes execution details)
   if (method === "GET" && path.startsWith("/automations/") && path.endsWith("/log")) {
+    if (!requireAuth(req)) {
+      return json(401, { error: "unauthorized" });
+    }
     const name = path.slice("/automations/".length, -"/log".length);
     if (!name) {
       return json(400, { error: "missing automation name" });

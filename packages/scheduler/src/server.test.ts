@@ -86,8 +86,15 @@ describe("scheduler HTTP API", () => {
   });
 
   describe("GET /automations", () => {
-    it("should list loaded automations", async () => {
+    it("should require auth", async () => {
       const resp = await fetch(`${BASE_URL}/automations`);
+      expect(resp.status).toBe(401);
+    });
+
+    it("should list loaded automations", async () => {
+      const resp = await fetch(`${BASE_URL}/automations`, {
+        headers: { "x-admin-token": ADMIN_TOKEN },
+      });
       expect(resp.status).toBe(200);
 
       const body = await resp.json();
@@ -103,7 +110,9 @@ describe("scheduler HTTP API", () => {
     });
 
     it("should include scheduler status", async () => {
-      const resp = await fetch(`${BASE_URL}/automations`);
+      const resp = await fetch(`${BASE_URL}/automations`, {
+        headers: { "x-admin-token": ADMIN_TOKEN },
+      });
       const body = await resp.json();
       expect(body.scheduler).toBeTruthy();
       expect(typeof body.scheduler.jobCount).toBe("number");
@@ -112,7 +121,9 @@ describe("scheduler HTTP API", () => {
 
   describe("GET /automations/:name/log", () => {
     it("should return logs for a known automation", async () => {
-      const resp = await fetch(`${BASE_URL}/automations/server-test.yml/log`);
+      const resp = await fetch(`${BASE_URL}/automations/server-test.yml/log`, {
+        headers: { "x-admin-token": ADMIN_TOKEN },
+      });
       expect(resp.status).toBe(200);
 
       const body = await resp.json();
@@ -121,7 +132,9 @@ describe("scheduler HTTP API", () => {
     });
 
     it("should return empty logs for unknown automation", async () => {
-      const resp = await fetch(`${BASE_URL}/automations/unknown.yml/log`);
+      const resp = await fetch(`${BASE_URL}/automations/unknown.yml/log`, {
+        headers: { "x-admin-token": ADMIN_TOKEN },
+      });
       expect(resp.status).toBe(200);
 
       const body = await resp.json();

@@ -54,22 +54,6 @@ services:
       timeout: 10s
       retries: 5
 
-  openviking:
-    image: ghcr.io/volcengine/openviking:latest
-    container_name: openviking
-    user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
-    ports:
-      - "1933:1933"
-    environment:
-      OPENVIKING_CONFIG_FILE: /config/ov.conf
-      HOME: /tmp
-    volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/workspace:/workspace
-      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/ov.conf:/config/ov.conf:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
-
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
