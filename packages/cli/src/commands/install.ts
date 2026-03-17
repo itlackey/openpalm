@@ -220,14 +220,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       const state = await ensureStagedState();
       const composeArgs = fullComposeArgs(state);
       const managedServices = buildManagedServiceNames(state);
+      // Include admin profile so admin + docker-socket-proxy start by default
+      const adminServices = ['admin', 'docker-socket-proxy'];
+      const allServices = [...managedServices, ...adminServices];
 
       wizard.updateDeployStatus(
         allServices.map(s => ({ service: s, status: 'pending', label: 'Waiting...' })),
       );
-
-      // Include admin profile so admin + docker-socket-proxy start by default
-      const adminServices = ['admin', 'docker-socket-proxy'];
-      const allServices = [...managedServices, ...adminServices];
 
       await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
         // Pull failure is non-fatal — images may already be cached
