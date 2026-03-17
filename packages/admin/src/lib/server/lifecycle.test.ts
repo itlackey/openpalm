@@ -240,11 +240,12 @@ describe("CORE_SERVICES", () => {
     expect(CORE_SERVICES).toContain("memory");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
+    expect(CORE_SERVICES).toContain("scheduler");
     expect(CORE_SERVICES).toContain("admin");
   });
 
-  test("has exactly 5 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(5);
+  test("has exactly 6 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(6);
   });
 });
 

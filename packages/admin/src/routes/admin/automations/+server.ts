@@ -1,5 +1,9 @@
 /**
- * GET /admin/automations — List automation configs and scheduler status.
+ * GET /admin/automations — List automation configs from STATE_HOME.
+ *
+ * Read-only endpoint. The scheduler sidecar is the sole automation engine;
+ * admin does not run any background scheduler process. For execution logs
+ * and live scheduler status, query the scheduler sidecar directly.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -11,7 +15,7 @@ import {
   getCallerType
 } from "$lib/server/helpers.js";
 import { appendAudit } from "$lib/server/control-plane.js";
-import { loadAutomations, getSchedulerStatus, getAllExecutionLogs } from "$lib/server/scheduler.js";
+import { loadAutomations } from "$lib/server/scheduler.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -21,8 +25,6 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
   const actor = getActor(event);
   const callerType = getCallerType(event);
-
-  const allLogs = getAllExecutionLogs();
 
   const automations = loadAutomations(state.stateDir).map((c) => ({
     name: c.name,
@@ -40,12 +42,9 @@ export const GET: RequestHandler = async (event) => {
     },
     on_failure: c.on_failure,
     fileName: c.fileName,
-    logs: allLogs[c.fileName] ?? []
   }));
-
-  const scheduler = getSchedulerStatus();
 
   appendAudit(state, actor, "automations.list", {}, true, requestId, callerType);
 
-  return jsonResponse(200, { automations, scheduler }, requestId);
+  return jsonResponse(200, { automations }, requestId);
 };
