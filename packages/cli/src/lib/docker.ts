@@ -1,7 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ensureXdgDirs } from '@openpalm/lib';
-import { defaultConfigHome, defaultStateHome } from './paths.ts';
 
 const REPO_OWNER = 'itlackey';
 const REPO_NAME = 'openpalm';
@@ -84,67 +83,8 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
 // composeProjectArgs() removed — use fullComposeArgs(state) from staging.ts instead.
 // That function builds the correct file list including channel overlays and staged env files.
 
-/**
- * Ensures the opencode config and system config directories exist with defaults.
- */
-export async function ensureOpenCodeConfig(configHome: string): Promise<void> {
-  const opencodeDir = join(configHome, 'assistant');
-  const configFile = join(opencodeDir, 'opencode.json');
-  if (!(await Bun.file(configFile).exists())) {
-    await Bun.write(configFile, '{\n  "$schema": "https://opencode.ai/config.json"\n}\n');
-  }
-  await mkdir(join(opencodeDir, 'tools'), { recursive: true });
-  await mkdir(join(opencodeDir, 'plugins'), { recursive: true });
-  await mkdir(join(opencodeDir, 'skills'), { recursive: true });
-}
-
-async function writeIfChanged(path: string, content: string): Promise<void> {
-  const file = Bun.file(path);
-  if (await file.exists()) {
-    const existing = await file.text();
-    if (existing === content) {
-      return;
-    }
-  }
-  await Bun.write(path, content);
-}
-
-export async function ensureOpenCodeSystemConfig(dataHome: string): Promise<void> {
-  const opencodeSystemDir = join(dataHome, 'assistant');
-  await mkdir(opencodeSystemDir, { recursive: true });
-
-  const systemConfig = join(opencodeSystemDir, 'opencode.jsonc');
-  const systemConfigContent =
-    JSON.stringify(
-      {
-        "$schema": "https://opencode.ai/config.json",
-        "plugin": ["@openpalm/assistant-tools", "akm-opencode"],
-        "permission": {
-          "read": {
-            "/home/opencode/.local/share/opencode/auth.json": "deny",
-            "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
-          }
-        }
-      },
-      null,
-      2,
-    ) + "\n";
-  await writeIfChanged(systemConfig, systemConfigContent);
-
-  const agentsFile = join(opencodeSystemDir, 'AGENTS.md');
-  // import.meta.dir = packages/cli/src/lib/ → need 4 levels up to reach repo root
-  const assetsAgentsPath = join(import.meta.dir, '..', '..', '..', '..', 'assets', 'AGENTS.md');
-  let agentsContent: string;
-  if (await Bun.file(assetsAgentsPath).exists()) {
-    agentsContent = await Bun.file(assetsAgentsPath).text();
-  } else {
-    agentsContent =
-      '# OpenPalm Assistant\n\n' +
-      'This file defines the assistant persona.\n' +
-      'It is seeded by the CLI on first install and managed by the admin on subsequent updates.\n';
-  }
-  await writeIfChanged(agentsFile, agentsContent);
-}
+// ensureOpenCodeConfig and ensureOpenCodeSystemConfig are imported from @openpalm/lib.
+// See packages/lib/src/control-plane/secrets.ts and core-assets.ts.
 
 /**
  * Opens a URL in the user's default browser. Best-effort, never throws.

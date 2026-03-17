@@ -26,6 +26,12 @@ services:
       - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/config:/config/caddy
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [ assistant_net, channel_lan, channel_public ]
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ── Memory ─────────────────────────────────────────────────────────
   # Lightweight Bun.js wrapper around @openpalm/memory with sqlite-vec.
@@ -184,6 +190,7 @@ services:
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
+      VOLUMES: 1
       EXEC: 0
       POST: 1
       INFO: 1

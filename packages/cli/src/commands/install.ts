@@ -5,7 +5,8 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { isAdminReachable, adminRequest } from '../lib/admin.ts';
-import { ensureDirectoryTree, fetchAsset, runDockerCompose, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, openBrowser } from '../lib/docker.ts';
+import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
+import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { loadAdminToken } from '../lib/env.ts';
@@ -136,16 +137,21 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       try {
         const content = await fetchAsset(options.version, remote);
         await Bun.write(localPath, content);
-      } catch {
-        // Non-fatal — asset may not exist in older releases
+      } catch (err) {
+        console.warn(`Warning: could not download asset '${remote}': ${err instanceof Error ? err.message : String(err)}`);
       }
     }),
   );
 
   await ensureSecrets(configHome);
   await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version);
-  await ensureOpenCodeConfig(configHome);
-  await ensureOpenCodeSystemConfig(dataHome);
+  // Seed OpenCode config — non-fatal since performSetup() also seeds these
+  try {
+    ensureOpenCodeConfig();
+    ensureOpenCodeSystemConfig(new FilesystemAssetProvider(dataHome));
+  } catch {
+    // Assets may not be available yet on first install; performSetup() will retry
+  }
 
   // Non-fatal validation
   try {
