@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ensureXdgDirs } from '@openpalm/lib';
 import { defaultConfigHome, defaultStateHome } from './paths.ts';
 
 const REPO_OWNER = 'itlackey';
@@ -7,39 +8,22 @@ const REPO_NAME = 'openpalm';
 
 /**
  * Creates the full XDG directory tree required by the stack.
+ * Delegates to @openpalm/lib for core dirs, then adds CLI-specific extras.
  */
 export async function ensureDirectoryTree(
-  configHome: string,
-  dataHome: string,
+  _configHome: string,
+  _dataHome: string,
   stateHome: string,
   workDir: string,
 ): Promise<void> {
-  const dirs = [
-    configHome,
-    join(configHome, 'channels'),
-    join(configHome, 'assistant'),
-    join(configHome, 'automations'),
-    dataHome,
-    join(dataHome, 'admin'),
-    join(dataHome, 'memory'),
-    join(dataHome, 'assistant'),
-    join(dataHome, 'guardian'),
-    join(dataHome, 'caddy'),
-    join(dataHome, 'caddy', 'data'),
-    join(dataHome, 'caddy', 'config'),
-    join(dataHome, 'automations'),
-    join(dataHome, 'opencode'),
-    stateHome,
-    join(stateHome, 'artifacts'),
-    join(stateHome, 'audit'),
-    join(stateHome, 'artifacts', 'channels'),
-    join(stateHome, 'automations'),
-    join(stateHome, 'opencode'),
+  // Core XDG dirs (CONFIG_HOME, DATA_HOME, STATE_HOME subtrees)
+  ensureXdgDirs();
+
+  // CLI-specific extras not in lib
+  for (const dir of [
     join(stateHome, 'bin'),
     workDir,
-  ];
-
-  for (const dir of dirs) {
+  ]) {
     await mkdir(dir, { recursive: true });
   }
 }

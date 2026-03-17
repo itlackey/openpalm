@@ -27,6 +27,7 @@
       "name": "@openpalm/admin",
       "version": "0.9.1",
       "dependencies": {
+        "@openpalm/lib": "workspace:*",
         "croner": "^9.0.0",
         "yaml": "^2.8.0",
       },
@@ -116,12 +117,22 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.9.3",
+      "version": "0.9.4",
       "bin": {
         "openpalm": "./src/main.ts",
       },
       "dependencies": {
+        "@openpalm/lib": "workspace:*",
         "citty": "^0.2.1",
+      },
+    },
+    "packages/lib": {
+      "name": "@openpalm/lib",
+      "version": "0.9.4",
+      "dependencies": {
+        "croner": "^9.0.0",
+        "dotenv": "^16.4.7",
+        "yaml": "^2.8.0",
       },
     },
     "packages/memory": {
@@ -132,6 +143,15 @@
       },
       "devDependencies": {
         "bun-types": "^1.1.0",
+      },
+    },
+    "packages/scheduler": {
+      "name": "@openpalm/scheduler",
+      "version": "0.9.4",
+      "dependencies": {
+        "@openpalm/lib": "workspace:*",
+        "croner": "^9.0.0",
+        "yaml": "^2.8.0",
       },
     },
   },
@@ -270,9 +290,13 @@
 
     "@openpalm/guardian": ["@openpalm/guardian@workspace:core/guardian"],
 
+    "@openpalm/lib": ["@openpalm/lib@workspace:packages/lib"],
+
     "@openpalm/memory": ["@openpalm/memory@workspace:packages/memory"],
 
     "@openpalm/memory-server": ["@openpalm/memory-server@workspace:core/memory"],
+
+    "@openpalm/scheduler": ["@openpalm/scheduler@workspace:packages/scheduler"],
 
     "@playwright/test": ["@playwright/test@1.58.2", "", { "dependencies": { "playwright": "1.58.2" }, "bin": { "playwright": "cli.js" } }, "sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA=="],
 
