@@ -266,11 +266,13 @@ async function executeApiAction(
     logger.warn(`Scheduler: rejecting unsafe action path: ${action.path}`);
     return;
   }
-  const url = `http://localhost:8100${action.path}`;
+  const adminUrl = process.env.OPENPALM_ADMIN_API_URL ?? "http://admin:8100";
+  const url = `${adminUrl}${action.path}`;
+  const { "x-admin-token": _dropped, "authorization": _dropped2, ...safeHeaders } = action.headers ?? {};
   const headers: Record<string, string> = {
+    ...safeHeaders,
     "x-admin-token": adminToken,
     "x-requested-by": "automation",
-    ...action.headers
   };
   if (action.body) {
     headers["content-type"] = "application/json";

@@ -32,6 +32,10 @@ if (!STATE_DIR) {
   process.exit(1);
 }
 
+if (!ADMIN_TOKEN) {
+  logger.warn("OPENPALM_ADMIN_TOKEN is not set — manual trigger endpoint is unauthenticated");
+}
+
 // ── Auth Helper ──────────────────────────────────────────────────────
 
 function requireAuth(req: Request): boolean {

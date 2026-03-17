@@ -8,7 +8,7 @@
 import { Cron } from "croner";
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
   loadAutomations,
   createLogger,
@@ -250,7 +250,7 @@ function startPolling(stateDir: string, adminToken: string): void {
   pollInterval = setInterval(() => {
     try {
       if (!existsSync(dir)) return;
-      const files = Bun.spawnSync(["ls", "-la", dir]).stdout.toString();
+      const files = readdirSync(dir).sort().join("\n");
       if (files !== lastFileList) {
         lastFileList = files;
         logger.info("automation files changed (poll), reloading");

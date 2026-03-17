@@ -164,15 +164,15 @@ services:
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     environment:
       PORT: "8090"
-      OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
+      OPENPALM_STATE_HOME: /app/state
       OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}
       OPENPALM_ADMIN_API_URL: http://admin:8100
       OPENCODE_API_URL: http://assistant:4096
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       MEMORY_API_URL: http://memory:8765
     volumes:
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/automations:/app/automations:ro
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts:/app/artifacts:ro
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/automations:/app/state/automations:ro
+      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts:/app/state/artifacts:ro
     networks: [ assistant_net ]
     depends_on:
       assistant:

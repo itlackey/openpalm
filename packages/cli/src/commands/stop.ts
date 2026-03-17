@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { tryAdminRequest } from '../lib/admin.ts';
+import { tryAdminRequest, getServiceNames } from '../lib/admin.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
 
@@ -23,10 +23,21 @@ export default defineCommand({
 
 export async function runStopAction(services: string[]): Promise<void> {
   if (services.length === 0) {
-    // Try admin delegation first
-    const adminResult = await tryAdminRequest('/admin/uninstall', { method: 'POST' });
+    // Try admin delegation — stop each managed container
+    const adminResult = await tryAdminRequest('/admin/containers/list');
     if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
+      const serviceNames = getServiceNames(adminResult);
+      for (const service of serviceNames) {
+        const result = await tryAdminRequest('/admin/containers/down', {
+          method: 'POST',
+          body: JSON.stringify({ service }),
+        });
+        if (result !== null) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.warn(`Warning: failed to stop ${service} via admin API`);
+        }
+      }
       return;
     }
 

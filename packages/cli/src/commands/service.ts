@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
 import { tryAdminRequest } from '../lib/admin.ts';
 import { runDockerCompose } from '../lib/docker.ts';
-import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
+import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
@@ -49,13 +49,14 @@ const updateCmd = defineCommand({
       return;
     }
 
-    // Direct compose pull + recreate
+    // Direct compose pull + recreate (scoped to managed services)
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
+    const managedServices = buildManagedServiceNames(state);
     console.log('Pulling latest images...');
-    await runDockerCompose([...composeArgs, 'pull']);
+    await runDockerCompose([...composeArgs, 'pull', ...managedServices]);
     console.log('Recreating containers...');
-    await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate']);
+    await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate', ...managedServices]);
     console.log('Update complete.');
   },
 });
