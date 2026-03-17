@@ -10,7 +10,7 @@
     "directory": "packages/cli"
   },
   "bin": {
-    "openpalm": "./src/main.ts"
+    "openpalm": "./bin/openpalm.js"
   },
   "scripts": {
     "start": "bun run src/main.ts",

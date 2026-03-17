@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
@@ -234,6 +234,22 @@ describe('cli main', () => {
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
+  });
+});
+
+describe('npm bin launcher', () => {
+  it('points the published bin to a Bun launcher script instead of a TypeScript source file', () => {
+    const cliPkg = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as {
+      bin?: Record<string, string>;
+    };
+
+    expect(cliPkg.bin?.openpalm).toBe('./bin/openpalm.js');
+
+    const launcher = readFileSync(new URL('../bin/openpalm.js', import.meta.url), 'utf8');
+
+    expect(launcher.startsWith('#!/usr/bin/env bun\n')).toBe(true);
   });
 });
 

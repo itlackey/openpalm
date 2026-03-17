@@ -8,7 +8,7 @@ export type { HostInfo } from './lib/host-info.ts';
 export { upsertEnvValue, resolveRequestedImageTag, reconcileStackEnvImageTag } from './lib/env.ts';
 export { bootstrapInstall } from './commands/install.ts';
 
-const mainCommand = defineCommand({
+export const mainCommand = defineCommand({
   meta: {
     name: 'openpalm',
     version: cliPkg.version,
