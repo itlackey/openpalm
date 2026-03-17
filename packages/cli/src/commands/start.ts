@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty';
-import { adminRequest, isStackRunning } from '../lib/admin.ts';
-import { loadAdminToken } from '../lib/env.ts';
-import { runDockerCompose, composeProjectArgs } from '../lib/docker.ts';
+import { tryAdminRequest } from '../lib/admin.ts';
+import { runDockerCompose } from '../lib/docker.ts';
+import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -23,26 +23,33 @@ export default defineCommand({
 
 export async function runStartAction(services: string[]): Promise<void> {
   if (services.length === 0) {
-    // If admin is reachable and we have a token, use the admin API.
-    // Otherwise fall back to docker compose up directly — this handles
-    // the fresh-install case where no token exists yet.
-    const running = await isStackRunning();
-    const token = await loadAdminToken();
-    if (running && token) {
-      console.log(JSON.stringify(await adminRequest('/admin/install', { method: 'POST' }), null, 2));
+    // Try admin delegation first (gives admin's scheduler/audit a chance to observe)
+    const adminResult = await tryAdminRequest('/admin/install', { method: 'POST' });
+    if (adminResult !== null) {
+      console.log(JSON.stringify(adminResult, null, 2));
       return;
     }
 
-    // Direct docker compose — works without auth
-    await runDockerCompose([...composeProjectArgs(), 'up', '-d']);
+    // Direct compose — stage artifacts and start all managed services
+    const state = await ensureStagedState();
+    const managedServices = buildManagedServiceNames(state);
+    await runDockerCompose([...fullComposeArgs(state), 'up', '-d', ...managedServices]);
     return;
   }
 
+  // Start specific services — try admin first, fall back to direct compose
   for (const service of services) {
-    const result = await adminRequest('/admin/containers/up', {
+    const adminResult = await tryAdminRequest('/admin/containers/up', {
       method: 'POST',
       body: JSON.stringify({ service }),
     });
-    console.log(JSON.stringify(result, null, 2));
+    if (adminResult !== null) {
+      console.log(JSON.stringify(adminResult, null, 2));
+      continue;
+    }
+
+    // Direct compose for specific service
+    const state = await ensureStagedState();
+    await runDockerCompose([...fullComposeArgs(state), 'up', '-d', service]);
   }
 }

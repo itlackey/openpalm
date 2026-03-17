@@ -1,5 +1,7 @@
 import { defineCommand } from 'citty';
-import { adminRequest } from '../lib/admin.ts';
+import { tryAdminRequest } from '../lib/admin.ts';
+import { runDockerCompose } from '../lib/docker.ts';
+import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
 
 export default defineCommand({
   meta: {
@@ -7,6 +9,15 @@ export default defineCommand({
     description: 'Show container status',
   },
   async run() {
-    console.log(JSON.stringify(await adminRequest('/admin/containers/list'), null, 2));
+    // Try admin delegation first for richer output
+    const adminResult = await tryAdminRequest('/admin/containers/list');
+    if (adminResult !== null) {
+      console.log(JSON.stringify(adminResult, null, 2));
+      return;
+    }
+
+    // Direct compose ps
+    const state = await ensureStagedState();
+    await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
   },
 });

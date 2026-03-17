@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { ADMIN_URL, isStackRunning, adminRequest, waitForAdminHealthy } from '../lib/admin.ts';
+import { ADMIN_URL, isAdminReachable, adminRequest, waitForAdminHealthy } from '../lib/admin.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, composeProjectArgs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, openBrowser } from '../lib/docker.ts';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -42,7 +42,7 @@ export default defineCommand({
   async run({ args }) {
     // If the stack is already running AND we have a valid admin token,
     // delegate to the admin API. Otherwise fall through to bootstrap.
-    if (await isStackRunning()) {
+    if (await isAdminReachable()) {
       const token = await loadAdminToken();
       if (token) {
         console.log(JSON.stringify(await adminRequest('/admin/install', { method: 'POST' }), null, 2));

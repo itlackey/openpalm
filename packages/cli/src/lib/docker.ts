@@ -64,6 +64,24 @@ export async function runDockerCompose(args: string[]): Promise<void> {
 }
 
 /**
+ * Runs a `docker compose` command and captures stdout as a string.
+ * Throws on non-zero exit.
+ */
+export async function runDockerComposeCapture(args: string[]): Promise<string> {
+  const proc = Bun.spawn(['docker', 'compose', ...args], {
+    stdout: 'pipe',
+    stderr: 'inherit',
+    stdin: 'inherit',
+  });
+  const output = await new Response(proc.stdout).text();
+  const code = await proc.exited;
+  if (code !== 0) {
+    throw new Error(`docker compose ${args.join(' ')} failed with exit code ${code}`);
+  }
+  return output;
+}
+
+/**
  * Returns the standard compose flags for --project-name, -f, and --env-file.
  */
 export function composeProjectArgs(): string[] {

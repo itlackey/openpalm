@@ -1,5 +1,7 @@
 import { defineCommand } from 'citty';
-import { adminRequest } from '../lib/admin.ts';
+import { tryAdminRequest } from '../lib/admin.ts';
+import { runDockerCompose } from '../lib/docker.ts';
+import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
 import { runLogsAction } from './logs.ts';
 import { runStartAction } from './start.ts';
 import { runStopAction } from './stop.ts';
@@ -40,14 +42,37 @@ const logsCmd = defineCommand({
 const updateCmd = defineCommand({
   meta: { name: 'update', description: 'Pull latest images' },
   async run() {
-    console.log(JSON.stringify(await adminRequest('/admin/containers/pull', { method: 'POST' }), null, 2));
+    // Try admin delegation first
+    const adminResult = await tryAdminRequest('/admin/containers/pull', { method: 'POST' });
+    if (adminResult !== null) {
+      console.log(JSON.stringify(adminResult, null, 2));
+      return;
+    }
+
+    // Direct compose pull + recreate
+    const state = await ensureStagedState();
+    const composeArgs = fullComposeArgs(state);
+    console.log('Pulling latest images...');
+    await runDockerCompose([...composeArgs, 'pull']);
+    console.log('Recreating containers...');
+    await runDockerCompose([...composeArgs, 'up', '-d', '--force-recreate']);
+    console.log('Update complete.');
   },
 });
 
 const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Show container status' },
   async run() {
-    console.log(JSON.stringify(await adminRequest('/admin/containers/list'), null, 2));
+    // Try admin delegation first
+    const adminResult = await tryAdminRequest('/admin/containers/list');
+    if (adminResult !== null) {
+      console.log(JSON.stringify(adminResult, null, 2));
+      return;
+    }
+
+    // Direct compose ps
+    const state = await ensureStagedState();
+    await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
   },
 });
 

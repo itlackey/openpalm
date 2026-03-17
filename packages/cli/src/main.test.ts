@@ -57,7 +57,7 @@ describe('cli main', () => {
     process.env.OPENPALM_ADMIN_TOKEN = originalOpenPalmAdminToken;
   });
 
-  it('calls containers pull for update', async () => {
+  it('calls containers pull for update (via admin when reachable)', async () => {
     const calls: string[] = [];
     process.env.OPENPALM_ADMIN_TOKEN = 'test-token';
     globalThis.fetch = mock(async (input: string | URL) => {
@@ -68,7 +68,10 @@ describe('cli main', () => {
 
     await main(['update']);
 
-    expect(calls).toEqual(['http://localhost:8100/admin/containers/pull']);
+    // tryAdminRequest attempts directly — no separate health check
+    expect(calls).toEqual([
+      'http://localhost:8100/admin/containers/pull',
+    ]);
   });
 
   it('uses ADMIN_TOKEN from the environment for admin requests', async () => {
@@ -85,6 +88,7 @@ describe('cli main', () => {
 
     await main(['update']);
 
+    // Direct request — single call with token header
     expect(adminTokens).toEqual(['env-admin-token']);
   });
 
@@ -110,6 +114,7 @@ describe('cli main', () => {
 
     try {
       await main(['update']);
+      // Direct request — single call with legacy token
       expect(adminTokens).toEqual(['legacy-admin-token']);
     } finally {
       rmSync(base, { recursive: true, force: true });
