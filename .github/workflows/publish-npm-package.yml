@@ -123,26 +123,39 @@ jobs:
           echo "Packed: ${TARBALL}"
 
       - name: Normalize workspace refs in tarball
+        working-directory: ${{ github.workspace }}
         run: |
           WORKDIR=$(mktemp -d)
-          PATCHED_TARBALL="$(dirname "${TARBALL}")/patched-$(basename "${TARBALL}")"
+          PATCHED_TARBALL="${WORKDIR}/$(basename "${TARBALL}")"
           trap 'rm -rf "${WORKDIR}"' EXIT
 
           tar -xzf "${TARBALL}" -C "${WORKDIR}"
 
-          node - "${WORKDIR}/package/package.json" <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
+          node --input-type=module - "${WORKDIR}/package/package.json" <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
 
           const manifestPath = process.argv[2];
-          const rootPackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          let rootPackage;
+          try {
+            rootPackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`Failed to read ${path.resolve('package.json')}: ${message}`);
+          }
           const workspaceVersions = new Map();
 
           for (const workspacePath of rootPackage.workspaces ?? []) {
             const workspaceManifestPath = path.join(workspacePath, 'package.json');
             if (!fs.existsSync(workspaceManifestPath)) continue;
 
-            const workspaceManifest = JSON.parse(fs.readFileSync(workspaceManifestPath, 'utf8'));
+            let workspaceManifest;
+            try {
+              workspaceManifest = JSON.parse(fs.readFileSync(workspaceManifestPath, 'utf8'));
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              throw new Error(`Failed to read ${path.resolve(workspaceManifestPath)}: ${message}`);
+            }
             if (workspaceManifest.name && workspaceManifest.version) {
               workspaceVersions.set(workspaceManifest.name, workspaceManifest.version);
             }
@@ -157,10 +170,17 @@ jobs:
             const suffix = spec.slice('workspace:'.length);
             if (!suffix || suffix === '*') return version;
             if (suffix === '^' || suffix === '~') return `${suffix}${version}`;
-            return suffix;
+            if (suffix === version || suffix === `^${version}` || suffix === `~${version}`) return suffix;
+            throw new Error(`Unsupported workspace spec ${spec} for ${name}`);
           };
 
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          let manifest;
+          try {
+            manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`Failed to read ${path.resolve(manifestPath)}: ${message}`);
+          }
           let changed = false;
 
           for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
