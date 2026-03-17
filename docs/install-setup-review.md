@@ -7,7 +7,11 @@
 
 ## Executive Summary
 
-The install pipeline is well-structured with good layering (shell bootstrap → CLI binary → setup wizard → Docker Compose). However, there are **22 issues** across 5 severity tiers that can cause silent failures, dangling state, or security gaps. The most critical gaps are: no integrity verification of the CLI binary download, no retry logic on asset fetches during bootstrap, a hard-coded setup wizard port with no collision detection, and several race conditions during container startup.
+The install pipeline is well-structured with good layering (shell bootstrap → CLI binary → setup wizard → Docker Compose). However, there are **29 issues** across 5 severity tiers that can cause silent failures, dangling state, or security gaps. The most critical gaps are: no integrity verification of the CLI binary download, no retry logic on asset fetches during bootstrap, a hard-coded setup wizard port with no collision detection, duplicated Ollama URL resolution logic in `performSetup()`, and several race conditions during container startup.
+
+This document includes two parts:
+1. **Issues & Recommendations** (sections 1–6) — grouped by pipeline stage
+2. **Appendix B: Function-by-Function Trace** — detailed walkthrough of every function in the install/setup path with line references
 
 ---
 
@@ -329,6 +333,87 @@ This misses OrbStack (`~/.orbstack/run/docker.sock`), Colima (`~/.colima/default
 
 ---
 
+## 7. Library Functions (`packages/lib/src/control-plane/`)
+
+### 7.1 — HIGH: `performSetup()` duplicates Ollama URL resolution with `buildSecretsFromSetup()`
+
+**Files:** `setup.ts:249-254` and `setup.ts:350-355`
+
+`buildSecretsFromSetup()` creates its own `effectiveConnections` array with the Ollama in-stack URL override. Then `performSetup()` creates a *second* `effectiveConnections` array with the same logic. The secrets are built from one copy, and the memory config / connection profiles are built from the other. While they produce identical results today, this is a maintenance hazard — a change to one will silently diverge from the other.
+
+**Recommendation:** Call `buildSecretsFromSetup()` from within `performSetup()` using the already-resolved `effectiveConnections`, or extract the Ollama override into a shared helper called once.
+
+### 7.2 — HIGH: `performSetup()` uses non-null assertions on `.find()` results
+
+**File:** `setup.ts:387,392,395`
+```typescript
+const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId)!;
+const llmEnvVar = connEnvVarMap.get(llmConnection.id)!;
+const embEnvVar = connEnvVarMap.get(embConnection.id)!;
+```
+
+If `validateSetupInput()` passes but the connection ID is subtly wrong (e.g., whitespace difference), `.find()` returns `undefined` and the `!` assertion causes a cryptic `TypeError: Cannot read properties of undefined` deep in the setup flow instead of a clean error.
+
+**Recommendation:** Replace with explicit checks:
+```typescript
+const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId);
+if (!llmConnection) return { ok: false, error: `LLM connection "${llmConnectionId}" not found` };
+```
+
+### 7.3 — MEDIUM: `createState()` writes then immediately deletes setup token on every restart
+
+**File:** `lifecycle.ts:79`
+
+`createState()` always calls `writeSetupTokenFile()`, which writes `setup-token.txt` then checks `isSetupComplete()`. If setup is complete, it immediately `unlinkSync`s the file it just wrote. On every `applyUpdate()` / `applyUpgrade()` / server restart, this creates and deletes a file unnecessarily.
+
+**Recommendation:** Check `isSetupComplete()` before writing:
+```typescript
+if (!isSetupComplete(stateDir, configDir)) {
+  writeSetupTokenFile(state);
+}
+```
+
+### 7.4 — MEDIUM: `isOllamaEnabled()` re-reads and re-parses `stack.env` on every call
+
+**File:** `staging.ts:48-54`
+
+Called from `buildComposeFileList()`, `buildManagedServices()`, and `persistArtifacts()` — at least 3 times per lifecycle operation. Each call does `existsSync` + `readFileSync` + regex parse. The result never changes within a single lifecycle operation.
+
+**Recommendation:** Cache the result on `ControlPlaneState` or compute it once and pass it through.
+
+### 7.5 — MEDIUM: `resolveHome()` falls back to `/tmp` which is world-writable
+
+**File:** `paths.ts:13`
+```typescript
+return process.env.HOME ?? "/tmp";
+```
+
+If `$HOME` is unset (common in some Docker containers, cron jobs, or systemd services), all XDG paths resolve under `/tmp` (e.g., `/tmp/.config/openpalm`). This is a security issue — other users on the system can read secrets.env. It's also fragile since `/tmp` is often cleared on reboot.
+
+**Recommendation:** Throw an error if `HOME` is unset rather than silently using `/tmp`.
+
+### 7.6 — MEDIUM: `buildMem0Mapping()` hardcodes vector store to `qdrant` while `getDefaultConfig()` uses `sqlite-vec`
+
+**Files:** `connection-mapping.ts:146` vs `memory-config.ts:209`
+
+`buildMem0Mapping()` (called during setup) always writes `provider: 'qdrant'` with `path: '/data/qdrant'`. But `getDefaultConfig()` (used as fallback) returns `provider: 'sqlite-vec'` with `db_path: '/data/memory.db'`. If a user's existing install used the default sqlite-vec config, running setup again switches them to qdrant without migrating data, silently losing their memory store.
+
+**Recommendation:** Either always use one provider, or detect the existing provider and preserve it during re-setup.
+
+### 7.7 — LOW: `quoteEnvValue()` doesn't escape `$` in double-quoted strings
+
+**File:** `env.ts:24`
+```typescript
+const escaped = value.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+return `"${escaped}"`;
+```
+
+If a value contains `$`, it will be interpreted as variable expansion when the env file is sourced by bash. API keys from some providers contain `$` characters. The `dotenv` parser handles this correctly, but `ensureSecrets()` generates lines with `export` prefix, suggesting the file may also be sourced directly.
+
+**Recommendation:** Also escape `$` → `\$` in double-quoted values, or always prefer single quotes.
+
+---
+
 ## Summary of Recommendations by Priority
 
 ### Must-Fix (Critical/High — blocks reliable installs)
@@ -343,6 +428,8 @@ This misses OrbStack (`~/.orbstack/run/docker.sock`), Colima (`~/.colima/default
 | 3.1 | No CSRF on setup wizard API | Medium — Origin header validation |
 | 4.1 | Assistant health check is TCP-only | Trivial — switch to HTTP |
 | 4.3 | `curl \| bash` in Dockerfiles without verification | Medium — pin + verify scripts |
+| 7.1 | Duplicated Ollama URL resolution in `performSetup()` | Small — extract shared helper |
+| 7.2 | Non-null assertions on `.find()` in `performSetup()` | Trivial — add null checks |
 
 ### Should-Fix (Medium — degrades experience or security)
 
@@ -360,6 +447,10 @@ This misses OrbStack (`~/.orbstack/run/docker.sock`), Colima (`~/.colima/default
 | 5.1 | Assistant has no readiness signal | Small |
 | 5.2 | Admin background OpenCode not monitored | Medium |
 | 6.1 | Docker socket detection incomplete | Small |
+| 7.3 | Unnecessary setup token write/delete cycle | Trivial |
+| 7.4 | `isOllamaEnabled()` re-reads file on every call | Small |
+| 7.5 | `resolveHome()` falls back to `/tmp` | Trivial — throw instead |
+| 7.6 | Vector store provider mismatch (qdrant vs sqlite-vec) | Medium |
 
 ### Nice-to-Fix (Low — polish)
 
@@ -371,10 +462,11 @@ This misses OrbStack (`~/.orbstack/run/docker.sock`), Colima (`~/.colima/default
 | 2.8 | `xdg-open` assumed on Linux | Trivial |
 | 4.6 | Guardian healthcheck doesn't check status | Trivial |
 | 5.3 | Socat proxy unmonitored | Small |
+| 7.7 | `$` not escaped in double-quoted env values | Trivial |
 
 ---
 
-## Appendix: Recommended Install Flow (Target State)
+## Appendix A: Recommended Install Flow (Target State)
 
 ```
 User runs: curl -fsSL .../setup.sh | bash
@@ -402,3 +494,253 @@ User runs: curl -fsSL .../setup.sh | bash
        ├─ Wait for all health checks to pass (with timeout)
        └─ Print success + admin URL
 ```
+
+---
+
+## Appendix B: Function-by-Function Trace
+
+This appendix traces every function in the install/setup path, in call order, with file locations and observations.
+
+### B.1 — Shell Bootstrap (`scripts/setup.sh`)
+
+```
+setup.sh
+  ├─ detect_os()          → uname -s mapping
+  ├─ detect_arch()        → uname -m mapping (amd64/arm64)
+  ├─ get_latest_version() → GitHub API /repos/.../releases/latest
+  ├─ curl binary          → single attempt, no checksum ⚠️
+  ├─ chmod +x
+  ├─ export PATH          → session-only ⚠️
+  └─ exec openpalm install "$@"
+```
+
+### B.2 — CLI Install Command (`packages/cli/src/commands/install.ts`)
+
+```
+install command
+  ├─ ensureDocker()           → checks `docker compose version`
+  ├─ ensureXdgDirs()          → creates ~30 directories under CONFIG/DATA/STATE
+  ├─ fetchAsset() × N         → downloads compose, caddyfile, schemas, etc. ⚠️ no retry
+  ├─ ensureSecrets()          → seeds secrets.env if missing
+  ├─ ensureStackEnv()         → seeds stack.env with UID/GID/paths
+  ├─ [first install] startSetupWizard()
+  │     ├─ Bun.serve() on port 8100 ⚠️ hardcoded
+  │     ├─ waitForComplete() → blocks indefinitely ⚠️ no timeout
+  │     └─ POST /api/setup/complete → performSetup()
+  ├─ applyInstall()           → stages artifacts
+  ├─ docker compose pull      → swallowed on error ⚠️
+  ├─ docker compose up -d
+  └─ sleep(3000)              → hardcoded wait ⚠️
+```
+
+### B.3 — `ensureXdgDirs()` — `packages/lib/src/control-plane/paths.ts:41-77`
+
+Creates the full directory tree. Called early in install and again in `performSetup()`.
+
+| Directory | Purpose |
+|-----------|---------|
+| `CONFIG_HOME/` | User-editable root |
+| `CONFIG_HOME/channels/` | Channel definitions |
+| `CONFIG_HOME/connections/` | Connection profiles JSON |
+| `CONFIG_HOME/assistant/` | OpenCode user config |
+| `CONFIG_HOME/automations/` | User automation YAML |
+| `CONFIG_HOME/stash/` | Stashed config backups |
+| `DATA_HOME/` | Opaque service data root |
+| `DATA_HOME/admin/` | Admin OpenCode config |
+| `DATA_HOME/memory/` | Memory vector store + config |
+| `DATA_HOME/assistant/` | System OpenCode config |
+| `DATA_HOME/guardian/` | Guardian service data |
+| `DATA_HOME/caddy/{data,config}/` | Caddy TLS + config |
+| `DATA_HOME/automations/` | System automation YAML |
+| `DATA_HOME/opencode/` | OpenCode runtime data |
+| `STATE_HOME/artifacts/` | Staged compose/caddyfile |
+| `STATE_HOME/artifacts/channels/` | Staged channel overlays |
+| `STATE_HOME/audit/` | Audit log entries |
+| `STATE_HOME/automations/` | Staged automation YAML |
+| `STATE_HOME/opencode/` | OpenCode state |
+
+**Note:** `resolveHome()` (line 12) falls back to `/tmp` if `$HOME` is unset → all dirs under `/tmp/.config/openpalm` ⚠️
+
+### B.4 — `ensureSecrets()` — `packages/lib/src/control-plane/secrets.ts:55-88`
+
+Seeds `CONFIG_HOME/secrets.env` on first run. Idempotent — skips if file exists.
+
+Generated file contains:
+- `OPENPALM_ADMIN_TOKEN=` (empty, filled by setup wizard)
+- `ADMIN_TOKEN=` (empty, filled by setup wizard)
+- All LLM provider API key placeholders (empty)
+- `MEMORY_USER_ID` from env or `"default_user"` ⚠️ poor default
+- `MEMORY_AUTH_TOKEN` auto-generated (32 random bytes, hex)
+- `OWNER_NAME` / `OWNER_EMAIL` from env
+
+**Observation:** Uses `export` prefix on all lines. This means the file can be `source`d by bash, but `quoteEnvValue()` doesn't escape `$` in double-quoted strings ⚠️
+
+### B.5 — `createState()` — `packages/lib/src/control-plane/lifecycle.ts:46-82`
+
+State factory. Called by `performSetup()` if no state is passed, and by the admin server on startup.
+
+```
+createState(adminToken?)
+  ├─ resolveStateHome()   → STATE_HOME path
+  ├─ resolveConfigHome()  → CONFIG_HOME path
+  ├─ loadSecretsEnvFile() → parse secrets.env, filter to ^[A-Z0-9_]+$ keys
+  ├─ Resolve admin token: arg > secrets.OPENPALM_ADMIN_TOKEN > secrets.ADMIN_TOKEN > env > ""
+  ├─ Initialize services: all CORE_SERVICES → "stopped"
+  ├─ resolveDataHome()    → DATA_HOME path
+  ├─ loadPersistedChannelSecrets() → parse CHANNEL_*_SECRET from stack.env
+  ├─ randomHex(16)        → generate setup token
+  └─ writeSetupTokenFile() → writes or deletes setup-token.txt ⚠️ always writes first
+```
+
+**Observation:** `writeSetupTokenFile()` is called unconditionally. If setup is complete, it writes the file then immediately deletes it — a pointless filesystem operation on every state creation.
+
+### B.6 — `performSetup()` — `packages/lib/src/control-plane/setup.ts:330-459`
+
+Core setup orchestration. Called by CLI setup wizard and admin UI.
+
+```
+performSetup(input, assetProvider, opts?)
+  ├─ validateSetupInput(input)         → field-level validation
+  ├─ createState(adminToken)           → if no state passed
+  ├─ Map connections with Ollama override ⚠️ duplicated from buildSecretsFromSetup
+  ├─ buildConnectionEnvVarMap()        → connectionId → env var name
+  ├─ buildSecretsFromSetup(input)      → ⚠️ also does Ollama override internally
+  ├─ ensureXdgDirs()                   → create directory tree
+  ├─ ensureSecrets(state)              → seed secrets.env
+  ├─ ensureConnectionProfilesStore()   → create connections/ dir
+  ├─ updateSecretsEnv(state, updates)  → merge updates into secrets.env
+  ├─ writeSetupTokenFile(state)        → update admin token in file
+  ├─ Build memory config:
+  │   ├─ Find LLM/embedding connections ⚠️ non-null assertions on .find()
+  │   ├─ Resolve env var references
+  │   ├─ Look up embedding dimensions (fallback: 1536)
+  │   ├─ buildMem0Mapping()            → ⚠️ always uses qdrant, not sqlite-vec
+  │   └─ writeMemoryConfig()           → DATA_HOME/memory/default_config.json
+  ├─ writeConnectionsDocument()        → CONFIG_HOME/connections/profiles.json
+  ├─ ensureOpenCodeConfig()            → CONFIG_HOME/assistant/opencode.json
+  ├─ ensureOpenCodeSystemConfig()      → DATA_HOME/assistant/opencode.jsonc + AGENTS.md
+  ├─ ensureAdminOpenCodeConfig()       → DATA_HOME/admin/opencode.jsonc + AGENTS.md
+  ├─ ensureMemoryDir()                 → DATA_HOME/memory/ (migrates legacy openmemory/)
+  └─ applyInstall(state, assetProvider)→ stages + persists artifacts
+```
+
+### B.7 — `applyInstall()` → `reconcileCore()` — `lifecycle.ts:113-141`
+
+```
+applyInstall(state, assets)
+  └─ reconcileCore(state, assets, { activateServices: true, seedMemoryConfig: true })
+       ├─ Set all CORE_SERVICES → "running"
+       ├─ ensureMemoryDir()
+       ├─ ensureCoreAutomations(assets) → write cleanup-logs.yml, cleanup-data.yml, validate-config.yml
+       ├─ ensureMemoryConfig(dataDir)   → write default_config.json if missing
+       ├─ stageArtifacts(state, assets) → returns { compose, caddyfile } strings
+       ├─ persistArtifacts(state, assets) → writes everything to STATE_HOME/artifacts/
+       └─ Return list of active services
+```
+
+### B.8 — `stageArtifacts()` — `staging.ts:312-323`
+
+```
+stageArtifacts(state, assets)
+  ├─ stageCompose()   → readCoreCompose(assets) → ensure + read DATA_HOME/docker-compose.yml
+  └─ stageCaddyfile() → readCoreCaddyfile(assets) → ensure + read DATA_HOME/caddy/Caddyfile
+```
+
+Both `readCoreCompose()` and `readCoreCaddyfile()` call their respective `ensure*()` functions, which seed the file from the asset provider if it doesn't exist, or back up + overwrite if the content has changed (compose only).
+
+### B.9 — `persistArtifacts()` — `staging.ts:342-376`
+
+```
+persistArtifacts(state, assets)
+  ├─ mkdirSync artifacts/ and channels/
+  ├─ Write docker-compose.yml to artifacts/
+  ├─ Write Caddyfile to artifacts/
+  ├─ [if Ollama enabled] Write ollama.yml to artifacts/
+  ├─ Generate channel HMAC secrets for new channels (randomHex(16))
+  ├─ stageStackEnv()          → merge admin-managed vars into stack.env, copy to artifacts/
+  ├─ stageSecretsEnv()        → copy secrets.env to artifacts/
+  ├─ stageChannelYmlFiles()   → copy channel YMLs to artifacts/channels/
+  ├─ stageChannelCaddyfiles() → scope caddyfiles (public vs LAN), write to artifacts/channels/{public,lan}/
+  ├─ stageAutomationFiles()   → validate + copy automation YAMLs to STATE_HOME/automations/
+  ├─ stageEnvSchemas()        → copy env schemas to DATA_HOME/assistant/env-schema/
+  └─ Write manifest.json with SHA-256 hashes
+```
+
+### B.10 — `buildComposeFileList()` + `buildManagedServices()` — `lifecycle.ts:222-254`
+
+Called by the CLI to build `docker compose` arguments.
+
+```
+buildComposeFileList(state) → string[]
+  ├─ artifacts/docker-compose.yml (always)
+  ├─ artifacts/ollama.yml (if Ollama enabled) ⚠️ re-reads stack.env
+  └─ artifacts/channels/*.yml (discovered)
+
+buildManagedServices(state) → string[]
+  ├─ CORE_SERVICES (caddy, memory, assistant, guardian, scheduler, docker-socket-proxy)
+  ├─ "ollama" (if enabled) ⚠️ re-reads stack.env again
+  └─ "channel-{name}" for each channel YML
+```
+
+### B.11 — `buildEnvFiles()` — `staging.ts:152-154`
+
+```
+buildEnvFiles(state) → string[]
+  └─ [stack.env, secrets.env].filter(existsSync)
+```
+
+Returns paths to staged env files for `--env-file` docker compose args. Load order matters: stack.env first, secrets.env second (secrets override stack).
+
+### B.12 — `validateSetupInput()` — `setup.ts:87-225`
+
+Validates the setup wizard payload. Key checks:
+- `adminToken`: required, ≥8 chars
+- `connections[]`: non-empty, valid IDs (alphanumeric + `_-`), no duplicates, provider must be in `WIZARD_PROVIDERS` set
+- `assignments.llm` and `assignments.embeddings`: required with connectionId + model
+- Cross-validates: assignment connectionIds must reference an actual connection
+
+**Observation:** Good validation, but the `WIZARD_PROVIDERS` set is hardcoded. Adding a new provider requires a code change, not config.
+
+### B.13 — `buildSecretsFromSetup()` — `setup.ts:235-282`
+
+Builds the env var map for secrets.env updates. Key behaviors:
+- Duplicates `OPENPALM_ADMIN_TOKEN` as `ADMIN_TOKEN` for backward compat
+- Sanitizes owner name/email: strips `\r\n\0`, truncates to 200 chars (prevents env-file injection)
+- Resolves Ollama in-stack URL override ⚠️ duplicated in `performSetup()`
+- Maps connection API keys to env vars via `buildConnectionEnvVarMap()`
+- Sets `SYSTEM_LLM_PROVIDER`, `SYSTEM_LLM_MODEL`, `SYSTEM_LLM_BASE_URL`, `OPENAI_BASE_URL`
+- Normalizes `OPENAI_BASE_URL` to end with `/v1`
+
+### B.14 — `buildConnectionEnvVarMap()` — `setup.ts:290-311`
+
+Maps `connectionId` → env var name using `PROVIDER_KEY_MAP`. For duplicate providers, appends `_{connectionId}` suffix. Validates against `SAFE_ENV_KEY_RE` (`^[A-Z][A-Z0-9_]*$`).
+
+**Observation:** The duplicate handling (`OPENAI_API_KEY_myconn2`) produces valid but non-standard env var names that may confuse users.
+
+### B.15 — `mergeEnvContent()` — `env.ts:28-70`
+
+Core env file merger. Parses existing content line-by-line, matches keys (with optional `export` prefix), and replaces values in-place. New keys are appended at the end with an optional section header.
+
+Key behaviors:
+- `uncomment: true` → unmatches `# KEY=value` lines and activates them
+- Preserves `export` prefix if the original line had one
+- New keys added without `export` prefix (inconsistency with `ensureSecrets()` which uses `export`)
+- `quoteEnvValue()` handles empty values, single quotes, double quotes with `\n`/`\r` escaping
+- ⚠️ Does not escape `$` in double-quoted values
+
+### B.16 — Key Asset Files Written During Install
+
+| File | Written By | Purpose |
+|------|-----------|---------|
+| `CONFIG_HOME/secrets.env` | `ensureSecrets()` → `updateSecretsEnv()` | API keys, admin token |
+| `DATA_HOME/stack.env` | `stageStackEnv()` | XDG paths, UID/GID, image tag, channel secrets |
+| `DATA_HOME/docker-compose.yml` | `ensureCoreCompose()` | Source-of-truth compose |
+| `DATA_HOME/caddy/Caddyfile` | `ensureCoreCaddyfile()` | Source-of-truth Caddyfile |
+| `DATA_HOME/memory/default_config.json` | `writeMemoryConfig()` | Mem0 LLM/embedder/vector config |
+| `CONFIG_HOME/connections/profiles.json` | `writeConnectionsDocument()` | Connection profiles + assignments |
+| `STATE_HOME/artifacts/docker-compose.yml` | `persistArtifacts()` | Staged copy for `docker compose` |
+| `STATE_HOME/artifacts/Caddyfile` | `persistArtifacts()` | Staged copy for Caddy |
+| `STATE_HOME/artifacts/stack.env` | `stageStackEnv()` | Staged copy with admin-managed vars |
+| `STATE_HOME/artifacts/secrets.env` | `stageSecretsEnv()` | Staged copy for `--env-file` |
+| `STATE_HOME/artifacts/manifest.json` | `persistArtifacts()` | SHA-256 hashes + metadata |
+| `STATE_HOME/setup-token.txt` | `writeSetupTokenFile()` | One-time setup token (deleted after setup) |
