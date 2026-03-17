@@ -172,13 +172,13 @@ Headless Linux servers or minimal WSL installs don't have `xdg-open`. The error 
 
 ## 3. Setup Wizard (`packages/cli/src/setup-wizard/server.ts`)
 
-### 3.1 — HIGH: No CSRF or origin validation on setup API
+### 3.1 — LOW: No CSRF or origin validation on setup API
 
 **File:** `server.ts:202-226`
 
-The setup wizard serves on `127.0.0.1:8100` with no CSRF tokens, no `Origin` header validation, and no `SameSite` cookies. A malicious webpage opened in the same browser session could POST to `http://localhost:8100/api/setup/complete` with crafted JSON and configure the stack with attacker-chosen settings (e.g., pointing to a malicious LLM provider).
+The setup wizard serves on `127.0.0.1:8100` with no CSRF tokens or `Origin` header validation. In theory a malicious webpage could POST to `http://localhost:8100/api/setup/complete`. However, the wizard is short-lived (exits after one completion), bound to localhost only, and protected by the setup token — making this a very low practical risk.
 
-**Recommendation:** Validate `Origin` / `Referer` headers on all POST endpoints. Alternatively, generate a one-time CSRF token and require it in a custom header.
+**Recommendation:** No immediate action needed. If the wizard ever becomes long-lived or network-accessible, revisit with Origin header validation.
 
 ### 3.2 — MEDIUM: No timeout on wizard completion
 
@@ -425,7 +425,7 @@ If a value contains `$`, it will be interpreted as variable expansion when the e
 | 2.1 | No retry on `fetchAsset()` | Small — wrap fetch in retry loop |
 | 2.3 | Setup wizard port collision undetected | Small — port availability check |
 | 2.4 | Silent pull failure on first install | Medium — check local image cache |
-| 3.1 | No CSRF on setup wizard API | Medium — Origin header validation |
+| 3.1 | ~~No CSRF on setup wizard API~~ *(downgraded — localhost-only, short-lived)* | — |
 | 4.1 | Assistant health check is TCP-only | Trivial — switch to HTTP |
 | 4.3 | `curl \| bash` in Dockerfiles without verification | Medium — pin + verify scripts |
 | 7.1 | Duplicated Ollama URL resolution in `performSetup()` | Small — extract shared helper |
@@ -463,6 +463,7 @@ If a value contains `$`, it will be interpreted as variable expansion when the e
 | 4.6 | Guardian healthcheck doesn't check status | Trivial |
 | 5.3 | Socat proxy unmonitored | Small |
 | 7.7 | `$` not escaped in double-quoted env values | Trivial |
+| 3.1 | No CSRF on setup wizard API (localhost-only, short-lived) | Trivial |
 
 ---
 
