@@ -110,6 +110,15 @@ jobs:
             echo "BUMPED=true" >> "$GITHUB_ENV"
           fi
 
+      - name: Refresh Bun lockfile workspace metadata
+        run: |
+          bun update --lockfile-only
+          if git diff --quiet -- bun.lock; then
+            echo "LOCKFILE_CHANGED=false" >> "$GITHUB_ENV"
+          else
+            echo "LOCKFILE_CHANGED=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Build
         if: inputs.needs-build
         working-directory: ${{ inputs.package-dir }}
@@ -117,91 +126,18 @@ jobs:
 
       - name: Pack with Bun
         working-directory: ${{ inputs.package-dir }}
+        shell: bash
         run: |
-          TARBALL=$(bun pm pack --quiet 2>&1 | tail -1)
-          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
-          echo "Packed: ${TARBALL}"
-
-      - name: Normalize workspace refs in tarball
-        working-directory: ${{ github.workspace }}
-        run: |
-          WORKDIR=$(mktemp -d)
-          PATCHED_TARBALL="${WORKDIR}/$(basename "${TARBALL}")"
-          trap 'rm -rf "${WORKDIR}"' EXIT
-
-          tar -xzf "${TARBALL}" -C "${WORKDIR}"
-
-          node --input-type=module - "${WORKDIR}/package/package.json" <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-
-          const manifestPath = process.argv[2];
-          let rootPackage;
-          try {
-            rootPackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            throw new Error(`Failed to read ${path.resolve('package.json')}: ${message}`);
-          }
-          const workspaceVersions = new Map();
-
-          for (const workspacePath of rootPackage.workspaces ?? []) {
-            const workspaceManifestPath = path.join(workspacePath, 'package.json');
-            if (!fs.existsSync(workspaceManifestPath)) continue;
-
-            let workspaceManifest;
-            try {
-              workspaceManifest = JSON.parse(fs.readFileSync(workspaceManifestPath, 'utf8'));
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              throw new Error(`Failed to read ${path.resolve(workspaceManifestPath)}: ${message}`);
-            }
-            if (workspaceManifest.name && workspaceManifest.version) {
-              workspaceVersions.set(workspaceManifest.name, workspaceManifest.version);
-            }
-          }
-
-          const resolveWorkspaceVersion = (name, spec) => {
-            const version = workspaceVersions.get(name);
-            if (!version) {
-              throw new Error(`Missing workspace version for ${name}`);
-            }
-
-            const suffix = spec.slice('workspace:'.length);
-            if (!suffix || suffix === '*') return version;
-            if (suffix === '^' || suffix === '~') return `${suffix}${version}`;
-            if (suffix === version || suffix === `^${version}` || suffix === `~${version}`) return suffix;
-            throw new Error(`Unsupported workspace spec ${spec} for ${name}`);
-          };
-
-          let manifest;
-          try {
-            manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            throw new Error(`Failed to read ${path.resolve(manifestPath)}: ${message}`);
-          }
-          let changed = false;
-
-          for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-            const deps = manifest[field];
-            if (!deps) continue;
-
-            for (const [name, spec] of Object.entries(deps)) {
-              if (typeof spec !== 'string' || !spec.startsWith('workspace:')) continue;
-              deps[name] = resolveWorkspaceVersion(name, spec);
-              changed = true;
-            }
-          }
-
-          if (changed) {
-            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-          }
-          NODE
-
-          tar -czf "${PATCHED_TARBALL}" -C "${WORKDIR}" package
-          echo "TARBALL=${PATCHED_TARBALL}" >> "$GITHUB_ENV"
-          echo "Patched: ${PATCHED_TARBALL}"
+          PACK_DIR="$(mktemp -d)"
+          bun pm pack --destination "${PACK_DIR}" --quiet
+          mapfile -t TARBALLS < <(find "${PACK_DIR}" -maxdepth 1 -name '*.tgz')
+          if [ "${#TARBALLS[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one tarball in ${PACK_DIR}, found ${#TARBALLS[@]}"
+            exit 1
+          fi
+          TARBALL_PATH="${TARBALLS[0]}"
+          echo "TARBALL=${TARBALL_PATH}" >> "$GITHUB_ENV"
+          echo "Packed: ${TARBALL_PATH}"
 
       - name: Publish with npm
         working-directory: ${{ inputs.package-dir }}
@@ -222,12 +158,20 @@ jobs:
           }
 
       - name: Commit version bump
-        if: env.BUMPED == 'true'
+        if: env.BUMPED == 'true' || env.LOCKFILE_CHANGED == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ inputs.package-dir }}/package.json"
-          git commit -m "chore(${{ inputs.package-name }}): bump to $(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
+          VERSION="$(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
+          if [ "${BUMPED:-false}" = 'true' ] && [ "${LOCKFILE_CHANGED}" = 'true' ]; then
+            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): bump to ${VERSION} and sync lockfile"
+          elif [ "${BUMPED:-false}" = 'true' ]; then
+            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): bump to ${VERSION}"
+          else
+            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): sync lockfile for ${VERSION}"
+          fi
+          git add "${{ inputs.package-dir }}/package.json" bun.lock
+          git commit -m "${COMMIT_MESSAGE}"
           # Retry with rebase to handle concurrent publish workflows
           for i in 1 2 3 4 5; do
             git pull --rebase origin "${{ github.ref_name }}" && git push && exit 0
