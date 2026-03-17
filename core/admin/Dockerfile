@@ -9,13 +9,23 @@ WORKDIR /workspace
 # Install admin deps at workspace root so node_modules lands at /workspace/.
 # Standard Node module resolution from packages/admin/ walks up to
 # /workspace/node_modules/ — no symlinks, no workspace protocol.
+# Strip workspace:* refs before install (lib is copied manually below).
 COPY packages/admin/package.json .
-RUN npm install
+RUN node -e "\
+  const fs = require('fs');\
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));\
+  delete pkg.dependencies['@openpalm/lib'];\
+  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\\n');" \
+  && npm install
+
+# Copy @openpalm/lib source into node_modules (private package, not on npm).
+# Lib's deps (croner, yaml, dotenv) are already installed by admin above.
+COPY packages/lib/ node_modules/@openpalm/lib/
 
 # Copy source into monorepo layout
 COPY packages/admin/ packages/admin/
 COPY assets/ assets/
-COPY registry/ registry/
+COPY registry/ registry/ registry/
 
 # Build SvelteKit (adapter-node produces self-contained build/)
 WORKDIR /workspace/packages/admin
@@ -78,7 +88,13 @@ ENV PATH="/tmp/.bun/bin:/usr/local/bin:$PATH"
 WORKDIR /app
 COPY --from=build /workspace/packages/admin/build ./build
 COPY --from=build /workspace/packages/admin/package.json ./
-RUN npm install --omit=dev
+# Strip workspace:* refs — lib is bundled into build output by Vite
+RUN node -e "\
+  const fs = require('fs');\
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));\
+  delete pkg.dependencies['@openpalm/lib'];\
+  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\\n');" \
+  && npm install --omit=dev
 
 RUN mkdir -p /state /data && chown node:node /state /data
 

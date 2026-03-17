@@ -310,6 +310,7 @@ jobs:
             - [openpalm](https://www.npmjs.com/package/openpalm)
             - [@openpalm/assistant-tools](https://www.npmjs.com/package/@openpalm/assistant-tools)
             - [@openpalm/admin-tools](https://www.npmjs.com/package/@openpalm/admin-tools)
+            - [@openpalm/lib](https://www.npmjs.com/package/@openpalm/lib)
 
             ## Quick Install
 
