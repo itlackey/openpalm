@@ -98,7 +98,7 @@ ENV HOME=/tmp
 ENV PORT=8100
 EXPOSE 8100 4097
 
-HEALTHCHECK --interval=10s --timeout=3s --start_period=15s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
 CMD ["/usr/local/bin/admin-entrypoint.sh"]

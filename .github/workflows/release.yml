@@ -214,9 +214,6 @@ jobs:
           - os: windows-latest
             script: build:windows-x64
             artifact: openpalm-cli-windows-x64.exe
-          - os: windows-latest
-            script: build:windows-arm64
-            artifact: openpalm-cli-windows-arm64.exe
 
     steps:
       - name: Checkout
@@ -312,6 +309,7 @@ jobs:
             - [@openpalm/channel-slack](https://www.npmjs.com/package/@openpalm/channel-slack)
             - [openpalm](https://www.npmjs.com/package/openpalm)
             - [@openpalm/assistant-tools](https://www.npmjs.com/package/@openpalm/assistant-tools)
+            - [@openpalm/admin-tools](https://www.npmjs.com/package/@openpalm/admin-tools)
 
             ## Quick Install
 
@@ -328,4 +326,3 @@ jobs:
             dist/openpalm-cli-darwin-x64
             dist/openpalm-cli-darwin-arm64
             dist/openpalm-cli-windows-x64.exe
-            dist/openpalm-cli-windows-arm64.exe
