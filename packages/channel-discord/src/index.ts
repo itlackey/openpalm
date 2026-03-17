@@ -252,10 +252,22 @@ export default class DiscordChannel extends BaseChannel {
     }
   }
 
+  /** Track processed message IDs to prevent duplicate processing from Discord gateway re-deliveries. */
+  private processedMessages = new Set<string>();
+  private readonly PROCESSED_MSG_TTL_MS = 60_000;
+
+  private markProcessed(messageId: string): boolean {
+    if (this.processedMessages.has(messageId)) return false;
+    this.processedMessages.add(messageId);
+    setTimeout(() => this.processedMessages.delete(messageId), this.PROCESSED_MSG_TTL_MS);
+    return true;
+  }
+
   private async onMessage(message: Message): Promise<void> {
     if (message.author.bot) return;
     if (!message.content) return;
     if (!this.shouldRespond(message)) return;
+    if (!this.markProcessed(message.id)) return;
 
     const userInfo = this.extractUserInfo(message);
     const permResult = checkPermissions(this.permissions, userInfo);
@@ -276,10 +288,19 @@ export default class DiscordChannel extends BaseChannel {
         thread = message.channel as ThreadChannel;
       } else {
         const threadName = text.split("\n")[0].slice(0, 100).trim() || "Conversation";
-        thread = await message.startThread({
-          name: threadName,
-          autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
-        });
+        try {
+          thread = await message.startThread({
+            name: threadName,
+            autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+          });
+        } catch (threadErr) {
+          // Thread may already exist if Discord re-delivered the event
+          if (message.thread) {
+            thread = message.thread as ThreadChannel;
+          } else {
+            throw threadErr;
+          }
+        }
       }
 
       this.touchThread(thread.id);
