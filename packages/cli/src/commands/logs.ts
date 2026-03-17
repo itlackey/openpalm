@@ -1,21 +1,10 @@
 import { defineCommand } from 'citty';
-import { composeProjectArgs } from '../lib/docker.ts';
+import { runDockerCompose } from '../lib/docker.ts';
+import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
 
 export async function runLogsAction(services: string[]): Promise<void> {
-  const composeArgs = [
-    'compose',
-    ...composeProjectArgs(),
-    'logs',
-    '--tail',
-    '100',
-    ...services,
-  ];
-
-  const proc = Bun.spawn(['docker', ...composeArgs], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    throw new Error(`Docker compose logs command failed (exit code ${exitCode})`);
-  }
+  const state = await ensureStagedState();
+  await runDockerCompose([...fullComposeArgs(state), 'logs', '--tail', '100', ...services]);
 }
 
 export default defineCommand({

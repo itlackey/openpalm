@@ -1,14 +1,13 @@
 # packages/admin — Admin UI & Control Plane
 
-SvelteKit application that serves as the single control-plane component for OpenPalm. It is the only service with Docker socket access, mediating all lifecycle operations for the stack.
+SvelteKit application that provides a web UI and API for managing the OpenPalm stack. Admin is optional — the CLI handles all lifecycle operations directly. When present, admin provides a web dashboard and API for remote/assistant-driven operations via docker-socket-proxy.
 
 ## Responsibilities
 
-- **Setup wizard** — first-run onboarding: provider selection, channel setup
-- **Admin dashboard** — install/update/uninstall stack, manage channels, view audit log
-- **REST API** (`/admin/*`) — authenticated API consumed by the UI, assistant, and CLI
-- **Artifact staging** — assembles `docker-compose.yml`, `Caddyfile`, `secrets.env`, and channel overlays from CONFIG/DATA → STATE
-- **Automations scheduler** — runs user-defined YAML automations on a cron schedule
+- **Admin dashboard** — manage stack, channels, connections, view audit log
+- **REST API** (`/admin/*`) — authenticated API consumed by the UI, assistant tools, and CLI
+- **Artifact staging** — assembles `docker-compose.yml`, `Caddyfile`, `secrets.env`, and channel overlays from CONFIG/DATA → STATE (delegates to `@openpalm/lib`)
+- **Automations listing** — read-only view of automation configs (execution handled by the scheduler sidecar)
 - **Registry catalog** — bundles channel and automation definitions from `registry/` at build time
 
 ## Structure
@@ -32,7 +31,7 @@ src/
 │   │   ├── audit.ts          # Audit logging
 │   │   ├── registry.ts       # Channel/automation registry catalog
 │   │   ├── registry-sync.ts  # Remote registry sync
-│   │   ├── scheduler.ts      # Automations cron scheduler
+│   │   ├── scheduler.ts      # Automations parsing (re-exports from @openpalm/lib)
 │   │   ├── setup-status.ts   # First-run setup state
 │   │   ├── memory-config.ts  # Memory provider/model config
 │   │   └── logger.ts         # Structured logger
@@ -41,7 +40,6 @@ src/
 │   ├── api.ts                # Client-side API helpers
 │   └── types.ts              # Shared TypeScript types
 └── routes/
-    ├── setup/                # Setup wizard pages
     └── admin/                # Admin API endpoints (+server.ts files)
 ```
 

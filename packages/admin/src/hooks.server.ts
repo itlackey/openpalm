@@ -24,7 +24,6 @@ import {
   resolveConfigForPush,
   pushConfigToMemory
 } from "$lib/server/control-plane.js";
-import { startScheduler, stopScheduler } from "$lib/server/scheduler.js";
 
 const logger = createLogger("admin");
 
@@ -46,8 +45,6 @@ function runStartupApply(): void {
     ensureStackSchema();
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
-
-    startScheduler(state.stateDir, state.adminToken);
 
     appendAudit(
       state,
@@ -120,6 +117,4 @@ runStartupApply();
 // Fire-and-forget: push memory config after startup apply
 void pushMemoryConfigOnStartup();
 
-// Graceful shutdown — stop scheduled jobs
-process.on("SIGTERM", () => { stopScheduler(); });
-process.on("SIGINT", () => { stopScheduler(); });
+// Scheduler is now a dedicated sidecar — admin has zero background processes.

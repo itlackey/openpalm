@@ -1,0 +1,29 @@
+{
+  "name": "@openpalm/admin-tools",
+  "version": "0.9.0",
+  "type": "module",
+  "license": "MPL-2.0",
+  "description": "OpenPalm admin API tools for OpenCode — stack management, diagnostics, and lifecycle operations",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "opencode",
+    "AGENTS.md"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --format esm --target node",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm",
+    "directory": "packages/admin-tools"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.2.15"
+  }
+}

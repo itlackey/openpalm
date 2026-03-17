@@ -199,10 +199,9 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
       const state = sessions.get(sessionId);
       if (!state) return;
 
-      const isAdminTool = toolName.startsWith('admin-');
-      if (!isAdminTool && !isProjectCodeTool(toolName)) return;
+      if (!isProjectCodeTool(toolName)) return;
 
-      const scopedMemories = await retrieveToolGuidance(state, toolName, isAdminTool);
+      const scopedMemories = await retrieveToolGuidance(state, toolName);
       if (scopedMemories.length === 0) return;
 
       const guidance = formatMemoriesForContext(
@@ -215,9 +214,7 @@ export const MemoryContextPlugin: Plugin = async (ctx) => {
       const queue = pendingToolFeedback.get(executionId) ?? [];
       queue.push({
         memoryIds: scopedMemories.map((memory) => memory.id),
-        identity: isAdminTool
-          ? getSessionIdentity(state, 'stack')
-          : getSessionIdentity(state, 'personal'),
+        identity: getSessionIdentity(state, 'personal'),
         startedAt: Date.now(),
       });
       pendingToolFeedback.set(executionId, queue);
@@ -442,18 +439,7 @@ function buildSessionContextBlock(
 async function retrieveToolGuidance(
   state: SessionState,
   toolName: string,
-  isAdminTool: boolean,
 ): Promise<MemoryItem[]> {
-  if (isAdminTool) {
-    return searchMemories(`openpalm procedure for ${toolName.replace(/_/g, ' ')} operations`, {
-      size: 5,
-      category: 'procedural',
-      timeoutMs: 1_200,
-      highSignalOnly: true,
-      ...getSessionIdentity(state, 'stack'),
-    });
-  }
-
   const [personalProcedural, projectPatterns] = await Promise.all([
     searchMemories(`preferred workflow for ${toolName.replace(/_/g, ' ')}`, {
       size: 4,
@@ -625,7 +611,7 @@ function extractRecurringOutcomeSignals(episodes: MemoryItem[], appId: string): 
     const text = episode.content.toLowerCase();
     for (const token of text.split(/[^a-z0-9_-]+/g)) {
       if (!token || token.length < 4) continue;
-      if (!token.includes('admin-') && !token.includes('memory-') && !token.includes('bash')) {
+      if (!token.includes('memory-') && !token.includes('bash')) {
         continue;
       }
       counts.set(token, (counts.get(token) ?? 0) + 1);

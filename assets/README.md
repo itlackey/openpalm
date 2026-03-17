@@ -1,9 +1,12 @@
 # OpenPalm Configuration Files
 
-This directory contains the static infrastructure configuration for OpenPalm. These files work in two modes:
+This directory contains the static infrastructure configuration for OpenPalm. These files are consumed in three modes:
 
 1. **Standalone** — Copy to a directory, create a `.env` or `secrets.env`, run `docker compose up`.
-2. **Admin-managed** — The admin service bundles channel definitions from `registry/` at build time as a catalog. Channels are installed on demand via `POST /admin/channels/install`, which copies files to `CONFIG_HOME/channels/`. Channels can also be added manually by dropping files into the same directory.
+2. **CLI-managed** — The CLI reads assets from `DATA_HOME` (persisted during install) via `FilesystemAssetProvider`. The CLI stages artifacts, manages compose lifecycle, and serves a setup wizard during install.
+3. **Admin-managed** — The admin service bundles assets at build time via Vite (`ViteAssetProvider`) and channel definitions from `registry/` via `ViteRegistryProvider`. Channels are installed on demand via `POST /admin/channels/install`, which copies files to `CONFIG_HOME/channels/`. Channels can also be added manually by dropping files into the same directory.
+
+Both CLI and admin use the same shared control-plane library (`@openpalm/lib`) for all staging, lifecycle, and configuration logic. The only difference is how assets are loaded: CLI reads from the filesystem, admin reads from Vite-bundled imports.
 
 `CONFIG_HOME` is the user-owned persistent source of truth. Automatic lifecycle
 operations are non-destructive for existing user config files and only seed

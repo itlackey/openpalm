@@ -5,7 +5,7 @@ export const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || 'http://localhost
 /**
  * Returns true if the admin health endpoint is reachable.
  */
-export async function isStackRunning(): Promise<boolean> {
+export async function isAdminReachable(): Promise<boolean> {
   try {
     const response = await fetch(`${ADMIN_URL}/health`, {
       method: 'GET',
@@ -16,6 +16,11 @@ export async function isStackRunning(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * @deprecated Use isAdminReachable() instead. Kept for backward compatibility.
+ */
+export const isStackRunning = isAdminReachable;
 
 /**
  * Makes an authenticated request to the admin API.
@@ -54,12 +59,32 @@ export async function adminRequest(path: string, init?: RequestInit): Promise<un
 }
 
 /**
+ * Try to delegate an operation to the admin API.
+ * Returns the result if admin is reachable and has a valid token.
+ * Returns null if admin is unreachable or no token is available.
+ * Attempts the request directly — no separate health check round-trip.
+ */
+export async function tryAdminRequest(path: string, init?: RequestInit): Promise<unknown | null> {
+  const token = await loadAdminToken();
+  if (!token) return null;
+
+  try {
+    return await adminRequest(path, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Waits for the admin health endpoint to become healthy (up to 120s).
  */
 export async function waitForAdminHealthy(): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < 120_000) {
-    if (await isStackRunning()) {
+    if (await isAdminReachable()) {
       return;
     }
     await Bun.sleep(3000);

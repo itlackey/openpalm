@@ -24,6 +24,7 @@
     "build:windows-arm64": "bun build src/main.ts --compile --target=bun-windows-arm64 --outfile dist/openpalm-cli-windows-arm64.exe"
   },
   "dependencies": {
+    "@openpalm/lib": "workspace:*",
     "citty": "^0.2.1"
   }
 }

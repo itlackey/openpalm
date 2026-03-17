@@ -400,6 +400,8 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(dataHome, "assistant"), { recursive: true });
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), "old-opencode-content");
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), "old-agents-content");
+    mkdirSync(join(dataHome, "admin"), { recursive: true });
+    writeFileSync(join(dataHome, "admin/opencode.jsonc"), "old-admin-opencode-content");
     writeFileSync(join(dataHome, "ollama.yml"), "old-ollama-content");
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -409,6 +411,9 @@ describe("refreshCoreAssets", () => {
       }
       if (url.includes("Caddyfile")) {
         return new Response("new-caddy-content", { status: 200 });
+      }
+      if (url.includes("admin-opencode.jsonc")) {
+        return new Response("new-admin-opencode-content", { status: 200 });
       }
       if (url.includes("opencode.jsonc")) {
         return new Response("new-opencode-content", { status: 200 });
@@ -429,7 +434,7 @@ describe("refreshCoreAssets", () => {
     });
 
     const result = await refreshCoreAssets();
-    expect(result.updated).toHaveLength(7);
+    expect(result.updated).toHaveLength(8);
     expect(result.backupDir).not.toBeNull();
 
     // Verify backup contains old content
@@ -464,6 +469,8 @@ describe("refreshCoreAssets", () => {
     mkdirSync(join(dataHome, "assistant"), { recursive: true });
     writeFileSync(join(dataHome, "assistant/opencode.jsonc"), content);
     writeFileSync(join(dataHome, "assistant/AGENTS.md"), content);
+    mkdirSync(join(dataHome, "admin"), { recursive: true });
+    writeFileSync(join(dataHome, "admin/opencode.jsonc"), content);
     writeFileSync(join(dataHome, "ollama.yml"), content);
     writeFileSync(join(dataHome, "secrets.env.schema"), content);
     writeFileSync(join(dataHome, "stack.env.schema"), content);

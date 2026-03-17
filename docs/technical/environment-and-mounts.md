@@ -123,9 +123,10 @@ If not set, it defaults to `/var/run/docker.sock`.
 | `$DATA_HOME` | `$DATA_HOME` (same path) | rw | Manage system-policy files (stack.env, caddy/Caddyfile, automations/), pre-create subdirs |
 | `$STATE_HOME` | `$STATE_HOME` (same path) | rw | Assembled runtime, audit logs |
 
-The admin is the sole orchestrator. It connects to Docker via the socket proxy
-(HTTP over the internal network) and mounts CONFIG_HOME, DATA_HOME, and
-STATE_HOME. The DATA_HOME mount allows the admin to manage system-policy files
+The CLI is the primary host-side orchestrator, managing Docker Compose directly.
+The admin (optional, behind the `admin` compose profile) connects to Docker via
+the socket proxy (HTTP over the internal network) and mounts CONFIG_HOME,
+DATA_HOME, and STATE_HOME. Both CLI and admin manage system-policy files
 (`stack.env`, `caddy/Caddyfile`, `automations/`), pre-create subdirectories
 with correct ownership, and seed missing defaults before other services start.
 

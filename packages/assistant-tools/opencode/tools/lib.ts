@@ -1,7 +1,5 @@
 import { GLOBAL_USER_ID, STACK_USER_ID } from "../plugins/memory-lib.ts";
 
-const ADMIN_URL = process.env.OPENPALM_ADMIN_API_URL || "http://admin:8100";
-const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN || "";
 const MEMORY_URL = process.env.MEMORY_API_URL || "http://memory:8765";
 const MEMORY_AUTH_TOKEN = process.env.MEMORY_AUTH_TOKEN || "";
 export const USER_ID = process.env.MEMORY_USER_ID || "default_user";
@@ -41,26 +39,6 @@ export async function ensureMemoryUserProvisioned(): Promise<void> {
   })();
 
   await userProvisionPromise;
-}
-
-export async function adminFetch(path: string, options?: RequestInit): Promise<string> {
-  try {
-    const res = await fetch(`${ADMIN_URL}${path}`, {
-      ...options,
-      headers: {
-        "x-admin-token": ADMIN_TOKEN,
-        "x-requested-by": "assistant",
-        "content-type": "application/json",
-        ...options?.headers,
-      },
-      signal: options?.signal ?? AbortSignal.timeout(30_000),
-    });
-    const body = await res.text();
-    if (!res.ok) return JSON.stringify({ error: true, status: res.status, body });
-    return body;
-  } catch (err) {
-    return JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) });
-  }
 }
 
 export async function memoryFetch(path: string, options?: RequestInit): Promise<string> {

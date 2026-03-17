@@ -17,6 +17,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@openpalm/lib": "workspace:*",
     "croner": "^9.0.0",
     "yaml": "^2.8.0"
   },

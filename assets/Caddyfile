@@ -21,10 +21,17 @@
 }
 
 :80 {
-	# ── Admin (UI + API — catch-all for /admin/*) ────────────────────
+	# ── Admin (UI + API) — only proxied when admin container is running ──
+	# Uses dynamic upstreams to avoid Caddy startup failure when admin
+	# is absent (behind the "admin" compose profile).
 	handle /admin/* {
 		import lan_only
-		reverse_proxy admin:8100
+		reverse_proxy admin:8100 {
+			fail_duration 5s
+		}
+		handle_errors {
+			respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+		}
 	}
 
 	# ── Channel routes (auto-imported from staged state) ─────────────
@@ -37,8 +44,14 @@
 	}
 
 	# ── Admin UI catch-all (SvelteKit pages + assets) ────────────────
+	# When admin is not running, respond with a helpful message.
 	handle {
 		import lan_only
-		reverse_proxy admin:8100
+		reverse_proxy admin:8100 {
+			fail_duration 5s
+		}
+		handle_errors {
+			respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+		}
 	}
 }

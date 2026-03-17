@@ -175,9 +175,9 @@ No Prettier or ESLint configured. Match the existing file style:
   Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades)
   are non-destructive for existing user files and only seed missing defaults.
   Allowed writers: user direct edits; explicit admin UI/API config actions; assistant calls through authenticated/allowlisted admin APIs on user request.
-- **Admin is sole orchestrator.** Docker access is mediated by a socket proxy; only the proxy mounts the socket.
+- **Host CLI or admin is the orchestrator.** The CLI manages Docker Compose directly on the host. Admin (optional) uses docker-socket-proxy for Docker access.
 - **Guardian-only ingress.** All channel traffic must enter through the guardian (HMAC, replay protection, rate limiting).
-- **Assistant isolation.** Assistant has no Docker socket; it calls the admin API only.
+- **Assistant isolation.** Assistant has no Docker socket. When admin is present, it calls the admin API. When admin is absent, only memory tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
 - **Add a channel** by dropping a `.yml` compose overlay (+ optional `.caddy` snippet) into `channels/` — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.

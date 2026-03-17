@@ -24,7 +24,7 @@ import {
   buildEnvFiles
 } from "$lib/server/control-plane.js";
 import { composeStop, checkDocker } from "$lib/server/docker.js";
-import { reloadScheduler } from "$lib/server/scheduler.js";
+
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -60,7 +60,7 @@ export const POST: RequestHandler = async (event) => {
   // Re-stage artifacts
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
-  reloadScheduler(state.stateDir, state.adminToken);
+  // Scheduler sidecar auto-reloads via file watching
 
   // Stop the channel service
   const dockerCheck = await checkDocker();

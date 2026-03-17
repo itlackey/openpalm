@@ -31,6 +31,9 @@
   } from '$lib/api.js';
   import type { HealthPayload, ContainerListResponse, AutomationsResponse, ChannelsResponse, RegistryResponse } from '$lib/types.js';
 
+  // ── Setup state ────────────────────────────────────────────────────────────
+  let setupRequired = $state(false);
+
   // ── Auth state ──────────────────────────────────────────────────────────────
   let authLocked = $state(true);
   let authLoading = $state(false);
@@ -499,7 +502,7 @@
 
   onMount(() => {
     void (async () => {
-      // Check if setup is complete — redirect to wizard if not
+      // Check if setup is complete — show CLI prompt if not
       try {
         const setupRes = await fetch('/admin/setup', {
           headers: { 'x-requested-by': 'ui', 'x-request-id': crypto.randomUUID() }
@@ -507,7 +510,7 @@
         if (setupRes.ok) {
           const setupData = await setupRes.json();
           if (!setupData.setupComplete) {
-            window.location.href = '/setup';
+            setupRequired = true;
             return;
           }
         }
@@ -556,7 +559,14 @@
   <title>OpenPalm Console</title>
 </svelte:head>
 
-{#if authLocked}
+{#if setupRequired}
+  <div class="setup-required">
+    <h1>Setup Required</h1>
+    <p>OpenPalm has not been configured yet. Run the following command from your terminal to complete setup:</p>
+    <pre><code>openpalm install</code></pre>
+    <p class="setup-hint">Once setup is complete, refresh this page to access the admin console.</p>
+  </div>
+{:else if authLocked}
   <AuthGate onSuccess={handleAuthSuccess} loading={authLoading} error={authError} />
 {:else}
   <Navbar onLogout={handleLogout} />
@@ -639,6 +649,39 @@
 {/if}
 
 <style>
+  .setup-required {
+    max-width: 600px;
+    margin: 120px auto;
+    padding: var(--space-8);
+    text-align: center;
+  }
+
+  .setup-required h1 {
+    font-size: 1.75rem;
+    margin-bottom: var(--space-4);
+  }
+
+  .setup-required p {
+    color: var(--color-text-secondary, #6b7280);
+    margin-bottom: var(--space-4);
+    line-height: 1.6;
+  }
+
+  .setup-required pre {
+    display: inline-block;
+    background: var(--color-surface-secondary, #f3f4f6);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 8px;
+    padding: var(--space-3) var(--space-6);
+    font-size: 1.1rem;
+    margin: var(--space-4) 0;
+  }
+
+  .setup-required .setup-hint {
+    font-size: 0.875rem;
+    color: var(--color-text-tertiary, #9ca3af);
+  }
+
   main {
     max-width: var(--max-width);
     margin: 0 auto;

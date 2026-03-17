@@ -1,0 +1,21 @@
+{
+  "name": "@openpalm/lib",
+  "version": "0.9.4",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./provider-constants": "./src/provider-constants.ts",
+    "./shared/logger": "./src/logger.ts",
+    "./control-plane/*": "./src/control-plane/*.ts"
+  },
+  "dependencies": {
+    "croner": "^9.0.0",
+    "dotenv": "^16.4.7",
+    "yaml": "^2.8.0"
+  }
+}

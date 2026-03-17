@@ -103,18 +103,18 @@ describe('MemoryContextPlugin lifecycle integration', () => {
     await hooks['tool.execute.before'](
       {
         session: { id: 'sess-1' },
-        tool: { name: 'admin-containers_list' },
+        tool: { name: 'bash' },
         args: {},
       },
       beforeOutput,
     );
     expect(beforeOutput.context.length).toBe(1);
-    expect(beforeOutput.context[0]).toContain('Learned Procedures For admin-containers_list');
+    expect(beforeOutput.context[0]).toContain('Learned Procedures For bash');
 
     await hooks['tool.execute.after'](
       {
         session: { id: 'sess-1' },
-        tool: { name: 'admin-containers_list' },
+        tool: { name: 'bash' },
         args: {},
       },
       { result: { ok: true } },

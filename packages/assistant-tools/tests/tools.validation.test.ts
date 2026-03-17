@@ -1,7 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import * as adminArtifacts from '../opencode/tools/admin-artifacts.ts';
-import * as adminConnections from '../opencode/tools/admin-connections.ts';
-import * as adminContainers from '../opencode/tools/admin-containers.ts';
 import memoryAdd from '../opencode/tools/memory-add.ts';
 import memoryList from '../opencode/tools/memory-list.ts';
 
@@ -33,30 +30,6 @@ afterEach(() => {
 });
 
 describe('assistant tools validation', () => {
-  it('rejects invalid artifact names before API call', async () => {
-    const result = await adminArtifacts.get.execute({ name: 'env' } as never, {} as never);
-    const parsed = JSON.parse(result) as { error?: boolean };
-    expect(parsed.error).toBe(true);
-    expect(calls.length).toBe(0);
-  });
-
-  it('rejects invalid admin container service before API call', async () => {
-    const result = await adminContainers.up.execute({ service: 'postgres' } as never, {} as never);
-    const parsed = JSON.parse(result) as { error?: boolean };
-    expect(parsed.error).toBe(true);
-    expect(calls.length).toBe(0);
-  });
-
-  it('rejects unsupported connection keys', async () => {
-    const result = await adminConnections.set.execute({
-      patches: '{"OPENAI_API_KEY":"sk-123","UNSAFE_KEY":"x"}',
-    } as never, {} as never);
-    const parsed = JSON.parse(result) as { error?: boolean; message?: string };
-    expect(parsed.error).toBe(true);
-    expect(parsed.message).toContain('Unsupported key');
-    expect(calls.length).toBe(0);
-  });
-
   it('rejects non-object memory metadata', async () => {
     const result = await memoryAdd.execute({
       text: 'User prefers Bun',

@@ -1,0 +1,16 @@
+{
+  "name": "@openpalm/scheduler",
+  "version": "0.9.4",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@openpalm/lib": "workspace:*",
+    "croner": "^9.0.0",
+    "yaml": "^2.8.0"
+  }
+}

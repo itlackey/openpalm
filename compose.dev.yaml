@@ -53,6 +53,12 @@ services:
       dockerfile: core/channel/Dockerfile
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: core/scheduler/Dockerfile
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/scheduler:${OPENPALM_IMAGE_TAG:-latest}
+
   memory:
     build:
       context: .

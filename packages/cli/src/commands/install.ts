@@ -4,18 +4,22 @@ import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { ADMIN_URL, isStackRunning, adminRequest, waitForAdminHealthy } from '../lib/admin.ts';
-import { ensureDirectoryTree, fetchAsset, runDockerCompose, composeProjectArgs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, openBrowser } from '../lib/docker.ts';
+import { isAdminReachable, adminRequest } from '../lib/admin.ts';
+import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
+import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { loadAdminToken } from '../lib/env.ts';
+import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { createSetupServer } from '../setup-wizard/server.ts';
 
 const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
+const SETUP_WIZARD_PORT = 8100;
 
 export default defineCommand({
   meta: {
     name: 'install',
-    description: 'Bootstrap XDG dirs, download assets, start admin + docker-socket-proxy, open setup wizard',
+    description: 'Bootstrap XDG dirs, download assets, run setup wizard, start core services',
   },
   args: {
     force: {
@@ -42,7 +46,7 @@ export default defineCommand({
   async run({ args }) {
     // If the stack is already running AND we have a valid admin token,
     // delegate to the admin API. Otherwise fall through to bootstrap.
-    if (await isStackRunning()) {
+    if (await isAdminReachable()) {
       const token = await loadAdminToken();
       if (token) {
         console.log(JSON.stringify(await adminRequest('/admin/install', { method: 'POST' }), null, 2));
@@ -111,15 +115,46 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'docker-compose.yml'), composeContent);
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 
+  // Download schemas to both DATA_HOME (for FilesystemAssetProvider) and STATE_HOME (for varlock validation)
   const secretsSchemaContent = await fetchAsset(options.version, 'secrets.env.schema');
   const stackSchemaContent = await fetchAsset(options.version, 'stack.env.schema');
+  await Bun.write(join(dataHome, 'secrets.env.schema'), secretsSchemaContent);
+  await Bun.write(join(dataHome, 'stack.env.schema'), stackSchemaContent);
   await Bun.write(join(stateHome, 'artifacts', 'secrets.env.schema'), secretsSchemaContent);
   await Bun.write(join(stateHome, 'artifacts', 'stack.env.schema'), stackSchemaContent);
 
+  // Download remaining assets needed by FilesystemAssetProvider
+  const assetFiles: Array<{ remote: string; localPath: string }> = [
+    { remote: 'ollama.yml', localPath: join(dataHome, 'ollama.yml') },
+    { remote: 'AGENTS.md', localPath: join(dataHome, 'assistant', 'AGENTS.md') },
+    { remote: 'opencode.jsonc', localPath: join(dataHome, 'assistant', 'opencode.jsonc') },
+    { remote: 'admin-opencode.jsonc', localPath: join(dataHome, 'admin', 'opencode.jsonc') },
+    { remote: 'cleanup-logs.yml', localPath: join(dataHome, 'automations', 'cleanup-logs.yml') },
+    { remote: 'cleanup-data.yml', localPath: join(dataHome, 'automations', 'cleanup-data.yml') },
+    { remote: 'validate-config.yml', localPath: join(dataHome, 'automations', 'validate-config.yml') },
+  ];
+  await Promise.all(
+    assetFiles.map(async ({ remote, localPath }) => {
+      try {
+        const content = await fetchAsset(options.version, remote);
+        await Bun.write(localPath, content);
+      } catch (err) {
+        console.warn(`Warning: could not download asset '${remote}': ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+  );
+
   await ensureSecrets(configHome);
   await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version);
-  await ensureOpenCodeConfig(configHome);
-  await ensureOpenCodeSystemConfig(dataHome);
+  // Seed OpenCode config — non-fatal since performSetup() also seeds these
+  try {
+    const fsAssets = new FilesystemAssetProvider(dataHome);
+    ensureOpenCodeConfig();
+    ensureOpenCodeSystemConfig(fsAssets);
+    ensureAdminOpenCodeConfig(fsAssets);
+  } catch {
+    // Assets may not be available yet on first install; performSetup() will retry
+  }
 
   // Non-fatal validation
   try {
@@ -152,19 +187,89 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
-  await runDockerCompose([
-    ...composeProjectArgs(),
-    'up',
-    '-d',
-    'docker-socket-proxy',
-    'admin',
-  ]);
+  // ── Setup Wizard ──────────────────────────────────────────────────────
+  // First-time install: serve the setup wizard locally and wait for user
+  // to complete it. The wizard calls performSetup() from @openpalm/lib
+  // which writes secrets, connection profiles, memory config, and stages
+  // all artifacts. No admin container needed.
 
-  await waitForAdminHealthy();
-  const targetUrl = updateMode ? `${ADMIN_URL}/` : `${ADMIN_URL}/setup`;
-  if (!options.noOpen) {
-    await openBrowser(targetUrl);
+  if (!updateMode) {
+    console.log('Starting setup wizard...');
+
+    const wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+    const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
+    console.log(`Setup wizard running at ${wizardUrl}`);
+
+    if (!options.noOpen) {
+      await openBrowser(wizardUrl);
+    }
+
+    // Block until user completes the wizard
+    const result = await wizard.waitForComplete();
+
+    if (!result.ok) {
+      wizard.stop();
+      throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`);
+    }
+
+    console.log('Setup complete. Starting services...');
+
+    // Keep wizard server running for deploy status polling from the browser.
+    // Stage artifacts and start services while the wizard shows progress.
+    try {
+      const state = await ensureStagedState();
+      const composeArgs = fullComposeArgs(state);
+      const managedServices = buildManagedServiceNames(state);
+
+      wizard.updateDeployStatus(
+        managedServices.map(s => ({ service: s, status: 'pending', label: 'Waiting...' })),
+      );
+
+      await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => {
+        // Pull failure is non-fatal — images may already be cached
+      });
+
+      wizard.updateDeployStatus(
+        managedServices.map(s => ({ service: s, status: 'pulling', label: 'Starting...' })),
+      );
+
+      await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+
+      wizard.markAllRunning();
+
+      console.log(JSON.stringify({
+        ok: true,
+        mode: 'install',
+        services: managedServices,
+      }, null, 2));
+
+      // Give the browser a moment to poll the final status, then stop
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } catch (err) {
+      wizard.setDeployError(String(err));
+      // Keep server alive briefly so user can see the error
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      throw err;
+    } finally {
+      wizard.stop();
+    }
+
+    return;
   }
 
-  console.log(JSON.stringify({ ok: true, mode: updateMode ? 'update' : 'install', url: targetUrl }, null, 2));
+  // ── Start Core Services (update mode — no wizard) ────────────────────
+  // Stage artifacts and start all managed services directly via Docker
+  // Compose. No admin container required for lifecycle operations.
+
+  const state = await ensureStagedState();
+  const composeArgs = fullComposeArgs(state);
+  const managedServices = buildManagedServiceNames(state);
+
+  await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+
+  console.log(JSON.stringify({
+    ok: true,
+    mode: 'update',
+    services: managedServices,
+  }, null, 2));
 }

@@ -33,7 +33,7 @@ import {
   getRegistryAutomation
 } from "$lib/server/registry-sync.js";
 import { composeUp, checkDocker } from "$lib/server/docker.js";
-import { reloadScheduler } from "$lib/server/scheduler.js";
+
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
@@ -90,7 +90,7 @@ export const POST: RequestHandler = async (event) => {
     state.services[`channel-${name}`] = "running";
     state.artifacts = stageArtifacts(state);
     persistArtifacts(state);
-    reloadScheduler(state.stateDir, state.adminToken);
+    // Scheduler sidecar auto-reloads via file watching
 
     const dockerCheck = await checkDocker();
     let dockerResult = null;
@@ -133,7 +133,7 @@ export const POST: RequestHandler = async (event) => {
 
   state.artifacts = stageArtifacts(state);
   persistArtifacts(state);
-  reloadScheduler(state.stateDir, state.adminToken);
+  // Scheduler sidecar auto-reloads via file watching
 
   appendAudit(state, actor, "registry.install", { name, type }, true, requestId, callerType);
   return jsonResponse(200, { ok: true, name, type }, requestId);

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@openpalm/admin-tools", "@openpalm/assistant-tools", "akm-opencode"],
+  // Block credential file reads — same security policy as assistant.
+  "permission": {
+    "read": {
+      "/home/opencode/.local/share/opencode/auth.json": "deny",
+      "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+    }
+  }
+}

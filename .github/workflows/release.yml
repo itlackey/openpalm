@@ -147,6 +147,8 @@ jobs:
             image: openpalm/assistant
           - dockerfile: core/memory/Dockerfile
             image: openpalm/memory
+          - dockerfile: core/scheduler/Dockerfile
+            image: openpalm/scheduler
 
     steps:
       - name: Checkout
@@ -296,6 +298,7 @@ jobs:
             | [openpalm/channel](https://hub.docker.com/r/openpalm/channel) | `docker pull openpalm/channel:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/assistant](https://hub.docker.com/r/openpalm/assistant) | `docker pull openpalm/assistant:v${{ needs.prepare-tag.outputs.version }}` |
             | [openpalm/memory](https://hub.docker.com/r/openpalm/memory) | `docker pull openpalm/memory:v${{ needs.prepare-tag.outputs.version }}` |
+            | [openpalm/scheduler](https://hub.docker.com/r/openpalm/scheduler) | `docker pull openpalm/scheduler:v${{ needs.prepare-tag.outputs.version }}` |
 
             ## npm Packages
 
