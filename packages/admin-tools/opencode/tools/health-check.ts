@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 
 export default tool({
-  description: "Check health of OpenPalm services including admin. Specify comma-separated service names: guardian, memory, admin, scheduler. Defaults to all.",
+  description: "Check health of all OpenPalm services including admin and scheduler. Specify comma-separated service names: guardian, memory, admin, scheduler. Defaults to all.",
   args: {
     services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, memory, admin, scheduler). Defaults to all."),
   },

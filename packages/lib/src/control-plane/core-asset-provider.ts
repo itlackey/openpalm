@@ -11,6 +11,7 @@ export interface CoreAssetProvider {
   ollamaCompose(): string;
   agentsMd(): string;
   opencodeConfig(): string;
+  adminOpencodeConfig(): string;
   secretsSchema(): string;
   stackSchema(): string;
   cleanupLogs(): string;

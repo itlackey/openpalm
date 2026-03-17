@@ -22,7 +22,7 @@ import {
 import { ensureConnectionProfilesStore, writeConnectionsDocument } from "./connection-profiles.js";
 import { buildMem0Mapping } from "./connection-mapping.js";
 import { writeMemoryConfig } from "./memory-config.js";
-import { ensureOpenCodeSystemConfig, ensureMemoryDir } from "./core-assets.js";
+import { ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
 import { detectLocalProviders } from "./model-runner.js";
 import type { LocalProviderDetection } from "./model-runner.js";
@@ -442,6 +442,7 @@ export async function performSetup(
   // ── Ensure OpenCode configs ──────────────────────────────────────────
   ensureOpenCodeConfig();
   ensureOpenCodeSystemConfig(assetProvider);
+  ensureAdminOpenCodeConfig(assetProvider);
   ensureMemoryDir();
 
   // ── Apply install (stages artifacts, no Docker) ──────────────────────

@@ -6,7 +6,7 @@ import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } 
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { isAdminReachable, adminRequest } from '../lib/admin.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
-import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, FilesystemAssetProvider } from '@openpalm/lib';
+import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { loadAdminToken } from '../lib/env.ts';
@@ -128,6 +128,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     { remote: 'ollama.yml', localPath: join(dataHome, 'ollama.yml') },
     { remote: 'AGENTS.md', localPath: join(dataHome, 'assistant', 'AGENTS.md') },
     { remote: 'opencode.jsonc', localPath: join(dataHome, 'assistant', 'opencode.jsonc') },
+    { remote: 'admin-opencode.jsonc', localPath: join(dataHome, 'admin', 'opencode.jsonc') },
     { remote: 'cleanup-logs.yml', localPath: join(dataHome, 'automations', 'cleanup-logs.yml') },
     { remote: 'cleanup-data.yml', localPath: join(dataHome, 'automations', 'cleanup-data.yml') },
     { remote: 'validate-config.yml', localPath: join(dataHome, 'automations', 'validate-config.yml') },
@@ -147,8 +148,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version);
   // Seed OpenCode config — non-fatal since performSetup() also seeds these
   try {
+    const fsAssets = new FilesystemAssetProvider(dataHome);
     ensureOpenCodeConfig();
-    ensureOpenCodeSystemConfig(new FilesystemAssetProvider(dataHome));
+    ensureOpenCodeSystemConfig(fsAssets);
+    ensureAdminOpenCodeConfig(fsAssets);
   } catch {
     // Assets may not be available yet on first install; performSetup() will retry
   }

@@ -22,6 +22,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
+    adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',
     secretsSchema: () => "ADMIN_TOKEN=string\n",
     stackSchema: () => "OPENPALM_IMAGE_TAG=string\n",
     cleanupLogs: () => "name: cleanup-logs\nschedule: daily\n",

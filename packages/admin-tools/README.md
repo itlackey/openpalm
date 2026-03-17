@@ -7,7 +7,7 @@ This package is separate from `@openpalm/assistant-tools`, which contains memory
 ## Tools (35 total)
 
 ### Containers & Logs
-- `health-check` -- Platform health overview
+- `admin-health-check` -- Platform health overview (all services including admin, scheduler)
 - `admin-containers_list` / `_up` / `_down` / `_restart` -- Container lifecycle
 - `admin-containers_inspect` -- Detailed container inspection
 - `admin-containers_events` -- Recent Docker events
@@ -57,12 +57,12 @@ All requests use `x-admin-token` header authentication and are audit-logged with
 
 ## Plugin Loading
 
-The assistant container loads OpenCode plugins. Which plugins are active depends on whether admin is running:
+Each container runs its own OpenCode instance with the appropriate plugin set:
 
-- **Without admin**: assistant loads `@openpalm/assistant-tools` only (memory tools, health check)
-- **With admin**: assistant loads both `@openpalm/admin-tools` and `@openpalm/assistant-tools` (full tool suite)
+- **Assistant container**: loads `@openpalm/assistant-tools` only (memory tools, health check)
+- **Admin container**: runs its own OpenCode instance (port 4097) with `@openpalm/admin-tools`, `@openpalm/assistant-tools`, and `akm-opencode` — full tool suite for AI-driven stack management
 
-Skills (in `opencode/skills/`) are discovered by OpenCode from the package's filesystem, not registered in the plugin entry point.
+The admin OpenCode config is at `DATA_HOME/admin/opencode.jsonc` (seeded from `assets/admin-opencode.jsonc`). Skills (in `opencode/skills/`) are discovered by OpenCode from the package's filesystem, not registered in the plugin entry point.
 
 ## Development
 

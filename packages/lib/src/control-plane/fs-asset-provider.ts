@@ -35,6 +35,10 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
     return this.read("assistant/opencode.jsonc");
   }
 
+  adminOpencodeConfig(): string {
+    return this.read("admin/opencode.jsonc");
+  }
+
   secretsSchema(): string {
     return this.read("secrets.env.schema");
   }

@@ -50,8 +50,13 @@ RUN set -e; \
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM node:lts-trixie-slim
+
+# ── Pinned installer versions ────────────────────────────────────────────────
+ARG OPENCODE_VERSION=1.2.24
+ARG BUN_VERSION=bun-v1.3.10
+
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip \
+  && apt-get install -y --no-install-recommends curl ca-certificates gnupg git unzip bash \
   && install -m 0755 -d /etc/apt/keyrings \
   && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
@@ -59,6 +64,16 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
   && rm -rf /var/lib/apt/lists/*
 
+# Install OpenCode (admin runs its own instance with admin-tools plugin)
+RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
+ENV PATH="/usr/local/.opencode/bin:$PATH"
+
+# Install Bun (required for OpenCode plugins)
+ENV BUN_INSTALL=/usr/local
+RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
+ENV BUN_INSTALL=/tmp/.bun
+ENV BUN_INSTALL_CACHE_DIR=/tmp/.cache/bun/install
+ENV PATH="/tmp/.bun/bin:/usr/local/bin:$PATH"
 
 WORKDIR /app
 COPY --from=build /workspace/packages/admin/build ./build
@@ -71,15 +86,19 @@ RUN mkdir -p /state /data && chown node:node /state /data
 COPY --from=varlock-fetch /usr/local/bin/varlock /usr/local/bin/varlock
 COPY assets/redact.env.schema /app/.env.schema
 
+# Admin entrypoint — starts SvelteKit + OpenCode
+COPY core/admin/entrypoint.sh /usr/local/bin/admin-entrypoint.sh
+RUN chmod +x /usr/local/bin/admin-entrypoint.sh
+
 USER node
 
 # Fallback for direct `docker run`; Compose overrides HOME to DATA_HOME/admin
 # so varlock writes into a user-writable bind mount at runtime.
 ENV HOME=/tmp
 ENV PORT=8100
-EXPOSE 8100
+EXPOSE 8100 4097
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=3s --start_period=15s --retries=3 \
   CMD curl -sf http://localhost:8100/health || exit 1
 
-CMD ["varlock", "run", "--path", "/app/", "--", "node", "build/index.js"]
+CMD ["/usr/local/bin/admin-entrypoint.sh"]

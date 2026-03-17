@@ -611,7 +611,7 @@ function extractRecurringOutcomeSignals(episodes: MemoryItem[], appId: string): 
     const text = episode.content.toLowerCase();
     for (const token of text.split(/[^a-z0-9_-]+/g)) {
       if (!token || token.length < 4) continue;
-      if (!token.includes('admin-') && !token.includes('memory-') && !token.includes('bash')) {
+      if (!token.includes('memory-') && !token.includes('bash')) {
         continue;
       }
       counts.set(token, (counts.get(token) ?? 0) + 1);

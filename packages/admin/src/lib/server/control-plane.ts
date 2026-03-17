@@ -16,6 +16,7 @@ import {
   ensureOllamaCompose as _ensureOllamaCompose,
   readOllamaCompose as _readOllamaCompose,
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
+  ensureAdminOpenCodeConfig as _ensureAdminOpenCodeConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
   ensureSecretsSchema as _ensureSecretsSchema,
   ensureStackSchema as _ensureStackSchema,
@@ -65,6 +66,10 @@ export function readOllamaCompose(): string {
 
 export function ensureOpenCodeSystemConfig(): void {
   _ensureOpenCodeSystemConfig(viteAssets);
+}
+
+export function ensureAdminOpenCodeConfig(): void {
+  _ensureAdminOpenCodeConfig(viteAssets);
 }
 
 export function ensureCoreAutomations(): void {

@@ -29,7 +29,7 @@ export const plugin: Plugin = async () => {
   return {
     tool: {
       // Single tools
-      "health-check": healthCheck,
+      "admin-health-check": healthCheck,
       "admin-audit": adminAudit,
       "admin-logs": adminLogs,
       "admin-guardian_audit": adminGuardianAudit,

@@ -197,6 +197,7 @@ export {
   ensureOllamaCompose,
   readOllamaCompose,
   ensureOpenCodeSystemConfig,
+  ensureAdminOpenCodeConfig,
   ensureCoreAutomations,
   refreshCoreAssets,
 } from "./control-plane/core-assets.js";

@@ -38,6 +38,8 @@
     "channel:slack:dev": "bun run packages/channel-slack/src/index.ts",
     "cli:test": "bun test --cwd packages/cli",
     "scheduler:test": "bun test --cwd packages/scheduler",
+    "admin-tools:test": "bun test --cwd packages/admin-tools",
+    "lib:test": "bun test --cwd packages/lib",
     "cli:build:linux-x64": "bun run --cwd packages/cli build:linux-x64",
     "cli:build:linux-arm64": "bun run --cwd packages/cli build:linux-arm64",
     "cli:build:darwin-x64": "bun run --cwd packages/cli build:darwin-x64",

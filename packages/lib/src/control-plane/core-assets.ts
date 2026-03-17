@@ -202,6 +202,13 @@ export function ensureOpenCodeSystemConfig(assets: CoreAssetProvider): void {
   writeIfChanged(`${dir}/AGENTS.md`, assets.agentsMd());
 }
 
+export function ensureAdminOpenCodeConfig(assets: CoreAssetProvider): void {
+  const dir = `${resolveDataHome()}/admin`;
+  mkdirSync(dir, { recursive: true });
+  writeIfChanged(`${dir}/opencode.jsonc`, assets.adminOpencodeConfig());
+  writeIfChanged(`${dir}/AGENTS.md`, assets.agentsMd());
+}
+
 // ── Core Automations (DATA_HOME source of truth) ────────────────────
 
 export function ensureCoreAutomations(assets: CoreAssetProvider): void {
@@ -228,6 +235,7 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
   { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
   { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
+  { dataRelPath: "admin/opencode.jsonc", githubFilename: "admin-opencode.jsonc" },
   { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" },
   { dataRelPath: "ollama.yml", githubFilename: "ollama.yml" },
   { dataRelPath: "secrets.env.schema", githubFilename: "secrets.env.schema" },
