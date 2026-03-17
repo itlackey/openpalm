@@ -1,5 +1,4 @@
 import { defineCommand } from 'citty';
-import { tryAdminRequest } from '../lib/admin.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { runLogsAction } from './logs.ts';
@@ -42,14 +41,6 @@ const logsCmd = defineCommand({
 const updateCmd = defineCommand({
   meta: { name: 'update', description: 'Pull latest images' },
   async run() {
-    // Try admin delegation first
-    const adminResult = await tryAdminRequest('/admin/containers/pull', { method: 'POST' });
-    if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
-      return;
-    }
-
-    // Direct compose pull + recreate (scoped to managed services)
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
@@ -64,14 +55,6 @@ const updateCmd = defineCommand({
 const statusCmd = defineCommand({
   meta: { name: 'status', description: 'Show container status' },
   async run() {
-    // Try admin delegation first
-    const adminResult = await tryAdminRequest('/admin/containers/list');
-    if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
-      return;
-    }
-
-    // Direct compose ps
     const state = await ensureStagedState();
     await runDockerCompose([...fullComposeArgs(state), 'ps', '--format', 'table']);
   },

@@ -1,5 +1,4 @@
 import { defineCommand } from 'citty';
-import { tryAdminRequest } from '../lib/admin.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 
@@ -34,14 +33,7 @@ export async function runStartAction(
   const withAdmin = opts?.withAdmin ?? false;
 
   if (services.length === 0) {
-    // Try admin delegation first (gives admin's scheduler/audit a chance to observe)
-    const adminResult = await tryAdminRequest('/admin/install', { method: 'POST' });
-    if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
-      return;
-    }
-
-    // Direct compose — stage artifacts and start managed services
+    // Stage artifacts and start managed services
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
@@ -55,18 +47,8 @@ export async function runStartAction(
     return;
   }
 
-  // Start specific services — try admin first, fall back to direct compose
+  // Start specific services
   for (const service of services) {
-    const adminResult = await tryAdminRequest('/admin/containers/up', {
-      method: 'POST',
-      body: JSON.stringify({ service }),
-    });
-    if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
-      continue;
-    }
-
-    // Direct compose for specific service
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     // If starting admin explicitly, include the admin profile

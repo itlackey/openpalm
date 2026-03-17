@@ -1,5 +1,4 @@
 import { defineCommand } from 'citty';
-import { tryAdminRequest } from '../lib/admin.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import { ensureStagedState, fullComposeArgs } from '../lib/staging.ts';
 
@@ -16,14 +15,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    // Try admin delegation first
-    const adminResult = await tryAdminRequest('/admin/uninstall', { method: 'POST' });
-    if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
-      return;
-    }
-
-    // Direct compose down — include admin profile to tear down all services
+    // Include admin profile to tear down all services
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const downArgs = args.volumes ? ['down', '-v'] : ['down'];

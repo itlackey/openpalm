@@ -22,9 +22,9 @@ import { defaultDataHome } from './paths.ts';
 /**
  * Ensure all artifacts are staged from CONFIG_HOME/DATA_HOME to STATE_HOME.
  *
- * This is the CLI-side equivalent of the admin's staging pipeline.
- * It uses FilesystemAssetProvider (reads core assets from DATA_HOME,
- * persisted by the install command) rather than Vite bundle imports.
+ * Uses FilesystemAssetProvider (reads core assets from DATA_HOME,
+ * persisted by the install command) to assemble compose files, env
+ * files, and Caddyfile into STATE_HOME/artifacts for Docker Compose.
  *
  * Returns a ControlPlaneState usable with fullComposeArgs().
  */

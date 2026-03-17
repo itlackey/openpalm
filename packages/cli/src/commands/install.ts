@@ -4,12 +4,10 @@ import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { isAdminReachable, adminRequest } from '../lib/admin.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
 import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
-import { loadAdminToken } from '../lib/env.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
@@ -45,18 +43,6 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    // If the stack is already running AND we have a valid admin token,
-    // delegate to the admin API. Otherwise fall through to bootstrap.
-    if (await isAdminReachable()) {
-      const token = await loadAdminToken();
-      if (token) {
-        console.log(JSON.stringify(await adminRequest('/admin/install', { method: 'POST' }), null, 2));
-        return;
-      }
-      // No token available — fall through to bootstrap install which doesn't need auth.
-      console.warn('Stack is running but no admin token is configured. Proceeding with bootstrap install.');
-    }
-
     await bootstrapInstall({
       force: args.force,
       version: args.version,
