@@ -118,10 +118,70 @@ jobs:
       - name: Pack with Bun
         working-directory: ${{ inputs.package-dir }}
         run: |
-          # bun pm pack resolves workspace:* refs to real versions in the tarball
           TARBALL=$(bun pm pack --quiet 2>&1 | tail -1)
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
           echo "Packed: ${TARBALL}"
+
+      - name: Normalize workspace refs in tarball
+        run: |
+          WORKDIR=$(mktemp -d)
+          PATCHED_TARBALL="$(dirname "${TARBALL}")/patched-$(basename "${TARBALL}")"
+          trap 'rm -rf "${WORKDIR}"' EXIT
+
+          tar -xzf "${TARBALL}" -C "${WORKDIR}"
+
+          node - "${WORKDIR}/package/package.json" <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const manifestPath = process.argv[2];
+          const rootPackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const workspaceVersions = new Map();
+
+          for (const workspacePath of rootPackage.workspaces ?? []) {
+            const workspaceManifestPath = path.join(workspacePath, 'package.json');
+            if (!fs.existsSync(workspaceManifestPath)) continue;
+
+            const workspaceManifest = JSON.parse(fs.readFileSync(workspaceManifestPath, 'utf8'));
+            if (workspaceManifest.name && workspaceManifest.version) {
+              workspaceVersions.set(workspaceManifest.name, workspaceManifest.version);
+            }
+          }
+
+          const resolveWorkspaceVersion = (name, spec) => {
+            const version = workspaceVersions.get(name);
+            if (!version) {
+              throw new Error(`Missing workspace version for ${name}`);
+            }
+
+            const suffix = spec.slice('workspace:'.length);
+            if (!suffix || suffix === '*') return version;
+            if (suffix === '^' || suffix === '~') return `${suffix}${version}`;
+            return suffix;
+          };
+
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          let changed = false;
+
+          for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+            const deps = manifest[field];
+            if (!deps) continue;
+
+            for (const [name, spec] of Object.entries(deps)) {
+              if (typeof spec !== 'string' || !spec.startsWith('workspace:')) continue;
+              deps[name] = resolveWorkspaceVersion(name, spec);
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+          }
+          NODE
+
+          tar -czf "${PATCHED_TARBALL}" -C "${WORKDIR}" package
+          echo "TARBALL=${PATCHED_TARBALL}" >> "$GITHUB_ENV"
+          echo "Patched: ${PATCHED_TARBALL}"
 
       - name: Publish with npm
         working-directory: ${{ inputs.package-dir }}
