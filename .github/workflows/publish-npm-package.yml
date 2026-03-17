@@ -110,6 +110,15 @@ jobs:
             echo "BUMPED=true" >> "$GITHUB_ENV"
           fi
 
+      - name: Refresh Bun lockfile workspace metadata
+        run: |
+          bun update --lockfile-only
+          if git diff --quiet -- bun.lock; then
+            echo "LOCKFILE_CHANGED=false" >> "$GITHUB_ENV"
+          else
+            echo "LOCKFILE_CHANGED=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Build
         if: inputs.needs-build
         working-directory: ${{ inputs.package-dir }}
@@ -117,11 +126,18 @@ jobs:
 
       - name: Pack with Bun
         working-directory: ${{ inputs.package-dir }}
+        shell: bash
         run: |
-          # bun pm pack resolves workspace:* refs to real versions in the tarball
-          TARBALL=$(bun pm pack --quiet 2>&1 | tail -1)
-          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
-          echo "Packed: ${TARBALL}"
+          PACK_DIR="$(mktemp -d)"
+          bun pm pack --destination "${PACK_DIR}" --quiet
+          mapfile -t TARBALLS < <(find "${PACK_DIR}" -maxdepth 1 -name '*.tgz')
+          if [ "${#TARBALLS[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one tarball in ${PACK_DIR}, found ${#TARBALLS[@]}"
+            exit 1
+          fi
+          TARBALL_PATH="${TARBALLS[0]}"
+          echo "TARBALL=${TARBALL_PATH}" >> "$GITHUB_ENV"
+          echo "Packed: ${TARBALL_PATH}"
 
       - name: Publish with npm
         working-directory: ${{ inputs.package-dir }}
@@ -142,12 +158,20 @@ jobs:
           }
 
       - name: Commit version bump
-        if: env.BUMPED == 'true'
+        if: env.BUMPED == 'true' || env.LOCKFILE_CHANGED == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ inputs.package-dir }}/package.json"
-          git commit -m "chore(${{ inputs.package-name }}): bump to $(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
+          VERSION="$(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
+          if [ "${BUMPED:-false}" = 'true' ] && [ "${LOCKFILE_CHANGED}" = 'true' ]; then
+            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): bump to ${VERSION} and sync lockfile"
+          elif [ "${BUMPED:-false}" = 'true' ]; then
+            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): bump to ${VERSION}"
+          else
+            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): sync lockfile for ${VERSION}"
+          fi
+          git add "${{ inputs.package-dir }}/package.json" bun.lock
+          git commit -m "${COMMIT_MESSAGE}"
           # Retry with rebase to handle concurrent publish workflows
           for i in 1 2 3 4 5; do
             git pull --rebase origin "${{ github.ref_name }}" && git push && exit 0
