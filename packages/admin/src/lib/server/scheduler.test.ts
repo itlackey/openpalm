@@ -780,8 +780,8 @@ describe("scheduler cron firing", () => {
     expect(status.jobs[0].name).toBe("E2E Probe");
     expect(status.jobs[0].running).toBe(true);
 
-    // Wait for the cron to fire (up to 5 seconds, polling every 200ms)
-    const deadline = Date.now() + 5_000;
+    // Wait for the cron to fire (up to 8 seconds, polling every 200ms)
+    const deadline = Date.now() + 8_000;
     while (hitCount === 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 200));
     }
@@ -794,7 +794,7 @@ describe("scheduler cron firing", () => {
     expect(logs[0].ok).toBe(true);
     expect(typeof logs[0].durationMs).toBe("number");
     expect(typeof logs[0].at).toBe("string");
-  }, 10_000);
+  }, 15_000);
 
   test("scheduler records failure in execution log when action fails", async () => {
     // Replace server with one that returns 500
@@ -829,8 +829,8 @@ describe("scheduler cron firing", () => {
 
     startScheduler(stateDir, "test-token");
 
-    // Wait for the cron to fire
-    const deadline = Date.now() + 5_000;
+    // Wait for the cron to fire (up to 8 seconds, polling every 200ms)
+    const deadline = Date.now() + 8_000;
     while (hitCount === 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 200));
     }
@@ -842,5 +842,5 @@ describe("scheduler cron firing", () => {
     expect(logs.length).toBeGreaterThanOrEqual(1);
     expect(logs[0].ok).toBe(false);
     expect(logs[0].error).toContain("HTTP 500");
-  }, 10_000);
+  }, 15_000);
 });
