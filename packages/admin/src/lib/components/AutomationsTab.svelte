@@ -15,31 +15,6 @@
     data !== null && Array.isArray(data.automations) && data.automations.length > 0
   );
 
-  let expandedLogs: Set<string> = $state(new Set());
-
-  function toggleLogs(fileName: string): void {
-    const next = new Set(expandedLogs);
-    if (next.has(fileName)) {
-      next.delete(fileName);
-    } else {
-      next.add(fileName);
-    }
-    expandedLogs = next;
-  }
-
-  function formatTime(iso: string): string {
-    try {
-      return new Date(iso).toLocaleString();
-    } catch {
-      return iso;
-    }
-  }
-
-  function formatDuration(ms: number): string {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  }
-
   /** Reverse map: cron expression → friendly label */
   const CRON_TO_LABEL: Record<string, string> = {
     '* * * * *': 'Every minute',
@@ -71,13 +46,6 @@
     </button>
   </div>
   <div class="panel-body">
-    {#if data?.scheduler}
-      <div class="scheduler-status">
-        <span class="scheduler-label">Scheduler</span>
-        <span class="scheduler-count">{data.scheduler.jobCount} active job{data.scheduler.jobCount === 1 ? '' : 's'}</span>
-      </div>
-    {/if}
-
     {#if hasAutomations && data}
       <div class="automation-list">
         {#each data.automations as automation}
@@ -106,60 +74,8 @@
               </div>
             </div>
             <div class="automation-footer">
-              <button
-                class="logs-toggle"
-                onclick={() => toggleLogs(automation.fileName)}
-                aria-expanded={expandedLogs.has(automation.fileName)}
-              >
-                <svg class="chevron" class:chevron-open={expandedLogs.has(automation.fileName)} aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-                {expandedLogs.has(automation.fileName) ? 'Hide logs' : 'Show logs'}
-                {#if automation.logs.length > 0}
-                  <span class="log-count">({automation.logs.length})</span>
-                {/if}
-              </button>
-              {#if automation.logs.length > 0}
-                {@const last = automation.logs[0]}
-                <span class="last-run" class:last-run-ok={last.ok} class:last-run-fail={!last.ok}>
-                  {last.ok ? 'OK' : 'FAIL'} &middot; {formatDuration(last.durationMs)} &middot; {formatTime(last.at)}
-                </span>
-              {/if}
+              <span class="automation-file">{automation.fileName}</span>
             </div>
-            {#if expandedLogs.has(automation.fileName)}
-              <div class="logs-panel">
-                <div class="logs-scroll-container">
-                  {#if automation.logs.length === 0}
-                    <div class="logs-empty">No executions recorded yet.</div>
-                  {:else}
-                    <table class="logs-table">
-                      <thead>
-                        <tr>
-                          <th>Time</th>
-                          <th>Status</th>
-                          <th>Duration</th>
-                          <th class="error-col-header">Error</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {#each automation.logs as entry}
-                          <tr class:log-row-fail={!entry.ok}>
-                            <td class="log-time">{formatTime(entry.at)}</td>
-                            <td>
-                              <span class="log-status" class:log-ok={entry.ok} class:log-fail={!entry.ok}>
-                                {entry.ok ? 'OK' : 'FAIL'}
-                              </span>
-                            </td>
-                            <td class="log-duration">{formatDuration(entry.durationMs)}</td>
-                            <td class="log-error">{entry.error ?? ''}</td>
-                          </tr>
-                        {/each}
-                      </tbody>
-                    </table>
-                  {/if}
-                </div>
-              </div>
-            {/if}
           </div>
         {/each}
       </div>
@@ -207,26 +123,6 @@
 
   .panel-body {
     padding: var(--space-5);
-  }
-
-  .scheduler-status {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-5);
-    font-size: var(--text-sm);
-  }
-
-  .scheduler-label {
-    font-weight: var(--font-semibold);
-    color: var(--color-text);
-  }
-
-  .scheduler-count {
-    color: var(--color-text-secondary);
   }
 
   .automation-list {
@@ -326,7 +222,7 @@
     color: var(--color-text-secondary);
   }
 
-  /* ── Footer with logs toggle ──────────────────────────────────────── */
+  /* ── Footer ──────────────────────────────────────────────────────── */
 
   .automation-footer {
     display: flex;
@@ -337,133 +233,10 @@
     background: var(--color-bg-tertiary);
   }
 
-  .logs-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: none;
-    border: none;
-    padding: var(--space-1) var(--space-2);
-    font-family: var(--font-sans);
+  .automation-file {
     font-size: var(--text-xs);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .logs-toggle:hover {
-    color: var(--color-text);
-    background: var(--color-surface-hover);
-  }
-
-  .chevron {
-    transition: transform var(--transition-fast);
-  }
-
-  .chevron-open {
-    transform: rotate(90deg);
-  }
-
-  .log-count {
-    color: var(--color-text-tertiary);
-    font-weight: var(--font-medium);
-  }
-
-  .last-run {
-    font-size: var(--text-xs);
-    margin-left: auto;
-  }
-
-  .last-run-ok {
-    color: var(--color-success);
-  }
-
-  .last-run-fail {
-    color: var(--color-danger);
-  }
-
-  /* ── Logs panel ────────────────────────────────────────────────────── */
-
-  .logs-panel {
-    border-top: 1px solid var(--color-border);
-    max-height: 280px;
-    overflow-y: auto;
-  }
-
-  .logs-scroll-container {
-    overflow-x: auto;
-  }
-
-  .logs-empty {
-    padding: var(--space-4);
-    text-align: center;
-    font-size: var(--text-xs);
-    color: var(--color-text-tertiary);
-  }
-
-  .logs-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--text-xs);
-  }
-
-  .logs-table th {
-    position: sticky;
-    top: 0;
-    background: var(--color-bg-tertiary);
-    padding: var(--space-2) var(--space-3);
-    text-align: left;
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .logs-table td {
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
-    vertical-align: top;
-  }
-
-  .logs-table tr:last-child td {
-    border-bottom: none;
-  }
-
-  .log-row-fail {
-    background: color-mix(in srgb, var(--color-danger) 4%, transparent);
-  }
-
-  .log-time {
-    white-space: nowrap;
     font-family: var(--font-mono);
-  }
-
-  .log-status {
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
-  }
-
-  .log-ok {
-    color: var(--color-success);
-  }
-
-  .log-fail {
-    color: var(--color-danger);
-  }
-
-  .log-duration {
-    white-space: nowrap;
-    font-family: var(--font-mono);
-  }
-
-  .log-error {
-    color: var(--color-danger);
-    word-break: break-word;
-    max-width: 300px;
+    color: var(--color-text-tertiary);
   }
 
   /* ── Shared ────────────────────────────────────────────────────────── */
@@ -569,26 +342,10 @@
       gap: var(--space-3);
     }
 
-    .log-error {
-      max-width: 150px;
-    }
-
-    .error-col-header {
-      display: none;
-    }
-
-    .logs-scroll-container {
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .logs-table {
-      min-width: 500px;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .spinner,
-    .chevron {
+    .spinner {
       animation: none;
       transition: none;
     }

@@ -7,7 +7,7 @@
  * API contract:
  *   GET  /api/setup/status           -> { ok, setupComplete }
  *   GET  /api/setup/detect-providers  -> { ok, providers: [{ provider, url, available }] }
- *   GET  /api/setup/models/:provider?apiKey=&baseUrl= -> { ok, models: [...] }
+ *   POST /api/setup/models/:provider  { apiKey, baseUrl } -> { ok, models: [...] }
  *   POST /api/setup/complete          -> { ok, error? }
  *   GET  /api/setup/deploy-status     -> { ok, setupComplete, deployStatus, deployError }
  */
@@ -971,11 +971,12 @@
   }
 
   async function apiFetchModels(provider, baseUrl, apiKey) {
-    var params = new URLSearchParams();
-    if (apiKey) params.set("apiKey", apiKey);
-    if (baseUrl) params.set("baseUrl", baseUrl);
-    var url = "/api/setup/models/" + encodeURIComponent(provider) + "?" + params.toString();
-    var res = await fetch(url);
+    var url = "/api/setup/models/" + encodeURIComponent(provider);
+    var res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: apiKey || "", baseUrl: baseUrl || "" }),
+    });
     if (!res.ok) throw new Error("Failed to fetch models (HTTP " + res.status + ")");
     var data = await res.json();
     return data.models || [];

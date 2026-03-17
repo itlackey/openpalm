@@ -46,17 +46,10 @@ export type AutomationInfo = {
   action: AutomationActionInfo;
   on_failure: 'log' | 'audit';
   fileName: string;
-  logs: AutomationLogEntry[];
-};
-
-export type SchedulerStatus = {
-  jobCount: number;
-  jobs: { name: string; fileName: string; schedule: string; running: boolean }[];
 };
 
 export type AutomationsResponse = {
   automations: AutomationInfo[];
-  scheduler: SchedulerStatus;
 };
 
 export type ChannelInfo = {

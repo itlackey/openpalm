@@ -81,23 +81,8 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
   return output;
 }
 
-/**
- * Returns the standard compose flags for --project-name, -f, and --env-file.
- */
-export function composeProjectArgs(): string[] {
-  const stateHome = defaultStateHome();
-  const configHome = defaultConfigHome();
-  return [
-    '--project-name',
-    'openpalm',
-    '-f',
-    join(stateHome, 'artifacts', 'docker-compose.yml'),
-    '--env-file',
-    join(configHome, 'secrets.env'),
-    '--env-file',
-    join(stateHome, 'artifacts', 'stack.env'),
-  ];
-}
+// composeProjectArgs() removed — use fullComposeArgs(state) from staging.ts instead.
+// That function builds the correct file list including channel overlays and staged env files.
 
 /**
  * Ensures the opencode config and system config directories exist with defaults.

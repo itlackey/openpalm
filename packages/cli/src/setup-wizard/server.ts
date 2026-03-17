@@ -174,12 +174,21 @@ export function createSetupServer(
     }
 
     // ── API: Fetch Models for a Provider ─────────────────────────────
+    // Uses POST to keep API keys out of URLs/query strings.
 
     const modelsMatch = matchRoute(path, "/api/setup/models/:provider");
-    if (method === "GET" && modelsMatch) {
+    if (method === "POST" && modelsMatch) {
       const provider = modelsMatch.provider;
-      const apiKey = url.searchParams.get("apiKey") || "";
-      const baseUrl = url.searchParams.get("baseUrl") || "";
+
+      let reqBody: Record<string, unknown> = {};
+      try {
+        reqBody = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+      }
+
+      const apiKey = typeof reqBody.apiKey === "string" ? reqBody.apiKey : "";
+      const baseUrl = typeof reqBody.baseUrl === "string" ? reqBody.baseUrl : "";
 
       try {
         const result = await fetchProviderModels(provider, apiKey, baseUrl, configDir);
@@ -236,6 +245,7 @@ export function createSetupServer(
 
   const server = Bun.serve({
     port,
+    hostname: "127.0.0.1",
     fetch: handleRequest,
   });
 

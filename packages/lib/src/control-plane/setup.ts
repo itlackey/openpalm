@@ -234,9 +234,9 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
   updates.OPENPALM_ADMIN_TOKEN = input.adminToken;
   updates.ADMIN_TOKEN = input.adminToken;
 
-  // Owner info
-  const ownerName = input.ownerName?.trim() ?? "";
-  const ownerEmail = input.ownerEmail?.trim() ?? "";
+  // Owner info — strip control characters to prevent env-file injection
+  const ownerName = (input.ownerName?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
+  const ownerEmail = (input.ownerEmail?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 

@@ -174,16 +174,58 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
     // Block until user completes the wizard
     const result = await wizard.waitForComplete();
-    wizard.stop();
 
     if (!result.ok) {
+      wizard.stop();
       throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`);
     }
 
     console.log('Setup complete. Starting services...');
+
+    // Keep wizard server running for deploy status polling from the browser.
+    // Stage artifacts and start services while the wizard shows progress.
+    try {
+      const state = await ensureStagedState();
+      const composeArgs = fullComposeArgs(state);
+      const managedServices = buildManagedServiceNames(state);
+
+      wizard.updateDeployStatus(
+        managedServices.map(s => ({ service: s, status: 'pending', label: 'Waiting...' })),
+      );
+
+      await runDockerCompose([...composeArgs, 'pull', ...managedServices]).catch(() => {
+        // Pull failure is non-fatal — images may already be cached
+      });
+
+      wizard.updateDeployStatus(
+        managedServices.map(s => ({ service: s, status: 'pulling', label: 'Starting...' })),
+      );
+
+      await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+
+      wizard.markAllRunning();
+
+      console.log(JSON.stringify({
+        ok: true,
+        mode: 'install',
+        services: managedServices,
+      }, null, 2));
+
+      // Give the browser a moment to poll the final status, then stop
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } catch (err) {
+      wizard.setDeployError(String(err));
+      // Keep server alive briefly so user can see the error
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      throw err;
+    } finally {
+      wizard.stop();
+    }
+
+    return;
   }
 
-  // ── Start Core Services ─────────────────────────────────────────────
+  // ── Start Core Services (update mode — no wizard) ────────────────────
   // Stage artifacts and start all managed services directly via Docker
   // Compose. No admin container required for lifecycle operations.
 
@@ -195,7 +237,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   console.log(JSON.stringify({
     ok: true,
-    mode: updateMode ? 'update' : 'install',
+    mode: 'update',
     services: managedServices,
   }, null, 2));
 }

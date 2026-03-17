@@ -1,17 +1,17 @@
 import { tool } from "@opencode-ai/plugin";
 
 export default tool({
-  description: "Check health of core OpenPalm services. Specify comma-separated service names: guardian, memory, admin. Defaults to all.",
+  description: "Check health of core OpenPalm services. Specify comma-separated service names: guardian, memory. Defaults to all core services (no admin).",
   args: {
-    services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, memory, admin). Defaults to all."),
+    services: tool.schema.string().optional().describe("Comma-separated service names to check (guardian, memory). Defaults to all core services."),
   },
   async execute(args) {
-    const ALL = ["guardian", "memory", "admin"];
+    const ALL = ["guardian", "memory"];
     const requested = args.services
       ? args.services.split(",").map((service) => service.trim()).filter(Boolean)
       : ALL;
     const targets = [...new Set(requested)];
-    const portMap: Record<string, number> = { guardian: 8080, memory: 8765, admin: 8100 };
+    const portMap: Record<string, number> = { guardian: 8080, memory: 8765 };
     const results: Record<string, { status: string; latencyMs?: number }> = {};
     await Promise.all(
       targets.map(async (svc) => {
