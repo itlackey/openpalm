@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/memory",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "license": "MPL-2.0",
   "description": "OpenPalm memory library — fact extraction, vector search, and history tracking",
