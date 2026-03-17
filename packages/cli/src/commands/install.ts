@@ -114,10 +114,33 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'docker-compose.yml'), composeContent);
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 
+  // Download schemas to both DATA_HOME (for FilesystemAssetProvider) and STATE_HOME (for varlock validation)
   const secretsSchemaContent = await fetchAsset(options.version, 'secrets.env.schema');
   const stackSchemaContent = await fetchAsset(options.version, 'stack.env.schema');
+  await Bun.write(join(dataHome, 'secrets.env.schema'), secretsSchemaContent);
+  await Bun.write(join(dataHome, 'stack.env.schema'), stackSchemaContent);
   await Bun.write(join(stateHome, 'artifacts', 'secrets.env.schema'), secretsSchemaContent);
   await Bun.write(join(stateHome, 'artifacts', 'stack.env.schema'), stackSchemaContent);
+
+  // Download remaining assets needed by FilesystemAssetProvider
+  const assetFiles: Array<{ remote: string; localPath: string }> = [
+    { remote: 'ollama.yml', localPath: join(dataHome, 'ollama.yml') },
+    { remote: 'AGENTS.md', localPath: join(dataHome, 'assistant', 'AGENTS.md') },
+    { remote: 'opencode.jsonc', localPath: join(dataHome, 'assistant', 'opencode.jsonc') },
+    { remote: 'cleanup-logs.yml', localPath: join(dataHome, 'automations', 'cleanup-logs.yml') },
+    { remote: 'cleanup-data.yml', localPath: join(dataHome, 'automations', 'cleanup-data.yml') },
+    { remote: 'validate-config.yml', localPath: join(dataHome, 'automations', 'validate-config.yml') },
+  ];
+  await Promise.all(
+    assetFiles.map(async ({ remote, localPath }) => {
+      try {
+        const content = await fetchAsset(options.version, remote);
+        await Bun.write(localPath, content);
+      } catch {
+        // Non-fatal — asset may not exist in older releases
+      }
+    }),
+  );
 
   await ensureSecrets(configHome);
   await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version);

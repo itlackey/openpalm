@@ -202,6 +202,7 @@ export async function composeDown(
   stateDir: string,
   options: {
     files?: string[];
+    profiles?: string[];
     removeVolumes?: boolean;
     envFiles?: string[];
   } = {}
@@ -217,6 +218,13 @@ export async function composeDown(
   }
 
   const args = buildComposeArgs(stateDir, options);
+
+  if (options.profiles) {
+    for (const p of options.profiles) {
+      args.push("--profile", p);
+    }
+  }
+
   args.push("down");
 
   if (options.removeVolumes) {

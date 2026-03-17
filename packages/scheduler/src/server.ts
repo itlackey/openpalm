@@ -33,13 +33,13 @@ if (!STATE_DIR) {
 }
 
 if (!ADMIN_TOKEN) {
-  logger.warn("OPENPALM_ADMIN_TOKEN is not set — manual trigger endpoint is unauthenticated");
+  logger.warn("OPENPALM_ADMIN_TOKEN is not set — authenticated endpoints will reject all requests");
 }
 
 // ── Auth Helper ──────────────────────────────────────────────────────
 
 function requireAuth(req: Request): boolean {
-  if (!ADMIN_TOKEN) return true; // No token configured = open
+  if (!ADMIN_TOKEN) return false; // No token configured = fail closed
   const token =
     req.headers.get("x-admin-token") ??
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
