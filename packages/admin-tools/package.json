@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/admin-tools",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "license": "MPL-2.0",
   "description": "OpenPalm admin API tools for OpenCode — stack management, diagnostics, and lifecycle operations",
