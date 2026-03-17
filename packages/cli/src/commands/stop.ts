@@ -41,9 +41,9 @@ export async function runStopAction(services: string[]): Promise<void> {
       return;
     }
 
-    // Direct compose down
+    // Direct compose down — include admin profile to tear down all services
     const state = await ensureStagedState();
-    await runDockerCompose([...fullComposeArgs(state), 'down']);
+    await runDockerCompose([...fullComposeArgs(state), '--profile', 'admin', 'down']);
     return;
   }
 

@@ -23,11 +23,11 @@ export default defineCommand({
       return;
     }
 
-    // Direct compose down
+    // Direct compose down — include admin profile to tear down all services
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const downArgs = args.volumes ? ['down', '-v'] : ['down'];
-    await runDockerCompose([...composeArgs, ...downArgs]);
+    await runDockerCompose([...composeArgs, '--profile', 'admin', ...downArgs]);
 
     console.log('OpenPalm stack stopped and removed.');
     if (!args.volumes) {

@@ -416,7 +416,7 @@ export function selfRecreateAdmin(
   options: { files?: string[]; envFiles?: string[] } = {}
 ): void {
   const args = buildComposeArgs(stateDir, options);
-  args.push("up", "-d", "--force-recreate", "--remove-orphans", "admin");
+  args.push("--profile", "admin", "up", "-d", "--force-recreate", "--remove-orphans", "admin");
 
   const envOverrides: Record<string, string> = {};
   for (const ef of options.envFiles ?? []) {

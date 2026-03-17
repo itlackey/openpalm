@@ -252,6 +252,10 @@ describe("CORE_SERVICES", () => {
   test("has exactly 5 core services", () => {
     expect(CORE_SERVICES).toHaveLength(5);
   });
+
+  test("has exactly 2 optional services", () => {
+    expect(OPTIONAL_SERVICES).toHaveLength(2);
+  });
 });
 
 // ── Lifecycle State Transitions ─────────────────────────────────────────
