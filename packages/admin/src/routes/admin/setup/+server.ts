@@ -151,8 +151,8 @@ export const POST: RequestHandler = async (event) => {
     updates.ADMIN_TOKEN = body.adminToken;
   }
 
-  const ownerName = typeof body.ownerName === "string" ? body.ownerName.trim() : "";
-  const ownerEmail = typeof body.ownerEmail === "string" ? body.ownerEmail.trim() : "";
+  const ownerName = (typeof body.ownerName === "string" ? body.ownerName.trim() : "").replace(/[\r\n\0]/g, "").slice(0, 200);
+  const ownerEmail = (typeof body.ownerEmail === "string" ? body.ownerEmail.trim() : "").replace(/[\r\n\0]/g, "").slice(0, 200);
   if (ownerName) updates.OWNER_NAME = ownerName;
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 

@@ -29,6 +29,9 @@
 		reverse_proxy admin:8100 {
 			fail_duration 5s
 		}
+		handle_errors {
+			respond "OpenPalm is running but the admin UI is not enabled. Start it with: openpalm start --with-admin" 503
+		}
 	}
 
 	# ── Channel routes (auto-imported from staged state) ─────────────

@@ -60,7 +60,7 @@ export function fullComposeArgs(state: ControlPlaneState): string[] {
     '--project-name',
     'openpalm',
     ...files.flatMap((f) => ['-f', f]),
-    ...envFiles.flatMap((f) => ['--env-file', f]),
+    ...envFiles.filter((f) => existsSync(f)).flatMap((f) => ['--env-file', f]),
   ];
 }
 

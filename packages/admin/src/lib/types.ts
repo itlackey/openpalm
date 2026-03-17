@@ -30,13 +30,6 @@ export type AutomationActionInfo = {
   agent?: string;
 };
 
-export type AutomationLogEntry = {
-  at: string;
-  ok: boolean;
-  durationMs: number;
-  error?: string;
-};
-
 export type AutomationInfo = {
   name: string;
   description: string;

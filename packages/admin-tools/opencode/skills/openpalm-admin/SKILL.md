@@ -36,7 +36,7 @@ List installed and available channels, install from registry, or uninstall.
 - Channel access is controlled by the `.caddy` file content, not by an API toggle
 
 ### `admin-automations` (list)
-Inspect configured automations, scheduler status, and recent execution logs.
+List configured automations (name, schedule, enabled, action type). For live scheduler status and execution logs, query the scheduler sidecar at `http://scheduler:8090/automations`.
 
 ### `admin-artifacts` (list, manifest, get)
 Inspect the generated configuration files:
