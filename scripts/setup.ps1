@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $Repo = 'itlackey/openpalm'
 $Binary = 'openpalm-cli-windows-x64.exe'
-$ScriptVersion = '0.9.2-rc2'
+$ScriptVersion = '0.9.2-rc3'
 
 function Normalize-Version {
     param(
