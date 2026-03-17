@@ -235,10 +235,10 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 
 /**
  * Build the list of services that `docker compose up` should manage.
- * Excludes admin — admin cannot recreate its own container inline.
+ * Core services only — admin/docker-socket-proxy are in the "admin" profile.
  */
 export function buildManagedServices(state: ControlPlaneState): string[] {
-  const services: string[] = CORE_SERVICES.filter((s) => s !== "admin");
+  const services: string[] = [...CORE_SERVICES];
 
   if (isOllamaEnabled(state)) {
     services.push("ollama");

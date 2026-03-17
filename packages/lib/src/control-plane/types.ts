@@ -8,9 +8,10 @@ export type CoreServiceName =
   | "assistant"
   | "guardian"
   | "memory"
-  | "admin"
   | "caddy"
   | "scheduler";
+
+export type OptionalServiceName = "admin" | "docker-socket-proxy";
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
@@ -137,7 +138,11 @@ export const CORE_SERVICES: CoreServiceName[] = [
   "assistant",
   "guardian",
   "scheduler",
-  "admin"
+];
+
+export const OPTIONAL_SERVICES: OptionalServiceName[] = [
+  "admin",
+  "docker-socket-proxy",
 ];
 
 export const CONNECTION_KINDS: ConnectionKind[] = [

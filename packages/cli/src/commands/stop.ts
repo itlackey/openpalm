@@ -60,6 +60,11 @@ export async function runStopAction(services: string[]): Promise<void> {
 
     // Direct compose stop for specific service
     const state = await ensureStagedState();
-    await runDockerCompose([...fullComposeArgs(state), 'stop', service]);
+    const composeArgs = fullComposeArgs(state);
+    if (service === 'admin' || service === 'docker-socket-proxy') {
+      await runDockerCompose([...composeArgs, '--profile', 'admin', 'stop', service]);
+    } else {
+      await runDockerCompose([...composeArgs, 'stop', service]);
+    }
   }
 }

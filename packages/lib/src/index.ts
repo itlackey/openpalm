@@ -27,6 +27,7 @@ export { createLogger } from "./logger.js";
 export type {
   ControlPlaneState,
   CoreServiceName,
+  OptionalServiceName,
   AccessScope,
   ChannelInfo,
   CallerType,
@@ -48,6 +49,7 @@ export type {
 } from "./control-plane/types.js";
 export {
   CORE_SERVICES,
+  OPTIONAL_SERVICES,
   CONNECTION_KINDS,
   REQUIRED_CAPABILITIES,
   OPTIONAL_CAPABILITIES,

@@ -3,6 +3,7 @@
  */
 export type {
   CoreServiceName,
+  OptionalServiceName,
   AccessScope,
   CallerType,
   ConnectionKind,
@@ -26,6 +27,7 @@ export type {
 
 export {
   CORE_SERVICES,
+  OPTIONAL_SERVICES,
   CONNECTION_KINDS,
   REQUIRED_CAPABILITIES,
   OPTIONAL_CAPABILITIES,

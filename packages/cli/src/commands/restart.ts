@@ -61,6 +61,11 @@ export async function runRestartAction(services: string[]): Promise<void> {
 
     // Direct compose restart for specific service
     const state = await ensureStagedState();
-    await runDockerCompose([...fullComposeArgs(state), 'restart', service]);
+    const composeArgs = fullComposeArgs(state);
+    if (service === 'admin' || service === 'docker-socket-proxy') {
+      await runDockerCompose([...composeArgs, '--profile', 'admin', 'restart', service]);
+    } else {
+      await runDockerCompose([...composeArgs, 'restart', service]);
+    }
   }
 }

@@ -22,7 +22,7 @@ import {
   isAllowedAction
 } from "./lifecycle.js";
 import { randomHex } from "./staging.js";
-import { CORE_SERVICES } from "./types.js";
+import { CORE_SERVICES, OPTIONAL_SERVICES } from "./types.js";
 import { makeTempDir, makeTestState, trackDir, registerCleanup, seedConfigChannels } from "./test-helpers.js";
 
 registerCleanup();
@@ -235,17 +235,22 @@ describe("createState", () => {
 // ── Core Service Constants ──────────────────────────────────────────────
 
 describe("CORE_SERVICES", () => {
-  test("includes all expected services", () => {
+  test("includes all expected core services", () => {
     expect(CORE_SERVICES).toContain("caddy");
     expect(CORE_SERVICES).toContain("memory");
     expect(CORE_SERVICES).toContain("assistant");
     expect(CORE_SERVICES).toContain("guardian");
     expect(CORE_SERVICES).toContain("scheduler");
-    expect(CORE_SERVICES).toContain("admin");
   });
 
-  test("has exactly 6 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(6);
+  test("admin is an optional service, not core", () => {
+    expect(CORE_SERVICES).not.toContain("admin");
+    expect(OPTIONAL_SERVICES).toContain("admin");
+    expect(OPTIONAL_SERVICES).toContain("docker-socket-proxy");
+  });
+
+  test("has exactly 5 core services", () => {
+    expect(CORE_SERVICES).toHaveLength(5);
   });
 });
 
