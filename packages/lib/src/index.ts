@@ -258,6 +258,7 @@ export type {
 } from "./control-plane/scheduler.js";
 export {
   SCHEDULE_PRESETS,
+  SAFE_PATH_RE,
   resolveSchedule,
   parseAutomationYaml,
   loadAutomations,
@@ -273,3 +274,19 @@ export {
 // ── Model Runner (local provider detection) ─────────────────────────────
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
+
+// ── Setup ────────────────────────────────────────────────────────────────
+export type {
+  SetupConnection,
+  SetupAssignments,
+  SetupInput,
+  SetupResult,
+  DetectedProvider,
+} from "./control-plane/setup.js";
+export {
+  validateSetupInput,
+  buildSecretsFromSetup,
+  buildConnectionEnvVarMap,
+  performSetup,
+  detectProviders,
+} from "./control-plane/setup.js";

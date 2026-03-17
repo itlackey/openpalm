@@ -4,18 +4,21 @@ import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { ADMIN_URL, isAdminReachable, adminRequest, waitForAdminHealthy } from '../lib/admin.ts';
-import { ensureDirectoryTree, fetchAsset, runDockerCompose, composeProjectArgs, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, openBrowser } from '../lib/docker.ts';
+import { isAdminReachable, adminRequest } from '../lib/admin.ts';
+import { ensureDirectoryTree, fetchAsset, runDockerCompose, ensureOpenCodeConfig, ensureOpenCodeSystemConfig, openBrowser } from '../lib/docker.ts';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { loadAdminToken } from '../lib/env.ts';
+import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
+import { createSetupServer } from '../setup-wizard/server.ts';
 
 const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
+const SETUP_WIZARD_PORT = 8100;
 
 export default defineCommand({
   meta: {
     name: 'install',
-    description: 'Bootstrap XDG dirs, download assets, start admin + docker-socket-proxy, open setup wizard',
+    description: 'Bootstrap XDG dirs, download assets, run setup wizard, start core services',
   },
   args: {
     force: {
@@ -152,19 +155,47 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
-  await runDockerCompose([
-    ...composeProjectArgs(),
-    'up',
-    '-d',
-    'docker-socket-proxy',
-    'admin',
-  ]);
+  // ── Setup Wizard ──────────────────────────────────────────────────────
+  // First-time install: serve the setup wizard locally and wait for user
+  // to complete it. The wizard calls performSetup() from @openpalm/lib
+  // which writes secrets, connection profiles, memory config, and stages
+  // all artifacts. No admin container needed.
 
-  await waitForAdminHealthy();
-  const targetUrl = updateMode ? `${ADMIN_URL}/` : `${ADMIN_URL}/setup`;
-  if (!options.noOpen) {
-    await openBrowser(targetUrl);
+  if (!updateMode) {
+    console.log('Starting setup wizard...');
+
+    const wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+    const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
+    console.log(`Setup wizard running at ${wizardUrl}`);
+
+    if (!options.noOpen) {
+      await openBrowser(wizardUrl);
+    }
+
+    // Block until user completes the wizard
+    const result = await wizard.waitForComplete();
+    wizard.stop();
+
+    if (!result.ok) {
+      throw new Error(`Setup failed: ${result.error ?? 'unknown error'}`);
+    }
+
+    console.log('Setup complete. Starting services...');
   }
 
-  console.log(JSON.stringify({ ok: true, mode: updateMode ? 'update' : 'install', url: targetUrl }, null, 2));
+  // ── Start Core Services ─────────────────────────────────────────────
+  // Stage artifacts and start all managed services directly via Docker
+  // Compose. No admin container required for lifecycle operations.
+
+  const state = await ensureStagedState();
+  const composeArgs = fullComposeArgs(state);
+  const managedServices = buildManagedServiceNames(state);
+
+  await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
+
+  console.log(JSON.stringify({
+    ok: true,
+    mode: updateMode ? 'update' : 'install',
+    services: managedServices,
+  }, null, 2));
 }

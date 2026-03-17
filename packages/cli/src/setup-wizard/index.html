@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenPalm Setup Wizard</title>
+  <link rel="stylesheet" href="/setup/wizard.css">
+</head>
+<body>
+  <main class="setup-page" aria-label="Setup wizard">
+    <div class="wizard-card">
+
+      <!-- ── Header ─────────────────────────────────────────────── -->
+      <div class="wizard-header">
+        <h1>OpenPalm Setup</h1>
+        <p class="wizard-subtitle">Configure your stack in a few steps.</p>
+      </div>
+
+      <div class="wizard-body">
+
+        <!-- ── Step Indicators ────────────────────────────────────── -->
+        <nav class="step-indicators" aria-label="Wizard steps" id="step-indicators">
+          <button class="step-dot active" data-step="0" aria-label="Step 1: Welcome" aria-current="step">1</button>
+          <span class="step-line" data-line="0"></span>
+          <button class="step-dot" data-step="1" aria-label="Step 2: Connections" disabled>2</button>
+          <span class="step-line" data-line="1"></span>
+          <button class="step-dot" data-step="2" aria-label="Step 3: Models" disabled>3</button>
+          <span class="step-line" data-line="2"></span>
+          <button class="step-dot" data-step="3" aria-label="Step 4: Options" disabled>4</button>
+          <span class="step-line" data-line="3"></span>
+          <button class="step-dot" data-step="4" aria-label="Step 5: Review" disabled>5</button>
+        </nav>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Step 0: Welcome & Admin Token
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content" id="step-0" data-testid="step-welcome">
+          <h2>Welcome</h2>
+          <p class="step-description">Set up your admin credentials, then connect your AI providers and choose default models.</p>
+
+          <div class="field-group">
+            <label for="admin-token">Admin Token</label>
+            <input id="admin-token" type="text" autocomplete="off" placeholder="Min 8 characters">
+            <p class="field-hint">Protects the admin console. A random token has been generated for you.</p>
+          </div>
+
+          <div class="field-group">
+            <label for="owner-name">Your Name <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
+            <input id="owner-name" type="text" placeholder="Jane Doe" autocomplete="name">
+          </div>
+
+          <div class="field-group">
+            <label for="owner-email">Email <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
+            <input id="owner-email" type="email" placeholder="jane@example.com" autocomplete="email">
+          </div>
+
+          <div id="step0-error" class="field-error hidden" role="alert"></div>
+
+          <div class="step-actions">
+            <button class="btn btn-primary" id="btn-step0-next">Next</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Step 1: Connection Setup
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content hidden" id="step-1" data-testid="step-connections">
+          <h2>Connections</h2>
+          <p class="step-description">Add one or more model endpoints. Mix local and cloud providers as you like.</p>
+
+          <!-- Existing connections list -->
+          <ul class="hub-list hidden" id="conn-hub-list" aria-label="Connections"></ul>
+
+          <!-- Empty state -->
+          <div class="hub-empty" id="conn-hub-empty">
+            <p class="hub-empty-headline">No connections yet</p>
+            <p class="hub-empty-body">Add a cloud API provider or a local model server to get started.</p>
+          </div>
+
+          <!-- Loading state for provider detection -->
+          <div class="loading-state hidden" id="conn-detecting">
+            <span class="spinner"></span>&nbsp;Detecting local providers...
+          </div>
+
+          <!-- Add connection type cards -->
+          <div id="conn-type-chooser" class="hidden">
+            <button class="conn-card" type="button" id="btn-add-cloud">
+              <div class="conn-icon conn-icon--cloud" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+              </div>
+              <div class="conn-body">
+                <span class="conn-label">Cloud Provider <span class="conn-badge">Hosted</span></span>
+                <span class="conn-desc">OpenAI, Anthropic, Groq, Together, Mistral, DeepSeek, xAI</span>
+              </div>
+              <div class="conn-arrow" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </button>
+            <button class="conn-card" type="button" id="btn-add-local">
+              <div class="conn-icon conn-icon--local" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
+              </div>
+              <div class="conn-body">
+                <span class="conn-label">Local Provider <span class="conn-badge conn-badge--local">On-Device</span></span>
+                <span class="conn-desc">Ollama, Docker Model Runner, LM Studio running locally</span>
+              </div>
+              <div class="conn-arrow" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </button>
+          </div>
+
+          <!-- Connection detail form (shared for cloud and local) -->
+          <div id="conn-detail-form" class="hidden">
+            <div class="connection-mode-card" id="conn-mode-card">
+              <div class="connection-mode-header">
+                <span class="connection-mode-badge" id="conn-mode-badge"></span>
+                <h3 id="conn-mode-title"></h3>
+              </div>
+            </div>
+
+            <!-- Cloud: provider quick-picks -->
+            <div class="provider-quick-picks hidden" id="cloud-provider-picks"></div>
+
+            <!-- Local: detected providers -->
+            <div id="local-provider-list" class="hidden"></div>
+
+            <div class="field-group">
+              <label for="conn-name">Connection Name</label>
+              <input id="conn-name" type="text" placeholder='e.g. "My Ollama", "Work OpenAI"'>
+            </div>
+
+            <div class="field-group">
+              <label for="conn-base-url">Base URL</label>
+              <input id="conn-base-url" type="url" placeholder="https://api.openai.com">
+              <p class="field-hint">The provider endpoint. Do not include a trailing /v1.</p>
+            </div>
+
+            <div class="field-group hidden" id="conn-apikey-group">
+              <label for="conn-api-key">API Key</label>
+              <input id="conn-api-key" type="password" placeholder="sk-..." autocomplete="new-password">
+              <p class="field-hint">Stored server-side only.</p>
+            </div>
+
+            <div id="conn-detail-error" class="field-error hidden" role="alert"></div>
+
+            <div class="connection-success hidden" id="conn-test-success" role="status">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span id="conn-test-msg">Connected</span>
+            </div>
+
+            <div class="step-actions">
+              <button class="btn btn-secondary" id="btn-conn-cancel">Cancel</button>
+              <button class="btn btn-outline" id="btn-conn-test">Test</button>
+              <button class="btn btn-primary" id="btn-conn-save">Save Connection</button>
+            </div>
+          </div>
+
+          <!-- Main step actions (shown when not adding a connection) -->
+          <div class="step-actions" id="step1-actions">
+            <button class="btn btn-secondary" id="btn-step1-back">Back</button>
+            <button class="btn btn-outline" id="btn-step1-add">Add Connection</button>
+            <button class="btn btn-primary" id="btn-step1-next" disabled>Next</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Step 2: Model Assignment
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content hidden" id="step-2" data-testid="step-models">
+          <h2>Model Assignment</h2>
+          <p class="step-description">Choose default models for chat and embeddings.</p>
+
+          <!-- LLM Card -->
+          <div class="model-card">
+            <div class="model-card-header">
+              <span class="model-card-title">Chat Model (LLM)</span>
+              <span class="model-card-help">Used for conversations, tool calls, and reasoning.</span>
+            </div>
+            <div class="field-group">
+              <label for="llm-connection">Connection</label>
+              <select id="llm-connection">
+                <option value="" disabled selected>Select a connection</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="llm-model">Model</label>
+              <select id="llm-model"><option value="">Loading...</option></select>
+            </div>
+            <div class="field-group">
+              <label for="llm-small-model">Small Model <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
+              <select id="llm-small-model"><option value="">(same as chat model)</option></select>
+              <p class="field-hint">Used for lightweight tasks like memory extraction.</p>
+            </div>
+          </div>
+
+          <!-- Embeddings Card -->
+          <div class="model-card">
+            <div class="model-card-header">
+              <span class="model-card-title">Embeddings</span>
+              <span class="model-card-help">Used for vector search and memory.</span>
+            </div>
+            <div class="field-group">
+              <label for="emb-connection">Connection</label>
+              <select id="emb-connection">
+                <option value="" disabled selected>Select a connection</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="emb-model">Embedding Model</label>
+              <select id="emb-model"><option value="">Loading...</option></select>
+            </div>
+            <div class="field-group">
+              <label for="emb-dims">Embedding Dimensions</label>
+              <input id="emb-dims" type="number" value="1536" min="1" step="1">
+              <p class="field-hint">Set automatically for known models. Override only if needed.</p>
+            </div>
+          </div>
+
+          <button class="add-connection-link" type="button" id="btn-models-add-conn">Need another connection?</button>
+
+          <div id="step2-error" class="field-error hidden" role="alert"></div>
+
+          <div class="step-actions">
+            <button class="btn btn-secondary" id="btn-step2-back">Back</button>
+            <button class="btn btn-primary" id="btn-step2-next">Next</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Step 3: Options
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content hidden" id="step-3" data-testid="step-options">
+          <h2>Options</h2>
+          <p class="step-description">Tweak optional settings before review.</p>
+
+          <!-- Ollama in-stack toggle (only shown when relevant) -->
+          <div class="addon-row hidden" id="ollama-addon">
+            <div class="addon-toggle-row">
+              <label class="addon-toggle-label">
+                <input type="checkbox" id="ollama-enabled">
+                <span class="addon-label-text">Run Ollama inside the stack</span>
+              </label>
+              <span class="addon-help">Adds an Ollama container to the compose stack so you do not need a separate install.</span>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="memory-user-id">Memory User ID</label>
+            <input id="memory-user-id" type="text" placeholder="default_user">
+            <p class="field-hint">Identifies the memory owner. Defaults to your email or "default_user".</p>
+          </div>
+
+          <div class="step-actions">
+            <button class="btn btn-secondary" id="btn-step3-back">Back</button>
+            <button class="btn btn-primary" id="btn-step3-next">Next</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Step 4: Review & Install
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content hidden" id="step-4" data-testid="step-review">
+          <h2>Review &amp; Install</h2>
+          <p class="step-description">Confirm your settings, then install.</p>
+
+          <div class="review-grid" id="review-grid"></div>
+
+          <div id="install-error" class="install-error hidden" role="alert"></div>
+
+          <div class="step-actions" id="review-actions">
+            <button class="btn btn-secondary" id="btn-step4-back">Back</button>
+            <button class="btn btn-primary" id="btn-install">Install</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Deploy Status Screen
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content hidden" id="step-deploy" data-testid="step-deploy">
+          <div class="deploy-header">
+            <h2 id="deploy-title">Deploying...</h2>
+            <p class="step-description" id="deploy-subtitle">Writing configuration and starting services.</p>
+          </div>
+
+          <div class="deploy-progress-summary">
+            <div class="deploy-progress-meta">
+              <span class="deploy-progress-label" id="deploy-progress-label">Progress</span>
+              <span class="deploy-progress-value" id="deploy-progress-value">0%</span>
+            </div>
+            <div class="deploy-progress-bar">
+              <div class="deploy-progress-fill" id="deploy-progress-fill" style="width:0%"></div>
+            </div>
+            <p class="deploy-progress-note hidden" id="deploy-progress-note"></p>
+          </div>
+
+          <div class="deploy-services" id="deploy-services"></div>
+
+          <!-- Error card -->
+          <div class="deploy-failure-card hidden" id="deploy-failure" role="alert" aria-label="Deployment failure">
+            <div class="deploy-failure-header">
+              <span class="deploy-failure-kicker">Error</span>
+              <h3 id="deploy-failure-title">Deployment failed</h3>
+            </div>
+            <p class="deploy-failure-summary" id="deploy-failure-summary"></p>
+            <details class="deploy-error-details">
+              <summary>Technical details</summary>
+              <pre id="deploy-error-pre"></pre>
+            </details>
+          </div>
+
+          <!-- Tips -->
+          <aside class="deploy-tips" id="deploy-tips" aria-label="Startup tips">
+            <div class="deploy-tips-header">
+              <span class="deploy-tips-kicker">Tips</span>
+              <h3>First startup takes a few minutes</h3>
+            </div>
+            <ul>
+              <li>Container images are being downloaded for the first time.</li>
+              <li>The admin console will be available once all services are healthy.</li>
+              <li>You can close this page; setup will continue in the background.</li>
+            </ul>
+          </aside>
+
+          <!-- Done state -->
+          <div class="done-state hidden" id="deploy-done">
+            <div class="done-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <h2>Setup Complete</h2>
+            <p class="done-subtitle">Your OpenPalm stack is up and running.</p>
+            <ul class="service-list" id="deploy-service-list"></ul>
+            <a href="/" class="btn btn-primary">Open Console</a>
+          </div>
+
+          <!-- Deploy error actions -->
+          <div class="step-actions hidden" id="deploy-error-actions">
+            <button class="btn btn-secondary" id="btn-deploy-back">Back to Review</button>
+            <button class="btn btn-primary" id="btn-deploy-retry">Retry</button>
+          </div>
+        </section>
+
+      </div><!-- .wizard-body -->
+    </div><!-- .wizard-card -->
+  </main>
+
+  <script src="/setup/wizard.js"></script>
+</body>
+</html>

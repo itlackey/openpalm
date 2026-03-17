@@ -5,11 +5,9 @@
  * This allows the scheduler to run independently when admin is not deployed.
  */
 import type { AutomationAction } from "@openpalm/lib";
-import { createLogger } from "@openpalm/lib";
+import { createLogger, SAFE_PATH_RE } from "@openpalm/lib";
 
 const logger = createLogger("scheduler:api");
-
-const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
 
 export async function executeApiAction(
   action: AutomationAction,

@@ -255,7 +255,7 @@ export function loadAutomations(stateDir: string): AutomationConfig[] {
 
 // ── Action Execution ──────────────────────────────────────────────────
 
-const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
+export const SAFE_PATH_RE = /^\/admin\/[a-zA-Z0-9/._-]+$/;
 
 /** Execute an API action — auto-injects admin token and base URL. */
 async function executeApiAction(
@@ -358,7 +358,7 @@ async function executeAssistantAction(action: AutomationAction): Promise<void> {
     throw new Error("assistant action requires a non-empty 'content' field");
   }
 
-  const baseUrl = process.env.OPENPALM_OPENCODE_URL ?? "http://localhost:4096";
+  const baseUrl = process.env.OPENCODE_API_URL ?? "http://localhost:4096";
   const password = process.env.OPENCODE_SERVER_PASSWORD;
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (password) {
