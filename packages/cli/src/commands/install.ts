@@ -12,6 +12,7 @@ import { detectHostInfo } from '../lib/host-info.ts';
 import { loadAdminToken } from '../lib/env.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
+import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
 const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
 const SETUP_WIZARD_PORT = 8100;
@@ -220,21 +221,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       const state = await ensureStagedState();
       const composeArgs = fullComposeArgs(state);
       const managedServices = buildManagedServiceNames(state);
-      // Include admin profile so admin + docker-socket-proxy start by default
-      const adminServices = ['admin', 'docker-socket-proxy'];
-      const allServices = [...managedServices, ...adminServices];
+      const allServices = buildInstallServiceNames(managedServices);
 
-      wizard.updateDeployStatus(
-        allServices.map(s => ({ service: s, status: 'pending', label: 'Waiting...' })),
-      );
+      wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
 
       await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
         // Pull failure is non-fatal — images may already be cached
       });
 
-      wizard.updateDeployStatus(
-        allServices.map(s => ({ service: s, status: 'pulling', label: 'Starting...' })),
-      );
+      wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
 
       await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
 
@@ -267,7 +262,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const state = await ensureStagedState();
   const composeArgs = fullComposeArgs(state);
   const managedServices = buildManagedServiceNames(state);
-  const allServices = [...managedServices, 'admin', 'docker-socket-proxy'];
+  const allServices = buildInstallServiceNames(managedServices);
 
   await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
 
