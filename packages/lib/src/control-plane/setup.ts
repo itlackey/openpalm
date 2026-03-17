@@ -143,6 +143,11 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
         seenIds.add(id);
       }
 
+      const name = typeof conn.name === "string" ? conn.name.trim() : "";
+      if (!name) {
+        errors.push(`connections[${i}].name is required`);
+      }
+
       if (!provider) {
         errors.push(`connections[${i}].provider is required`);
       } else if (!WIZARD_PROVIDERS.has(provider)) {

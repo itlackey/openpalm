@@ -149,7 +149,7 @@
 - [x] Define `SetupInput` interface
 - [x] Implement `performSetup(input, assetProvider)` — shared setup orchestration
 - [x] Implement `detectProviders()` — scan for Ollama, Docker Model Runner, LM Studio
-- [ ] Admin's setup route delegates to shared `performSetup()` from lib
+- [x] Admin's setup route delegates to shared `performSetup()` from lib
 
 ### 2.3 CLI serves setup wizard via Bun.serve()
 - [x] Create `packages/cli/src/setup-wizard/server.ts` — Bun HTTP server handler
@@ -160,10 +160,10 @@
 - [x] Block until setup completes, then stop server
 
 ### 2.4 Remove setup wizard from admin
-- [ ] Delete `packages/admin/src/routes/setup/` (Svelte wizard pages) — deferred to Phase 3
-- [ ] Delete setup-related components from admin UI — deferred to Phase 3
+- [x] Delete `packages/admin/src/routes/setup/` (Svelte wizard pages)
+- [x] Delete setup-related components from admin UI (kept ModelSelector used by ConnectionsTab)
 - [x] Keep admin's `POST /admin/install` endpoint for programmatic re-apply
-- [ ] Admin UI shows "run `openpalm install`" if setup needed — deferred to Phase 3
+- [x] Admin UI shows "run `openpalm install`" if setup needed
 
 ### 2.5 CLI orchestrates full install without admin
 - [x] Update `install.ts` flow: bootstrap -> wizard -> compose up core only
@@ -384,16 +384,15 @@
 - [x] Add CLI-managed mode alongside standalone and admin-managed
 
 ### 6.4 Update package READMEs
-- [ ] Create `packages/lib/README.md` — lib API surface and usage (deferred — CLAUDE.md says don't create docs unless requested)
-- [ ] Create `packages/scheduler/README.md` — scheduler sidecar docs (deferred)
-- [ ] Create `packages/admin-tools/README.md` — admin tools package docs (deferred)
-- [ ] Update `packages/cli/README.md` — document self-sufficient mode (deferred)
+- [x] Create `packages/lib/README.md` — lib API surface and usage
+- [x] Create `packages/scheduler/README.md` — scheduler sidecar docs
+- [x] Create `packages/admin-tools/README.md` — admin tools package docs
+- [x] Update `packages/cli/README.md` — document self-sufficient mode
 
 ### 6.5 Validation
 - [x] All documentation reflects current architecture
 - [x] No references to "admin sole orchestrator" in docs
-- [x] `bun run admin:check` — 652 files, 0 errors
-- [ ] `bun run admin:check` passes (no broken imports)
+- [x] `bun run admin:check` — 639 files, 0 errors (post Phase 2.4 cleanup)
 
 ---
 
@@ -403,12 +402,12 @@
 |-------|--------|-------|------|-----------|
 | 0 — Extract @openpalm/lib | **COMPLETE** | 50 | 50 | 0 |
 | 1 — CLI self-sufficient | **COMPLETE** | 17 | 17 | 0 |
-| 2 — CLI setup wizard | **COMPLETE** | 24 | 21 | 3 |
+| 2 — CLI setup wizard | **COMPLETE** | 24 | 24 | 0 |
 | 3 — Compose profiles | **COMPLETE** | 18 | 18 | 0 |
 | 4 — Split assistant-tools | **COMPLETE** | 35 | 35 | 0 |
 | 5 — Scheduler sidecar | **COMPLETE** | 27 | 27 | 0 |
-| 6 — Documentation | **COMPLETE** | 15 | 11 | 4 (deferred READMEs) |
-| **Total** | | **186** | **179** | **7** |
+| 6 — Documentation | **COMPLETE** | 15 | 15 | 0 |
+| **Total** | | **186** | **186** | **0** |
 
 ## Dependency Graph
 
@@ -426,6 +425,5 @@ Phase 0 (COMPLETE) ────────────────────�
     └──> Phase 6 (COMPLETE) ────────────────────────────────┘
 ```
 
-**All phases COMPLETE.** Phases 0-6 committed on `feat/decouplingAdmin`.
-**Deferred (7 tasks):** 3 from Phase 2.4 (admin wizard removal) + 4 from Phase 6.4 (package READMEs).
-**Next:** Final 5-agent end-to-end review, then push.
+**All 186 tasks COMPLETE.** Phases 0-6 committed on `feat/decouplingAdmin`.
+**Next:** Final 5-agent end-to-end review.

@@ -9,36 +9,17 @@ import {
 } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import {
-  updateSecretsEnv,
-  ensureXdgDirs,
-  ensureOpenCodeConfig,
-  ensureOpenCodeSystemConfig,
-  ensureMemoryDir,
-  ensureSecrets,
-  ensureConnectionProfilesStore,
-  writeConnectionsDocument,
-  applyInstall,
   appendAudit,
   discoverStagedChannelYmls,
   buildComposeFileList,
   buildEnvFiles,
   buildManagedServices,
-  writeMemoryConfig,
   readMemoryConfig,
   resolveConfigForPush,
   pushConfigToMemory,
   provisionMemoryUser,
-  buildMem0Mapping,
-  writeSetupTokenFile,
 } from "$lib/server/control-plane.js";
-import {
-  PROVIDER_KEY_MAP,
-  EMBEDDING_DIMS,
-  OLLAMA_INSTACK_URL
-} from "$lib/provider-constants.js";
-import {
-  isWizardProviderInScope,
-} from '$lib/setup-wizard/scope.js';
+import { viteAssets } from "$lib/server/vite-asset-provider.js";
 import { composeUp, composePullService, checkDocker } from "$lib/server/docker.js";
 import { detectUserId, isSetupComplete, readSecretsKeys } from "$lib/server/setup-status.js";
 import { createLogger } from "$lib/server/logger.js";
@@ -49,12 +30,11 @@ import {
   markAllRunning,
   markDeployError,
 } from "$lib/server/deploy-tracker.js";
+import { performSetup, validateSetupInput } from "@openpalm/lib";
+import type { SetupInput } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("setup");
-
-/** Safe env var key pattern: uppercase alphanumeric + underscores, starting with a letter */
-const SAFE_ENV_KEY_RE = /^[A-Z][A-Z0-9_]*$/;
 
 /**
  * GET /admin/setup — no auth required.
@@ -95,25 +75,12 @@ export const GET: RequestHandler = async (event) => {
   );
 };
 
-// ── POST body types ──────────────────────────────────────────────────────
-
-type SetupConnection = {
-  id: string;
-  name: string;
-  provider: string;
-  baseUrl: string;
-  apiKey: string;
-};
-
-type SetupAssignments = {
-  llm: { connectionId: string; model: string; smallModel?: string };
-  embeddings: { connectionId: string; model: string; embeddingDims?: number };
-};
-
 /**
  * POST /admin/setup
  *
- * Accepts multi-profile connections and per-capability assignments.
+ * Delegates to performSetup() from @openpalm/lib for secrets, connections,
+ * memory config, and artifact staging. Then handles the admin-specific
+ * Docker deployment (compose pull + up) in the background.
  */
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -138,249 +105,37 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_input", "Request body must be valid JSON", {}, requestId);
   }
 
-  // ── Parse and validate ────────────────────────────────────────────────
+  // ── Map request body to SetupInput ──────────────────────────────────
 
-  const updates: Record<string, string> = {};
-  if (typeof body.adminToken === "string" && body.adminToken) {
-    if (body.adminToken.length < 8) {
-      return errorResponse(400, "invalid_input", "adminToken must be at least 8 characters", { field: "adminToken" }, requestId);
-    }
-    updates.OPENPALM_ADMIN_TOKEN = body.adminToken;
-    // Legacy alias — written alongside for backward compatibility with
-    // older compose files and services that still reference ADMIN_TOKEN.
-    updates.ADMIN_TOKEN = body.adminToken;
-  }
-
-  const ownerName = (typeof body.ownerName === "string" ? body.ownerName.trim() : "").replace(/[\r\n\0]/g, "").slice(0, 200);
-  const ownerEmail = (typeof body.ownerEmail === "string" ? body.ownerEmail.trim() : "").replace(/[\r\n\0]/g, "").slice(0, 200);
-  if (ownerName) updates.OWNER_NAME = ownerName;
-  if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
-
-  const memoryUserId = typeof body.memoryUserId === "string" ? body.memoryUserId : "default_user";
-  const ollamaEnabled = body.ollamaEnabled === true;
-
-  // ── Parse connections array ───────────────────────────────────────────
-
-  if (!Array.isArray(body.connections) || body.connections.length === 0) {
-    return errorResponse(400, "bad_request", "connections array is required and must be non-empty", {}, requestId);
-  }
-
-  const connections: SetupConnection[] = [];
-  for (let i = 0; i < body.connections.length; i++) {
-    const c = body.connections[i];
-    if (typeof c !== 'object' || c === null) {
-      return errorResponse(400, "bad_request", `connections[${i}] must be an object`, {}, requestId);
-    }
-    const id = typeof c.id === 'string' ? c.id.trim() : '';
-    const name = typeof c.name === 'string' ? c.name.trim() : '';
-    const provider = typeof c.provider === 'string' ? c.provider.trim() : '';
-    const baseUrl = typeof c.baseUrl === 'string' ? c.baseUrl : '';
-    const apiKey = typeof c.apiKey === 'string' ? c.apiKey : '';
-
-    if (!id) return errorResponse(400, "bad_request", `connections[${i}].id is required`, {}, requestId);
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
-      return errorResponse(400, "bad_request", `connections[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`, {}, requestId);
-    }
-    if (!provider) return errorResponse(400, "bad_request", `connections[${i}].provider is required`, {}, requestId);
-    if (!isWizardProviderInScope(provider)) {
-      return errorResponse(400, "bad_request", `connections[${i}].provider "${provider}" is outside wizard scope`, {}, requestId);
-    }
-
-    connections.push({ id, name: name || provider, provider, baseUrl, apiKey });
-  }
-
-  // Check for duplicate IDs
-  const connectionIds = new Set(connections.map((c) => c.id));
-  if (connectionIds.size !== connections.length) {
-    return errorResponse(400, "bad_request", "Duplicate connection IDs found", {}, requestId);
-  }
-
-  // ── Parse assignments ─────────────────────────────────────────────────
-
-  if (typeof body.assignments !== 'object' || body.assignments === null) {
-    return errorResponse(400, "bad_request", "assignments object is required", {}, requestId);
-  }
-
-  const rawAssignments = body.assignments as Record<string, unknown>;
-  const llmAssignment = rawAssignments.llm;
-  const embAssignment = rawAssignments.embeddings;
-
-  if (typeof llmAssignment !== 'object' || llmAssignment === null) {
-    return errorResponse(400, "bad_request", "assignments.llm is required", {}, requestId);
-  }
-  if (typeof embAssignment !== 'object' || embAssignment === null) {
-    return errorResponse(400, "bad_request", "assignments.embeddings is required", {}, requestId);
-  }
-
-  const llm = llmAssignment as Record<string, unknown>;
-  const emb = embAssignment as Record<string, unknown>;
-  const llmConnectionId = typeof llm.connectionId === 'string' ? llm.connectionId : '';
-  const llmModel = typeof llm.model === 'string' ? llm.model : '';
-  const llmSmallModel = typeof llm.smallModel === 'string' ? llm.smallModel : '';
-  const embConnectionId = typeof emb.connectionId === 'string' ? emb.connectionId : '';
-  const embModel = typeof emb.model === 'string' ? emb.model : '';
-  const embDims = typeof emb.embeddingDims === 'number' ? emb.embeddingDims : 0;
-
-  if (!llmConnectionId || !llmModel) {
-    return errorResponse(400, "bad_request", "assignments.llm requires connectionId and model", {}, requestId);
-  }
-  if (!embConnectionId || !embModel) {
-    return errorResponse(400, "bad_request", "assignments.embeddings requires connectionId and model", {}, requestId);
-  }
-  if (!connectionIds.has(llmConnectionId)) {
-    return errorResponse(400, "bad_request", `assignments.llm.connectionId "${llmConnectionId}" does not match any connection`, {}, requestId);
-  }
-  if (!connectionIds.has(embConnectionId)) {
-    return errorResponse(400, "bad_request", `assignments.embeddings.connectionId "${embConnectionId}" does not match any connection`, {}, requestId);
-  }
-  if (embDims !== 0 && (!Number.isInteger(embDims) || embDims < 1)) {
-    return errorResponse(400, "bad_request", "assignments.embeddings.embeddingDims must be a positive integer", {}, requestId);
-  }
-
-  const parsedAssignments: SetupAssignments = {
-    llm: { connectionId: llmConnectionId, model: llmModel, ...(llmSmallModel ? { smallModel: llmSmallModel } : {}) },
-    embeddings: { connectionId: embConnectionId, model: embModel, ...(embDims > 0 ? { embeddingDims: embDims } : {}) },
+  const setupInput: SetupInput = {
+    adminToken: typeof body.adminToken === "string" ? body.adminToken : state.adminToken,
+    ownerName: typeof body.ownerName === "string" ? body.ownerName : undefined,
+    ownerEmail: typeof body.ownerEmail === "string" ? body.ownerEmail : undefined,
+    memoryUserId: typeof body.memoryUserId === "string" ? body.memoryUserId : "default_user",
+    ollamaEnabled: body.ollamaEnabled === true,
+    connections: Array.isArray(body.connections) ? body.connections : [],
+    assignments: typeof body.assignments === "object" && body.assignments !== null
+      ? body.assignments as SetupInput["assignments"]
+      : { llm: { connectionId: "", model: "" }, embeddings: { connectionId: "", model: "" } },
   };
 
-  // ── Resolve effective base URLs (Ollama in-stack override) ────────────
+  // ── Validate early so we return structured errors ───────────────────
 
-  const effectiveConnections = connections.map((c) => {
-    if (ollamaEnabled && c.provider === "ollama") {
-      return { ...c, baseUrl: OLLAMA_INSTACK_URL };
-    }
-    return c;
-  });
-
-  // ── Build connectionId → envVarName map (single source of truth) ─────
-
-  const connEnvVarMap = new Map<string, string>();
-  const claimedEnvVars = new Set<string>();
-
-  for (const conn of effectiveConnections) {
-    let envVarName = PROVIDER_KEY_MAP[conn.provider] ?? "OPENAI_API_KEY";
-    if (claimedEnvVars.has(envVarName)) {
-      // Second connection with same provider — use namespaced var
-      envVarName = `${envVarName}_${conn.id}`;
-    }
-    // Validate the generated key against a safe pattern after uppercasing
-    const upperKey = envVarName.toUpperCase();
-    if (!SAFE_ENV_KEY_RE.test(upperKey)) {
-      logger.warn("skipping connection with unsafe env var key", { connectionId: conn.id, envVarName });
-      continue;
-    }
-    envVarName = upperKey;
-    claimedEnvVars.add(envVarName);
-    connEnvVarMap.set(conn.id, envVarName);
+  const validation = validateSetupInput(setupInput);
+  if (!validation.valid) {
+    return errorResponse(400, "bad_request", validation.errors.join("; "), {}, requestId);
   }
 
-  // ── Build secrets.env updates ─────────────────────────────────────────
+  // ── Delegate to performSetup() from lib ─────────────────────────────
 
-  for (const conn of effectiveConnections) {
-    if (!conn.apiKey) continue;
-    updates[connEnvVarMap.get(conn.id)!] = conn.apiKey;
+  const setupResult = await performSetup(setupInput, viteAssets, { state });
+
+  if (!setupResult.ok) {
+    logger.error("performSetup failed", { requestId, error: setupResult.error });
+    return errorResponse(500, "config_save_failed", setupResult.error ?? "Setup failed", {}, requestId);
   }
 
-  // Set SYSTEM_LLM_* from the LLM connection for env-level consumers
-  const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId)!;
-  const memoryModel = llmSmallModel || llmModel;
-  updates.SYSTEM_LLM_PROVIDER = llmConnection.provider;
-  updates.SYSTEM_LLM_MODEL = llmModel;
-  if (llmConnection.baseUrl) {
-    updates.SYSTEM_LLM_BASE_URL = llmConnection.baseUrl;
-    // OPENAI_BASE_URL is used by OpenCode (assistant) and memory containers.
-    // Append /v1 for OpenAI-compatible endpoints if not already present.
-    const normalizedUrl = llmConnection.baseUrl.replace(/\/+$/, '');
-    updates.OPENAI_BASE_URL = normalizedUrl.endsWith('/v1') ? normalizedUrl : `${normalizedUrl}/v1`;
-  }
-
-  updates.MEMORY_USER_ID = memoryUserId;
-
-  // ── Persist ───────────────────────────────────────────────────────────
-
-  logger.info("persisting setup config", {
-    requestId,
-    connectionCount: connections.length,
-    llmProvider: llmConnection.provider,
-    llmModel,
-    embModel,
-  });
-
-  try {
-    ensureXdgDirs();
-    ensureSecrets(state);
-    ensureConnectionProfilesStore(state.configDir);
-    updateSecretsEnv(state, updates);
-  } catch (err) {
-    logger.error("failed to update secrets.env", { requestId, error: String(err) });
-    return errorResponse(500, "config_save_failed", `Failed to update secrets.env: ${err instanceof Error ? err.message : String(err)}`, {}, requestId);
-  }
-
-  if (updates.OPENPALM_ADMIN_TOKEN) {
-    state.adminToken = updates.OPENPALM_ADMIN_TOKEN;
-    // Remove the setup-token.txt file now that setup is complete
-    writeSetupTokenFile(state);
-  }
-
-  // ── Build and persist Memory config ───────────────────────────────
-
-  const embConnection = effectiveConnections.find((c) => c.id === embConnectionId)!;
-
-  const llmEnvVar = connEnvVarMap.get(llmConnection.id)!;
-  const llmApiKeyEnvRef = llmConnection.apiKey ? `env:${llmEnvVar}` : "not-needed";
-
-  const embEnvVar = connEnvVarMap.get(embConnection.id)!;
-  const embApiKeyEnvRef = embConnection.apiKey ? `env:${embEnvVar}` : "not-needed";
-
-  const embLookupKey = `${embConnection.provider}/${embModel}`;
-  const resolvedDims = embDims || EMBEDDING_DIMS[embLookupKey] || 1536;
-
-  const omConfig = buildMem0Mapping({
-    llm: {
-      provider: llmConnection.provider,
-      baseUrl: llmConnection.baseUrl,
-      model: memoryModel,
-      apiKeyRef: llmApiKeyEnvRef,
-    },
-    embedder: {
-      provider: embConnection.provider,
-      baseUrl: embConnection.baseUrl,
-      model: embModel || 'text-embedding-3-small',
-      apiKeyRef: embApiKeyEnvRef,
-    },
-    embeddingDims: resolvedDims,
-    customInstructions: '',
-  });
-
-  writeMemoryConfig(state.dataDir, omConfig);
-
-  // Build profiles input for writeConnectionsDocument
-  const profilesInput = effectiveConnections.map((conn) => ({
-    id: conn.id,
-    name: conn.name,
-    provider: conn.provider,
-    baseUrl: conn.baseUrl,
-    hasApiKey: Boolean(conn.apiKey),
-    apiKeyEnvVar: connEnvVarMap.get(conn.id)!,
-  }));
-
-  writeConnectionsDocument(state.configDir, {
-    profiles: profilesInput,
-    assignments: {
-      llm: parsedAssignments.llm,
-      embeddings: {
-        connectionId: parsedAssignments.embeddings.connectionId,
-        model: parsedAssignments.embeddings.model,
-        embeddingDims: resolvedDims,
-      },
-    },
-  });
-
-  // ── Install and deploy ────────────────────────────────────────────────
-
-  ensureOpenCodeConfig();
-  ensureOpenCodeSystemConfig();
-  ensureMemoryDir();
-  applyInstall(state);
+  // ── Post-setup: discover channels and update state ──────────────────
 
   const stagedYmls = discoverStagedChannelYmls(state.stateDir);
   const channelNames = stagedYmls
@@ -395,6 +150,8 @@ export const POST: RequestHandler = async (event) => {
       state.services[serviceName] = "stopped";
     }
   }
+
+  // ── Docker deployment ───────────────────────────────────────────────
 
   logger.info("checking Docker availability", { requestId });
   const dockerCheck = await checkDocker();
@@ -430,6 +187,8 @@ export const POST: RequestHandler = async (event) => {
       label: SERVICE_LABELS[s] ?? s,
     }))
   );
+
+  const memoryUserId = setupInput.memoryUserId;
 
   void (async () => {
     const composeFiles = buildComposeFileList(state);
