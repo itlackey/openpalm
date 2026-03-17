@@ -14,7 +14,7 @@ import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '..
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
-const DEFAULT_INSTALL_REF = cliPkg.version ? `v${cliPkg.version}` : 'main';
+const DEFAULT_INSTALL_REF = 'main';
 const SETUP_WIZARD_PORT = 8100;
 
 export default defineCommand({
@@ -30,7 +30,7 @@ export default defineCommand({
     },
     version: {
       type: 'string',
-      description: 'Install specific release ref (default: current CLI version)',
+      description: 'Install specific repository ref (default: main)',
       default: DEFAULT_INSTALL_REF,
     },
     start: {

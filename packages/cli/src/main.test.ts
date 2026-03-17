@@ -235,6 +235,59 @@ describe('cli main', () => {
       rmSync(base, { recursive: true, force: true });
     }
   });
+
+  it('uses main as the default install ref for bootstrap asset downloads', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
+    const configHome = join(base, 'config');
+    const dataHome = join(base, 'data');
+    const stateHome = join(base, 'state');
+    const workDir = join(base, 'work');
+    const binDir = join(stateHome, 'bin');
+    const fetchedUrls: string[] = [];
+
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, 'varlock'), '#!/bin/sh\nexit 0\n');
+    chmodSync(join(binDir, 'varlock'), 0o755);
+
+    process.env.OPENPALM_CONFIG_HOME = configHome;
+    process.env.OPENPALM_DATA_HOME = dataHome;
+    process.env.OPENPALM_STATE_HOME = stateHome;
+    process.env.OPENPALM_WORK_DIR = workDir;
+
+    mockDockerCli();
+    globalThis.fetch = mock(async (input: string | URL) => {
+      const url = String(input);
+      fetchedUrls.push(url);
+      if (url.endsWith('/health')) {
+        throw new TypeError('fetch failed');
+      }
+      if (url.includes('/main/assets/docker-compose.yml')) {
+        return new Response('services: {}\n', { status: 200 });
+      }
+      if (url.includes('/main/assets/Caddyfile')) {
+        return new Response(':80 {\n}\n', { status: 200 });
+      }
+      if (url.includes('/main/assets/secrets.env.schema') || url.includes('/main/assets/stack.env.schema')) {
+        return new Response('KEY=string\n', { status: 200 });
+      }
+      return new Response('', { status: 503 });
+    }) as typeof fetch;
+    console.log = mock(() => {}) as typeof console.log;
+    console.warn = mock(() => {}) as typeof console.warn;
+
+    try {
+      await main(['install', '--no-start', '--force', '--no-open']);
+
+      expect(fetchedUrls).toContain(
+        'https://raw.githubusercontent.com/itlackey/openpalm/main/assets/docker-compose.yml',
+      );
+      expect(fetchedUrls).toContain(
+        'https://raw.githubusercontent.com/itlackey/openpalm/main/assets/Caddyfile',
+      );
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('npm bin launcher', () => {
