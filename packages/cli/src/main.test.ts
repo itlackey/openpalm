@@ -151,7 +151,7 @@ describe('cli main', () => {
     }
   });
 
-  it('uses main as the default install ref for bootstrap asset downloads', async () => {
+  it('resolves version-pinned install ref (falls back to CLI package version)', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-'));
     const configHome = join(base, 'config');
     const dataHome = join(base, 'data');
@@ -169,6 +169,12 @@ describe('cli main', () => {
     process.env.OPENPALM_STATE_HOME = stateHome;
     process.env.OPENPALM_WORK_DIR = workDir;
 
+    // Read the CLI package version to verify pinning behaviour
+    const cliPkg = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    const expectedRef = `v${cliPkg.version}`;
+
     mockDockerCli();
     globalThis.fetch = mock(async (input: string | URL) => {
       const url = String(input);
@@ -176,13 +182,14 @@ describe('cli main', () => {
       if (url.endsWith('/health')) {
         throw new TypeError('fetch failed');
       }
-      if (url.includes('/main/assets/docker-compose.yml')) {
+      // Respond to version-pinned asset URLs
+      if (url.includes('/docker-compose.yml')) {
         return new Response('services: {}\n', { status: 200 });
       }
-      if (url.includes('/main/assets/Caddyfile')) {
+      if (url.includes('/Caddyfile')) {
         return new Response(':80 {\n}\n', { status: 200 });
       }
-      if (url.includes('/main/assets/secrets.env.schema') || url.includes('/main/assets/stack.env.schema')) {
+      if (url.includes('/secrets.env.schema') || url.includes('/stack.env.schema')) {
         return new Response('KEY=string\n', { status: 200 });
       }
       return new Response('', { status: 503 });
@@ -193,12 +200,15 @@ describe('cli main', () => {
     try {
       await main(['install', '--no-start', '--force', '--no-open']);
 
-      expect(fetchedUrls).toContain(
-        'https://raw.githubusercontent.com/itlackey/openpalm/main/assets/docker-compose.yml',
-      );
-      expect(fetchedUrls).toContain(
-        'https://raw.githubusercontent.com/itlackey/openpalm/main/assets/Caddyfile',
-      );
+      // Verify that assets were fetched using the version-pinned ref, not 'main'
+      const composeUrl = fetchedUrls.find((u) => u.includes('/docker-compose.yml'));
+      expect(composeUrl).toBeDefined();
+      expect(composeUrl).toContain(expectedRef);
+      expect(composeUrl).not.toContain('/main/');
+
+      const caddyUrl = fetchedUrls.find((u) => u.includes('/Caddyfile'));
+      expect(caddyUrl).toBeDefined();
+      expect(caddyUrl).toContain(expectedRef);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

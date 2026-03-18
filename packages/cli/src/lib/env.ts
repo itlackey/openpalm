@@ -96,6 +96,11 @@ export MEMORY_AUTH_TOKEN=${randomBytes(32).toString('hex')}
 
 /**
  * Creates or updates the stack.env bootstrap file.
+ *
+ * When `imageTagOverride` is provided (e.g. derived from --version during
+ * install), it takes precedence over both the OPENPALM_IMAGE_TAG env var
+ * and the repo-ref heuristic. This prevents stale or architecture-suffixed
+ * env vars (e.g. "latest-arm64") from leaking into the stack.
  */
 export async function ensureStackEnv(
   configHome: string,
@@ -103,10 +108,11 @@ export async function ensureStackEnv(
   stateHome: string,
   workDir: string,
   repoRef: string,
+  imageTagOverride?: string,
 ): Promise<void> {
   const dataStackEnv = join(dataHome, 'stack.env');
   const stagedStackEnv = join(stateHome, 'artifacts', 'stack.env');
-  const explicitImageTag = process.env.OPENPALM_IMAGE_TAG;
+  const explicitImageTag = imageTagOverride ?? process.env.OPENPALM_IMAGE_TAG;
   const hasExplicitImageTag = explicitImageTag !== undefined && explicitImageTag !== '';
   if (!(await Bun.file(dataStackEnv).exists())) {
     const defaultImageTag = hasExplicitImageTag

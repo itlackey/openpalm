@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
-import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
+import { ensureSecrets, ensureStackEnv, resolveRequestedImageTag } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider,
@@ -169,7 +169,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   );
 
   await ensureSecrets(configHome);
-  await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version);
+  // Derive the image tag from the resolved version so that stale or
+  // architecture-suffixed OPENPALM_IMAGE_TAG env vars don't leak in.
+  const imageTag = resolveRequestedImageTag(options.version) ?? undefined;
+  await ensureStackEnv(configHome, dataHome, stateHome, workDir, options.version, imageTag);
   // Seed OpenCode config — non-fatal since performSetup() also seeds these
   try {
     const fsAssets = new FilesystemAssetProvider(dataHome);
