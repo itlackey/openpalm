@@ -37,7 +37,8 @@ ARG AGENTIKIT_VERSION=v0.0.21
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini curl git ca-certificates bash openssh-server gosu socat \
-        python3 python3-pip \
+        python3 python3-pip python3-venv \
+        jq ripgrep \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -46,14 +47,33 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# ── CLI tools (yq, ast-grep, uv, azure-cli, huggingface-cli) ──────────────
+# yq — YAML processor (mikefarah/yq)
+RUN set -e; \
+    if [ "$(dpkg --print-architecture)" = "arm64" ]; then YQ_ARCH=arm64; else YQ_ARCH=amd64; fi \
+    && curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" \
+         -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq
+
+# ast-grep — structural code search (https://ast-grep.github.io/)
+RUN npm install -g @ast-grep/cli
+
+# uv — fast Python package manager (https://docs.astral.sh/uv/)
+RUN curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh \
+    && mv /root/.local/bin/uv /usr/local/bin/ \
+    && mv /root/.local/bin/uvx /usr/local/bin/
+
+# Azure CLI + Hugging Face CLI
+RUN pip install --break-system-packages azure-cli huggingface-hub[cli]
+
 
 # Install opencode to /usr/local/.opencode/bin (set HOME so installer puts it there)
 RUN HOME=/usr/local curl -fsSL https://opencode.ai/install | HOME=/usr/local bash -s -- --no-modify-path --version "$OPENCODE_VERSION"
 ENV PATH="/usr/local/.opencode/bin:$PATH"
 
-RUN mkdir -p /home/opencode/.cache /work \
-    && chmod 777 /home/opencode /home/opencode/.cache \
-    && chown node:node /home/opencode /home/opencode/.cache /work \
+RUN mkdir -p /home/opencode/.cache /work /stash \
+    && chmod 777 /home/opencode /home/opencode/.cache /stash \
+    && chown node:node /home/opencode /home/opencode/.cache /work /stash \
     && sed -i 's@^#\?PasswordAuthentication .*@PasswordAuthentication no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?UsePAM .*@UsePAM no@' /etc/ssh/sshd_config \
     && sed -i 's@^#\?PermitRootLogin .*@PermitRootLogin no@' /etc/ssh/sshd_config

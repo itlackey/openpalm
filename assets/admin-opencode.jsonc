@@ -6,6 +6,11 @@
     "read": {
       "/home/opencode/.local/share/opencode/auth.json": "deny",
       "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+    },
+    "external_directory": {
+      "/tmp": "allow",
+      "/stash": "allow",
+      "/home/opencode": "allow"
     }
   }
 }

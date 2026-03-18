@@ -1,6 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@openpalm/assistant-tools", "akm-opencode"],
+  "plugin": ["@openpalm/assistant-tools", "akm-opencode"], //openviking-opencode
+  "server": {
+    "port": 4096,
+    "hostname": "0.0.0.0",
+    "mdns": true
+  },
   // Layer 3: Block the assistant from reading credential files.
   // auth.json and mcp-auth.json contain session tokens that must not
   // enter the LLM context window. The varlock shell wrapper (Layer 1)
@@ -9,6 +14,11 @@
     "read": {
       "/home/opencode/.local/share/opencode/auth.json": "deny",
       "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
+    },
+    "external_directory": {
+      "/tmp": "allow",
+      "/stash": "allow",
+      "/home/opencode": "allow"
     }
   }
 }
