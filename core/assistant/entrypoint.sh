@@ -41,6 +41,7 @@ ensure_home_layout() {
     /home/opencode \
     /home/opencode/.cache \
     /home/opencode/.config/opencode \
+    /home/opencode/.local/bin \
     /home/opencode/.local/state/opencode \
     /home/opencode/.local/share/opencode \
     /work \
