@@ -427,7 +427,8 @@
     if (st.verified && p.id !== "ollama") {
       html += '<div class="auth-feedback auth-feedback-ok">Credentials verified</div>';
     } else if (st.error) {
-      html += '<div class="auth-feedback auth-feedback-err">Verification failed -- check your ' + (p.needsKey ? 'credentials' : 'endpoint') + '</div>';
+      var errMsg = st.errorMessage ? esc(st.errorMessage) : 'check your ' + (p.needsKey ? 'credentials' : 'endpoint');
+      html += '<div class="auth-feedback auth-feedback-err">Verification failed -- ' + errMsg + '</div>';
     }
 
     html += '</div>';
@@ -514,6 +515,9 @@
 
   }
 
+  /** Monotonic counter to discard stale verification results */
+  var verifyGeneration = {};
+
   async function verifyProvider(id) {
     var p = PROVIDERS.find(function (x) { return x.id === id; });
     if (!p) return;
@@ -527,6 +531,10 @@
       return;
     }
 
+    // Bump generation so any in-flight verify for this provider is ignored
+    var gen = (verifyGeneration[id] || 0) + 1;
+    verifyGeneration[id] = gen;
+
     st.verifying = true;
     st.error = false;
     renderProviderGrid();
@@ -535,13 +543,17 @@
     var apiKey = st.apiKey || "";
 
     try {
-      var models = await apiFetchModels(id, baseUrl, apiKey);
+      var result = await apiFetchModels(id, baseUrl, apiKey);
+      // Discard if a newer verify was started while we were waiting
+      if (verifyGeneration[id] !== gen) return;
       st.verified = true;
       st.error = false;
-      st.models = models || [];
+      st.models = result.models || [];
     } catch (e) {
+      if (verifyGeneration[id] !== gen) return;
       st.verified = false;
       st.error = true;
+      st.errorMessage = e.message || "";
       st.models = [];
     }
 
@@ -1598,9 +1610,11 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey: apiKey || "", baseUrl: baseUrl || "" }),
     });
-    if (!res.ok) throw new Error("Failed to fetch models (HTTP " + res.status + ")");
     var data = await res.json();
-    return data.models || [];
+    if (!res.ok || data.status === "recoverable_error") {
+      throw new Error(data.error || "Failed to fetch models (HTTP " + res.status + ")");
+    }
+    return data;
   }
 
   /* =========================================================================
