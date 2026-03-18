@@ -18,19 +18,34 @@
      Provider Constants & Defaults
      ========================================================================= */
 
+  var PROVIDER_GROUPS = [
+    { id: "recommended", label: "Recommended", desc: "Best options to get started quickly" },
+    { id: "local", label: "Local", desc: "Run models on your own hardware" },
+    { id: "cloud", label: "Cloud", desc: "Hosted inference providers" },
+    { id: "advanced", label: "Advanced", desc: "Additional providers" },
+  ];
+
   var PROVIDERS = [
-    { id: "openai",        name: "OpenAI",              kind: "cloud", icon: "\u25D0", desc: "GPT and o-series reasoning models",  needsKey: true,  placeholder: "sk-...",  baseUrl: "https://api.openai.com",        llmModel: "gpt-4o",              embModel: "text-embedding-3-small", embDims: 1536 },
-    { id: "anthropic",     name: "Anthropic",           kind: "cloud", icon: "\u2756", desc: "Claude models",                      needsKey: true,  placeholder: "sk-...",  baseUrl: "https://api.anthropic.com",     llmModel: "claude-sonnet-4-20250514", embModel: "",                  embDims: 0 },
-    { id: "groq",          name: "Groq",                kind: "cloud", icon: "\u26A1", desc: "Ultra-fast inference",                needsKey: true,  placeholder: "gsk_...", baseUrl: "https://api.groq.com/openai",   llmModel: "llama-3.3-70b-versatile", embModel: "",                  embDims: 0 },
-    { id: "together",      name: "Together AI",         kind: "cloud", icon: "\u2726", desc: "Open models at scale",               needsKey: true,  placeholder: "...",     baseUrl: "https://api.together.xyz",      llmModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo", embModel: "", embDims: 0 },
-    { id: "mistral",       name: "Mistral",             kind: "cloud", icon: "\u25C6", desc: "Mistral & Codestral models",         needsKey: true,  placeholder: "...",     baseUrl: "https://api.mistral.ai",        llmModel: "mistral-large-latest",   embModel: "mistral-embed",     embDims: 1024 },
-    { id: "deepseek",      name: "DeepSeek",            kind: "cloud", icon: "\u25CE", desc: "DeepSeek chat & reasoning",          needsKey: true,  placeholder: "sk-...",  baseUrl: "https://api.deepseek.com",      llmModel: "deepseek-chat",          embModel: "",                  embDims: 0 },
-    { id: "xai",           name: "xAI (Grok)",          kind: "cloud", icon: "\u2726", desc: "Grok models",                        needsKey: true,  placeholder: "xai-...", baseUrl: "https://api.x.ai",              llmModel: "grok-2",                 embModel: "",                  embDims: 0 },
-    { id: "google",        name: "Google",              kind: "cloud", icon: "\u25C6", desc: "Gemini models with large context",    needsKey: true,  placeholder: "AIza...", baseUrl: "https://generativelanguage.googleapis.com", llmModel: "gemini-2.5-flash", embModel: "",                  embDims: 0, keyPrefix: "AI" },
-    { id: "huggingface",   name: "Hugging Face",        kind: "cloud", icon: "\uD83E\uDD17", desc: "10,000+ open models via Inference Providers", needsKey: true, placeholder: "hf_...", baseUrl: "https://router.huggingface.co/v1", llmModel: "Qwen/Qwen3-32B", embModel: "intfloat/multilingual-e5-large", embDims: 1024, keyPrefix: "hf_" },
-    { id: "ollama",        name: "Ollama",              kind: "local", icon: "\uD83E\uDD99", desc: "Run open models on your hardware", needsKey: false, placeholder: "",    baseUrl: "http://localhost:11434",         llmModel: "llama3.2",               embModel: "nomic-embed-text",  embDims: 768, canDetect: true },
-    { id: "model-runner",  name: "Docker Model Runner", kind: "local", icon: "\uD83D\uDC33", desc: "Docker-managed model runtime",   needsKey: false, placeholder: "",    baseUrl: "http://localhost:12434",         llmModel: "ai/llama3.2",            embModel: "ai/mxbai-embed-large-v1", embDims: 1024, canDetect: true },
-    { id: "lmstudio",      name: "LM Studio",           kind: "local", icon: "\uD83D\uDD2C", desc: "Desktop app for local inference", needsKey: false, placeholder: "",    baseUrl: "http://localhost:1234",          llmModel: "loaded-model",           embModel: "",                  embDims: 0, canDetect: true },
+    // Recommended — best first-run experience
+    { id: "ollama", name: "Ollama", kind: "local", group: "recommended", order: 1, icon: "\uD83E\uDD99", desc: "Run open models on your hardware", needsKey: false, placeholder: "", baseUrl: "http://localhost:11434", llmModel: "llama3.2", embModel: "nomic-embed-text", embDims: 768, canDetect: true },
+    { id: "huggingface", name: "Hugging Face", kind: "cloud", group: "recommended", order: 2, icon: "\uD83E\uDD17", desc: "10,000+ open models via Inference Providers", needsKey: true, placeholder: "hf_...", baseUrl: "https://router.huggingface.co/v1", llmModel: "Qwen/Qwen3-32B", embModel: "intfloat/multilingual-e5-large", embDims: 1024, keyPrefix: "hf_" },
+
+    { id: "openai", name: "OpenAI", kind: "cloud", group: "recommended", order: 3, icon: "\u25D0", desc: "GPT and o-series reasoning models", needsKey: true, placeholder: "sk-...", baseUrl: "https://api.openai.com", llmModel: "gpt-4o", embModel: "text-embedding-3-small", embDims: 1536 },
+    { id: "google", name: "Google", kind: "cloud", group: "recommended", order: 4, icon: "\u25C6", desc: "Gemini models with large context", needsKey: true, placeholder: "AIza...", baseUrl: "https://generativelanguage.googleapis.com", llmModel: "gemini-2.5-flash", embModel: "", embDims: 0, keyPrefix: "AI" },
+
+    // Local — self-hosted model runtimes
+    { id: "model-runner", name: "Docker Model Runner", kind: "local", group: "local", order: 1, icon: "\uD83D\uDC33", desc: "Docker-managed model runtime", needsKey: false, placeholder: "", baseUrl: "http://localhost:12434", llmModel: "ai/llama3.2", embModel: "ai/mxbai-embed-large-v1", embDims: 1024, canDetect: true },
+    { id: "lmstudio", name: "LM Studio", kind: "local", group: "local", order: 2, icon: "\uD83D\uDD2C", desc: "Desktop app for local inference", needsKey: false, placeholder: "", baseUrl: "http://localhost:1234", llmModel: "loaded-model", embModel: "", embDims: 0, canDetect: true },
+
+    // Cloud — hosted inference APIs
+    { id: "groq", name: "Groq", kind: "cloud", group: "cloud", order: 1, icon: "\u26A1", desc: "Ultra-fast inference", needsKey: true, placeholder: "gsk_...", baseUrl: "https://api.groq.com/openai", llmModel: "llama-3.3-70b-versatile", embModel: "", embDims: 0 },
+    { id: "mistral", name: "Mistral", kind: "cloud", group: "cloud", order: 2, icon: "\u25C6", desc: "Mistral & Codestral models", needsKey: true, placeholder: "...", baseUrl: "https://api.mistral.ai", llmModel: "mistral-large-latest", embModel: "mistral-embed", embDims: 1024 },
+    { id: "together", name: "Together AI", kind: "cloud", group: "cloud", order: 3, icon: "\u2726", desc: "Open models at scale", needsKey: true, placeholder: "...", baseUrl: "https://api.together.xyz", llmModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo", embModel: "", embDims: 0 },
+
+    // Advanced — niche or specialized providers
+    { id: "deepseek", name: "DeepSeek", kind: "cloud", group: "advanced", order: 1, icon: "\u25CE", desc: "DeepSeek chat & reasoning", needsKey: true, placeholder: "sk-...", baseUrl: "https://api.deepseek.com", llmModel: "deepseek-chat", embModel: "", embDims: 0 },
+    { id: "xai", name: "xAI (Grok)", kind: "cloud", group: "advanced", order: 2, icon: "\u2726", desc: "Grok models", needsKey: true, placeholder: "xai-...", baseUrl: "https://api.x.ai", llmModel: "grok-2", embModel: "", embDims: 0 },
+    { id: "openai-compatible", name: "Custom (OpenAI-compatible)", kind: "cloud", group: "advanced", order: 3, icon: "\uD83D\uDD27", desc: "Any endpoint that speaks the OpenAI API", needsKey: false, needsUrl: true, optionalKey: true, placeholder: "API key (optional)", baseUrl: "", llmModel: "", embModel: "", embDims: 0 },
   ];
 
   /** Known embedding dimensions for auto-fill */
@@ -72,16 +87,20 @@
   var CHANNELS = [
     { id: "chat", name: "Web Chat", icon: "\uD83D\uDCAC", desc: "Browser-based chat \u2014 always available", locked: true },
     { id: "api", name: "API", icon: "\uD83D\uDD0C", desc: "OpenAI-compatible REST API endpoint" },
-    { id: "discord", name: "Discord", icon: "\uD83C\uDFAE", desc: "Connect to a Discord server",
+    {
+      id: "discord", name: "Discord", icon: "\uD83C\uDFAE", desc: "Connect to a Discord server",
       credentials: [
         { key: "botToken", label: "Bot Token", placeholder: "Paste Discord bot token", required: true },
         { key: "applicationId", label: "Application ID", placeholder: "Discord application ID", secret: false },
-      ]},
-    { id: "slack", name: "Slack", icon: "\uD83D\uDCBC", desc: "Access via Slack bot",
+      ]
+    },
+    {
+      id: "slack", name: "Slack", icon: "\uD83D\uDCBC", desc: "Access via Slack bot",
       credentials: [
         { key: "slackBotToken", label: "Bot Token", placeholder: "xoxb-...", required: true },
         { key: "slackAppToken", label: "App Token", placeholder: "xapp-...", required: true },
-      ]},
+      ]
+    },
   ];
 
   var SERVICES = [
@@ -281,7 +300,21 @@
   function renderProviderGrid() {
     var grid = $("provider-grid");
     var html = "";
-    PROVIDERS.forEach(function (p) { html += renderProviderCard(p); });
+
+    PROVIDER_GROUPS.forEach(function (g) {
+      var members = PROVIDERS.filter(function (p) { return p.group === g.id; })
+        .sort(function (a, b) { return a.order - b.order; });
+      if (members.length === 0) return;
+
+      html += '<div class="provider-group">';
+      html += '<div class="provider-group-header">';
+      html += '<h3 class="provider-group-label">' + esc(g.label) + '</h3>';
+      html += '<span class="provider-group-desc">' + esc(g.desc) + '</span>';
+      html += '</div>';
+      html += '<div class="provider-group-cards">';
+      members.forEach(function (p) { html += renderProviderCard(p); });
+      html += '</div></div>';
+    });
 
     grid.innerHTML = html;
 
@@ -360,6 +393,20 @@
           html += '</div>';
         }
       }
+    } else if (p.needsUrl) {
+      // Custom provider: URL (required) + optional API key
+      html += '<div class="auth-row">';
+      html += '<input type="url" placeholder="https://your-server.example/v1" value="' + esc(st.baseUrl || '') + '" data-auth-url="' + p.id + '">';
+      html += '</div>';
+      if (p.optionalKey) {
+        html += '<div class="auth-row" style="margin-top:6px">';
+        html += '<input type="password" placeholder="' + esc(p.placeholder || 'API key (optional)') + '" value="' + esc(st.apiKey) + '" data-auth-key="' + p.id + '">';
+        html += '</div>';
+      }
+      html += '<div class="auth-row" style="margin-top:6px">';
+      html += '<button class="auth-btn ' + (st.verified ? 'auth-btn-verified' : 'auth-btn-verify') + '" data-auth-verify="' + p.id + '" ' + (st.verifying ? 'disabled' : '') + '>';
+      html += st.verifying ? 'Checking...' : st.verified ? 'Connected \u2713' : 'Connect';
+      html += '</button></div>';
     } else if (p.needsKey) {
       // Cloud provider: API key + verify
       html += '<div class="auth-row">';
@@ -534,9 +581,9 @@
 
     // Define model roles
     var roles = [
-      { id: "llm",       label: "Chat Model (LLM)", tag: "required", desc: "Conversations, reasoning, and code" },
-      { id: "embedding",  label: "Embedding Model",  tag: "optional", desc: "Memory search and recall" },
-      { id: "small",      label: "Small Model",      tag: "optional", desc: "Lightweight tasks like memory extraction" },
+      { id: "llm", label: "Chat Model (LLM)", tag: "required", desc: "Conversations, reasoning, and code" },
+      { id: "embedding", label: "Embedding Model", tag: "optional", desc: "Memory search and recall" },
+      { id: "small", label: "Small Model", tag: "optional", desc: "Lightweight tasks like memory extraction" },
     ];
 
     var html = "";
@@ -1400,7 +1447,7 @@
         stopDeployPolling();
         showDeployError(data.deployError);
       } else if (data.setupComplete && data.deployStatus && data.deployStatus.length > 0) {
-        var allRunning = data.deployStatus.every(function(s) { return s.status === "running"; });
+        var allRunning = data.deployStatus.every(function (s) { return s.status === "running"; });
         if (allRunning) {
           stopDeployPolling();
           showDeployDone(data);

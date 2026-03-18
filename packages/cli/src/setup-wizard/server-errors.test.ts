@@ -291,17 +291,17 @@ describe("setup wizard server error scenarios", () => {
     });
 
     try {
-      // lmstudio without a base URL should return recoverable_error
+      // lmstudio without a base URL should return 502 with recoverable_error
       const res = await fetch(`http://localhost:${serverPort}/api/setup/models/lmstudio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey: "", baseUrl: "" }),
       });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(502);
       const data = (await res.json()) as { ok: boolean; models: string[]; status: string; reason: string };
-      expect(data.ok).toBe(true);
-      // The provider may return an empty list or a recoverable_error with empty models
+      expect(data.ok).toBe(false);
       expect(Array.isArray(data.models)).toBe(true);
+      expect(data.status).toBe("recoverable_error");
     } finally {
       stop();
     }
@@ -314,13 +314,13 @@ describe("setup wizard server error scenarios", () => {
     });
 
     try {
-      // Use a baseUrl that definitely will not connect
+      // Use a baseUrl that definitely will not connect — should return 502
       const res = await fetch(`http://localhost:${serverPort}/api/setup/models/openai`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey: "sk-fake", baseUrl: "http://127.0.0.1:1" }),
       });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(502);
       const data = (await res.json()) as {
         ok: boolean;
         models: string[];
@@ -328,7 +328,7 @@ describe("setup wizard server error scenarios", () => {
         reason: string;
         error?: string;
       };
-      expect(data.ok).toBe(true);
+      expect(data.ok).toBe(false);
       expect(data.models).toEqual([]);
       expect(data.status).toBe("recoverable_error");
       expect(data.reason).toBe("network");

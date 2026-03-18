@@ -192,6 +192,9 @@ export function createSetupServer(
 
       try {
         const result = await fetchProviderModels(provider, apiKey, baseUrl, configDir);
+        if (result.status !== "ok") {
+          return jsonResponse(502, { ok: false, ...result });
+        }
         return jsonResponse(200, { ok: true, ...result });
       } catch (err) {
         return errorResponse(500, "model_fetch_failed", String(err));

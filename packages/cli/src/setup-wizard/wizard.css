@@ -501,10 +501,37 @@ body {
 
 /* ── Provider Card Grid ──────────────────────────────────────────────── */
 .provider-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.provider-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.provider-group-label {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-fg);
+  margin: 0;
+}
+
+.provider-group-desc {
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+.provider-group-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 8px;
-  margin-bottom: var(--space-4);
 }
 
 /* ── Provider Cards ──────────────────────────────────────────────────── */

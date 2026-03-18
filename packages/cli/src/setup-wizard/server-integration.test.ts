@@ -187,16 +187,23 @@ describe("setup wizard server integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey: "", baseUrl: "" }),
       });
-      expect(res.status).toBe(200);
       const data = (await res.json()) as {
         ok: boolean;
         models: string[];
         status: string;
         reason: string;
       };
-      expect(data.ok).toBe(true);
-      expect(data.models).toEqual([]);
-      expect(data.status).toBe("recoverable_error");
+      if (res.status === 200) {
+        // Ollama is reachable on this host (e.g. via host.docker.internal)
+        expect(data.ok).toBe(true);
+        expect(data.status).toBe("ok");
+      } else {
+        // Ollama default URL unreachable — expect 502
+        expect(res.status).toBe(502);
+        expect(data.ok).toBe(false);
+        expect(data.models).toEqual([]);
+        expect(data.status).toBe("recoverable_error");
+      }
     } finally {
       stop();
     }
