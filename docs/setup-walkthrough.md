@@ -2,7 +2,7 @@
 
 A detailed, step-by-step walkthrough of every screen in the OpenPalm setup wizard. Use this alongside the [Setup Guide](setup-guide.md) for a complete picture of what to expect the first time you run OpenPalm.
 
-> **Tip:** The wizard runs at `http://localhost:8100/setup` (or `http://localhost/setup` via Caddy) the first time you start the admin container. If you have already completed setup once, the wizard redirects to the admin console.
+> **Tip:** The setup wizard runs via the CLI (`openpalm install`). It opens a local browser window at `http://localhost:<port>/setup`. The admin container is not involved in setup — it is a post-setup management UI only.
 
 ---
 
@@ -606,7 +606,7 @@ These are useful for backup or for manual configuration outside the wizard.
 ### Installing
 
 Click **Save** to begin installation. The wizard:
-1. Sends all your configuration to the admin API (`POST /admin/setup`).
+1. Sends your configuration to the CLI setup server as a versioned `SetupConfig` document.
 2. Generates and writes configuration files (`secrets.env`, `stack.env`, connection profiles, OpenCode config, memory config).
 3. Assembles the Docker Compose stack.
 4. Transitions to the Deploying screen.
@@ -661,7 +661,7 @@ The deploying screen does not show the step dots. It has three phases:
 
 ### Phase 1: Pulling
 
-The wizard polls `GET /admin/setup/deploy-status` every 2 seconds. Each service shows:
+The wizard polls the CLI setup server's deploy-status endpoint every 2 seconds. Each service shows:
 - A **spinner** while its image is being pulled
 - A **checkmark** once the image is ready
 - A progress bar filling from left to right
@@ -766,17 +766,7 @@ Once you click **Go to Console**, you are taken to the admin dashboard. From the
 - **Channels page**: Install channels from the registry (Discord, API, etc.)
 - **Containers page**: Monitor service status, restart services
 
-If you ever need to re-run the wizard from scratch, delete the setup state file:
-
-```bash
-# Default path:
-rm ~/.local/share/openpalm/admin/setup-state.json
-
-# Dev environment:
-rm .dev/data/admin/setup-state.json
-```
-
-Then restart the admin container and navigate to `/setup`.
+If you ever need to re-run the wizard from scratch, run `openpalm install --force` to restart the setup process. Alternatively, you can use `openpalm install -f config.yaml` to install from a SetupConfig file without the interactive wizard.
 
 ---
 
