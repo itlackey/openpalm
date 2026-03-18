@@ -8,7 +8,8 @@
 /** Supported LLM providers. */
 export const LLM_PROVIDERS = [
   "openai", "anthropic", "ollama", "groq", "together",
-  "mistral", "deepseek", "xai", "lmstudio", "model-runner"
+  "mistral", "deepseek", "xai", "lmstudio", "model-runner",
+  "google", "huggingface"
 ] as const;
 
 /** Default base URLs per provider. */
@@ -22,6 +23,8 @@ export const PROVIDER_DEFAULT_URLS: Record<string, string> = {
   lmstudio: "http://host.docker.internal:1234",
   ollama: "http://host.docker.internal:11434",
   "model-runner": "http://model-runner.docker.internal/engines",
+  google: "https://generativelanguage.googleapis.com",
+  huggingface: "https://router.huggingface.co/v1",
 };
 
 /** Map provider name → env var for the API key. */
@@ -34,6 +37,7 @@ export const PROVIDER_KEY_MAP: Record<string, string> = {
   deepseek: "DEEPSEEK_API_KEY",
   together: "TOGETHER_API_KEY",
   xai: "XAI_API_KEY",
+  huggingface: "HF_TOKEN",
 };
 
 /** Known embedding model dimensions (cloud providers). */
@@ -45,6 +49,8 @@ export const EMBEDDING_DIMS: Record<string, number> = {
   "ollama/mxbai-embed-large": 1024,
   "ollama/all-minilm": 384,
   "ollama/snowflake-arctic-embed": 1024,
+  "google/text-embedding-004": 768,
+  "huggingface/sentence-transformers/all-MiniLM-L6-v2": 384,
 };
 
 /** Provider display labels for UI. */
@@ -59,6 +65,8 @@ export const PROVIDER_LABELS: Record<string, string> = {
   xai: "xAI (Grok)",
   lmstudio: "LM Studio",
   "model-runner": "Docker Model Runner",
+  google: "Google AI",
+  huggingface: "Hugging Face",
 };
 
 /**

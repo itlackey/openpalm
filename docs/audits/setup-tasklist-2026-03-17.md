@@ -49,7 +49,7 @@
 ## TEST GAPS
 
 - [x] **Replace inline staging test reimplementation with real imports** — `staging.test.ts` tests a copy of the code, not production code
-- [ ] **Add server-side E2E wizard tests** — current E2E mocks away all server behavior; only tests HTML/JS
+- [x] **Add server-side E2E wizard tests** — current E2E mocks away all server behavior; only tests HTML/JS
 - [x] **Add wizard error scenario tests** — no coverage for server 500, validation 400, network timeout, empty model lists
 - [x] **Add special character tests for admin token** — no coverage for `=`, quotes, newlines in token values
 - [x] **Add stack spec creation test** — `performSetup()` writes `openpalm.yaml` but no test verifies it

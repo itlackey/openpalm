@@ -66,6 +66,16 @@ export type SetupInput = {
   ollamaEnabled: boolean;
   connections: SetupConnection[];
   assignments: SetupAssignments;
+  voice?: {
+    tts?: string;  // e.g. 'kokoro', 'piper', 'openai-tts', 'browser-tts', null
+    stt?: string;  // e.g. 'whisper-local', 'openai-stt', 'browser-stt', null
+  };
+  channels?: string[];  // e.g. ['chat', 'discord', 'api']
+  services?: {
+    admin?: boolean;
+    openviking?: boolean;
+    ollama?: boolean;
+  };
 };
 
 export type SetupResult = {
@@ -93,7 +103,7 @@ const CONNECTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const WIZARD_PROVIDERS = new Set([
   "openai", "anthropic", "ollama", "groq", "together",
   "mistral", "deepseek", "xai", "lmstudio", "model-runner",
-  "ollama-instack",
+  "ollama-instack", "google", "huggingface",
 ]);
 
 export function validateSetupInput(input: unknown): { valid: boolean; errors: string[] } {
@@ -128,6 +138,48 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
   // ollamaEnabled
   if (body.ollamaEnabled !== undefined && typeof body.ollamaEnabled !== "boolean") {
     errors.push("ollamaEnabled must be a boolean");
+  }
+
+  // voice (optional)
+  if (body.voice !== undefined) {
+    if (typeof body.voice !== "object" || body.voice === null) {
+      errors.push("voice must be an object if provided");
+    } else {
+      const voice = body.voice as Record<string, unknown>;
+      if (voice.tts !== undefined && voice.tts !== null && typeof voice.tts !== "string") {
+        errors.push("voice.tts must be a string or null if provided");
+      }
+      if (voice.stt !== undefined && voice.stt !== null && typeof voice.stt !== "string") {
+        errors.push("voice.stt must be a string or null if provided");
+      }
+    }
+  }
+
+  // channels (optional)
+  if (body.channels !== undefined) {
+    if (!Array.isArray(body.channels)) {
+      errors.push("channels must be an array if provided");
+    } else {
+      for (let i = 0; i < body.channels.length; i++) {
+        if (typeof body.channels[i] !== "string") {
+          errors.push(`channels[${i}] must be a string`);
+        }
+      }
+    }
+  }
+
+  // services (optional)
+  if (body.services !== undefined) {
+    if (typeof body.services !== "object" || body.services === null) {
+      errors.push("services must be an object if provided");
+    } else {
+      const services = body.services as Record<string, unknown>;
+      for (const [key, val] of Object.entries(services)) {
+        if (typeof val !== "boolean") {
+          errors.push(`services.${key} must be a boolean`);
+        }
+      }
+    }
   }
 
   // connections
@@ -477,6 +529,9 @@ export async function performSetup(
       },
     },
     ollamaEnabled: input.ollamaEnabled,
+    ...(input.voice ? { voice: input.voice } : {}),
+    ...(input.channels ? { channels: input.channels } : {}),
+    ...(input.services ? { services: input.services } : {}),
   };
   writeStackSpec(state.configDir, stackSpec);
 

@@ -27,6 +27,9 @@ export type StackSpec = {
   connections: StackSpecConnection[];
   assignments: StackSpecAssignments;
   ollamaEnabled: boolean;
+  voice?: { tts?: string; stt?: string };
+  channels?: string[];
+  services?: Record<string, boolean>;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────

@@ -12,227 +12,149 @@
 
       <!-- ── Header ─────────────────────────────────────────────── -->
       <div class="wizard-header">
-        <h1>OpenPalm Setup</h1>
-        <p class="wizard-subtitle">Configure your stack in a few steps.</p>
+        <div class="hdr-logo">OP</div>
+        <h1>OpenPalm <span class="hdr-suffix">Setup</span></h1>
       </div>
 
       <div class="wizard-body">
 
-        <!-- ── Step Indicators ────────────────────────────────────── -->
-        <nav class="step-indicators" aria-label="Wizard steps" id="step-indicators">
-          <button class="step-dot active" data-step="0" aria-label="Step 1: Welcome" aria-current="step">1</button>
-          <span class="step-line" data-line="0"></span>
-          <button class="step-dot" data-step="1" aria-label="Step 2: Connections" disabled>2</button>
-          <span class="step-line" data-line="1"></span>
-          <button class="step-dot" data-step="2" aria-label="Step 3: Models" disabled>3</button>
-          <span class="step-line" data-line="2"></span>
-          <button class="step-dot" data-step="3" aria-label="Step 4: Options" disabled>4</button>
-          <span class="step-line" data-line="3"></span>
-          <button class="step-dot" data-step="4" aria-label="Step 5: Review" disabled>5</button>
+        <!-- ── Progress Bar ────────────────────────────────────── -->
+        <nav class="prog-bar" aria-label="Wizard steps" id="step-indicators">
+          <div class="prog-segments" id="prog-segments"></div>
+          <div class="prog-labels" id="prog-labels"></div>
         </nav>
 
         <!-- ═══════════════════════════════════════════════════════════
-             Step 0: Welcome & Admin Token
+             Step 0: Welcome & Identity
              ═══════════════════════════════════════════════════════════ -->
         <section class="step-content" id="step-0" data-testid="step-welcome">
-          <h2>Welcome</h2>
-          <p class="step-description">Set up your admin credentials, then connect your AI providers and choose default models.</p>
-
-          <div class="field-group">
-            <label for="admin-token">Admin Token</label>
-            <input id="admin-token" type="text" autocomplete="off" placeholder="Min 8 characters">
-            <p class="field-hint">Protects the admin console. A random token has been generated for you.</p>
+          <!-- Welcome Hero -->
+          <div class="welcome-hero" id="welcome-hero">
+            <div class="welcome-icon">&#x1F44B;</div>
+            <h2>Welcome to OpenPalm</h2>
+            <p class="welcome-subtitle">Your self-hosted AI assistant. Pick your providers, choose models, and you're up and running.</p>
+            <div class="welcome-pills">
+              <span class="pill">Cloud or local</span>
+              <span class="pill">Smart defaults</span>
+              <span class="pill">Privacy first</span>
+            </div>
+            <button class="btn btn-primary-lg" id="btn-get-started">Get Started</button>
           </div>
 
-          <div class="field-group">
-            <label for="owner-name">Your Name <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
-            <input id="owner-name" type="text" placeholder="Jane Doe" autocomplete="name">
-          </div>
+          <!-- Identity Form (hidden until Get Started) -->
+          <div class="identity-form hidden" id="identity-form">
+            <h2>About You</h2>
+            <p class="step-description">Set up admin credentials and optional identity details.</p>
 
-          <div class="field-group">
-            <label for="owner-email">Email <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
-            <input id="owner-email" type="email" placeholder="jane@example.com" autocomplete="email">
-          </div>
+            <div class="field-group">
+              <label for="admin-token">Admin Token</label>
+              <input id="admin-token" type="text" autocomplete="off" placeholder="Min 8 characters">
+              <p class="field-hint">Protects the admin console. A random token has been generated for you.</p>
+            </div>
 
-          <div id="step0-error" class="field-error hidden" role="alert"></div>
+            <div class="field-group">
+              <label for="owner-name">Your Name <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
+              <input id="owner-name" type="text" placeholder="Jane Doe" autocomplete="name">
+            </div>
 
-          <div class="step-actions">
-            <button class="btn btn-primary" id="btn-step0-next">Next</button>
+            <div class="field-group">
+              <label for="owner-email">Email <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
+              <input id="owner-email" type="email" placeholder="jane@example.com" autocomplete="email">
+            </div>
+
+            <div id="step0-error" class="field-error hidden" role="alert"></div>
+
+            <div class="step-actions">
+              <button class="btn btn-primary" id="btn-step0-next">Set Up Providers</button>
+            </div>
           </div>
         </section>
 
         <!-- ═══════════════════════════════════════════════════════════
-             Step 1: Connection Setup
+             Step 1: Providers (Card Grid)
              ═══════════════════════════════════════════════════════════ -->
         <section class="step-content hidden" id="step-1" data-testid="step-connections">
-          <h2>Connections</h2>
-          <p class="step-description">Add one or more model endpoints. Mix local and cloud providers as you like.</p>
-
-          <!-- Existing connections list -->
-          <ul class="hub-list hidden" id="conn-hub-list" aria-label="Connections"></ul>
-
-          <!-- Empty state -->
-          <div class="hub-empty" id="conn-hub-empty">
-            <p class="hub-empty-headline">No connections yet</p>
-            <p class="hub-empty-body">Add a cloud API provider or a local model server to get started.</p>
-          </div>
+          <h2>Where should your models run?</h2>
+          <p class="step-description">Select one or more providers. Click a card to configure it.</p>
 
           <!-- Loading state for provider detection -->
           <div class="loading-state hidden" id="conn-detecting">
             <span class="spinner"></span>&nbsp;Detecting local providers...
           </div>
 
-          <!-- Add connection type cards -->
-          <div id="conn-type-chooser" class="hidden">
-            <button class="conn-card" type="button" id="btn-add-cloud">
-              <div class="conn-icon conn-icon--cloud" aria-hidden="true">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
-              </div>
-              <div class="conn-body">
-                <span class="conn-label">Cloud Provider <span class="conn-badge">Hosted</span></span>
-                <span class="conn-desc">OpenAI, Anthropic, Groq, Together, Mistral, DeepSeek, xAI</span>
-              </div>
-              <div class="conn-arrow" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-              </div>
-            </button>
-            <button class="conn-card" type="button" id="btn-add-local">
-              <div class="conn-icon conn-icon--local" aria-hidden="true">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="6" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
-              </div>
-              <div class="conn-body">
-                <span class="conn-label">Local Provider <span class="conn-badge conn-badge--local">On-Device</span></span>
-                <span class="conn-desc">Ollama, Docker Model Runner, LM Studio running locally</span>
-              </div>
-              <div class="conn-arrow" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-              </div>
-            </button>
-          </div>
+          <!-- Provider card grid -->
+          <div class="provider-grid" id="provider-grid"></div>
 
-          <!-- Connection detail form (shared for cloud and local) -->
-          <div id="conn-detail-form" class="hidden">
-            <div class="connection-mode-card" id="conn-mode-card">
-              <div class="connection-mode-header">
-                <span class="connection-mode-badge" id="conn-mode-badge"></span>
-                <h3 id="conn-mode-title"></h3>
-              </div>
-            </div>
-
-            <!-- Cloud: provider quick-picks -->
-            <div class="provider-quick-picks hidden" id="cloud-provider-picks"></div>
-
-            <!-- Local: detected providers -->
-            <div id="local-provider-list" class="hidden"></div>
-
-            <div class="field-group">
-              <label for="conn-name">Connection Name</label>
-              <input id="conn-name" type="text" placeholder='e.g. "My Ollama", "Work OpenAI"'>
-            </div>
-
-            <div class="field-group">
-              <label for="conn-base-url">Base URL</label>
-              <input id="conn-base-url" type="url" placeholder="https://api.openai.com">
-              <p class="field-hint">The provider endpoint. Do not include a trailing /v1.</p>
-            </div>
-
-            <div class="field-group hidden" id="conn-apikey-group">
-              <label for="conn-api-key">API Key</label>
-              <input id="conn-api-key" type="password" placeholder="sk-..." autocomplete="new-password">
-              <p class="field-hint">Stored server-side only.</p>
-            </div>
-
-            <div id="conn-detail-error" class="field-error hidden" role="alert"></div>
-
-            <div class="connection-success hidden" id="conn-test-success" role="status">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              <span id="conn-test-msg">Connected</span>
-            </div>
-
-            <div class="step-actions">
-              <button class="btn btn-secondary" id="btn-conn-cancel">Cancel</button>
-              <button class="btn btn-outline" id="btn-conn-test">Test</button>
-              <button class="btn btn-primary" id="btn-conn-save">Save Connection</button>
-            </div>
-          </div>
-
-          <!-- Main step actions (shown when not adding a connection) -->
+          <!-- Provider count info + nav -->
           <div class="step-actions" id="step1-actions">
             <button class="btn btn-secondary" id="btn-step1-back">Back</button>
-            <button class="btn btn-outline" id="btn-step1-add">Add Connection</button>
-            <button class="btn btn-primary" id="btn-step1-next" disabled>Next</button>
+            <span class="nav-info" id="provider-count-info"></span>
+            <button class="btn btn-primary" id="btn-step1-next" disabled>Choose Models</button>
           </div>
         </section>
 
         <!-- ═══════════════════════════════════════════════════════════
-             Step 2: Model Assignment
+             Step 2: Model Assignment (Radio Options)
              ═══════════════════════════════════════════════════════════ -->
         <section class="step-content hidden" id="step-2" data-testid="step-models">
-          <h2>Model Assignment</h2>
-          <p class="step-description">Choose default models for chat and embeddings.</p>
+          <h2>Choose Your Models</h2>
+          <p class="step-description">Pre-selected from your providers. Adjust if needed.</p>
 
-          <!-- LLM Card -->
-          <div class="model-card">
-            <div class="model-card-header">
-              <span class="model-card-title">Chat Model (LLM)</span>
-              <span class="model-card-help">Used for conversations, tool calls, and reasoning.</span>
-            </div>
-            <div class="field-group">
-              <label for="llm-connection">Connection</label>
-              <select id="llm-connection">
-                <option value="" disabled selected>Select a connection</option>
-              </select>
-            </div>
-            <div class="field-group">
-              <label for="llm-model">Model</label>
-              <select id="llm-model"><option value="">Loading...</option></select>
-            </div>
-            <div class="field-group">
-              <label for="llm-small-model">Small Model <span style="color:var(--color-text-tertiary);font-weight:normal">(optional)</span></label>
-              <select id="llm-small-model"><option value="">(same as chat model)</option></select>
-              <p class="field-hint">Used for lightweight tasks like memory extraction.</p>
-            </div>
-          </div>
+          <!-- Model groups rendered dynamically -->
+          <div id="model-groups"></div>
 
-          <!-- Embeddings Card -->
-          <div class="model-card">
-            <div class="model-card-header">
-              <span class="model-card-title">Embeddings</span>
-              <span class="model-card-help">Used for vector search and memory.</span>
-            </div>
-            <div class="field-group">
-              <label for="emb-connection">Connection</label>
-              <select id="emb-connection">
-                <option value="" disabled selected>Select a connection</option>
-              </select>
-            </div>
-            <div class="field-group">
-              <label for="emb-model">Embedding Model</label>
-              <select id="emb-model"><option value="">Loading...</option></select>
-            </div>
-            <div class="field-group">
-              <label for="emb-dims">Embedding Dimensions</label>
-              <input id="emb-dims" type="number" value="1536" min="1" step="1">
-              <p class="field-hint">Set automatically for known models. Override only if needed.</p>
-            </div>
-          </div>
-
-          <button class="add-connection-link" type="button" id="btn-models-add-conn">Need another connection?</button>
+          <!-- Hidden fields for backward compatibility with API payload -->
+          <input type="hidden" id="llm-connection" value="">
+          <input type="hidden" id="llm-model" value="">
+          <input type="hidden" id="llm-small-model" value="">
+          <input type="hidden" id="emb-connection" value="">
+          <input type="hidden" id="emb-model" value="">
+          <input type="hidden" id="emb-dims" value="1536">
 
           <div id="step2-error" class="field-error hidden" role="alert"></div>
 
           <div class="step-actions">
             <button class="btn btn-secondary" id="btn-step2-back">Back</button>
-            <button class="btn btn-primary" id="btn-step2-next">Next</button>
+            <button class="btn btn-primary" id="btn-step2-next">Voice Setup</button>
           </div>
         </section>
 
         <!-- ═══════════════════════════════════════════════════════════
-             Step 3: Options
+             Step 3: Voice (TTS / STT)
              ═══════════════════════════════════════════════════════════ -->
-        <section class="step-content hidden" id="step-3" data-testid="step-options">
+        <section class="step-content hidden" id="step-3" data-testid="step-voice">
+          <h2>Voice Capabilities</h2>
+          <p class="step-description">Choose how your assistant speaks and listens.</p>
+
+          <!-- Voice groups rendered dynamically -->
+          <div id="voice-groups"></div>
+
+          <div class="step-actions">
+            <button class="btn btn-secondary" id="btn-step3-back">Back</button>
+            <button class="btn btn-primary" id="btn-step3-next">Options</button>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             Step 4: Options (Channels + Services + Memory)
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="step-content hidden" id="step-4" data-testid="step-options">
           <h2>Options</h2>
-          <p class="step-description">Tweak optional settings before review.</p>
+          <p class="step-description">Choose channels, services, and tweak settings before review.</p>
+
+          <!-- Channels -->
+          <div class="options-section">
+            <h3 class="options-section-title">Channels</h3>
+            <p class="options-section-desc">How you talk to your assistant. Web Chat is always on.</p>
+            <div class="toggle-grid" id="channels-grid"></div>
+          </div>
+
+          <!-- Services -->
+          <div class="options-section">
+            <h3 class="options-section-title">Services</h3>
+            <p class="options-section-desc">Extra capabilities for your stack.</p>
+            <div class="toggle-grid" id="services-grid"></div>
+          </div>
 
           <!-- Ollama in-stack toggle (only shown when relevant) -->
           <div class="addon-row hidden" id="ollama-addon">
@@ -252,24 +174,34 @@
           </div>
 
           <div class="step-actions">
-            <button class="btn btn-secondary" id="btn-step3-back">Back</button>
-            <button class="btn btn-primary" id="btn-step3-next">Next</button>
+            <button class="btn btn-secondary" id="btn-step4-back">Back</button>
+            <button class="btn btn-primary" id="btn-step4-next">Review</button>
           </div>
         </section>
 
         <!-- ═══════════════════════════════════════════════════════════
-             Step 4: Review & Install
+             Step 5: Review & Install
              ═══════════════════════════════════════════════════════════ -->
-        <section class="step-content hidden" id="step-4" data-testid="step-review">
+        <section class="step-content hidden" id="step-5" data-testid="step-review">
           <h2>Review &amp; Install</h2>
           <p class="step-description">Confirm your settings, then install.</p>
 
-          <div class="review-grid" id="review-grid"></div>
+          <div id="review-summary"></div>
+
+          <div class="review-json-toggle" id="review-json-toggle">
+            <button class="btn-json-toggle" id="btn-toggle-json" type="button">Show Setup JSON</button>
+          </div>
+          <div class="review-json hidden" id="review-json">
+            <pre id="review-json-pre"></pre>
+          </div>
+
+          <!-- Keep old review-grid for backward compat (hidden, populated for tests) -->
+          <div class="hidden" id="review-grid"></div>
 
           <div id="install-error" class="install-error hidden" role="alert"></div>
 
           <div class="step-actions" id="review-actions">
-            <button class="btn btn-secondary" id="btn-step4-back">Back</button>
+            <button class="btn btn-secondary" id="btn-step5-back">Back</button>
             <button class="btn btn-primary" id="btn-install">Install</button>
           </div>
         </section>
