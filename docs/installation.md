@@ -115,7 +115,8 @@ Output is human-readable. The command exits `0` when all required variables are 
 | `openpalm logs [service]` | Stream container logs (all services, or a specific one) |
 | `openpalm status` | Show running container status |
 | `openpalm update` | Pull latest images and restart services |
-| `openpalm uninstall` | Stop services and remove OpenPalm data directories |
+| `openpalm uninstall` | Stop services and remove containers (preserves config and data) |
+| `openpalm uninstall --purge` | Stop services, remove containers, volumes, and all XDG directories |
 | `openpalm service` | Manage individual services (start, stop, restart a single container) |
 
 Run `openpalm --help` or `openpalm <command> --help` for flags and options.
