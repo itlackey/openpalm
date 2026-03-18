@@ -3,7 +3,7 @@ import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
   getRequestId,
-  requireAdminOrSetupToken,
+  requireAdmin,
 } from '$lib/server/helpers.js';
 import {
   readConnectionProfilesDocument,
@@ -13,7 +13,7 @@ import { EMBEDDING_DIMS } from '$lib/provider-constants.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdminOrSetupToken(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

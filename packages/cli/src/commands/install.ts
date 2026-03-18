@@ -4,18 +4,20 @@ import { rm } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
-import { isAdminReachable, adminRequest } from '../lib/admin.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
-import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider } from '@openpalm/lib';
+import {
+  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider,
+  performSetupFromConfig,
+  type SetupConfig, type SetupResult,
+} from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
-import { loadAdminToken } from '../lib/env.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
 const DEFAULT_INSTALL_REF = 'main';
-const SETUP_WIZARD_PORT = 8100;
+const SETUP_WIZARD_PORT = Number(process.env.OPENPALM_SETUP_PORT) || 8100;
 
 export default defineCommand({
   meta: {
@@ -43,25 +45,19 @@ export default defineCommand({
       description: 'Open browser after install (use --no-open to skip)',
       default: true,
     },
+    file: {
+      type: 'string',
+      alias: 'f',
+      description: 'Path to setup config file (JSON or YAML) — skips wizard',
+    },
   },
   async run({ args }) {
-    // If the stack is already running AND we have a valid admin token,
-    // delegate to the admin API. Otherwise fall through to bootstrap.
-    if (await isAdminReachable()) {
-      const token = await loadAdminToken();
-      if (token) {
-        console.log(JSON.stringify(await adminRequest('/admin/install', { method: 'POST' }), null, 2));
-        return;
-      }
-      // No token available — fall through to bootstrap install which doesn't need auth.
-      console.warn('Stack is running but no admin token is configured. Proceeding with bootstrap install.');
-    }
-
     await bootstrapInstall({
       force: args.force,
       version: args.version,
       noStart: !args.start,
       noOpen: !args.open,
+      file: args.file,
     });
   },
 });
@@ -71,6 +67,7 @@ type InstallOptions = {
   version: string;
   noStart: boolean;
   noOpen: boolean;
+  file?: string;
 };
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
@@ -117,16 +114,20 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 
   // Download schemas to both DATA_HOME (for FilesystemAssetProvider) and STATE_HOME (for varlock validation)
-  const secretsSchemaContent = await fetchAsset(options.version, 'secrets.env.schema');
-  const stackSchemaContent = await fetchAsset(options.version, 'stack.env.schema');
-  await Bun.write(join(dataHome, 'secrets.env.schema'), secretsSchemaContent);
-  await Bun.write(join(dataHome, 'stack.env.schema'), stackSchemaContent);
-  await Bun.write(join(stateHome, 'artifacts', 'secrets.env.schema'), secretsSchemaContent);
-  await Bun.write(join(stateHome, 'artifacts', 'stack.env.schema'), stackSchemaContent);
+  for (const schemaFile of ['secrets.env.schema', 'stack.env.schema', 'setup-config.schema.json']) {
+    try {
+      const content = await fetchAsset(options.version, schemaFile);
+      await Bun.write(join(dataHome, schemaFile), content);
+      await Bun.write(join(stateHome, 'artifacts', schemaFile), content);
+    } catch (err) {
+      console.warn(`Warning: could not download schema '${schemaFile}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
     { remote: 'ollama.yml', localPath: join(dataHome, 'ollama.yml') },
+    { remote: 'admin.yml', localPath: join(dataHome, 'admin.yml') },
     { remote: 'AGENTS.md', localPath: join(dataHome, 'assistant', 'AGENTS.md') },
     { remote: 'opencode.jsonc', localPath: join(dataHome, 'assistant', 'opencode.jsonc') },
     { remote: 'admin-opencode.jsonc', localPath: join(dataHome, 'admin', 'opencode.jsonc') },
@@ -183,8 +184,81 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Varlock install/execution failures are non-fatal during install
   }
 
-  if (options.noStart) {
+  if (options.noStart && !options.file) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');
+    return;
+  }
+
+  // ── File-based install (--file / -f) ──────────────────────────────────
+  // Read a JSON or YAML setup config file and call performSetup() or
+  // performSetupFromConfig() directly — no wizard needed.
+
+  if (options.file) {
+    console.log(`Reading setup config from ${options.file}...`);
+
+    if (!(await Bun.file(options.file).exists())) {
+      throw new Error(`Setup config file not found: ${options.file}. Check the --file path and try again.`);
+    }
+    let raw: string;
+    try {
+      raw = await Bun.file(options.file).text();
+    } catch (err) {
+      throw new Error(`Failed to read setup config file '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const ext = options.file.toLowerCase();
+    let parsed: unknown;
+    try {
+      if (ext.endsWith('.yaml') || ext.endsWith('.yml')) {
+        const { parse } = await import('yaml');
+        parsed = parse(raw);
+      } else if (ext.endsWith('.json')) {
+        parsed = JSON.parse(raw);
+      } else {
+        throw new Error(`Unsupported config file format: ${options.file}. Use .json or .yaml.`);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Unsupported config file format:')) {
+        throw err;
+      }
+      throw new Error(`Failed to parse setup config '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const fsAssets = new FilesystemAssetProvider(dataHome);
+    const config = parsed as Record<string, unknown>;
+    let result: SetupResult;
+
+    if (typeof config.version !== "number") {
+      throw new Error(
+        `Setup config file is missing a 'version' field. Use 'version: 1' for the current format.`
+      );
+    }
+    if (config.version === 1) {
+      result = await performSetupFromConfig(config as SetupConfig, fsAssets);
+    } else {
+      throw new Error(`Unsupported setup config version: ${config.version}. Only version 1 is supported.`);
+    }
+
+    if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
+    console.log('Setup complete.');
+
+    if (options.noStart) {
+      console.log('Config written. Run `openpalm start` to start services.');
+      return;
+    }
+
+    // Deploy (same as existing update-mode code)
+    console.log('Starting services...');
+    const state = await ensureStagedState();
+    const composeArgs = fullComposeArgs(state);
+    const managedServices = buildManagedServiceNames(state);
+    const allServices = buildInstallServiceNames(managedServices);
+
+    await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
+      console.warn('Warning: image pull failed.');
+    });
+    await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
+    console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
     return;
   }
 
@@ -197,7 +271,16 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   if (!updateMode) {
     console.log('Starting setup wizard...');
 
-    const wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+    let wizard;
+    try {
+      wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')) {
+        throw new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OPENPALM_SETUP_PORT=<port>.`);
+      }
+      throw err;
+    }
     const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
     console.log(`Setup wizard running at ${wizardUrl}`);
 
@@ -225,13 +308,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
 
-      await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
-        // Pull failure is non-fatal — images may already be cached
+      await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
+        console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
       });
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
 
-      await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
+      await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
 
       wizard.markAllRunning();
 
@@ -264,7 +347,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const managedServices = buildManagedServiceNames(state);
   const allServices = buildInstallServiceNames(managedServices);
 
-  await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
+  await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
 
   console.log(JSON.stringify({
     ok: true,

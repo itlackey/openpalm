@@ -1,5 +1,5 @@
 /**
- * Tests for updateSecretsEnv — the setup wizard's secrets file updater.
+ * Tests for updateSecretsEnv — secrets.env patching utility used by the connections API.
  *
  * Verifies:
  * 1. All provided keys are written

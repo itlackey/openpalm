@@ -4,7 +4,7 @@ import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
   getRequestId,
-  requireAdminOrSetupToken,
+  requireAdmin,
 } from '$lib/server/helpers.js';
 
 const NEXT_STEPS = [
@@ -15,7 +15,7 @@ const NEXT_STEPS = [
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdminOrSetupToken(event, requestId);
+  const authErr = requireAdmin(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();

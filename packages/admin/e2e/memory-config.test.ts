@@ -88,13 +88,6 @@ async function setupConsoleMocks(page: import('@playwright/test').Page) {
 		}
 		return route.continue();
 	});
-	await page.route('**/admin/setup', (route) =>
-		route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({ setupComplete: true, configured: { adminToken: true } })
-		})
-	);
 	await page.route('**/admin/memory/config', (route) => {
 		if (route.request().method() === 'GET') {
 			return route.fulfill({

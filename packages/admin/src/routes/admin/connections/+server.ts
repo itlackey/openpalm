@@ -49,7 +49,7 @@ import { createLogger } from "$lib/server/logger.js";
 import {
   isWizardProviderInScope,
   validateWizardCapabilitiesInput,
-} from '$lib/setup-wizard/scope.js';
+} from '$lib/wizard-scope.js';
 
 const logger = createLogger("connections");
 

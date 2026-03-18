@@ -16,12 +16,12 @@ export function parseEnvFile(filePath: string): Record<string, string> {
 
 function quoteEnvValue(value: string): string {
   if (value.length === 0) return '';
-  const needsQuoting = /[#"'\\\n\r]/.test(value) || value !== value.trim();
+  const needsQuoting = /[#"'\\\n\r$]/.test(value) || value !== value.trim();
   if (!needsQuoting) return value;
 
   if (!value.includes("'")) return `'${value}'`;
 
-  const escaped = value.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+  const escaped = value.replace(/\\/g, '\\\\').replace(/\$/g, '\\$').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
   return `"${escaped}"`;
 }
 

@@ -16,7 +16,7 @@ import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
 import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
 import { loadSecretsEnvFile } from "./secrets.js";
-import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled } from "./staging.js";
+import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled, isAdminEnabled } from "./staging.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
@@ -222,6 +222,11 @@ export async function applyUpgrade(
 export function buildComposeFileList(state: ControlPlaneState): string[] {
   const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
 
+  if (isAdminEnabled(state)) {
+    const adminYml = `${state.stateDir}/artifacts/admin.yml`;
+    files.push(adminYml);
+  }
+
   if (isOllamaEnabled(state)) {
     const ollamaYml = `${state.stateDir}/artifacts/ollama.yml`;
     files.push(ollamaYml);
@@ -235,10 +240,14 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 
 /**
  * Build the list of services that `docker compose up` should manage.
- * Core services only — admin/docker-socket-proxy are in the "admin" profile.
+ * Core services always; admin/caddy/docker-socket-proxy only when admin is enabled.
  */
 export function buildManagedServices(state: ControlPlaneState): string[] {
   const services: string[] = [...CORE_SERVICES];
+
+  if (isAdminEnabled(state)) {
+    services.push("caddy", "admin", "docker-socket-proxy");
+  }
 
   if (isOllamaEnabled(state)) {
     services.push("ollama");

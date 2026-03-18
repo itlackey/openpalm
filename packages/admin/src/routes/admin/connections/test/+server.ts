@@ -5,7 +5,7 @@ import {
   errorResponse,
   getRequestId,
   parseJsonBody,
-  requireAdminOrSetupToken,
+  requireAdmin,
   validateExternalUrl,
 } from '$lib/server/helpers.js';
 import { fetchProviderModels } from '$lib/server/memory-config.js';
@@ -16,7 +16,7 @@ const logger = createLogger('connections-test');
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdminOrSetupToken(event, requestId);
+  const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
   const body = await parseJsonBody(event.request);

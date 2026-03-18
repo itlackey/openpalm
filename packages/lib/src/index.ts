@@ -196,6 +196,8 @@ export {
   readCoreCompose,
   ensureOllamaCompose,
   readOllamaCompose,
+  ensureAdminCompose,
+  readAdminCompose,
   ensureOpenCodeSystemConfig,
   ensureAdminOpenCodeConfig,
   ensureCoreAutomations,
@@ -207,6 +209,7 @@ export {
   sha256,
   randomHex,
   isOllamaEnabled,
+  isAdminEnabled,
   stagedEnvFile,
   stagedStackEnvFile,
   buildEnvFiles,
@@ -214,6 +217,11 @@ export {
   stageArtifacts,
   buildArtifactMeta,
   persistArtifacts,
+  withDefaultLanOnly,
+  stageChannelCaddyfiles,
+  stageChannelYmlFiles,
+  stageSecretsEnv,
+  stageAutomationFiles,
 } from "./control-plane/staging.js";
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -278,6 +286,19 @@ export {
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
 
+// ── Stack Spec ───────────────────────────────────────────────────────────
+export type {
+  StackSpec,
+  StackSpecConnection,
+  StackSpecAssignments,
+} from "./control-plane/stack-spec.js";
+export {
+  STACK_SPEC_FILENAME,
+  stackSpecPath,
+  writeStackSpec,
+  readStackSpec,
+} from "./control-plane/stack-spec.js";
+
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {
   SetupConnection,
@@ -285,6 +306,10 @@ export type {
   SetupInput,
   SetupResult,
   DetectedProvider,
+  SetupConfig,
+  SetupConfigAssignments,
+  ChannelCredentials,
+  ServiceConfig,
 } from "./control-plane/setup.js";
 export {
   validateSetupInput,
@@ -292,4 +317,9 @@ export {
   buildConnectionEnvVarMap,
   performSetup,
   detectProviders,
+  CHANNEL_CREDENTIAL_ENV_MAP,
+  validateSetupConfig,
+  normalizeToSetupInput,
+  performSetupFromConfig,
+  buildChannelCredentialEnvVars,
 } from "./control-plane/setup.js";

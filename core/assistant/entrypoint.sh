@@ -154,7 +154,11 @@ maybe_proxy_lmstudio() {
 
   if command -v socat >/dev/null 2>&1; then
     echo "Starting LLM proxy: 127.0.0.1:1234 → ${target_host}:${target_port}"
-    socat TCP-LISTEN:1234,reuseaddr,fork TCP:"${target_host}":"${target_port}" &
+    (while true; do
+      socat TCP-LISTEN:1234,reuseaddr,fork TCP:"${target_host}":"${target_port}"
+      echo "socat proxy exited, restarting in 1s..." >&2
+      sleep 1
+    done) &
   fi
 }
 

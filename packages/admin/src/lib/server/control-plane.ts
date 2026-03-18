@@ -245,7 +245,6 @@ export {
 // ── lifecycle.ts (non-asset functions pass through directly) ─────────
 export {
   createState,
-  writeSetupTokenFile,
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   buildManagedServices,

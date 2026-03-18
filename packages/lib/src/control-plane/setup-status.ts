@@ -27,5 +27,5 @@ export function isSetupComplete(stateDir: string, configDir: string): boolean {
   }
 
   const keys = readSecretsKeys(configDir);
-  return keys.ADMIN_TOKEN === true;
+  return keys.OPENPALM_ADMIN_TOKEN === true || keys.ADMIN_TOKEN === true;
 }

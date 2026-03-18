@@ -32,7 +32,6 @@ src/
 │   │   ├── registry.ts       # Channel/automation registry catalog
 │   │   ├── registry-sync.ts  # Remote registry sync
 │   │   ├── scheduler.ts      # Automations parsing (re-exports from @openpalm/lib)
-│   │   ├── setup-status.ts   # First-run setup state
 │   │   ├── memory-config.ts  # Memory provider/model config
 │   │   └── logger.ts         # Structured logger
 │   ├── components/           # Svelte UI components
@@ -60,7 +59,7 @@ bun run admin:check
 
 ## API
 
-All endpoints require `x-admin-token: <ADMIN_TOKEN>` (except `/health` and `/setup/*`). Full spec: [`docs/api-spec.md`](../../docs/technical/api-spec.md).
+All endpoints require `x-admin-token: <ADMIN_TOKEN>` (except `/health`). Full spec: [`docs/api-spec.md`](../../docs/technical/api-spec.md).
 
 ## Key environment variables
 

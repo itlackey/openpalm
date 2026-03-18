@@ -1,5 +1,4 @@
 import { defineCommand } from 'citty';
-import { tryAdminRequest } from '../lib/admin.ts';
 import { runDockerCompose } from '../lib/docker.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
 
@@ -9,14 +8,6 @@ export default defineCommand({
     description: 'Pull latest images and recreate containers',
   },
   async run() {
-    // Try admin delegation first
-    const adminResult = await tryAdminRequest('/admin/containers/pull', { method: 'POST' });
-    if (adminResult !== null) {
-      console.log(JSON.stringify(adminResult, null, 2));
-      return;
-    }
-
-    // Direct compose: pull + recreate
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);

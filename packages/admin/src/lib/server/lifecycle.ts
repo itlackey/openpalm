@@ -14,7 +14,6 @@ import { viteAssets } from "./vite-asset-provider.js";
 // Pure re-exports (no provider needed)
 export {
   createState,
-  writeSetupTokenFile,
   updateStackEnvToLatestImageTag,
   buildComposeFileList,
   buildManagedServices,

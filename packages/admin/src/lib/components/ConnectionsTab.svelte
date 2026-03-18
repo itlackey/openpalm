@@ -18,7 +18,7 @@
     ConnectionProfilePayload,
   } from '$lib/types.js';
   import ConnectionForm from './ConnectionForm.svelte';
-  import ModelSelector from './setup-wizard/ModelSelector.svelte';
+  import ModelSelector from './ModelSelector.svelte';
 
   interface Props {
     loading: boolean;

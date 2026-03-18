@@ -20,6 +20,8 @@ import agentsMdAsset from "$assets/AGENTS.md?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import ollamaComposeAsset from "$assets/ollama.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
+import adminComposeAsset from "$assets/admin.yml?raw";
+// @ts-ignore — raw asset imports bundled by Vite at build time
 import cleanupLogsAsset from "$assets/cleanup-logs.yml?raw";
 // @ts-ignore — raw asset imports bundled by Vite at build time
 import cleanupDataAsset from "$assets/cleanup-data.yml?raw";
@@ -34,6 +36,7 @@ export class ViteAssetProvider implements CoreAssetProvider {
   coreCompose(): string { return coreComposeAsset; }
   caddyfile(): string { return caddyfileAsset; }
   ollamaCompose(): string { return ollamaComposeAsset; }
+  adminCompose(): string { return adminComposeAsset; }
   agentsMd(): string { return agentsMdAsset; }
   opencodeConfig(): string { return opencodeConfigAsset; }
   adminOpencodeConfig(): string { return adminOpencodeConfigAsset; }

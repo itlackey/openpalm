@@ -28,21 +28,38 @@ export async function ensureDirectoryTree(
 }
 
 /**
+ * Fetches a URL with retries and exponential backoff. Only retries on 5xx or network errors.
+ */
+async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      if (res.ok || res.status < 500) return res;
+      if (i < retries - 1) await Bun.sleep(200 * 2 ** i);
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await Bun.sleep(200 * 2 ** i);
+    }
+  }
+  throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
+}
+
+/**
  * Downloads an asset from a GitHub release, falling back to raw.githubusercontent.com.
  */
 export async function fetchAsset(repoRef: string, filename: string): Promise<string> {
   const releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${repoRef}/${filename}`;
   const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${repoRef}/assets/${filename}`;
 
-  const releaseResponse = await fetch(releaseUrl, { signal: AbortSignal.timeout(30000) });
-  if (releaseResponse.ok) {
-    return await releaseResponse.text();
+  try {
+    const releaseResponse = await fetchWithRetry(releaseUrl);
+    if (releaseResponse.ok) return await releaseResponse.text();
+  } catch {
+    // Fall through to raw URL
   }
 
-  const rawResponse = await fetch(rawUrl, { signal: AbortSignal.timeout(30000) });
-  if (rawResponse.ok) {
-    return await rawResponse.text();
-  }
+  const rawResponse = await fetchWithRetry(rawUrl);
+  if (rawResponse.ok) return await rawResponse.text();
 
   throw new Error(`Failed to download ${filename} from ${repoRef}`);
 }
@@ -90,6 +107,7 @@ export async function runDockerComposeCapture(args: string[]): Promise<string> {
  * Opens a URL in the user's default browser. Best-effort, never throws.
  */
 export async function openBrowser(url: string): Promise<void> {
+  console.log(`Opening ${url} in your browser...`);
   const platform = process.platform;
   try {
     if (platform === 'darwin') {

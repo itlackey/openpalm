@@ -15,6 +15,8 @@
   "scripts": {
     "start": "bun run src/main.ts",
     "test": "bun test",
+    "test:e2e": "npx playwright test",
+    "wizard:dev": "bun run src/setup-wizard/standalone.ts",
     "build": "bun build src/main.ts --compile --outfile dist/openpalm-cli",
     "build:linux-x64": "bun build src/main.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-cli-linux-x64",
     "build:linux-arm64": "bun build src/main.ts --compile --target=bun-linux-arm64 --outfile dist/openpalm-cli-linux-arm64",

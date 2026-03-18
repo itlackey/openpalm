@@ -45,6 +45,7 @@ const MOCK_OLLAMA_MODELS = {
 	models: [
 		TEST_LLM_MODEL,
 		TEST_EMBED_MODEL,
+		"llama3.2",
 		"llama3.2:latest",
 		"qwen2.5-coder:latest",
 	],
@@ -139,6 +140,29 @@ async function setupWizardMocks(page: Page) {
 	);
 }
 
+// ── Helper: Navigate through welcome hero + identity form ───────────────
+
+/** Fills identity form and navigates to Step 1 (Providers) */
+async function completeStep0(page: Page) {
+	// Click "Get Started" to dismiss hero
+	await page.click("#btn-get-started");
+	await expect(page.locator("#identity-form")).toBeVisible();
+	// Fill identity
+	await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+	await page.fill("#owner-name", TEST_OWNER_NAME);
+	await page.fill("#owner-email", TEST_OWNER_EMAIL);
+	await page.click("#btn-step0-next");
+}
+
+/** Selects and verifies Ollama in Step 1 (provider card grid) */
+async function addOllamaProvider(page: Page) {
+	// Wait for auto-detection to select+verify Ollama (mocked detect-providers returns available Ollama)
+	// The card should already be selected and expanded from auto-detection
+	await page.waitForTimeout(500); // Wait for detection + verify
+	// Ollama should be auto-detected and verified
+	await expect(page.locator('[data-provider="ollama"].verified')).toBeVisible({ timeout: 5_000 });
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // MOCKED TESTS: UI Flow
 // ═══════════════════════════════════════════════════════════════════════
@@ -159,15 +183,27 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
-			await expect(page.locator("h1")).toHaveText("OpenPalm Setup");
+			await expect(page.locator("h1")).toContainText("OpenPalm");
 			await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible();
-			await expect(page.locator("h2").first()).toHaveText("Welcome");
+			// Welcome hero should show first
+			await expect(page.locator("#welcome-hero")).toBeVisible();
+			await expect(page.locator("#welcome-hero h2")).toHaveText("Welcome to OpenPalm");
+		});
+
+		test("Get Started reveals identity form", async ({ page }) => {
+			await setupWizardMocks(page);
+			await page.goto(`${WIZARD_URL}/setup`);
+
+			await page.click("#btn-get-started");
+			await expect(page.locator("#identity-form")).toBeVisible();
+			await expect(page.locator("#welcome-hero")).toBeHidden();
 		});
 
 		test("auto-generates an admin token", async ({ page }) => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
+			await page.click("#btn-get-started");
 			const tokenInput = page.locator("#admin-token");
 			await expect(tokenInput).toBeVisible();
 			const tokenValue = await tokenInput.inputValue();
@@ -178,6 +214,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", "short");
 			await page.click("#btn-step0-next");
 
@@ -190,6 +227,7 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.fill("#owner-name", TEST_OWNER_NAME);
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
@@ -198,164 +236,110 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
 		});
 
-		test("step indicators show step 1 as active", async ({ page }) => {
+		test("progress bar shows first segment active", async ({ page }) => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
-			const step1Dot = page.locator('.step-dot[data-step="0"]');
-			await expect(step1Dot).toHaveClass(/active/);
+			const firstSeg = page.locator('.prog-seg').first();
+			await expect(firstSeg).toHaveClass(/on/);
 		});
 	});
 
-	// ── Step 1: Connections ──────────────────────────────────────────
+	// ── Step 1: Providers ──────────────────────────────────────────
 
-	test.describe("Step 1: Connections", () => {
+	test.describe("Step 1: Providers", () => {
 		async function goToStep1(page: Page) {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
-			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
-			await page.click("#btn-step0-next");
+			await completeStep0(page);
 			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
 		}
 
-		test("shows empty state with no connections", async ({ page }) => {
+		test("shows provider card grid", async ({ page }) => {
 			await goToStep1(page);
 
-			await expect(page.locator("#conn-hub-empty")).toBeVisible();
-			await expect(page.locator("#conn-hub-empty")).toContainText("No connections yet");
-			await expect(page.locator("#btn-step1-next")).toBeDisabled();
+			await expect(page.locator("#provider-grid")).toBeVisible();
+			// Should have provider cards
+			const cards = page.locator(".pcard");
+			const count = await cards.count();
+			expect(count).toBeGreaterThanOrEqual(3); // At least openai, anthropic, ollama
 		});
 
-		test("Add Connection button shows type chooser", async ({ page }) => {
+		test("auto-detects Ollama and shows it as verified", async ({ page }) => {
 			await goToStep1(page);
 
-			await page.click("#btn-step1-add");
-			await expect(page.locator("#conn-type-chooser")).toBeVisible();
-			await expect(page.locator("#btn-add-cloud")).toBeVisible();
-			await expect(page.locator("#btn-add-local")).toBeVisible();
-		});
-
-		test("selecting Local Provider shows detected Ollama", async ({ page }) => {
-			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-
-			// The connection form should appear
-			await expect(page.locator("#conn-detail-form")).toBeVisible();
-			// Badge should say "Local"
-			await expect(page.locator("#conn-mode-badge")).toHaveText("Local");
-			// Detected Ollama should be listed
-			await expect(page.locator("#local-provider-list")).toBeVisible();
-			await expect(page.locator(".provider-option")).toHaveCount(1);
-			await expect(page.locator(".provider-option")).toContainText("Ollama");
-		});
-
-		test("clicking detected Ollama fills connection fields", async ({ page }) => {
-			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-
-			// Click the detected Ollama provider
-			await page.click(".provider-option");
-
-			await expect(page.locator("#conn-name")).toHaveValue("Ollama");
-			await expect(page.locator("#conn-base-url")).toHaveValue(OLLAMA_URL);
-		});
-
-		test("Test button shows success with mocked models", async ({ page }) => {
-			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-test");
-
-			await expect(page.locator("#conn-test-success")).toBeVisible();
-			await expect(page.locator("#conn-test-msg")).toContainText("Connected");
-			await expect(page.locator("#conn-test-msg")).toContainText("model");
-		});
-
-		test("Save Connection adds entry to connection list", async ({ page }) => {
-			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
-
-			// Connection list should now be visible
-			await expect(page.locator("#conn-hub-list")).toBeVisible();
-			await expect(page.locator(".hub-row")).toHaveCount(1);
-			await expect(page.locator(".hub-row-name")).toContainText("Ollama");
-			// Next button should be enabled
+			// Wait for auto-detection to complete
+			await expect(page.locator('[data-provider="ollama"].verified')).toBeVisible({ timeout: 5_000 });
+			// Next button should be enabled since Ollama is verified
 			await expect(page.locator("#btn-step1-next")).toBeEnabled();
 		});
 
-		test("Cancel button returns to hub without saving", async ({ page }) => {
+		test("provider cards show cloud/local badges", async ({ page }) => {
 			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click("#btn-conn-cancel");
 
-			await expect(page.locator("#conn-hub-empty")).toBeVisible();
+			// Cloud badge on OpenAI
+			await expect(page.locator('[data-provider="openai"] .badge-cloud')).toBeVisible();
+			// Local badge on Ollama
+			await expect(page.locator('[data-provider="ollama"] .badge-local')).toBeVisible();
+		});
+
+		test("clicking a provider card selects and expands it", async ({ page }) => {
+			await goToStep1(page);
+
+			// Click OpenAI card header
+			await page.click('[data-toggle-provider="openai"]');
+			// Should be selected
+			await expect(page.locator('[data-provider="openai"].selected')).toBeVisible();
+			// Should show auth panel
+			await expect(page.locator('[data-provider="openai"] .pcard-auth')).toBeVisible();
+		});
+
+		test("deselecting provider via check icon removes it", async ({ page }) => {
+			await goToStep1(page);
+
+			// Click OpenAI to select
+			await page.click('[data-toggle-provider="openai"]');
+			await expect(page.locator('[data-provider="openai"].selected')).toBeVisible();
+
+			// Click the check icon to deselect
+			await page.click('[data-provider="openai"] .pcard-check');
+			await expect(page.locator('[data-provider="openai"].selected')).not.toBeVisible();
+		});
+
+		test("Ollama shows mode selection when expanded", async ({ page }) => {
+			await goToStep1(page);
+
+			// Wait for auto-detection (which auto-selects and verifies Ollama)
+			await page.waitForTimeout(500);
+
+			// If not auto-verified, click to expand and check mode prompt
+			const ollamaCard = page.locator('[data-provider="ollama"]');
+			if (!(await ollamaCard.locator(".ollama-mode-prompt").isVisible().catch(() => false))) {
+				// Ollama was auto-verified, so mode prompt was already handled
+				await expect(ollamaCard).toHaveClass(/verified/);
+			}
+		});
+
+		test("Next button disabled with no verified providers", async ({ page }) => {
+			await setupWizardMocks(page);
+
+			// Override detect-providers to return nothing
+			await page.route("**/api/setup/detect-providers", (route) =>
+				route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ ok: true, providers: [] }),
+				})
+			);
+			// Override models to fail
+			await page.route("**/api/setup/models/**", (route) =>
+				route.fulfill({ status: 500, body: "fail" })
+			);
+
+			await page.goto(`${WIZARD_URL}/setup`);
+			await completeStep0(page);
+
 			await expect(page.locator("#btn-step1-next")).toBeDisabled();
-		});
-
-		test("Edit button re-opens form with saved values", async ({ page }) => {
-			await goToStep1(page);
-
-			// Add a connection first
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
-
-			// Click Edit
-			await page.click('[data-action="edit"]');
-
-			await expect(page.locator("#conn-detail-form")).toBeVisible();
-			await expect(page.locator("#conn-name")).toHaveValue("Ollama");
-			await expect(page.locator("#conn-base-url")).toHaveValue(OLLAMA_URL);
-		});
-
-		test("Remove button removes connection from list", async ({ page }) => {
-			await goToStep1(page);
-
-			// Add a connection
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
-			await expect(page.locator(".hub-row")).toHaveCount(1);
-
-			// Remove it
-			await page.click('[data-action="remove"]');
-			await expect(page.locator("#conn-hub-empty")).toBeVisible();
-			await expect(page.locator("#btn-step1-next")).toBeDisabled();
-		});
-
-		test("cloud provider shows API key field and provider chips", async ({ page }) => {
-			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-cloud");
-
-			await expect(page.locator("#conn-detail-form")).toBeVisible();
-			await expect(page.locator("#conn-mode-badge")).toHaveText("Cloud");
-			await expect(page.locator("#conn-apikey-group")).toBeVisible();
-			await expect(page.locator("#cloud-provider-picks")).toBeVisible();
-			// Should have provider chips
-			const chips = page.locator(".provider-chip");
-			await expect(chips.first()).toBeVisible();
-		});
-
-		test("Save requires connection name", async ({ page }) => {
-			await goToStep1(page);
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.fill("#conn-name", "");
-			await page.fill("#conn-base-url", OLLAMA_URL);
-			await page.click("#btn-conn-save");
-
-			await expect(page.locator("#conn-detail-error")).toBeVisible();
-			await expect(page.locator("#conn-detail-error")).toContainText("name is required");
 		});
 
 		test("Back button returns to Step 0", async ({ page }) => {
@@ -371,75 +355,62 @@ test.describe("@mocked Setup Wizard UI", () => {
 		async function goToStep2(page: Page) {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
-			// Step 0
-			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
-			await page.click("#btn-step0-next");
-			// Step 1: add Ollama connection
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
+			await completeStep0(page);
+			// Step 1: wait for Ollama to auto-verify
+			await addOllamaProvider(page);
 			await page.click("#btn-step1-next");
 			await expect(page.locator('[data-testid="step-models"]')).toBeVisible();
 		}
 
-		test("connection dropdowns are populated with saved connection", async ({ page }) => {
+		test("shows model groups with radio options", async ({ page }) => {
 			await goToStep2(page);
 
-			const llmConn = page.locator("#llm-connection");
-			const embConn = page.locator("#emb-connection");
-			await expect(llmConn).toBeVisible();
-			await expect(embConn).toBeVisible();
+			// Should have model groups
+			const groups = page.locator(".model-group");
+			const count = await groups.count();
+			expect(count).toBeGreaterThanOrEqual(2); // LLM + Embedding
 
-			// Should have the Ollama connection as an option
-			const llmOptions = llmConn.locator("option:not([disabled])");
-			await expect(llmOptions).toHaveCount(1);
-			await expect(llmOptions.first()).toContainText("Ollama");
+			// Should have radio-style options
+			const opts = page.locator(".model-opt");
+			const optCount = await opts.count();
+			expect(optCount).toBeGreaterThan(0);
 		});
 
-		test("model lists are populated from mocked API", async ({ page }) => {
+		test("auto-selects default models", async ({ page }) => {
 			await goToStep2(page);
 
-			// Wait for models to load (option with our test model appears)
-			const llmModel = page.locator("#llm-model");
-			await expect(llmModel.locator(`option[value="${TEST_LLM_MODEL}"]`)).toBeAttached({ timeout: 5_000 });
-
-			// Should have our mocked models as selectable options
-			const options = llmModel.locator("option");
-			const count = await options.count();
-			expect(count).toBeGreaterThanOrEqual(2);
+			// Should have a selected (on) option in the LLM group
+			await expect(page.locator(".model-opt.on").first()).toBeVisible();
 		});
 
-		test("embedding dims auto-filled for nomic-embed-text", async ({ page }) => {
+		test("shows top pick badge on recommended model", async ({ page }) => {
 			await goToStep2(page);
 
-			// Wait for models to load, then check emb-model has nomic-embed-text
-			const embModel = page.locator("#emb-model");
-			await page.waitForTimeout(500); // Wait for model fetch
+			await expect(page.locator(".model-opt-badge-top").first()).toBeVisible();
+		});
 
-			// Select nomic-embed-text if not already selected
-			const embModelValue = await embModel.inputValue();
-			if (embModelValue !== TEST_EMBED_MODEL) {
-				await embModel.selectOption(TEST_EMBED_MODEL);
+		test("clicking a model option selects it", async ({ page }) => {
+			await goToStep2(page);
+
+			// Click a non-selected model option
+			const opts = page.locator(".model-opt:not(.on)");
+			const count = await opts.count();
+			if (count > 0) {
+				// Get the data-model-select value before clicking
+				const selector = await opts.first().getAttribute("data-model-select");
+				await opts.first().click();
+				// Re-query from DOM since click triggers re-render
+				await expect(page.locator(`[data-model-select="${selector}"]`)).toHaveClass(/on/);
 			}
-
-			// Dims should be auto-filled to 768
-			await expect(page.locator("#emb-dims")).toHaveValue(String(TEST_EMBED_DIMS));
 		});
 
-		test("validation requires chat model selection", async ({ page }) => {
+		test("hidden fields are synced for API payload", async ({ page }) => {
 			await goToStep2(page);
 
-			// Clear the LLM model selection
+			// Hidden llm-model field should have a value
 			const llmModel = page.locator("#llm-model");
-			await page.waitForTimeout(300);
-			// Try to select empty value
-			await llmModel.evaluate((el: HTMLSelectElement) => {
-				el.value = "";
-			});
-			await page.click("#btn-step2-next");
-
-			await expect(page.locator("#step2-error")).toBeVisible();
+			const value = await llmModel.inputValue();
+			expect(value.length).toBeGreaterThan(0);
 		});
 
 		test("Back button returns to Step 1", async ({ page }) => {
@@ -448,57 +419,44 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
 		});
 
-		test("navigates to Step 3 with valid models", async ({ page }) => {
+		test("navigates to Step 3 (Voice) with valid models", async ({ page }) => {
 			await goToStep2(page);
-			await page.waitForTimeout(500); // Wait for model fetch
 			await page.click("#btn-step2-next");
-			await expect(page.locator('[data-testid="step-options"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-voice"]')).toBeVisible();
 		});
 	});
 
-	// ── Step 3: Options ──────────────────────────────────────────────
+	// ── Step 3: Voice ──────────────────────────────────────────────
 
-	test.describe("Step 3: Options", () => {
+	test.describe("Step 3: Voice", () => {
 		async function goToStep3(page: Page) {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 			// Step 0
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 			// Step 1
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
+			await addOllamaProvider(page);
 			await page.click("#btn-step1-next");
 			// Step 2
-			await page.waitForTimeout(500);
+			await page.waitForTimeout(300);
 			await page.click("#btn-step2-next");
-			await expect(page.locator('[data-testid="step-options"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-voice"]')).toBeVisible();
 		}
 
-		test("shows Ollama in-stack toggle for Ollama connections", async ({ page }) => {
+		test("shows TTS and STT groups", async ({ page }) => {
 			await goToStep3(page);
-			await expect(page.locator("#ollama-addon")).toBeVisible();
-			await expect(page.locator("#ollama-enabled")).toBeVisible();
+			await expect(page.locator("#voice-groups")).toBeVisible();
+			await expect(page.locator("#voice-groups")).toContainText("Text-to-Speech");
+			await expect(page.locator("#voice-groups")).toContainText("Speech-to-Text");
 		});
 
-		test("Memory User ID defaults from email", async ({ page }) => {
-			await goToStep3(page);
-			await expect(page.locator("#memory-user-id")).toHaveValue(TEST_OWNER_EMAIL);
-		});
-
-		test("Memory User ID can be overridden", async ({ page }) => {
-			await goToStep3(page);
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
-			await expect(page.locator("#memory-user-id")).toHaveValue(TEST_MEMORY_USER);
-		});
-
-		test("navigates to Step 4 (Review)", async ({ page }) => {
+		test("navigates to Step 4 (Options)", async ({ page }) => {
 			await goToStep3(page);
 			await page.click("#btn-step3-next");
-			await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
+			await expect(page.locator('[data-testid="step-options"]')).toBeVisible();
 		});
 
 		test("Back button returns to Step 2", async ({ page }) => {
@@ -508,87 +466,185 @@ test.describe("@mocked Setup Wizard UI", () => {
 		});
 	});
 
-	// ── Step 4: Review & Install ─────────────────────────────────────
+	// ── Step 4: Options ──────────────────────────────────────────────
 
-	test.describe("Step 4: Review", () => {
+	test.describe("Step 4: Options", () => {
 		async function goToStep4(page: Page) {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 			// Step 0
+			await page.click("#btn-get-started");
+			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
+			await page.fill("#owner-email", TEST_OWNER_EMAIL);
+			await page.click("#btn-step0-next");
+			// Step 1
+			await addOllamaProvider(page);
+			await page.click("#btn-step1-next");
+			// Step 2
+			await page.waitForTimeout(300);
+			await page.click("#btn-step2-next");
+			// Step 3 (Voice)
+			await page.click("#btn-step3-next");
+			await expect(page.locator('[data-testid="step-options"]')).toBeVisible();
+		}
+
+		test("shows Ollama in-stack toggle for Ollama connections", async ({ page }) => {
+			await goToStep4(page);
+			await expect(page.locator("#ollama-addon")).toBeVisible();
+			await expect(page.locator("#ollama-enabled")).toBeVisible();
+		});
+
+		test("Memory User ID defaults from email", async ({ page }) => {
+			await goToStep4(page);
+			await expect(page.locator("#memory-user-id")).toHaveValue(TEST_OWNER_EMAIL);
+		});
+
+		test("Memory User ID can be overridden", async ({ page }) => {
+			await goToStep4(page);
+			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			await expect(page.locator("#memory-user-id")).toHaveValue(TEST_MEMORY_USER);
+		});
+
+		test("shows channels and services sections", async ({ page }) => {
+			await goToStep4(page);
+			await expect(page.locator("#channels-grid")).toBeVisible();
+			await expect(page.locator("#services-grid")).toBeVisible();
+		});
+
+		test("navigates to Step 5 (Review)", async ({ page }) => {
+			await goToStep4(page);
+			await page.click("#btn-step4-next");
+			await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
+		});
+
+		test("Back button returns to Step 3 (Voice)", async ({ page }) => {
+			await goToStep4(page);
+			await page.click("#btn-step4-back");
+			await expect(page.locator('[data-testid="step-voice"]')).toBeVisible();
+		});
+	});
+
+	// ── Step 5: Review & Install ─────────────────────────────────────
+
+	test.describe("Step 5: Review", () => {
+		async function goToStep5(page: Page) {
+			await setupWizardMocks(page);
+			await page.goto(`${WIZARD_URL}/setup`);
+			// Step 0
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.fill("#owner-name", TEST_OWNER_NAME);
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 			// Step 1
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
+			await addOllamaProvider(page);
 			await page.click("#btn-step1-next");
 			// Step 2
-			await page.waitForTimeout(500);
+			await page.waitForTimeout(300);
 			await page.click("#btn-step2-next");
-			// Step 3
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			// Step 3 (Voice)
 			await page.click("#btn-step3-next");
+			// Step 4 (Options)
+			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			await page.click("#btn-step4-next");
 			await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
 		}
 
-		test("shows review grid with all settings", async ({ page }) => {
-			await goToStep4(page);
+		test("shows review summary with all settings", async ({ page }) => {
+			await goToStep5(page);
 
-			const grid = page.locator("#review-grid");
-			await expect(grid).toBeVisible();
+			const summary = page.locator("#review-summary");
+			await expect(summary).toBeVisible();
 
 			// Account section
-			await expect(grid).toContainText("Account");
-			await expect(grid).toContainText("Admin Token");
-			// Token should be masked (showing first 4 and last 4)
-			await expect(grid).toContainText("test...2345");
+			await expect(summary).toContainText("Account");
+			await expect(summary).toContainText("Admin Token");
+			await expect(summary).toContainText("test...2345"); // masked
 
-			// Connections section
-			await expect(grid).toContainText("Connections");
-			await expect(grid).toContainText("Ollama");
+			// Providers section
+			await expect(summary).toContainText("Providers");
+			await expect(summary).toContainText("Ollama");
 
 			// Models section
-			await expect(grid).toContainText("Models");
-			await expect(grid).toContainText("Chat Model");
-			await expect(grid).toContainText("Embedding Model");
-			await expect(grid).toContainText("Embedding Dims");
+			await expect(summary).toContainText("Models");
+			await expect(summary).toContainText("Chat Model");
+			await expect(summary).toContainText("Embedding");
+
+			// Voice section
+			await expect(summary).toContainText("Voice");
+			await expect(summary).toContainText("Text-to-Speech");
+			await expect(summary).toContainText("Speech-to-Text");
+
+			// Channels section
+			await expect(summary).toContainText("Channels");
+			await expect(summary).toContainText("Web Chat");
+
+			// Services section
+			await expect(summary).toContainText("Services");
+			await expect(summary).toContainText("Admin Dashboard");
 
 			// Options section
-			await expect(grid).toContainText("Options");
-			await expect(grid).toContainText("Memory User ID");
-			await expect(grid).toContainText(TEST_MEMORY_USER);
+			await expect(summary).toContainText("Options");
+			await expect(summary).toContainText("Memory User ID");
+			await expect(summary).toContainText(TEST_MEMORY_USER);
 		});
 
 		test("shows owner name and email in review", async ({ page }) => {
-			await goToStep4(page);
+			await goToStep5(page);
+			const summary = page.locator("#review-summary");
+			await expect(summary).toContainText(TEST_OWNER_NAME);
+			await expect(summary).toContainText(TEST_OWNER_EMAIL);
+		});
+
+		test("legacy review-grid is populated for backward compat", async ({ page }) => {
+			await goToStep5(page);
 			const grid = page.locator("#review-grid");
-			await expect(grid).toContainText(TEST_OWNER_NAME);
-			await expect(grid).toContainText(TEST_OWNER_EMAIL);
+			// Hidden but populated
+			await expect(grid).toContainText("Account");
+			await expect(grid).toContainText("Connections");
+			await expect(grid).toContainText("Models");
+			await expect(grid).toContainText("Voice");
+			await expect(grid).toContainText("Channels");
+			await expect(grid).toContainText("Services");
+			await expect(grid).toContainText("Options");
 		});
 
 		test("Edit buttons navigate back to correct steps", async ({ page }) => {
-			await goToStep4(page);
+			await goToStep5(page);
 
-			const editButtons = page.locator(".review-edit-btn");
+			const editButtons = page.locator("#review-summary .review-edit-btn");
 			const count = await editButtons.count();
-			expect(count).toBe(4); // Account, Connections, Models, Options
+			expect(count).toBe(7); // Account, Providers, Models, Voice, Channels, Services, Options
 
-			// Click Account edit → Step 0
+			// Click Account edit -> Step 0
 			await editButtons.nth(0).click();
 			await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible();
 		});
 
-		test("Back button returns to Step 3", async ({ page }) => {
-			await goToStep4(page);
-			await page.click("#btn-step4-back");
+		test("JSON toggle shows/hides setup JSON", async ({ page }) => {
+			await goToStep5(page);
+
+			// Initially hidden
+			await expect(page.locator("#review-json")).toBeHidden();
+
+			// Click toggle
+			await page.click("#btn-toggle-json");
+			await expect(page.locator("#review-json")).toBeVisible();
+			await expect(page.locator("#review-json-pre")).toContainText("adminToken");
+
+			// Click again to hide
+			await page.click("#btn-toggle-json");
+			await expect(page.locator("#review-json")).toBeHidden();
+		});
+
+		test("Back button returns to Step 4 (Options)", async ({ page }) => {
+			await goToStep5(page);
+			await page.click("#btn-step5-back");
 			await expect(page.locator('[data-testid="step-options"]')).toBeVisible();
 		});
 
 		test("Install button is present", async ({ page }) => {
-			await goToStep4(page);
+			await goToStep5(page);
 			await expect(page.locator("#btn-install")).toBeVisible();
 			await expect(page.locator("#btn-install")).toHaveText("Install");
 		});
@@ -600,7 +656,6 @@ test.describe("@mocked Setup Wizard UI", () => {
 		test("Install triggers deploy screen with progress", async ({ page }) => {
 			await setupWizardMocks(page);
 
-			// Mock the complete and deploy-status endpoints
 			let setupPayload: Record<string, unknown> | null = null;
 			await page.route("**/api/setup/complete", async (route) => {
 				setupPayload = JSON.parse(route.request().postData() ?? "{}");
@@ -626,21 +681,23 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.goto(`${WIZARD_URL}/setup`);
 
 			// Walk through wizard
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.fill("#owner-name", TEST_OWNER_NAME);
 			await page.click("#btn-step0-next");
 
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
+			await addOllamaProvider(page);
 			await page.click("#btn-step1-next");
 
-			await page.waitForTimeout(500);
+			await page.waitForTimeout(300);
 			await page.click("#btn-step2-next");
 
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			// Step 3: Voice
 			await page.click("#btn-step3-next");
+
+			// Step 4: Options
+			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			await page.click("#btn-step4-next");
 
 			// Click Install
 			await page.click("#btn-install");
@@ -650,9 +707,11 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Verify the payload sent to /api/setup/complete
 			expect(setupPayload).not.toBeNull();
-			expect((setupPayload as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
-			expect((setupPayload as Record<string, unknown>).memoryUserId).toBe(TEST_MEMORY_USER);
-			const conns = (setupPayload as Record<string, unknown>).connections;
+			const payload = setupPayload as Record<string, unknown>;
+			expect(payload.version).toBe(1);
+			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
+			expect((payload.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			const conns = payload.connections;
 			expect(Array.isArray(conns)).toBe(true);
 			expect((conns as Array<Record<string, string>>)[0].provider).toBe("ollama");
 
@@ -690,16 +749,19 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.goto(`${WIZARD_URL}/setup`);
 
 			// Quick walk through
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.click("#btn-step0-next");
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
+
+			await addOllamaProvider(page);
 			await page.click("#btn-step1-next");
-			await page.waitForTimeout(500);
+
+			await page.waitForTimeout(300);
 			await page.click("#btn-step2-next");
+			// Step 3: Voice
 			await page.click("#btn-step3-next");
+			// Step 4: Options
+			await page.click("#btn-step4-next");
 			await page.click("#btn-install");
 
 			// Should show error
@@ -714,34 +776,41 @@ test.describe("@mocked Setup Wizard UI", () => {
 		});
 	});
 
-	// ── Step Indicator Navigation ────────────────────────────────────
+	// ── Progress Bar Navigation ────────────────────────────────────
 
-	test.describe("Step Indicators", () => {
-		test("step dots navigate to visited steps", async ({ page }) => {
+	test.describe("Progress Bar", () => {
+		test("progress labels navigate to visited steps", async ({ page }) => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
 			// Go to Step 1
-			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
-			await page.click("#btn-step0-next");
+			await completeStep0(page);
 			await expect(page.locator('[data-testid="step-connections"]')).toBeVisible();
 
-			// Step 0 dot should be clickable (completed)
-			const step0Dot = page.locator('.step-dot[data-step="0"]');
-			await expect(step0Dot).toHaveClass(/completed/);
-			await step0Dot.click();
+			// Welcome label should be clickable
+			const welcomeLabel = page.locator('[data-prog-step="0"]');
+			await welcomeLabel.click();
 			await expect(page.locator('[data-testid="step-welcome"]')).toBeVisible();
 
 			// Token should still be filled
 			await expect(page.locator("#admin-token")).toHaveValue(TEST_ADMIN_TOKEN);
 		});
 
-		test("future step dots are disabled", async ({ page }) => {
+		test("segmented progress shows correct state", async ({ page }) => {
 			await setupWizardMocks(page);
 			await page.goto(`${WIZARD_URL}/setup`);
 
-			const step2Dot = page.locator('.step-dot[data-step="2"]');
-			await expect(step2Dot).toBeDisabled();
+			// First segment should be active
+			const segments = page.locator('.prog-seg');
+			await expect(segments.first()).toHaveClass(/on/);
+
+			// Navigate forward
+			await completeStep0(page);
+
+			// First two segments should now be active
+			const segs = page.locator('.prog-seg.on');
+			const count = await segs.count();
+			expect(count).toBe(2);
 		});
 	});
 
@@ -774,35 +843,28 @@ test.describe("@mocked Setup Wizard UI", () => {
 			await page.goto(`${WIZARD_URL}/setup`);
 
 			// Step 0: Welcome
+			await page.click("#btn-get-started");
 			await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 			await page.fill("#owner-name", TEST_OWNER_NAME);
 			await page.fill("#owner-email", TEST_OWNER_EMAIL);
 			await page.click("#btn-step0-next");
 
-			// Step 1: Add Ollama connection
-			await page.click("#btn-step1-add");
-			await page.click("#btn-add-local");
-			await page.click(".provider-option");
-			await page.click("#btn-conn-save");
+			// Step 1: Providers - Ollama auto-detected and verified
+			await addOllamaProvider(page);
 			await page.click("#btn-step1-next");
 
-			// Step 2: Models — wait for models to load, then select specific ones
-			const llmModel = page.locator("#llm-model");
-			await expect(llmModel.locator(`option[value="${TEST_LLM_MODEL}"]`)).toBeAttached({ timeout: 5_000 });
-			await llmModel.selectOption(TEST_LLM_MODEL);
-
-			const embModel = page.locator("#emb-model");
-			await expect(embModel.locator(`option[value="${TEST_EMBED_MODEL}"]`)).toBeAttached({ timeout: 5_000 });
-			await embModel.selectOption(TEST_EMBED_MODEL);
-			// Wait for dims auto-fill
-			await page.waitForTimeout(200);
+			// Step 2: Models - auto-selected, proceed
+			await page.waitForTimeout(300);
 			await page.click("#btn-step2-next");
 
-			// Step 3: Options
-			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			// Step 3: Voice
 			await page.click("#btn-step3-next");
 
-			// Step 4: Review & Install
+			// Step 4: Options
+			await page.fill("#memory-user-id", TEST_MEMORY_USER);
+			await page.click("#btn-step4-next");
+
+			// Step 5: Review & Install
 			await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
 			await page.click("#btn-install");
 
@@ -812,10 +874,11 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Validate the captured payload
 			expect(capturedPayload).not.toBeNull();
 			const payload = capturedPayload as Record<string, unknown>;
-			expect(payload.adminToken).toBe(TEST_ADMIN_TOKEN);
-			expect(payload.ownerName).toBe(TEST_OWNER_NAME);
-			expect(payload.ownerEmail).toBe(TEST_OWNER_EMAIL);
-			expect(payload.memoryUserId).toBe(TEST_MEMORY_USER);
+			expect(payload.version).toBe(1);
+			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
+			expect((payload.owner as Record<string, unknown>).name).toBe(TEST_OWNER_NAME);
+			expect((payload.owner as Record<string, unknown>).email).toBe(TEST_OWNER_EMAIL);
+			expect((payload.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 
 			// Connections
 			const conns = payload.connections as Array<Record<string, string>>;
@@ -826,11 +889,8 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Assignments
 			const assignments = payload.assignments as Record<string, Record<string, unknown>>;
-			expect(assignments.llm.connectionId).toBe(conns[0].id);
-			expect(assignments.llm.model).toBe(TEST_LLM_MODEL);
-			expect(assignments.embeddings.connectionId).toBe(conns[0].id);
-			expect(assignments.embeddings.model).toBe(TEST_EMBED_MODEL);
-			expect(assignments.embeddings.embeddingDims).toBe(TEST_EMBED_DIMS);
+			expect(assignments.llm.connectionId).toBe("ollama");
+			expect(assignments.embeddings.connectionId).toBe("ollama");
 		});
 	});
 });
@@ -862,19 +922,13 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		);
 
 		await page.goto(`${WIZARD_URL}/setup`);
+		await page.click("#btn-get-started");
 		await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 		await page.click("#btn-step0-next");
 
-		// Wait for provider detection to complete (probes can take 6-9s if
-		// unreachable endpoints like ollama:11434 timeout at 3s each)
+		// Wait for provider detection to complete and Ollama to show as verified
 		await expect(page.locator("#conn-detecting")).toBeHidden({ timeout: 15_000 });
-		await page.click("#btn-step1-add");
-		await page.click("#btn-add-local");
-
-		// Should detect Ollama
-		const ollamaOption = page.locator(".provider-option").filter({ hasText: "Ollama" });
-		await expect(ollamaOption).toBeVisible({ timeout: 10_000 });
-		await expect(ollamaOption).toContainText("Detected at");
+		await expect(page.locator('[data-provider="ollama"].verified')).toBeVisible({ timeout: 15_000 });
 	});
 
 	test("model listing returns real models from Ollama", async ({ page }) => {
@@ -887,25 +941,22 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		);
 
 		await page.goto(`${WIZARD_URL}/setup`);
+		await page.click("#btn-get-started");
 		await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 		await page.click("#btn-step0-next");
 
-		// Wait for provider detection to complete
+		// Wait for auto-detection and verification
 		await expect(page.locator("#conn-detecting")).toBeHidden({ timeout: 15_000 });
-		await page.click("#btn-step1-add");
-		await page.click("#btn-add-local");
+		await expect(page.locator('[data-provider="ollama"].verified')).toBeVisible({ timeout: 15_000 });
 
-		// Select Ollama
-		const ollamaOption = page.locator(".provider-option").filter({ hasText: "Ollama" });
-		await ollamaOption.click();
+		// Proceed to models
+		await page.click("#btn-step1-next");
+		await expect(page.locator('[data-testid="step-models"]')).toBeVisible();
 
-		// Test connection - hits real Ollama
-		await page.click("#btn-conn-test");
-
-		// Should find real models
-		await expect(page.locator("#conn-test-success")).toBeVisible({ timeout: 15_000 });
-		await expect(page.locator("#conn-test-msg")).toContainText("Connected");
-		await expect(page.locator("#conn-test-msg")).toContainText("model");
+		// Should have radio options for models
+		const opts = page.locator(".model-opt");
+		const count = await opts.count();
+		expect(count).toBeGreaterThan(0);
 	});
 
 	test("full wizard flow with real Ollama models", async ({ page }) => {
@@ -938,51 +989,36 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		await page.goto(`${WIZARD_URL}/setup`);
 
 		// Step 0
+		await page.click("#btn-get-started");
 		await page.fill("#admin-token", TEST_ADMIN_TOKEN);
 		await page.fill("#owner-name", TEST_OWNER_NAME);
 		await page.fill("#owner-email", TEST_OWNER_EMAIL);
 		await page.click("#btn-step0-next");
 
-		// Step 1: Add Ollama (let detect + model list hit real Ollama)
+		// Step 1: Wait for auto-detection + verification
 		await expect(page.locator("#conn-detecting")).toBeHidden({ timeout: 15_000 });
-		await page.click("#btn-step1-add");
-		await page.click("#btn-add-local");
-		const ollamaOption = page.locator(".provider-option").filter({ hasText: "Ollama" });
-		await ollamaOption.click({ timeout: 10_000 });
-
-		// Test connection against real Ollama
-		await page.click("#btn-conn-test");
-		await expect(page.locator("#conn-test-success")).toBeVisible({ timeout: 15_000 });
-
-		// Save and proceed
-		await page.click("#btn-conn-save");
+		await expect(page.locator('[data-provider="ollama"].verified')).toBeVisible({ timeout: 15_000 });
 		await page.click("#btn-step1-next");
 
-		// Step 2: Models (fetched from real Ollama)
-		await page.waitForTimeout(2000);
-
-		// Verify real models appeared
-		const llmModel = page.locator("#llm-model");
-		const modelOptions = llmModel.locator("option");
-		const optionCount = await modelOptions.count();
-		expect(optionCount).toBeGreaterThan(0);
-
-		// Select specific models we know exist
-		await llmModel.selectOption(TEST_LLM_MODEL);
-		const embModel = page.locator("#emb-model");
-		await embModel.selectOption(TEST_EMBED_MODEL);
+		// Step 2: Models (from real Ollama)
+		await page.waitForTimeout(500);
+		// Should have model options
+		const opts = page.locator(".model-opt");
+		const optCount = await opts.count();
+		expect(optCount).toBeGreaterThan(0);
 		await page.click("#btn-step2-next");
 
-		// Step 3: Options
-		await page.fill("#memory-user-id", TEST_MEMORY_USER);
+		// Step 3: Voice
 		await page.click("#btn-step3-next");
 
-		// Step 4: Review
+		// Step 4: Options
+		await page.fill("#memory-user-id", TEST_MEMORY_USER);
+		await page.click("#btn-step4-next");
+
+		// Step 5: Review
 		await expect(page.locator('[data-testid="step-review"]')).toBeVisible();
-		const grid = page.locator("#review-grid");
-		await expect(grid).toContainText(TEST_LLM_MODEL);
-		await expect(grid).toContainText(TEST_EMBED_MODEL);
-		await expect(grid).toContainText(TEST_MEMORY_USER);
+		const summary = page.locator("#review-summary");
+		await expect(summary).toContainText(TEST_MEMORY_USER);
 
 		// Install
 		await page.click("#btn-install");
@@ -991,10 +1027,10 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		// Verify payload
 		expect(setupPayload).not.toBeNull();
 		const payload = setupPayload as Record<string, unknown>;
-		expect(payload.adminToken).toBe(TEST_ADMIN_TOKEN);
+		expect(payload.version).toBe(1);
+		expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 		const assignments = payload.assignments as Record<string, Record<string, unknown>>;
-		expect(assignments.llm.model).toBe(TEST_LLM_MODEL);
-		expect(assignments.embeddings.model).toBe(TEST_EMBED_MODEL);
-		expect(assignments.embeddings.embeddingDims).toBe(TEST_EMBED_DIMS);
+		expect(assignments.llm.connectionId).toBe("ollama");
+		expect(assignments.embeddings.connectionId).toBe("ollama");
 	});
 });

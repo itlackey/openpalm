@@ -63,9 +63,11 @@ OPENPALM_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com
 4. Seeds missing default config files in `CONFIG_HOME` (never overwrites existing user files).
 5. Generates an admin token and writes it to `CONFIG_HOME/secrets.env` if one is not already set.
 6. Validates `CONFIG_HOME/secrets.env` against the schema (non-fatal on first install).
-7. Pulls and starts the admin service, then opens the setup wizard in your browser.
+7. Opens the setup wizard in your browser.
 
-The setup wizard walks you through connecting an AI provider and enabling channels. When you finish, the full stack starts automatically.
+The setup wizard walks you through connecting an AI provider, configuring channel credentials (Discord, Slack), and enabling services. When you finish, the full stack starts automatically.
+
+Alternatively, use `openpalm install -f config.yaml` to install from a SetupConfig file (JSON or YAML) without the interactive wizard. See `assets/setup-config.schema.json` for the schema.
 
 ---
 
@@ -105,6 +107,7 @@ Output is human-readable. The command exits `0` when all required variables are 
 | Command | Description |
 |---|---|
 | `openpalm install` | Full install or update: creates directories, downloads assets, starts the stack |
+| `openpalm install -f <file>` | Install from a SetupConfig file (JSON or YAML) without the interactive wizard |
 | `openpalm validate` | Validates `CONFIG_HOME/secrets.env` against the schema |
 | `openpalm start` | Start all stack services |
 | `openpalm stop` | Stop all stack services |
@@ -112,7 +115,8 @@ Output is human-readable. The command exits `0` when all required variables are 
 | `openpalm logs [service]` | Stream container logs (all services, or a specific one) |
 | `openpalm status` | Show running container status |
 | `openpalm update` | Pull latest images and restart services |
-| `openpalm uninstall` | Stop services and remove OpenPalm data directories |
+| `openpalm uninstall` | Stop services and remove containers (preserves config and data) |
+| `openpalm uninstall --purge` | Stop services, remove containers, volumes, and all XDG directories |
 | `openpalm service` | Manage individual services (start, stop, restart a single container) |
 
 Run `openpalm --help` or `openpalm <command> --help` for flags and options.

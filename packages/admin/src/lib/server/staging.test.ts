@@ -23,12 +23,41 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// ── Import real staging functions from @openpalm/lib ────────────────────
+import type { ControlPlaneState } from "@openpalm/lib";
+import {
+  discoverChannels,
+  isValidChannel,
+  discoverStagedChannelYmls,
+  stageChannelCaddyfiles,
+  stageChannelYmlFiles,
+  stageSecretsEnv,
+  stageAutomationFiles,
+  parseAutomationYaml,
+} from "@openpalm/lib";
+
 // ── Test helpers — create isolated temp directories ────────────────────
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `openpalm-test-${randomBytes(4).toString("hex")}`);
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** Create a minimal ControlPlaneState for staging tests. */
+function makeState(configDir: string, stateDir: string, dataDir?: string): ControlPlaneState {
+  return {
+    adminToken: "test-token",
+    setupToken: "",
+    stateDir,
+    configDir,
+    dataDir: dataDir ?? makeTempDir(),
+    services: {},
+    artifacts: { compose: "", caddyfile: "" },
+    artifactMeta: [],
+    audit: [],
+    channelSecrets: {},
+  };
 }
 
 function seedConfigChannels(
@@ -48,138 +77,6 @@ function seedConfigChannels(
 function seedSecretsEnv(configDir: string, content: string): void {
   mkdirSync(configDir, { recursive: true });
   writeFileSync(join(configDir, "secrets.env"), content);
-}
-
-// ── Inline staging functions (mirrors control-plane.ts logic) ──────────
-// We test the staging logic directly without Vite import.meta.glob deps.
-
-const PUBLIC_ACCESS_IMPORT = "import public_access";
-const LAN_ONLY_IMPORT = "import lan_only";
-
-function withDefaultLanOnly(rawCaddy: string): string | null {
-  if (rawCaddy.includes(PUBLIC_ACCESS_IMPORT) || rawCaddy.includes(LAN_ONLY_IMPORT)) {
-    return rawCaddy;
-  }
-  const blockStarts = [
-    /(handle_path\s+[^\n{]+\{\s*\n?)/,
-    /(handle\s+[^\n{]+\{\s*\n?)/,
-    /(route\s+[^\n{]+\{\s*\n?)/
-  ];
-  for (const pattern of blockStarts) {
-    if (pattern.test(rawCaddy)) {
-      return rawCaddy.replace(pattern, "$1\timport lan_only\n");
-    }
-  }
-  return null;
-}
-
-type ChannelInfo = {
-  name: string;
-  ymlPath: string;
-  caddyPath: string | null;
-};
-
-const CHANNEL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-
-function discoverChannels(baseDir: string): ChannelInfo[] {
-  const channelsDir = join(baseDir, "channels");
-  if (!existsSync(channelsDir)) return [];
-  const files = readdirSync(channelsDir);
-  const ymlFiles = files.filter((f) => f.endsWith(".yml"));
-  const caddyFiles = new Set(files.filter((f) => f.endsWith(".caddy")));
-  return ymlFiles
-    .map((ymlFile) => {
-      const name = ymlFile.replace(/\.yml$/, "");
-      const caddyFile = `${name}.caddy`;
-      const hasCaddy = caddyFiles.has(caddyFile);
-      return {
-        name,
-        ymlPath: join(channelsDir, ymlFile),
-        caddyPath: hasCaddy ? join(channelsDir, caddyFile) : null
-      };
-    })
-    .filter((ch) => CHANNEL_NAME_RE.test(ch.name));
-}
-
-type AuditEntry = { action: string; args: Record<string, unknown>; ok: boolean };
-
-function stageChannelCaddyfiles(
-  configDir: string,
-  stateDir: string
-): AuditEntry[] {
-  const auditEntries: AuditEntry[] = [];
-  const stagedChannelsDir = join(stateDir, "artifacts", "channels");
-  const stagedPublicDir = join(stagedChannelsDir, "public");
-  const stagedLanDir = join(stagedChannelsDir, "lan");
-  // Only clean caddy subdirs, not the whole channels/ dir (preserves staged .yml files)
-  rmSync(stagedPublicDir, { recursive: true, force: true });
-  rmSync(stagedLanDir, { recursive: true, force: true });
-  mkdirSync(stagedPublicDir, { recursive: true });
-  mkdirSync(stagedLanDir, { recursive: true });
-
-  const channels = discoverChannels(configDir);
-  for (const ch of channels) {
-    if (!ch.caddyPath) continue;
-    const raw = readFileSync(ch.caddyPath, "utf-8");
-    if (raw.includes(PUBLIC_ACCESS_IMPORT)) {
-      writeFileSync(join(stagedPublicDir, `${ch.name}.caddy`), raw);
-      continue;
-    }
-    const lanScoped = withDefaultLanOnly(raw);
-    if (!lanScoped) {
-      auditEntries.push({
-        action: "channels.route.skip",
-        args: { channel: ch.name, reason: "Unable to infer route block for default LAN scoping" },
-        ok: false
-      });
-      continue;
-    }
-    writeFileSync(join(stagedLanDir, `${ch.name}.caddy`), lanScoped);
-  }
-  return auditEntries;
-}
-
-function stageChannelYmlFiles(configDir: string, stateDir: string): void {
-  const stagedChannelsDir = join(stateDir, "artifacts", "channels");
-  mkdirSync(stagedChannelsDir, { recursive: true });
-
-  // Clean stale staged .yml files before re-staging
-  for (const f of readdirSync(stagedChannelsDir)) {
-    if (f.endsWith(".yml")) {
-      rmSync(join(stagedChannelsDir, f), { force: true });
-    }
-  }
-
-  const channels = discoverChannels(configDir);
-  for (const ch of channels) {
-    const content = readFileSync(ch.ymlPath, "utf-8");
-    writeFileSync(join(stagedChannelsDir, `${ch.name}.yml`), content);
-  }
-}
-
-function stageSecretsEnvFn(configDir: string, stateDir: string): void {
-  const source = join(configDir, "secrets.env");
-  if (!existsSync(source)) return;
-  const artifactDir = join(stateDir, "artifacts");
-  mkdirSync(artifactDir, { recursive: true });
-  writeFileSync(join(artifactDir, "secrets.env"), readFileSync(source, "utf-8"));
-}
-
-function discoverStagedChannelYmls(stateDir: string): string[] {
-  const channelsDir = join(stateDir, "artifacts", "channels");
-  if (!existsSync(channelsDir)) return [];
-  return readdirSync(channelsDir)
-    .filter((f) => f.endsWith(".yml"))
-    .map((f) => join(channelsDir, f));
-}
-
-function isValidChannel(value: string, stateDir?: string): boolean {
-  if (!value || !value.trim()) return false;
-  if (!CHANNEL_NAME_RE.test(value)) return false;
-  if (stateDir) {
-    return existsSync(join(stateDir, "artifacts", "channels", `${value}.yml`));
-  }
-  return false;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -207,7 +104,8 @@ describe("Caddy staging split", () => {
       }
     ]);
 
-    stageChannelCaddyfiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelCaddyfiles(state);
 
     const lanDir = join(stateDir, "artifacts", "channels", "lan");
     expect(existsSync(join(lanDir, "chat.caddy"))).toBe(true);
@@ -224,7 +122,8 @@ describe("Caddy staging split", () => {
       }
     ]);
 
-    stageChannelCaddyfiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelCaddyfiles(state);
 
     const publicDir = join(stateDir, "artifacts", "channels", "public");
     expect(existsSync(join(publicDir, "web.caddy"))).toBe(true);
@@ -240,7 +139,8 @@ describe("Caddy staging split", () => {
       }
     ]);
 
-    stageChannelCaddyfiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelCaddyfiles(state);
 
     const lanDir = join(stateDir, "artifacts", "channels", "lan");
     expect(existsSync(join(lanDir, "api.caddy"))).toBe(true);
@@ -259,12 +159,14 @@ describe("Malformed .caddy skip", () => {
       }
     ]);
 
-    const audit = stageChannelCaddyfiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelCaddyfiles(state);
 
-    expect(audit.length).toBe(1);
-    expect(audit[0].action).toBe("channels.route.skip");
-    expect(audit[0].args.channel).toBe("broken");
-    expect(audit[0].ok).toBe(false);
+    // Audit entry is appended to state.audit by the real stageChannelCaddyfiles
+    expect(state.audit.length).toBe(1);
+    expect(state.audit[0].action).toBe("channels.route.skip");
+    expect(state.audit[0].args.channel).toBe("broken");
+    expect(state.audit[0].ok).toBe(false);
 
     // File should NOT be staged
     expect(existsSync(join(stateDir, "artifacts", "channels", "lan", "broken.caddy"))).toBe(false);
@@ -277,7 +179,8 @@ describe("Channel .yml staging", () => {
     const ymlContent = "services:\n  channel-chat:\n    image: chat:latest\n";
     seedConfigChannels(configDir, [{ name: "chat", yml: ymlContent }]);
 
-    stageChannelYmlFiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelYmlFiles(state);
 
     const stagedPath = join(stateDir, "artifacts", "channels", "chat.yml");
     expect(existsSync(stagedPath)).toBe(true);
@@ -290,7 +193,8 @@ describe("Channel .yml staging", () => {
       { name: "discord", yml: "services:\n  channel-discord:\n    image: discord:latest\n" }
     ]);
 
-    stageChannelYmlFiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelYmlFiles(state);
 
     expect(existsSync(join(stateDir, "artifacts", "channels", "chat.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "artifacts", "channels", "discord.yml"))).toBe(true);
@@ -304,7 +208,8 @@ describe("Stale .yml cleanup", () => {
       { name: "chat", yml: "services:\n  channel-chat:\n    image: chat:latest\n" },
       { name: "discord", yml: "services:\n  channel-discord:\n    image: discord:latest\n" }
     ]);
-    stageChannelYmlFiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelYmlFiles(state);
     expect(existsSync(join(stateDir, "artifacts", "channels", "chat.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "artifacts", "channels", "discord.yml"))).toBe(true);
 
@@ -312,7 +217,7 @@ describe("Stale .yml cleanup", () => {
     rmSync(join(configDir, "channels", "discord.yml"));
 
     // Re-stage
-    stageChannelYmlFiles(configDir, stateDir);
+    stageChannelYmlFiles(state);
 
     // chat should still exist, discord should be gone
     expect(existsSync(join(stateDir, "artifacts", "channels", "chat.yml"))).toBe(true);
@@ -324,7 +229,8 @@ describe("Compose file list uses staged paths", () => {
   test("buildComposeFileList returns STATE_HOME paths", () => {
     const ymlContent = "services:\n  channel-chat:\n    image: chat:latest\n";
     seedConfigChannels(configDir, [{ name: "chat", yml: ymlContent }]);
-    stageChannelYmlFiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelYmlFiles(state);
 
     const files = discoverStagedChannelYmls(stateDir);
     expect(files.length).toBe(1);
@@ -339,18 +245,22 @@ describe("Secrets.env staging", () => {
     const secretsContent = "ADMIN_TOKEN=test-token\n";
     seedSecretsEnv(configDir, secretsContent);
 
-    stageSecretsEnvFn(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageSecretsEnv(state);
 
     const stagedPath = join(stateDir, "artifacts", "secrets.env");
     expect(existsSync(stagedPath)).toBe(true);
     expect(readFileSync(stagedPath, "utf-8")).toBe(secretsContent);
   });
 
-  test("missing secrets.env is a no-op (no error)", () => {
-    stageSecretsEnvFn(configDir, stateDir);
+  test("missing secrets.env stages an empty file (no error)", () => {
+    const state = makeState(configDir, stateDir);
+    stageSecretsEnv(state);
 
+    // Production stageSecretsEnv always writes — empty content when source is absent
     const stagedPath = join(stateDir, "artifacts", "secrets.env");
-    expect(existsSync(stagedPath)).toBe(false);
+    expect(existsSync(stagedPath)).toBe(true);
+    expect(readFileSync(stagedPath, "utf-8")).toBe("");
   });
 });
 
@@ -358,7 +268,8 @@ describe("Runtime validation uses staged files", () => {
   test("isValidChannel checks STATE_HOME for staged channels", () => {
     const ymlContent = "services:\n  channel-custom:\n    image: custom:latest\n";
     seedConfigChannels(configDir, [{ name: "custom", yml: ymlContent }]);
-    stageChannelYmlFiles(configDir, stateDir);
+    const state = makeState(configDir, stateDir);
+    stageChannelYmlFiles(state);
 
     // Should find it in STATE_HOME
     expect(isValidChannel("custom", stateDir)).toBe(true);
@@ -386,11 +297,13 @@ describe("Staging idempotence", () => {
     seedConfigChannels(configDir, [{ name: "chat", yml: ymlContent, caddy: caddyContent }]);
     seedSecretsEnv(configDir, secretsContent);
 
+    const state = makeState(configDir, stateDir);
+
     // Apply order matches persistArtifacts: secrets → yml → caddy
     function applyAll(): void {
-      stageSecretsEnvFn(configDir, stateDir);
-      stageChannelYmlFiles(configDir, stateDir);
-      stageChannelCaddyfiles(configDir, stateDir);
+      stageSecretsEnv(state);
+      stageChannelYmlFiles(state);
+      stageChannelCaddyfiles(state);
     }
 
     // First apply
@@ -415,49 +328,10 @@ describe("Staging idempotence", () => {
 
 // ── Automation staging (YAML format) ──────────────────────────────────
 
-import { parseAutomationYaml } from "./scheduler.js";
-
-const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}\.yml$/;
-
-function discoverAutomationFiles(dir: string): { name: string; path: string }[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
-    .map((entry) => ({ name: entry.name, path: join(dir, entry.name) }))
-    .filter((entry) => AUTOMATION_FILE_NAME_RE.test(entry.name));
-}
-
-function stageAutomationFilesFn(
-  configDir: string,
-  dataDir: string,
-  stateDir: string
-): void {
-  const stagedDir = join(stateDir, "automations");
-  mkdirSync(stagedDir, { recursive: true });
-
-  // Clean stale staged automation files
-  for (const f of readdirSync(stagedDir)) {
-    if (!f.startsWith(".")) {
-      rmSync(join(stagedDir, f), { force: true });
-    }
-  }
-
-  // System automation files from DATA_HOME/automations/ first
-  const systemDir = join(dataDir, "automations");
-  for (const entry of discoverAutomationFiles(systemDir)) {
-    const content = readFileSync(entry.path, "utf-8");
-    if (!parseAutomationYaml(content, entry.name)) continue;
-    writeFileSync(join(stagedDir, entry.name), content);
-  }
-
-  // User automation files from CONFIG_HOME/automations/ (overrides system)
-  const userDir = join(configDir, "automations");
-  for (const entry of discoverAutomationFiles(userDir)) {
-    const content = readFileSync(entry.path, "utf-8");
-    if (!parseAutomationYaml(content, entry.name)) continue;
-    writeFileSync(join(stagedDir, entry.name), content);
-  }
-}
+// Valid YAML automation content for tests
+const VALID_API_YAML = 'schedule: daily\naction:\n  type: api\n  path: /health\n';
+const VALID_HTTP_YAML = 'schedule: daily\naction:\n  type: http\n  method: POST\n  url: http://example.com/hook\n';
+const VALID_SHELL_YAML = 'schedule: weekly\naction:\n  type: shell\n  command:\n    - /bin/echo\n    - hello\n';
 
 function seedAutomationFiles(
   dir: string,
@@ -469,11 +343,6 @@ function seedAutomationFiles(
     writeFileSync(join(automationsDir, f.name), f.content);
   }
 }
-
-// Valid YAML automation content for tests
-const VALID_API_YAML = 'schedule: daily\naction:\n  type: api\n  path: /health\n';
-const VALID_HTTP_YAML = 'schedule: daily\naction:\n  type: http\n  method: POST\n  url: http://example.com/hook\n';
-const VALID_SHELL_YAML = 'schedule: weekly\naction:\n  type: shell\n  command:\n    - /bin/echo\n    - hello\n';
 
 let dataDir: string;
 
@@ -489,7 +358,8 @@ describe("Automation file staging", () => {
   test("user automation files are staged to STATE_HOME/automations/", () => {
     seedAutomationFiles(configDir, [{ name: "backup.yml", content: VALID_API_YAML }]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     const stagedPath = join(stateDir, "automations", "backup.yml");
     expect(existsSync(stagedPath)).toBe(true);
@@ -499,7 +369,8 @@ describe("Automation file staging", () => {
   test("system automation files are staged from DATA_HOME/automations/", () => {
     seedAutomationFiles(dataDir, [{ name: "healthcheck.yml", content: VALID_API_YAML }]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     const stagedPath = join(stateDir, "automations", "healthcheck.yml");
     expect(existsSync(stagedPath)).toBe(true);
@@ -512,7 +383,8 @@ describe("Automation file staging", () => {
     seedAutomationFiles(dataDir, [{ name: "backup.yml", content: systemContent }]);
     seedAutomationFiles(configDir, [{ name: "backup.yml", content: userContent }]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     const stagedPath = join(stateDir, "automations", "backup.yml");
     expect(readFileSync(stagedPath, "utf-8")).toBe(userContent);
@@ -526,7 +398,8 @@ describe("Automation file staging", () => {
       { name: "backup.yml", content: VALID_HTTP_YAML }
     ]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "healthcheck.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "automations", "backup.yml"))).toBe(true);
@@ -539,7 +412,8 @@ describe("Automation file staging", () => {
       { name: "shell-job.yml", content: VALID_SHELL_YAML }
     ]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "api-job.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "automations", "http-job.yml"))).toBe(true);
@@ -554,7 +428,8 @@ describe("Automation file staging", () => {
     // Valid
     writeFileSync(join(automationsDir, "good.yml"), VALID_API_YAML);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "good.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "automations", "-bad.yml"))).toBe(false);
@@ -568,7 +443,8 @@ describe("Automation file staging", () => {
     // Valid YAML automation
     writeFileSync(join(automationsDir, "good.yml"), VALID_API_YAML);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "good.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "automations", "old-crontab"))).toBe(false);
@@ -579,7 +455,8 @@ describe("Automation file staging", () => {
       { name: "bad-yaml.yml", content: "schedule: [invalid: yaml: :::" }
     ]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "bad-yaml.yml"))).toBe(false);
   });
@@ -590,7 +467,8 @@ describe("Automation file staging", () => {
       { name: "no-action.yml", content: "schedule: daily\n" }
     ]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "no-action.yml"))).toBe(false);
   });
@@ -600,7 +478,8 @@ describe("Automation file staging", () => {
       { name: "bad-type.yml", content: 'schedule: daily\naction:\n  type: webhook\n  url: http://example.com\n' }
     ]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "bad-type.yml"))).toBe(false);
   });
@@ -610,13 +489,14 @@ describe("Automation file staging", () => {
       { name: "backup.yml", content: VALID_API_YAML },
       { name: "cleanup.yml", content: VALID_SHELL_YAML }
     ]);
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
     expect(existsSync(join(stateDir, "automations", "backup.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "automations", "cleanup.yml"))).toBe(true);
 
     // Remove cleanup from config
     rmSync(join(configDir, "automations", "cleanup.yml"));
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFiles(state);
 
     expect(existsSync(join(stateDir, "automations", "backup.yml"))).toBe(true);
     expect(existsSync(join(stateDir, "automations", "cleanup.yml"))).toBe(false);
@@ -626,7 +506,8 @@ describe("Automation file staging", () => {
     mkdirSync(join(configDir, "automations"), { recursive: true });
     mkdirSync(join(dataDir, "automations"), { recursive: true });
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
 
     const automationsDir = join(stateDir, "automations");
     const files = existsSync(automationsDir)
@@ -640,13 +521,13 @@ describe("Automation file staging", () => {
       { name: "backup.yml", content: VALID_API_YAML }
     ]);
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    const state = makeState(configDir, stateDir, dataDir);
+    stageAutomationFiles(state);
     const first = readFileSync(join(stateDir, "automations", "backup.yml"), "utf-8");
 
-    stageAutomationFilesFn(configDir, dataDir, stateDir);
+    stageAutomationFiles(state);
     const second = readFileSync(join(stateDir, "automations", "backup.yml"), "utf-8");
 
     expect(first).toBe(second);
   });
 });
-

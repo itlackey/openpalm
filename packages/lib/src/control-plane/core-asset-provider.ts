@@ -9,6 +9,7 @@ export interface CoreAssetProvider {
   coreCompose(): string;
   caddyfile(): string;
   ollamaCompose(): string;
+  adminCompose(): string;
   agentsMd(): string;
   opencodeConfig(): string;
   adminOpencodeConfig(): string;

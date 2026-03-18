@@ -20,6 +20,7 @@ import {
   readCoreCaddyfile,
   readCoreCompose,
   readOllamaCompose,
+  readAdminCompose,
   ensureSecretsSchema,
   ensureStackSchema,
   PUBLIC_ACCESS_IMPORT,
@@ -53,9 +54,23 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
+// ── Admin State ──────────────────────────────────────────────────────
+
+/**
+ * Check whether admin is enabled in the stack by reading the
+ * OPENPALM_ADMIN_ENABLED flag from DATA_HOME/stack.env.
+ */
+export function isAdminEnabled(state: ControlPlaneState): boolean {
+  const stackEnvPath = `${state.dataDir}/stack.env`;
+  if (!existsSync(stackEnvPath)) return false;
+  const content = readFileSync(stackEnvPath, "utf-8");
+  const match = content.match(/^OPENPALM_ADMIN_ENABLED=(.+)$/m);
+  return match?.[1]?.trim().toLowerCase() === "true";
+}
+
 // ── Caddyfile Staging ─────────────────────────────────────────────────
 
-function withDefaultLanOnly(rawCaddy: string): string | null {
+export function withDefaultLanOnly(rawCaddy: string): string | null {
   if (rawCaddy.includes(PUBLIC_ACCESS_IMPORT) || rawCaddy.includes(LAN_ONLY_IMPORT)) {
     return rawCaddy;
   }
@@ -75,7 +90,7 @@ function withDefaultLanOnly(rawCaddy: string): string | null {
   return null;
 }
 
-function stageChannelCaddyfiles(state: ControlPlaneState): void {
+export function stageChannelCaddyfiles(state: ControlPlaneState): void {
   const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
   const stagedPublicDir = `${stagedChannelsDir}/public`;
   const stagedLanDir = `${stagedChannelsDir}/lan`;
@@ -126,7 +141,7 @@ function stageCompose(_state: ControlPlaneState, assets: CoreAssetProvider): str
 
 // ── Env Staging ───────────────────────────────────────────────────────
 
-function stageSecretsEnv(state: ControlPlaneState): void {
+export function stageSecretsEnv(state: ControlPlaneState): void {
   const artifactDir = `${state.stateDir}/artifacts`;
   mkdirSync(artifactDir, { recursive: true });
 
@@ -168,8 +183,12 @@ function stageStackEnv(state: ControlPlaneState): void {
     writeFileSync(dataStackEnv, base);
   }
 
+  // Preserve existing OPENPALM_SETUP_COMPLETE=true from stack.env;
+  // only mark complete if it was already true (not inferred from token presence).
+  const alreadyComplete = /^OPENPALM_SETUP_COMPLETE=true$/mi.test(base);
+
   const adminManaged: Record<string, string> = {
-    OPENPALM_SETUP_COMPLETE: state.adminToken ? "true" : "false"
+    OPENPALM_SETUP_COMPLETE: alreadyComplete ? "true" : "false"
   };
   for (const [ch, secret] of Object.entries(state.channelSecrets)) {
     adminManaged[`CHANNEL_${ch.toUpperCase()}_SECRET`] = secret;
@@ -223,7 +242,7 @@ function generateFallbackStackEnv(state: ControlPlaneState): string {
 
 // ── Channel YML Staging ───────────────────────────────────────────────
 
-function stageChannelYmlFiles(state: ControlPlaneState): void {
+export function stageChannelYmlFiles(state: ControlPlaneState): void {
   const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
   mkdirSync(stagedChannelsDir, { recursive: true });
 
@@ -268,7 +287,7 @@ function validateAutomationContent(content: string, fileName: string): boolean {
   return parseAutomationYaml(content, fileName) !== null;
 }
 
-function stageAutomationFiles(state: ControlPlaneState): void {
+export function stageAutomationFiles(state: ControlPlaneState): void {
   const stagedDir = `${state.stateDir}/automations`;
   mkdirSync(stagedDir, { recursive: true });
 
@@ -353,6 +372,10 @@ export function persistArtifacts(
 
   if (isOllamaEnabled(state)) {
     writeFileSync(`${artifactDir}/ollama.yml`, readOllamaCompose(assets));
+  }
+
+  if (isAdminEnabled(state)) {
+    writeFileSync(`${artifactDir}/admin.yml`, readAdminCompose(assets));
   }
 
   const allChannels = discoverChannels(state.configDir);

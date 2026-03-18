@@ -66,7 +66,7 @@ if [ -z "${VERSION}" ]; then
   if [ "${SCRIPT_VERSION}" != "main" ]; then
     VERSION="$(normalize_version "${SCRIPT_VERSION}")"
   else
-    VERSION="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    VERSION="$(curl -sI "https://github.com/itlackey/openpalm/releases/latest" | grep -i '^location:' | sed 's|.*/tag/\([^ ]*\).*|\1|' | tr -d '\r')"
     [ -n "${VERSION}" ] || die "Could not determine latest release version"
   fi
 fi
@@ -77,7 +77,7 @@ DEST="${INSTALL_DIR}/openpalm"
 
 info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."
 mkdir -p "${INSTALL_DIR}"
-curl -fsSL "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${DEST}"
+curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${DEST}"
 chmod +x "${DEST}"
 
 # macOS: clear quarantine flag and ad-hoc codesign so Gatekeeper does not kill the binary

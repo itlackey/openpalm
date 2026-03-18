@@ -193,6 +193,33 @@ export function readOllamaCompose(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
+// ── Admin Compose Overlay (DATA_HOME source of truth) ────────────────
+
+function adminComposePath(): string {
+  return `${resolveDataHome()}/admin.yml`;
+}
+
+export function ensureAdminCompose(assets: CoreAssetProvider): string {
+  const path = adminComposePath();
+  const content = assets.adminCompose();
+  mkdirSync(dirname(path), { recursive: true });
+  if (!existsSync(path)) {
+    writeFileSync(path, content);
+  } else if (sha256(readFileSync(path, "utf-8")) !== sha256(content)) {
+    const backupDir = join(dirname(path), "backups");
+    mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    copyFileSync(path, join(backupDir, `admin.${ts}.yml`));
+    writeFileSync(path, content);
+  }
+  return path;
+}
+
+export function readAdminCompose(assets: CoreAssetProvider): string {
+  const path = ensureAdminCompose(assets);
+  return readFileSync(path, "utf-8");
+}
+
 // ── OpenCode System Config (DATA_HOME source of truth) ──────────────
 
 export function ensureOpenCodeSystemConfig(assets: CoreAssetProvider): void {
@@ -238,6 +265,7 @@ const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
   { dataRelPath: "admin/opencode.jsonc", githubFilename: "admin-opencode.jsonc" },
   { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" },
   { dataRelPath: "ollama.yml", githubFilename: "ollama.yml" },
+  { dataRelPath: "admin.yml", githubFilename: "admin.yml" },
   { dataRelPath: "secrets.env.schema", githubFilename: "secrets.env.schema" },
   { dataRelPath: "stack.env.schema", githubFilename: "stack.env.schema" }
 ];

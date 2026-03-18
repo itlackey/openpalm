@@ -143,10 +143,10 @@ export function buildMem0Mapping(input: Mem0ConnectionMappingInput): Mem0Connect
         config: embedConfig,
       },
       vector_store: {
-        provider: 'qdrant',
+        provider: 'sqlite-vec',
         config: {
           collection_name: 'memory',
-          path: '/data/qdrant',
+          db_path: '/data/memory.db',
           embedding_model_dims: input.embeddingDims,
         },
       },

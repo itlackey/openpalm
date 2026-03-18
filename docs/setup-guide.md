@@ -22,7 +22,7 @@ After installing, open the app and wait for it to finish starting (you'll see a 
 
 Copy-paste **one** command into your terminal and the installer does the rest:
 
-**Windows (PowerShell):**
+**Windows (PowerShell 7+):**
 ```powershell
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```

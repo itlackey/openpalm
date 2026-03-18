@@ -8,10 +8,9 @@ export type CoreServiceName =
   | "assistant"
   | "guardian"
   | "memory"
-  | "caddy"
   | "scheduler";
 
-export type OptionalServiceName = "admin" | "docker-socket-proxy";
+export type OptionalServiceName = "admin" | "caddy" | "docker-socket-proxy";
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
@@ -133,7 +132,6 @@ export type ControlPlaneState = {
 // ── Constants ──────────────────────────────────────────────────────────
 
 export const CORE_SERVICES: CoreServiceName[] = [
-  "caddy",
   "memory",
   "assistant",
   "guardian",
@@ -141,6 +139,7 @@ export const CORE_SERVICES: CoreServiceName[] = [
 ];
 
 export const OPTIONAL_SERVICES: OptionalServiceName[] = [
+  "caddy",
   "admin",
   "docker-socket-proxy",
 ];

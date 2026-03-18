@@ -8,10 +8,10 @@
  * Uses Bun.serve() with a fetch handler for routing.
  */
 import {
-  type SetupInput,
+  type SetupConfig,
   type SetupResult,
   type CoreAssetProvider,
-  performSetup,
+  performSetupFromConfig,
   detectProviders,
   isSetupComplete,
   fetchProviderModels,
@@ -192,6 +192,9 @@ export function createSetupServer(
 
       try {
         const result = await fetchProviderModels(provider, apiKey, baseUrl, configDir);
+        if (result.status !== "ok") {
+          return jsonResponse(502, { ok: false, ...result });
+        }
         return jsonResponse(200, { ok: true, ...result });
       } catch (err) {
         return errorResponse(500, "model_fetch_failed", String(err));
@@ -201,7 +204,8 @@ export function createSetupServer(
     // ── API: Complete Setup ──────────────────────────────────────────
 
     if (method === "POST" && path === "/api/setup/complete") {
-      if (state.setupComplete) {
+      // Allow re-running if deploy failed (user clicked retry)
+      if (state.setupComplete && !state.deployError) {
         return jsonResponse(200, { ok: true, message: "Setup already complete" });
       }
 
@@ -212,12 +216,20 @@ export function createSetupServer(
         return errorResponse(400, "invalid_json", "Request body must be valid JSON");
       }
 
-      const input = body as SetupInput;
-      const result = await performSetup(input, assetProvider);
+      const config = body as SetupConfig;
+      let result: SetupResult;
+      try {
+        result = await performSetupFromConfig(config, assetProvider);
+      } catch (err) {
+        return errorResponse(500, "setup_failed", String(err));
+      }
 
       if (result.ok) {
         state.setupComplete = true;
         state.setupResult = result;
+        // Reset deploy state for fresh polling
+        state.deployStatus = [];
+        state.deployError = null;
         // Signal completion
         resolveComplete?.(result);
       }
