@@ -31,6 +31,9 @@ export const PROVIDER_KEY_MAP: Record<string, string> = {
   groq: "GROQ_API_KEY",
   mistral: "MISTRAL_API_KEY",
   google: "GOOGLE_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+  together: "TOGETHER_API_KEY",
+  xai: "XAI_API_KEY",
 };
 
 /** Known embedding model dimensions (cloud providers). */
@@ -84,7 +87,7 @@ export function mem0BaseUrlConfig(
   const trimmed = baseUrl.trim();
   if (!trimmed) return null;
 
-  const normalized = trimmed.replace(/\/+$/, "");
+  const normalized = trimmed.replace(/\/+$/, "").replace(/\/v1$/, "");
   return { key: "openai_base_url", value: `${normalized}/v1` };
 }
 

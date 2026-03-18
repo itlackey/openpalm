@@ -13,7 +13,7 @@ import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
 const DEFAULT_INSTALL_REF = 'main';
-const SETUP_WIZARD_PORT = 8100;
+const SETUP_WIZARD_PORT = Number(process.env.OPENPALM_SETUP_PORT) || 8100;
 
 export default defineCommand({
   meta: {
@@ -103,12 +103,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 
   // Download schemas to both DATA_HOME (for FilesystemAssetProvider) and STATE_HOME (for varlock validation)
-  const secretsSchemaContent = await fetchAsset(options.version, 'secrets.env.schema');
-  const stackSchemaContent = await fetchAsset(options.version, 'stack.env.schema');
-  await Bun.write(join(dataHome, 'secrets.env.schema'), secretsSchemaContent);
-  await Bun.write(join(dataHome, 'stack.env.schema'), stackSchemaContent);
-  await Bun.write(join(stateHome, 'artifacts', 'secrets.env.schema'), secretsSchemaContent);
-  await Bun.write(join(stateHome, 'artifacts', 'stack.env.schema'), stackSchemaContent);
+  for (const schemaFile of ['secrets.env.schema', 'stack.env.schema']) {
+    try {
+      const content = await fetchAsset(options.version, schemaFile);
+      await Bun.write(join(dataHome, schemaFile), content);
+      await Bun.write(join(stateHome, 'artifacts', schemaFile), content);
+    } catch (err) {
+      console.warn(`Warning: could not download schema '${schemaFile}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
@@ -183,7 +186,16 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   if (!updateMode) {
     console.log('Starting setup wizard...');
 
-    const wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+    let wizard;
+    try {
+      wizard = createSetupServer(SETUP_WIZARD_PORT, { configDir: configHome });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('EADDRINUSE') || msg.includes('address already in use') || msg.includes('Failed to start')) {
+        throw new Error(`Port ${SETUP_WIZARD_PORT} is in use. Stop the conflicting process or set OPENPALM_SETUP_PORT=<port>.`);
+      }
+      throw err;
+    }
     const wizardUrl = `http://localhost:${wizard.server.port}/setup`;
     console.log(`Setup wizard running at ${wizardUrl}`);
 
@@ -212,7 +224,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
 
       await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
-        // Pull failure is non-fatal — images may already be cached
+        console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
       });
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));

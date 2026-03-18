@@ -27,8 +27,9 @@ function parseEnvFile(path: string): Record<string, string> {
   try {
     const content = readFileSync(path, "utf-8");
     for (const line of content.split("\n")) {
-      const trimmed = line.trim();
+      let trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
+      trimmed = trimmed.replace(/^export\s+/, '');
       const eqIdx = trimmed.indexOf("=");
       if (eqIdx > 0) {
         vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);

@@ -214,6 +214,11 @@ export {
   stageArtifacts,
   buildArtifactMeta,
   persistArtifacts,
+  withDefaultLanOnly,
+  stageChannelCaddyfiles,
+  stageChannelYmlFiles,
+  stageSecretsEnv,
+  stageAutomationFiles,
 } from "./control-plane/staging.js";
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -277,6 +282,19 @@ export {
 // ── Model Runner (local provider detection) ─────────────────────────────
 export type { LocalProviderDetection } from "./control-plane/model-runner.js";
 export { detectLocalProviders } from "./control-plane/model-runner.js";
+
+// ── Stack Spec ───────────────────────────────────────────────────────────
+export type {
+  StackSpec,
+  StackSpecConnection,
+  StackSpecAssignments,
+} from "./control-plane/stack-spec.js";
+export {
+  STACK_SPEC_FILENAME,
+  stackSpecPath,
+  writeStackSpec,
+  readStackSpec,
+} from "./control-plane/stack-spec.js";
 
 // ── Setup ────────────────────────────────────────────────────────────────
 export type {

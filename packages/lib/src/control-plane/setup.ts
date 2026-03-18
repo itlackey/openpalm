@@ -7,12 +7,14 @@
  * This module does NOT include Docker operations (compose up, image pull, etc.)
  * — those happen separately in the caller after setup completes.
  */
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { createLogger } from "../logger.js";
 import {
   PROVIDER_KEY_MAP,
   EMBEDDING_DIMS,
   OLLAMA_INSTACK_URL,
 } from "../provider-constants.js";
+import { mergeEnvContent } from "./env.js";
 import { ensureXdgDirs } from "./paths.js";
 import {
   ensureSecrets,
@@ -24,12 +26,22 @@ import { buildMem0Mapping } from "./connection-mapping.js";
 import { writeMemoryConfig } from "./memory-config.js";
 import { ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, ensureMemoryDir } from "./core-assets.js";
 import { applyInstall, createState, writeSetupTokenFile } from "./lifecycle.js";
+import { writeStackSpec } from "./stack-spec.js";
+import type { StackSpec } from "./stack-spec.js";
 import { detectLocalProviders } from "./model-runner.js";
 import type { LocalProviderDetection } from "./model-runner.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 import type { ControlPlaneState, CapabilityAssignments } from "./types.js";
 
 const logger = createLogger("setup");
+
+/** Apply Ollama in-stack URL override to connections when Ollama is enabled. */
+function resolveOllamaUrls(connections: SetupConnection[], ollamaEnabled: boolean): SetupConnection[] {
+  if (!ollamaEnabled) return connections;
+  return connections.map((c) =>
+    c.provider === "ollama" ? { ...c, baseUrl: OLLAMA_INSTACK_URL } : c
+  );
+}
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -246,12 +258,7 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
   if (ownerEmail) updates.OWNER_EMAIL = ownerEmail;
 
   // Resolve effective base URLs (Ollama in-stack override)
-  const effectiveConnections = input.connections.map((c) => {
-    if (input.ollamaEnabled && c.provider === "ollama") {
-      return { ...c, baseUrl: OLLAMA_INSTACK_URL };
-    }
-    return c;
-  });
+  const effectiveConnections = resolveOllamaUrls(input.connections, input.ollamaEnabled);
 
   // Build connectionId -> envVarName map
   const connEnvVarMap = buildConnectionEnvVarMap(effectiveConnections);
@@ -347,12 +354,7 @@ export async function performSetup(
   const state = opts?.state ?? createState(input.adminToken);
 
   // ── Resolve effective connections (Ollama in-stack override) ──────────
-  const effectiveConnections = input.connections.map((c) => {
-    if (input.ollamaEnabled && c.provider === "ollama") {
-      return { ...c, baseUrl: OLLAMA_INSTACK_URL };
-    }
-    return c;
-  });
+  const effectiveConnections = resolveOllamaUrls(input.connections, input.ollamaEnabled);
 
   // ── Build connection env var map ─────────────────────────────────────
   const connEnvVarMap = buildConnectionEnvVarMap(effectiveConnections);
@@ -384,15 +386,27 @@ export async function performSetup(
   const embModel = input.assignments.embeddings.model;
   const embDims = input.assignments.embeddings.embeddingDims || 0;
 
-  const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId)!;
-  const embConnection = effectiveConnections.find((c) => c.id === embConnectionId)!;
+  const llmConnection = effectiveConnections.find((c) => c.id === llmConnectionId);
+  if (!llmConnection) {
+    return { ok: false, error: `LLM connection "${llmConnectionId}" not found in connections list` };
+  }
+  const embConnection = effectiveConnections.find((c) => c.id === embConnectionId);
+  if (!embConnection) {
+    return { ok: false, error: `Embeddings connection "${embConnectionId}" not found in connections list` };
+  }
 
   const memoryModel = llmSmallModel || llmModel;
 
-  const llmEnvVar = connEnvVarMap.get(llmConnection.id)!;
+  const llmEnvVar = connEnvVarMap.get(llmConnection.id);
+  if (!llmEnvVar) {
+    return { ok: false, error: `No env var mapping found for LLM connection "${llmConnection.id}"` };
+  }
   const llmApiKeyEnvRef = llmConnection.apiKey ? `env:${llmEnvVar}` : "not-needed";
 
-  const embEnvVar = connEnvVarMap.get(embConnection.id)!;
+  const embEnvVar = connEnvVarMap.get(embConnection.id);
+  if (!embEnvVar) {
+    return { ok: false, error: `No env var mapping found for embeddings connection "${embConnection.id}"` };
+  }
   const embApiKeyEnvRef = embConnection.apiKey ? `env:${embEnvVar}` : "not-needed";
 
   const embLookupKey = `${embConnection.provider}/${embModel}`;
@@ -444,6 +458,36 @@ export async function performSetup(
   ensureOpenCodeSystemConfig(assetProvider);
   ensureAdminOpenCodeConfig(assetProvider);
   ensureMemoryDir();
+
+  // ── Write stack spec (openpalm.yaml) ─────────────────────────────────
+  const stackSpec: StackSpec = {
+    version: 3,
+    connections: effectiveConnections.map((c) => ({
+      id: c.id,
+      name: c.name,
+      provider: c.provider,
+      baseUrl: c.baseUrl,
+    })),
+    assignments: {
+      llm: input.assignments.llm,
+      embeddings: {
+        connectionId: input.assignments.embeddings.connectionId,
+        model: input.assignments.embeddings.model,
+        embeddingDims: resolvedDims,
+      },
+    },
+    ollamaEnabled: input.ollamaEnabled,
+  };
+  writeStackSpec(state.configDir, stackSpec);
+
+  // ── Mark setup complete in DATA_HOME stack.env before staging ────────
+  const dataStackEnv = `${state.dataDir}/stack.env`;
+  mkdirSync(state.dataDir, { recursive: true });
+  const stackBase = existsSync(dataStackEnv) ? readFileSync(dataStackEnv, "utf-8") : "";
+  writeFileSync(
+    dataStackEnv,
+    mergeEnvContent(stackBase, { OPENPALM_SETUP_COMPLETE: "true" })
+  );
 
   // ── Apply install (stages artifacts, no Docker) ──────────────────────
   applyInstall(state, assetProvider);

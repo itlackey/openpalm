@@ -201,7 +201,8 @@ export function createSetupServer(
     // ── API: Complete Setup ──────────────────────────────────────────
 
     if (method === "POST" && path === "/api/setup/complete") {
-      if (state.setupComplete) {
+      // Allow re-running if deploy failed (user clicked retry)
+      if (state.setupComplete && !state.deployError) {
         return jsonResponse(200, { ok: true, message: "Setup already complete" });
       }
 
@@ -218,6 +219,9 @@ export function createSetupServer(
       if (result.ok) {
         state.setupComplete = true;
         state.setupResult = result;
+        // Reset deploy state for fresh polling
+        state.deployStatus = [];
+        state.deployError = null;
         // Signal completion
         resolveComplete?.(result);
       }

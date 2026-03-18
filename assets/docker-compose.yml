@@ -59,6 +59,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 10s
 
   # ── Assistant (opencode runtime — NO docker socket) ────────────────
   assistant:
@@ -104,7 +105,7 @@ services:
       memory:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/4096' || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -141,7 +142,7 @@ services:
       assistant:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "bun -e \"await fetch('http://localhost:8080/health')\" || exit 1" ]
+      test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8080/health');if(!r.ok)process.exit(1)\" || exit 1" ]
       interval: 30s
       timeout: 5s
       retries: 3

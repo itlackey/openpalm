@@ -397,6 +397,12 @@
       connections[editingIdx] = conn;
     } else {
       connections.push(conn);
+      // Transfer draft model cache to the saved connection
+      if (modelCache["_draft"]) {
+        conn.models = modelCache["_draft"];
+        modelCache[conn.id] = modelCache["_draft"];
+        delete modelCache["_draft"];
+      }
     }
 
     editingIdx = -1;
@@ -537,6 +543,10 @@
     var prevVal = modelSel.value;
 
     if (models.length > 0) {
+      // Restore select if it was replaced with a text input
+      modelSel = restoreToSelect(target + "-model");
+      if (smallSel) smallSel = restoreToSelect("llm-small-model");
+
       modelSel.innerHTML = "";
       models.forEach(function (m) {
         var o = document.createElement("option");
@@ -601,6 +611,20 @@
     if (id === "emb-model") {
       input.addEventListener("input", function () { autoFillEmbDims(input.value); });
     }
+  }
+
+  /** Replace a text input back with a select element if it was previously swapped. */
+  function restoreToSelect(id) {
+    var el = $(id);
+    if (!el || el.tagName === "SELECT") return el;
+    var parent = el.parentNode;
+    var sel = document.createElement("select");
+    sel.id = id;
+    parent.replaceChild(sel, el);
+    if (id === "emb-model") {
+      sel.addEventListener("change", function () { autoFillEmbDims(sel.value); });
+    }
+    return sel;
   }
 
   function autoFillEmbDims(modelName) {
@@ -837,12 +861,12 @@
 
       updateDeployUI(data);
 
-      if (data.setupComplete && !data.deployError) {
-        stopDeployPolling();
-        showDeployDone(data);
-      } else if (data.deployError) {
+      if (data.deployError) {
         stopDeployPolling();
         showDeployError(data.deployError);
+      } else if (data.setupComplete && data.deployStatus && data.deployStatus.length > 0) {
+        stopDeployPolling();
+        showDeployDone(data);
       }
     } catch (e) {
       // silently retry
@@ -1015,9 +1039,14 @@
     qsa(".step-dot").forEach(function (dot) {
       dot.addEventListener("click", function () {
         var step = parseInt(dot.dataset.step, 10);
-        if (!isNaN(step) && step <= maxVisitedStep) {
-          goToStep(step);
+        if (isNaN(step) || step > maxVisitedStep) return;
+        // Going forward requires valid prior steps
+        if (step > currentStep) {
+          if (step >= 1 && !validateStep0()) return;
+          if (step >= 2 && connections.length === 0) return;
+          if (step >= 3 && !validateStep2()) return;
         }
+        goToStep(step);
       });
     });
 
@@ -1089,6 +1118,7 @@
       goToStep(4);
     });
     $("btn-deploy-retry").addEventListener("click", function () {
+      installing = false;
       hide($("deploy-failure"));
       hide($("deploy-error-actions"));
       show($("deploy-tips"));

@@ -64,7 +64,7 @@ $Dest = Join-Path $InstallDir 'openpalm.exe'
 Write-Host "▸ Downloading openpalm $Version for Windows x64..." -ForegroundColor Blue
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$Binary"
-Invoke-WebRequest -Uri $DownloadUrl -OutFile $Dest
+Invoke-WebRequest -Uri $DownloadUrl -OutFile $Dest -MaximumRetryCount 5 -RetryIntervalSec 5
 Write-Host "✓ Installed openpalm to $Dest" -ForegroundColor Green
 
 # Add to PATH for this session

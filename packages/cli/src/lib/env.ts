@@ -1,4 +1,6 @@
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { defaultDockerSock } from './paths.ts';
 
 export function unwrapQuotedEnvValue(value: string): string {
@@ -86,6 +88,7 @@ export OPENAI_BASE_URL=
 
 # Memory
 export MEMORY_USER_ID=${userId}
+export MEMORY_AUTH_TOKEN=${randomBytes(32).toString('hex')}
 `;
 
   await Bun.write(secretsPath, content);
@@ -132,6 +135,7 @@ OPENPALM_IMAGE_TAG=${defaultImageTag}
       await Bun.write(dataStackEnv, reconciled);
     }
   }
+  mkdirSync(dirname(stagedStackEnv), { recursive: true });
   await Bun.write(stagedStackEnv, Bun.file(dataStackEnv));
 
   const stateSecrets = join(stateHome, 'artifacts', 'secrets.env');

@@ -37,6 +37,8 @@
     "channel:discord:dev": "bun run packages/channel-discord/src/index.ts",
     "channel:slack:dev": "bun run packages/channel-slack/src/index.ts",
     "cli:test": "bun test --cwd packages/cli",
+    "wizard:dev": "bun run packages/cli/src/setup-wizard/standalone.ts",
+    "wizard:test:e2e": "cd packages/cli && npx playwright test",
     "scheduler:test": "bun test --cwd packages/scheduler",
     "admin-tools:test": "bun test --cwd packages/admin-tools",
     "lib:test": "bun test --cwd packages/lib",

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
 import {
   validateSetupInput,
   buildSecretsFromSetup,
@@ -10,6 +11,7 @@ import {
 } from "./setup.js";
 import type { SetupInput, SetupConnection } from "./setup.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
+import { STACK_SPEC_FILENAME } from "./stack-spec.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -472,5 +474,22 @@ describe("performSetup", () => {
     const memConfigPath = join(dataDir, "memory", "default_config.json");
     const memConfig = JSON.parse(readFileSync(memConfigPath, "utf-8"));
     expect(memConfig.mem0.vector_store.config.embedding_model_dims).toBe(768);
+  });
+
+  it("writes openpalm.yaml with correct structure", async () => {
+    const result = await performSetup(makeValidInput(), createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const specPath = join(configDir, STACK_SPEC_FILENAME);
+    expect(existsSync(specPath)).toBe(true);
+
+    const spec = yamlParse(readFileSync(specPath, "utf-8"));
+    expect(spec.version).toBe(3);
+    expect(spec.connections).toBeArrayOfSize(1);
+    expect(spec.connections[0].id).toBe("openai-main");
+    expect(spec.connections[0].provider).toBe("openai");
+    expect(spec.assignments.llm.model).toBe("gpt-4o");
+    expect(spec.assignments.embeddings.model).toBe("text-embedding-3-small");
+    expect(spec.ollamaEnabled).toBe(false);
   });
 });
