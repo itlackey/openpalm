@@ -92,7 +92,7 @@ ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
-ENV PATH="/home/opencode/.bun/bin:/usr/local/bin:$PATH"
+ENV PATH="/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 # Install agentikit CLI; fix permissions so bun-compiled binary is readable
 # by unprivileged users (bun-compiled binaries read themselves at runtime).

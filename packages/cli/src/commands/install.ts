@@ -16,8 +16,30 @@ import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '..
 import { createSetupServer } from '../setup-wizard/server.ts';
 import { buildInstallServiceNames, buildDeployStatusEntries } from './install-services.ts';
 
-const DEFAULT_INSTALL_REF = 'main';
 const SETUP_WIZARD_PORT = Number(process.env.OPENPALM_SETUP_PORT) || 8100;
+
+const REPO_OWNER = 'itlackey';
+const REPO_NAME = 'openpalm';
+
+/**
+ * Resolves the latest release tag from GitHub. Falls back to the CLI package
+ * version (prefixed with 'v') so the install never silently defaults to 'main'
+ * which produces an un-pinned 'latest' image tag.
+ */
+async function resolveDefaultInstallRef(): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+      { redirect: 'manual', signal: AbortSignal.timeout(10000) },
+    );
+    const location = res.headers.get('location') ?? '';
+    const match = location.match(/\/tag\/(v[0-9]+\.[0-9]+\.[0-9]+[^\s]*)$/);
+    if (match?.[1]) return match[1];
+  } catch {
+    // Network error — fall through to package version
+  }
+  return cliPkg.version ? `v${cliPkg.version}` : 'main';
+}
 
 export default defineCommand({
   meta: {
@@ -32,8 +54,7 @@ export default defineCommand({
     },
     version: {
       type: 'string',
-      description: 'Install specific repository ref (default: main)',
-      default: DEFAULT_INSTALL_REF,
+      description: 'Install specific repository ref (default: latest release)',
     },
     start: {
       type: 'boolean',
@@ -52,9 +73,10 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    const version = args.version || await resolveDefaultInstallRef();
     await bootstrapInstall({
       force: args.force,
-      version: args.version,
+      version,
       noStart: !args.start,
       noOpen: !args.open,
       file: args.file,
