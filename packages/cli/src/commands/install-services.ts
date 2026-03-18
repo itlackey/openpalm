@@ -1,7 +1,7 @@
 export type DeployStatusState = 'pending' | 'pulling';
 
 export function buildInstallServiceNames(managedServices: string[]): string[] {
-  return [...managedServices, 'admin', 'docker-socket-proxy'];
+  return [...managedServices];
 }
 
 export function buildDeployStatusEntries(

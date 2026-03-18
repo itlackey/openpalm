@@ -20,6 +20,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     caddyfile: () =>
       ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
     ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
+    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
     adminOpencodeConfig: () => '{"$schema":"https://opencode.ai/config.json","plugin":["@openpalm/admin-tools"]}\n',

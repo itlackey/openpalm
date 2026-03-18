@@ -20,6 +20,7 @@ import {
   readCoreCaddyfile,
   readCoreCompose,
   readOllamaCompose,
+  readAdminCompose,
   ensureSecretsSchema,
   ensureStackSchema,
   PUBLIC_ACCESS_IMPORT,
@@ -50,6 +51,20 @@ export function isOllamaEnabled(state: ControlPlaneState): boolean {
   if (!existsSync(stackEnvPath)) return false;
   const content = readFileSync(stackEnvPath, "utf-8");
   const match = content.match(/^OPENPALM_OLLAMA_ENABLED=(.+)$/m);
+  return match?.[1]?.trim().toLowerCase() === "true";
+}
+
+// ── Admin State ──────────────────────────────────────────────────────
+
+/**
+ * Check whether admin is enabled in the stack by reading the
+ * OPENPALM_ADMIN_ENABLED flag from DATA_HOME/stack.env.
+ */
+export function isAdminEnabled(state: ControlPlaneState): boolean {
+  const stackEnvPath = `${state.dataDir}/stack.env`;
+  if (!existsSync(stackEnvPath)) return false;
+  const content = readFileSync(stackEnvPath, "utf-8");
+  const match = content.match(/^OPENPALM_ADMIN_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
@@ -357,6 +372,10 @@ export function persistArtifacts(
 
   if (isOllamaEnabled(state)) {
     writeFileSync(`${artifactDir}/ollama.yml`, readOllamaCompose(assets));
+  }
+
+  if (isAdminEnabled(state)) {
+    writeFileSync(`${artifactDir}/admin.yml`, readAdminCompose(assets));
   }
 
   const allChannels = discoverChannels(state.configDir);

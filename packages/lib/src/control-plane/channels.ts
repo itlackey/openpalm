@@ -64,6 +64,9 @@ export function isAllowedService(value: string, stateDir?: string): boolean {
   if (value === "ollama" && stateDir) {
     return existsSync(`${stateDir}/artifacts/ollama.yml`);
   }
+  if ((value === "admin" || value === "caddy" || value === "docker-socket-proxy") && stateDir) {
+    return existsSync(`${stateDir}/artifacts/admin.yml`);
+  }
   if (value.startsWith("channel-")) {
     const ch = value.slice("channel-".length);
     if (!isValidChannelName(ch)) return false;

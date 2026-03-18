@@ -127,6 +127,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Download remaining assets needed by FilesystemAssetProvider
   const assetFiles: Array<{ remote: string; localPath: string }> = [
     { remote: 'ollama.yml', localPath: join(dataHome, 'ollama.yml') },
+    { remote: 'admin.yml', localPath: join(dataHome, 'admin.yml') },
     { remote: 'AGENTS.md', localPath: join(dataHome, 'assistant', 'AGENTS.md') },
     { remote: 'opencode.jsonc', localPath: join(dataHome, 'assistant', 'opencode.jsonc') },
     { remote: 'admin-opencode.jsonc', localPath: join(dataHome, 'admin', 'opencode.jsonc') },
@@ -253,10 +254,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     const managedServices = buildManagedServiceNames(state);
     const allServices = buildInstallServiceNames(managedServices);
 
-    await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
+    await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
       console.warn('Warning: image pull failed.');
     });
-    await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
+    await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
     console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
     return;
   }
@@ -307,13 +308,13 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pending', 'Waiting...'));
 
-      await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
+      await runDockerCompose([...composeArgs, 'pull', ...allServices]).catch(() => {
         console.warn('Warning: image pull failed — if this is your first install, check your network connection.');
       });
 
       wizard.updateDeployStatus(buildDeployStatusEntries(allServices, 'pulling', 'Starting...'));
 
-      await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
+      await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
 
       wizard.markAllRunning();
 
@@ -346,7 +347,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const managedServices = buildManagedServiceNames(state);
   const allServices = buildInstallServiceNames(managedServices);
 
-  await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
+  await runDockerCompose([...composeArgs, 'up', '-d', ...allServices]);
 
   console.log(JSON.stringify({
     ok: true,

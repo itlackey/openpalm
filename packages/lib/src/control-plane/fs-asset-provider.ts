@@ -27,6 +27,10 @@ export class FilesystemAssetProvider implements CoreAssetProvider {
     return this.read("ollama.yml");
   }
 
+  adminCompose(): string {
+    return this.read("admin.yml");
+  }
+
   agentsMd(): string {
     return this.read("assistant/AGENTS.md");
   }

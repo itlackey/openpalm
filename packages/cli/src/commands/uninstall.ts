@@ -22,11 +22,12 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    // Include admin profile to tear down all services
+    // Compose file list includes admin.yml when admin is enabled,
+    // so `down` tears down all services including admin/caddy/socket-proxy.
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
-    await runDockerCompose([...composeArgs, '--profile', 'admin', ...downArgs]);
+    await runDockerCompose([...composeArgs, ...downArgs]);
 
     if (args.purge) {
       const dirs = [resolveConfigHome(), resolveDataHome(), resolveStateHome()];

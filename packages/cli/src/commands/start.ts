@@ -13,37 +13,22 @@ export default defineCommand({
       description: 'Service names to start (omit for all)',
       required: false,
     },
-    'with-admin': {
-      type: 'boolean',
-      description: 'Include admin UI and docker-socket-proxy (use --no-with-admin to skip)',
-      default: true,
-    },
   },
   async run({ args }) {
     const services = args._ ?? [];
-    const withAdmin = args['with-admin'] ?? false;
-    await runStartAction(services, { withAdmin });
+    await runStartAction(services);
   },
 });
 
 export async function runStartAction(
   services: string[],
-  opts?: { withAdmin?: boolean },
 ): Promise<void> {
-  const withAdmin = opts?.withAdmin ?? false;
-
   if (services.length === 0) {
-    // Stage artifacts and start managed services
+    // Stage artifacts and start all managed services (admin included if enabled)
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
     const managedServices = buildManagedServiceNames(state);
-
-    if (withAdmin) {
-      // Include the admin profile — starts admin + docker-socket-proxy
-      await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...managedServices, 'admin', 'docker-socket-proxy']);
-    } else {
-      await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
-    }
+    await runDockerCompose([...composeArgs, 'up', '-d', ...managedServices]);
     return;
   }
 
@@ -51,11 +36,6 @@ export async function runStartAction(
   for (const service of services) {
     const state = await ensureStagedState();
     const composeArgs = fullComposeArgs(state);
-    // If starting admin explicitly, include the admin profile
-    if (service === 'admin' || service === 'docker-socket-proxy') {
-      await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', service]);
-    } else {
-      await runDockerCompose([...composeArgs, 'up', '-d', service]);
-    }
+    await runDockerCompose([...composeArgs, 'up', '-d', service]);
   }
 }

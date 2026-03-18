@@ -614,7 +614,11 @@ export async function performSetup(
   const stackBase = existsSync(dataStackEnv) ? readFileSync(dataStackEnv, "utf-8") : "";
   writeFileSync(
     dataStackEnv,
-    mergeEnvContent(stackBase, { OPENPALM_SETUP_COMPLETE: "true" })
+    mergeEnvContent(stackBase, {
+      OPENPALM_SETUP_COMPLETE: "true",
+      OPENPALM_OLLAMA_ENABLED: input.ollamaEnabled ? "true" : "false",
+      OPENPALM_ADMIN_ENABLED: input.services?.admin ? "true" : "false",
+    })
   );
 
   // ── Apply install (stages artifacts, no Docker) ──────────────────────
