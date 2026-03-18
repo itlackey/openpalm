@@ -1288,7 +1288,7 @@
     var adminToken = ($("admin-token").value || "").trim();
     var ownerName = ($("owner-name").value || "").trim();
     var ownerEmail = ($("owner-email").value || "").trim();
-    var memoryUserId = ($("memory-user-id").value || "").trim() || ownerEmail || "default_user";
+    var memoryUserId = ($("memory-user-id").value || "").trim() || (ownerName ? ownerName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") : "") || "default_user";
     var ollamaEnabled = $("ollama-enabled") ? $("ollama-enabled").checked : false;
 
     var llm = modelSelection.llm;
@@ -1400,8 +1400,11 @@
         stopDeployPolling();
         showDeployError(data.deployError);
       } else if (data.setupComplete && data.deployStatus && data.deployStatus.length > 0) {
-        stopDeployPolling();
-        showDeployDone(data);
+        var allRunning = data.deployStatus.every(function(s) { return s.status === "running"; });
+        if (allRunning) {
+          stopDeployPolling();
+          showDeployDone(data);
+        }
       }
     } catch (e) {
       // silently retry

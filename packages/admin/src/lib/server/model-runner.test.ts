@@ -57,7 +57,7 @@ describe("detectLocalProviders", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
       if (url.includes("localhost:11434")) {
-        return new Response("{}", { status: 200 });
+        return new Response(JSON.stringify({ models: [] }), { status: 200 });
       }
       throw new Error("not reachable");
     });

@@ -176,6 +176,26 @@ describe("validateSetupInput", () => {
     const result = validateSetupInput(input);
     expect(result.valid).toBe(true);
   });
+
+  it("rejects memoryUserId with dots", () => {
+    const input = makeValidInput({ memoryUserId: "user.name" });
+    const result = validateSetupInput(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
+  });
+
+  it("rejects memoryUserId with hyphens", () => {
+    const input = makeValidInput({ memoryUserId: "user-name" });
+    const result = validateSetupInput(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
+  });
+
+  it("accepts memoryUserId with underscores", () => {
+    const input = makeValidInput({ memoryUserId: "user_name_123" });
+    const result = validateSetupInput(input);
+    expect(result.valid).toBe(true);
+  });
 });
 
 // ── Tests: buildSecretsFromSetup ─────────────────────────────────────────
@@ -741,6 +761,20 @@ describe("validateSetupConfig", () => {
     const result = validateSetupConfig(config);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes("memory.userId"))).toBe(true);
+  });
+
+  it("rejects memory.userId with dots", () => {
+    const config = makeValidConfig({ memory: { userId: "user.name" } });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
+  });
+
+  it("rejects memory.userId with hyphens", () => {
+    const config = makeValidConfig({ memory: { userId: "user-name" } });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("alphanumeric and underscores only"))).toBe(true);
   });
 
   it("rejects non-integer embeddingDims", () => {

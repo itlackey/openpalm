@@ -297,8 +297,8 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
   if (body.memoryUserId !== undefined && typeof body.memoryUserId !== "string") {
     errors.push("memoryUserId must be a string");
   }
-  if (typeof body.memoryUserId === "string" && !/^[A-Za-z0-9._-]+$/.test(body.memoryUserId)) {
-    errors.push("memoryUserId contains invalid characters (alphanumeric, dots, hyphens, underscores only)");
+  if (typeof body.memoryUserId === "string" && !/^[A-Za-z0-9_]+$/.test(body.memoryUserId)) {
+    errors.push("memoryUserId contains invalid characters (alphanumeric and underscores only)");
   }
 
   // ollamaEnabled
@@ -780,8 +780,8 @@ export function validateSetupConfig(config: unknown): { valid: boolean; errors: 
       if (memory.userId !== undefined && typeof memory.userId !== "string") {
         errors.push("memory.userId must be a string if provided");
       }
-      if (typeof memory.userId === "string" && !/^[A-Za-z0-9._-]+$/.test(memory.userId)) {
-        errors.push("memoryUserId contains invalid characters (alphanumeric, dots, hyphens, underscores only)");
+      if (typeof memory.userId === "string" && !/^[A-Za-z0-9_]+$/.test(memory.userId)) {
+        errors.push("memoryUserId contains invalid characters (alphanumeric and underscores only)");
       }
     }
   }

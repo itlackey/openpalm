@@ -58,7 +58,8 @@
       "properties": {
         "userId": {
           "type": "string",
-          "description": "User ID for the memory service. Defaults to 'default_user' if omitted."
+          "pattern": "^[A-Za-z0-9_]+$",
+          "description": "User ID for the memory service. Alphanumeric and underscores only. Defaults to 'default_user' if omitted."
         }
       }
     },
