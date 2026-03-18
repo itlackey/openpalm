@@ -63,7 +63,7 @@ Then copy-paste **one** command:
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-**Windows (PowerShell):**
+**Windows (PowerShell 7+):**
 ```powershell
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```

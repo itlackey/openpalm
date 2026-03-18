@@ -51,7 +51,12 @@ export function writeStackSpec(configDir: string, spec: StackSpec): void {
 export function readStackSpec(configDir: string): StackSpec | null {
   const path = stackSpecPath(configDir);
   if (!existsSync(path)) return null;
-  const raw = yamlParse(readFileSync(path, "utf-8")) as unknown;
+  let raw: unknown;
+  try {
+    raw = yamlParse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
   if (typeof raw !== "object" || raw === null) return null;
   const obj = raw as Record<string, unknown>;
   if (obj.version !== 3) return null;

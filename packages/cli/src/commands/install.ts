@@ -7,8 +7,8 @@ import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
 import {
   ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider,
-  performSetup, performSetupFromConfig,
-  type SetupInput, type SetupConfig, type SetupResult,
+  performSetupFromConfig,
+  type SetupConfig, type SetupResult,
 } from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';

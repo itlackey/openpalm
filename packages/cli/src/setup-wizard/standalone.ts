@@ -10,7 +10,7 @@
  *   WIZARD_PORT=9100 bun run packages/cli/src/setup-wizard/standalone.ts
  *
  * Environment:
- *   WIZARD_PORT          — Port to listen on (default: 8100)
+ *   WIZARD_PORT          — Port to listen on (default: ephemeral/random)
  *   OPENPALM_CONFIG_HOME — Config dir override (default: temp dir)
  *   OPENPALM_DATA_HOME   — Data dir override (default: temp dir)
  *   OPENPALM_STATE_HOME  — State dir override (default: temp dir)
@@ -118,6 +118,7 @@ function createStubAssetProvider(): CoreAssetProvider {
     caddyfile: () =>
       ":80 {\n  @denied not remote_ip 127.0.0.0/8 ::1\n  respond @denied 403\n}\n",
     ollamaCompose: () => "services:\n  ollama:\n    image: ollama/ollama\n",
+    adminCompose: () => "services:\n  admin:\n    image: openpalm/admin\n",
     agentsMd: () => "# Agents\n",
     opencodeConfig: () => '{"$schema":"https://opencode.ai/config.json"}\n',
     adminOpencodeConfig: () =>

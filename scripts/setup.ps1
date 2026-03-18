@@ -1,8 +1,14 @@
-# OpenPalm — Windows Install Script
-# One-liner install:
+# OpenPalm — Windows Install Script (requires PowerShell 7+)
+# One-liner install (run in pwsh, not powershell.exe):
 #   irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 #
 $ErrorActionPreference = 'Stop'
+
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Host "ERROR: PowerShell 7+ is required. You are running PowerShell $($PSVersionTable.PSVersion)." -ForegroundColor Red
+    Write-Host "Install PowerShell 7: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Yellow
+    exit 1
+}
 
 $Repo = 'itlackey/openpalm'
 $Binary = 'openpalm-cli-windows-x64.exe'
