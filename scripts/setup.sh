@@ -6,7 +6,7 @@
 #
 set -euo pipefail
 
-SCRIPT_VERSION="0.9.2-rc3"
+SCRIPT_VERSION="0.9.2-rc4"
 
 # ── Colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
