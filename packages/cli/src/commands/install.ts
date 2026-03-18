@@ -5,7 +5,11 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultConfigHome, defaultDataHome, defaultStateHome, defaultWorkDir } from '../lib/paths.ts';
 import { ensureSecrets, ensureStackEnv } from '../lib/env.ts';
 import { ensureDirectoryTree, fetchAsset, runDockerCompose, openBrowser } from '../lib/docker.ts';
-import { ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider } from '@openpalm/lib';
+import {
+  ensureOpenCodeConfig, ensureOpenCodeSystemConfig, ensureAdminOpenCodeConfig, FilesystemAssetProvider,
+  performSetup, performSetupFromConfig,
+  type SetupInput, type SetupConfig, type SetupResult,
+} from '@openpalm/lib';
 import { ensureVarlock, prepareVarlockDir } from '../lib/varlock.ts';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureStagedState, fullComposeArgs, buildManagedServiceNames } from '../lib/staging.ts';
@@ -41,6 +45,11 @@ export default defineCommand({
       description: 'Open browser after install (use --no-open to skip)',
       default: true,
     },
+    file: {
+      type: 'string',
+      alias: 'f',
+      description: 'Path to setup config file (JSON or YAML) — skips wizard',
+    },
   },
   async run({ args }) {
     await bootstrapInstall({
@@ -48,6 +57,7 @@ export default defineCommand({
       version: args.version,
       noStart: !args.start,
       noOpen: !args.open,
+      file: args.file,
     });
   },
 });
@@ -57,6 +67,7 @@ type InstallOptions = {
   version: string;
   noStart: boolean;
   noOpen: boolean;
+  file?: string;
 };
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
@@ -103,7 +114,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   await Bun.write(join(stateHome, 'artifacts', 'Caddyfile'), caddyContent);
 
   // Download schemas to both DATA_HOME (for FilesystemAssetProvider) and STATE_HOME (for varlock validation)
-  for (const schemaFile of ['secrets.env.schema', 'stack.env.schema']) {
+  for (const schemaFile of ['secrets.env.schema', 'stack.env.schema', 'setup-config.schema.json']) {
     try {
       const content = await fetchAsset(options.version, schemaFile);
       await Bun.write(join(dataHome, schemaFile), content);
@@ -172,8 +183,81 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
     // Varlock install/execution failures are non-fatal during install
   }
 
-  if (options.noStart) {
+  if (options.noStart && !options.file) {
     console.log('OpenPalm files prepared. Run `openpalm start` to start services.');
+    return;
+  }
+
+  // ── File-based install (--file / -f) ──────────────────────────────────
+  // Read a JSON or YAML setup config file and call performSetup() or
+  // performSetupFromConfig() directly — no wizard needed.
+
+  if (options.file) {
+    console.log(`Reading setup config from ${options.file}...`);
+
+    if (!(await Bun.file(options.file).exists())) {
+      throw new Error(`Setup config file not found: ${options.file}. Check the --file path and try again.`);
+    }
+    let raw: string;
+    try {
+      raw = await Bun.file(options.file).text();
+    } catch (err) {
+      throw new Error(`Failed to read setup config file '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const ext = options.file.toLowerCase();
+    let parsed: unknown;
+    try {
+      if (ext.endsWith('.yaml') || ext.endsWith('.yml')) {
+        const { parse } = await import('yaml');
+        parsed = parse(raw);
+      } else if (ext.endsWith('.json')) {
+        parsed = JSON.parse(raw);
+      } else {
+        throw new Error(`Unsupported config file format: ${options.file}. Use .json or .yaml.`);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Unsupported config file format:')) {
+        throw err;
+      }
+      throw new Error(`Failed to parse setup config '${options.file}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const fsAssets = new FilesystemAssetProvider(dataHome);
+    const config = parsed as Record<string, unknown>;
+    let result: SetupResult;
+
+    if (typeof config.version !== "number") {
+      throw new Error(
+        `Setup config file is missing a 'version' field. Use 'version: 1' for the current format.`
+      );
+    }
+    if (config.version === 1) {
+      result = await performSetupFromConfig(config as SetupConfig, fsAssets);
+    } else {
+      throw new Error(`Unsupported setup config version: ${config.version}. Only version 1 is supported.`);
+    }
+
+    if (!result.ok) throw new Error(`Setup failed: ${result.error}`);
+    console.log('Setup complete.');
+
+    if (options.noStart) {
+      console.log('Config written. Run `openpalm start` to start services.');
+      return;
+    }
+
+    // Deploy (same as existing update-mode code)
+    console.log('Starting services...');
+    const state = await ensureStagedState();
+    const composeArgs = fullComposeArgs(state);
+    const managedServices = buildManagedServiceNames(state);
+    const allServices = buildInstallServiceNames(managedServices);
+
+    await runDockerCompose([...composeArgs, '--profile', 'admin', 'pull', ...allServices]).catch(() => {
+      console.warn('Warning: image pull failed.');
+    });
+    await runDockerCompose([...composeArgs, '--profile', 'admin', 'up', '-d', ...allServices]);
+    console.log(JSON.stringify({ ok: true, mode: 'install', services: allServices }, null, 2));
     return;
   }
 

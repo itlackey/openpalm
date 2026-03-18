@@ -303,6 +303,10 @@ export type {
   SetupInput,
   SetupResult,
   DetectedProvider,
+  SetupConfig,
+  SetupConfigAssignments,
+  ChannelCredentials,
+  ServiceConfig,
 } from "./control-plane/setup.js";
 export {
   validateSetupInput,
@@ -310,4 +314,9 @@ export {
   buildConnectionEnvVarMap,
   performSetup,
   detectProviders,
+  CHANNEL_CREDENTIAL_ENV_MAP,
+  validateSetupConfig,
+  normalizeToSetupInput,
+  performSetupFromConfig,
+  buildChannelCredentialEnvVars,
 } from "./control-plane/setup.js";

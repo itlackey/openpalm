@@ -217,11 +217,10 @@ describe("setup wizard server integration", () => {
 
     try {
       const body = {
-        adminToken: "integration-test-token-123",
-        ownerName: "Integration Test",
-        ownerEmail: "integ@test.local",
-        memoryUserId: "integ_user",
-        ollamaEnabled: false,
+        version: 1,
+        owner: { name: "Integration Test", email: "integ@test.local" },
+        security: { adminToken: "integration-test-token-123" },
+        memory: { userId: "integ_user" },
         connections: [
           {
             id: "ollama-local",
@@ -304,9 +303,9 @@ describe("setup wizard server integration", () => {
 
       // Complete setup
       const body = {
-        adminToken: "status-test-token-123",
-        memoryUserId: "status_user",
-        ollamaEnabled: false,
+        version: 1,
+        security: { adminToken: "status-test-token-123" },
+        memory: { userId: "status_user" },
         connections: [
           {
             id: "openai-test",
@@ -425,9 +424,9 @@ describe("setup wizard server integration", () => {
 
     try {
       const body = {
-        adminToken: "retry-test-token-123",
-        memoryUserId: "retry_user",
-        ollamaEnabled: false,
+        version: 1,
+        security: { adminToken: "retry-test-token-123" },
+        memory: { userId: "retry_user" },
         connections: [
           {
             id: "openai-retry",

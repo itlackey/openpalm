@@ -707,9 +707,11 @@ test.describe("@mocked Setup Wizard UI", () => {
 
 			// Verify the payload sent to /api/setup/complete
 			expect(setupPayload).not.toBeNull();
-			expect((setupPayload as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
-			expect((setupPayload as Record<string, unknown>).memoryUserId).toBe(TEST_MEMORY_USER);
-			const conns = (setupPayload as Record<string, unknown>).connections;
+			const payload = setupPayload as Record<string, unknown>;
+			expect(payload.version).toBe(1);
+			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
+			expect((payload.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
+			const conns = payload.connections;
 			expect(Array.isArray(conns)).toBe(true);
 			expect((conns as Array<Record<string, string>>)[0].provider).toBe("ollama");
 
@@ -872,10 +874,11 @@ test.describe("@mocked Setup Wizard UI", () => {
 			// Validate the captured payload
 			expect(capturedPayload).not.toBeNull();
 			const payload = capturedPayload as Record<string, unknown>;
-			expect(payload.adminToken).toBe(TEST_ADMIN_TOKEN);
-			expect(payload.ownerName).toBe(TEST_OWNER_NAME);
-			expect(payload.ownerEmail).toBe(TEST_OWNER_EMAIL);
-			expect(payload.memoryUserId).toBe(TEST_MEMORY_USER);
+			expect(payload.version).toBe(1);
+			expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
+			expect((payload.owner as Record<string, unknown>).name).toBe(TEST_OWNER_NAME);
+			expect((payload.owner as Record<string, unknown>).email).toBe(TEST_OWNER_EMAIL);
+			expect((payload.memory as Record<string, unknown>).userId).toBe(TEST_MEMORY_USER);
 
 			// Connections
 			const conns = payload.connections as Array<Record<string, string>>;
@@ -1024,7 +1027,8 @@ test.describe("Setup Wizard with Real Ollama", () => {
 		// Verify payload
 		expect(setupPayload).not.toBeNull();
 		const payload = setupPayload as Record<string, unknown>;
-		expect(payload.adminToken).toBe(TEST_ADMIN_TOKEN);
+		expect(payload.version).toBe(1);
+		expect((payload.security as Record<string, unknown>).adminToken).toBe(TEST_ADMIN_TOKEN);
 		const assignments = payload.assignments as Record<string, Record<string, unknown>>;
 		expect(assignments.llm.connectionId).toBe("ollama");
 		expect(assignments.embeddings.connectionId).toBe("ollama");

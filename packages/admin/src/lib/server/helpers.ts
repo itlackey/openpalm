@@ -5,7 +5,6 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getState } from "./state.js";
 import { normalizeCaller } from "./lifecycle.js";
-import { isSetupComplete } from './setup-status.js';
 import {
   CONNECTION_KINDS,
   type CallerType,
@@ -82,38 +81,12 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
   return null;
 }
 
-/**
- * Check admin auth with setup-token fallback.
- * - Pre-setup: accepts setup token OR admin token header value.
- * - Post-setup: accepts admin token only.
- */
-export function requireAdminOrSetupToken(event: RequestEvent, requestId: string): Response | null {
-  const state = getState();
-  const token = event.request.headers.get('x-admin-token') ?? '';
-  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
-
-  const validSetupToken = !setupComplete && safeTokenCompare(token, state.setupToken);
-  const validAdminToken = safeTokenCompare(token, state.adminToken);
-  if (!validSetupToken && !validAdminToken) {
-    return errorResponse(401, 'unauthorized', 'Missing or invalid x-admin-token', {}, requestId);
-  }
-  return null;
-}
-
-/**
- * Extract actor from request — derived from auth state, not caller-controlled.
- *
- * When `state` is provided, the token is verified against `state.adminToken`
- * using constant-time comparison. Without `state`, any non-empty token is
- * treated as "admin" (callers should migrate to pass state for verified
- * actor identification).
- */
-export function getActor(event: RequestEvent, state?: { adminToken: string }): string {
+/** Extract actor from request — derived from auth state, not caller-controlled. */
+export function getActor(event: RequestEvent): string {
   const token = event.request.headers.get("x-admin-token");
   if (!token) return "unauthenticated";
-  if (state && safeTokenCompare(token, state.adminToken)) return "admin";
-  if (!state && token) return "admin";
-  return "unknown";
+  const state = getState();
+  return safeTokenCompare(token, state.adminToken) ? "admin" : "unauthenticated";
 }
 
 /** Extract caller type from request */

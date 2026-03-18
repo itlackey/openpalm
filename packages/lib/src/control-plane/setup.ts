@@ -85,6 +85,46 @@ export type SetupResult = {
   started?: string[];
 };
 
+// ── SetupConfig (structured 7-section format) ────────────────────────────
+
+export type SetupConfig = {
+  version: 1;
+  owner?: { name?: string; email?: string };
+  security: { adminToken: string };
+  connections: SetupConnection[];
+  assignments: SetupConfigAssignments;
+  memory?: { userId?: string };
+  channels?: Record<string, boolean | ChannelCredentials>;
+  services?: Record<string, boolean | ServiceConfig>;
+};
+
+export type SetupConfigAssignments = {
+  llm: { connectionId: string; model: string; smallModel?: string };
+  embeddings: { connectionId: string; model: string; embeddingDims?: number };
+  tts?: { engine: string; connectionId?: string; model?: string } | string | null;
+  stt?: { engine: string; connectionId?: string; model?: string } | string | null;
+};
+
+export type ChannelCredentials = {
+  enabled?: boolean;
+  botToken?: string;
+  applicationId?: string;
+  registerCommands?: boolean;
+  allowedGuilds?: string;
+  allowedRoles?: string;
+  allowedUsers?: string;
+  blockedUsers?: string;
+  slackBotToken?: string;
+  slackAppToken?: string;
+  allowedChannels?: string;
+  [key: string]: unknown;
+};
+
+export type ServiceConfig = {
+  enabled: boolean;
+  [key: string]: unknown;
+};
+
 export type DetectedProvider = {
   provider: string;
   url: string;
@@ -105,6 +145,129 @@ const WIZARD_PROVIDERS = new Set([
   "mistral", "deepseek", "xai", "lmstudio", "model-runner",
   "ollama-instack", "google", "huggingface",
 ]);
+
+// ── Shared Validation Helpers ────────────────────────────────────────────
+
+/** Validate a connections array. Pushes errors to the provided array. */
+function validateConnectionsArray(
+  connections: unknown,
+  errors: string[]
+): void {
+  if (!Array.isArray(connections) || connections.length === 0) {
+    errors.push("connections array is required and must be non-empty");
+    return;
+  }
+  const seenIds = new Set<string>();
+  for (let i = 0; i < connections.length; i++) {
+    const c = connections[i];
+    if (typeof c !== "object" || c === null) {
+      errors.push(`connections[${i}] must be an object`);
+      continue;
+    }
+    const conn = c as Record<string, unknown>;
+    const id = typeof conn.id === "string" ? conn.id.trim() : "";
+    const provider = typeof conn.provider === "string" ? conn.provider.trim() : "";
+
+    if (!id) {
+      errors.push(`connections[${i}].id is required`);
+    } else if (!CONNECTION_ID_RE.test(id)) {
+      errors.push(`connections[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`);
+    } else if (seenIds.has(id)) {
+      errors.push(`Duplicate connection ID: ${id}`);
+    } else {
+      seenIds.add(id);
+    }
+
+    const name = typeof conn.name === "string" ? conn.name.trim() : "";
+    if (!name) {
+      errors.push(`connections[${i}].name is required`);
+    }
+
+    if (!provider) {
+      errors.push(`connections[${i}].provider is required`);
+    } else if (!WIZARD_PROVIDERS.has(provider)) {
+      errors.push(`connections[${i}].provider "${provider}" is outside wizard scope`);
+    }
+  }
+}
+
+/**
+ * Validate assignments block (llm + embeddings) and cross-validate
+ * connectionIds against the connections array. Pushes errors to the
+ * provided array.
+ */
+function validateAssignmentsBlock(
+  assignments: unknown,
+  connections: unknown,
+  errors: string[]
+): void {
+  if (typeof assignments !== "object" || assignments === null) {
+    errors.push("assignments object is required");
+    return;
+  }
+
+  const assignmentsObj = assignments as Record<string, unknown>;
+  const llm = assignmentsObj.llm;
+  const embeddings = assignmentsObj.embeddings;
+  const preAssignmentLength = errors.length;
+
+  if (typeof llm !== "object" || llm === null) {
+    errors.push("assignments.llm is required");
+  } else {
+    const llmObj = llm as Record<string, unknown>;
+    if (!llmObj.connectionId || typeof llmObj.connectionId !== "string") {
+      errors.push("assignments.llm.connectionId is required");
+    }
+    if (!llmObj.model || typeof llmObj.model !== "string") {
+      errors.push("assignments.llm.model is required");
+    }
+  }
+
+  if (typeof embeddings !== "object" || embeddings === null) {
+    errors.push("assignments.embeddings is required");
+  } else {
+    const embObj = embeddings as Record<string, unknown>;
+    if (!embObj.connectionId || typeof embObj.connectionId !== "string") {
+      errors.push("assignments.embeddings.connectionId is required");
+    }
+    if (!embObj.model || typeof embObj.model !== "string") {
+      errors.push("assignments.embeddings.model is required");
+    }
+    if (
+      embObj.embeddingDims !== undefined &&
+      (typeof embObj.embeddingDims !== "number" ||
+        !Number.isInteger(embObj.embeddingDims) ||
+        embObj.embeddingDims < 1)
+    ) {
+      errors.push("assignments.embeddings.embeddingDims must be a positive integer");
+    }
+  }
+
+  // Cross-validate: assignment connectionIds must reference a connection.
+  // Only run when no new assignment errors were added above.
+  if (Array.isArray(connections) && errors.length === preAssignmentLength) {
+    const connectionIds = new Set(
+      (connections as Array<Record<string, unknown>>).map(
+        (c) => typeof c.id === "string" ? c.id.trim() : ""
+      )
+    );
+    const llmConnId =
+      typeof (llm as Record<string, unknown>)?.connectionId === "string"
+        ? ((llm as Record<string, unknown>).connectionId as string)
+        : "";
+    const embConnId =
+      typeof (embeddings as Record<string, unknown>)?.connectionId === "string"
+        ? ((embeddings as Record<string, unknown>).connectionId as string)
+        : "";
+
+    if (llmConnId && !connectionIds.has(llmConnId)) {
+      errors.push(`assignments.llm.connectionId "${llmConnId}" does not match any connection`);
+    }
+    if (embConnId && !connectionIds.has(embConnId)) {
+      errors.push(`assignments.embeddings.connectionId "${embConnId}" does not match any connection`);
+    }
+  }
+}
 
 export function validateSetupInput(input: unknown): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -133,6 +296,9 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
   // memoryUserId
   if (body.memoryUserId !== undefined && typeof body.memoryUserId !== "string") {
     errors.push("memoryUserId must be a string");
+  }
+  if (typeof body.memoryUserId === "string" && !/^[A-Za-z0-9._-]+$/.test(body.memoryUserId)) {
+    errors.push("memoryUserId contains invalid characters (alphanumeric, dots, hyphens, underscores only)");
   }
 
   // ollamaEnabled
@@ -183,107 +349,10 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
   }
 
   // connections
-  if (!Array.isArray(body.connections) || body.connections.length === 0) {
-    errors.push("connections array is required and must be non-empty");
-  } else {
-    const seenIds = new Set<string>();
-    for (let i = 0; i < body.connections.length; i++) {
-      const c = body.connections[i];
-      if (typeof c !== "object" || c === null) {
-        errors.push(`connections[${i}] must be an object`);
-        continue;
-      }
-      const conn = c as Record<string, unknown>;
-      const id = typeof conn.id === "string" ? conn.id.trim() : "";
-      const provider = typeof conn.provider === "string" ? conn.provider.trim() : "";
-
-      if (!id) {
-        errors.push(`connections[${i}].id is required`);
-      } else if (!CONNECTION_ID_RE.test(id)) {
-        errors.push(`connections[${i}].id must start with a letter or digit (allowed: A-Z, a-z, 0-9, _, -)`);
-      } else if (seenIds.has(id)) {
-        errors.push(`Duplicate connection ID: ${id}`);
-      } else {
-        seenIds.add(id);
-      }
-
-      const name = typeof conn.name === "string" ? conn.name.trim() : "";
-      if (!name) {
-        errors.push(`connections[${i}].name is required`);
-      }
-
-      if (!provider) {
-        errors.push(`connections[${i}].provider is required`);
-      } else if (!WIZARD_PROVIDERS.has(provider)) {
-        errors.push(`connections[${i}].provider "${provider}" is outside wizard scope`);
-      }
-    }
-  }
+  validateConnectionsArray(body.connections, errors);
 
   // assignments
-  if (typeof body.assignments !== "object" || body.assignments === null) {
-    errors.push("assignments object is required");
-  } else {
-    const assignments = body.assignments as Record<string, unknown>;
-    const llm = assignments.llm;
-    const embeddings = assignments.embeddings;
-
-    if (typeof llm !== "object" || llm === null) {
-      errors.push("assignments.llm is required");
-    } else {
-      const llmObj = llm as Record<string, unknown>;
-      if (!llmObj.connectionId || typeof llmObj.connectionId !== "string") {
-        errors.push("assignments.llm.connectionId is required");
-      }
-      if (!llmObj.model || typeof llmObj.model !== "string") {
-        errors.push("assignments.llm.model is required");
-      }
-    }
-
-    if (typeof embeddings !== "object" || embeddings === null) {
-      errors.push("assignments.embeddings is required");
-    } else {
-      const embObj = embeddings as Record<string, unknown>;
-      if (!embObj.connectionId || typeof embObj.connectionId !== "string") {
-        errors.push("assignments.embeddings.connectionId is required");
-      }
-      if (!embObj.model || typeof embObj.model !== "string") {
-        errors.push("assignments.embeddings.model is required");
-      }
-      if (
-        embObj.embeddingDims !== undefined &&
-        (typeof embObj.embeddingDims !== "number" ||
-          !Number.isInteger(embObj.embeddingDims) ||
-          embObj.embeddingDims < 1)
-      ) {
-        errors.push("assignments.embeddings.embeddingDims must be a positive integer");
-      }
-    }
-
-    // Cross-validate: assignment connectionIds must reference a connection
-    if (Array.isArray(body.connections) && errors.length === 0) {
-      const connectionIds = new Set(
-        (body.connections as Array<Record<string, unknown>>).map(
-          (c) => typeof c.id === "string" ? c.id.trim() : ""
-        )
-      );
-      const llmConnId =
-        typeof (llm as Record<string, unknown>)?.connectionId === "string"
-          ? ((llm as Record<string, unknown>).connectionId as string)
-          : "";
-      const embConnId =
-        typeof (embeddings as Record<string, unknown>)?.connectionId === "string"
-          ? ((embeddings as Record<string, unknown>).connectionId as string)
-          : "";
-
-      if (llmConnId && !connectionIds.has(llmConnId)) {
-        errors.push(`assignments.llm.connectionId "${llmConnId}" does not match any connection`);
-      }
-      if (embConnId && !connectionIds.has(embConnId)) {
-        errors.push(`assignments.embeddings.connectionId "${embConnId}" does not match any connection`);
-      }
-    }
-  }
+  validateAssignmentsBlock(body.assignments, body.connections, errors);
 
   return { valid: errors.length === 0, errors };
 }
@@ -412,7 +481,8 @@ export async function performSetup(
   const connEnvVarMap = buildConnectionEnvVarMap(effectiveConnections);
 
   // ── Build secrets.env updates ────────────────────────────────────────
-  const updates = buildSecretsFromSetup(input);
+  // Pass already-resolved connections to avoid a second resolveOllamaUrls call
+  const updates = buildSecretsFromSetup({ ...input, connections: effectiveConnections });
 
   // ── Persist secrets.env ──────────────────────────────────────────────
   try {
@@ -484,14 +554,17 @@ export async function performSetup(
   writeMemoryConfig(state.dataDir, omConfig);
 
   // ── Write connection profiles ────────────────────────────────────────
-  const profilesInput = effectiveConnections.map((conn) => ({
-    id: conn.id,
-    name: conn.name,
-    provider: conn.provider,
-    baseUrl: conn.baseUrl,
-    hasApiKey: Boolean(conn.apiKey),
-    apiKeyEnvVar: connEnvVarMap.get(conn.id)!,
-  }));
+  const profilesInput = effectiveConnections.map((conn) => {
+    const apiKeyEnvVar = connEnvVarMap.get(conn.id);
+    return {
+      id: conn.id,
+      name: conn.name,
+      provider: conn.provider,
+      baseUrl: conn.baseUrl,
+      hasApiKey: Boolean(conn.apiKey) && Boolean(apiKeyEnvVar),
+      apiKeyEnvVar: apiKeyEnvVar ?? "",
+    };
+  });
 
   writeConnectionsDocument(state.configDir, {
     profiles: profilesInput,
@@ -570,4 +643,310 @@ export async function detectProviders(): Promise<DetectedProvider[]> {
     url: r.url,
     available: r.available,
   }));
+}
+
+// ── Channel Credential Env Var Mapping ───────────────────────────────────
+
+/** Maps channel IDs to their credential field → env var name mappings. */
+export const CHANNEL_CREDENTIAL_ENV_MAP: Record<string, Record<string, string>> = {
+  discord: {
+    botToken: "DISCORD_BOT_TOKEN",
+    applicationId: "DISCORD_APPLICATION_ID",
+    registerCommands: "DISCORD_REGISTER_COMMANDS",
+    allowedGuilds: "DISCORD_ALLOWED_GUILDS",
+    allowedRoles: "DISCORD_ALLOWED_ROLES",
+    allowedUsers: "DISCORD_ALLOWED_USERS",
+    blockedUsers: "DISCORD_BLOCKED_USERS",
+  },
+  slack: {
+    slackBotToken: "SLACK_BOT_TOKEN",
+    slackAppToken: "SLACK_APP_TOKEN",
+    allowedChannels: "SLACK_ALLOWED_CHANNELS",
+    allowedUsers: "SLACK_ALLOWED_USERS",
+    blockedUsers: "SLACK_BLOCKED_USERS",
+  },
+};
+
+// ── SetupConfig Validation ───────────────────────────────────────────────
+
+/**
+ * Validate a SetupConfig object. Returns { valid, errors } in the same
+ * shape as validateSetupInput().
+ */
+export function validateSetupConfig(config: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (typeof config !== "object" || config === null) {
+    return { valid: false, errors: ["Config must be a non-null object"] };
+  }
+
+  const body = config as Record<string, unknown>;
+
+  // version
+  if (body.version !== 1) {
+    errors.push("version must be 1");
+  }
+
+  // owner (optional)
+  if (body.owner !== undefined) {
+    if (typeof body.owner !== "object" || body.owner === null) {
+      errors.push("owner must be an object if provided");
+    } else {
+      const owner = body.owner as Record<string, unknown>;
+      if (owner.name !== undefined && typeof owner.name !== "string") {
+        errors.push("owner.name must be a string if provided");
+      }
+      if (owner.email !== undefined && typeof owner.email !== "string") {
+        errors.push("owner.email must be a string if provided");
+      }
+    }
+  }
+
+  // security
+  if (typeof body.security !== "object" || body.security === null) {
+    errors.push("security object is required");
+  } else {
+    const security = body.security as Record<string, unknown>;
+    if (typeof security.adminToken !== "string" || !security.adminToken) {
+      errors.push("security.adminToken is required and must be a non-empty string");
+    } else if (security.adminToken.length < 8) {
+      errors.push("security.adminToken must be at least 8 characters");
+    }
+  }
+
+  // connections
+  validateConnectionsArray(body.connections, errors);
+
+  // assignments
+  validateAssignmentsBlock(body.assignments, body.connections, errors);
+
+  // channels (optional)
+  if (body.channels !== undefined) {
+    if (typeof body.channels !== "object" || body.channels === null) {
+      errors.push("channels must be an object if provided");
+    } else {
+      const channels = body.channels as Record<string, unknown>;
+      for (const [channelId, value] of Object.entries(channels)) {
+        if (typeof value === "boolean") continue;
+        if (typeof value !== "object" || value === null) {
+          errors.push(`channels.${channelId} must be a boolean or object`);
+          continue;
+        }
+        // Channel-specific credential validation
+        if (channelId === "discord") {
+          const creds = value as Record<string, unknown>;
+          if (creds.enabled !== false && !creds.botToken) {
+            errors.push("channels.discord.botToken is required when discord is enabled");
+          }
+        }
+        if (channelId === "slack") {
+          const creds = value as Record<string, unknown>;
+          if (creds.enabled !== false) {
+            if (!creds.slackBotToken) {
+              errors.push("channels.slack.slackBotToken is required when slack is enabled");
+            }
+            if (!creds.slackAppToken) {
+              errors.push("channels.slack.slackAppToken is required when slack is enabled");
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // services (optional)
+  if (body.services !== undefined) {
+    if (typeof body.services !== "object" || body.services === null) {
+      errors.push("services must be an object if provided");
+    } else {
+      const services = body.services as Record<string, unknown>;
+      for (const [key, val] of Object.entries(services)) {
+        if (typeof val === "boolean") continue;
+        if (typeof val !== "object" || val === null) {
+          errors.push(`services.${key} must be a boolean or object`);
+        } else if (typeof (val as Record<string, unknown>).enabled !== "boolean") {
+          errors.push(`services.${key}.enabled must be a boolean`);
+        }
+      }
+    }
+  }
+
+  // memory (optional)
+  if (body.memory !== undefined) {
+    if (typeof body.memory !== "object" || body.memory === null) {
+      errors.push("memory must be an object if provided");
+    } else {
+      const memory = body.memory as Record<string, unknown>;
+      if (memory.userId !== undefined && typeof memory.userId !== "string") {
+        errors.push("memory.userId must be a string if provided");
+      }
+      if (typeof memory.userId === "string" && !/^[A-Za-z0-9._-]+$/.test(memory.userId)) {
+        errors.push("memoryUserId contains invalid characters (alphanumeric, dots, hyphens, underscores only)");
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ── Normalization ────────────────────────────────────────────────────────
+
+/**
+ * Convert a structured SetupConfig to the flat SetupInput format so that
+ * the existing performSetup() pipeline works unchanged.
+ */
+export function normalizeToSetupInput(config: SetupConfig): SetupInput {
+  // Resolve TTS/STT voice fields
+  let tts: string | undefined;
+  let stt: string | undefined;
+
+  if (config.assignments.tts !== undefined && config.assignments.tts !== null) {
+    // SetupInput.voice only carries engine strings; connectionId and model
+    // from the object form are dropped during normalization. To preserve
+    // them, the caller should write the original SetupConfig to
+    // openpalm.yaml separately.
+    tts = typeof config.assignments.tts === "string"
+      ? config.assignments.tts
+      : config.assignments.tts.engine;
+  }
+
+  if (config.assignments.stt !== undefined && config.assignments.stt !== null) {
+    // Same as tts above — connectionId and model are dropped during
+    // normalization and not written to the stack spec by performSetup().
+    stt = typeof config.assignments.stt === "string"
+      ? config.assignments.stt
+      : config.assignments.stt.engine;
+  }
+
+  // Extract enabled channels
+  const enabledChannels: string[] = [];
+  if (config.channels) {
+    for (const [id, value] of Object.entries(config.channels)) {
+      if (value === true) {
+        enabledChannels.push(id);
+      } else if (typeof value === "object" && value !== null) {
+        const creds = value as ChannelCredentials;
+        if (creds.enabled !== false) {
+          enabledChannels.push(id);
+        }
+      }
+    }
+  }
+
+  // Extract enabled services
+  const enabledServices: Record<string, boolean> = {};
+  if (config.services) {
+    for (const [id, value] of Object.entries(config.services)) {
+      if (typeof value === "boolean") {
+        enabledServices[id] = value;
+      } else if (typeof value === "object" && value !== null) {
+        enabledServices[id] = (value as ServiceConfig).enabled;
+      }
+    }
+  }
+
+  // Determine ollamaEnabled from services
+  const ollamaEnabled = enabledServices.ollama ?? false;
+
+  return {
+    adminToken: config.security.adminToken,
+    ownerName: config.owner?.name,
+    ownerEmail: config.owner?.email,
+    memoryUserId: config.memory?.userId || "default_user",
+    ollamaEnabled,
+    connections: config.connections,
+    assignments: {
+      llm: config.assignments.llm,
+      embeddings: config.assignments.embeddings,
+    },
+    ...(tts !== undefined || stt !== undefined ? { voice: { tts, stt } } : {}),
+    ...(enabledChannels.length > 0 ? { channels: enabledChannels } : {}),
+    ...(Object.keys(enabledServices).length > 0 ? { services: enabledServices as SetupInput["services"] } : {}),
+  };
+}
+
+// ── Channel Credential Env Var Builder ───────────────────────────────────
+
+/**
+ * Extract credential fields from typed channel configs using
+ * CHANNEL_CREDENTIAL_ENV_MAP and return a Record<string, string> suitable
+ * for writing to secrets.env.
+ *
+ * Unknown channels (not in CHANNEL_CREDENTIAL_ENV_MAP) are skipped.
+ * Boolean values are converted to strings.
+ */
+export function buildChannelCredentialEnvVars(
+  channels: Record<string, boolean | ChannelCredentials> | undefined
+): Record<string, string> {
+  const envVars: Record<string, string> = {};
+  if (!channels) return envVars;
+
+  for (const [channelId, value] of Object.entries(channels)) {
+    if (typeof value === "boolean") continue;
+    if (typeof value !== "object" || value === null) continue;
+
+    const mapping = CHANNEL_CREDENTIAL_ENV_MAP[channelId];
+    if (!mapping) continue;
+
+    const creds = value as ChannelCredentials;
+    for (const [field, envKey] of Object.entries(mapping)) {
+      const fieldValue = creds[field];
+      if (fieldValue === undefined || fieldValue === null) continue;
+      if (typeof fieldValue === "boolean") {
+        envVars[envKey] = String(fieldValue);
+      } else if (typeof fieldValue === "string" && fieldValue) {
+        envVars[envKey] = fieldValue;
+      }
+    }
+  }
+
+  return envVars;
+}
+
+// ── Structured Setup Orchestration ───────────────────────────────────────
+
+/**
+ * Setup from a structured SetupConfig:
+ * 1. Validate the config
+ * 2. Write channel credential env vars to CONFIG_HOME/secrets.env
+ * 3. Normalize to SetupInput and call performSetup()
+ *
+ * Channel credentials are written BEFORE performSetup() so that when
+ * performSetup() stages secrets.env from CONFIG_HOME to STATE_HOME
+ * (via applyInstall), the staged copy already contains channel creds.
+ */
+export async function performSetupFromConfig(
+  config: SetupConfig,
+  assetProvider: CoreAssetProvider,
+  opts?: { state?: ControlPlaneState }
+): Promise<SetupResult> {
+  // ── Validate ─────────────────────────────────────────────────────────
+  const validation = validateSetupConfig(config);
+  if (!validation.valid) {
+    return { ok: false, error: validation.errors.join("; ") };
+  }
+
+  // ── Write channel credentials to CONFIG_HOME/secrets.env FIRST ─────
+  // This must happen before performSetup() which stages secrets.env
+  // from CONFIG_HOME to STATE_HOME via applyInstall().
+  const input = normalizeToSetupInput(config);
+  const state = opts?.state ?? createState(config.security.adminToken);
+  const channelEnvVars = buildChannelCredentialEnvVars(config.channels);
+  if (Object.keys(channelEnvVars).length > 0) {
+    try {
+      ensureXdgDirs();
+      ensureSecrets(state);
+      updateSecretsEnv(state, channelEnvVars);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("failed to write channel credentials to secrets.env", { error: message });
+      return { ok: false, error: `Failed to write channel credentials: ${message}` };
+    }
+  }
+
+  // ── Normalize and delegate to performSetup ─────────────────────────
+  // performSetup() writes its own secrets (admin token, API keys, etc.)
+  // and then stages the now-complete secrets.env to STATE_HOME.
+  const result = await performSetup(input, assetProvider, { ...opts, state });
+  return result;
 }

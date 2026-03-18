@@ -85,9 +85,9 @@ test.describe('OpenCode Caddy Proxy', () => {
 
 	test('Caddy proxy routes admin traffic', async ({ request }) => {
 		// Caddy proxies /admin/* to admin:8100 — verify admin API is reachable via Caddy
-		const response = await request.get('http://localhost:8080/admin/setup', { timeout: 10000 });
+		const response = await request.get('http://localhost:8080/admin/health', { timeout: 10000 });
 		expect(response.ok()).toBeTruthy();
 		const data = await response.json();
-		expect(data).toHaveProperty('setupComplete');
+		expect(data).toHaveProperty('status');
 	});
 });

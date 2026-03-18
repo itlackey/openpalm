@@ -276,11 +276,10 @@ describe("setup wizard server", () => {
 
     try {
       const body = {
-        adminToken: "test-admin-token-12345",
-        ownerName: "Test",
-        ownerEmail: "test@example.com",
-        memoryUserId: "test_user",
-        ollamaEnabled: false,
+        version: 1,
+        owner: { name: "Test", email: "test@example.com" },
+        security: { adminToken: "test-admin-token-12345" },
+        memory: { userId: "test_user" },
         connections: [
           {
             id: "openai-main",
@@ -335,7 +334,7 @@ describe("setup wizard server", () => {
       const res = await fetch(`http://localhost:${serverPort}/api/setup/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminToken: "short" }),
+        body: JSON.stringify({ version: 1, security: { adminToken: "short" } }),
       });
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };

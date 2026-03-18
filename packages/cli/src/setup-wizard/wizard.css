@@ -1459,6 +1459,30 @@ body {
   transform: translateX(16px);
 }
 
+/* ── Channel Credential Expansion ─────────────────────────────────────── */
+.toggle-card.wide {
+  grid-column: 1 / -1;
+}
+
+.toggle-card .pcard-auth {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  animation: fadeIn 0.2s ease;
+}
+
+.channel-cred-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.channel-cred-required {
+  color: var(--color-error, #ef4444);
+}
+
 /* ── Hidden utility ────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
 

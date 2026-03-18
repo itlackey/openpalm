@@ -72,8 +72,16 @@
   var CHANNELS = [
     { id: "chat", name: "Web Chat", icon: "\uD83D\uDCAC", desc: "Browser-based chat \u2014 always available", locked: true },
     { id: "api", name: "API", icon: "\uD83D\uDD0C", desc: "OpenAI-compatible REST API endpoint" },
-    { id: "discord", name: "Discord", icon: "\uD83C\uDFAE", desc: "Connect to a Discord server" },
-    { id: "slack", name: "Slack", icon: "\uD83D\uDCBC", desc: "Access via Slack bot" },
+    { id: "discord", name: "Discord", icon: "\uD83C\uDFAE", desc: "Connect to a Discord server",
+      credentials: [
+        { key: "botToken", label: "Bot Token", placeholder: "Paste Discord bot token", required: true },
+        { key: "applicationId", label: "Application ID", placeholder: "Discord application ID", secret: false },
+      ]},
+    { id: "slack", name: "Slack", icon: "\uD83D\uDCBC", desc: "Access via Slack bot",
+      credentials: [
+        { key: "slackBotToken", label: "Bot Token", placeholder: "xoxb-...", required: true },
+        { key: "slackAppToken", label: "App Token", placeholder: "xapp-...", required: true },
+      ]},
   ];
 
   var SERVICES = [
@@ -115,7 +123,11 @@
   var voiceSelection = { tts: null, stt: null };
 
   /** Channel selection state (chat always on) */
-  var channelSelection = { chat: true };
+  var channelSelection = {
+    chat: true,
+    discord: { enabled: false, botToken: "", applicationId: "" },
+    slack: { enabled: false, slackBotToken: "", slackAppToken: "" },
+  };
 
   /** Services selection state (admin default on) */
   var serviceSelection = { admin: true };
@@ -208,7 +220,8 @@
           if (step >= 1 && !validateStep0()) return;
           if (step >= 2 && getVerifiedCount() === 0) return;
           if (step >= 3 && !validateStep2()) return;
-          // Steps 3 (voice) and 4 (options) have no hard validation gates
+          // Step 3 (voice) has no hard validation gate
+          if (step >= 5 && !validateStep4()) return;
         }
         goToStep(step);
       });
@@ -301,7 +314,7 @@
 
     var html = '<div class="' + cls + '" data-provider="' + p.id + '">';
     html += '<div class="pcard-header" data-toggle-provider="' + p.id + '">';
-    html += '<div class="pcard-icon">' + p.icon + '</div>';
+    html += '<div class="pcard-icon">' + esc(p.icon) + '</div>';
     html += '<div class="pcard-info">';
     html += '<div class="pcard-name">' + esc(p.name) + ' <span class="badge ' + badgeCls + '">' + p.kind + '</span>' + vi + '</div>';
     html += '<div class="pcard-desc">' + esc(p.desc) + '</div>';
@@ -866,17 +879,26 @@
     renderServices();
   }
 
+  /** Helper: check if a channel is enabled (handles both boolean and object state) */
+  function isChannelEnabled(ch) {
+    if (ch.locked) return true;
+    var sel = channelSelection[ch.id];
+    if (typeof sel === "object" && sel !== null) return sel.enabled;
+    return !!sel;
+  }
+
   function renderChannels() {
     var container = $("channels-grid");
     var html = "";
 
     CHANNELS.forEach(function (ch) {
-      var isOn = ch.locked || channelSelection[ch.id];
+      var isOn = isChannelEnabled(ch);
       var cls = "toggle-card" + (isOn ? " on" : "") + (ch.locked ? " locked" : "");
+      if (ch.credentials && isOn) cls += " wide";
 
       html += '<div class="' + cls + '" data-channel="' + ch.id + '">';
-      html += '<div class="toggle-card-header">';
-      html += '<div class="toggle-card-icon">' + ch.icon + '</div>';
+      html += '<div class="toggle-card-header" data-channel-toggle="' + ch.id + '">';
+      html += '<div class="toggle-card-icon">' + esc(ch.icon) + '</div>';
       html += '<div class="toggle-card-info">';
       html += '<div class="toggle-card-name">' + esc(ch.name) + (ch.locked ? ' <span class="badge badge-local">Always on</span>' : '') + '</div>';
       html += '<div class="toggle-card-desc">' + esc(ch.desc) + '</div>';
@@ -889,21 +911,63 @@
       }
       html += '</div>';
       html += '</div>';
+
+      // Credential fields (expanded when channel with credentials is toggled ON)
+      if (ch.credentials && isOn) {
+        html += renderChannelCredentials(ch);
+      }
+
       html += '</div>';
     });
 
     container.innerHTML = html;
 
-    // Bind toggle clicks
-    document.querySelectorAll("[data-channel]").forEach(function (el) {
+    // Bind toggle clicks on header
+    document.querySelectorAll("[data-channel-toggle]").forEach(function (el) {
       el.addEventListener("click", function () {
-        var id = el.dataset.channel;
+        var id = el.dataset.channelToggle;
         var ch = CHANNELS.find(function (c) { return c.id === id; });
         if (ch && ch.locked) return; // Cannot toggle locked channels
-        channelSelection[id] = !channelSelection[id];
+        var sel = channelSelection[id];
+        if (typeof sel === "object" && sel !== null) {
+          sel.enabled = !sel.enabled;
+        } else {
+          channelSelection[id] = !sel;
+        }
         renderChannels();
       });
     });
+
+    // Bind credential inputs (don't re-render on typing)
+    document.querySelectorAll("[data-channel-cred]").forEach(function (el) {
+      el.addEventListener("input", function () {
+        var sep = el.dataset.channelCred.indexOf(":");
+        var chId = el.dataset.channelCred.slice(0, sep);
+        var credKey = el.dataset.channelCred.slice(sep + 1);
+        var sel = channelSelection[chId];
+        if (typeof sel === "object" && sel !== null) {
+          sel[credKey] = el.value;
+        }
+      });
+      el.addEventListener("click", function (e) { e.stopPropagation(); });
+    });
+  }
+
+  function renderChannelCredentials(ch) {
+    var sel = channelSelection[ch.id];
+    var html = '<div class="pcard-auth">';
+
+    ch.credentials.forEach(function (cred) {
+      var val = (typeof sel === "object" && sel !== null) ? (sel[cred.key] || "") : "";
+      var inputType = cred.secret === false ? "text" : "password";
+      html += '<div class="auth-row">';
+      html += '<label class="channel-cred-label">' + esc(cred.label) + (cred.required ? ' <span class="channel-cred-required">*</span>' : '') + '</label>';
+      html += '<input type="' + inputType + '" placeholder="' + esc(cred.placeholder || '') + '" value="' + esc(val) + '" data-channel-cred="' + ch.id + ':' + cred.key + '">';
+      html += '</div>';
+    });
+
+    html += '</div>';
+    return html;
   }
 
   function renderServices() {
@@ -916,7 +980,7 @@
 
       html += '<div class="' + cls + '" data-service="' + svc.id + '">';
       html += '<div class="toggle-card-header">';
-      html += '<div class="toggle-card-icon">' + svc.icon + '</div>';
+      html += '<div class="toggle-card-icon">' + esc(svc.icon) + '</div>';
       html += '<div class="toggle-card-info">';
       html += '<div class="toggle-card-name">' + esc(svc.name) + (svc.recommended ? ' <span class="badge badge-cloud">Recommended</span>' : '') + '</div>';
       html += '<div class="toggle-card-desc">' + esc(svc.desc) + '</div>';
@@ -940,13 +1004,39 @@
     });
   }
 
+  function validateStep4() {
+    var errEl = $("step4-error");
+    hideError(errEl);
+
+    var errors = [];
+    CHANNELS.forEach(function (ch) {
+      if (!ch.credentials) return;
+      if (!isChannelEnabled(ch)) return;
+      var sel = channelSelection[ch.id];
+      if (typeof sel !== "object" || sel === null) return;
+      ch.credentials.forEach(function (cred) {
+        if (cred.required && !(sel[cred.key] || "").trim()) {
+          errors.push(ch.name + ": " + cred.label + " is required.");
+        }
+      });
+    });
+
+    if (errors.length > 0) {
+      showError(errEl, errors.join(" "));
+      return false;
+    }
+    return true;
+  }
+
   /* =========================================================================
      Step 5: Review & Install
      ========================================================================= */
 
   function initStep5() {
     renderReview();
-    renderReviewLegacy(); // Keep old review-grid for tests
+    // TODO: Remove renderReviewLegacy() once e2e tests (setup-wizard.test.ts)
+    // are updated to use the new #review-summary selectors instead of #review-grid.
+    renderReviewLegacy();
   }
 
   function renderReview() {
@@ -970,7 +1060,7 @@
     html += '<div class="review-card">';
     html += '<div class="review-card-title"><span>Providers</span><button class="review-edit-btn" type="button" data-review-edit="1">Edit</button></div>';
     vp.forEach(function (p) {
-      html += '<div class="review-row"><span class="review-row-label">' + p.icon + ' ' + esc(p.name) + '</span><span class="review-row-value review-row-value-ok">Connected \u2713</span></div>';
+      html += '<div class="review-row"><span class="review-row-label">' + esc(p.icon) + ' ' + esc(p.name) + '</span><span class="review-row-value review-row-value-ok">Connected \u2713</span></div>';
     });
     html += '</div>';
 
@@ -1005,11 +1095,23 @@
     html += '</div>';
 
     // Channels section
-    var activeChannels = CHANNELS.filter(function (ch) { return ch.locked || channelSelection[ch.id]; });
+    var activeChannels = CHANNELS.filter(function (ch) { return isChannelEnabled(ch); });
     html += '<div class="review-card">';
     html += '<div class="review-card-title"><span>Channels</span><button class="review-edit-btn" type="button" data-review-edit="4">Edit</button></div>';
     activeChannels.forEach(function (ch) {
-      html += '<div class="review-row"><span class="review-row-label">' + ch.icon + ' ' + esc(ch.name) + '</span><span class="review-row-value review-row-value-ok">Enabled \u2713</span></div>';
+      html += '<div class="review-row"><span class="review-row-label">' + esc(ch.icon) + ' ' + esc(ch.name) + '</span><span class="review-row-value review-row-value-ok">Enabled \u2713</span></div>';
+      // Show masked credentials if present
+      if (ch.credentials) {
+        var sel = channelSelection[ch.id];
+        if (typeof sel === "object" && sel !== null && sel.enabled) {
+          ch.credentials.forEach(function (cred) {
+            var val = sel[cred.key] || "";
+            if (val) {
+              html += '<div class="review-row"><span class="review-row-label" style="padding-left:24px">' + esc(cred.label) + '</span><span class="review-row-value">' + maskToken(val) + '</span></div>';
+            }
+          });
+        }
+      }
     });
     html += '</div>';
 
@@ -1019,7 +1121,7 @@
     html += '<div class="review-card-title"><span>Services</span><button class="review-edit-btn" type="button" data-review-edit="4">Edit</button></div>';
     if (activeServices.length > 0) {
       activeServices.forEach(function (svc) {
-        html += '<div class="review-row"><span class="review-row-label">' + svc.icon + ' ' + esc(svc.name) + '</span><span class="review-row-value review-row-value-ok">Enabled \u2713</span></div>';
+        html += '<div class="review-row"><span class="review-row-label">' + esc(svc.icon) + ' ' + esc(svc.name) + '</span><span class="review-row-value review-row-value-ok">Enabled \u2713</span></div>';
       });
     } else {
       html += '<div class="review-row"><span class="review-row-label">No extra services</span><span class="review-row-value">Core only</span></div>';
@@ -1090,8 +1192,20 @@
 
     grid.appendChild(reviewHeader("Channels", 4));
     CHANNELS.forEach(function (ch) {
-      if (ch.locked || channelSelection[ch.id]) {
+      if (isChannelEnabled(ch)) {
         grid.appendChild(reviewItem(ch.name, "Enabled"));
+        // Show masked credentials in legacy review
+        if (ch.credentials) {
+          var sel = channelSelection[ch.id];
+          if (typeof sel === "object" && sel !== null && sel.enabled) {
+            ch.credentials.forEach(function (cred) {
+              var val = sel[cred.key] || "";
+              if (val) {
+                grid.appendChild(reviewItem("  " + cred.label, maskToken(val)));
+              }
+            });
+          }
+        }
       }
     });
 
@@ -1146,6 +1260,30 @@
      Install & Deploy
      ========================================================================= */
 
+  function buildChannelsConfig() {
+    var result = {};
+    CHANNELS.forEach(function (ch) {
+      var sel = channelSelection[ch.id];
+      if (ch.locked) {
+        result[ch.id] = true;
+      } else if (typeof sel === "object" && sel !== null) {
+        if (sel.enabled) {
+          // Include credentials (copy enabled + credential fields)
+          var entry = { enabled: true };
+          if (ch.credentials) {
+            ch.credentials.forEach(function (cred) {
+              if (sel[cred.key]) entry[cred.key] = sel[cred.key];
+            });
+          }
+          result[ch.id] = entry;
+        }
+      } else if (sel) {
+        result[ch.id] = true;
+      }
+    });
+    return result;
+  }
+
   function buildPayload() {
     var adminToken = ($("admin-token").value || "").trim();
     var ownerName = ($("owner-name").value || "").trim();
@@ -1169,12 +1307,13 @@
       };
     });
 
+    var ttsVal = activeTts() !== "skip-tts" ? activeTts() : null;
+    var sttVal = activeStt() !== "skip-stt" ? activeStt() : null;
+
     return {
-      adminToken: adminToken,
-      ownerName: ownerName || undefined,
-      ownerEmail: ownerEmail || undefined,
-      memoryUserId: memoryUserId,
-      ollamaEnabled: ollamaEnabled,
+      version: 1,
+      owner: (ownerName || ownerEmail) ? { name: ownerName || undefined, email: ownerEmail || undefined } : undefined,
+      security: { adminToken: adminToken },
       connections: connections,
       assignments: {
         llm: {
@@ -1187,15 +1326,15 @@
           model: emb ? emb.model : "",
           embeddingDims: emb ? (emb.dims || 1536) : 1536,
         },
+        tts: ttsVal,
+        stt: sttVal,
       },
-      voice: {
-        tts: activeTts() !== "skip-tts" ? activeTts() : null,
-        stt: activeStt() !== "skip-stt" ? activeStt() : null,
-      },
-      channels: Object.keys(channelSelection).filter(function (k) { return channelSelection[k]; }),
+      memory: { userId: memoryUserId },
+      channels: buildChannelsConfig(),
       services: {
         admin: serviceSelection.admin || false,
         openviking: serviceSelection.openviking || false,
+        ollama: ollamaEnabled,
       },
     };
   }
@@ -1471,7 +1610,9 @@
 
     // ── Step 4: Options ──
     $("btn-step4-back").addEventListener("click", function () { goToStep(3); });
-    $("btn-step4-next").addEventListener("click", function () { goToStep(5); });
+    $("btn-step4-next").addEventListener("click", function () {
+      if (validateStep4()) goToStep(5);
+    });
 
     // ── Step 5: Review ──
     $("btn-step5-back").addEventListener("click", function () { goToStep(4); });

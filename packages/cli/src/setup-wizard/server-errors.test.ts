@@ -125,9 +125,9 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // no adminToken
-          memoryUserId: "user1",
-          ollamaEnabled: false,
+          version: 1,
+          // no security.adminToken
+          memory: { userId: "user1" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
           assignments: {
             llm: { connectionId: "c1", model: "gpt-4o" },
@@ -138,7 +138,7 @@ describe("setup wizard server error scenarios", () => {
       expect(res.status).toBe(400);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
-      expect(data.error).toContain("adminToken");
+      expect(data.error).toContain("security");
     } finally {
       stop();
     }
@@ -155,9 +155,9 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          adminToken: "valid-token-12345",
-          memoryUserId: "user1",
-          ollamaEnabled: false,
+          version: 1,
+          security: { adminToken: "valid-token-12345" },
+          memory: { userId: "user1" },
           connections: [],
           assignments: {
             llm: { connectionId: "c1", model: "gpt-4o" },
@@ -185,9 +185,9 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          adminToken: "valid-token-12345",
-          memoryUserId: "user1",
-          ollamaEnabled: false,
+          version: 1,
+          security: { adminToken: "valid-token-12345" },
+          memory: { userId: "user1" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
           // no assignments
         }),
@@ -212,9 +212,9 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          adminToken: "valid-token-12345",
-          memoryUserId: "user1",
-          ollamaEnabled: false,
+          version: 1,
+          security: { adminToken: "valid-token-12345" },
+          memory: { userId: "user1" },
           connections: [{ id: "c1", name: "C1", provider: "fakeprovider", baseUrl: "", apiKey: "sk-test" }],
           assignments: {
             llm: { connectionId: "c1", model: "gpt-4o" },
@@ -242,9 +242,9 @@ describe("setup wizard server error scenarios", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          adminToken: "valid-token-12345",
-          memoryUserId: "user1",
-          ollamaEnabled: false,
+          version: 1,
+          security: { adminToken: "valid-token-12345" },
+          memory: { userId: "user1" },
           connections: [{ id: "c1", name: "C1", provider: "openai", baseUrl: "", apiKey: "sk-test" }],
           assignments: {
             llm: { connectionId: "nonexistent", model: "gpt-4o" },

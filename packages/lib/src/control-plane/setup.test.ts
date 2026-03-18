@@ -8,8 +8,13 @@ import {
   buildSecretsFromSetup,
   buildConnectionEnvVarMap,
   performSetup,
+  validateSetupConfig,
+  normalizeToSetupInput,
+  buildChannelCredentialEnvVars,
+  performSetupFromConfig,
+  CHANNEL_CREDENTIAL_ENV_MAP,
 } from "./setup.js";
-import type { SetupInput, SetupConnection } from "./setup.js";
+import type { SetupInput, SetupConnection, SetupConfig } from "./setup.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 import { STACK_SPEC_FILENAME } from "./stack-spec.js";
 
@@ -491,5 +496,665 @@ describe("performSetup", () => {
     expect(spec.assignments.llm.model).toBe("gpt-4o");
     expect(spec.assignments.embeddings.model).toBe("text-embedding-3-small");
     expect(spec.ollamaEnabled).toBe(false);
+  });
+
+  it("does not corrupt profile when duplicate connection ID with hyphen is skipped by env var map", async () => {
+    // When two connections share a provider and the second has a hyphen in the ID,
+    // buildConnectionEnvVarMap skips it (OPENAI_API_KEY_OPENAI-2 fails SAFE_ENV_KEY_RE).
+    // The profile for that connection should have hasApiKey=false and apiKeyEnvVar=""
+    // rather than passing undefined through via a non-null assertion.
+    const input = makeValidInput({
+      connections: [
+        { id: "openai_primary", name: "OpenAI Primary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-primary" },
+        { id: "openai-secondary", name: "OpenAI Secondary", provider: "openai", baseUrl: "https://api.openai.com", apiKey: "sk-secondary" },
+      ],
+      assignments: {
+        llm: { connectionId: "openai_primary", model: "gpt-4o" },
+        embeddings: { connectionId: "openai_primary", model: "text-embedding-3-small" },
+      },
+    });
+
+    const result = await performSetup(input, createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const profilesPath = join(configDir, "connections", "profiles.json");
+    const doc = JSON.parse(readFileSync(profilesPath, "utf-8"));
+    expect(doc.profiles).toHaveLength(2);
+
+    // The second connection's env var was skipped — hasApiKey must be false, apiKeyEnvVar must be ""
+    const secondary = doc.profiles.find((p: { id: string }) => p.id === "openai-secondary");
+    expect(secondary).toBeDefined();
+    expect(secondary.auth.mode).toBe("none");
+  });
+});
+
+// ── Helpers: SetupConfig ─────────────────────────────────────────────────
+
+function makeValidConfig(overrides?: Partial<SetupConfig>): SetupConfig {
+  return {
+    version: 1,
+    owner: { name: "Test User", email: "test@example.com" },
+    security: { adminToken: "test-admin-token-12345" },
+    connections: [
+      {
+        id: "openai-main",
+        name: "OpenAI",
+        provider: "openai",
+        baseUrl: "https://api.openai.com",
+        apiKey: "sk-test-key-123",
+      },
+    ],
+    assignments: {
+      llm: { connectionId: "openai-main", model: "gpt-4o" },
+      embeddings: { connectionId: "openai-main", model: "text-embedding-3-small" },
+    },
+    memory: { userId: "test_user" },
+    ...overrides,
+  };
+}
+
+// ── Tests: validateSetupConfig ───────────────────────────────────────────
+
+describe("validateSetupConfig", () => {
+  it("accepts a valid config", () => {
+    const result = validateSetupConfig(makeValidConfig());
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("rejects null input", () => {
+    const result = validateSetupConfig(null);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Config must be a non-null object");
+  });
+
+  it("rejects wrong version", () => {
+    const config = { ...makeValidConfig(), version: 2 };
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("version must be 1"))).toBe(true);
+  });
+
+  it("rejects missing security object", () => {
+    const config = makeValidConfig();
+    (config as Record<string, unknown>).security = null;
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("security object is required"))).toBe(true);
+  });
+
+  it("rejects missing security.adminToken", () => {
+    const config = makeValidConfig();
+    config.security.adminToken = "";
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("security.adminToken"))).toBe(true);
+  });
+
+  it("rejects short security.adminToken", () => {
+    const config = makeValidConfig();
+    config.security.adminToken = "short";
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("at least 8"))).toBe(true);
+  });
+
+  it("rejects empty connections array", () => {
+    const config = makeValidConfig({ connections: [] });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("connections"))).toBe(true);
+  });
+
+  it("rejects duplicate connection IDs", () => {
+    const conn: SetupConnection = {
+      id: "dup",
+      name: "Dup",
+      provider: "openai",
+      baseUrl: "",
+      apiKey: "",
+    };
+    const config = makeValidConfig({ connections: [conn, conn] });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Duplicate"))).toBe(true);
+  });
+
+  it("rejects unsupported provider", () => {
+    const config = makeValidConfig({
+      connections: [
+        { id: "bad", name: "Bad", provider: "unsupported-provider", baseUrl: "", apiKey: "" },
+      ],
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("outside wizard scope"))).toBe(true);
+  });
+
+  it("rejects missing assignments.llm", () => {
+    const config = makeValidConfig();
+    (config.assignments as Record<string, unknown>).llm = null;
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("assignments.llm"))).toBe(true);
+  });
+
+  it("rejects missing assignments.embeddings", () => {
+    const config = makeValidConfig();
+    (config.assignments as Record<string, unknown>).embeddings = null;
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("assignments.embeddings"))).toBe(true);
+  });
+
+  it("rejects assignment referencing non-existent connection", () => {
+    const config = makeValidConfig();
+    config.assignments.llm.connectionId = "does-not-exist";
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("does not match any connection"))).toBe(true);
+  });
+
+  it("requires discord botToken when discord channel is an enabled object", () => {
+    const config = makeValidConfig({
+      channels: {
+        discord: { applicationId: "123456" },
+      },
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("discord.botToken"))).toBe(true);
+  });
+
+  it("does not require discord botToken when enabled is false", () => {
+    const config = makeValidConfig({
+      channels: {
+        discord: { enabled: false },
+      },
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(true);
+  });
+
+  it("requires slack slackBotToken and slackAppToken when slack is an enabled object", () => {
+    const config = makeValidConfig({
+      channels: {
+        slack: { allowedChannels: "#general" },
+      },
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("slack.slackBotToken"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("slack.slackAppToken"))).toBe(true);
+  });
+
+  it("accepts slack with required tokens", () => {
+    const config = makeValidConfig({
+      channels: {
+        slack: { slackBotToken: "xoxb-test", slackAppToken: "xapp-test" },
+      },
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts channels as boolean values", () => {
+    const config = makeValidConfig({
+      channels: { chat: true, api: false },
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects invalid channel value type", () => {
+    const config = makeValidConfig({
+      channels: { chat: "yes" as unknown as boolean },
+    });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("channels.chat"))).toBe(true);
+  });
+
+  it("accepts valid owner fields", () => {
+    const config = makeValidConfig({ owner: { name: "Alice", email: "alice@test.com" } });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects non-string owner.name", () => {
+    const config = makeValidConfig();
+    (config.owner as Record<string, unknown>).name = 42;
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
+  });
+
+  it("accepts valid memory section", () => {
+    const config = makeValidConfig({ memory: { userId: "my_user" } });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects non-string memory.userId", () => {
+    const config = makeValidConfig();
+    (config.memory as Record<string, unknown>).userId = 123;
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("memory.userId"))).toBe(true);
+  });
+
+  it("rejects non-integer embeddingDims", () => {
+    const config = makeValidConfig();
+    config.assignments.embeddings.embeddingDims = 1.5;
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("embeddingDims"))).toBe(true);
+  });
+
+  it("rejects non-boolean/object service value", () => {
+    const config = makeValidConfig({ services: { admin: "yes" } as unknown as Record<string, boolean> });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining("services.admin"));
+  });
+
+  it("rejects service object without enabled boolean", () => {
+    const config = makeValidConfig({ services: { admin: { enabled: "yes" } } as unknown as Record<string, boolean> });
+    const result = validateSetupConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.stringContaining("services.admin.enabled"));
+  });
+});
+
+// ── Tests: normalizeToSetupInput ─────────────────────────────────────────
+
+describe("normalizeToSetupInput", () => {
+  it("maps all fields correctly for a full config", () => {
+    const config = makeValidConfig();
+    const input = normalizeToSetupInput(config);
+
+    expect(input.adminToken).toBe("test-admin-token-12345");
+    expect(input.ownerName).toBe("Test User");
+    expect(input.ownerEmail).toBe("test@example.com");
+    expect(input.memoryUserId).toBe("test_user");
+    expect(input.ollamaEnabled).toBe(false);
+    expect(input.connections).toHaveLength(1);
+    expect(input.connections[0].id).toBe("openai-main");
+    expect(input.assignments.llm.model).toBe("gpt-4o");
+    expect(input.assignments.embeddings.model).toBe("text-embedding-3-small");
+  });
+
+  it("defaults memoryUserId when not provided", () => {
+    const config = makeValidConfig({ memory: undefined });
+    const input = normalizeToSetupInput(config);
+    expect(input.memoryUserId).toBe("default_user");
+  });
+
+  it("maps tts string to voice.tts", () => {
+    const config = makeValidConfig();
+    config.assignments.tts = "kokoro";
+    const input = normalizeToSetupInput(config);
+    expect(input.voice?.tts).toBe("kokoro");
+  });
+
+  it("maps tts object to voice.tts using engine field", () => {
+    const config = makeValidConfig();
+    config.assignments.tts = { engine: "openai-tts", model: "tts-1" };
+    const input = normalizeToSetupInput(config);
+    expect(input.voice?.tts).toBe("openai-tts");
+  });
+
+  it("maps stt string to voice.stt", () => {
+    const config = makeValidConfig();
+    config.assignments.stt = "whisper-local";
+    const input = normalizeToSetupInput(config);
+    expect(input.voice?.stt).toBe("whisper-local");
+  });
+
+  it("maps stt object to voice.stt using engine field", () => {
+    const config = makeValidConfig();
+    config.assignments.stt = { engine: "openai-stt", model: "whisper-1" };
+    const input = normalizeToSetupInput(config);
+    expect(input.voice?.stt).toBe("openai-stt");
+  });
+
+  it("omits voice when neither tts nor stt are set", () => {
+    const config = makeValidConfig();
+    const input = normalizeToSetupInput(config);
+    expect(input.voice).toBeUndefined();
+  });
+
+  it("handles null tts/stt values", () => {
+    const config = makeValidConfig();
+    config.assignments.tts = null;
+    config.assignments.stt = null;
+    const input = normalizeToSetupInput(config);
+    expect(input.voice).toBeUndefined();
+  });
+
+  it("extracts enabled channels from boolean values", () => {
+    const config = makeValidConfig({
+      channels: { chat: true, api: true, discord: false },
+    });
+    const input = normalizeToSetupInput(config);
+    expect(input.channels).toContain("chat");
+    expect(input.channels).toContain("api");
+    expect(input.channels).not.toContain("discord");
+  });
+
+  it("extracts enabled channels from object values", () => {
+    const config = makeValidConfig({
+      channels: {
+        discord: { botToken: "bot-token-123", enabled: true },
+        slack: { slackBotToken: "xoxb-test", slackAppToken: "xapp-test", enabled: false },
+      },
+    });
+    const input = normalizeToSetupInput(config);
+    expect(input.channels).toContain("discord");
+    expect(input.channels).not.toContain("slack");
+  });
+
+  it("defaults channel enabled to true when object has no enabled field", () => {
+    const config = makeValidConfig({
+      channels: {
+        discord: { botToken: "bot-token-123" },
+      },
+    });
+    const input = normalizeToSetupInput(config);
+    expect(input.channels).toContain("discord");
+  });
+
+  it("extracts services from boolean and object values", () => {
+    const config = makeValidConfig({
+      services: {
+        admin: true,
+        ollama: false,
+        openviking: { enabled: true },
+      },
+    });
+    const input = normalizeToSetupInput(config);
+    expect(input.services?.admin).toBe(true);
+    expect(input.services?.ollama).toBe(false);
+    expect(input.ollamaEnabled).toBe(false);
+  });
+
+  it("sets ollamaEnabled from services.ollama", () => {
+    const config = makeValidConfig({
+      services: { ollama: true },
+    });
+    const input = normalizeToSetupInput(config);
+    expect(input.ollamaEnabled).toBe(true);
+  });
+
+  it("omits channels when all channels are disabled", () => {
+    const config = makeValidConfig({
+      channels: { chat: false, api: false, discord: { enabled: false } },
+    });
+    const input = normalizeToSetupInput(config);
+    expect(input.channels).toBeUndefined();
+  });
+
+  it("omits channels when none are configured", () => {
+    const config = makeValidConfig({ channels: undefined });
+    const input = normalizeToSetupInput(config);
+    expect(input.channels).toBeUndefined();
+  });
+
+  it("omits services when none are configured", () => {
+    const config = makeValidConfig({ services: undefined });
+    const input = normalizeToSetupInput(config);
+    expect(input.services).toBeUndefined();
+  });
+});
+
+// ── Tests: buildChannelCredentialEnvVars ──────────────────────────────────
+
+describe("buildChannelCredentialEnvVars", () => {
+  it("maps discord credentials to env vars", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      discord: {
+        botToken: "bot-token-123",
+        applicationId: "app-id-456",
+        allowedGuilds: "guild1,guild2",
+      },
+    });
+    expect(envVars.DISCORD_BOT_TOKEN).toBe("bot-token-123");
+    expect(envVars.DISCORD_APPLICATION_ID).toBe("app-id-456");
+    expect(envVars.DISCORD_ALLOWED_GUILDS).toBe("guild1,guild2");
+  });
+
+  it("maps slack credentials to env vars", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      slack: {
+        slackBotToken: "xoxb-slack-token",
+        slackAppToken: "xapp-slack-token",
+        allowedChannels: "#general,#random",
+      },
+    });
+    expect(envVars.SLACK_BOT_TOKEN).toBe("xoxb-slack-token");
+    expect(envVars.SLACK_APP_TOKEN).toBe("xapp-slack-token");
+    expect(envVars.SLACK_ALLOWED_CHANNELS).toBe("#general,#random");
+  });
+
+  it("converts boolean values to strings", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      discord: {
+        botToken: "bot-token-123",
+        registerCommands: true,
+      },
+    });
+    expect(envVars.DISCORD_REGISTER_COMMANDS).toBe("true");
+  });
+
+  it("skips boolean-only channel entries", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      chat: true,
+      api: false,
+    });
+    expect(Object.keys(envVars)).toHaveLength(0);
+  });
+
+  it("skips unknown channels not in CHANNEL_CREDENTIAL_ENV_MAP", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      "custom-channel": {
+        apiKey: "custom-key",
+        enabled: true,
+      },
+    });
+    expect(Object.keys(envVars)).toHaveLength(0);
+  });
+
+  it("skips undefined and null credential values", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      discord: {
+        botToken: "bot-token-123",
+        applicationId: undefined,
+        allowedGuilds: undefined,
+      },
+    });
+    expect(envVars.DISCORD_BOT_TOKEN).toBe("bot-token-123");
+    expect(envVars.DISCORD_APPLICATION_ID).toBeUndefined();
+    expect(envVars.DISCORD_ALLOWED_GUILDS).toBeUndefined();
+  });
+
+  it("skips empty string credential values", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      discord: {
+        botToken: "bot-token-123",
+        applicationId: "",
+      },
+    });
+    expect(envVars.DISCORD_BOT_TOKEN).toBe("bot-token-123");
+    expect(envVars.DISCORD_APPLICATION_ID).toBeUndefined();
+  });
+
+  it("returns empty object for undefined channels", () => {
+    const envVars = buildChannelCredentialEnvVars(undefined);
+    expect(Object.keys(envVars)).toHaveLength(0);
+  });
+
+  it("handles multiple channels simultaneously", () => {
+    const envVars = buildChannelCredentialEnvVars({
+      discord: { botToken: "discord-bot" },
+      slack: { slackBotToken: "slack-bot", slackAppToken: "slack-app" },
+      chat: true,
+    });
+    expect(envVars.DISCORD_BOT_TOKEN).toBe("discord-bot");
+    expect(envVars.SLACK_BOT_TOKEN).toBe("slack-bot");
+    expect(envVars.SLACK_APP_TOKEN).toBe("slack-app");
+    expect(Object.keys(envVars)).toHaveLength(3);
+  });
+});
+
+// ── Tests: CHANNEL_CREDENTIAL_ENV_MAP ────────────────────────────────────
+
+describe("CHANNEL_CREDENTIAL_ENV_MAP", () => {
+  it("has discord mappings", () => {
+    expect(CHANNEL_CREDENTIAL_ENV_MAP.discord).toBeDefined();
+    expect(CHANNEL_CREDENTIAL_ENV_MAP.discord.botToken).toBe("DISCORD_BOT_TOKEN");
+  });
+
+  it("has slack mappings", () => {
+    expect(CHANNEL_CREDENTIAL_ENV_MAP.slack).toBeDefined();
+    expect(CHANNEL_CREDENTIAL_ENV_MAP.slack.slackBotToken).toBe("SLACK_BOT_TOKEN");
+  });
+});
+
+// ── Tests: performSetupFromConfig ────────────────────────────────────────
+
+describe("performSetupFromConfig", () => {
+  let tempBase: string;
+  let configDir: string;
+  let dataDir: string;
+  let stateDir: string;
+
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    tempBase = mkdtempSync(join(tmpdir(), "openpalm-setup-config-"));
+    configDir = join(tempBase, "config");
+    dataDir = join(tempBase, "data");
+    stateDir = join(tempBase, "state");
+
+    // Create required directory structure
+    for (const dir of [
+      configDir,
+      join(configDir, "channels"),
+      join(configDir, "connections"),
+      join(configDir, "assistant"),
+      join(configDir, "automations"),
+      join(configDir, "stash"),
+      dataDir,
+      join(dataDir, "admin"),
+      join(dataDir, "memory"),
+      join(dataDir, "assistant"),
+      join(dataDir, "guardian"),
+      join(dataDir, "caddy"),
+      join(dataDir, "caddy", "data"),
+      join(dataDir, "caddy", "config"),
+      join(dataDir, "automations"),
+      join(dataDir, "opencode"),
+      stateDir,
+      join(stateDir, "artifacts"),
+      join(stateDir, "audit"),
+      join(stateDir, "artifacts", "channels"),
+      join(stateDir, "automations"),
+      join(stateDir, "opencode"),
+    ]) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    // Create stub stack.env so isSetupComplete doesn't crash
+    writeFileSync(join(stateDir, "artifacts", "stack.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+
+    // Seed a secrets.env file to avoid ensureSecrets() file-not-found
+    writeFileSync(
+      join(configDir, "secrets.env"),
+      [
+        "# OpenPalm Secrets",
+        "export OPENPALM_ADMIN_TOKEN=",
+        "export ADMIN_TOKEN=",
+        "export OPENAI_API_KEY=",
+        "export OPENAI_BASE_URL=",
+        "export ANTHROPIC_API_KEY=",
+        "export GROQ_API_KEY=",
+        "export MISTRAL_API_KEY=",
+        "export GOOGLE_API_KEY=",
+        "export MEMORY_USER_ID=default_user",
+        "export MEMORY_AUTH_TOKEN=abc123",
+        "export OWNER_NAME=",
+        "export OWNER_EMAIL=",
+        "",
+      ].join("\n")
+    );
+
+    // Override env vars for test isolation
+    savedEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
+    savedEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
+    savedEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
+    process.env.OPENPALM_CONFIG_HOME = configDir;
+    process.env.OPENPALM_DATA_HOME = dataDir;
+    process.env.OPENPALM_STATE_HOME = stateDir;
+  });
+
+  afterEach(() => {
+    process.env.OPENPALM_CONFIG_HOME = savedEnv.OPENPALM_CONFIG_HOME;
+    process.env.OPENPALM_DATA_HOME = savedEnv.OPENPALM_DATA_HOME;
+    process.env.OPENPALM_STATE_HOME = savedEnv.OPENPALM_STATE_HOME;
+    rmSync(tempBase, { recursive: true, force: true });
+  });
+
+  it("returns an error for invalid config", async () => {
+    const config = makeValidConfig();
+    (config as Record<string, unknown>).version = 99;
+    const result = await performSetupFromConfig(config, createStubAssetProvider());
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("version must be 1");
+  });
+
+  it("completes setup with a valid config", async () => {
+    const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    // Verify secrets.env was written
+    const secretsContent = readFileSync(join(configDir, "secrets.env"), "utf-8");
+    expect(secretsContent).toContain("test-admin-token-12345");
+  });
+
+  it("writes channel credentials to secrets.env", async () => {
+    const config = makeValidConfig({
+      channels: {
+        discord: {
+          botToken: "discord-bot-token-xyz",
+          applicationId: "discord-app-id-123",
+        },
+      },
+    });
+    const result = await performSetupFromConfig(config, createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const secretsContent = readFileSync(join(configDir, "secrets.env"), "utf-8");
+    expect(secretsContent).toContain("discord-bot-token-xyz");
+    expect(secretsContent).toContain("discord-app-id-123");
+  });
+
+  it("writes memory config with correct models", async () => {
+    const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const memConfigPath = join(dataDir, "memory", "default_config.json");
+    expect(existsSync(memConfigPath)).toBe(true);
+
+    const memConfig = JSON.parse(readFileSync(memConfigPath, "utf-8"));
+    expect(memConfig.mem0.llm.config.model).toBe("gpt-4o");
+    expect(memConfig.mem0.embedder.config.model).toBe("text-embedding-3-small");
+  });
+
+  it("creates staged artifacts", async () => {
+    const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
+    expect(result.ok).toBe(true);
+
+    const stagedCompose = join(stateDir, "artifacts", "docker-compose.yml");
+    expect(existsSync(stagedCompose)).toBe(true);
   });
 });

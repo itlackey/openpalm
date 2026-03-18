@@ -8,10 +8,10 @@
  * Uses Bun.serve() with a fetch handler for routing.
  */
 import {
-  type SetupInput,
+  type SetupConfig,
   type SetupResult,
   type CoreAssetProvider,
-  performSetup,
+  performSetupFromConfig,
   detectProviders,
   isSetupComplete,
   fetchProviderModels,
@@ -213,8 +213,13 @@ export function createSetupServer(
         return errorResponse(400, "invalid_json", "Request body must be valid JSON");
       }
 
-      const input = body as SetupInput;
-      const result = await performSetup(input, assetProvider);
+      const config = body as SetupConfig;
+      let result: SetupResult;
+      try {
+        result = await performSetupFromConfig(config, assetProvider);
+      } catch (err) {
+        return errorResponse(500, "setup_failed", String(err));
+      }
 
       if (result.ok) {
         state.setupComplete = true;

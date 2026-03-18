@@ -16,16 +16,13 @@ import {
   errorResponse,
   getRequestId,
   requireAdmin,
-  requireAdminOrSetupToken,
   getActor,
   getCallerType,
   parseJsonBody,
   parseCanonicalConnectionProfile,
   parseCapabilityAssignments,
 } from "./helpers.js";
-import { getState, resetState } from "./state.js";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { resetState } from "./state.js";
 
 // ── Mock RequestEvent ───────────────────────────────────────────────────
 
@@ -179,53 +176,21 @@ describe("requireAdmin", () => {
   });
 });
 
-describe('requireAdminOrSetupToken', () => {
-  test('accepts setup token before setup completion', () => {
-    resetState('final-admin-token');
-    const { setupToken, stateDir, configDir } = getState();
-    // Remove stack.env so OPENPALM_SETUP_COMPLETE marker is absent
-    const stackEnvPath = join(stateDir, 'artifacts', 'stack.env');
-    if (existsSync(stackEnvPath)) {
-      rmSync(stackEnvPath, { force: true });
-    }
-    // Remove secrets.env so the ADMIN_TOKEN fallback doesn't trigger
-    const secretsPath = join(configDir, 'secrets.env');
-    const savedSecrets = existsSync(secretsPath) ? readFileSync(secretsPath, 'utf8') : null;
-    if (existsSync(secretsPath)) {
-      rmSync(secretsPath, { force: true });
-    }
-    try {
-      const event = makeEvent({ 'x-admin-token': setupToken });
-      const result = requireAdminOrSetupToken(event as never, 'req-setup');
-      expect(result).toBeNull();
-    } finally {
-      // Restore secrets.env
-      if (savedSecrets !== null) {
-        writeFileSync(secretsPath, savedSecrets);
-      }
-    }
-  });
-
-  test('rejects setup token after setup completion marker exists', async () => {
-    resetState('final-admin-token');
-    const { stateDir } = getState();
-    const artifactsDir = join(stateDir, 'artifacts');
-    mkdirSync(artifactsDir, { recursive: true });
-    writeFileSync(join(artifactsDir, 'stack.env'), 'OPENPALM_SETUP_COMPLETE=true\n');
-
-    const event = makeEvent({ 'x-admin-token': 'test-setup-token' });
-    const result = requireAdminOrSetupToken(event as never, 'req-after');
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe(401);
-  });
-});
-
 // ── getActor ────────────────────────────────────────────────────────────
 
 describe("getActor", () => {
-  test("returns 'admin' when x-admin-token is present", () => {
-    const event = makeEvent({ "x-admin-token": "any-token" });
+  beforeEach(() => {
+    resetState("test-admin-token-12345");
+  });
+
+  test("returns 'admin' when x-admin-token matches configured token", () => {
+    const event = makeEvent({ "x-admin-token": "test-admin-token-12345" });
     expect(getActor(event as never)).toBe("admin");
+  });
+
+  test("returns 'unauthenticated' when x-admin-token is wrong", () => {
+    const event = makeEvent({ "x-admin-token": "wrong-token" });
+    expect(getActor(event as never)).toBe("unauthenticated");
   });
 
   test("returns 'unauthenticated' when no token", () => {
@@ -234,7 +199,7 @@ describe("getActor", () => {
   });
 
   test("actor is derived from auth state, not caller-controlled (security)", () => {
-    // Even if x-requested-by claims "admin", actor is based on token presence
+    // Even if x-requested-by claims "admin", actor is based on token verification
     const event = makeEvent({ "x-requested-by": "admin" });
     expect(getActor(event as never)).toBe("unauthenticated");
   });
