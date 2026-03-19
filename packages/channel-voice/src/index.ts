@@ -11,10 +11,10 @@
  *   GET  /*             — Static file serving from web/ directory
  */
 
-import { extname, join, resolve } from 'node:path'
+import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { BaseChannel, type HandleResult, createLogger } from '@openpalm/channels-sdk'
 import type { GuardianSuccessResponse } from '@openpalm/channels-sdk'
-import { config } from './config'
+import { config, hasConfiguredProvider } from './config'
 import { transcribe, synthesize } from './providers'
 
 // ── MIME types for static file serving ──────────────────────────────────
@@ -28,6 +28,23 @@ const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml; charset=utf-8',
   '.ico': 'image/x-icon',
+}
+
+function getSessionKey(req: Request): string | undefined {
+  const raw = req.headers.get('x-openpalm-session-key')?.trim()
+  if (!raw) return undefined
+  if (raw.length > 256) return raw.slice(0, 256)
+  return raw
+}
+
+function getUserId(req: Request, sessionKey?: string): string {
+  const forwardedFor = req.headers.get('x-forwarded-for')
+  const forwardedIp = forwardedFor?.split(',')[0]?.trim()
+  const realIp = req.headers.get('x-real-ip')?.trim()
+  const clientIp = forwardedIp || realIp
+  if (clientIp) return clientIp
+  if (sessionKey) return `voice:${sessionKey}`
+  return `voice:${crypto.randomUUID()}`
 }
 
 // ── Channel ─────────────────────────────────────────────────────────────
@@ -46,8 +63,8 @@ export default class VoiceChannel extends BaseChannel {
       return this.json(200, {
         ok: true,
         service: 'channel-voice',
-        stt: { model: config.stt.model, configured: !!config.stt.apiKey },
-        tts: { model: config.tts.model, voice: config.tts.voice, configured: !!config.tts.apiKey },
+        stt: { model: config.stt.model, configured: hasConfiguredProvider(config.stt.baseUrl, config.stt.apiKey) },
+        tts: { model: config.tts.model, voice: config.tts.voice, configured: hasConfiguredProvider(config.tts.baseUrl, config.tts.apiKey) },
       })
     }
 
@@ -81,16 +98,15 @@ export default class VoiceChannel extends BaseChannel {
       return this.json(413, { error: 'Audio too large (max 25MB)' })
     }
 
-    const userId = req.headers.get('x-forwarded-for')
-      || req.headers.get('x-real-ip')
-      || 'voice-user'
+    const sessionKey = getSessionKey(req)
+    const userId = getUserId(req, sessionKey)
 
     // Step 1: STT — transcribe audio, or use provided text (browser STT fallback)
     let transcript: string
     if (typeof textField === 'string' && textField.trim()) {
       transcript = textField.trim()
     } else if (audioFile instanceof File) {
-      if (!config.stt.apiKey) {
+      if (!hasConfiguredProvider(config.stt.baseUrl, config.stt.apiKey)) {
         return this.json(400, { error: 'STT not configured', code: 'stt_not_configured' })
       }
       try {
@@ -110,7 +126,11 @@ export default class VoiceChannel extends BaseChannel {
     // Step 2: Forward transcript to guardian via channels SDK
     let answer: string
     try {
-      const guardianResp = await this.forward({ userId, text: transcript })
+      const guardianResp = await this.forward({
+        userId,
+        text: transcript,
+        metadata: sessionKey ? { sessionKey } : undefined,
+      })
 
       if (!guardianResp.ok) {
         this.log('error', 'Guardian error', { status: guardianResp.status })
@@ -118,7 +138,12 @@ export default class VoiceChannel extends BaseChannel {
       }
 
       const data = (await guardianResp.json()) as GuardianSuccessResponse
-      answer = data.answer ?? ''
+      if (typeof data.answer !== 'string') {
+        this.log('error', 'Guardian returned invalid response shape')
+        return this.json(502, { error: 'Guardian returned an invalid response', code: 'guardian_bad_response' })
+      }
+
+      answer = data.answer
     } catch (err) {
       this.log('error', 'Guardian communication error', { error: (err as Error).message })
       return this.json(502, { error: 'Guardian unavailable' })
@@ -138,9 +163,10 @@ export default class VoiceChannel extends BaseChannel {
   private async serveStatic(_req: Request, url: URL): Promise<Response> {
     const pathname = url.pathname === '/' ? '/index.html' : url.pathname
     const filePath = resolve(join(config.server.webRoot, pathname.replace(/^\/+/, '')))
+    const relativePath = relative(config.server.webRoot, filePath)
 
     // Prevent path traversal
-    if (!filePath.startsWith(config.server.webRoot)) {
+    if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
       return new Response('Forbidden', { status: 403 })
     }
 
@@ -179,8 +205,8 @@ export default class VoiceChannel extends BaseChannel {
 if (import.meta.main) {
   const log = createLogger('channel-voice')
   log.info('config', {
-    stt: config.stt.apiKey ? `${config.stt.baseUrl} (${config.stt.model})` : 'not configured — browser fallback',
-    tts: config.tts.apiKey ? `${config.tts.baseUrl} (${config.tts.model}, ${config.tts.voice})` : 'not configured — browser fallback',
+    stt: hasConfiguredProvider(config.stt.baseUrl, config.stt.apiKey) ? `${config.stt.baseUrl} (${config.stt.model})` : 'not configured — browser fallback',
+    tts: hasConfiguredProvider(config.tts.baseUrl, config.tts.apiKey) ? `${config.tts.baseUrl} (${config.tts.model}, ${config.tts.voice})` : 'not configured — browser fallback',
   })
   const channel = new VoiceChannel()
   channel.start()

@@ -35,6 +35,10 @@ import type { ControlPlaneState, CapabilityAssignments } from "./types.js";
 
 const logger = createLogger("setup");
 
+function normalizeOpenAiCompatibleBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
 /** Apply Ollama in-stack URL override to connections when Ollama is enabled. */
 function resolveOllamaUrls(connections: SetupConnection[], ollamaEnabled: boolean): SetupConnection[] {
   if (!ollamaEnabled) return connections;
@@ -410,7 +414,7 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
   if (input.voice) {
     // Find an OpenAI-compatible connection for cloud engines
     const openaiConn = effectiveConnections.find((c) => c.provider === "openai");
-    const openaiBaseUrl = (openaiConn?.baseUrl || "https://api.openai.com").replace(/\/+$/, "");
+    const openaiBaseUrl = normalizeOpenAiCompatibleBaseUrl(openaiConn?.baseUrl || "https://api.openai.com");
     const openaiKey = openaiConn?.apiKey || "";
 
     const { tts, stt } = input.voice;

@@ -24,6 +24,11 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+function buildAuthHeaders(apiKey: string): HeadersInit | undefined {
+  if (!apiKey) return undefined
+  return { Authorization: `Bearer ${apiKey}` }
+}
+
 // ── STT ─────────────────────────────────────────────────────────────────
 
 /**
@@ -39,7 +44,7 @@ export async function transcribe(audioFile: File): Promise<string> {
     `${config.stt.baseUrl}/v1/audio/transcriptions`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${config.stt.apiKey}` },
+      headers: buildAuthHeaders(config.stt.apiKey),
       body: form,
     },
     config.stt.timeoutMs,
@@ -62,7 +67,7 @@ export async function transcribe(audioFile: File): Promise<string> {
  * TTS failure is non-fatal — the client still gets the text response.
  */
 export async function synthesize(text: string): Promise<string | null> {
-  if (!text.trim() || !config.tts.apiKey) return null
+  if (!text.trim()) return null
 
   let res: Response
   try {
@@ -71,7 +76,7 @@ export async function synthesize(text: string): Promise<string | null> {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${config.tts.apiKey}`,
+          ...buildAuthHeaders(config.tts.apiKey),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

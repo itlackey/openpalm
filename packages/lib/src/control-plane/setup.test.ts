@@ -216,6 +216,41 @@ describe("buildSecretsFromSetup", () => {
     expect(secrets.OPENAI_BASE_URL).toBe("https://api.openai.com/v1");
   });
 
+  it("normalizes OpenAI-compatible base URLs before writing voice env vars", () => {
+    const secrets = buildSecretsFromSetup(makeValidInput({
+      connections: [
+        {
+          id: "openai-main",
+          name: "OpenAI Compatible",
+          provider: "openai",
+          baseUrl: "https://example.invalid/custom/v1/",
+          apiKey: "sk-test-key-123",
+        },
+      ],
+      voice: {
+        stt: "openai-stt",
+        tts: "openai-tts",
+      },
+    }));
+
+    expect(secrets.STT_BASE_URL).toBe("https://example.invalid/custom");
+    expect(secrets.TTS_BASE_URL).toBe("https://example.invalid/custom");
+  });
+
+  it("writes keyless local voice provider URLs without requiring API keys", () => {
+    const secrets = buildSecretsFromSetup(makeValidInput({
+      voice: {
+        stt: "whisper-local",
+        tts: "kokoro",
+      },
+    }));
+
+    expect(secrets.STT_BASE_URL).toBe("http://whisper:9000");
+    expect(secrets.STT_API_KEY).toBeUndefined();
+    expect(secrets.TTS_BASE_URL).toBe("http://kokoro:8880");
+    expect(secrets.TTS_API_KEY).toBeUndefined();
+  });
+
   it("sets MEMORY_USER_ID", () => {
     const secrets = buildSecretsFromSetup(makeValidInput());
     expect(secrets.MEMORY_USER_ID).toBe("test_user");

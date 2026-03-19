@@ -37,7 +37,7 @@
     "channel:api:dev": "bun run packages/channel-api/src/index.ts",
     "channel:discord:dev": "bun run packages/channel-discord/src/index.ts",
     "channel:slack:dev": "bun run packages/channel-slack/src/index.ts",
-    "channel:voice:dev": "export PORT=8096 && bun run --cwd packages/channel-voice dev",
+    "channel:voice:dev": "PORT=8096 bun run --cwd packages/channel-voice dev",
     "cli:test": "bun test --cwd packages/cli",
     "wizard:dev": "bun run packages/cli/src/setup-wizard/standalone.ts",
     "wizard:test:e2e": "cd packages/cli && npx playwright test",

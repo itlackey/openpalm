@@ -11,8 +11,10 @@ interface Config {
   tts: { baseUrl: string; apiKey: string; model: string; voice: string; timeoutMs: number }
 }
 
+export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com'
+
 function env(key: string, fallback = ''): string {
-  return Bun.env[key] || fallback
+  return Bun.env[key] ?? fallback
 }
 
 function envInt(key: string, fallback: number): number {
@@ -22,13 +24,22 @@ function envInt(key: string, fallback: number): number {
   return Number.isNaN(n) ? fallback : n
 }
 
+function normalizeApiBaseUrl(value: string): string {
+  return value.replace(/\/+$/, '').replace(/\/v1$/i, '')
+}
+
 // Resolve API key: check dedicated key first, then shared OPENAI_API_KEY.
-// Only use OPENAI_API_KEY if the dedicated key is truly unset (not present in env at all),
-// to avoid shell-inherited vars overriding .env values unexpectedly.
+// If the dedicated key is present, even as an empty string, respect it so
+// callers can intentionally disable the shared fallback for keyless providers.
 function resolveApiKey(dedicatedKey: string): string {
   const dedicated = Bun.env[dedicatedKey]
-  if (dedicated !== undefined && dedicated !== '') return dedicated
-  return Bun.env.OPENAI_API_KEY || ''
+  if (dedicated !== undefined) return dedicated
+  return Bun.env.OPENAI_API_KEY ?? ''
+}
+
+export function hasConfiguredProvider(baseUrl: string, apiKey: string): boolean {
+  if (!baseUrl) return false
+  return apiKey !== '' || baseUrl !== DEFAULT_OPENAI_BASE_URL
 }
 
 export const config: Config = {
@@ -36,13 +47,13 @@ export const config: Config = {
     webRoot: resolve(env('WEB_ROOT', new URL('../web', import.meta.url).pathname)),
   },
   stt: {
-    baseUrl: env('STT_BASE_URL', 'https://api.openai.com').replace(/\/$/, ''),
+    baseUrl: normalizeApiBaseUrl(env('STT_BASE_URL', DEFAULT_OPENAI_BASE_URL)),
     apiKey: resolveApiKey('STT_API_KEY'),
     model: env('STT_MODEL', 'whisper-1'),
     timeoutMs: envInt('STT_TIMEOUT_MS', 30_000),
   },
   tts: {
-    baseUrl: env('TTS_BASE_URL', 'https://api.openai.com').replace(/\/$/, ''),
+    baseUrl: normalizeApiBaseUrl(env('TTS_BASE_URL', DEFAULT_OPENAI_BASE_URL)),
     apiKey: resolveApiKey('TTS_API_KEY'),
     model: env('TTS_MODEL', 'tts-1'),
     voice: env('TTS_VOICE', 'alloy'),

@@ -77,6 +77,22 @@
     announcer.textContent = msg
   }
 
+  function getClientId() {
+    try {
+      var key = 'voice-client-id'
+      var existing = localStorage.getItem(key)
+      if (existing) return existing
+
+      var created = (window.crypto && typeof window.crypto.randomUUID === 'function')
+        ? window.crypto.randomUUID()
+        : ('voice-' + Date.now() + '-' + Math.random().toString(16).slice(2))
+      localStorage.setItem(key, created)
+      return created
+    } catch (_) {
+      return 'voice-anonymous'
+    }
+  }
+
   function pickMimeType() {
     var types = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
     for (var i = 0; i < types.length; i++) {
@@ -293,6 +309,9 @@
       addLog('TX', 'sending...')
       var response = await fetch('/api/pipeline', {
         method: 'POST',
+        headers: {
+          'x-openpalm-session-key': getClientId()
+        },
         body: form
       })
 
@@ -333,8 +352,12 @@
         try {
           await playBase64Audio(data.audio)
         } catch (err) {
-          addLog('SYS', 'Audio decode failed, using browser voice')
-          if (data.response) await speakWithBrowser(data.response)
+          if (caps.browserTts && data.response) {
+            addLog('SYS', 'Audio decode failed, using browser voice')
+            await speakWithBrowser(data.response)
+          } else {
+            addLog('ERR', 'Audio playback failed')
+          }
         }
       } else if (data.response && caps.browserTts) {
         await speakWithBrowser(data.response)
@@ -423,7 +446,7 @@
         addLog('ERR', 'No speech recognition available')
       }
     }).catch(function () {
-      addLog('SYS', 'Server unreachable, using browser APIs')
+      addLog('SYS', 'Server capabilities unavailable; browser fallbacks only')
       caps.serverStt = false
       caps.serverTts = false
     })
