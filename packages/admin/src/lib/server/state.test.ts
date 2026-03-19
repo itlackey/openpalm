@@ -15,9 +15,12 @@ describe("getState", () => {
     const state = resetState("test-token");
     expect(state).toBeDefined();
     expect(state.adminToken).toBe("test-token");
-    expect(state.stateDir).toBeDefined();
+    expect(state.homeDir).toBeDefined();
     expect(state.configDir).toBeDefined();
+    expect(state.vaultDir).toBeDefined();
     expect(state.dataDir).toBeDefined();
+    expect(state.logsDir).toBeDefined();
+    expect(state.cacheDir).toBeDefined();
     expect(state.services).toBeDefined();
     expect(state.artifacts).toBeDefined();
     expect(state.audit).toEqual([]);

@@ -130,7 +130,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(result.status, result.status === 409 ? 'conflict' : 'bad_request', result.message, {}, requestId);
   }
   if (parsed.secretPatch) {
-    patchSecretsEnvFile(state.configDir, parsed.secretPatch);
+    patchSecretsEnvFile(state.vaultDir, parsed.secretPatch);
   }
 
   appendAudit(state, actor, 'connections.profiles.create', { id: result.value.id }, true, requestId, callerType);
@@ -160,7 +160,7 @@ export const PUT: RequestHandler = async (event) => {
     return errorResponse(result.status, result.status === 404 ? 'not_found' : 'bad_request', result.message, {}, requestId);
   }
   if (parsed.secretPatch) {
-    patchSecretsEnvFile(state.configDir, parsed.secretPatch);
+    patchSecretsEnvFile(state.vaultDir, parsed.secretPatch);
   }
 
   appendAudit(state, actor, 'connections.profiles.update', { id: result.value.id }, true, requestId, callerType);

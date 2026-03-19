@@ -1,11 +1,14 @@
 /**
  * Secrets and connection key management for the OpenPalm control plane.
+ *
+ * In v0.10.0, user secrets live in vault/user.env and system secrets
+ * in vault/system.env. This module manages the user-editable vault file.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
-import { resolveConfigHome } from "./paths.js";
+import { resolveVaultDir, resolveConfigDir } from "./home.js";
 
 const OPENCODE_STARTER_CONFIG = JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2) + "\n";
 
@@ -52,56 +55,63 @@ export const PLAIN_CONFIG_KEYS = new Set([
 
 // ── Secrets Management ──────────────────────────────────────────────────
 
+/**
+ * Ensure the vault/user.env file exists with defaults.
+ */
 export function ensureSecrets(state: ControlPlaneState): void {
-  mkdirSync(state.configDir, { recursive: true });
-  const secretsPath = `${state.configDir}/secrets.env`;
-  if (existsSync(secretsPath)) {
+  mkdirSync(state.vaultDir, { recursive: true });
+  const userEnvPath = `${state.vaultDir}/user.env`;
+  if (existsSync(userEnvPath)) {
     return;
   }
 
-  const secretLines: string[] = [];
-  secretLines.push("# OpenPalm Secrets");
-  secretLines.push("# Edit this file to update admin token and LLM keys.");
-  secretLines.push("# System-managed secrets (database + channel HMAC) do not belong here.");
-  secretLines.push("");
-  secretLines.push("export OPENPALM_ADMIN_TOKEN=");
-  secretLines.push("export ADMIN_TOKEN=");
-  secretLines.push("");
-  secretLines.push("# LLM provider keys");
-  secretLines.push("export OPENAI_API_KEY=");
-  secretLines.push("export OPENAI_BASE_URL=");
-  secretLines.push("export ANTHROPIC_API_KEY=");
-  secretLines.push("export GROQ_API_KEY=");
-  secretLines.push("export MISTRAL_API_KEY=");
-  secretLines.push("export GOOGLE_API_KEY=");
-  secretLines.push("");
-  secretLines.push("# Memory");
-  secretLines.push(`export MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`);
-  secretLines.push("");
-  secretLines.push("# Service auth tokens (auto-generated)");
-  secretLines.push(`export MEMORY_AUTH_TOKEN=${randomBytes(32).toString("hex")}`);
-  secretLines.push("");
-  secretLines.push("# Owner");
-  secretLines.push(`export OWNER_NAME=${process.env.OWNER_NAME ?? ""}`);
-  secretLines.push(`export OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`);
-  writeFileSync(secretsPath, secretLines.join("\n") + "\n");
+  const lines: string[] = [
+    "# OpenPalm — User Configuration",
+    "# Edit these values directly. The assistant picks up changes within",
+    "# seconds via file watcher — no restart needed.",
+    "",
+    "# LLM provider keys",
+    "OPENAI_API_KEY=",
+    "OPENAI_BASE_URL=",
+    "ANTHROPIC_API_KEY=",
+    "GROQ_API_KEY=",
+    "MISTRAL_API_KEY=",
+    "GOOGLE_API_KEY=",
+    "",
+    "# System LLM",
+    "SYSTEM_LLM_PROVIDER=",
+    "SYSTEM_LLM_BASE_URL=",
+    "SYSTEM_LLM_MODEL=",
+    "",
+    "# Embedding",
+    "EMBEDDING_MODEL=",
+    "EMBEDDING_DIMS=",
+    "",
+    "# Memory",
+    `MEMORY_USER_ID=${process.env.MEMORY_USER_ID ?? process.env.OPENMEMORY_USER_ID ?? "default_user"}`,
+    "",
+    "# Owner",
+    `OWNER_NAME=${process.env.OWNER_NAME ?? ""}`,
+    `OWNER_EMAIL=${process.env.OWNER_EMAIL ?? ""}`,
+  ];
+  writeFileSync(userEnvPath, lines.join("\n") + "\n");
 }
 
 export function updateSecretsEnv(
   state: ControlPlaneState,
   updates: Record<string, string>
 ): void {
-  const secretsPath = `${state.configDir}/secrets.env`;
-  if (!existsSync(secretsPath)) {
-    throw new Error("secrets.env does not exist — run setup first");
+  const userEnvPath = `${state.vaultDir}/user.env`;
+  if (!existsSync(userEnvPath)) {
+    throw new Error("vault/user.env does not exist — run setup first");
   }
 
-  const raw = readFileSync(secretsPath, "utf-8");
-  writeFileSync(secretsPath, mergeEnvContent(raw, updates, { uncomment: true }));
+  const raw = readFileSync(userEnvPath, "utf-8");
+  writeFileSync(userEnvPath, mergeEnvContent(raw, updates, { uncomment: true }));
 }
 
-export function readSecretsEnvFile(configDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${configDir}/secrets.env`);
+export function readSecretsEnvFile(vaultDir: string): Record<string, string> {
+  const parsed = parseEnvFile(`${vaultDir}/user.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (ALLOWED_CONNECTION_KEYS.has(key)) result[key] = value;
@@ -110,7 +120,7 @@ export function readSecretsEnvFile(configDir: string): Record<string, string> {
 }
 
 export function patchSecretsEnvFile(
-  configDir: string,
+  vaultDir: string,
   patches: Record<string, string>
 ): void {
   const allowed: Record<string, string> = {};
@@ -121,13 +131,13 @@ export function patchSecretsEnvFile(
   }
   if (Object.keys(allowed).length === 0) return;
 
-  const secretsPath = `${configDir}/secrets.env`;
-  mkdirSync(configDir, { recursive: true });
+  const userEnvPath = `${vaultDir}/user.env`;
+  mkdirSync(vaultDir, { recursive: true });
 
   let existingContent = "";
   try {
-    if (existsSync(secretsPath)) {
-      existingContent = readFileSync(secretsPath, "utf-8");
+    if (existsSync(userEnvPath)) {
+      existingContent = readFileSync(userEnvPath, "utf-8");
     }
   } catch {
     // start fresh
@@ -135,7 +145,7 @@ export function patchSecretsEnvFile(
 
   let result = mergeEnvContent(existingContent, allowed);
   if (!result.endsWith("\n")) result += "\n";
-  writeFileSync(secretsPath, result);
+  writeFileSync(userEnvPath, result);
 }
 
 // ── Connection Value Masking ────────────────────────────────────────────
@@ -149,9 +159,13 @@ export function maskConnectionValue(key: string, value: string): string {
 
 // ── Secrets Loading ────────────────────────────────────────────────────
 
-export function loadSecretsEnvFile(configDir?: string): Record<string, string> {
-  const base = configDir ?? resolveConfigHome();
-  const parsed = parseEnvFile(`${base}/secrets.env`);
+/**
+ * Load secrets from vault/user.env.
+ * Accepts vaultDir for explicit path, or resolves from home.ts.
+ */
+export function loadSecretsEnvFile(vaultDir?: string): Record<string, string> {
+  const base = vaultDir ?? resolveVaultDir();
+  const parsed = parseEnvFile(`${base}/user.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (/^[A-Z0-9_]+$/.test(key)) result[key] = value;
@@ -162,8 +176,8 @@ export function loadSecretsEnvFile(configDir?: string): Record<string, string> {
 // ── OpenCode Config ────────────────────────────────────────────────────
 
 export function ensureOpenCodeConfig(): void {
-  const configHome = resolveConfigHome();
-  const opencodePath = `${configHome}/assistant`;
+  const configDir = resolveConfigDir();
+  const opencodePath = `${configDir}/assistant`;
   mkdirSync(opencodePath, { recursive: true });
 
   const configFile = `${opencodePath}/opencode.json`;

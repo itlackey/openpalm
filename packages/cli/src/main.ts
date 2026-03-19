@@ -26,6 +26,7 @@ export const mainCommand = defineCommand({
     service: () => import('./commands/service.ts').then((m) => m.default),
     validate: () => import('./commands/validate.ts').then((m) => m.default),
     scan: () => import('./commands/scan.ts').then((m) => m.default),
+    rollback: () => import('./commands/rollback.ts').then((m) => m.default),
   },
 });
 

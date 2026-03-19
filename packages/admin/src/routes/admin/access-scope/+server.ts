@@ -73,7 +73,7 @@ export const POST: RequestHandler = async (event) => {
   // Reload Caddy to apply new access scope
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
-    await caddyReload(state.stateDir, { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    await caddyReload(state.configDir, { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
   }
 
   appendAudit(state, actor, "accessScope.set", { scope }, true, requestId, callerType);

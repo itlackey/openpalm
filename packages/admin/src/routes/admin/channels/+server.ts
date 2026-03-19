@@ -31,10 +31,10 @@ export const GET: RequestHandler = async (event) => {
   const callerType = getCallerType(event);
 
   // Report staged channels (source channels are inert until apply)
-  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
+  const stagedYmls = discoverStagedChannelYmls(state.configDir);
 
   // Check which channels have staged caddy routes (in public/ or lan/ subdirs)
-  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
+  const stagedChannelsDir = `${state.dataDir}/caddy/channels`;
   const routedChannels = new Set<string>();
   for (const sub of ["public", "lan"]) {
     const dir = `${stagedChannelsDir}/${sub}`;

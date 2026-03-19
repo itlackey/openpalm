@@ -315,27 +315,32 @@ describe("buildConnectionEnvVarMap", () => {
 // ── Tests: performSetup ──────────────────────────────────────────────────
 
 describe("performSetup", () => {
-  let tempBase: string;
+  let homeDir: string;
   let configDir: string;
+  let vaultDir: string;
   let dataDir: string;
-  let stateDir: string;
+  let logsDir: string;
 
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    tempBase = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
-    configDir = join(tempBase, "config");
-    dataDir = join(tempBase, "data");
-    stateDir = join(tempBase, "state");
+    homeDir = mkdtempSync(join(tmpdir(), "openpalm-setup-"));
+    configDir = join(homeDir, "config");
+    vaultDir = join(homeDir, "vault");
+    dataDir = join(homeDir, "data");
+    logsDir = join(homeDir, "logs");
 
     // Create required directory structure
     for (const dir of [
+      homeDir,
       configDir,
+      join(configDir, "components"),
+      join(configDir, "automations"),
       join(configDir, "channels"),
       join(configDir, "connections"),
       join(configDir, "assistant"),
-      join(configDir, "automations"),
       join(configDir, "stash"),
+      vaultDir,
       dataDir,
       join(dataDir, "admin"),
       join(dataDir, "memory"),
@@ -344,24 +349,21 @@ describe("performSetup", () => {
       join(dataDir, "caddy"),
       join(dataDir, "caddy", "data"),
       join(dataDir, "caddy", "config"),
+      join(dataDir, "caddy", "channels"),
       join(dataDir, "automations"),
       join(dataDir, "opencode"),
-      stateDir,
-      join(stateDir, "artifacts"),
-      join(stateDir, "audit"),
-      join(stateDir, "artifacts", "channels"),
-      join(stateDir, "automations"),
-      join(stateDir, "opencode"),
+      logsDir,
+      join(logsDir, "opencode"),
     ]) {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Create stub stack.env so isSetupComplete doesn't crash
-    writeFileSync(join(stateDir, "artifacts", "stack.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+    // Create stub system.env so isSetupComplete doesn't crash
+    writeFileSync(join(vaultDir, "system.env"), "OPENPALM_SETUP_COMPLETE=false\n");
 
-    // Seed a secrets.env file to avoid ensureSecrets() file-not-found
+    // Seed a user.env file to avoid ensureSecrets() file-not-found
     writeFileSync(
-      join(configDir, "secrets.env"),
+      join(vaultDir, "user.env"),
       [
         "# OpenPalm Secrets",
         "export OPENPALM_ADMIN_TOKEN=",
@@ -381,19 +383,13 @@ describe("performSetup", () => {
     );
 
     // Override env vars for test isolation
-    savedEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
-    savedEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    savedEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
-    process.env.OPENPALM_CONFIG_HOME = configDir;
-    process.env.OPENPALM_DATA_HOME = dataDir;
-    process.env.OPENPALM_STATE_HOME = stateDir;
+    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = homeDir;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_CONFIG_HOME = savedEnv.OPENPALM_CONFIG_HOME;
-    process.env.OPENPALM_DATA_HOME = savedEnv.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_STATE_HOME = savedEnv.OPENPALM_STATE_HOME;
-    rmSync(tempBase, { recursive: true, force: true });
+    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
+    rmSync(homeDir, { recursive: true, force: true });
   });
 
   it("returns an error for invalid input", async () => {
@@ -405,11 +401,11 @@ describe("performSetup", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("writes secrets.env with the admin token", async () => {
+  it("writes user.env with the admin token", async () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(configDir, "secrets.env"), "utf-8");
+    const secretsContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
@@ -444,8 +440,8 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidInput(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // applyInstall should have staged the compose file
-    const stagedCompose = join(stateDir, "artifacts", "docker-compose.yml");
+    // applyInstall should have written the compose file
+    const stagedCompose = join(configDir, "components", "core.yml");
     expect(existsSync(stagedCompose)).toBe(true);
   });
 
@@ -1058,27 +1054,32 @@ describe("CHANNEL_CREDENTIAL_ENV_MAP", () => {
 // ── Tests: performSetupFromConfig ────────────────────────────────────────
 
 describe("performSetupFromConfig", () => {
-  let tempBase: string;
+  let homeDir: string;
   let configDir: string;
+  let vaultDir: string;
   let dataDir: string;
-  let stateDir: string;
+  let logsDir: string;
 
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    tempBase = mkdtempSync(join(tmpdir(), "openpalm-setup-config-"));
-    configDir = join(tempBase, "config");
-    dataDir = join(tempBase, "data");
-    stateDir = join(tempBase, "state");
+    homeDir = mkdtempSync(join(tmpdir(), "openpalm-setup-config-"));
+    configDir = join(homeDir, "config");
+    vaultDir = join(homeDir, "vault");
+    dataDir = join(homeDir, "data");
+    logsDir = join(homeDir, "logs");
 
     // Create required directory structure
     for (const dir of [
+      homeDir,
       configDir,
+      join(configDir, "components"),
+      join(configDir, "automations"),
       join(configDir, "channels"),
       join(configDir, "connections"),
       join(configDir, "assistant"),
-      join(configDir, "automations"),
       join(configDir, "stash"),
+      vaultDir,
       dataDir,
       join(dataDir, "admin"),
       join(dataDir, "memory"),
@@ -1087,24 +1088,21 @@ describe("performSetupFromConfig", () => {
       join(dataDir, "caddy"),
       join(dataDir, "caddy", "data"),
       join(dataDir, "caddy", "config"),
+      join(dataDir, "caddy", "channels"),
       join(dataDir, "automations"),
       join(dataDir, "opencode"),
-      stateDir,
-      join(stateDir, "artifacts"),
-      join(stateDir, "audit"),
-      join(stateDir, "artifacts", "channels"),
-      join(stateDir, "automations"),
-      join(stateDir, "opencode"),
+      logsDir,
+      join(logsDir, "opencode"),
     ]) {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Create stub stack.env so isSetupComplete doesn't crash
-    writeFileSync(join(stateDir, "artifacts", "stack.env"), "OPENPALM_SETUP_COMPLETE=false\n");
+    // Create stub system.env so isSetupComplete doesn't crash
+    writeFileSync(join(vaultDir, "system.env"), "OPENPALM_SETUP_COMPLETE=false\n");
 
-    // Seed a secrets.env file to avoid ensureSecrets() file-not-found
+    // Seed a user.env file to avoid ensureSecrets() file-not-found
     writeFileSync(
-      join(configDir, "secrets.env"),
+      join(vaultDir, "user.env"),
       [
         "# OpenPalm Secrets",
         "export OPENPALM_ADMIN_TOKEN=",
@@ -1124,19 +1122,13 @@ describe("performSetupFromConfig", () => {
     );
 
     // Override env vars for test isolation
-    savedEnv.OPENPALM_CONFIG_HOME = process.env.OPENPALM_CONFIG_HOME;
-    savedEnv.OPENPALM_DATA_HOME = process.env.OPENPALM_DATA_HOME;
-    savedEnv.OPENPALM_STATE_HOME = process.env.OPENPALM_STATE_HOME;
-    process.env.OPENPALM_CONFIG_HOME = configDir;
-    process.env.OPENPALM_DATA_HOME = dataDir;
-    process.env.OPENPALM_STATE_HOME = stateDir;
+    savedEnv.OPENPALM_HOME = process.env.OPENPALM_HOME;
+    process.env.OPENPALM_HOME = homeDir;
   });
 
   afterEach(() => {
-    process.env.OPENPALM_CONFIG_HOME = savedEnv.OPENPALM_CONFIG_HOME;
-    process.env.OPENPALM_DATA_HOME = savedEnv.OPENPALM_DATA_HOME;
-    process.env.OPENPALM_STATE_HOME = savedEnv.OPENPALM_STATE_HOME;
-    rmSync(tempBase, { recursive: true, force: true });
+    process.env.OPENPALM_HOME = savedEnv.OPENPALM_HOME;
+    rmSync(homeDir, { recursive: true, force: true });
   });
 
   it("returns an error for invalid config", async () => {
@@ -1151,12 +1143,12 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    // Verify secrets.env was written
-    const secretsContent = readFileSync(join(configDir, "secrets.env"), "utf-8");
+    // Verify user.env was written
+    const secretsContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
     expect(secretsContent).toContain("test-admin-token-12345");
   });
 
-  it("writes channel credentials to secrets.env", async () => {
+  it("writes channel credentials to user.env", async () => {
     const config = makeValidConfig({
       channels: {
         discord: {
@@ -1168,7 +1160,7 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(config, createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const secretsContent = readFileSync(join(configDir, "secrets.env"), "utf-8");
+    const secretsContent = readFileSync(join(vaultDir, "user.env"), "utf-8");
     expect(secretsContent).toContain("discord-bot-token-xyz");
     expect(secretsContent).toContain("discord-app-id-123");
   });
@@ -1189,7 +1181,7 @@ describe("performSetupFromConfig", () => {
     const result = await performSetupFromConfig(makeValidConfig(), createStubAssetProvider());
     expect(result.ok).toBe(true);
 
-    const stagedCompose = join(stateDir, "artifacts", "docker-compose.yml");
+    const stagedCompose = join(configDir, "components", "core.yml");
     expect(existsSync(stagedCompose)).toBe(true);
   });
 });

@@ -34,7 +34,7 @@ export const POST: RequestHandler = async (event) => {
   const envFiles = buildEnvFiles(state);
 
   logger.info("pulling images", { requestId });
-  const pullResult = await composePull(state.stateDir, { files, envFiles });
+  const pullResult = await composePull(state.configDir, { files, envFiles });
   if (!pullResult.ok) {
     logger.error("image pull failed", { requestId, stderr: pullResult.stderr });
     appendAudit(state, actor, "containers.pull", { result: "error", reason: "pull_failed", stderr: pullResult.stderr }, false, requestId, callerType);
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async (event) => {
 
   logger.info("recreating containers", { requestId });
   const managedServices = buildManagedServices(state);
-  const upResult = await composeUp(state.stateDir, { files, envFiles, services: managedServices });
+  const upResult = await composeUp(state.configDir, { files, envFiles, services: managedServices });
   if (!upResult.ok) {
     logger.error("compose up failed after pull", { requestId, stderr: upResult.stderr });
     appendAudit(state, actor, "containers.pull", { result: "error", reason: "up_failed", stderr: upResult.stderr }, false, requestId, callerType);

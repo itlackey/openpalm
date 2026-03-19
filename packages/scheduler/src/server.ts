@@ -1,7 +1,7 @@
 /**
  * OpenPalm Scheduler Sidecar — lightweight Bun HTTP server.
  *
- * Reads automations from STATE_HOME/automations/ and runs them on
+ * Reads automations from config/automations/ and runs them on
  * cron schedules. Provides a REST API for health checks, automation
  * listing, execution logs, and manual triggers.
  *
@@ -24,11 +24,11 @@ import {
 const logger = createLogger("scheduler:server");
 
 const PORT = parseInt(process.env.PORT ?? "8090", 10);
-const STATE_DIR = process.env.OPENPALM_STATE_HOME ?? process.env.STATE_HOME ?? "";
+const CONFIG_DIR = process.env.OPENPALM_CONFIG_DIR ?? process.env.OPENPALM_STATE_HOME ?? process.env.STATE_HOME ?? "";
 const ADMIN_TOKEN = process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
 
-if (!STATE_DIR) {
-  logger.error("OPENPALM_STATE_HOME is required");
+if (!CONFIG_DIR) {
+  logger.error("OPENPALM_CONFIG_DIR is required");
   process.exit(1);
 }
 
@@ -80,7 +80,7 @@ function handleRequest(req: Request): Response | Promise<Response> {
     }
     const status = getSchedulerStatus();
     const allLogs = getAllExecutionLogs();
-    const automations = loadAutomations(STATE_DIR).map((c) => ({
+    const automations = loadAutomations(CONFIG_DIR).map((c) => ({
       name: c.name,
       description: c.description,
       schedule: c.schedule,
@@ -141,14 +141,14 @@ function handleRequest(req: Request): Response | Promise<Response> {
 
 logger.info("starting scheduler sidecar", {
   port: PORT,
-  stateDir: STATE_DIR,
+  configDir: CONFIG_DIR,
 });
 
 // Start the automation scheduler
-startScheduler(STATE_DIR, ADMIN_TOKEN);
+startScheduler(CONFIG_DIR, ADMIN_TOKEN);
 
 // Watch for automation file changes (no restart required)
-startWatching(STATE_DIR, ADMIN_TOKEN);
+startWatching(CONFIG_DIR, ADMIN_TOKEN);
 
 // Start HTTP server
 const server = Bun.serve({

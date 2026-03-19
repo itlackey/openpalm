@@ -5,8 +5,8 @@
  * validateEnvironment() co-locates schema + env files in a temp directory
  * (varlock discovers .env.schema alongside --path), then makes two execFile
  * calls:
- *   1. secrets.env validation (CONFIG_HOME/secrets.env + DATA_HOME/secrets.env.schema)
- *   2. stack.env validation  (STATE_HOME/artifacts/stack.env + DATA_HOME/stack.env.schema)
+ *   1. user.env validation   (vault/user.env + vault/user.env.schema)
+ *   2. system.env validation (vault/system.env + vault/system.env.schema)
  */
 import { describe, test, expect, afterEach, vi } from "vitest";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -23,12 +23,12 @@ import { makeTestState, trackDir, registerCleanup } from "./test-helpers.js";
 registerCleanup();
 
 /** Seed the schema and env files that validateEnvironment expects. */
-function seedValidationFiles(state: { dataDir: string; configDir: string; stateDir: string }): void {
-  writeFileSync(join(state.dataDir, "secrets.env.schema"), "# test schema\nADMIN_TOKEN=\n");
-  writeFileSync(join(state.configDir, "secrets.env"), "ADMIN_TOKEN=test\n");
-  writeFileSync(join(state.dataDir, "stack.env.schema"), "# test schema\nPORT=\n");
-  mkdirSync(join(state.stateDir, "artifacts"), { recursive: true });
-  writeFileSync(join(state.stateDir, "artifacts", "stack.env"), "PORT=8100\n");
+function seedValidationFiles(state: { vaultDir: string }): void {
+  mkdirSync(state.vaultDir, { recursive: true });
+  writeFileSync(join(state.vaultDir, "user.env.schema"), "# test schema\nADMIN_TOKEN=\n");
+  writeFileSync(join(state.vaultDir, "user.env"), "ADMIN_TOKEN=test\n");
+  writeFileSync(join(state.vaultDir, "system.env.schema"), "# test schema\nPORT=\n");
+  writeFileSync(join(state.vaultDir, "system.env"), "PORT=8100\n");
 }
 
 // Helper: mock all execFile calls to succeed.
@@ -78,22 +78,18 @@ describe("validateEnvironment", () => {
     mockExecFileSuccess();
 
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
     expect(result).toEqual({ ok: true, errors: [], warnings: [] });
   });
 
-  test("returns { ok: false } with parsed errors and warnings when secrets.env validation fails", async () => {
+  test("returns { ok: false } with parsed errors and warnings when user.env validation fails", async () => {
     mockExecFileFirstFails("ERROR: ADMIN_TOKEN is required but not set\nWARN: OPENAI_BASE_URL is not a valid URL\n");
 
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
@@ -108,9 +104,7 @@ describe("validateEnvironment", () => {
     mockExecFileAllFail("");
 
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     seedValidationFiles(state);
 
     const result = await validateEnvironment(state);
@@ -131,9 +125,7 @@ describe("validateEnvironment", () => {
     });
 
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     seedValidationFiles(state);
 
     await validateEnvironment(state);
@@ -155,9 +147,7 @@ describe("validateEnvironment", () => {
     mockExecFileFirstFails(secretStderr);
 
     const state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
     seedValidationFiles(state);
 
     const result = await validateEnvironment(state);

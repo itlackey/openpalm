@@ -1,9 +1,9 @@
 /**
- * Artifact staging pipeline for the OpenPalm control plane.
+ * Configuration management for the OpenPalm control plane (v0.10.0+).
  *
- * Stages artifacts from CONFIG_HOME/DATA_HOME into STATE_HOME:
- * Caddyfile/compose staging, env staging, channel/automation file staging,
- * and artifact persistence.
+ * Replaces the permanent staging pipeline with direct-write operations.
+ * Files are validated in-place before writing; rollback is handled by
+ * the rollback module (snapshot to ~/.cache/openpalm/rollback/).
  *
  * All asset content is provided by a CoreAssetProvider (injected).
  */
@@ -21,8 +21,8 @@ import {
   readCoreCompose,
   readOllamaCompose,
   readAdminCompose,
-  ensureSecretsSchema,
-  ensureStackSchema,
+  ensureUserEnvSchema,
+  ensureSystemEnvSchema,
   PUBLIC_ACCESS_IMPORT,
   LAN_ONLY_IMPORT
 } from "./core-assets.js";
@@ -40,35 +40,51 @@ export function randomHex(bytes: number): string {
   return randomBytes(bytes).toString("hex");
 }
 
-// ── Ollama State ─────────────────────────────────────────────────────
+// ── Stack Config (openpalm.yml) ─────────────────────────────────────
 
 /**
- * Check whether Ollama is enabled in the stack by reading the
- * OPENPALM_OLLAMA_ENABLED flag from DATA_HOME/stack.env.
+ * Check whether Ollama is enabled by reading config/openpalm.yml.
+ * Falls back to checking vault/system.env for legacy compatibility.
  */
 export function isOllamaEnabled(state: ControlPlaneState): boolean {
-  const stackEnvPath = `${state.dataDir}/stack.env`;
-  if (!existsSync(stackEnvPath)) return false;
-  const content = readFileSync(stackEnvPath, "utf-8");
+  // Try openpalm.yml first
+  const ymlPath = `${state.configDir}/openpalm.yml`;
+  if (existsSync(ymlPath)) {
+    const content = readFileSync(ymlPath, "utf-8");
+    const match = content.match(/^\s*ollama:\s*(true|false)/m);
+    if (match) return match[1] === "true";
+  }
+
+  // Legacy fallback: check system.env
+  const systemEnvPath = `${state.vaultDir}/system.env`;
+  if (!existsSync(systemEnvPath)) return false;
+  const content = readFileSync(systemEnvPath, "utf-8");
   const match = content.match(/^OPENPALM_OLLAMA_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
-// ── Admin State ──────────────────────────────────────────────────────
-
 /**
- * Check whether admin is enabled in the stack by reading the
- * OPENPALM_ADMIN_ENABLED flag from DATA_HOME/stack.env.
+ * Check whether admin is enabled by reading config/openpalm.yml.
+ * Falls back to checking vault/system.env for legacy compatibility.
  */
 export function isAdminEnabled(state: ControlPlaneState): boolean {
-  const stackEnvPath = `${state.dataDir}/stack.env`;
-  if (!existsSync(stackEnvPath)) return false;
-  const content = readFileSync(stackEnvPath, "utf-8");
+  // Try openpalm.yml first
+  const ymlPath = `${state.configDir}/openpalm.yml`;
+  if (existsSync(ymlPath)) {
+    const content = readFileSync(ymlPath, "utf-8");
+    const match = content.match(/^\s*admin:\s*(true|false)/m);
+    if (match) return match[1] === "true";
+  }
+
+  // Legacy fallback: check system.env
+  const systemEnvPath = `${state.vaultDir}/system.env`;
+  if (!existsSync(systemEnvPath)) return false;
+  const content = readFileSync(systemEnvPath, "utf-8");
   const match = content.match(/^OPENPALM_ADMIN_ENABLED=(.+)$/m);
   return match?.[1]?.trim().toLowerCase() === "true";
 }
 
-// ── Caddyfile Staging ─────────────────────────────────────────────────
+// ── Caddyfile Management ─────────────────────────────────────────────
 
 export function withDefaultLanOnly(rawCaddy: string): string | null {
   if (rawCaddy.includes(PUBLIC_ACCESS_IMPORT) || rawCaddy.includes(LAN_ONLY_IMPORT)) {
@@ -90,14 +106,17 @@ export function withDefaultLanOnly(rawCaddy: string): string | null {
   return null;
 }
 
-export function stageChannelCaddyfiles(state: ControlPlaneState): void {
-  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
-  const stagedPublicDir = `${stagedChannelsDir}/public`;
-  const stagedLanDir = `${stagedChannelsDir}/lan`;
-  rmSync(stagedPublicDir, { recursive: true, force: true });
-  rmSync(stagedLanDir, { recursive: true, force: true });
-  mkdirSync(stagedPublicDir, { recursive: true });
-  mkdirSync(stagedLanDir, { recursive: true });
+/**
+ * Write channel Caddy route files to data/caddy/channels/{public,lan}/.
+ */
+export function writeCaddyRoutes(state: ControlPlaneState): void {
+  const caddyChannelsDir = `${state.dataDir}/caddy/channels`;
+  const publicDir = `${caddyChannelsDir}/public`;
+  const lanDir = `${caddyChannelsDir}/lan`;
+  rmSync(publicDir, { recursive: true, force: true });
+  rmSync(lanDir, { recursive: true, force: true });
+  mkdirSync(publicDir, { recursive: true });
+  mkdirSync(lanDir, { recursive: true });
 
   const channels = discoverChannels(state.configDir);
   for (const ch of channels) {
@@ -105,7 +124,7 @@ export function stageChannelCaddyfiles(state: ControlPlaneState): void {
 
     const raw = readFileSync(ch.caddyPath, "utf-8");
     if (raw.includes(PUBLIC_ACCESS_IMPORT)) {
-      writeFileSync(`${stagedPublicDir}/${ch.name}.caddy`, raw);
+      writeFileSync(`${publicDir}/${ch.name}.caddy`, raw);
       continue;
     }
 
@@ -125,66 +144,49 @@ export function stageChannelCaddyfiles(state: ControlPlaneState): void {
       );
       continue;
     }
-    writeFileSync(`${stagedLanDir}/${ch.name}.caddy`, lanScoped);
+    writeFileSync(`${lanDir}/${ch.name}.caddy`, lanScoped);
   }
 }
 
-function stageCaddyfile(_state: ControlPlaneState, assets: CoreAssetProvider): string {
-  return readCoreCaddyfile(assets);
-}
+// ── Compose & Caddyfile Content ──────────────────────────────────────
 
-// ── Compose Staging ───────────────────────────────────────────────────
-
-function stageCompose(_state: ControlPlaneState, assets: CoreAssetProvider): string {
+function resolveCompose(_state: ControlPlaneState, assets: CoreAssetProvider): string {
   return readCoreCompose(assets);
 }
 
-// ── Env Staging ───────────────────────────────────────────────────────
-
-export function stageSecretsEnv(state: ControlPlaneState): void {
-  const artifactDir = `${state.stateDir}/artifacts`;
-  mkdirSync(artifactDir, { recursive: true });
-
-  const source = `${state.configDir}/secrets.env`;
-  const content = existsSync(source) ? readFileSync(source, "utf-8") : "";
-  writeFileSync(`${artifactDir}/secrets.env`, content);
+function resolveCaddyfile(_state: ControlPlaneState, assets: CoreAssetProvider): string {
+  return readCoreCaddyfile(assets);
 }
 
-/** Return the path to the staged secrets.env in STATE_HOME. */
-export function stagedEnvFile(state: ControlPlaneState): string {
-  return `${state.stateDir}/artifacts/secrets.env`;
-}
+// ── Env File Management ──────────────────────────────────────────────
 
-/** Return the path to the staged stack.env in STATE_HOME. */
-export function stagedStackEnvFile(state: ControlPlaneState): string {
-  return `${state.stateDir}/artifacts/stack.env`;
+/**
+ * Return the env files used for docker compose --env-file args.
+ * In v0.10.0, these are the live vault env files (no staging).
+ */
+export function buildEnvFiles(state: ControlPlaneState): string[] {
+  return [
+    `${state.vaultDir}/system.env`,
+    `${state.vaultDir}/user.env`,
+  ].filter(existsSync);
 }
 
 /**
- * Return both staged env files in load order: [stack.env, secrets.env].
- * Non-existent files are omitted so docker compose does not error.
+ * Write system-managed values to vault/system.env.
  */
-export function buildEnvFiles(state: ControlPlaneState): string[] {
-  return [stagedStackEnvFile(state), stagedEnvFile(state)].filter(existsSync);
-}
+export function writeSystemEnv(state: ControlPlaneState): void {
+  mkdirSync(state.vaultDir, { recursive: true });
 
-function stageStackEnv(state: ControlPlaneState): void {
-  const artifactDir = `${state.stateDir}/artifacts`;
-  mkdirSync(artifactDir, { recursive: true });
-
-  const dataStackEnv = `${state.dataDir}/stack.env`;
+  const systemEnvPath = `${state.vaultDir}/system.env`;
 
   let base = "";
-  if (existsSync(dataStackEnv)) {
-    base = readFileSync(dataStackEnv, "utf-8");
+  if (existsSync(systemEnvPath)) {
+    base = readFileSync(systemEnvPath, "utf-8");
   } else {
-    base = generateFallbackStackEnv(state);
-    mkdirSync(state.dataDir, { recursive: true });
-    writeFileSync(dataStackEnv, base);
+    base = generateFallbackSystemEnv(state);
   }
 
-  // Preserve existing OPENPALM_SETUP_COMPLETE=true from stack.env;
-  // only mark complete if it was already true (not inferred from token presence).
+  // Preserve existing OPENPALM_SETUP_COMPLETE=true
   const alreadyComplete = /^OPENPALM_SETUP_COMPLETE=true$/mi.test(base);
 
   const adminManaged: Record<string, string> = {
@@ -198,80 +200,81 @@ function stageStackEnv(state: ControlPlaneState): void {
     sectionHeader: "# ── Admin-managed ──────────────────────────────────────────────────"
   });
 
-  writeFileSync(dataStackEnv, content);
-  writeFileSync(`${artifactDir}/stack.env`, content);
+  writeFileSync(systemEnvPath, content);
 }
 
-function generateFallbackStackEnv(state: ControlPlaneState): string {
+function generateFallbackSystemEnv(state: ControlPlaneState): string {
   const uid = typeof process.getuid === "function" ? (process.getuid() ?? 1000) : 1000;
   const gid = typeof process.getgid === "function" ? (process.getgid() ?? 1000) : 1000;
 
-  const home = process.env.HOME ?? "/home/node";
-  const workDir = process.env.OPENPALM_WORK_DIR ?? `${home}/openpalm`;
-
   return [
-    "# OpenPalm Stack Configuration — system-managed, do not edit",
-    "# Auto-generated fallback (setup.sh has not run yet).",
+    "# OpenPalm — System Configuration (managed by CLI/admin)",
+    "# Auto-generated fallback.",
     "",
-    "# ── XDG Paths ──────────────────────────────────────────────────────",
-    `OPENPALM_CONFIG_HOME=${state.configDir}`,
-    `OPENPALM_DATA_HOME=${state.dataDir}`,
-    `OPENPALM_STATE_HOME=${state.stateDir}`,
-    `OPENPALM_WORK_DIR=${workDir}`,
-    "",
-    "# ── User/Group ──────────────────────────────────────────────────────",
+    "# ── Paths ──────────────────────────────────────────────────────────",
+    `OPENPALM_HOME=${state.homeDir}`,
     `OPENPALM_UID=${uid}`,
     `OPENPALM_GID=${gid}`,
-    "",
-    "# ── Docker Socket ───────────────────────────────────────────────────",
     `OPENPALM_DOCKER_SOCK=${process.env.OPENPALM_DOCKER_SOCK ?? "/var/run/docker.sock"}`,
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OPENPALM_IMAGE_NAMESPACE=${process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm"}`,
     `OPENPALM_IMAGE_TAG=${DEFAULT_IMAGE_TAG}`,
     "",
+    "# ── Ports (38XX range) ──────────────────────────────────────────────",
+    `OPENPALM_ASSISTANT_PORT=3800`,
+    `OPENPALM_ADMIN_PORT=3880`,
+    `OPENPALM_ADMIN_OPENCODE_PORT=3881`,
+    `OPENPALM_SCHEDULER_PORT=3897`,
+    `OPENPALM_MEMORY_PORT=3898`,
+    `OPENPALM_GUARDIAN_PORT=3899`,
+    `OPENPALM_INGRESS_PORT=3880`,
+    "",
     "# ── Networking ──────────────────────────────────────────────────────",
     "# SECURITY: Bind addresses default to 127.0.0.1. Changing to 0.0.0.0 exposes services publicly.",
     `OPENPALM_INGRESS_BIND_ADDRESS=${process.env.OPENPALM_INGRESS_BIND_ADDRESS ?? "127.0.0.1"}`,
-    `OPENPALM_INGRESS_PORT=${process.env.OPENPALM_INGRESS_PORT ?? "8080"}`,
     "",
     "# ── Channel HMAC Secrets ────────────────────────────────────────────",
     ""
   ].join("\n");
 }
 
-// ── Channel YML Staging ───────────────────────────────────────────────
+// ── Component Overlay Management ──────────────────────────────────────
 
-export function stageChannelYmlFiles(state: ControlPlaneState): void {
-  const stagedChannelsDir = `${state.stateDir}/artifacts/channels`;
-  mkdirSync(stagedChannelsDir, { recursive: true });
-
-  for (const f of readdirSync(stagedChannelsDir)) {
-    if (f.endsWith(".yml")) {
-      rmSync(`${stagedChannelsDir}/${f}`, { force: true });
-    }
-  }
-
-  const channels = discoverChannels(state.configDir);
-  for (const ch of channels) {
-    const content = readFileSync(ch.ymlPath, "utf-8");
-    writeFileSync(`${stagedChannelsDir}/${ch.name}.yml`, content);
-  }
+/**
+ * Write a compose overlay to config/components/.
+ */
+export function writeComponentOverlay(state: ControlPlaneState, name: string, content: string): void {
+  const dir = `${state.configDir}/components`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/${name}.yml`, content);
 }
 
 /**
- * Discover staged channel .yml overlays from STATE_HOME/artifacts/channels/.
+ * Discover component overlays from config/components/.
+ * Returns full paths to .yml files.
  */
-export function discoverStagedChannelYmls(stateDir: string): string[] {
-  const channelsDir = `${stateDir}/artifacts/channels`;
-  if (!existsSync(channelsDir)) return [];
+export function discoverComponentOverlays(configDir: string): string[] {
+  const componentsDir = `${configDir}/components`;
+  if (!existsSync(componentsDir)) return [];
 
-  return readdirSync(channelsDir, { withFileTypes: true })
+  return readdirSync(componentsDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".yml"))
-    .map((entry) => `${channelsDir}/${entry.name}`);
+    .map((entry) => `${componentsDir}/${entry.name}`);
 }
 
-// ── Automation Staging ───────────────────────────────────────────────
+/**
+ * Discover channel component overlays specifically (channel-*.yml).
+ */
+export function discoverChannelOverlays(configDir: string): string[] {
+  return discoverComponentOverlays(configDir)
+    .filter((p) => {
+      const name = p.split("/").pop() ?? "";
+      return name.startsWith("channel-");
+    });
+}
+
+// ── Automation Management ────────────────────────────────────────────
 
 const AUTOMATION_FILE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}\.yml$/;
 
@@ -287,48 +290,9 @@ function validateAutomationContent(content: string, fileName: string): boolean {
   return parseAutomationYaml(content, fileName) !== null;
 }
 
-export function stageAutomationFiles(state: ControlPlaneState): void {
-  const stagedDir = `${state.stateDir}/automations`;
-  mkdirSync(stagedDir, { recursive: true });
+// ── Top-Level Operations ─────────────────────────────────────────────
 
-  for (const f of readdirSync(stagedDir)) {
-    const fullPath = `${stagedDir}/${f}`;
-    if (!f.startsWith(".")) {
-      rmSync(fullPath, { force: true });
-    }
-  }
-
-  const systemDir = `${state.dataDir}/automations`;
-  for (const entry of discoverAutomationFiles(systemDir)) {
-    const content = readFileSync(entry.path, "utf-8");
-    if (!validateAutomationContent(content, entry.name)) continue;
-    writeFileSync(`${stagedDir}/${entry.name}`, content);
-  }
-
-  const userDir = `${state.configDir}/automations`;
-  for (const entry of discoverAutomationFiles(userDir)) {
-    const content = readFileSync(entry.path, "utf-8");
-    if (!validateAutomationContent(content, entry.name)) continue;
-    writeFileSync(`${stagedDir}/${entry.name}`, content);
-  }
-}
-
-// ── Env Schema Staging ────────────────────────────────────────────────
-
-function stageEnvSchemas(state: ControlPlaneState, assets: CoreAssetProvider): void {
-  const destDir = `${state.dataDir}/assistant/env-schema`;
-  mkdirSync(destDir, { recursive: true });
-
-  const secretsSchemaPath = ensureSecretsSchema(assets);
-  const stackSchemaPath = ensureStackSchema(assets);
-
-  copyFileSync(secretsSchemaPath, `${destDir}/secrets.env.schema`);
-  copyFileSync(stackSchemaPath, `${destDir}/stack.env.schema`);
-}
-
-// ── Top-Level Staging ─────────────────────────────────────────────────
-
-export function stageArtifacts(
+export function resolveArtifacts(
   state: ControlPlaneState,
   assets: CoreAssetProvider
 ): {
@@ -336,8 +300,8 @@ export function stageArtifacts(
   caddyfile: string;
 } {
   return {
-    compose: stageCompose(state, assets),
-    caddyfile: stageCaddyfile(state, assets)
+    compose: resolveCompose(state, assets),
+    caddyfile: resolveCaddyfile(state, assets)
   };
 }
 
@@ -356,44 +320,65 @@ export function buildArtifactMeta(artifacts: {
   }));
 }
 
-// ── Persistence ────────────────────────────────────────────────────────
+// ── Persistence (direct-write to live paths) ────────────────────────
 
-export function persistArtifacts(
+export function persistConfiguration(
   state: ControlPlaneState,
   assets: CoreAssetProvider
 ): void {
-  const artifactDir = `${state.stateDir}/artifacts`;
-  const channelsDir = `${state.configDir}/channels`;
-  mkdirSync(artifactDir, { recursive: true });
-  mkdirSync(channelsDir, { recursive: true });
+  const componentsDir = `${state.configDir}/components`;
+  mkdirSync(componentsDir, { recursive: true });
 
-  writeFileSync(`${artifactDir}/docker-compose.yml`, state.artifacts.compose);
-  writeFileSync(`${artifactDir}/Caddyfile`, state.artifacts.caddyfile);
+  // Write core compose overlay
+  writeComponentOverlay(state, "core", state.artifacts.compose);
 
+  // Write Caddyfile to data/caddy/
+  const caddyDir = `${state.dataDir}/caddy`;
+  mkdirSync(caddyDir, { recursive: true });
+  writeFileSync(`${caddyDir}/Caddyfile`, state.artifacts.caddyfile);
+
+  // Write optional compose overlays
   if (isOllamaEnabled(state)) {
-    writeFileSync(`${artifactDir}/ollama.yml`, readOllamaCompose(assets));
+    writeComponentOverlay(state, "ollama", readOllamaCompose(assets));
   }
 
   if (isAdminEnabled(state)) {
-    writeFileSync(`${artifactDir}/admin.yml`, readAdminCompose(assets));
+    writeComponentOverlay(state, "admin", readAdminCompose(assets));
   }
 
+  // Ensure channel HMAC secrets
   const allChannels = discoverChannels(state.configDir);
   for (const ch of allChannels) {
     if (!state.channelSecrets[ch.name]) {
       state.channelSecrets[ch.name] = randomHex(16);
     }
   }
-  stageStackEnv(state);
-  stageSecretsEnv(state);
-  stageChannelYmlFiles(state);
-  stageChannelCaddyfiles(state);
-  stageAutomationFiles(state);
-  stageEnvSchemas(state, assets);
+
+  // Write system.env with channel secrets and system values
+  writeSystemEnv(state);
+
+  // Write channel Caddy routes
+  writeCaddyRoutes(state);
+
+  // Write env schemas to vault
+  ensureUserEnvSchema(assets);
+  ensureSystemEnvSchema(assets);
 
   state.artifactMeta = buildArtifactMeta(state.artifacts);
-  writeFileSync(
-    `${artifactDir}/manifest.json`,
-    JSON.stringify(state.artifactMeta, null, 2)
-  );
+}
+
+// ── Legacy Compat Aliases ────────────────────────────────────────────
+
+/** @deprecated Use resolveArtifacts() */
+export const stageArtifacts = resolveArtifacts;
+
+/** @deprecated Use persistConfiguration() */
+export const persistArtifacts = persistConfiguration;
+
+/** @deprecated Use discoverComponentOverlays() */
+export function discoverStagedChannelYmls(stateDir: string): string[] {
+  // In the new layout, stateDir is no longer used for artifacts.
+  // Look in the config/components directory instead.
+  // Callers should migrate to discoverChannelOverlays(configDir).
+  return [];
 }

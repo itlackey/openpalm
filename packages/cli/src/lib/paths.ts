@@ -5,17 +5,28 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  resolveConfigHome,
-  resolveDataHome,
-  resolveStateHome,
+  resolveConfigDir,
+  resolveDataDir,
+  resolveVaultDir,
+  resolveOpenPalmHome,
+  resolveLogsDir,
+  resolveCacheHome,
 } from '@openpalm/lib';
 
 export const IS_WINDOWS = process.platform === 'win32';
 
-// Re-export lib's XDG resolvers under CLI's existing names
-export { resolveConfigHome as defaultConfigHome };
-export { resolveDataHome as defaultDataHome };
-export { resolveStateHome as defaultStateHome };
+// Re-export home layout resolvers
+export { resolveConfigDir as defaultConfigDir };
+export { resolveDataDir as defaultDataDir };
+export { resolveVaultDir as defaultVaultDir };
+export { resolveOpenPalmHome as defaultHomeDir };
+export { resolveLogsDir as defaultLogsDir };
+export { resolveCacheHome as defaultCacheDir };
+
+// Legacy aliases
+export { resolveConfigDir as defaultConfigHome };
+export { resolveDataDir as defaultDataHome };
+export { resolveLogsDir as defaultStateHome };
 
 // CLI-specific paths (not in lib)
 export function defaultDockerSock(): string {
@@ -33,5 +44,5 @@ export function defaultDockerSock(): string {
 }
 
 export function defaultWorkDir(): string {
-  return process.env.OPENPALM_WORK_DIR || join(homedir(), 'openpalm');
+  return process.env.OPENPALM_WORK_DIR || `${resolveDataDir()}/workspace`;
 }

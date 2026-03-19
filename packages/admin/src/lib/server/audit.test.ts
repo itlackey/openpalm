@@ -19,9 +19,7 @@ describe("appendAudit", () => {
 
   beforeEach(() => {
     state = makeTestState();
-    trackDir(state.stateDir);
-    trackDir(state.configDir);
-    trackDir(state.dataDir);
+    trackDir(state.homeDir);
   });
 
   test("appends entry to in-memory audit array", () => {
@@ -41,7 +39,7 @@ describe("appendAudit", () => {
 
   test("persists to JSONL file on disk", () => {
     appendAudit(state, "admin", "install", {}, true, "req-1");
-    const auditFile = join(state.stateDir, "audit", "admin-audit.jsonl");
+    const auditFile = join(state.logsDir, "admin-audit.jsonl");
     expect(existsSync(auditFile)).toBe(true);
     const content = readFileSync(auditFile, "utf-8");
     const entry = JSON.parse(content.trim());

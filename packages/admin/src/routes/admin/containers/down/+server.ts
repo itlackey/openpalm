@@ -30,7 +30,7 @@ export const POST: RequestHandler = async (event) => {
   }
   const service = typeof body.service === "string" ? body.service : "";
 
-  if (!isAllowedService(service, state.stateDir)) {
+  if (!isAllowedService(service, state.configDir)) {
     appendAudit(state, actor, "containers.down", { service }, false, requestId, callerType);
     return errorResponse(400, "invalid_service", "Service is not in allowlist", { service }, requestId);
   }
@@ -38,7 +38,7 @@ export const POST: RequestHandler = async (event) => {
   // Try real Docker — only update state based on actual result
   const dockerCheck = await checkDocker();
   if (dockerCheck.ok) {
-    const result = await composeStop(state.stateDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
+    const result = await composeStop(state.configDir, [service], { files: buildComposeFileList(state), envFiles: buildEnvFiles(state) });
     if (result.ok) {
       state.services[service] = "stopped";
     } else {

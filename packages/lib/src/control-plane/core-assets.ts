@@ -1,14 +1,18 @@
 /**
  * Core asset management for the OpenPalm control plane.
  *
- * Manages DATA_HOME source-of-truth files: Caddyfile and docker-compose.yml.
+ * Manages source-of-truth files for the ~/.openpalm/ layout:
+ *   config/components/  — compose overlays (core.yml, admin.yml, etc.)
+ *   data/caddy/         — Caddyfile and channel routes
+ *   vault/              — env schemas
+ *
  * All asset content is provided by a CoreAssetProvider (injected), not by
  * Vite $assets imports — making this module portable across Bun/Node/Vite.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { resolveDataHome } from "./paths.js";
+import { resolveDataDir, resolveConfigDir, resolveVaultDir } from "./home.js";
 import { createLogger } from "../logger.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
 
@@ -24,7 +28,7 @@ const HOST_ONLY_IPS = "127.0.0.0/8 ::1";
 const LAN_IPS = "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1 fc00::/7 fe80::/10";
 const REMOTE_IP_LINE_RE = /@denied not remote_ip [^\n]+/;
 
-// Re-export for use by staging.ts Caddyfile staging
+// Re-export for use by staging.ts Caddyfile management
 export { PUBLIC_ACCESS_IMPORT, LAN_ONLY_IMPORT };
 
 /** SHA-256 hex digest of a string. */
@@ -51,14 +55,14 @@ function writeIfChanged(path: string, content: string): void {
   writeFileSync(path, content);
 }
 
-// ── Core Caddyfile (DATA_HOME source of truth) ─────────────────────────
+// ── Core Caddyfile (data/caddy/) ─────────────────────────────────────
 
 function coreCaddyfilePath(): string {
-  return `${resolveDataHome()}/caddy/Caddyfile`;
+  return `${resolveDataDir()}/caddy/Caddyfile`;
 }
 
 /**
- * Ensure the system-managed core Caddyfile exists in DATA_HOME.
+ * Ensure the system-managed core Caddyfile exists.
  * Seeds the bundled asset on first run. On subsequent runs, leaves the
  * existing file intact (user may have customized access scope).
  */
@@ -76,23 +80,33 @@ export function readCoreCaddyfile(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
-// ── Env Schema Files (DATA_HOME root) ────────────────────────────────
+// ── Env Schema Files (vault/) ────────────────────────────────────────
 
-export function ensureSecretsSchema(assets: CoreAssetProvider): string {
-  const path = `${resolveDataHome()}/secrets.env.schema`;
+export function ensureUserEnvSchema(assets: CoreAssetProvider): string {
+  const vaultDir = resolveVaultDir();
+  mkdirSync(vaultDir, { recursive: true });
+  const path = `${vaultDir}/user.env.schema`;
   if (!existsSync(path)) {
     writeFileSync(path, assets.secretsSchema());
   }
   return path;
 }
 
-export function ensureStackSchema(assets: CoreAssetProvider): string {
-  const path = `${resolveDataHome()}/stack.env.schema`;
+export function ensureSystemEnvSchema(assets: CoreAssetProvider): string {
+  const vaultDir = resolveVaultDir();
+  mkdirSync(vaultDir, { recursive: true });
+  const path = `${vaultDir}/system.env.schema`;
   if (!existsSync(path)) {
     writeFileSync(path, assets.stackSchema());
   }
   return path;
 }
+
+/** @deprecated Use ensureUserEnvSchema() */
+export const ensureSecretsSchema = ensureUserEnvSchema;
+
+/** @deprecated Use ensureSystemEnvSchema() */
+export const ensureStackSchema = ensureSystemEnvSchema;
 
 export function detectAccessScope(rawCaddyfile: string): "host" | "lan" | "custom" {
   const match = rawCaddyfile.match(REMOTE_IP_LINE_RE);
@@ -118,12 +132,12 @@ export function setCoreCaddyAccessScope(
   return { ok: true };
 }
 
-// ── Memory data directory (DATA_HOME) ────────────────────────────────────
+// ── Memory data directory ────────────────────────────────────────────
 
 export function ensureMemoryDir(): string {
-  const dataHome = resolveDataHome();
-  const dir = `${dataHome}/memory`;
-  const legacyDir = `${dataHome}/openmemory`;
+  const dataDir = resolveDataDir();
+  const dir = `${dataDir}/memory`;
+  const legacyDir = `${dataDir}/openmemory`;
 
   if (!existsSync(dir) && existsSync(legacyDir)) {
     try {
@@ -139,10 +153,10 @@ export function ensureMemoryDir(): string {
   return dir;
 }
 
-// ── Core Compose (DATA_HOME source of truth) ──────────────────────────
+// ── Core Compose (config/components/) ────────────────────────────────
 
 function coreComposePath(): string {
-  return `${resolveDataHome()}/docker-compose.yml`;
+  return `${resolveConfigDir()}/components/core.yml`;
 }
 
 export function ensureCoreCompose(assets: CoreAssetProvider): string {
@@ -155,7 +169,7 @@ export function ensureCoreCompose(assets: CoreAssetProvider): string {
     const backupDir = join(dirname(path), "backups");
     mkdirSync(backupDir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    copyFileSync(path, join(backupDir, `docker-compose.${ts}.yml`));
+    copyFileSync(path, join(backupDir, `core.${ts}.yml`));
     writeFileSync(path, content);
   }
   return path;
@@ -166,10 +180,10 @@ export function readCoreCompose(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
-// ── Ollama Compose Overlay (DATA_HOME source of truth) ──────────────
+// ── Ollama Compose Overlay ──────────────────────────────────────────
 
 function ollamaComposePath(): string {
-  return `${resolveDataHome()}/ollama.yml`;
+  return `${resolveConfigDir()}/components/ollama.yml`;
 }
 
 export function ensureOllamaCompose(assets: CoreAssetProvider): string {
@@ -193,10 +207,10 @@ export function readOllamaCompose(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
-// ── Admin Compose Overlay (DATA_HOME source of truth) ────────────────
+// ── Admin Compose Overlay ────────────────────────────────────────────
 
 function adminComposePath(): string {
-  return `${resolveDataHome()}/admin.yml`;
+  return `${resolveConfigDir()}/components/admin.yml`;
 }
 
 export function ensureAdminCompose(assets: CoreAssetProvider): string {
@@ -220,26 +234,26 @@ export function readAdminCompose(assets: CoreAssetProvider): string {
   return readFileSync(path, "utf-8");
 }
 
-// ── OpenCode System Config (DATA_HOME source of truth) ──────────────
+// ── OpenCode System Config ──────────────────────────────────────────
 
 export function ensureOpenCodeSystemConfig(assets: CoreAssetProvider): void {
-  const dir = `${resolveDataHome()}/assistant`;
+  const dir = `${resolveDataDir()}/assistant`;
   mkdirSync(dir, { recursive: true });
   writeIfChanged(`${dir}/opencode.jsonc`, assets.opencodeConfig());
   writeIfChanged(`${dir}/AGENTS.md`, assets.agentsMd());
 }
 
 export function ensureAdminOpenCodeConfig(assets: CoreAssetProvider): void {
-  const dir = `${resolveDataHome()}/admin`;
+  const dir = `${resolveDataDir()}/admin`;
   mkdirSync(dir, { recursive: true });
   writeIfChanged(`${dir}/opencode.jsonc`, assets.adminOpencodeConfig());
   writeIfChanged(`${dir}/AGENTS.md`, assets.agentsMd());
 }
 
-// ── Core Automations (DATA_HOME source of truth) ────────────────────
+// ── Core Automations (config/automations/) ──────────────────────────
 
 export function ensureCoreAutomations(assets: CoreAssetProvider): void {
-  const dir = `${resolveDataHome()}/automations`;
+  const dir = `${resolveConfigDir()}/automations`;
   mkdirSync(dir, { recursive: true });
 
   const coreAutomations = [
@@ -258,16 +272,16 @@ export function ensureCoreAutomations(assets: CoreAssetProvider): void {
 const REPO = "itlackey/openpalm";
 const VERSION = process.env.OPENPALM_ASSET_VERSION ?? "main";
 
-const MANAGED_ASSETS: { dataRelPath: string; githubFilename: string }[] = [
-  { dataRelPath: "docker-compose.yml", githubFilename: "docker-compose.yml" },
-  { dataRelPath: "caddy/Caddyfile", githubFilename: "Caddyfile" },
-  { dataRelPath: "assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
-  { dataRelPath: "admin/opencode.jsonc", githubFilename: "admin-opencode.jsonc" },
-  { dataRelPath: "assistant/AGENTS.md", githubFilename: "AGENTS.md" },
-  { dataRelPath: "ollama.yml", githubFilename: "ollama.yml" },
-  { dataRelPath: "admin.yml", githubFilename: "admin.yml" },
-  { dataRelPath: "secrets.env.schema", githubFilename: "secrets.env.schema" },
-  { dataRelPath: "stack.env.schema", githubFilename: "stack.env.schema" }
+const MANAGED_ASSETS: { relPath: string; githubFilename: string }[] = [
+  { relPath: "config/components/core.yml", githubFilename: "docker-compose.yml" },
+  { relPath: "data/caddy/Caddyfile", githubFilename: "Caddyfile" },
+  { relPath: "data/assistant/opencode.jsonc", githubFilename: "opencode.jsonc" },
+  { relPath: "data/admin/opencode.jsonc", githubFilename: "admin-opencode.jsonc" },
+  { relPath: "data/assistant/AGENTS.md", githubFilename: "AGENTS.md" },
+  { relPath: "config/components/ollama.yml", githubFilename: "ollama.yml" },
+  { relPath: "config/components/admin.yml", githubFilename: "admin.yml" },
+  { relPath: "vault/user.env.schema", githubFilename: "user.env.schema" },
+  { relPath: "vault/system.env.schema", githubFilename: "system.env.schema" },
 ];
 
 async function downloadAsset(filename: string): Promise<string> {
@@ -289,13 +303,14 @@ export async function refreshCoreAssets(): Promise<{
   backupDir: string | null;
   updated: string[];
 }> {
-  const dataHome = resolveDataHome();
+  const { resolveOpenPalmHome } = await import("./home.js");
+  const homeDir = resolveOpenPalmHome();
   const updated: string[] = [];
   let backupDir: string | null = null;
 
   for (const asset of MANAGED_ASSETS) {
     const freshContent = await downloadAsset(asset.githubFilename);
-    const targetPath = join(dataHome, asset.dataRelPath);
+    const targetPath = join(homeDir, asset.relPath);
 
     if (existsSync(targetPath)) {
       const currentContent = readFileSync(targetPath, "utf-8");
@@ -304,16 +319,16 @@ export async function refreshCoreAssets(): Promise<{
       }
 
       if (!backupDir) {
-        backupDir = join(dataHome, "backups", new Date().toISOString().replace(/[:.]/g, "-"));
+        backupDir = join(homeDir, "data/backups", new Date().toISOString().replace(/[:.]/g, "-"));
       }
-      const backupPath = join(backupDir, asset.dataRelPath);
+      const backupPath = join(backupDir, asset.relPath);
       mkdirSync(dirname(backupPath), { recursive: true });
       copyFileSync(targetPath, backupPath);
     }
 
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, freshContent);
-    updated.push(asset.dataRelPath);
+    updated.push(asset.relPath);
   }
 
   return { backupDir, updated };

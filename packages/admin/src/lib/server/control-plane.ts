@@ -18,10 +18,10 @@ import {
   ensureOpenCodeSystemConfig as _ensureOpenCodeSystemConfig,
   ensureAdminOpenCodeConfig as _ensureAdminOpenCodeConfig,
   ensureCoreAutomations as _ensureCoreAutomations,
-  ensureSecretsSchema as _ensureSecretsSchema,
-  ensureStackSchema as _ensureStackSchema,
-  stageArtifacts as _stageArtifacts,
-  persistArtifacts as _persistArtifacts,
+  ensureUserEnvSchema as _ensureUserEnvSchema,
+  ensureSystemEnvSchema as _ensureSystemEnvSchema,
+  resolveArtifacts as _resolveArtifacts,
+  persistConfiguration as _persistConfiguration,
   applyInstall as _applyInstall,
   applyUpdate as _applyUpdate,
   applyUninstall as _applyUninstall,
@@ -76,24 +76,36 @@ export function ensureCoreAutomations(): void {
   _ensureCoreAutomations(viteAssets);
 }
 
-export function ensureSecretsSchema(): string {
-  return _ensureSecretsSchema(viteAssets);
+export function ensureUserEnvSchema(): string {
+  return _ensureUserEnvSchema(viteAssets);
 }
 
-export function ensureStackSchema(): string {
-  return _ensureStackSchema(viteAssets);
+export function ensureSystemEnvSchema(): string {
+  return _ensureSystemEnvSchema(viteAssets);
 }
 
-export function stageArtifacts(state: ControlPlaneState): {
+/** @deprecated Use ensureUserEnvSchema() */
+export const ensureSecretsSchema = ensureUserEnvSchema;
+
+/** @deprecated Use ensureSystemEnvSchema() */
+export const ensureStackSchema = ensureSystemEnvSchema;
+
+export function resolveArtifacts(state: ControlPlaneState): {
   compose: string;
   caddyfile: string;
 } {
-  return _stageArtifacts(state, viteAssets);
+  return _resolveArtifacts(state, viteAssets);
 }
 
-export function persistArtifacts(state: ControlPlaneState): void {
-  _persistArtifacts(state, viteAssets);
+export function persistConfiguration(state: ControlPlaneState): void {
+  _persistConfiguration(state, viteAssets);
 }
+
+/** @deprecated Use resolveArtifacts() */
+export const stageArtifacts = resolveArtifacts;
+
+/** @deprecated Use persistConfiguration() */
+export const persistArtifacts = persistConfiguration;
 
 export function applyInstall(state: ControlPlaneState): void {
   _applyInstall(state, viteAssets);
@@ -165,8 +177,8 @@ export {
   OPTIONAL_CAPABILITIES,
 } from "./types.js";
 
-// ── paths.ts ──────────────────────────────────────────────────────────
-export { ensureXdgDirs } from "@openpalm/lib";
+// ── home.ts ───────────────────────────────────────────────────────────
+export { ensureHomeDirs, ensureHomeDirs as ensureXdgDirs } from "@openpalm/lib";
 
 // ── registry.ts (backward-compatible static exports) ─────────────────
 export {
@@ -208,13 +220,14 @@ export {
   randomHex,
   detectAccessScope,
   isOllamaEnabled,
-  stagedEnvFile,
-  stagedStackEnvFile,
   buildEnvFiles,
-  discoverStagedChannelYmls,
+  discoverComponentOverlays,
+  discoverChannelOverlays,
   buildArtifactMeta,
   refreshCoreAssets,
   ensureMemoryDir,
+  // Legacy aliases
+  discoverComponentOverlays as discoverStagedChannelYmls,
 } from "@openpalm/lib";
 
 // ── memory-config.ts ─────────────────────────────────────────────────

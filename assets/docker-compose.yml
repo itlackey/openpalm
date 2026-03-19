@@ -1,15 +1,15 @@
 # OpenPalm — Core Services
 #
-# This file defines the core infrastructure. Channel services are added
-# via compose overlays: docker compose -f docker-compose.yml -f channels/chat.yml up -d
+# This file defines the core infrastructure. Component services are added
+# via compose overlays in config/components/.
 #
-# Docker Compose reads variable values from .env (standalone) or via --env-file (admin-managed).
-# Copy .env.example to .env and fill in the required values.
+# Docker Compose reads variable values via --env-file vault/system.env --env-file vault/user.env.
 #
-# Directory model:
-#   CONFIG_HOME (~/.config/openpalm)      — user-editable: secrets.env, channels/, assistant/
-#   DATA_HOME   (~/.local/share/openpalm) — opaque service data (memory, etc.)
-#   STATE_HOME  (~/.local/state/openpalm) — generated artifacts, audit logs
+# Directory model (v0.10.0):
+#   ~/.openpalm/config/  — user-editable, non-secret configuration
+#   ~/.openpalm/vault/   — secrets boundary (user.env, system.env)
+#   ~/.openpalm/data/    — service-managed persistent data
+#   ~/.openpalm/logs/    — consolidated audit/debug output
 
 services:
   # ── Memory ─────────────────────────────────────────────────────────
@@ -28,10 +28,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
     ports:
-      - "${OPENPALM_MEMORY_BIND_ADDRESS:-127.0.0.1}:8765:8765"
+      - "${OPENPALM_MEMORY_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_MEMORY_PORT:-3898}:8765"
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory:/data
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/memory/default_config.json:/app/default_config.json
+      - ${OPENPALM_HOME}/data/memory:/data
     networks: [ assistant_net ]
     healthcheck:
       test: [ "CMD-SHELL", "bun -e \"const r=await fetch('http://localhost:8765/health');if(!r.ok)process.exit(1)\" || exit 1" ]
@@ -56,28 +55,24 @@ services:
       HOME: /home/opencode
       AKM_STASH_DIR: /stash
       OPENPALM_ADMIN_API_URL: ${OPENPALM_ADMIN_API_URL:-}
-      OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}
+      OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
       MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       OPENPALM_UID: ${OPENPALM_UID:-1000}
       OPENPALM_GID: ${OPENPALM_GID:-1000}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
     ports:
-      - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:4096:4096"
+      - "${OPENPALM_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_PORT:-3800}:4096"
       - "${OPENPALM_ASSISTANT_SSH_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ASSISTANT_SSH_PORT:-2222}:22"
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/assistant:/etc/opencode
-      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/assistant:/home/opencode/.config/opencode
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/opencode:/home/opencode/.local/state/opencode
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/opencode:/home/opencode/.local/share/opencode
-      - ${OPENPALM_WORK_DIR:-${HOME}/openpalm}:/work
-      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}/stash:/stash
+      - ${OPENPALM_HOME}/config:/etc/openpalm:ro
+      - ${OPENPALM_HOME}/config/assistant:/home/opencode/.config/opencode
+      - ${OPENPALM_HOME}/vault/user.env:/etc/openpalm/user.env:ro
+      - ${OPENPALM_HOME}/data/assistant:/home/opencode/.opencode
+      - ${OPENPALM_HOME}/data/stash:/home/opencode/.akm
+      - ${OPENPALM_HOME}/data/workspace:/work
+      - ${OPENPALM_HOME}/logs/opencode:/home/opencode/.local/state/opencode
+      - ${HOME}/.cache/openpalm/registry:/cache/registry
     working_dir: /work
     networks: [ assistant_net ]
     depends_on:
@@ -91,6 +86,8 @@ services:
       start_period: 30s
 
   # ── Guardian ────────────────────────────────────────────────────────
+  # Secrets come via ${VAR} substitution only — no env_file or bind mount.
+  # Installing a channel triggers a guardian recreate (~2 seconds).
   guardian:
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/guardian:${OPENPALM_IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -99,22 +96,16 @@ services:
       PORT: "8080"
       OPENPALM_ASSISTANT_URL: http://assistant:4096
       OPENCODE_TIMEOUT_MS: "0"
-      ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}
+      ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
       GUARDIAN_AUDIT_PATH: /app/audit/guardian-audit.log
-      # Guardian reads CHANNEL_*_SECRET from this file on every inbound request,
-      # so channel secrets take effect without a container restart or recreation.
-      # Uses a directory mount (not a file mount) so writes by the admin container
-      # don't break the bind mount when the file inode changes.
-      GUARDIAN_SECRETS_PATH: /app/secrets/stack.env
-    # env_file loads stack.env at container startup so CHANNEL_*_SECRET are available
-    # immediately. The bind-mount + GUARDIAN_SECRETS_PATH allows re-reading at runtime.
-    env_file:
-      - path: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/stack.env
-        required: false
+      CHANNEL_CHAT_SECRET: ${CHANNEL_CHAT_SECRET:-}
+      CHANNEL_DISCORD_SECRET: ${CHANNEL_DISCORD_SECRET:-}
+      CHANNEL_SLACK_SECRET: ${CHANNEL_SLACK_SECRET:-}
+      CHANNEL_API_SECRET: ${CHANNEL_API_SECRET:-}
+      CHANNEL_VOICE_SECRET: ${CHANNEL_VOICE_SECRET:-}
     volumes:
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/guardian:/app/data
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/audit:/app/audit
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts:/app/secrets:ro
+      - ${OPENPALM_HOME}/data/guardian:/app/data
+      - ${OPENPALM_HOME}/logs:/app/audit
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     networks: [ channel_lan, channel_public, assistant_net ]
     depends_on:
@@ -134,15 +125,15 @@ services:
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     environment:
       PORT: "8090"
-      OPENPALM_STATE_HOME: /app/state
-      OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}
+      OPENPALM_ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
       OPENPALM_ADMIN_API_URL: ${OPENPALM_ADMIN_API_URL:-}
       OPENCODE_API_URL: http://assistant:4096
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
       MEMORY_API_URL: http://memory:8765
+    ports:
+      - "127.0.0.1:${OPENPALM_SCHEDULER_PORT:-3897}:8090"
     volumes:
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/automations:/app/state/automations:ro
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts:/app/state/artifacts:ro
+      - ${OPENPALM_HOME}/config/automations:/automations:ro
     networks: [ assistant_net ]
     depends_on:
       assistant:

@@ -356,18 +356,18 @@ describe("resolveSchedule", () => {
 // ── loadAutomations ──────────────────────────────────────────────────
 
 describe("loadAutomations", () => {
-  let stateDir: string;
+  let configDir: string;
 
   beforeEach(() => {
-    stateDir = makeTempDir();
+    configDir = makeTempDir();
   });
 
   afterEach(() => {
-    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(configDir, { recursive: true, force: true });
   });
 
   test("loads .yml files from automations dir", () => {
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "health.yml"),
@@ -378,12 +378,12 @@ describe("loadAutomations", () => {
       'schedule: weekly\naction:\n  type: api\n  method: POST\n  path: /admin/upgrade\n'
     );
 
-    const configs = loadAutomations(stateDir);
+    const configs = loadAutomations(configDir);
     expect(configs.length).toBe(2);
   });
 
   test("ignores non-.yml files", () => {
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "health.yml"),
@@ -392,13 +392,13 @@ describe("loadAutomations", () => {
     // Old crontab-style file — should be ignored
     writeFileSync(join(dir, "old-crontab"), "0 2 * * * node /work/task.sh\n");
 
-    const configs = loadAutomations(stateDir);
+    const configs = loadAutomations(configDir);
     expect(configs.length).toBe(1);
     expect(configs[0].fileName).toBe("health.yml");
   });
 
   test("skips invalid YAML files", () => {
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "bad.yml"), "schedule: [invalid: yaml: :::");
     writeFileSync(
@@ -406,19 +406,19 @@ describe("loadAutomations", () => {
       'schedule: daily\naction:\n  type: api\n  path: /health\n'
     );
 
-    const configs = loadAutomations(stateDir);
+    const configs = loadAutomations(configDir);
     expect(configs.length).toBe(1);
     expect(configs[0].fileName).toBe("good.yml");
   });
 
   test("returns empty array when dir does not exist", () => {
-    const configs = loadAutomations(join(stateDir, "nonexistent"));
+    const configs = loadAutomations(join(configDir, "nonexistent"));
     expect(configs.length).toBe(0);
   });
 
   test("returns empty array when automations dir is empty", () => {
-    mkdirSync(join(stateDir, "automations"), { recursive: true });
-    const configs = loadAutomations(stateDir);
+    mkdirSync(join(configDir, "automations"), { recursive: true });
+    const configs = loadAutomations(configDir);
     expect(configs.length).toBe(0);
   });
 });
@@ -426,20 +426,20 @@ describe("loadAutomations", () => {
 // ── Scheduler lifecycle ─────────────────────────────────────────────
 
 describe("scheduler lifecycle", () => {
-  let stateDir: string;
+  let configDir: string;
 
   beforeEach(() => {
-    stateDir = makeTempDir();
+    configDir = makeTempDir();
     stopScheduler(); // ensure clean state
   });
 
   afterEach(() => {
     stopScheduler();
-    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(configDir, { recursive: true, force: true });
   });
 
   test("startScheduler creates jobs for enabled automations", () => {
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "health.yml"),
@@ -450,7 +450,7 @@ describe("scheduler lifecycle", () => {
       'schedule: daily\nenabled: false\naction:\n  type: api\n  path: /health\n'
     );
 
-    startScheduler(stateDir, "test-token");
+    startScheduler(configDir, "test-token");
     const status = getSchedulerStatus();
     expect(status.jobCount).toBe(1);
     expect(status.jobs[0].name).toBe("health");
@@ -458,14 +458,14 @@ describe("scheduler lifecycle", () => {
   });
 
   test("stopScheduler clears all jobs", () => {
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "health.yml"),
       'schedule: every-5-minutes\naction:\n  type: api\n  path: /health\n'
     );
 
-    startScheduler(stateDir, "test-token");
+    startScheduler(configDir, "test-token");
     expect(getSchedulerStatus().jobCount).toBe(1);
 
     stopScheduler();
@@ -479,13 +479,13 @@ describe("scheduler lifecycle", () => {
   });
 
   test("startScheduler handles empty automations dir gracefully", () => {
-    mkdirSync(join(stateDir, "automations"), { recursive: true });
-    startScheduler(stateDir, "test-token");
+    mkdirSync(join(configDir, "automations"), { recursive: true });
+    startScheduler(configDir, "test-token");
     expect(getSchedulerStatus().jobCount).toBe(0);
   });
 
   test("startScheduler handles missing automations dir gracefully", () => {
-    startScheduler(stateDir, "test-token");
+    startScheduler(configDir, "test-token");
     expect(getSchedulerStatus().jobCount).toBe(0);
   });
 });
@@ -723,13 +723,13 @@ describe("executeAction http integration", () => {
 // ── Scheduler fires cron and records execution log ───────────────────
 
 describe("scheduler cron firing", () => {
-  let stateDir: string;
+  let configDir: string;
   let server: Server;
   let serverPort: number;
   let hitCount: number;
 
   beforeEach(async () => {
-    stateDir = makeTempDir();
+    configDir = makeTempDir();
     hitCount = 0;
     stopScheduler();
 
@@ -748,14 +748,14 @@ describe("scheduler cron firing", () => {
 
   afterEach(async () => {
     stopScheduler();
-    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(configDir, { recursive: true, force: true });
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
     });
   });
 
   test("scheduler fires http automation and records execution log", async () => {
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
 
     // Use a per-second cron pattern so it fires within 2 seconds
@@ -773,7 +773,7 @@ describe("scheduler cron firing", () => {
       ].join("\n")
     );
 
-    startScheduler(stateDir, "test-token");
+    startScheduler(configDir, "test-token");
 
     const status = getSchedulerStatus();
     expect(status.jobCount).toBe(1);
@@ -811,7 +811,7 @@ describe("scheduler cron firing", () => {
       server.listen(serverPort, "127.0.0.1", () => resolve());
     });
 
-    const dir = join(stateDir, "automations");
+    const dir = join(configDir, "automations");
     mkdirSync(dir, { recursive: true });
 
     writeFileSync(
@@ -827,7 +827,7 @@ describe("scheduler cron firing", () => {
       ].join("\n")
     );
 
-    startScheduler(stateDir, "test-token");
+    startScheduler(configDir, "test-token");
 
     // Wait for the cron to fire (up to 8 seconds, polling every 200ms)
     const deadline = Date.now() + 8_000;

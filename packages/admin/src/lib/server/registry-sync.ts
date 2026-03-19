@@ -4,7 +4,7 @@
  * On first call, performs a sparse checkout of just the registry/ directory.
  * On subsequent calls, does a git pull to fetch the latest changes.
  *
- * The cloned registry lives at STATE_HOME/registry-repo/ and is the runtime
+ * The cloned registry lives at cache directory/registry-repo/ and is the runtime
  * source of truth for available channels and automations.
  *
  * Security: all git operations use execFileSync (no shell) with validated inputs.
@@ -13,7 +13,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { resolveStateHome } from "./paths.js";
+import { resolveCacheHome } from "./paths.js";
 
 const REPO = "itlackey/openpalm";
 const REPO_URL =
@@ -37,20 +37,20 @@ if (!URL_RE.test(REPO_URL)) {
 
 // ── Registry directory resolution ───────────────────────────────────
 
-/** Root of the cloned registry checkout inside STATE_HOME */
+/** Root of the cloned registry checkout inside cache dir */
 export function registryRoot(): string {
-  return join(resolveStateHome(), "registry");
+  return join(resolveCacheHome(), "registry");
 }
 
 /** Path to the git repo clone (we clone the whole repo shallowly then read registry/) */
 function repoCloneDir(): string {
-  return join(resolveStateHome(), "registry-repo");
+  return join(resolveCacheHome(), "registry-repo");
 }
 
 // ── Clone / Pull ────────────────────────────────────────────────────
 
 /**
- * Ensure the registry repo is cloned into STATE_HOME/registry-repo/.
+ * Ensure the registry repo is cloned into cache directory/registry-repo/.
  * Uses sparse checkout to fetch only the registry/ directory.
  * Returns the path to the registry/ subdirectory inside the clone.
  */

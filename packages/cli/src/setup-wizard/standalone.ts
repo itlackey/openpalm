@@ -11,9 +11,7 @@
  *
  * Environment:
  *   WIZARD_PORT          — Port to listen on (default: ephemeral/random)
- *   OPENPALM_CONFIG_HOME — Config dir override (default: temp dir)
- *   OPENPALM_DATA_HOME   — Data dir override (default: temp dir)
- *   OPENPALM_STATE_HOME  — State dir override (default: temp dir)
+ *   OPENPALM_HOME        — Home dir override (default: temp dir)
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,40 +22,35 @@ import { createSetupServer } from "./server.ts";
 // ── Configuration ──────────────────────────────────────────────────────
 
 const port = Number(process.env.WIZARD_PORT) || 0;
-const useDevDirs = !!(
-  process.env.OPENPALM_CONFIG_HOME &&
-  process.env.OPENPALM_DATA_HOME &&
-  process.env.OPENPALM_STATE_HOME
-);
+const useDevDirs = !!process.env.OPENPALM_HOME;
 
 // ── Directory Setup ────────────────────────────────────────────────────
 
 let tempBase: string | null = null;
-let configDir: string;
-let dataDir: string;
-let stateDir: string;
+let homeDir: string;
 
 if (useDevDirs) {
-  // Use caller-provided directories (e.g. .dev/ paths)
-  configDir = process.env.OPENPALM_CONFIG_HOME!;
-  dataDir = process.env.OPENPALM_DATA_HOME!;
-  stateDir = process.env.OPENPALM_STATE_HOME!;
+  // Use caller-provided home directory (e.g. .dev/ paths)
+  homeDir = process.env.OPENPALM_HOME!;
 } else {
-  // Create isolated temp directories
+  // Create isolated temp directory
   tempBase = mkdtempSync(join(tmpdir(), "openpalm-wizard-dev-"));
-  configDir = join(tempBase, "config");
-  dataDir = join(tempBase, "data");
-  stateDir = join(tempBase, "state");
+  homeDir = tempBase;
 }
+
+const configDir = join(homeDir, "config");
+const vaultDir = join(homeDir, "vault");
+const dataDir = join(homeDir, "data");
+const logsDir = join(homeDir, "logs");
 
 // Ensure required directories exist
 for (const dir of [
   configDir,
-  join(configDir, "channels"),
+  join(configDir, "components"),
   join(configDir, "connections"),
   join(configDir, "assistant"),
   join(configDir, "automations"),
-  join(configDir, "stash"),
+  vaultDir,
   dataDir,
   join(dataDir, "admin"),
   join(dataDir, "memory"),
@@ -65,26 +58,22 @@ for (const dir of [
   join(dataDir, "guardian"),
   join(dataDir, "caddy"),
   join(dataDir, "caddy", "data"),
-  join(dataDir, "caddy", "config"),
-  join(dataDir, "automations"),
-  join(dataDir, "opencode"),
-  stateDir,
-  join(stateDir, "artifacts"),
-  join(stateDir, "audit"),
-  join(stateDir, "artifacts", "channels"),
-  join(stateDir, "automations"),
-  join(stateDir, "opencode"),
+  join(dataDir, "caddy", "channels"),
+  join(dataDir, "stash"),
+  join(dataDir, "workspace"),
+  logsDir,
+  join(logsDir, "opencode"),
 ]) {
   mkdirSync(dir, { recursive: true });
 }
 
 // Seed minimal env files so the wizard's status endpoint works
-const stackEnvPath = join(stateDir, "artifacts", "stack.env");
-writeFileSync(stackEnvPath, "OPENPALM_SETUP_COMPLETE=false\n");
+const systemEnvPath = join(vaultDir, "system.env");
+writeFileSync(systemEnvPath, "OPENPALM_SETUP_COMPLETE=false\n");
 
-const secretsPath = join(configDir, "secrets.env");
+const userEnvPath = join(vaultDir, "user.env");
 writeFileSync(
-  secretsPath,
+  userEnvPath,
   [
     "# OpenPalm Secrets (standalone wizard — dev/test)",
     "export OPENPALM_ADMIN_TOKEN=",
@@ -103,10 +92,8 @@ writeFileSync(
   ].join("\n"),
 );
 
-// Point lib's XDG resolvers at our directories
-process.env.OPENPALM_CONFIG_HOME = configDir;
-process.env.OPENPALM_DATA_HOME = dataDir;
-process.env.OPENPALM_STATE_HOME = stateDir;
+// Point lib's home resolver at our directory
+process.env.OPENPALM_HOME = homeDir;
 
 // ── Stub Asset Provider ────────────────────────────────────────────────
 // Provides minimal valid asset content so performSetup() can write config
@@ -144,9 +131,11 @@ console.log("");
 console.log("  Setup wizard running (standalone mode — no Docker)");
 console.log("");
 console.log(`  URL:        ${url}`);
+console.log(`  Home dir:   ${homeDir}`);
 console.log(`  Config dir: ${configDir}`);
+console.log(`  Vault dir:  ${vaultDir}`);
 console.log(`  Data dir:   ${dataDir}`);
-console.log(`  State dir:  ${stateDir}`);
+console.log(`  Logs dir:   ${logsDir}`);
 console.log("");
 console.log("  Press Ctrl+C to stop.");
 console.log("");

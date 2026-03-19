@@ -52,7 +52,7 @@ export const POST: RequestHandler = async (event) => {
   applyInstall(state);
 
   // 5. Discover staged channels and register them in services state.
-  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
+  const stagedYmls = discoverStagedChannelYmls(state.configDir);
   const channelNames = stagedYmls.map((p) => {
     const filename = p.split("/").pop() ?? "";
     return filename.replace(/\.yml$/, "");
@@ -70,7 +70,7 @@ export const POST: RequestHandler = async (event) => {
   let dockerResult = null;
   if (dockerCheck.ok) {
     logger.info("starting compose up", { requestId, channels: channelNames });
-    dockerResult = await composeUp(state.stateDir, {
+    dockerResult = await composeUp(state.configDir, {
       files: buildComposeFileList(state),
       envFiles: buildEnvFiles(state),
       services: buildManagedServices(state)
@@ -107,7 +107,7 @@ export const POST: RequestHandler = async (event) => {
       composeResult: dockerResult
         ? { ok: dockerResult.ok, stderr: dockerResult.stderr }
         : null,
-      artifactsDir: `${state.stateDir}/artifacts`
+      artifactsDir: `${state.configDir}/artifacts`
     },
     requestId
   );

@@ -15,7 +15,7 @@ import {
   OLLAMA_INSTACK_URL,
 } from "../provider-constants.js";
 import { mergeEnvContent } from "./env.js";
-import { ensureXdgDirs } from "./paths.js";
+import { ensureHomeDirs } from "./home.js";
 import {
   ensureSecrets,
   updateSecretsEnv,
@@ -524,7 +524,7 @@ export async function performSetup(
 
   // ── Persist secrets.env ──────────────────────────────────────────────
   try {
-    ensureXdgDirs();
+    ensureHomeDirs();
     ensureSecrets(state);
     ensureConnectionProfilesStore(state.configDir);
     updateSecretsEnv(state, updates);
@@ -976,7 +976,7 @@ export async function performSetupFromConfig(
   const channelEnvVars = buildChannelCredentialEnvVars(config.channels);
   if (Object.keys(channelEnvVars).length > 0) {
     try {
-      ensureXdgDirs();
+      ensureHomeDirs();
       ensureSecrets(state);
       updateSecretsEnv(state, channelEnvVars);
     } catch (err) {

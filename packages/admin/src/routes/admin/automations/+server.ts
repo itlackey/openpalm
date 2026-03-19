@@ -26,7 +26,7 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const automations = loadAutomations(state.stateDir).map((c) => ({
+  const automations = loadAutomations(state.configDir).map((c) => ({
     name: c.name,
     description: c.description,
     schedule: c.schedule,

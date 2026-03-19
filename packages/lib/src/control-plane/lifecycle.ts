@@ -6,37 +6,35 @@
  *
  * All asset operations are delegated via CoreAssetProvider (injected).
  */
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
 import type { ControlPlaneState, CallerType } from "./types.js";
 import { CORE_SERVICES } from "./types.js";
-import { resolveConfigHome, resolveStateHome, resolveDataHome } from "./paths.js";
+import {
+  resolveOpenPalmHome,
+  resolveConfigDir,
+  resolveVaultDir,
+  resolveDataDir,
+  resolveLogsDir,
+  resolveCacheHome,
+} from "./home.js";
 import { loadSecretsEnvFile } from "./secrets.js";
-import { stageArtifacts, persistArtifacts, discoverStagedChannelYmls, randomHex, isOllamaEnabled, isAdminEnabled } from "./staging.js";
+import {
+  resolveArtifacts,
+  persistConfiguration,
+  discoverComponentOverlays,
+  discoverChannelOverlays,
+  randomHex,
+  isOllamaEnabled,
+  isAdminEnabled,
+  buildEnvFiles,
+} from "./staging.js";
 import { refreshCoreAssets, ensureMemoryDir, ensureCoreAutomations } from "./core-assets.js";
 import { ensureMemoryConfig } from "./memory-config.js";
 import { isSetupComplete } from "./setup-status.js";
+import { snapshotCurrentState } from "./rollback.js";
+import { validateProposedState } from "./validate.js";
 import type { CoreAssetProvider } from "./core-asset-provider.js";
-
-const execFileAsync = promisify(execFile);
-
-/** Resolve the varlock binary path — honours VARLOCK_BIN for dev environments. */
-const envVarlockBin = process.env.VARLOCK_BIN;
-let VARLOCK_BIN = "varlock";
-if (envVarlockBin) {
-  if (envVarlockBin === "varlock" || envVarlockBin.startsWith("/")) {
-    VARLOCK_BIN = envVarlockBin;
-  } else {
-    console.warn(
-      `Unsafe VARLOCK_BIN value: ${envVarlockBin}. Falling back to "varlock". ` +
-      "Must be \"varlock\" or an absolute path.",
-    );
-  }
-}
 
 const IMAGE_NAMESPACE_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -46,9 +44,14 @@ const SEMVER_TAG_RE = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 export function createState(
   adminToken?: string
 ): ControlPlaneState {
-  const stateDir = resolveStateHome();
-  const configDir = resolveConfigHome();
-  const fileEnv = loadSecretsEnvFile(configDir);
+  const homeDir = resolveOpenPalmHome();
+  const configDir = resolveConfigDir();
+  const vaultDir = resolveVaultDir();
+  const dataDir = resolveDataDir();
+  const logsDir = resolveLogsDir();
+  const cacheDir = resolveCacheHome();
+
+  const fileEnv = loadSecretsEnvFile(vaultDir);
   const resolvedAdminToken =
     adminToken ?? fileEnv.OPENPALM_ADMIN_TOKEN ?? fileEnv.ADMIN_TOKEN ?? process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
 
@@ -57,18 +60,19 @@ export function createState(
     services[name] = "stopped";
   }
 
-  const dataDir = resolveDataHome();
-
-  const persistedSecrets = loadPersistedChannelSecrets(dataDir);
+  const persistedSecrets = loadPersistedChannelSecrets(vaultDir);
   const channelSecrets: Record<string, string> = { ...persistedSecrets };
 
   const setupToken = randomHex(16);
   const state: ControlPlaneState = {
     adminToken: resolvedAdminToken,
     setupToken,
-    stateDir,
+    homeDir,
     configDir,
+    vaultDir,
     dataDir,
+    logsDir,
+    cacheDir,
     services,
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
@@ -85,21 +89,24 @@ export function createState(
  * Write or remove the setup-token.txt file based on setup completion state.
  */
 export function writeSetupTokenFile(state: ControlPlaneState): void {
-  const tokenPath = `${state.stateDir}/setup-token.txt`;
-  const setupComplete = isSetupComplete(state.stateDir, state.configDir);
+  const tokenPath = `${state.dataDir}/setup-token.txt`;
+  const setupComplete = isSetupComplete(state.vaultDir);
 
   if (setupComplete) {
     try { unlinkSync(tokenPath); } catch { /* already gone */ }
   } else {
-    mkdirSync(state.stateDir, { recursive: true });
+    mkdirSync(state.dataDir, { recursive: true });
     writeFileSync(tokenPath, state.setupToken + "\n", { mode: 0o600 });
   }
 }
 
 // ── Private Loaders ───────────────────────────────────────────────────
 
-function loadPersistedChannelSecrets(dataDir: string): Record<string, string> {
-  const parsed = parseEnvFile(`${dataDir}/stack.env`);
+/**
+ * Load persisted channel HMAC secrets from vault/system.env.
+ */
+function loadPersistedChannelSecrets(vaultDir: string): Record<string, string> {
+  const parsed = parseEnvFile(`${vaultDir}/system.env`);
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {
     const match = key.match(/^CHANNEL_([A-Z0-9_]+)_SECRET$/);
@@ -131,8 +138,12 @@ function reconcileCore(
     for (const name of Object.keys(state.services)) state.services[name] = "stopped";
   }
 
-  state.artifacts = stageArtifacts(state, assets);
-  persistArtifacts(state, assets);
+  // Snapshot before writing (for rollback on failure)
+  snapshotCurrentState(state);
+
+  // Resolve and persist configuration directly to live paths
+  state.artifacts = resolveArtifacts(state, assets);
+  persistConfiguration(state, assets);
   return active;
 }
 
@@ -169,12 +180,12 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
   namespace: string;
   tag: string;
 }> {
-  const stackEnvPath = `${state.dataDir}/stack.env`;
-  const parsed = parseEnvFile(stackEnvPath);
+  const systemEnvPath = `${state.vaultDir}/system.env`;
+  const parsed = parseEnvFile(systemEnvPath);
   const namespace = (parsed.OPENPALM_IMAGE_NAMESPACE ?? process.env.OPENPALM_IMAGE_NAMESPACE ?? "openpalm").trim().toLowerCase();
 
   if (!IMAGE_NAMESPACE_RE.test(namespace)) {
-    throw new Error(`Invalid image namespace in stack.env: ${namespace}`);
+    throw new Error(`Invalid image namespace in system.env: ${namespace}`);
   }
 
   let response: Response;
@@ -197,9 +208,9 @@ export async function updateStackEnvToLatestImageTag(state: ControlPlaneState): 
     throw new Error("No usable Docker image tag found");
   }
 
-  const currentContent = existsSync(stackEnvPath) ? readFileSync(stackEnvPath, "utf-8") : "";
+  const currentContent = existsSync(systemEnvPath) ? readFileSync(systemEnvPath, "utf-8") : "";
   const updatedContent = mergeEnvContent(currentContent, { OPENPALM_IMAGE_TAG: latestTag }, { uncomment: true });
-  writeFileSync(stackEnvPath, updatedContent);
+  writeFileSync(systemEnvPath, updatedContent);
 
   return { namespace, tag: latestTag };
 }
@@ -219,21 +230,30 @@ export async function applyUpgrade(
 
 // ── Compose File List Builder ────────────────────────────────────────────
 
+/**
+ * Build the compose file list from config/components/.
+ */
 export function buildComposeFileList(state: ControlPlaneState): string[] {
-  const files = [`${state.stateDir}/artifacts/docker-compose.yml`];
+  const coreYml = `${state.configDir}/components/core.yml`;
+  const files: string[] = [];
+
+  if (existsSync(coreYml)) {
+    files.push(coreYml);
+  }
 
   if (isAdminEnabled(state)) {
-    const adminYml = `${state.stateDir}/artifacts/admin.yml`;
-    files.push(adminYml);
+    const adminYml = `${state.configDir}/components/admin.yml`;
+    if (existsSync(adminYml)) files.push(adminYml);
   }
 
   if (isOllamaEnabled(state)) {
-    const ollamaYml = `${state.stateDir}/artifacts/ollama.yml`;
-    files.push(ollamaYml);
+    const ollamaYml = `${state.configDir}/components/ollama.yml`;
+    if (existsSync(ollamaYml)) files.push(ollamaYml);
   }
 
-  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
-  files.push(...stagedYmls);
+  // Add channel overlays
+  const channelYmls = discoverChannelOverlays(state.configDir);
+  files.push(...channelYmls);
 
   return files;
 }
@@ -253,11 +273,11 @@ export function buildManagedServices(state: ControlPlaneState): string[] {
     services.push("ollama");
   }
 
-  const stagedYmls = discoverStagedChannelYmls(state.stateDir);
-  for (const p of stagedYmls) {
+  const channelYmls = discoverChannelOverlays(state.configDir);
+  for (const p of channelYmls) {
     const filename = p.split("/").pop() ?? "";
     const name = filename.replace(/\.yml$/, "");
-    if (name) services.push(`channel-${name}`);
+    if (name) services.push(name);
   }
   return services;
 }
@@ -315,68 +335,5 @@ export async function validateEnvironment(state: ControlPlaneState): Promise<{
   errors: string[];
   warnings: string[];
 }> {
-  const schemaPath = `${state.dataDir}/secrets.env.schema`;
-  const envPath = `${state.configDir}/secrets.env`;
-
-  function sanitizeVarlockMessage(msg: string): string {
-    return msg
-      .replace(/sk-[A-Za-z0-9]{20,}/g, "[REDACTED]")
-      .replace(/gsk_[A-Za-z0-9]{30,}/g, "[REDACTED]")
-      .replace(/AIza[A-Za-z0-9_\-]{35}/g, "[REDACTED]")
-      .replace(/[0-9a-f]{32,}/gi, "[REDACTED]")
-      .replace(/value '([^']*)'/g, "value '[REDACTED]'");
-  }
-
-  function collectVarlockOutput(stderr: string, errors: string[], warnings: string[]): void {
-    for (const line of stderr.split("\n")) {
-      const trimmed = sanitizeVarlockMessage(line.trim());
-      if (!trimmed) continue;
-      if (trimmed.includes("ERROR")) errors.push(trimmed);
-      else if (trimmed.includes("WARN")) warnings.push(trimmed);
-    }
-  }
-
-  async function runVarlockLoad(
-    schemaFile: string,
-    envFile: string,
-  ): Promise<void> {
-    const tmpDir = mkdtempSync(join(tmpdir(), "varlock-"));
-    try {
-      copyFileSync(schemaFile, join(tmpDir, ".env.schema"));
-      copyFileSync(envFile, join(tmpDir, ".env"));
-      await execFileAsync(
-        VARLOCK_BIN,
-        ["load", "--path", `${tmpDir}/`],
-        { timeout: 10000 }
-      );
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  }
-
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  let anyFailed = false;
-
-  try {
-    await runVarlockLoad(schemaPath, envPath);
-  } catch (err: unknown) {
-    anyFailed = true;
-    if (err && typeof err === "object" && "stderr" in err) {
-      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
-    }
-  }
-
-  const stackSchemaPath = `${state.dataDir}/stack.env.schema`;
-  const stackEnvPath = `${state.stateDir}/artifacts/stack.env`;
-  try {
-    await runVarlockLoad(stackSchemaPath, stackEnvPath);
-  } catch (err: unknown) {
-    anyFailed = true;
-    if (err && typeof err === "object" && "stderr" in err) {
-      collectVarlockOutput(String((err as { stderr: string }).stderr), errors, warnings);
-    }
-  }
-
-  return { ok: !anyFailed && errors.length === 0, errors, warnings };
+  return validateProposedState(state);
 }

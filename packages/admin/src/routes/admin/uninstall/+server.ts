@@ -27,7 +27,7 @@ export const POST: RequestHandler = async (event) => {
   const dockerCheck = await checkDocker();
   let dockerResult = null;
   if (dockerCheck.ok) {
-    dockerResult = await composeDown(state.stateDir, { files: buildComposeFileList(state), envFiles: buildEnvFiles(state), profiles: ['admin'] });
+    dockerResult = await composeDown(state.configDir, { files: buildComposeFileList(state), envFiles: buildEnvFiles(state), profiles: ['admin'] });
   }
 
   logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });

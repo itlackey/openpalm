@@ -45,11 +45,11 @@ export async function prepareVarlockDir(schemaPath: string, envPath: string): Pr
 }
 
 /**
- * Downloads varlock binary and caches it in STATE_HOME/bin/.
+ * Downloads varlock binary and caches it in data/bin/.
  * Skips download if binary already exists.
  */
-export async function ensureVarlock(stateHome: string): Promise<string> {
-  const binDir = join(stateHome, 'bin');
+export async function ensureVarlock(dataDir: string): Promise<string> {
+  const binDir = join(dataDir, 'bin');
   const varlockBin = join(binDir, 'varlock');
 
   if (await Bun.file(varlockBin).exists()) {

@@ -1,9 +1,7 @@
 # OpenPalm — Admin service overlay
 #
-# Merged into the compose stack when the user enables the admin dashboard
-# from the setup wizard. Includes Caddy (reverse proxy), Docker Socket
-# Proxy, and the Admin UI.
-# Usage: docker compose -f docker-compose.yml -f admin.yml up -d
+# Merged into the compose stack when the user enables the admin dashboard.
+# Includes Caddy (reverse proxy), Docker Socket Proxy, and the Admin UI.
 
 services:
   # ── Caddy (reverse proxy) ──────────────────────────────────────────
@@ -12,12 +10,11 @@ services:
     restart: unless-stopped
     user: "${OPENPALM_UID:-1000}:${OPENPALM_GID:-1000}"
     ports:
-      - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-8080}:80"
+      - "${OPENPALM_INGRESS_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_INGRESS_PORT:-3880}:80"
     volumes:
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/channels:/etc/caddy/channels:ro
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/data:/data/caddy
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/caddy/config:/config/caddy
+      - ${OPENPALM_HOME}/data/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${OPENPALM_HOME}/data/caddy/channels:/etc/caddy/channels:ro
+      - ${OPENPALM_HOME}/data/caddy/data:/data/caddy
     command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     networks: [ assistant_net, channel_lan, channel_public ]
     healthcheck:
@@ -28,17 +25,10 @@ services:
       start_period: 10s
 
   # ── Docker Socket Proxy ───────────────────────────────────────────
-  # Filtered proxy for the Docker daemon socket. Only the proxy mounts
-  # the socket; the admin talks to Docker via HTTP over the internal
-  # network. This eliminates socket permission/GID issues across Docker
-  # runtimes (Docker Desktop, OrbStack, Colima, Podman, etc.).
   docker-socket-proxy:
     image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
     restart: unless-stopped
     environment:
-      # Static allowlist — covers all compose operations for any channel.
-      # These are API endpoint categories, not per-container rules, so
-      # adding/removing channels never requires changes here.
       CONTAINERS: 1
       IMAGES: 1
       NETWORKS: 1
@@ -65,45 +55,38 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:8100:8100"
-      - "${OPENPALM_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:4097:4097"
+      - "127.0.0.1:${OPENPALM_ADMIN_PORT:-3880}:8100"
+      - "${OPENPALM_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ADMIN_OPENCODE_PORT:-3881}:4097"
     environment:
       PORT: "8100"
-      HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
-      ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}
+      HOME: /home/node
+      OPENPALM_HOME: ${OPENPALM_HOME}
+      ADMIN_TOKEN: ${OPENPALM_ADMIN_TOKEN:-}
       MEMORY_AUTH_TOKEN: ${MEMORY_AUTH_TOKEN:-}
       MEMORY_API_URL: http://memory:8765
       MEMORY_USER_ID: ${MEMORY_USER_ID:-default_user}
       GUARDIAN_URL: http://guardian:8080
       OPENPALM_ASSISTANT_URL: http://assistant:4096
       OPENPALM_ADMIN_API_URL: http://localhost:8100
-      OPENPALM_CONFIG_HOME: ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
-      OPENPALM_STATE_HOME: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
-      OPENPALM_DATA_HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
-      # OpenCode instance for admin AI assistant with admin-tools plugin
-      OPENCODE_CONFIG_DIR: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
+      # OpenCode instance for admin AI assistant
+      OPENCODE_CONFIG_DIR: /home/node
       OPENCODE_PORT: "4097"
       OPENCODE_AUTH: "false"
-      # LLM provider keys — admin's OpenCode needs these for AI operations
+      # LLM provider keys — admin's OpenCode reads from vault mount
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      # Docker API via socket proxy — no direct socket mount needed
+      # Docker API via socket proxy
       DOCKER_HOST: tcp://docker-socket-proxy:2375
-    # env_file loads stack.env into the container so OPENPALM_* vars are available
-    # to child docker compose invocations. secrets.env provides OPENPALM_ADMIN_TOKEN + LLM keys.
-    env_file:
-      - path: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/stack.env
-        required: false
-      - path: ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}/artifacts/secrets.env
-        required: false
     volumes:
-      - ${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}:${OPENPALM_CONFIG_HOME:-${HOME}/.config/openpalm}
-      - ${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}:${OPENPALM_STATE_HOME:-${HOME}/.local/state/openpalm}
-      - ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}:${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}
+      - ${OPENPALM_HOME}/config:/etc/openpalm
+      - ${OPENPALM_HOME}/vault:/etc/openpalm/vault
+      - ${OPENPALM_HOME}/data/admin:/home/node
+      - ${OPENPALM_HOME}/data/workspace:/work
+      - ${HOME}/.cache/openpalm/registry:/cache/registry
     networks: [ assistant_net, admin_docker_net ]
     depends_on:
       docker-socket-proxy:
