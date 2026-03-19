@@ -37,6 +37,7 @@ jobs:
           fetch-depth: 0
 
       - name: Configure git identity
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -74,44 +75,65 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
 
-      - name: Bump package.json versions
+      - name: Prepare platform release state
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
           EVENT_NAME: ${{ github.event_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          CURRENT=$(jq -r .version package.json)
-          if [ "${CURRENT}" = "${VERSION}" ]; then
-            echo "Versions already at ${VERSION}, skipping bump."
+          PLATFORM_MANIFESTS="package.json packages/admin/package.json core/guardian/package.json"
+
+          if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
+            BRANCH="${GITHUB_REF_NAME}"
+
+            # Ensure we are on the branch (workflow dispatch can start from any ref)
+            git checkout "${BRANCH}"
+            git pull --ff-only origin "${BRANCH}"
+
+            for pkg in ${PLATFORM_MANIFESTS}; do
+              jq --arg v "${VERSION}" '.version = $v' "${pkg}" > "${pkg}.tmp" && mv "${pkg}.tmp" "${pkg}"
+              echo "Set ${pkg} to ${VERSION}"
+            done
+
+            # Stamp install scripts to the platform release tag; CLI package version stays independent.
+            sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
+            sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
+            echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
+
+            if git diff --quiet -- package.json packages/admin/package.json core/guardian/package.json scripts/setup.sh scripts/setup.ps1; then
+              echo "Release files already match ${VERSION}, skipping commit."
+              exit 0
+            fi
+
+            git add package.json packages/admin/package.json core/guardian/package.json scripts/setup.sh scripts/setup.ps1
+            git commit -m "chore: bump platform version to ${VERSION}"
+            git push origin "${BRANCH}"
             exit 0
           fi
 
-          # Determine target branch for the version commit
-          if [ "${EVENT_NAME}" = 'workflow_dispatch' ]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="${DEFAULT_BRANCH}"
-          fi
-
-          # Ensure we are on the branch (tag pushes detach HEAD)
-          git checkout "${BRANCH}"
-          git pull --ff-only origin "${BRANCH}"
-
-          for pkg in package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json; do
-            jq --arg v "${VERSION}" '.version = $v' "${pkg}" > "${pkg}.tmp" && mv "${pkg}.tmp" "${pkg}"
-            echo "Bumped ${pkg} to ${VERSION}"
+          for pkg in ${PLATFORM_MANIFESTS}; do
+            CURRENT=$(jq -r .version "${pkg}")
+            if [ "${CURRENT}" != "${VERSION}" ]; then
+              echo "${pkg} version ${CURRENT} does not match release ${VERSION}."
+              echo 'Create the tag from a commit with synchronized platform versions.'
+              exit 1
+            fi
           done
 
-          # Stamp SCRIPT_VERSION into setup scripts so curl|bash defaults to this release
-          sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${VERSION}\"/" scripts/setup.sh
-          sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${VERSION}'/" scripts/setup.ps1
-          echo "Stamped SCRIPT_VERSION=${VERSION} into setup scripts"
+          if ! grep -Eq '^SCRIPT_VERSION="'"${VERSION}"'"$' scripts/setup.sh; then
+            echo "scripts/setup.sh SCRIPT_VERSION does not match release ${VERSION}."
+            exit 1
+          fi
 
-          git add package.json packages/admin/package.json core/guardian/package.json packages/cli/package.json scripts/setup.sh scripts/setup.ps1
-          git commit -m "chore: bump version to ${VERSION}"
-          git push origin "${BRANCH}"
+          if ! grep -Eq "^\\\$ScriptVersion = '${VERSION}'$" scripts/setup.ps1; then
+            echo "scripts/setup.ps1 ScriptVersion does not match release ${VERSION}."
+            exit 1
+          fi
+
+          echo "Release tag ${VERSION} matches platform manifests and setup scripts."
 
       - name: Create and push tag
+        if: github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
           EVENT_NAME: ${{ github.event_name }}
@@ -125,8 +147,8 @@ jobs:
 
           # Point tag at the latest commit (which includes the version bump)
           git checkout "${BRANCH}"
-          git tag -fa "${TAG}" -m "Release ${TAG}"
-          git push --force origin "${TAG}"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
 
   push-images:
     name: Build and push Docker images
