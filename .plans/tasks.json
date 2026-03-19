@@ -1,18 +1,14 @@
 [
   {
-    "issue": "#301",
-    "title": "Unified component system",
-    "description": "Deliver the 0.10.0 component model, including the shared filesystem and port prerequisites, lib-owned lifecycle logic, migration tooling, and consumer updates across admin, CLI, registry, and docs.",
+    "issue": "#332",
+    "title": "Phase 0 prerequisites",
+    "description": "Land the shared v0.10.0 prerequisite work before the main component system: the `~/.openpalm/` home layout, validate-in-place rollback flow, vault-aware asset rewrites, and 38XX port standardization.",
     "status": "pending",
-    "plan_file": ".plans/issue-301-unified-component-system.md",
+    "plan_file": ".plans/issue-332-phase-0-prerequisites.md",
     "references": [
       {
-        "path": ".plans/issue-301-unified-component-system.md",
-        "line": 5
-      },
-      {
-        "path": ".github/roadmap/0.10.0/README.md",
-        "line": 21
+        "path": ".plans/issue-332-phase-0-prerequisites.md",
+        "line": 1
       },
       {
         "path": ".github/roadmap/0.10.0/README.md",
@@ -29,8 +25,8 @@
         "status": "pending",
         "references": [
           {
-            "path": ".plans/issue-301-unified-component-system.md",
-            "line": 30
+            "path": ".plans/issue-332-phase-0-prerequisites.md",
+            "line": 10
           },
           {
             "path": ".github/roadmap/0.10.0/README.md",
@@ -47,8 +43,8 @@
         "status": "pending",
         "references": [
           {
-            "path": ".plans/issue-301-unified-component-system.md",
-            "line": 34
+            "path": ".plans/issue-332-phase-0-prerequisites.md",
+            "line": 11
           },
           {
             "path": ".github/roadmap/0.10.0/README.md",
@@ -65,23 +61,46 @@
         "status": "pending",
         "references": [
           {
-            "path": ".plans/issue-301-unified-component-system.md",
-            "line": 38
+            "path": ".plans/issue-332-phase-0-prerequisites.md",
+            "line": 12
           },
           {
             "path": ".github/roadmap/0.10.0/README.md",
             "line": 177
           },
           {
-            "path": ".github/roadmap/0.10.0/README.md",
-            "line": 229
-          },
-          {
             "path": "assets/docker-compose.yml",
             "line": 1
           }
         ]
+      }
+    ]
+  },
+  {
+    "issue": "#301",
+    "title": "Unified component system",
+    "description": "Deliver the 0.10.0 component model after the shared Phase 0 prerequisites land, with lib-owned lifecycle logic, migration tooling, and consumer updates across admin, CLI, registry, and docs.",
+    "status": "pending",
+    "plan_file": ".plans/issue-301-unified-component-system.md",
+    "references": [
+      {
+        "path": ".plans/issue-301-unified-component-system.md",
+        "line": 5
       },
+      {
+        "path": ".github/roadmap/0.10.0/README.md",
+        "line": 21
+      },
+      {
+        "path": ".github/roadmap/0.10.0/openpalm-components-plan.md",
+        "line": 33
+      },
+      {
+        "path": "packages/lib/src/control-plane/channels.ts",
+        "line": 22
+      }
+    ],
+    "subtasks": [
       {
         "description": "Add lib-owned component types, discovery, label parsing, overlay validation, and cross-component environment injection collision checks.",
         "status": "pending",
