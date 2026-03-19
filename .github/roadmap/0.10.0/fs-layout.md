@@ -1,0 +1,29 @@
+- $HOME/.openpalm
+    - config - mounts to assistant,admin /etc/openpalm
+        - automations - mount to scheduler container /automations
+            - automation1.yml
+            - automation2.yml
+        - components
+            - core.yml
+            - admin.yml
+            - channel-slack.yml
+        - user.env
+        - user.env.schema
+        - system.env
+        - system.env.schema
+        - openpalm.yml
+        - ov.conf
+    - data
+        - assistant - mounts to assistant container $HOME/opencode
+        - admin - mounts to admin container $HOME/node
+        - memory - mounts to memory container data directory
+        - ... - each container can have its own subdirectory(ies) for specific data storage needs
+        - stash - mounts to assistant ~/.akm
+        - workspace - mounts to assistant,admin /work directory
+    - logs
+        - various log files for assistant, admin, scheduler and memory containers
+    - backups - used for the rollback and long term backups
+
+$HOME/.cache/openpalm
+    - assets - core assets from report
+    - registry - mounts to assistant,admin /cache/registry

@@ -1,0 +1,31 @@
+{
+  "name": "@openpalm/channel-voice",
+  "version": "0.9.0",
+  "type": "module",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm",
+    "directory": "packages/channel-voice"
+  },
+  "access": "public",
+  "main": "src/index.ts",
+  "files": [
+    "src",
+    "web"
+  ],
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "CHANNEL_VOICE_SECRET=test-secret bun --watch run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src/",
+    "test:e2e": "npx playwright test --config=playwright.config.ts"
+  },
+  "peerDependencies": {
+    "@openpalm/channels-sdk": ">=0.8.0 <1.0.0"
+  },
+  "devDependencies": {
+    "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
+    "@playwright/test": "^1.58.2"
+  }
+}

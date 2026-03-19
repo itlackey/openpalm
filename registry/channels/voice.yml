@@ -1,0 +1,30 @@
+# Channel: Voice — Voice-driven conversational interface (STT → LLM → TTS)
+services:
+  channel-voice:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: "8186"
+      CHANNEL_NAME: "Voice"
+      GUARDIAN_URL: http://guardian:8080
+      CHANNEL_PACKAGE: "@openpalm/channel-voice"
+      CHANNEL_VOICE_SECRET: ${CHANNEL_VOICE_SECRET}
+      STT_BASE_URL: ${STT_BASE_URL:-https://api.openai.com}
+      STT_API_KEY: ${STT_API_KEY:-}
+      STT_MODEL: ${STT_MODEL:-whisper-1}
+      STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-30000}
+      TTS_BASE_URL: ${TTS_BASE_URL:-https://api.openai.com}
+      TTS_API_KEY: ${TTS_API_KEY:-}
+      TTS_MODEL: ${TTS_MODEL:-tts-1}
+      TTS_VOICE: ${TTS_VOICE:-alloy}
+      TTS_TIMEOUT_MS: ${TTS_TIMEOUT_MS:-30000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    networks: [channel_lan]
+    depends_on:
+      guardian:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8186' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

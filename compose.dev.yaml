@@ -34,18 +34,14 @@ services:
       context: .
       dockerfile: core/assistant/Dockerfile
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/assistant:${OPENPALM_IMAGE_TAG:-latest}
-    # Dev override: blank out cloud LLM keys and configure the lmstudio
-    # provider to point at local Ollama. OpenCode's openai provider uses the
-    # Responses API (/v1/responses) which Ollama doesn't support, so we use
-    # the lmstudio provider which uses the Chat Completions API instead.
+    # Dev override: use host env API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY).
+    # OpenCode picks the default model based on available keys.
     environment:
-      ANTHROPIC_API_KEY: ""
       GROQ_API_KEY: ""
       MISTRAL_API_KEY: ""
       GOOGLE_API_KEY: ""
-      OPENAI_API_KEY: ""
-      LMSTUDIO_API_KEY: "ollama"
-      LMSTUDIO_BASE_URL: "http://host.docker.internal:11434/v1"
+      LMSTUDIO_API_KEY: ""
+      LMSTUDIO_BASE_URL: ""
 
   channel:
     build:
@@ -64,3 +60,21 @@ services:
       context: .
       dockerfile: core/memory/Dockerfile
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
+
+  # Voice channel dev override: mount local source instead of npm install.
+  # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yaml).
+  channel-voice:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
+    ports:
+      - "8186:8186"
+    volumes:
+      - ./packages/channel-voice:/app/channel-voice:ro
+    environment:
+      CHANNEL_PACKAGE: ""
+      CHANNEL_FILE: /app/channel-voice/src/index.ts
+      # Dev: no cloud TTS/STT — use browser fallback
+      STT_API_KEY: ""
+      TTS_API_KEY: ""
+      STT_BASE_URL: ""
+      TTS_BASE_URL: ""
+      OPENAI_API_KEY: ""
