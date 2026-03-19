@@ -61,8 +61,26 @@ export async function transcribe(audioFile: File): Promise<string> {
  * Returns base64-encoded mp3 string, or null if TTS is not configured or fails.
  * TTS failure is non-fatal — the client still gets the text response.
  */
+/** Strip markdown syntax so TTS reads clean prose. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')       // remove code blocks
+    .replace(/`([^`]+)`/g, '$1')          // inline code → plain text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')    // bold → plain
+    .replace(/\*([^*]+)\*/g, '$1')        // italic → plain
+    .replace(/^#{1,6}\s+/gm, '')          // headings → plain
+    .replace(/^\s*[-*+]\s+/gm, '')        // list markers → plain
+    .replace(/^\s*\d+\.\s+/gm, '')        // numbered lists → plain
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → text only
+    .replace(/\n{3,}/g, '\n\n')           // collapse excess newlines
+    .trim()
+}
+
 export async function synthesize(text: string): Promise<string | null> {
   if (!text.trim() || !config.tts.apiKey) return null
+
+  const cleanText = stripMarkdown(text)
+  if (!cleanText) return null
 
   let res: Response
   try {
@@ -76,7 +94,7 @@ export async function synthesize(text: string): Promise<string | null> {
         },
         body: JSON.stringify({
           model: config.tts.model,
-          input: text,
+          input: cleanText,
           voice: config.tts.voice,
           response_format: 'mp3',
         }),
@@ -96,4 +114,43 @@ export async function synthesize(text: string): Promise<string | null> {
 
   const buffer = await res.arrayBuffer()
   return Buffer.from(buffer).toString('base64')
+}
+
+// ── LLM (direct fallback when guardian is unavailable) ─────────────────
+
+/**
+ * Direct LLM call via OpenAI-compatible chat completions API.
+ * Used as fallback when the guardian/assistant pipeline is unreachable.
+ */
+export async function chatCompletion(prompt: string): Promise<string> {
+  if (!config.llm.apiKey) throw new Error('No LLM API key configured and guardian unavailable')
+
+  const res = await fetchWithTimeout(
+    `${config.llm.baseUrl}/v1/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.llm.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: config.llm.model,
+        messages: [
+          { role: 'system', content: config.llm.systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    },
+    config.llm.timeoutMs,
+  )
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`LLM failed (${res.status}): ${body || res.statusText}`)
+  }
+
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+  const text = data.choices?.[0]?.message?.content
+  if (!text) throw new Error('Empty response from LLM')
+  return text
 }

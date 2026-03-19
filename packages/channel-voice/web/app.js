@@ -110,11 +110,28 @@
     }
   }
 
+  // --- Simple markdown rendering (bold, italic, code, code blocks, lists) ---
+  function renderMarkdown(text) {
+    var escaped = escapeHtml(text)
+    // Code blocks: ```...```
+    escaped = escaped.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    // Inline code: `...`
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Bold: **...**
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // Italic: *...*
+    escaped = escaped.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
+    // Line breaks
+    escaped = escaped.replace(/\n/g, '<br>')
+    return escaped
+  }
+
   function addLog(level, message) {
     var entry = document.createElement('div')
     entry.className = 'log-entry'
     entry.setAttribute('data-level', level)
-    entry.innerHTML = '<span class="log-label">' + escapeHtml(level) + '</span>' + escapeHtml(message)
+    var rendered = (level === 'AI') ? renderMarkdown(message) : escapeHtml(message)
+    entry.innerHTML = '<span class="log-label">' + escapeHtml(level) + '</span>' + rendered
     log.appendChild(entry)
     log.scrollTop = log.scrollHeight
   }
@@ -163,11 +180,26 @@
     })
   }
 
+  // --- Strip markdown for TTS ---
+  function stripMarkdownForSpeech(text) {
+    return text
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  }
+
   // --- Browser TTS fallback ---
   function speakWithBrowser(text) {
     return new Promise(function (resolve) {
       if (!caps.browserTts) { resolve(); return }
-      var utterance = new SpeechSynthesisUtterance(text)
+      var utterance = new SpeechSynthesisUtterance(stripMarkdownForSpeech(text))
       var voice = getSetting('voice')
       if (voice) {
         var voices = speechSynthesis.getVoices()

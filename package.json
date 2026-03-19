@@ -52,7 +52,7 @@
     "cli:build:windows-arm64": "bun run --cwd packages/cli build:windows-arm64",
     "dev:setup": "./scripts/dev-setup.sh --seed-env",
     "dev:stack": "docker compose -f .dev/state/artifacts/docker-compose.yml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up -d",
-    "dev:build": "docker compose --project-directory . -f assets/docker-compose.yml -f compose.dev.yaml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up --build -d",
+    "dev:build": "docker compose --project-directory . -f assets/docker-compose.yml -f .dev/state/artifacts/channels/voice.yml -f compose.dev.yaml --env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env up --build -d",
     "test": "bun test packages/channels-sdk packages/channel-chat packages/channel-api packages/channel-discord packages/channel-slack packages/cli packages/lib packages/scheduler packages/assistant-tools packages/admin-tools core/guardian/",
     "test:parity": "bun test packages/memory/parity-tests/",
     "test:benchmark": "./packages/memory/benchmark-tests/run-benchmarks.sh",

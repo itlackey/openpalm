@@ -15,7 +15,7 @@ import { extname, join, resolve } from 'node:path'
 import { BaseChannel, type HandleResult, createLogger } from '@openpalm/channels-sdk'
 import type { GuardianSuccessResponse } from '@openpalm/channels-sdk'
 import { config } from './config'
-import { transcribe, synthesize } from './providers'
+import { transcribe, synthesize, chatCompletion } from './providers'
 
 // ── MIME types for static file serving ──────────────────────────────────
 
@@ -48,6 +48,7 @@ export default class VoiceChannel extends BaseChannel {
         service: 'channel-voice',
         stt: { model: config.stt.model, configured: !!config.stt.apiKey },
         tts: { model: config.tts.model, voice: config.tts.voice, configured: !!config.tts.apiKey },
+        llm: { model: config.llm.model, configured: !!config.llm.apiKey },
       })
     }
 
@@ -107,21 +108,26 @@ export default class VoiceChannel extends BaseChannel {
       return this.json(200, { transcript: '', response: '', audio: null })
     }
 
-    // Step 2: Forward transcript to guardian via channels SDK
+    // Step 2: Forward transcript to guardian, fall back to direct LLM
     let answer: string
     try {
       const guardianResp = await this.forward({ userId, text: transcript })
 
       if (!guardianResp.ok) {
         this.log('error', 'Guardian error', { status: guardianResp.status })
-        return this.json(502, { error: `Guardian error (${guardianResp.status})` })
+        throw new Error(`Guardian error (${guardianResp.status})`)
       }
 
       const data = (await guardianResp.json()) as GuardianSuccessResponse
       answer = data.answer ?? ''
     } catch (err) {
-      this.log('error', 'Guardian communication error', { error: (err as Error).message })
-      return this.json(502, { error: 'Guardian unavailable' })
+      this.log('warn', 'Guardian unavailable, trying direct LLM', { error: (err as Error).message })
+      try {
+        answer = await chatCompletion(transcript)
+      } catch (llmErr) {
+        this.log('error', 'LLM fallback also failed', { error: (llmErr as Error).message })
+        return this.json(502, { error: 'No LLM available (guardian down, no direct LLM key configured)' })
+      }
     }
 
     // Step 3: TTS — synthesize response to audio (non-fatal)

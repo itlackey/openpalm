@@ -9,6 +9,7 @@ interface Config {
   server: { webRoot: string }
   stt: { baseUrl: string; apiKey: string; model: string; timeoutMs: number }
   tts: { baseUrl: string; apiKey: string; model: string; voice: string; timeoutMs: number }
+  llm: { baseUrl: string; apiKey: string; model: string; timeoutMs: number; systemPrompt: string }
 }
 
 function env(key: string, fallback = ''): string {
@@ -47,5 +48,12 @@ export const config: Config = {
     model: env('TTS_MODEL', 'tts-1'),
     voice: env('TTS_VOICE', 'alloy'),
     timeoutMs: envInt('TTS_TIMEOUT_MS', 30_000),
+  },
+  llm: {
+    baseUrl: env('LLM_BASE_URL', 'http://localhost:11434').replace(/\/$/, ''),
+    apiKey: env('LLM_API_KEY', 'ollama'),
+    model: env('LLM_MODEL', 'qwen2.5:3b'),
+    timeoutMs: envInt('LLM_TIMEOUT_MS', 60_000),
+    systemPrompt: env('LLM_SYSTEM_PROMPT', 'You are a helpful voice assistant. Respond conversationally and concisely. Do not use markdown formatting.'),
   },
 }
