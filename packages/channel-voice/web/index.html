@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ff9d00">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="description" content="Voice-driven AI assistant">
+  <title>OpenPalm Voice</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-brand">
+        <span class="brand-slash">/</span><span class="brand-name">voice</span>
+      </div>
+      <div class="header-right">
+        <span id="status" class="status-indicator" aria-label="Status: ready">ready</span>
+        <button id="settings-btn" class="icon-btn" aria-label="Open settings">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M16.2 12.2a1.4 1.4 0 00.28 1.54l.05.05a1.7 1.7 0 11-2.4 2.4l-.05-.05a1.4 1.4 0 00-1.54-.28 1.4 1.4 0 00-.85 1.28v.15a1.7 1.7 0 11-3.4 0v-.08a1.4 1.4 0 00-.91-1.28 1.4 1.4 0 00-1.54.28l-.05.05a1.7 1.7 0 11-2.4-2.4l.05-.05a1.4 1.4 0 00.28-1.54 1.4 1.4 0 00-1.28-.85H2.3a1.7 1.7 0 110-3.4h.08a1.4 1.4 0 001.28-.91 1.4 1.4 0 00-.28-1.54l-.05-.05a1.7 1.7 0 112.4-2.4l.05.05a1.4 1.4 0 001.54.28h.07a1.4 1.4 0 00.85-1.28V2.3a1.7 1.7 0 113.4 0v.08a1.4 1.4 0 00.85 1.28 1.4 1.4 0 001.54-.28l.05-.05a1.7 1.7 0 112.4 2.4l-.05.05a1.4 1.4 0 00-.28 1.54v.07a1.4 1.4 0 001.28.85h.15a1.7 1.7 0 110 3.4h-.08a1.4 1.4 0 00-1.28.85z" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="log" class="log" role="log" aria-label="Conversation log"></main>
+
+    <div class="controls">
+      <button id="record-btn" class="record-btn" data-state="idle" aria-label="Start recording">
+        <svg class="mic-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" fill="currentColor"/>
+          <path d="M19 10v2a7 7 0 01-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <footer class="footer">
+      <p>mic &rarr; STT &rarr; LLM &rarr; TTS &rarr; speaker</p>
+    </footer>
+  </div>
+
+  <dialog id="settings-dialog" class="settings-dialog" aria-label="Settings">
+    <h2>Settings</h2>
+    <form method="dialog" id="settings-form">
+      <label class="field">
+        <span class="field-label">TTS voice</span>
+        <input type="text" id="setting-voice" class="field-input" placeholder="default">
+      </label>
+      <label class="field checkbox-field">
+        <input type="checkbox" id="setting-haptic">
+        <span class="field-label">Haptic feedback</span>
+      </label>
+      <label class="field checkbox-field">
+        <input type="checkbox" id="setting-wakelock">
+        <span class="field-label">Keep screen on while recording</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="submit" class="btn btn-primary">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

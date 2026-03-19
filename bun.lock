@@ -9,7 +9,7 @@
     },
     "core/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.9.2-rc3",
+      "version": "0.9.3",
       "dependencies": {
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
         "dotenv": "^16.4.7",
@@ -25,7 +25,7 @@
     },
     "packages/admin": {
       "name": "@openpalm/admin",
-      "version": "0.9.2-rc3",
+      "version": "0.9.3",
       "dependencies": {
         "@openpalm/lib": "workspace:*",
         "croner": "^9.0.0",
@@ -118,13 +118,24 @@
         "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
       },
     },
+    "packages/channel-voice": {
+      "name": "@openpalm/channel-voice",
+      "version": "0.9.3",
+      "devDependencies": {
+        "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
+        "@playwright/test": "^1.58.2",
+      },
+      "peerDependencies": {
+        "@openpalm/channels-sdk": ">=0.8.0 <1.0.0",
+      },
+    },
     "packages/channels-sdk": {
       "name": "@openpalm/channels-sdk",
       "version": "0.9.2",
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.9.2",
+      "version": "0.9.9",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
@@ -294,6 +305,8 @@
     "@openpalm/channel-discord": ["@openpalm/channel-discord@workspace:packages/channel-discord"],
 
     "@openpalm/channel-slack": ["@openpalm/channel-slack@workspace:packages/channel-slack"],
+
+    "@openpalm/channel-voice": ["@openpalm/channel-voice@workspace:packages/channel-voice"],
 
     "@openpalm/channels-sdk": ["@openpalm/channels-sdk@workspace:packages/channels-sdk"],
 

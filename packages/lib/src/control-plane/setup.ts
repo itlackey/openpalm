@@ -406,6 +406,40 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
   // Memory user ID
   updates.MEMORY_USER_ID = input.memoryUserId || "default_user";
 
+  // Voice: TTS/STT env vars based on engine choice
+  if (input.voice) {
+    // Find an OpenAI-compatible connection for cloud engines
+    const openaiConn = effectiveConnections.find((c) => c.provider === "openai");
+    const openaiBaseUrl = (openaiConn?.baseUrl || "https://api.openai.com").replace(/\/+$/, "");
+    const openaiKey = openaiConn?.apiKey || "";
+
+    const { tts, stt } = input.voice;
+
+    if (stt === "openai-stt") {
+      updates.STT_BASE_URL = openaiBaseUrl;
+      updates.STT_API_KEY = openaiKey;
+      updates.STT_MODEL = "whisper-1";
+    } else if (stt === "whisper-local") {
+      updates.STT_BASE_URL = "http://whisper:9000";
+      updates.STT_MODEL = "whisper-1";
+    }
+    // browser-stt / skip-stt: no env vars needed (voice channel falls back to browser)
+
+    if (tts === "openai-tts") {
+      updates.TTS_BASE_URL = openaiBaseUrl;
+      updates.TTS_API_KEY = openaiKey;
+      updates.TTS_MODEL = "tts-1";
+      updates.TTS_VOICE = "alloy";
+    } else if (tts === "kokoro") {
+      updates.TTS_BASE_URL = "http://kokoro:8880";
+      updates.TTS_MODEL = "kokoro";
+    } else if (tts === "piper") {
+      updates.TTS_BASE_URL = "http://piper:5000";
+      updates.TTS_MODEL = "piper";
+    }
+    // browser-tts / skip-tts: no env vars needed (voice channel falls back to browser)
+  }
+
   return updates;
 }
 

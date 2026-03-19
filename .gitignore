@@ -21,3 +21,4 @@ test-results/.last-run.json
 packages/cli/dist/
 package-lock.json
 .svelte-kit/
+packages/channel-voice/test-results/.last-run.json
