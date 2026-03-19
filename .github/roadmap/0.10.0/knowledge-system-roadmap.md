@@ -1,6 +1,8 @@
 # OpenPalm 0.10.0 — Knowledge System Roadmap (Revised)
 
-> **Scope Update (2026-03-18):** Agent review consensus (3/5 agents) narrowed the 0.10.0 scope to **Priority 1 only** (OpenViking as component + assistant tools). Priorities 2-4 (MCP server, eval framework, MemRL feedback loop) are deferred to 0.11.0. See `.private/.plans/0.11.0/knowledge-system-deferred.md` for the deferred work.
+> **Scope Update (2026-03-18):** Agent review consensus (3/5 agents) narrowed the 0.10.0 scope to **Priority 1 only** (Phases 1A-1D: OpenViking as component + assistant tools). Priorities 2-4 (MCP server, eval framework, MemRL feedback loop) are deferred to 0.11.0 and are included below only as "deferred" context. See `../0.11.0/knowledge-system.md` for the deferred work.
+>
+> **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). The old three-tier XDG references (`DATA_HOME`, `CONFIG_HOME`, `STATE_HOME`) are replaced by subdirectories under `~/.openpalm/`.
 
 ## Alignment with Milestone 0.10.0
 
@@ -14,7 +16,7 @@ component system rewrite (#301) consumes most of the 0.10.0 development window.
 |---|---------|----------------------------|
 | **304** | Brokered admin OpenCode instance | **Admin-level agent with full ADMIN_TOKEN access** — runs learning maintenance, curation, and eval jobs. Has direct admin API access (no broker mediation layer). When available, invokes shell-based eval/maintenance scripts; but those scripts work standalone via scheduled automations as a fallback |
 | **298** | OpenViking integration | **Optional structured knowledge component** — enhances search and context retrieval when installed, but the core learning lifecycle (Q-values, feedback, memory injection) works without it |
-| **301** | Configurable services | **MCP server delivered as a component** via the component registry — not hardcoded in compose |
+| **301** | Configurable services | **Component system** that Viking uses for installation — compose overlay, `.env.schema`, cross-component env injection. MCP server component deferred to 0.11.0 |
 | **300** | Password manager (Varlock) | API keys for embedding providers and LLM judge stored securely via improved Varlock |
 | **302** | TTS/STT voice interface | Voice-driven learning capture and context retrieval (future, not in this plan) |
 | **13** | Advanced channel config | Per-channel OpenCode config enables per-channel learning scopes (future) |
@@ -57,7 +59,7 @@ capabilities to enhance search and context retrieval when installed.
 ### Why OpenViking Instead of Custom Learnings Files
 
 The original plan proposed porting Hyphn's inscribe reader/writer to store
-YAML-frontmatter Markdown files in `DATA_HOME/assistant/learnings/`. But
+YAML-frontmatter Markdown files in `~/.openpalm/data/assistant/learnings/`. But
 OpenViking already provides:
 
 - **Hierarchical storage** (`viking://agent/memories/patterns/`, `viking://agent/memories/cases/`) — directly maps to learning types
@@ -94,35 +96,46 @@ through the component registry, like Ollama or SearXNG.
    `registry/components/openviking/compose.yml`:
    ```yaml
    services:
-     openviking:
+     openpalm-${INSTANCE_ID}:
        image: ghcr.io/itlackey/openviking:0.4.2
        restart: unless-stopped
        networks:
          - assistant_net
        volumes:
-         - ${DATA_HOME}/components/openviking/data/workspace:/workspace
-         - ${DATA_HOME}/components/openviking/data/ov.conf:/app/ov.conf:ro
+         - ${INSTANCE_DIR}/data/workspace:/workspace
+         - ${OPENPALM_HOME}/vault/ov.conf:/app/ov.conf:ro
        healthcheck:
          test: ["CMD", "curl", "-sf", "http://localhost:1933/health"]
          interval: 30s
          timeout: 5s
          retries: 3
          start_period: 10s
+
+     # Extension of the existing assistant service (adds env vars only)
+     assistant:
+       environment:
+         OPENVIKING_URL: http://openpalm-${INSTANCE_ID}:1933
+         OPENVIKING_API_KEY: ${OPENVIKING_API_KEY}
    ```
 
    `registry/components/openviking/.env.schema`:
    ```env
+   # @sensitive
    OPENVIKING_API_KEY=          # Root API key for Viking access
    EMBEDDING_PROVIDER=openai    # Embedding provider (openai, ollama, etc.)
    EMBEDDING_MODEL=             # Embedding model name
+   # @sensitive
    EMBEDDING_API_KEY=           # Embedding provider API key
    EMBEDDING_BASE_URL=          # Embedding provider base URL
    EMBEDDING_DIMS=768           # Embedding dimension
    ```
 
-   Note: No `container_name:` (non-standard per D1). Image version is pinned
-   (not `:latest`, per D2). Healthcheck is included. Network wiring comes from
-   the component compose overlay, not from core `assets/docker-compose.yml`.
+   Note: Uses `openpalm-${INSTANCE_ID}` service naming (per component plan
+   conventions). No `container_name:` (non-standard per D1). Image version is
+   pinned (not `:latest`, per D2). Healthcheck is included. Network wiring
+   comes from the component compose overlay, not from core
+   `assets/docker-compose.yml`. The `assistant` service extension block uses
+   the cross-component environment injection pattern from the components plan.
 
 2. **Assemble `ov.conf` programmatically** — file assembly, not template
    rendering. Build a JSON object in TypeScript and write the whole file (same
@@ -160,14 +173,25 @@ through the component registry, like Ollama or SearXNG.
    ```
 
    The setup wizard already collects embedding provider config — reuse it to
-   populate `ov.conf` during component installation. The config file is written
-   to the component instance directory at
-   `DATA_HOME/components/openviking/data/ov.conf`.
+   populate `ov.conf` during component installation.
 
-3. **Add `OPENVIKING_API_KEY`** to `secrets.env` schema (Varlock — ties into #300).
+   **`ov.conf` placement:** `ov.conf` contains the `root_api_key` (a secret),
+   so it belongs in the vault. It is stored at `~/.openpalm/vault/ov.conf`
+   (consistent with the fs-mounts-refactor vault layout). The admin mounts the
+   full vault read-write and can write this file. The Viking component's
+   compose overlay mounts `${OPENPALM_HOME}/vault/ov.conf` read-only into the
+   container at `/app/ov.conf`. This was reconciled from review-decisions Q9
+   (which said DATA_HOME before the fs refactor introduced the vault boundary).
 
-4. **Admin API** — `GET/POST /admin/viking/config` + `GET /admin/viking/status`
-   (proxy to `http://openviking:1933/health`).
+3. **Add `OPENVIKING_API_KEY`** to the unified secret manager (Varlock — ties
+   into #300). The key is stored as a `@sensitive` field in the `.env.schema`
+   and managed through the secret backend, not as plaintext in the instance
+   `.env` file.
+
+4. **Admin API** — Viking-specific config and status endpoints are handled
+   through the standard component instance API (`GET /api/instances/:id`,
+   `PUT /api/instances/:id/config`, `GET /api/instances/:id/health`). No
+   Viking-specific admin routes are needed.
 
 #### Phase 1B: Assistant Tools — Viking Client (2 days)
 
@@ -260,7 +284,9 @@ when installed.
 
 ---
 
-## Priority 2: MCP Server as Component (#298 + #301)
+## Priority 2: MCP Server as Component (#298 + #301) — DEFERRED TO 0.11.0
+
+> **Deferred:** This priority is out of scope for 0.10.0. It is included here as context only. See `../0.11.0/knowledge-system.md` for the implementation plan.
 
 ### Goal
 
@@ -369,7 +395,9 @@ Same as original plan.
 
 ---
 
-## Priority 3: Eval Framework
+## Priority 3: Eval Framework — DEFERRED TO 0.11.0
+
+> **Deferred:** This priority is out of scope for 0.10.0. It is included here as context only. See `../0.11.0/knowledge-system.md` for the implementation plan.
 
 ### Goal
 
@@ -421,7 +449,7 @@ packages/eval/
 ```
 
 The runner calls the admin API directly using ADMIN_TOKEN (available in the
-shell environment via secrets.env). No dependency on the brokered instance.
+shell environment via `~/.openpalm/vault/system.env`). No dependency on the brokered instance.
 
 #### Phase 3B: Eval Suites (2 days)
 
@@ -442,7 +470,7 @@ shell environment via secrets.env). No dependency on the brokered instance.
    schedule: "0 2 * * *"
    action:
      type: shell
-     command: "bun run packages/eval/src/cli.ts run --suite all --output STATE_HOME/eval/"
+     command: "bun run packages/eval/src/cli.ts run --suite all --output ~/.openpalm/data/eval/"
      timeout: 300000
    ```
 
@@ -460,7 +488,7 @@ shell environment via secrets.env). No dependency on the brokered instance.
 
 2. **Admin API**: `GET /admin/eval/results` + `GET /admin/eval/regressions`
 
-3. **Baseline management**: `STATE_HOME/eval/baselines/` with diff and
+3. **Baseline management**: `~/.openpalm/data/eval/baselines/` with diff and
    regression clustering (ported from Hyphn).
 
 ### Dependencies
@@ -472,7 +500,9 @@ shell environment via secrets.env). No dependency on the brokered instance.
 
 ---
 
-## Priority 4: MemRL-Inspired Feedback Loop
+## Priority 4: MemRL-Inspired Feedback Loop — DEFERRED TO 0.11.0
+
+> **Deferred:** This priority is out of scope for 0.10.0. It is included here as context only. See `../0.11.0/knowledge-system.md` for the implementation plan.
 
 ### Goal
 
@@ -619,7 +649,7 @@ run independently.
 
 ## 0.10.0 Execution Order (Reduced Scope)
 
-> Priorities 2-4 moved to 0.11.0. See `.private/.plans/0.11.0/knowledge-system-deferred.md`.
+> Priorities 2-4 moved to 0.11.0. See `../0.11.0/knowledge-system.md`.
 
 ```
 #298 Phase 1A: Viking component directory + compose overlay   1 day
@@ -648,16 +678,17 @@ can be developed in parallel as dormant code gated on `OPENVIKING_URL` env var.
 
 ---
 
-## Technology Mapping (0.10.0 Scope)
+## Technology Mapping (0.10.0 Scope — Priority 1 Only)
 
 | Concern | Technology | Why |
 |---------|-----------|-----|
 | Structured knowledge store | **OpenViking** (optional component) | Hierarchical filesystem, L0/L1/L2 tiered loading, session memory extraction, dedup |
 | Episodic/preference memory | **@openpalm/memory** (existing) | LLM fact extraction, sqlite-vec — already integrated |
-| Secret management | **Varlock** (#300) | Viking API key, embedding keys stored securely |
-| Service delivery | **Component registry** | OpenViking as installable component, not hardcoded compose entry |
+| Secret management | **Varlock** (#300) | Viking API key, embedding keys stored securely via unified secret manager |
+| Service delivery | **Component registry** (#301) | OpenViking as installable component, not hardcoded compose entry |
+| Config placement | **`~/.openpalm/vault/ov.conf`** | Contains `root_api_key` — lives in vault per fs-mounts-refactor secret boundary |
 
-> MCP, eval, MemRL, and knowledge maintenance are deferred to 0.11.0.
+> **Deferred to 0.11.0:** MCP server component, eval framework, MemRL Q-value feedback loop, and knowledge maintenance automations. These are documented in Priorities 2-4 above for context but are not part of the 0.10.0 deliverable.
 
 ## Portable Code Summary (0.10.0 Scope)
 

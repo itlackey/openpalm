@@ -224,3 +224,208 @@ Components run as Docker containers on user-specified networks. The compose over
 16. **UPDATE: Apply `0o600` permissions to `DATA_HOME/stack.env`.** As noted in the review report (M9), `stack.env` contains channel HMAC secrets and should not be world-readable. Add `mode: 0o600` to the `writeFileSync` call for `stack.env`.
 
 17. **ADD: Secret rotation procedure.** Define and document a secret rotation procedure for: ADMIN_TOKEN, ASSISTANT_TOKEN, MEMORY_AUTH_TOKEN, and channel HMAC secrets. Include the propagation steps (restage, restart affected containers) and verification steps. This does not need to be automated in 0.10.0 but must be documented.
+
+---
+
+## Addendum: Filesystem & Mounts Refactor Security Review (2026-03-19)
+
+### Summary
+
+The proposed filesystem and mounts refactor (`fs-mounts-refactor.md`) replaces the 3-tier XDG layout with a single `~/.openpalm/` root, introduces a `vault/` directory as a hard security boundary for secrets, eliminates the staging tier in favor of validate-in-place with snapshot rollback, and adds a hot-reload file watcher for `user.env`. The security properties are **strictly better** than the current model for secret isolation: the current design bulk-injects all secrets into guardian and admin via `env_file:`, while the proposed design gives each container only the secrets it needs through explicit `${VAR}` substitution and targeted file mounts. However, the rollback directory, the hot-reload watcher, and the pass plan compatibility require careful handling to avoid introducing new weaknesses.
+
+### Vault Boundary Analysis
+
+The `vault/` directory model is a meaningful and substantial security improvement over the current state. Here is a detailed comparison:
+
+**Current model (broken down by container):**
+
+| Container | Secret access mechanism | What it receives |
+|-----------|----------------------|------------------|
+| guardian | `env_file: stack.env` + bind mount of `artifacts/` | ALL of stack.env: paths, UID/GID, image tags, CHANNEL_*_SECRET, AND ADMIN_TOKEN (via env block). Also mounts the full `artifacts/` directory read-only, which contains both `stack.env` and `secrets.env` |
+| admin | `env_file: stack.env` + `env_file: secrets.env` + full tree mounts | Everything. Both staged env files via env_file, plus explicit environment block with LLM keys, plus CONFIG_HOME/DATA_HOME/STATE_HOME mounts giving filesystem access to the raw `secrets.env` |
+| assistant | explicit `environment:` block | ADMIN_TOKEN, MEMORY_AUTH_TOKEN, all 5 LLM API keys, MEMORY_USER_ID — each explicitly listed |
+| memory | explicit `environment:` block | MEMORY_AUTH_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL |
+| scheduler | explicit `environment:` block + `env_file` (artifacts ro mount) | ADMIN_TOKEN, OPENCODE_SERVER_PASSWORD, plus read-only access to the full `artifacts/` directory |
+
+**Proposed model:**
+
+| Container | Secret access mechanism | What it receives |
+|-----------|----------------------|------------------|
+| guardian | `${VAR}` substitution only, no file mounts | OPENPALM_ADMIN_TOKEN, CHANNEL_*_SECRET only. No access to LLM keys, no mounted secrets files |
+| admin | `vault/` mount (rw) + `${VAR}` substitution | Full vault access — this is appropriate since admin is the secret manager |
+| assistant | `vault/user.env` mount (ro) + `${VAR}` substitution for MEMORY_AUTH_TOKEN | LLM keys via mounted file, MEMORY_AUTH_TOKEN via env. No access to system.env, ADMIN_TOKEN, HMAC secrets |
+| memory | `${VAR}` substitution only | MEMORY_AUTH_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL only |
+| scheduler | `${VAR}` substitution only | OPENPALM_ADMIN_TOKEN only |
+| caddy | nothing | No secrets at all |
+
+**Assessment:** The vault model eliminates three specific weaknesses in the current design:
+
+1. **Guardian no longer receives LLM API keys.** Currently, `env_file: stack.env` combined with the `artifacts/` bind mount gives the guardian access to `secrets.env` (which contains ADMIN_TOKEN and LLM keys) even though guardian never uses these values. The proposed model eliminates this entirely — guardian gets only HMAC secrets and ADMIN_TOKEN via `${VAR}` substitution.
+
+2. **Scheduler no longer has filesystem access to secrets files.** Currently, the scheduler mounts `artifacts/:ro` which includes `stack.env` and `secrets.env`. The proposed model gives it only `OPENPALM_ADMIN_TOKEN` via substitution and removes the artifacts mount.
+
+3. **Assistant loses access to ADMIN_TOKEN.** Currently, the assistant receives `OPENPALM_ADMIN_TOKEN` (line 59 of docker-compose.yml). The proposed model gives the assistant only `user.env` (LLM keys) and `MEMORY_AUTH_TOKEN`. This aligns with the Phase 1 auth refactor (ADMIN_TOKEN/ASSISTANT_TOKEN split) from the pass plan.
+
+**One concern:** The admin mounts `vault/` at `/etc/openpalm/vault/` read-write, and also mounts `config/` at `/etc/openpalm` read-write. Since `vault/` is a subdirectory of the host's `~/.openpalm/` but is mounted at a separate container path (`/etc/openpalm/vault/`), these are independent mounts. This is correct. However, the proposal should explicitly state that `config/` and `vault/` are separate host-to-container mount points and that the `config/` mount does NOT include `vault/` (since `vault/` is a sibling of `config/` in the host filesystem, not a child). This is already implicit in the layout but should be documented as a security-critical invariant.
+
+**Verdict: The vault boundary is a clear security improvement. APPROVE.**
+
+### Hot-Reload Security
+
+The file watcher on `vault/user.env` introduces a new attack surface where user-editable content is parsed at runtime by the assistant process.
+
+**The watcher code (from the proposal):**
+
+```typescript
+const ALLOWED_KEYS = new Set([
+  'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'ANTHROPIC_API_KEY',
+  'GROQ_API_KEY', 'MISTRAL_API_KEY', 'GOOGLE_API_KEY',
+  'SYSTEM_LLM_PROVIDER', 'SYSTEM_LLM_BASE_URL', 'SYSTEM_LLM_MODEL',
+  'EMBEDDING_MODEL', 'EMBEDDING_DIMS',
+]);
+
+function loadUserEnv() {
+  const content = readFileSync('/etc/openpalm/user.env', 'utf-8');
+  for (const line of content.split('\n')) {
+    const match = line.match(/^([A-Z_]+)=(.*)$/);
+    if (match && ALLOWED_KEYS.has(match[1])) {
+      process.env[match[1]] = match[2];
+    }
+  }
+}
+```
+
+**Attack surface analysis:**
+
+1. **Key injection via malformed lines.** The regex `^([A-Z_]+)=(.*)$` only matches lines starting with uppercase letters/underscores followed by `=`. A line like `PATH=/malicious` would match the regex pattern, but would be rejected by the `ALLOWED_KEYS` set check. The allowlist is the primary defense and it is correctly applied.
+
+2. **Value injection.** A user could write `OPENAI_API_KEY=anything\nPATH=/evil` into user.env, but the regex anchors to `^...$` per line (after splitting on `\n`), so multi-line injection via the value field is not possible. The `(.*)$` capture group would grab everything after `=` on a single line, which is the correct behavior for env file parsing.
+
+3. **Symlink attack.** If an attacker could replace `user.env` with a symlink to another file (e.g., `/etc/passwd`), the watcher would read that file. However, the file is mounted read-only into the container, and the mount point is a specific file path (`vault/user.env` to `/etc/openpalm/user.env`), not a directory mount. Docker bind mounts of specific files follow the inode, so replacing the file on the host creates a new inode and the container mount would go stale — the watcher would see the old content or a read error. If the mount were a directory mount of `vault/` instead, symlink attacks would be more concerning. **The proposal should clarify that this MUST remain a file-level mount, not a directory mount of vault/ into the assistant.**
+
+4. **Denial of service via large file.** A malicious or corrupted `user.env` could be very large. The `readFileSync` call would block the event loop. This is low-risk (the user is the one editing the file) but the watcher should add a size check (e.g., reject files > 64KB).
+
+5. **Race condition.** The `fs.watch` API fires on every write, including partial writes. If the user saves a file with an editor that does write-then-truncate or atomic rename, the watcher might read a partially-written file. The `loadUserEnv` function should add a short debounce (e.g., 500ms) to coalesce rapid file events.
+
+6. **Process.env pollution scope.** The `ALLOWED_KEYS` set contains 11 entries, all LLM-related. None of these keys have special meaning to Node.js, Bun, or the OS runtime (unlike `PATH`, `LD_PRELOAD`, `NODE_OPTIONS`, etc.). The allowlist is appropriately scoped.
+
+**Verdict: The hot-reload attack surface is limited and well-mitigated by the ALLOWED_KEYS set. APPROVE with minor hardening (see recommendations).**
+
+### Rollback Security
+
+The rollback directory at `~/.cache/openpalm/rollback/` stores previous known-good copies of configuration files, including `system.env`.
+
+**What `system.env` contains:**
+- `OPENPALM_ADMIN_TOKEN` — the admin authentication credential
+- `MEMORY_AUTH_TOKEN` — memory service authentication
+- `OPENCODE_SERVER_PASSWORD` — OpenCode server authentication
+- `CHANNEL_*_SECRET` — HMAC secrets for all installed channels
+- Infrastructure values (paths, UID/GID, image tags)
+
+**Security concerns:**
+
+1. **Stale secrets linger in the rollback directory.** After a secret rotation (e.g., admin token change), the old admin token remains in `~/.cache/openpalm/rollback/system.env`. If an attacker gains read access to the cache directory, they get a valid (old) admin token. The rollback mechanism should either: (a) encrypt the rollback snapshot, (b) redact secrets from rollback copies (replacing values with `REDACTED` and relying on the live file for restore), or (c) set a short TTL on rollback files (e.g., delete after 1 hour or after the next successful health check).
+
+2. **File permissions.** The proposal does not specify permissions for `~/.cache/openpalm/rollback/`. Since it contains `system.env` with all system secrets, the rollback directory must have `0o700` and the `system.env` copy must have `0o600`. The proposal should explicitly state this.
+
+3. **XDG cache semantics.** The proposal correctly notes that `~/.cache` is for regenerable data. However, `system.env` contains secrets that are NOT regenerable (they are specific values that must match what running containers expect). If the rollback directory is deleted (as XDG cache semantics permit), rollback would fail silently. This is acceptable (rollback is best-effort) but should be documented.
+
+4. **Multi-user systems.** On shared-host systems, `~/.cache/` has the same ownership as `~/`. Other users cannot read it unless the directory permissions are wrong. This is standard XDG behavior and not a new concern, but the implementation should verify permissions at snapshot time.
+
+5. **Scope of rollback.** The proposal lists files in rollback: `user.env`, `system.env`, `openpalm.yml`, `core.yml`, `admin.yml`, `Caddyfile`. The `user.env` also contains secrets (LLM API keys). Both env files in the rollback directory need `0o600` permissions.
+
+**Verdict: The rollback location is acceptable but requires explicit permission hardening and a stale-secret cleanup mechanism. CONDITIONAL APPROVE.**
+
+### Secret Isolation Comparison
+
+A per-container comparison of secret exposure between current and proposed designs:
+
+**Guardian:**
+- Current: Receives ALL of `stack.env` via `env_file:` (includes CHANNEL_*_SECRET, but also all OPENPALM_* infrastructure vars). Bind-mounts the full `artifacts/` directory read-only, which contains both `stack.env` AND `secrets.env` (LLM keys, ADMIN_TOKEN). Also gets `ADMIN_TOKEN` via explicit `environment:` block.
+- Proposed: Receives only `OPENPALM_ADMIN_TOKEN` and `CHANNEL_*_SECRET` via `${VAR}` substitution. No file mounts of any secrets file. No access to LLM keys.
+- **Improvement: Significant.** Guardian's access reduced from "everything" to "only what it needs."
+
+**Admin:**
+- Current: `env_file` of both staged files, explicit `environment:` block with all LLM keys, plus full filesystem mounts of CONFIG_HOME (containing raw `secrets.env`), DATA_HOME, and STATE_HOME (containing staged copies).
+- Proposed: Mounts `vault/` read-write (containing `user.env` + `system.env`), plus `${VAR}` substitution. Also mounts `config/` read-write.
+- **Improvement: Marginal but cleaner.** Admin is inherently the most privileged container and needs broad access. The proposed model makes the access explicit and scoped to `vault/` rather than three full XDG trees.
+
+**Assistant:**
+- Current: `OPENPALM_ADMIN_TOKEN` (line 59), `MEMORY_AUTH_TOKEN`, all 5 LLM API keys via explicit `environment:` block. No secrets file mounts but has the token that grants admin-level API access.
+- Proposed: `vault/user.env` mounted read-only (LLM keys only), `MEMORY_AUTH_TOKEN` via `${VAR}` substitution. No ADMIN_TOKEN. No access to system.env.
+- **Improvement: Significant.** The most important change is removing `OPENPALM_ADMIN_TOKEN` from the assistant. This aligns with the Phase 1 auth refactor and eliminates the assistant's ability to call admin-only endpoints directly.
+
+**Memory:**
+- Current: `MEMORY_AUTH_TOKEN`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` via `environment:` block. Two volume mounts (data directory + config file).
+- Proposed: Same three values via `${VAR}` substitution. One volume mount (data directory only).
+- **Improvement: Minor.** Same secret access, slightly cleaner mount structure.
+
+**Scheduler:**
+- Current: `OPENPALM_ADMIN_TOKEN`, `OPENCODE_SERVER_PASSWORD` via `environment:` block. Read-only mount of `artifacts/` directory (which contains `stack.env` and `secrets.env`).
+- Proposed: `OPENPALM_ADMIN_TOKEN` via `${VAR}` substitution only. No file mounts of secrets. No `artifacts/` mount.
+- **Improvement: Moderate.** Scheduler loses filesystem access to the staged secrets files. It still needs ADMIN_TOKEN to call the admin API, which is appropriate.
+
+**Caddy:**
+- Current: No secrets. Mounts Caddyfile, channels directory, and Caddy data/config from STATE_HOME/DATA_HOME.
+- Proposed: No secrets. Mounts Caddyfile, channels directory, and Caddy data from `data/caddy/`.
+- **Improvement: No change in security posture.** Caddy correctly has no secret access in either model.
+
+**Overall assessment: The proposed model is strictly better for secret isolation.** The most impactful changes are: (1) guardian loses access to all secrets files and LLM keys, (2) assistant loses ADMIN_TOKEN, and (3) scheduler loses filesystem access to secrets files. No container loses access to secrets it legitimately needs.
+
+**One gap to address:** The proposal table (Section 3.2) shows memory receiving `OPENAI_API_KEY` and `OPENAI_BASE_URL` via `${VAR}` from `user.env`. Docker Compose `--env-file` reads the file host-side for variable substitution, so ALL variables in both `user.env` and `system.env` are available for `${VAR}` resolution in compose files. This means a component compose overlay could reference `${OPENPALM_ADMIN_TOKEN}` and it would be resolved from `system.env`, injecting the admin token into an arbitrary container. The per-container allowlist is enforced by the compose `environment:` block (only listed variables are injected), but component overlays write their own `environment:` blocks. The compose overlay validator (recommendation #1 from the initial review) must also validate that component `environment:` blocks do not reference system-secret variables (`OPENPALM_ADMIN_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, `CHANNEL_*_SECRET`).
+
+### Pass Plan Impact
+
+The pass plan (`openpalm-pass-impl-v3.md`) was designed around a single `secrets.env` + `secrets.env.schema` model. The filesystem refactor splits this into two files with different access rules. Here is the impact on each phase:
+
+**Phase 0 (Varlock Hardening):** Minimal impact. The file permissions fix (`0o600`) applies to both `user.env` and `system.env` instead of a single `secrets.env`. The `redact.env.schema` generation would need to parse both schema files.
+
+**Phase 1 (Auth Refactor):** The ADMIN_TOKEN/ASSISTANT_TOKEN split benefits directly from the two-file model. `ADMIN_TOKEN` moves cleanly into `system.env` (system-managed, never user-edited), and the assistant never sees it because `system.env` is not mounted into the assistant. This is an improvement over the original plan where both tokens lived in a single `secrets.env` that had to be carefully access-controlled.
+
+**Phase 2 (Secret Backend Abstraction):** The `SecretBackend` interface and `ENV_TO_SECRET_KEY` map need to be aware of the two-file split. Currently, the `PlaintextBackend` reads/writes a single `secrets.env`. With the refactor, it would need to: (a) read/write `user.env` for user-facing secrets (LLM keys), and (b) read/write `system.env` for system-managed secrets (tokens, HMAC secrets). The `ENV_TO_SECRET_KEY` map should include a target-file indicator so the backend knows which file to modify. Alternatively, the backend could maintain two file handles.
+
+**Phase 3 (pass Provider):** The pass backend is file-agnostic — it reads from and writes to the pass store regardless of which env file the variable originated from. However, the Varlock schema setup changes: instead of one `secrets.env.schema`, there would be `user.env.schema` and `system.env.schema`. The `@plugin` declaration and `@initPass` directive would need to appear in both schemas, or there would need to be a shared schema include mechanism. The `varlock run` invocation at container boot would need to process the appropriate schema (assistant processes `user.env.schema`, admin processes both).
+
+**Phase 4 (Secrets API Routes):** No significant impact. The API routes are backend-agnostic and use `SecretBackend.write()` which abstracts the storage location.
+
+**Phase 5 (Password Manager UI):** No impact. The UI interacts with the API, not the files directly.
+
+**Phase 6 (Connections Endpoint Refactor):** The `patchConnections` function currently writes to a single `secrets.env`. With two files, it must route writes to the correct file based on whether the key is a user-facing secret (LLM key -> `user.env`) or a system secret (token -> `system.env`). The `SECRET_KEYS` set should be split into `USER_SECRET_KEYS` and `SYSTEM_SECRET_KEYS`.
+
+**Phase 7 (Migration Tooling):** The migration script must split the current single `secrets.env` into two files during upgrade. User-facing keys go to `user.env`, system keys go to `system.env`. This is a one-time migration that should be automated in the upgrade path.
+
+**Verdict: The two-file model is compatible with the pass plan and improves it by giving the ADMIN_TOKEN/ASSISTANT_TOKEN split a clean filesystem boundary. However, the PlaintextBackend, Varlock schema setup, and migration tooling all need design updates to handle two files instead of one.**
+
+### Channel HMAC Without Bind Mount
+
+The proposal removes the guardian's bind mount of the secrets file and relies exclusively on `${VAR}` substitution at container creation time. This means:
+
+1. **Guardian reads HMAC secrets only at container start.** If a channel is installed mid-operation, the guardian must be recreated to pick up the new HMAC secret. The proposal acknowledges this and says it takes ~2 seconds.
+
+2. **Running guardian cannot detect revoked secrets.** If an HMAC secret is rotated in `system.env`, the running guardian continues to accept the OLD secret until recreated. This creates a window where a revoked secret is still valid.
+
+3. **This is acceptable because:** (a) secret rotation is a rare, operator-initiated action, (b) the operator is expected to restart affected services after rotation (this is true in the current model too — `env_file` is only read at container creation), and (c) the current model's "runtime re-read" via `GUARDIAN_SECRETS_PATH` bind mount was the exception, not the rule. Removing it actually simplifies the security model by making all secret propagation follow the same path: write to file, recreate container.
+
+4. **The tradeoff is favorable.** Losing the guardian's real-time secret file re-read eliminates a bind mount that gave guardian read access to the entire `artifacts/` directory (which contains `secrets.env` alongside `stack.env`). The security gain (removing guardian's access to LLM keys and ADMIN_TOKEN via the filesystem) outweighs the convenience loss (must recreate guardian to pick up new HMAC secrets).
+
+**Verdict: Acceptable. APPROVE.**
+
+### Recommendations
+
+18. **ADD: Explicit file-level mount constraint for assistant's user.env.** The assistant MUST mount `vault/user.env` as a specific file-level bind mount, NOT a directory mount of `vault/`. A directory mount would give the assistant read access to `system.env`, defeating the vault boundary. Document this as a security-critical invariant in the mount contract.
+
+19. **ADD: Rollback directory permissions.** The `~/.cache/openpalm/rollback/` directory must be created with `0o700` permissions. All env files within it (`user.env`, `system.env`) must be written with `0o600` permissions. Add these constraints to the apply flow specification.
+
+20. **ADD: Stale secret cleanup in rollback.** After a successful deploy (health checks pass), the rollback snapshot should either: (a) be deleted entirely (simplest — rollback is only useful during the deploy window), or (b) have secret values in env files redacted (replaced with a placeholder like `ROLLBACK_REDACTED`), retaining only non-secret configuration for manual recovery. Option (a) is recommended for simplicity.
+
+21. **ADD: Hot-reload watcher hardening.** The `loadUserEnv()` function should: (a) check file size before reading (reject > 64KB), (b) debounce file change events by 500ms to avoid reading partially-written files, (c) log when keys are updated (without logging values) for audit traceability.
+
+22. **UPDATE: PlaintextBackend for two-file model.** The `PlaintextBackend` implementation from the pass plan must be updated to handle two separate files (`user.env` and `system.env`). Add a file-routing layer that maps each secret key to its target file based on whether it is a user-facing or system-managed secret. The `CORE_ENV_TO_SECRET_KEY` map should include a `targetFile: 'user' | 'system'` attribute.
+
+23. **ADD: Compose overlay variable reference validation.** Extend the compose overlay validator (recommendation #1 from initial review) to reject component `environment:` blocks that reference system-secret variables via `${VAR}` substitution. Specifically, block references to `OPENPALM_ADMIN_TOKEN`, `ASSISTANT_TOKEN`, `MEMORY_AUTH_TOKEN`, `OPENCODE_SERVER_PASSWORD`, and `CHANNEL_*_SECRET` in component overlays. These variables are available for substitution (because Docker Compose reads both env files host-side) but should not be exposed to arbitrary components.
+
+24. **UPDATE: Varlock schema split for pass backend.** The pass plan's Phase 3 schema (`secrets.env.schema`) must be split into `user.env.schema` and `system.env.schema`, each with their own `@plugin` declaration. Document the Varlock invocation pattern for containers that need both schemas (admin) versus containers that need only one (assistant: `user.env.schema` only).
+
+25. **ADD: Migration path for existing installations.** The upgrade from the current 3-tier XDG model to the single-root `~/.openpalm/` model requires a migration script that: (a) moves `CONFIG_HOME/secrets.env` contents into `vault/user.env` + `vault/system.env`, (b) sets `0o600` on both vault env files, (c) sets `0o700` on the `vault/` directory, (d) does NOT delete the old XDG directories until the user confirms the migration succeeded. The migration must be atomic (either fully complete or fully rolled back) to avoid a half-migrated state where neither the old nor new paths work.
+
+26. **UPDATE: Document vault/ directory permissions.** The `vault/` directory itself should have `0o700` permissions (owner-only access) since it contains all secrets. Both `user.env` and `system.env` should have `0o600`. The `*.schema` files can have `0o644` since they contain no secret values (only resolver declarations). Add these permissions to the filesystem contract.

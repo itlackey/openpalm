@@ -1,5 +1,11 @@
 # OpenPalm 0.10.0 — Cross-Plan Alignment Review Report
 
+> **Note (2026-03-19):** Many findings below reference the three-tier XDG model
+> (CONFIG_HOME/DATA_HOME/STATE_HOME) which has been replaced by the single-root
+> `~/.openpalm/` layout. See `fs-mounts-refactor.md` and `review-decisions.md`
+> Q2 (reversed) and Q11 (FS refactor adoption). The findings remain valid as
+> historical context but the specific path references are outdated.
+
 Three review agents analyzed the 0.10.0 plan documents against each other and
 against `docs/technical/core-principles.md`. This report consolidates all
 findings by severity.
@@ -338,18 +344,20 @@ it. Are they orphaned?
 
 ## Open Questions Requiring Decisions
 
-| # | Question | Affects |
-|---|----------|---------|
-| Q1 | Is OpenViking a core service or a component? | Knowledge, Components |
-| Q2 | Does CONFIG_HOME survive as a separate tier, or merge into DATA_HOME? | Components, Core Principles |
-| Q3 | Do component-level secrets go through pass or stay as plaintext .env? | Password, Components |
-| Q4 | What token type does the brokered instance (#304) receive? | Password, Knowledge |
-| Q5 | What is the degraded mode if #304 is delayed? | Knowledge (eval + maintenance) |
-| Q6 | Where do Q-values live — memory metadata, Viking metadata, or local SQLite? | Knowledge |
-| Q7 | How are automations handled in the unified registry? | Registry |
-| Q8 | What is the migration strategy for legacy channel installations? | Components |
-| Q9 | Should ov.conf live in CONFIG_HOME or DATA_HOME? | Knowledge, Core Principles |
-| Q10 | What is the first-boot experience for the password manager? | Password |
+All questions have been resolved. See [review-decisions.md](review-decisions.md) for full details.
+
+| # | Question | Affects | Status |
+|---|----------|---------|--------|
+| Q1 | Is OpenViking a core service or a component? | Knowledge, Components | RESOLVED — Component. [Q1](review-decisions.md#q1-openviking-core-service-or-component) |
+| Q2 | Does CONFIG_HOME survive as a separate tier, or merge into DATA_HOME? | Components, Core Principles | RESOLVED — Single-root `~/.openpalm/` replaces three-tier XDG. [Q2](review-decisions.md#q2-config_home-three-tier-contract) (reversed), [Q11](review-decisions.md#q11-filesystem-layout) |
+| Q3 | Do component-level secrets go through pass or stay as plaintext .env? | Password, Components | RESOLVED — Unified secret manager wraps Varlock; all secrets flow through it. [Q3](review-decisions.md#q3-secret-management-model) |
+| Q4 | What token type does the brokered instance (#304) receive? | Password, Knowledge | RESOLVED — ADMIN_TOKEN (full admin-level agent). [Q4](review-decisions.md#q4-brokered-admin-instance-token) |
+| Q5 | What is the degraded mode if #304 is delayed? | Knowledge (eval + maintenance) | RESOLVED — Shell automation type as fallback. [Q5](review-decisions.md#q5-degraded-mode-if-304-is-delayed) |
+| Q6 | Where do Q-values live — memory metadata, Viking metadata, or local SQLite? | Knowledge | RESOLVED — OpenPalm memory service. [Q6](review-decisions.md#q6-q-value-storage) |
+| Q7 | How are automations handled in the unified registry? | Registry | RESOLVED — Keep automations separate. [Q7](review-decisions.md#q7-automations-in-the-unified-registry) |
+| Q8 | What is the migration strategy for legacy channel installations? | Components | RESOLVED — Clean break, no migration. [Q8](review-decisions.md#q8-legacy-channel-migration) |
+| Q9 | Should ov.conf live in CONFIG_HOME or DATA_HOME? | Knowledge, Core Principles | RESOLVED — `vault/ov.conf` (contains secrets). [Q9](review-decisions.md#q9-ovconf-placement) (updated) |
+| Q10 | What is the first-boot experience for the password manager? | Password | RESOLVED — Wizard prompts choice; PlaintextBackend default. [Q10](review-decisions.md#q10-password-manager-first-boot-experience) |
 
 ---
 

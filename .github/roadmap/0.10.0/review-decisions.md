@@ -1,6 +1,7 @@
 # 0.10.0 Review — Decision Log
 
 Decisions made 2026-03-15 in response to the cross-plan alignment review report.
+Updated 2026-03-19: Q2 reversed, Q9 updated, Q3/Q10 annotated, Q11 added (FS refactor).
 
 ---
 
@@ -21,15 +22,34 @@ version pinning — component .env.schema controls the tag).
 
 ## Q2. CONFIG_HOME Three-Tier Contract
 
-**Decision: Preserve the three-tier XDG model.**
+**Decision: ~~Preserve the three-tier XDG model.~~ REVERSED (2026-03-19)**
 
-CONFIG_HOME stays as user-owned persistent source of truth. Component compose definitions
-and persistent data go in DATA_HOME. The components plan must NOT propose eliminating
-CONFIG_HOME.
+**Revised decision: Adopt single-root `~/.openpalm/` layout with vault boundary.**
 
-**Affected plans:** openpalm-components-plan.md, core-principles.md (no change needed)
+The three-tier XDG model (CONFIG_HOME / DATA_HOME / STATE_HOME) is replaced by a
+single `~/.openpalm/` root with semantic subdirectories: `config/` (user-editable
+non-secret config), `vault/` (secrets with hard filesystem boundary), `data/`
+(service-managed persistent data), and `logs/` (audit/debug output). The staging
+tier (STATE_HOME) is eliminated entirely, replaced by validate-in-place with
+snapshot rollback.
 
-**Resolves:** C2 (CONFIG_HOME elimination breaks three-tier contract).
+**Rationale for reversal:** The original Q2 decision was made before the
+`fs-mounts-refactor.md` proposal was articulated. The new single-root model
+preserves the semantic separation that made the three-tier model valuable (user
+config vs system data vs secrets) while eliminating the operational overhead
+(31 pre-created directories across 3 filesystem subtrees, 3-hop env file staging
+chain, ~21 bind mounts with bulk secret injection). The vault boundary is strictly
+more secure than the current `env_file:` model. Agent review consensus: 5/5
+unanimous.
+
+**Affected plans:** openpalm-components-plan.md, core-principles.md (major rewrite
+needed), openpalm-pass-impl-v3.md (PlaintextBackend must handle two-file model),
+CLAUDE.md
+
+**Resolves:** C2 (CONFIG_HOME elimination — now intentional and well-designed),
+supersedes the original "preserve three-tier" stance.
+
+**See:** `.github/roadmap/0.10.0/fs-mounts-refactor.md` for the full proposal.
 
 ---
 
@@ -40,6 +60,14 @@ CONFIG_HOME.
 A single password manager wraps Varlock and the configured Varlock provider. ALL secrets
 go through this system — core secrets, component secrets, and ad-hoc secrets. No separate
 plaintext `.env` path for components.
+
+> **Note (2026-03-19):** With the two-file env model adopted in Q11/Q2 reversal, the
+> unified secret manager now wraps two files: `vault/user.env` (user-editable LLM keys,
+> hot-reloadable) and `vault/system.env` (system-managed tokens, admin-only). The
+> PlaintextBackend (Q10) reads/writes these two files rather than the single `secrets.env`
+> originally envisioned. Component-level secrets marked `@sensitive` in `.env.schema` are
+> routed to the appropriate vault file based on whether they are user-managed or
+> system-managed.
 
 **Affected plans:** openpalm-pass-impl-v3.md (major revision — must support component
 and ad-hoc secrets, not just global), openpalm-components-plan.md (component `.env.schema`
@@ -130,14 +158,20 @@ the clean break)
 
 ## Q9. ov.conf Placement
 
-**Decision: DATA_HOME.**
+**Decision: ~~DATA_HOME.~~ Updated (2026-03-19): `vault/ov.conf`.**
 
-Since Viking is a component (Q1), its config lives in the component instance directory
-under DATA_HOME. Admin mediates writes. Admin UI can update embedding provider config
-without non-destructive lifecycle constraints. Advanced users can still edit since
-DATA_HOME is user-accessible.
+The original decision placed `ov.conf` in DATA_HOME. With the single-root filesystem
+refactor (Q2 reversal, Q11), this needs to be reconciled. The `ov.conf` file contains
+`root_api_key` (a secret) and `EMBEDDING_API_KEY`, so it belongs in the vault boundary —
+not in `data/` where any service could read it. The `fs-mounts-refactor.md` directory
+layout explicitly places it at `vault/ov.conf`.
 
-**Affected plans:** knowledge-system-roadmap.md
+Since Viking is a component (Q1), the admin mediates writes to `vault/ov.conf`. The
+admin mounts `vault/` rw. Admin UI can update embedding provider config. The assistant
+does NOT need access to `ov.conf` — it communicates with Viking via HTTP API, not by
+reading its config file.
+
+**Affected plans:** knowledge-system-roadmap.md, fs-mounts-refactor.md
 
 **Resolves:** M2 (ov.conf placement).
 
@@ -150,6 +184,13 @@ DATA_HOME is user-accessible.
 The setup wizard asks "Enable encrypted secrets?" during first boot. If yes, guides
 through GPG key setup. If no, uses a plaintext backend. User makes an informed choice.
 The plaintext backend ensures zero-friction fallback and non-breaking upgrades.
+
+> **Note (2026-03-19):** With the two-file env model (Q11), `PlaintextBackend` is the
+> default backend and manages `vault/user.env` + `vault/system.env` directly. These
+> files have `0o600` permissions (Phase 0 hardening). When the user opts into encrypted
+> secrets, the `PassBackend` wraps these same two files with GPG encryption via `pass`.
+> The two-file split is orthogonal to the backend choice — both PlaintextBackend and
+> PassBackend operate on the same vault file pair.
 
 **Affected plans:** openpalm-pass-impl-v3.md (must implement PlaintextBackend as default
 + wizard integration for GPG opt-in)
@@ -188,3 +229,62 @@ These decisions create several cascading changes beyond the direct fixes:
 6. **Shell automation fallback** means eval suites must be CLI-executable scripts,
    not just OpenCode tool calls. This is actually a better design — eval as
    portable scripts that any automation or agent can invoke.
+
+7. **Single-root filesystem** (Q11) is the most far-reaching cascading change. It
+   touches every path constant, every bind mount, every compose file, dev-setup.sh,
+   the CLI install command, the admin's staging pipeline (eliminated), and
+   core-principles.md (major rewrite). It also simplifies backup (`tar czf backup.tar.gz
+   ~/.openpalm`) and eliminates the entire `staging.ts` module.
+
+---
+
+## Q11. Filesystem Layout
+
+**Decision: Adopt single-root `~/.openpalm/` layout. (2026-03-19, 5/5 unanimous)**
+
+All five review agents unanimously approved replacing the three-tier XDG model
+(CONFIG_HOME / DATA_HOME / STATE_HOME) with a single `~/.openpalm/` root. This
+decision subsumes and formalizes the Q2 reversal.
+
+**Six core decisions:**
+
+1. **Single root `~/.openpalm/`** — collapse three XDG trees into one directory with
+   semantic subdirectories: `config/` (user-editable non-secret config), `vault/`
+   (secrets with hard filesystem boundary), `data/` (service-managed persistent data),
+   `logs/` (audit/debug output). Ephemeral cache at `~/.cache/openpalm/`.
+
+2. **Vault boundary** — `vault/user.env` (user-editable LLM keys, hot-reloadable) +
+   `vault/system.env` (system-managed tokens, admin-only write). Admin mounts full
+   `vault/` rw; assistant mounts only `vault/user.env` ro (file-level bind mount);
+   no other container mounts anything from vault. Secrets reach other containers
+   exclusively via `${VAR}` substitution at container creation time.
+
+3. **Staging elimination** — replace the CONFIG_HOME -> STATE_HOME copy pipeline with
+   validate-in-place + `~/.cache/openpalm/rollback/` snapshot. Apply writes to live
+   paths only after validation passes. Rollback is explicit (`openpalm rollback`) and
+   automated on deployment failure.
+
+4. **Two-file env model** — `--env-file vault/system.env --env-file vault/user.env` for
+   compose substitution. No comment-separator convention, no staged copies. System.env
+   holds admin token, HMAC secrets, paths, UID/GID, image tags. User.env holds LLM keys,
+   provider URLs, embedding config.
+
+5. **Hot-reload** — assistant file watcher on `vault/user.env`. Editing LLM keys on the
+   host takes effect within seconds. No container restart, no lost context.
+
+6. **0.10.0 scope** — this is a breaking change that ships in 0.10.0. The `openpalm
+   migrate` tool handles XDG-to-`~/.openpalm/` transition (env file splitting, directory
+   relocation, validation). Guardian restarts on channel install (~2 seconds) since HMAC
+   secrets come from `${VAR}` substitution only (no bind-mounted secrets file).
+
+**Affected plans:** core-principles.md (major rewrite — completed), openpalm-components-plan.md
+(path references), openpalm-pass-impl-v3.md (PlaintextBackend handles two-file model),
+CLAUDE.md (XDG references), all compose files, dev-setup.sh, CLI staging pipeline
+(eliminated).
+
+**Resolves:** C2 (CONFIG_HOME elimination — now intentional), M2 (ov.conf placement —
+vault/ov.conf), M8 (secrets.env contract — replaced by two-file vault model), M9
+(staged permissions — staging eliminated entirely).
+
+**See:** `fs-mounts-refactor.md` for full proposal, `fs-layout.md` for directory tree
+reference, `docs/technical/core-principles.md` for the updated architectural rules.

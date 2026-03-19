@@ -419,3 +419,260 @@ This is a clean improvement but requires:
     - New test commands in build/dev commands section
     - Updated key files section
     - Component system in architecture rules summary
+
+---
+
+## Addendum: Filesystem & Mounts Refactor Code Impact Review (2026-03-19)
+
+### Summary
+
+The filesystem refactor proposal collapses the 3-tier XDG model (CONFIG_HOME / DATA_HOME / STATE_HOME) into a single `~/.openpalm/` root with `config/`, `vault/`, `data/`, and `logs/` subdirectories, eliminates the staging pipeline entirely, replaces the `secrets.env` + `stack.env` chain with `user.env` + `system.env` under a `vault/` boundary, and introduces validate-in-place with snapshot rollback. This is the largest structural change in the proposal set -- it touches every control-plane module, every compose file, every test that creates a `ControlPlaneState`, and the dev setup script. The simplification gains are real (31 dirs to ~10, staging pipeline eliminated, backup is one `tar` command), but the migration is a full rewrite of the path layer and a near-total rewrite of the env/staging layer. It should be sequenced as a standalone phase before the component system lands, since the component system would otherwise need to target the old path model and then be rewritten.
+
+### Dead Code Analysis
+
+The following code and data structures become dead with staging elimination:
+
+**Entire staging pipeline (`packages/lib/src/control-plane/staging.ts`):**
+- `stageSecretsEnv()` -- copies `CONFIG_HOME/secrets.env` to `STATE_HOME/artifacts/secrets.env`. Dead: no staging tier.
+- `stagedEnvFile()` -- returns `STATE_HOME/artifacts/secrets.env` path. Dead: replaced by `vault/user.env`.
+- `stagedStackEnvFile()` -- returns `STATE_HOME/artifacts/stack.env` path. Dead: replaced by `vault/system.env`.
+- `buildEnvFiles()` -- returns both staged env file paths. Dead: replaced by direct `vault/` paths.
+- `stageStackEnv()` -- reads `DATA_HOME/stack.env`, merges admin-managed values, writes to both `DATA_HOME` and `STATE_HOME/artifacts/`. Dead: `system.env` is written in-place.
+- `generateFallbackStackEnv()` -- generates initial `stack.env` content with XDG paths, UID/GID, networking. Dead: replaced by `system.env` template seeding.
+- `stageChannelYmlFiles()` -- copies channel YMLs from `CONFIG_HOME/channels/` to `STATE_HOME/artifacts/channels/`. Dead: compose overlays read live from `config/components/`.
+- `stageChannelCaddyfiles()` -- copies and LAN-scopes Caddy files to `STATE_HOME/artifacts/channels/{lan,public}/`. Dead: Caddy reads live from `data/caddy/channels/`.
+- `discoverStagedChannelYmls()` -- discovers staged `.yml` overlays in `STATE_HOME/artifacts/channels/`. Dead: compose overlay discovery reads `config/components/` directly.
+- `stageAutomationFiles()` -- copies automation YAMLs from both `DATA_HOME` and `CONFIG_HOME` to `STATE_HOME/automations/`. Dead: scheduler reads live from `config/automations/`.
+- `stageEnvSchemas()` -- copies `.env.schema` files from asset provider to `DATA_HOME/assistant/env-schema/`. Dead: schemas live in `vault/` alongside their env files.
+- `stageArtifacts()` -- top-level orchestrator returning staged compose + caddyfile content. Dead: compose and Caddyfile are read live.
+- `persistArtifacts()` -- writes all staged files to `STATE_HOME/artifacts/`, generates HMAC secrets for new channels, writes `manifest.json`. Dead: no staging tier means no persistence step.
+- `buildArtifactMeta()` -- computes SHA-256 checksums for manifest. Dead: no manifest.
+- `sha256()` and `randomHex()` -- utility functions. `randomHex()` is still needed for secret generation; `sha256()` may be needed for rollback validation. These survive but move out of staging.
+
+**State factory and lifecycle (`packages/lib/src/control-plane/lifecycle.ts`):**
+- `loadPersistedChannelSecrets()` -- reads `CHANNEL_*_SECRET` from `DATA_HOME/stack.env`. Dead: channel secrets live in `vault/system.env` (no separate `stack.env`).
+- `reconcileCore()` -- calls `stageArtifacts()` and `persistArtifacts()`. Must be rewritten to validate-in-place + snapshot + write.
+- `buildComposeFileList()` -- reads from `STATE_HOME/artifacts/`. Must be rewritten to read from `config/components/` and `OPENPALM_HOME`.
+- `buildManagedServices()` -- calls `discoverStagedChannelYmls()`. Must be rewritten to discover from live `config/components/`.
+- `isOllamaEnabled()` and `isAdminEnabled()` (in `staging.ts`) -- read from `DATA_HOME/stack.env`. Must be rewritten to read from `vault/system.env` or `config/openpalm.yml`.
+- `validateEnvironment()` -- reads schema from `DATA_HOME/secrets.env.schema` and env from `STATE_HOME/artifacts/stack.env`. Must be rewritten for `vault/` paths.
+- `updateStackEnvToLatestImageTag()` -- reads/writes `DATA_HOME/stack.env`. Must target `vault/system.env`.
+- `writeSetupTokenFile()` -- writes to `STATE_HOME/setup-token.txt`. Must target a new location (likely `data/` or dropped entirely).
+
+**ControlPlaneState type (`packages/lib/src/control-plane/types.ts`):**
+- `stateDir: string` field -- eliminated (no STATE_HOME).
+- `artifacts: { compose: string; caddyfile: string }` field -- dead (no in-memory staging).
+- `artifactMeta: ArtifactMeta[]` field -- dead (no manifest).
+- `channelSecrets: Record<string, string>` field -- already marked dead in original review, but now also `stack.env` is gone so the loading path disappears entirely.
+- The `ArtifactMeta` type itself becomes dead.
+
+**Secrets module (`packages/lib/src/control-plane/secrets.ts`):**
+- `ensureSecrets()` -- creates `CONFIG_HOME/secrets.env`. Must be rewritten for `vault/user.env` + `vault/system.env` split.
+- `updateSecretsEnv()` -- writes to `CONFIG_HOME/secrets.env`. Must target `vault/user.env` or `vault/system.env` depending on the key.
+- `readSecretsEnvFile()` and `loadSecretsEnvFile()` -- read from `CONFIG_HOME/secrets.env`. Must read from `vault/user.env`.
+
+**Setup status (`packages/lib/src/control-plane/setup-status.ts`):**
+- `isSetupComplete()` -- reads from `STATE_HOME/artifacts/stack.env`. Must be rewritten for `vault/system.env`.
+
+**Paths module (`packages/lib/src/control-plane/paths.ts`):**
+- `resolveConfigHome()`, `resolveStateHome()`, `resolveDataHome()` -- all three functions are dead. Replaced by a single `resolveOpenPalmHome()` returning `~/.openpalm/` with subdirectory accessors (`configDir()`, `vaultDir()`, `dataDir()`, `logsDir()`, `cacheDir()`).
+- `ensureXdgDirs()` -- pre-creates 31 dirs across 3 trees. Replaced by a simpler `ensureDirs()` creating ~10 dirs under one root.
+- `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` env vars -- all dead. Replaced by `OPENPALM_HOME`.
+
+**Core assets (`packages/lib/src/control-plane/core-assets.ts`):**
+- All `resolveDataHome()`-based path resolution -- must change to `OPENPALM_HOME/data/`.
+- `coreCaddyfilePath()`, `coreComposePath()`, `ollamaComposePath()`, `adminComposePath()` -- all internal path helpers must be updated.
+- `refreshCoreAssets()` -- writes to `DATA_HOME`. Must target new paths.
+- `ensureSecretsSchema()` and `ensureStackSchema()` -- write schemas to `DATA_HOME/`. Must target `vault/`.
+
+**Admin barrel re-exports:**
+- `packages/admin/src/lib/server/staging.ts` -- re-exports `stagedEnvFile`, `stagedStackEnvFile`, `buildEnvFiles`, `discoverStagedChannelYmls` from lib. All become dead.
+- `packages/admin/src/lib/server/paths.ts` -- re-exports `resolveConfigHome`, `resolveStateHome`, `resolveDataHome`, `ensureXdgDirs`. All become dead, replaced by new path API.
+
+**CLI staging (`packages/cli/src/lib/staging.ts`):**
+- `ensureStagedState()` -- calls `stageArtifacts()` + `persistArtifacts()`. Entire function is dead. Replaced by reading live compose files.
+- `fullComposeArgs()` -- calls `buildComposeFileList()` + `buildEnvFiles()`. Must be rewritten for new path model.
+
+**Env files in compose (`assets/docker-compose.yml`, `assets/admin.yml`):**
+- Guardian `env_file:` referencing `STATE_HOME/artifacts/stack.env` -- dead. Guardian gets secrets via `${VAR}` only.
+- Guardian `volumes:` mount of `STATE_HOME/artifacts:/app/secrets:ro` -- dead. No bind-mounted secrets file.
+- Admin `env_file:` referencing both staged env files -- dead. Admin mounts `vault/` directly.
+- All `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` variable references in compose -- dead, replaced by `OPENPALM_HOME`.
+
+**Setup module (`packages/lib/src/control-plane/setup.ts`):**
+- `buildSecretsFromSetup()` -- writes all secrets into a single `secrets.env`. Must be split: user-facing keys to `vault/user.env`, system tokens to `vault/system.env`.
+- `performSetup()` step "Mark setup complete in DATA_HOME stack.env" -- must target `vault/system.env`.
+- `CHANNEL_CREDENTIAL_ENV_MAP` and `buildChannelCredentialEnvVars()` -- write channel creds to `CONFIG_HOME/secrets.env`. Must target `vault/system.env` (channel creds are system-managed, not user-editable).
+
+**Manifest endpoint (`packages/admin/src/routes/admin/artifacts/manifest/+server.ts`):**
+- Reads `STATE_HOME/artifacts/manifest.json`. Entirely dead with no staging tier.
+
+### Simplification Gains
+
+**Directory creation: 31 dirs to ~10.** `ensureXdgDirs()` currently pre-creates 5 CONFIG subdirs + 9 DATA subdirs + 6 STATE subdirs + WORK_DIR. The new layout creates: `config/`, `config/components/`, `config/automations/`, `config/assistant/`, `vault/`, `data/` (+ per-service subdirs), `logs/`. The function shrinks from ~30 `mkdirSync` calls to ~12. The cognitive load drop is significant -- `ls ~/.openpalm` shows 4 directories instead of requiring knowledge of 3 XDG subtrees.
+
+**Staging pipeline eliminated: ~400 lines of code.** `staging.ts` is 400 lines. The entire file can be replaced by a ~50-line validate-in-place module. Functions removed: `stageSecretsEnv`, `stagedEnvFile`, `stagedStackEnvFile`, `buildEnvFiles`, `stageStackEnv`, `generateFallbackStackEnv`, `stageChannelYmlFiles`, `discoverStagedChannelYmls`, `stageChannelCaddyfiles`, `stageAutomationFiles`, `stageEnvSchemas`, `stageArtifacts`, `persistArtifacts`, `buildArtifactMeta`. The `manifest.json` tracking infrastructure is also removed.
+
+**Env file chain: 3 hops to 1.** Currently: `CONFIG_HOME/secrets.env` -> `DATA_HOME/stack.env` -> `STATE_HOME/artifacts/{secrets,stack}.env`. New: `vault/user.env` + `vault/system.env`, both read directly. Docker Compose uses `--env-file vault/system.env --env-file vault/user.env`. No staging copies.
+
+**Compose invocation simplification.** `buildComposeFileList()` currently reads from `STATE_HOME/artifacts/` for the core compose, then checks for `admin.yml` and `ollama.yml` in staging, then discovers staged channel YMLs. New: reads `config/openpalm.yml` for enabled components, then lists `config/components/*.yml`. The function shrinks from 20 lines with 3 filesystem discovery calls to ~8 lines reading a YAML manifest.
+
+**`buildEnvFiles()` elimination.** Currently returns `[stagedStackEnvFile(), stagedEnvFile()].filter(existsSync)`. New: hardcoded `[vaultDir() + '/system.env', vaultDir() + '/user.env']`. No dynamic discovery.
+
+**Admin container mount simplification.** Currently mounts all 3 XDG trees with identity-mapped paths (`CONFIG_HOME:CONFIG_HOME`). New: mounts `config/` and `vault/` with clean container paths (`/etc/openpalm` and `/etc/openpalm/vault`). The identity-mapping pattern (host path = container path) was clever but fragile; the new pattern uses clean container-internal paths.
+
+**Dev setup (`scripts/dev-setup.sh`): ~50 lines shorter.** Currently creates dirs across 3 trees (CONFIG, STATE, DATA), stages bootstrap artifacts to `STATE/artifacts/`, copies env files. New: creates dirs under `.dev/`, seeds `vault/user.env` and `vault/system.env`, done. No staging bootstrap needed.
+
+**Backup/restore: 2-3 commands to 1.** Currently requires archiving CONFIG_HOME + DATA_HOME (+ optionally STATE_HOME). New: `tar czf backup.tar.gz ~/.openpalm`. Restore is extract + start. No staging regeneration step.
+
+### New Code Required
+
+**1. Validate-in-place module (~100-150 lines, LOW complexity)**
+
+A new `packages/lib/src/control-plane/validate.ts` module that:
+- Validates `vault/user.env` against `vault/user.env.schema` using varlock (reuses existing `runVarlockLoad` pattern from `validateEnvironment()`)
+- Validates `vault/system.env` against `vault/system.env.schema`
+- Runs `docker compose config --dry-run` against proposed compose overlay chain
+- Optionally validates Caddyfile via `caddy validate`
+
+This is straightforward -- it reuses existing patterns. The `validateEnvironment()` function in `lifecycle.ts` already does temp-dir-based varlock validation; this just changes the file paths and adds compose dry-run.
+
+**2. Snapshot/rollback module (~80-120 lines, LOW complexity)**
+
+A new `packages/lib/src/control-plane/rollback.ts` module that:
+- `snapshot()`: copies current `vault/user.env`, `vault/system.env`, `config/openpalm.yml`, and all `config/components/*.yml` to `~/.cache/openpalm/rollback/`
+- `rollback()`: copies snapshot files back to live positions and returns the list of restored files
+- `isSnapshotAvailable()`: checks if a valid snapshot exists
+
+This is purely filesystem copy operations -- small and testable. The 5-10 files being snapshotted total a few KB.
+
+**3. File watcher for hot-reload (~30-50 lines, LOW complexity)**
+
+The proposal includes TypeScript pseudocode. This would live in the assistant container's entrypoint (not in `@openpalm/lib`). It uses Node's `fs.watch()` on a single file (`/etc/openpalm/user.env`) with an allowlist of keys. Low complexity, but needs debouncing (editors write temp files then rename). The `fs.watch` API is notoriously platform-dependent, but inside a Docker container targeting Linux, `inotify` is reliable. One edge case: bind-mounted file watches require the directory to be mounted (not just the file), which the proposal addresses by mounting `vault/user.env` as a file path.
+
+**4. `openpalm.yml` reader (~40-60 lines, LOW complexity)**
+
+A new `readOpenPalmConfig()` function that parses `config/openpalm.yml` to determine enabled components and feature flags. This replaces the current implicit discovery (scan for staged files) with explicit configuration. The `yaml` package is already a dependency.
+
+**5. Apply orchestrator rewrite (~150-200 lines, MEDIUM complexity)**
+
+The current `reconcileCore()` + `applyInstall()` + `applyUpdate()` + `applyUninstall()` pattern calls `stageArtifacts()` + `persistArtifacts()`. The new flow is: validate -> snapshot -> write -> deploy -> health check -> rollback on failure. This is more logic than the current write-and-hope approach but not fundamentally complex. The main risk is the automated rollback on failed health checks -- this requires calling `docker compose up -d` twice (once for the new config, once for the rollback), and handling the case where the rollback also fails.
+
+**Total new code estimate:** ~400-600 lines replacing ~400 lines of staging code plus rewriting ~200 lines of lifecycle code. Net code change is roughly neutral, but the new code is simpler and more directly testable.
+
+### Path Constants Rewrite
+
+**72 files** currently reference `CONFIG_HOME`, `DATA_HOME`, `STATE_HOME`, `resolveConfigHome`, `resolveStateHome`, or `resolveDataHome` across the `packages/` directory. Of these:
+
+- **~30 are build artifacts** (`packages/admin/build/server/chunks/*.js` and `.js.map`) -- these are regenerated by `npm run build` and do not need manual edits.
+- **~42 are source files** that need manual updates. Breaking these down:
+
+| Package | Source files affected | Key files |
+|---------|----------------------|-----------|
+| `packages/lib/` | 12 | `paths.ts`, `staging.ts`, `lifecycle.ts`, `secrets.ts`, `setup.ts`, `setup-status.ts`, `channels.ts`, `core-assets.ts`, `core-asset-provider.ts`, `stack-spec.ts`, `scheduler.ts`, `fs-asset-provider.ts` |
+| `packages/admin/` | 18 | `paths.ts`, `staging.ts`, `hooks.server.ts`, `control-plane.ts`, and 14 route handlers (`channels/`, `registry/`, `access-scope/`, `containers/`, `install/`, `update/`, `upgrade/`, `uninstall/`, `automations/`, `artifacts/`, `config/validate/`, `logs/`) |
+| `packages/cli/` | 8 | `staging.ts`, `paths.ts`, `env.ts`, `docker.ts`, `install.ts`, `uninstall.ts`, `server.ts` (setup wizard), `standalone.ts` |
+| `packages/scheduler/` | 4 | `server.ts`, `scheduler.ts`, `shell.ts`, `shell.test.ts` |
+| `packages/admin-tools/` | 1 | `README.md` (documentation reference only) |
+
+Additionally, **10 files in `assets/`** reference `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, or `OPENPALM_DATA_HOME`: the 4 compose files (`docker-compose.yml`, `admin.yml`, `ollama.yml`, `validate-config.yml`), `secrets.env`, 2 schema files, 2 cleanup automation YAMLs, and `README.md`.
+
+The env var rename from `OPENPALM_CONFIG_HOME`/`OPENPALM_DATA_HOME`/`OPENPALM_STATE_HOME` to `OPENPALM_HOME` is the highest-risk change because it is a user-visible API break. Existing installations have these vars in their `stack.env` files. The migration path must either (a) support both old and new vars with precedence rules during a transition period, or (b) rewrite the env files as part of the upgrade.
+
+### Compose File Changes
+
+**Current bind mount inventory (from actual compose files):**
+
+`assets/docker-compose.yml` -- 4 services, 12 unique bind mounts:
+- memory: 2 mounts (`DATA_HOME/memory:/data`, `DATA_HOME/memory/default_config.json:/app/default_config.json`)
+- assistant: 6 mounts (DATA_HOME/assistant, CONFIG_HOME/assistant, STATE_HOME/opencode, DATA_HOME/opencode, WORK_DIR, CONFIG_HOME/stash)
+- guardian: 3 mounts (DATA_HOME/guardian, STATE_HOME/audit, STATE_HOME/artifacts) + 1 `env_file` referencing STATE_HOME
+- scheduler: 2 mounts (STATE_HOME/automations, STATE_HOME/artifacts)
+
+`assets/admin.yml` -- 3 services, 8 unique bind mounts:
+- caddy: 4 mounts (STATE_HOME/artifacts/Caddyfile, STATE_HOME/artifacts/channels, DATA_HOME/caddy/data, DATA_HOME/caddy/config)
+- docker-socket-proxy: 1 mount (docker.sock)
+- admin: 3 mounts (CONFIG_HOME identity, STATE_HOME identity, DATA_HOME identity) + 2 `env_file` entries referencing STATE_HOME
+
+**Total current: 20 bind mounts + 3 env_file references across 7 services.**
+
+**Proposed mount changes (from fs-mounts-refactor.md):**
+
+All `OPENPALM_CONFIG_HOME`, `OPENPALM_STATE_HOME`, `OPENPALM_DATA_HOME` variable references become `OPENPALM_HOME`-relative paths. Every bind mount path changes. Specifically:
+
+| Service | Mounts that change | Nature of change |
+|---------|-------------------|-----------------|
+| memory | 2 | `DATA_HOME/memory` -> `OPENPALM_HOME/data/memory` |
+| assistant | 6 -> 8 | Adds `vault/user.env` (ro) mount and `logs/opencode/` mount; removes STATE_HOME/opencode; changes all DATA_HOME and CONFIG_HOME refs |
+| guardian | 3 -> 2 | Removes `STATE_HOME/artifacts` mount entirely (no bind-mounted secrets); removes `env_file`; changes audit from STATE_HOME to `logs/` |
+| scheduler | 2 -> 1 | Removes `STATE_HOME/artifacts` mount; reads automations from `config/automations/` instead of `STATE_HOME/automations/` |
+| caddy | 4 -> 3 | Reads Caddyfile from `data/caddy/` instead of `STATE_HOME/artifacts/`; channels from `data/caddy/channels/` instead of `STATE_HOME/artifacts/channels/` |
+| admin | 3 -> 5 | Replaces 3 identity-mapped XDG mounts with `config/` + `vault/` + `data/admin/` + `data/workspace/` + registry cache |
+| docker-socket-proxy | 1 -> 1 | Unchanged |
+
+**Net: 20 mounts + 3 env_file -> 21 mounts + 0 env_file.** The total count is similar, but the security isolation is strictly better (guardian and scheduler lose access to secrets file mounts).
+
+The `assets/ollama.yml` also needs updating (1 mount: `DATA_HOME/ollama` -> `OPENPALM_HOME/data/ollama`).
+
+### Test Impact
+
+**Tests that become dead or require rewrite:**
+
+| Test File | Lines | Dead/Rewrite | Reason |
+|-----------|-------|-------------|--------|
+| `packages/admin/src/lib/server/staging.test.ts` | ~530 | **DEAD** | Tests `stageChannelCaddyfiles`, `stageChannelYmlFiles`, `stageSecretsEnv`, `stageAutomationFiles` -- all eliminated |
+| `packages/admin/src/lib/server/staging-core.test.ts` | ~380 | **REWRITE** | Tests `stagedEnvFile`, `stagedStackEnvFile`, `buildEnvFiles`, `persistArtifacts`, `manifest.json` -- all eliminated |
+| `packages/admin/src/lib/server/lifecycle.test.ts` | ~300 | **REWRITE** | Tests `reconcileCore` path which calls staging functions; `buildComposeFileList` and `buildManagedServices` signatures change |
+| `packages/admin/src/lib/server/state.test.ts` | ~150 | **REWRITE** | Tests `createState()` which initializes `stateDir`, `artifacts`, `artifactMeta`, `channelSecrets` -- all changing |
+| `packages/admin/src/lib/server/paths.test.ts` | ~80 | **DEAD** | Tests `resolveConfigHome`, `resolveStateHome`, `resolveDataHome` -- all replaced |
+| `packages/admin/src/lib/server/lifecycle-validate.test.ts` | ~200 | **REWRITE** | Tests `validateEnvironment()` which reads from STATE_HOME paths |
+| `packages/admin/src/routes/admin/config/validate/server.test.ts` | ~150 | **REWRITE** | Tests config validation endpoint using staging paths |
+| `packages/admin/src/lib/server/secrets.test.ts` | ~200 | **REWRITE** | Tests `ensureSecrets`, `updateSecretsEnv`, `loadSecretsEnvFile` -- all path-dependent |
+| `packages/lib/src/control-plane/setup.test.ts` | ~500 | **REWRITE** | Tests `performSetup()` which calls `ensureXdgDirs()`, writes to `CONFIG_HOME/secrets.env`, calls `applyInstall()` |
+| `packages/lib/src/control-plane/install-edge-cases.test.ts` | ~300 | **REWRITE** | Tests edge cases in install that exercise staging pipeline |
+| `packages/cli/src/setup-wizard/server.test.ts` + related | ~400 | **REWRITE** | Tests setup wizard server which calls `performSetup()` with XDG paths |
+| `packages/cli/src/commands/install-file.test.ts` | ~200 | **REWRITE** | Tests file-based install that exercises staging |
+
+**Estimated test rewrite scope:** ~3,400 lines across 12 test files. Approximately 40% of these (staging.test.ts, paths.test.ts) are fully dead and can be deleted. The remaining 60% need path constant updates and assertion changes.
+
+**New tests needed:**
+
+1. **Validate-in-place tests** -- varlock validation of `user.env` and `system.env` against their schemas; compose dry-run validation; Caddy validation. (~100-150 lines)
+2. **Snapshot/rollback tests** -- snapshot creation, rollback restoration, snapshot-not-available guard, concurrent snapshot safety. (~150-200 lines)
+3. **File watcher tests** -- key allowlist enforcement, debouncing, malformed input handling. (~100 lines, in assistant container test suite)
+4. **`openpalm.yml` reader tests** -- valid/invalid/missing config, default values, enabled component discovery. (~100 lines)
+5. **Apply orchestrator tests** -- validate -> snapshot -> write -> deploy flow, automated rollback on health check failure, partial write recovery. (~200-300 lines)
+6. **Path migration tests** -- verify `OPENPALM_HOME` resolution with and without env override, subdirectory accessor correctness. (~50 lines)
+7. **Env file split tests** -- verify `buildSecretsFromSetup()` correctly splits user-facing keys (to `user.env`) from system-managed tokens (to `system.env`). (~100-150 lines)
+
+**Estimated new test code:** ~800-1,100 lines across 7 test areas. This is less than the ~3,400 lines being removed/rewritten because the new code is structurally simpler (no staging indirection).
+
+### Recommendations
+
+1. **UPDATE** -- Sequence the filesystem refactor as Phase 0 of 0.10.0, before the component system. The component system's `config/components/` directory, `enabled.json` (or `openpalm.yml`), and per-instance `.env` files all depend on the new path model. Building the component system on the old XDG model and then rewriting it for the new model doubles the work. Ship the path refactor first, update all tests, then layer the component system on top.
+
+2. **ADD** -- Create a `packages/lib/src/control-plane/home.ts` module (replacing `paths.ts`) with a single `resolveOpenPalmHome(): string` function and subdirectory accessors (`configDir()`, `vaultDir()`, `dataDir()`, `logsDir()`, `cacheDir()`). This module should support both `OPENPALM_HOME` (new) and the legacy `OPENPALM_CONFIG_HOME` + `OPENPALM_DATA_HOME` + `OPENPALM_STATE_HOME` (old) with a deprecation warning, to allow a smooth upgrade path for existing installations.
+
+3. **ADD** -- Create a one-time migration function `migrateFromXdgLayout()` that detects the old XDG directory structure and moves files to the new `~/.openpalm/` layout. This should: (a) detect if `~/.config/openpalm` exists, (b) create `~/.openpalm/`, (c) move `config/` content, (d) move `data/` content from `~/.local/share/openpalm`, (e) merge `secrets.env` + `stack.env` into `vault/user.env` + `vault/system.env`, (f) skip `STATE_HOME` entirely (it is regenerable). This migration function must be tested against both fresh installs and existing XDG layouts.
+
+4. **REMOVE** -- Delete `packages/lib/src/control-plane/staging.ts` entirely after the refactor lands. Do not attempt an incremental deprecation -- the staging module's functions are so deeply woven into `lifecycle.ts`, `setup.ts`, and the admin/CLI wrappers that a partial removal would be harder than a clean cut. Replace with the new `validate.ts` + `rollback.ts` modules.
+
+5. **REMOVE** -- Delete the `ArtifactMeta` type, the `artifacts` and `artifactMeta` fields from `ControlPlaneState`, and the `packages/admin/src/routes/admin/artifacts/manifest/+server.ts` endpoint. The manifest was infrastructure to track the staging layer -- with no staging, there is no manifest.
+
+6. **UPDATE** -- The `ControlPlaneState` type needs a redesign. The current type carries `stateDir`, `artifacts`, `artifactMeta`, and `channelSecrets` -- all of which die. The new type should carry `homeDir: string` (the single root) and derive `configDir`, `vaultDir`, `dataDir`, `logsDir` from it. The `services` field stays. The `adminToken` and `setupToken` fields stay but should read from `vault/system.env` instead of `CONFIG_HOME/secrets.env`.
+
+7. **UPDATE** -- The admin container's volume mount strategy changes fundamentally. Currently it mounts all 3 XDG trees with identity-mapped paths so that the container's `OPENPALM_CONFIG_HOME` env var equals the host path. The new layout uses clean container-internal paths (`/etc/openpalm`, `/etc/openpalm/vault`), which is a strict improvement but means the admin can no longer assume host path === container path. Any admin code that constructs paths using host-side env vars for in-container filesystem access must be audited. Key files: `packages/admin/src/hooks.server.ts` (reads `OPENPALM_CONFIG_HOME` etc. from env to set path context).
+
+8. **UPDATE** -- The `OPENPALM_HOME` env var unification is a **user-visible breaking change**. The `stack.env.schema` currently defines `OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, and `OPENPALM_STATE_HOME` as separate fields. The migration must handle existing installations that set custom values for these. Recommendation: the migration function reads all three legacy vars and verifies they are all under the same parent before collapsing to `OPENPALM_HOME`. If they diverge (user explicitly split them), the migration should warn and require manual resolution rather than silently losing the custom layout.
+
+9. **ADD** -- The hot-reload file watcher needs an explicit design for the race condition where `user.env` is being written (by the admin container via vault mount) while the assistant is reading it. The proposal shows `fs.watch()` + `readFileSync()`, but there is no atomicity guarantee. The admin should write to a temp file and `rename()` it into place (atomic on Linux), and the watcher should use a short debounce (200-500ms) to avoid reading a partially-written file.
+
+10. **UPDATE** -- The `scripts/dev-setup.sh` script must be fully rewritten. It currently creates 3 directory trees and stages bootstrap artifacts. The new version creates `~/.openpalm/` (or `.dev/` for dev mode), seeds `vault/user.env` and `vault/system.env`, copies core compose files to `config/components/`, and writes a default `config/openpalm.yml`. The staging bootstrap (copy compose to `STATE_HOME/artifacts/`) is eliminated entirely.
+
+11. **ADD** -- The `compose.dev.yaml` and `bun run dev:build` command reference `--env-file .dev/state/artifacts/stack.env --env-file .dev/state/artifacts/secrets.env`. These must change to `--env-file .dev/vault/system.env --env-file .dev/vault/user.env`. The root `package.json` scripts that construct compose commands must be updated.
+
+12. **UPDATE** -- The guardian security model improves but introduces a new operational constraint. Currently the guardian bind-mounts `STATE_HOME/artifacts` and reads `stack.env` at runtime for HMAC secrets, allowing hot-reload of channel secrets without restart. The proposal eliminates this mount and uses `${VAR}` substitution only, meaning a guardian recreate is needed when channel secrets change. This is documented as "~2 seconds" but must be tested under load -- the guardian handles all channel ingress, so a recreate drops in-flight requests. The `docker compose up -d --force-recreate --no-deps guardian` command should be benchmarked.
+
+13. **ADD** -- The `config/openpalm.yml` file is a new single source of truth for enabled components and feature flags. This replaces the current implicit discovery (scan for staged files, check env flags). The `openpalm.yml` schema must be defined and validated -- a Zod schema in `@openpalm/lib` would be appropriate, consistent with the existing pattern of schema validation in the setup module. This file also needs a JSON Schema for IDE autocompletion.
+
+14. **UPDATE** -- `docs/technical/core-principles.md` requires significant revisions: the XDG directory model table (Goal 3 / filesystem contract) must be rewritten for the new `~/.openpalm/` layout, the CONFIG_HOME policy becomes a `config/` policy, the STATE_HOME tier disappears, and the volume-mount contract changes completely. The security invariants section needs updating for the vault boundary model. This is a documentation-only change but is architecturally critical since CLAUDE.md declares `core-principles.md` as the authoritative source.

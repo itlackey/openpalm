@@ -250,3 +250,165 @@ The components plan uses `/api/components` and `/api/instances` (no `/admin/` pr
 14. **UPDATE** `openpalm-components-plan.md` to clarify the boundary between core services (stay in `docker-compose.yml`), optional services (migrate to components?), and new components. Specifically: does Caddy move from `OPTIONAL_SERVICES` to a component? Does `docker-socket-proxy`?
 
 15. **ADD** a scheduler integration section to the components plan or the knowledge roadmap, documenting how the scheduler accesses component state and what environment it runs in.
+
+---
+
+## Addendum: Filesystem & Mounts Refactor Review (2026-03-19)
+
+### Summary
+
+The fs-mounts-refactor proposal (`fs-mounts-refactor.md` + `fs-layout.md`) is a well-argued simplification that replaces the three-tier XDG model with a single `~/.openpalm/` root containing four purpose-separated subdirectories (`config/`, `vault/`, `data/`, `logs/`) plus `~/.cache/openpalm/` for ephemeral data. It directly contradicts review-decision Q2 ("Preserve the three-tier XDG model"), which means adopting it requires an explicit decision reversal. The proposal's core architectural insight is sound: the staging tier adds operational overhead disproportionate to its safety benefit for a single-user self-hosted stack. However, the proposal also introduces new complexity (hot-reload file watchers, validate-in-place with snapshot rollback, vault filesystem boundary) that must be evaluated against what it replaces, not just against the status quo.
+
+### Core Principles Impact
+
+**Preserved:**
+- Goal 1 (file-drop modularity): Fully preserved. `config/components/` is the file-drop location for compose overlays, directly analogous to the current `CONFIG_HOME/channels/`.
+- Goal 2 (assistant extensions by file copy): Preserved. `config/assistant/` serves the same role as `CONFIG_HOME/assistant/`.
+- Goal 3 (host-stored config for advanced users): Improved. Everything is under one root, which makes discovery easier.
+- Goal 4 (leverage Docker Compose/Caddy/OpenCode native features): Preserved. The compose invocation pattern (`--env-file vault/system.env --env-file vault/user.env -f config/components/*.yml`) is standard Compose.
+- Goal 5 (no template rendering): Preserved. The proposal explicitly avoids string interpolation; compose files are passed unchanged.
+- Goal 6 (never overwrite user files during automatic lifecycle): Preserved. The proposal explicitly states `vault/user.env` is never touched by upgrades, and `openpalm.yml` and user-installed channel overlays are not overwritten.
+- Goal 7 (all persistent data on host): Preserved. `data/` replaces DATA_HOME.
+- Goal 8 (user-accessible files): Improved. Single `~/.openpalm/` directory is easier to find, navigate, and manage permissions for.
+- Goal 9 (core extensions baked into container): Not affected by this proposal.
+
+**Violated:**
+- Filesystem contract section 3 (STATE_HOME as assembled runtime): Eliminated. There is no STATE equivalent. The proposal replaces the staging model entirely with validate-in-place + rollback. `core-principles.md` would require a substantial rewrite of sections "Filesystem contract" (all three tiers) and "Volume-mount contract" (sections A, B, D).
+- Security invariant 3 (assistant isolation mount list): Changed. The proposal lists the assistant's mounts as: `config/`, `config/assistant/`, `vault/user.env`, `data/assistant/`, `data/stash/`, `data/workspace/`, `logs/opencode/`, and `~/.cache/openpalm/registry/`. The current core-principles.md restricts assistant mounts to `DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, and `WORK_DIR`. The new mount list is different (notably: `config/` is mounted at `/etc/openpalm` read-only, giving the assistant read access to compose overlays and `openpalm.yml` which it cannot currently see). This is a minor expansion of the assistant's read surface. Whether this matters depends on whether compose overlays or stack config contain sensitive information — they should not, since secrets are in `vault/`, but it is a change.
+
+**Improved:**
+- Secret isolation is strictly improved. The current model uses `env_file:` to bulk-inject all secrets (both `stack.env` and `secrets.env`) into guardian and admin. The guardian currently has a bind mount to `STATE_HOME/artifacts/` (read-only) which includes the full `stack.env`. The proposal eliminates this: guardian receives only its specific secrets via `${VAR}` substitution, and the only mounted secrets file is `vault/user.env` into the assistant (read-only). This is a meaningful security improvement.
+- Backup/restore is substantially improved. One directory, one `tar` command. The current model requires archiving two or three XDG directories spread across `~/.config/`, `~/.local/share/`, and `~/.local/state/`.
+- Cognitive load for operators is reduced. 31 pre-created directories across 3 filesystem subtrees becomes 4 top-level directories under a single root.
+
+### Decision Q2 Reassessment
+
+**Should the three-tier XDG decision be reversed? Yes, with caveats.**
+
+Q2 was made on 2026-03-15 in response to concern C2 (the components plan proposed eliminating CONFIG_HOME, which would break the three-tier contract). At that time, the alternative was not articulated — the only proposal was "remove CONFIG_HOME and put everything in DATA_HOME." The fs-mounts-refactor proposal is qualitatively different: it preserves the *semantics* of all three tiers (user-owned config, service-owned data, assembled runtime) while collapsing them under a single root and replacing the "assembled runtime" tier with a validate-in-place + rollback model.
+
+The XDG base directory specification is designed for multi-application desktop systems where applications share `~/.config/`, `~/.local/share/`, and `~/.local/state/`. OpenPalm is a single-purpose self-hosted stack — the XDG directories contain only OpenPalm's files. Spreading them across three `~/.something/openpalm/` locations provides no benefit to a user who never has other applications in those same XDG trees. The fs-mounts-refactor correctly identifies that the XDG compliance adds operational cost (navigating three subtrees, archiving multiple directories, understanding the staging pipeline) without proportional benefit for this use case.
+
+**Caveats:**
+1. The proposal must explicitly document that `~/.openpalm/` is a departure from XDG, and why.
+2. Environment variables (`OPENPALM_CONFIG_HOME`, `OPENPALM_DATA_HOME`, `OPENPALM_STATE_HOME`) must be replaced with a single `OPENPALM_HOME` variable (the proposal implies this with `OPENPALM_HOME` in `vault/system.env`). The old variables should be checked and produce a clear error or migration message if present.
+3. The `config/` and `vault/` subdirectories must maintain the ownership/permission semantics that CONFIG_HOME had: user-editable, never overwritten by lifecycle operations. The proposal states this, but it should be formalized as a rule in the updated core-principles.md.
+
+### Staging Tier Elimination Assessment
+
+**What the staging tier currently provides:**
+1. Services never read directly from user-editable files — they read staged copies.
+2. A failed apply leaves the previous staged artifacts intact (implicit rollback).
+3. `manifest.json` tracks checksums for change detection.
+4. The admin container can reconstruct STATE from CONFIG + DATA.
+
+**What validate-in-place + rollback provides:**
+1. Pre-write validation (varlock schema check, `docker compose config --dry-run`, `caddy validate`) catches errors before any file is modified.
+2. Explicit snapshot to `~/.cache/openpalm/rollback/` preserves the previous state.
+3. Automated rollback on health check failure after deploy.
+4. Manual `openpalm rollback` as an escape hatch.
+
+**Pros of the new model:**
+- Eliminates the `persistArtifacts()` function and its 11 staging operations (compose, caddyfile, ollama overlay, admin overlay, channel YMLs, channel caddyfiles, automations, env schemas, stack.env, secrets.env, manifest.json).
+- Eliminates the `stateDir` concept from `ControlPlaneState`, simplifying the type system.
+- Validation against temp files is actually safer than the current model, which writes staged files first and discovers errors only when `docker compose up` fails.
+- Rollback is explicit and automated, whereas the current model has only implicit rollback (the admin regenerates STATE from CONFIG+DATA, which requires the admin container to be running).
+
+**Cons of the new model:**
+- The rollback directory in `~/.cache/openpalm/rollback/` is ephemeral (XDG cache semantics). If the cache is cleared between a failed apply and a rollback attempt, the rollback data is lost. The proposal should document this risk and consider whether rollback data should live in `~/.openpalm/backups/` instead (the layout diagram shows a `backups/` directory that exists for this purpose).
+- The "services read live files" model means that if the admin container crashes mid-write to `config/components/core.yml`, the file could be partially written. The staging model avoided this by writing to STATE and then reading from STATE — a crashed write to STATE was harmless because CONFIG+DATA were intact. The proposal should specify atomic writes (write to temp, rename) for all config file mutations.
+- `manifest.json` change detection is lost. The proposal does not describe how the system detects whether files have changed since the last apply. This matters for idempotent operations (e.g., `openpalm apply` when nothing has changed should be a no-op).
+
+**Assessment: The staging tier elimination is architecturally sound if two gaps are addressed.** (1) Rollback data should live in `~/.openpalm/backups/` not `~/.cache/`. (2) All config file writes must be atomic (temp + rename).
+
+### Vault Boundary Assessment
+
+The `vault/` directory as the secrets boundary is a clear improvement over the current model.
+
+**Current model problems identified in the proposal (verified against `assets/docker-compose.yml` and `assets/admin.yml`):**
+- Guardian loads `stack.env` via both `env_file:` and bind mount, receiving all secrets (including LLM keys it never uses).
+- Admin loads both `stack.env` and `secrets.env` via `env_file:`, receiving HMAC secrets it does not need for most operations.
+- The admin container mounts all three XDG trees using identical host-to-container paths (confirmed in `admin.yml` lines 104-106), meaning it has read-write access to every file the user owns.
+- `OPENAI_API_KEY` appears in `secrets.env`, staged `secrets.env`, and explicit `environment:` blocks of three containers.
+
+**Vault model improvements:**
+- `vault/system.env` is mounted only into admin (rw). Guardian, scheduler, memory, and caddy never mount it.
+- `vault/user.env` is mounted only into assistant (ro) and admin (rw). No other container can read LLM keys from disk.
+- Guardian receives only its specific HMAC secrets and admin token via `${VAR}` substitution at container creation time. This eliminates the over-broad `env_file:` approach.
+- The admin's vault mount (`vault/` at `/etc/openpalm/vault/`) is scoped to the vault directory, not the entire filesystem tree.
+
+**Concerns:**
+1. The proposal says "no container except admin can access `system.env`" but the compose invocation uses `--env-file vault/system.env --env-file vault/user.env` host-side. Docker Compose reads these files on the host and substitutes `${VAR}` references in all compose files. This means all containers that use `${VAR}` in their `environment:` blocks will receive those values at creation time — they just cannot read the raw files at runtime. This is correct behavior but should be documented clearly to avoid confusion: the vault boundary restricts file-level access, not env-var injection.
+2. `vault/ov.conf` for OpenViking config is an odd placement. Decision Q9 said "ov.conf in DATA_HOME" because Viking is a component and its config belongs with its instance data. The refactor proposal puts `ov.conf` in `vault/` alongside secrets. If `ov.conf` contains secrets (API keys), vault is appropriate. If it is primarily configuration (embedding model, workspace paths), it belongs in `config/` or in the component instance directory. This needs clarification.
+
+### Plan Compatibility
+
+**Components plan (`openpalm-components-plan.md`):**
+- The components plan references `${OPENPALM_DATA}/components/` for instance directories and `${OPENPALM_STATE}/components/` for runtime state. Under the refactor, these would become `~/.openpalm/data/components/` (instances) — but the refactor's `config/components/` directory holds compose overlays (e.g., `core.yml`, `admin.yml`, `channel-slack.yml`), which is a different concept than the components plan's instance directories.
+- **Conflict:** The components plan puts component instances in DATA_HOME with full instance directories (compose.yml + .env.schema + .env + data/). The refactor puts compose overlays in `config/components/`. These are two different things: the refactor's `config/components/core.yml` is the base stack definition, while the components plan's `DATA_HOME/components/discord-main/` is an instance with runtime data. The refactor needs to reconcile: where do component instance directories live? The refactor's `data/` directory is the natural location, which aligns with the components plan's `DATA_HOME/components/`.
+- **Missing from refactor:** The refactor does not mention `enabled.json`, instance directories, per-instance `.env` files, or the component lifecycle at all. It describes a simpler model where compose overlays are dropped into `config/components/` and listed in `openpalm.yml`. The components plan's richer instance model must be integrated.
+
+**Pass plan (`openpalm-pass-impl-v3.md`):**
+- The pass plan references `CONFIG_HOME/secrets.env` (plaintext default) and `DATA_HOME/secrets/pass-store/` (encrypted backend). Under the refactor, `CONFIG_HOME/secrets.env` becomes `vault/user.env` (for user-facing secrets) and `vault/system.env` (for system secrets). The pass plan's `PlaintextBackend` would need to read/write `vault/user.env` instead of `CONFIG_HOME/secrets.env`.
+- The pass plan's `provider.json` at `DATA_HOME/secrets/` would move to either `vault/` or `data/secrets/`. Since it controls the secrets backend, `vault/` is a reasonable location.
+- The pass plan's `CORE_ENV_TO_SECRET_KEY` map conflates user-facing secrets (LLM keys in `user.env`) with system secrets (ADMIN_TOKEN, MEMORY_AUTH_TOKEN in `system.env`). Under the refactor, these are in different files with different access rules. The `PlaintextBackend` would need to know which file to read/write for each key, or the interface would need to be split.
+- **The two-file split creates a complication for the pass backend.** When `pass` is the backend, all secrets are in the pass store regardless of user/system classification. The two-file model is a plaintext-specific concern. The pass plan and refactor proposal need to be reconciled: are `user.env` and `system.env` the plaintext backend's files, with encrypted backends ignoring them entirely? Or do they exist alongside the encrypted backend as resolved-value caches?
+
+**Knowledge system roadmap:**
+- The roadmap references `DATA_HOME` for `ov.conf` (decision Q9). The refactor puts `ov.conf` in `vault/`. This needs reconciliation (see vault assessment above).
+
+**Registry plan:**
+- Minimal impact. The registry plan deals with component discovery and catalog management, which is independent of the filesystem layout of the running stack.
+
+### Hot-Reload Assessment
+
+The `user.env` hot-reload via file watcher is an elegant UX improvement but introduces architectural considerations:
+
+1. **Process.env mutation is global and non-atomic.** The proposed `loadUserEnv()` function writes to `process.env` key-by-key. If the assistant reads `OPENAI_API_KEY` between the write of `OPENAI_API_KEY` and `OPENAI_BASE_URL`, it could get a new key with an old base URL. For LLM provider config where key and URL are paired, this is a real (if unlikely) race. The loader should parse the entire file, build the complete update, and apply it atomically (or use a separate config object rather than `process.env`).
+
+2. **OpenCode's provider system may not support runtime key changes.** OpenCode initializes AI SDK providers at startup. Changing `process.env.OPENAI_API_KEY` after initialization may not take effect until the next provider construction. The proposal should verify that OpenCode re-reads environment variables per-request rather than caching them at startup. If OpenCode caches, the hot-reload provides a false sense of immediacy — the key would take effect only when OpenCode internally reconstructs its provider objects.
+
+3. **The `ALLOWED_KEYS` allowlist is a security boundary.** If a malicious or buggy write to `user.env` adds `HOME=/tmp` or `PATH=/malicious`, the allowlist prevents it from affecting the assistant. This is good design. But the allowlist must be kept in sync with the `user.env.schema` — if new keys are added to the schema without updating the allowlist, they will not be hot-reloaded. This should be a single source of truth, not two hardcoded lists.
+
+4. **File watcher reliability.** `fs.watch` has known issues on some platforms (particularly NFS, CIFS, and some container overlay filesystems). Since `user.env` lives on a bind-mounted host directory, this should work on standard setups but may fail in unusual Docker configurations. A polling fallback (check mtime every N seconds) would be more robust.
+
+### Cascade: What Changes If This Proposal Is Adopted
+
+1. **`docs/technical/core-principles.md`** — Major rewrite required. All three filesystem tier definitions, the volume-mount contract (sections A through F), and the operational behavior section must be updated. The three-tier model is deeply embedded in this document.
+2. **`review-decisions.md`** — Q2 must be explicitly reversed with rationale. Q9 (ov.conf in DATA_HOME) needs reassessment if vault is the new location.
+3. **`openpalm-components-plan.md`** — Must reconcile `config/components/` (compose overlays) with `data/components/` (instance directories). The Directory Summary section near the end currently shows `${OPENPALM_CONFIG}/`, `${OPENPALM_DATA}/components/`, and `${OPENPALM_STATE}/components/` — all three tiers would need updating.
+4. **`openpalm-pass-impl-v3.md`** — `PlaintextBackend` must be updated to understand the two-file model (`user.env` vs `system.env`). Phase 0 references to `stageSecretsEnv()` become irrelevant. The `CONFIG_HOME contract note` section needs rewriting.
+5. **`packages/lib/src/control-plane/paths.ts`** — `resolveConfigHome()`, `resolveDataHome()`, `resolveStateHome()` collapse into `resolveOpenPalmHome()` plus subdirectory accessors.
+6. **`packages/lib/src/control-plane/staging.ts`** — Entire file is replaced. `persistArtifacts()`, `stageArtifacts()`, all stage functions, and the manifest system are eliminated. A new validation + snapshot + apply pipeline takes their place.
+7. **`packages/lib/src/control-plane/setup.ts`** — `ensureXdgDirs()` is rewritten to create the `~/.openpalm/` tree.
+8. **`assets/docker-compose.yml`** and `assets/admin.yml`** — All volume mount paths change from `${OPENPALM_DATA_HOME:-...}` / `${OPENPALM_STATE_HOME:-...}` / `${OPENPALM_CONFIG_HOME:-...}` to `${OPENPALM_HOME:-...}/data/`, `${OPENPALM_HOME:-...}/vault/`, `${OPENPALM_HOME:-...}/config/`. The `env_file:` directives change. Guardian loses its bind mount to artifacts.
+9. **`packages/cli/src/lib/staging.ts`** — `fullComposeArgs()` must be rewritten to use the new overlay chain from `config/components/` and `openpalm.yml`.
+10. **`CLAUDE.md`** — XDG Directory Model table, Architecture Rules summary, Build & Dev Commands, and any references to CONFIG_HOME/DATA_HOME/STATE_HOME need updating.
+11. **`scripts/dev-setup.sh`** — Must create `~/.openpalm/` structure instead of `.dev/config`, `.dev/data`, `.dev/state`.
+12. **All existing tests** that reference XDG paths (unit tests in `paths.test.ts`, staging tests, install edge case tests) need updating.
+
+### Recommendations
+
+1. **REVERSE** decision Q2 (preserve three-tier XDG). The fs-mounts-refactor makes a compelling case that the single-root model preserves the semantic separation (user-config vs service-data vs secrets) while eliminating operational overhead. The original Q2 decision was made before this alternative was articulated. Reversing Q2 should be documented with full rationale in `review-decisions.md`.
+
+2. **UPDATE** the refactor proposal to reconcile `config/components/` (compose overlay drop zone) with the components plan's instance model (`data/components/` with per-instance directories, enabled.json, .env files). Currently these are two unconnected concepts. Recommended resolution: `config/components/` holds system-managed compose overlays (core.yml, admin.yml) and user-dropped channel overlays; `data/components/` holds instance directories per the components plan. `openpalm.yml` lists which system-level components are enabled; `data/components/enabled.json` lists which instances are active.
+
+3. **UPDATE** the refactor proposal to move rollback data from `~/.cache/openpalm/rollback/` to `~/.openpalm/backups/rollback/`. Cache directories may be cleared by OS maintenance, package managers, or user cleanup scripts. Rollback data is safety-critical during apply operations and should not be ephemeral.
+
+4. **UPDATE** the refactor proposal to specify atomic writes for all config/vault file mutations (write to temporary file, `fsync`, rename to target path). The staging model provided implicit atomicity; validate-in-place does not.
+
+5. **UPDATE** the refactor proposal to clarify `vault/ov.conf` placement. If `ov.conf` contains secrets (API keys for the Viking backend), vault is appropriate. If it is primarily non-secret configuration, it belongs in the component instance directory under `data/components/openviking/` per decision Q9 and the component model. Recommend keeping Q9 as-is (ov.conf in the component instance directory) unless it genuinely contains secrets that warrant vault placement.
+
+6. **UPDATE** `openpalm-pass-impl-v3.md` to handle the two-file model. The `PlaintextBackend` must know that user-facing secrets (LLM keys, provider URLs) live in `vault/user.env` and system secrets (admin token, HMAC secrets) live in `vault/system.env`. The `write()` method needs a way to determine which file to target — either by key prefix convention or by maintaining an explicit mapping.
+
+7. **UPDATE** the hot-reload implementation to: (a) apply env var changes atomically (parse full file, then swap all values); (b) verify OpenCode re-reads `process.env` per-request rather than caching provider config at startup; (c) derive the `ALLOWED_KEYS` set from the `user.env.schema` rather than hardcoding it; (d) add a polling fallback for platforms where `fs.watch` is unreliable.
+
+8. **ADD** a migration section to the refactor proposal for the 0.9.x to 0.10.0 transition. Users currently have files in `~/.config/openpalm/`, `~/.local/share/openpalm/`, and `~/.local/state/openpalm/`. The upgrade must detect these, move them to the new layout, and handle the `OPENPALM_CONFIG_HOME` / `OPENPALM_DATA_HOME` / `OPENPALM_STATE_HOME` environment variables (error if set, with migration guidance).
+
+9. **UPDATE** the assistant mount list to justify mounting `config/` at `/etc/openpalm` (read-only). The current core-principles.md restricts assistant mounts to specific subdirectories. Mounting all of `config/` gives the assistant read access to compose overlays and `openpalm.yml`. While these should not contain secrets (vault is separate), this is a broader read surface than the current model. If the assistant does not need compose overlays, mount only `config/assistant/` and `config/automations/` (if needed).
+
+10. **ADD** a change-detection mechanism to replace `manifest.json`. The validate-in-place model needs a way to determine whether an `openpalm apply` is a no-op (nothing changed since last apply). Options: checksum file in `~/.openpalm/` tracking last-applied hashes of config files, or timestamp comparison. Without this, every `apply` will snapshot + validate + write + deploy even when nothing has changed.
+
+11. **UPDATE** `core-principles.md` comprehensively if this proposal is adopted. This is not a patch — it is a rewrite of sections 3 (filesystem contract), 4 (volume-mount contract), and 5 (operational behavior). The rewrite should preserve the *invariant structure* (numbered goals, security invariants, named contracts) while updating the content to reflect the new layout. Do not simply delete the old text and add new text — the numbered goals and security invariants should be updated in place so that cross-references from other documents remain valid.
+
+12. **UPDATE** the mount count table in the refactor proposal (Section 5.2). The proposal claims assistant goes from 6 to 8 mounts, but the current `docker-compose.yml` shows 6 assistant mounts. Adding `config/` and `vault/user.env` as new mounts on top of the existing functional mounts brings the total to 8, which is correct. However, the proposal should note that the 8 mounts serve a broader purpose than the current 6 (hot-reload and config visibility) and explain why the increase is acceptable despite not reducing mount count.

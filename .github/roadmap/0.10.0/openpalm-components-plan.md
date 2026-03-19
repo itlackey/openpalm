@@ -3,6 +3,8 @@
 **Status:** Proposal
 **Scope:** All optional stack containers are components. A component is a directory with a `compose.yml` and `.env.schema`. Enabling a component copies its directory into the data path as an instance. Each instance's `compose.yml` is used as a compose overlay. No code generation, no templating, no channel/service distinction.
 
+> **Filesystem context:** This plan uses the `~/.openpalm/` single-root layout defined in [fs-mounts-refactor.md](fs-mounts-refactor.md). All paths below are relative to `~/.openpalm/` unless noted otherwise.
+
 ---
 
 ## What's a Component
@@ -22,9 +24,9 @@ That's the entire contract. Caddy is a component. Discord is a component. Ollama
 
 ## Clean Break from Legacy Channels
 
-This is a clean break from the legacy `CONFIG_HOME/channels/*.yml` format. There is no migration tool, no coexistence, and no dual-format staging pipeline. The legacy channel format is dropped entirely in 0.10.0.
+This is a clean break from the legacy channel format (`~/.config/openpalm/channels/*.yml` under the old XDG layout). There is no coexistence and no dual-format pipeline. The legacy channel format is dropped entirely in 0.10.0.
 
-Users upgrading from earlier versions must reinstall their channels as components. The upgrade path is: uninstall old channels, upgrade to 0.10.0, reinstall as components. This must be prominently documented in release notes.
+Users upgrading from earlier versions run `openpalm migrate`, which handles both the filesystem relocation (XDG to `~/.openpalm/`) and the channel-to-component transition. Legacy `.yml` overlays are moved to `config/components/` during migration. See [fs-mounts-refactor.md Part 8](fs-mounts-refactor.md#part-8-migration-09x--0100) for the full migration flow. This must be prominently documented in release notes.
 
 ---
 
@@ -33,7 +35,7 @@ Users upgrading from earlier versions must reinstall their channels as component
 When a user enables a component, the admin container copies the entire component directory into the data path as an instance:
 
 ```
-${OPENPALM_DATA}/components/           # persistent data + config (back this up)
+~/.openpalm/data/components/           # persistent instance data + config (back this up)
   caddy/
     compose.yml      # copied from source, unmodified
     .env.schema      # copied from source
@@ -50,14 +52,9 @@ ${OPENPALM_DATA}/components/           # persistent data + config (back this up)
     .env.schema
     .env
     .caddy
-
-${OPENPALM_STATE}/components/          # runtime state (logs, temp — regenerable)
-  caddy/
-  discord-main/
-  discord-gaming/
 ```
 
-Persistent data lives under `${OPENPALM_DATA}` — this is what you back up. Runtime state (logs, runtime artifacts) lives under `${OPENPALM_STATE}` — this is disposable. `${OPENPALM_CONFIG}` (CONFIG_HOME) remains as the user-owned persistent source of truth for user configuration (opencode settings, user secrets, etc.) per the three-tier XDG model. The component system does not eliminate or replace CONFIG_HOME.
+All component instance data lives under `~/.openpalm/data/components/` — this is what you back up (along with the rest of `~/.openpalm/`). Runtime logs go to `~/.openpalm/logs/`. User-editable non-secret config lives in `~/.openpalm/config/` (compose overlays, automations, assistant extensions). Secrets live in `~/.openpalm/vault/` (see [fs-mounts-refactor.md](fs-mounts-refactor.md) for the full layout).
 
 Each instance is a complete, self-contained copy. The user's config lives in `.env` alongside the compose and schema files. Want two Discord bots? Two instance directories, each with their own `compose.yml` and `.env`.
 
@@ -67,34 +64,36 @@ The instance name is chosen by the user at creation time. For components where y
 
 ## Compose Overlays
 
-No compose files are generated or modified. Each instance's `compose.yml` is passed directly to Docker Compose as an overlay, with an `--env-file` pointing to the instance's `.env`:
+No compose files are generated or modified. Each instance's `compose.yml` is passed directly to Docker Compose as an overlay, with an `--env-file` pointing to the instance's `.env`. The two vault env files (`vault/system.env` and `vault/user.env`) are always included first for `${VAR}` substitution of stack-level secrets:
 
 ```bash
 docker compose \
-  -f docker-compose.yml \
-  -f ${OPENPALM_DATA}/components/caddy/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/caddy/.env \
-  -f ${OPENPALM_DATA}/components/discord-main/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/discord-main/.env \
-  -f ${OPENPALM_DATA}/components/discord-gaming/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/discord-gaming/.env \
+  --env-file ~/.openpalm/vault/system.env \
+  --env-file ~/.openpalm/vault/user.env \
+  -f ~/.openpalm/config/components/core.yml \
+  -f ~/.openpalm/config/components/admin.yml \
+  -f ~/.openpalm/data/components/caddy/compose.yml \
+  --env-file ~/.openpalm/data/components/caddy/.env \
+  -f ~/.openpalm/data/components/discord-main/compose.yml \
+  --env-file ~/.openpalm/data/components/discord-main/.env \
+  -f ~/.openpalm/data/components/discord-gaming/compose.yml \
+  --env-file ~/.openpalm/data/components/discord-gaming/.env \
   up -d
 ```
 
-This is standard Docker Compose behavior. Each overlay adds its services to the stack. The admin container builds the `-f` and `--env-file` flag list from the enabled instance directories.
+This is standard Docker Compose behavior. The vault env files provide stack-level secrets (admin token, HMAC secrets, LLM keys, etc.) for `${VAR}` substitution in compose files. Each component overlay adds its services to the stack. The admin container (or CLI) builds the `-f` and `--env-file` flag list from the enabled instance directories.
 
 ### How instance identity works
 
-Each instance's `compose.yml` uses standard Compose variable references (`${INSTANCE_ID}`, `${INSTANCE_DIR}`, `${INSTANCE_STATE_DIR}`) that Docker Compose resolves at runtime via its native env substitution. The admin does not modify the compose.yml file — it is copied as-is from the component source. Instead, the admin writes an instance `.env` file containing the identity variables:
+Each instance's `compose.yml` uses standard Compose variable references (`${INSTANCE_ID}`, `${INSTANCE_DIR}`) that Docker Compose resolves at runtime via its native env substitution. The admin does not modify the compose.yml file — it is copied as-is from the component source. Instead, the admin writes an instance `.env` file containing the identity variables:
 
 ```bash
-# ${OPENPALM_DATA}/components/discord-main/.env
+# ~/.openpalm/data/components/discord-main/.env
 INSTANCE_ID=discord-main
-INSTANCE_DIR=/home/user/.local/share/openpalm/components/discord-main
-INSTANCE_STATE_DIR=/home/user/.local/state/openpalm/components/discord-main
+INSTANCE_DIR=/home/user/.openpalm/data/components/discord-main
 ```
 
-When `docker compose up` runs with `--env-file` pointing to this `.env`, Compose resolves all `${INSTANCE_ID}`, `${INSTANCE_DIR}`, and `${INSTANCE_STATE_DIR}` references natively. No admin-side find-and-replace, no string interpolation, no rewriting of compose files. This preserves core principle #5 (no template rendering).
+When `docker compose up` runs with `--env-file` pointing to this `.env`, Compose resolves all `${INSTANCE_ID}` and `${INSTANCE_DIR}` references natively. No admin-side find-and-replace, no string interpolation, no rewriting of compose files. This preserves core principle #5 (no template rendering).
 
 ### Component compose.yml conventions
 
@@ -110,7 +109,7 @@ services:
     env_file:
       - ${INSTANCE_DIR}/.env
     volumes:
-      - ${INSTANCE_STATE_DIR}:/state
+      - ${INSTANCE_DIR}/data:/state
     networks:
       - openpalm-internal
     labels:
@@ -122,7 +121,7 @@ services:
       openpalm.healthcheck: http://openpalm-${INSTANCE_ID}:3000/health
 ```
 
-The compose.yml is copied unchanged into the instance directory. When Docker Compose runs with the instance's `--env-file`, it resolves `${INSTANCE_ID}` to `discord-main`, `${INSTANCE_DIR}` to the data path, and `${INSTANCE_STATE_DIR}` to the state path. The file on disk always contains the variable references, never concrete values.
+The compose.yml is copied unchanged into the instance directory. When Docker Compose runs with the instance's `--env-file`, it resolves `${INSTANCE_ID}` to `discord-main` and `${INSTANCE_DIR}` to the data path. The file on disk always contains the variable references, never concrete values.
 
 ### Service name prefix convention
 
@@ -145,7 +144,6 @@ services:
     volumes:
       - ${INSTANCE_DIR}/data:/data
       - ${INSTANCE_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${INSTANCE_STATE_DIR}/config:/config
     networks:
       - openpalm-internal
     labels:
@@ -210,9 +208,9 @@ Each component directory can optionally include a `.caddy` file containing a Cad
 
 ### How it works
 
-1. When a component is enabled, the admin's staging pipeline discovers any `.caddy` file in the instance directory.
-2. The staging pipeline copies the `.caddy` snippet into the appropriate Caddy import directory (e.g., `STATE_HOME/caddy/components/`).
-3. The main Caddyfile uses `import components/*.caddy` to pick up all component routes.
+1. When a component is enabled, the admin (or CLI) discovers any `.caddy` file in the instance directory.
+2. The `.caddy` snippet is copied into the Caddy import directory at `data/caddy/channels/`.
+3. The main Caddyfile (at `data/caddy/Caddyfile`) uses `import channels/*.caddy` to pick up all component routes.
 4. Caddy is reloaded after a component is enabled or disabled.
 
 ### LAN-first default
@@ -257,7 +255,7 @@ Three sources, all the same structure:
 
 1. **Built-in** — `components/` in the repo. Ships with Discord, Telegram, Caddy, Ollama, etc.
 2. **Registry** — `registry/components/` in the registry repo. Each is a directory with `compose.yml` + `.env.schema` + optional `.caddy`.
-3. **User-local** — Directories in `${OPENPALM_DATA}/catalog/`. For user-authored components.
+3. **User-local** — Directories in `data/catalog/`. For user-authored components.
 
 Discovery scans for directories containing a `compose.yml`, reads the labels, and presents them in the admin UI.
 
@@ -267,7 +265,7 @@ Override: user-local > registry > built-in (by directory name).
 
 ## Enabled Instance Persistence
 
-The list of enabled component instances is persisted at `${OPENPALM_DATA}/components/enabled.json`. This file survives admin container restarts and is the source of truth for which instances should be included in the compose overlay chain.
+The list of enabled component instances is persisted at `data/components/enabled.json`. This file survives admin container restarts and is the source of truth for which instances should be included in the compose overlay chain.
 
 ```json
 {
@@ -311,32 +309,31 @@ GET    /api/instances/:instanceId/schema         # parsed .env.schema as JSON
 
 **Create:**
 1. Validate the instance ID does not collide with core service names.
-2. Copy component directory to `${OPENPALM_DATA}/components/{instanceId}/`.
-3. Write instance identity vars to `.env` (`INSTANCE_ID`, `INSTANCE_DIR`, `INSTANCE_STATE_DIR`).
+2. Copy component directory to `data/components/{instanceId}/`.
+3. Write instance identity vars to `.env` (`INSTANCE_ID`, `INSTANCE_DIR`).
 4. Populate `.env` defaults from `.env.schema`.
 5. Add instance to `enabled.json`.
 6. Present config form to user.
 
 **Configure + Start:**
 1. Write user values to `.env` (non-sensitive fields directly; `@sensitive` fields through the unified secret manager).
-2. If a `.caddy` file exists, stage it to the Caddy import directory.
+2. If a `.caddy` file exists, copy it to `data/caddy/channels/`.
 3. Add the instance's `compose.yml` and `--env-file` to the overlay list.
-4. Run `docker compose -f ... --env-file ... up -d`.
-5. Reload Caddy if a `.caddy` file was staged.
+4. Run `docker compose --env-file vault/system.env --env-file vault/user.env -f ... --env-file ... up -d`.
+5. Reload Caddy if a `.caddy` file was added.
 
 **Stop:**
 1. Run `docker compose stop {container_name}`.
 2. Remove from overlay list.
-3. If a `.caddy` file was staged, remove it and reload Caddy.
+3. If a `.caddy` file was placed in `data/caddy/channels/`, remove it and reload Caddy.
 
 **Delete:**
 1. Stop the container.
 2. Clean up Docker volumes created by the component (volumes with the `openpalm-{instanceId}` prefix).
 3. Remove any secrets stored in the unified secret manager under the instance's namespace.
-4. Remove the staged `.caddy` file (if any) and reload Caddy.
-5. Move instance directory to `${OPENPALM_DATA}/archived/`.
-6. Remove instance state directory from `${OPENPALM_STATE}/components/`.
-7. Remove from `enabled.json`.
+4. Remove the `.caddy` file from `data/caddy/channels/` (if any) and reload Caddy.
+5. Move instance directory to `data/archived/`.
+6. Remove from `enabled.json`.
 
 ---
 
@@ -441,7 +438,7 @@ function buildAllowlist(instances: string[]): Set<string> {
 ## Compose Structure
 
 ```yaml
-# docker-compose.yml -- core only, never modified
+# config/components/core.yml -- base stack, system-managed (may be updated on upgrade)
 services:
   gateway:
     expose: ["3000"]
@@ -449,65 +446,82 @@ services:
     expose: ["3000"]
   memory:
     expose: ["8080"]
-  admin:
-    ports:
-      - "${LAN_BIND:-0.0.0.0}:${ADMIN_PORT:-8080}:3000"
 
 networks:
   openpalm-internal:
     driver: bridge
 ```
 
-Enabled instances are overlays:
+```yaml
+# config/components/admin.yml -- admin overlay, system-managed
+services:
+  admin:
+    ports:
+      - "${LAN_BIND:-0.0.0.0}:${ADMIN_PORT:-8080}:3000"
+```
+
+Enabled instances are overlays. The vault env files are always included first for stack-level `${VAR}` substitution:
 
 ```bash
 docker compose \
-  -f docker-compose.yml \
-  -f ${OPENPALM_DATA}/components/caddy/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/caddy/.env \
-  -f ${OPENPALM_DATA}/components/discord-main/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/discord-main/.env \
-  -f ${OPENPALM_DATA}/components/discord-gaming/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/discord-gaming/.env \
-  -f ${OPENPALM_DATA}/components/ollama/compose.yml \
-  --env-file ${OPENPALM_DATA}/components/ollama/.env \
+  --env-file ~/.openpalm/vault/system.env \
+  --env-file ~/.openpalm/vault/user.env \
+  -f ~/.openpalm/config/components/core.yml \
+  -f ~/.openpalm/config/components/admin.yml \
+  -f ~/.openpalm/data/components/caddy/compose.yml \
+  --env-file ~/.openpalm/data/components/caddy/.env \
+  -f ~/.openpalm/data/components/discord-main/compose.yml \
+  --env-file ~/.openpalm/data/components/discord-main/.env \
+  -f ~/.openpalm/data/components/discord-gaming/compose.yml \
+  --env-file ~/.openpalm/data/components/discord-gaming/.env \
+  -f ~/.openpalm/data/components/ollama/compose.yml \
+  --env-file ~/.openpalm/data/components/ollama/.env \
   up -d
 ```
 
-The admin container reads `enabled.json` and builds the `-f` / `--env-file` chain from the enabled instances. This list persists across admin container restarts.
+The admin container (or CLI) reads `enabled.json` and builds the `-f` / `--env-file` chain from the enabled instances. This list persists across admin container restarts.
 
 ### Directory summary
 
 ```
-${OPENPALM_CONFIG}/                    # user-owned — user edits, admin seeds defaults only
-  opencode/                            # user OpenCode config + extensions
-  secrets.env                          # user secrets (ADMIN_TOKEN, LLM keys)
-
-${OPENPALM_DATA}/                      # persistent — back this up
-  components/                          # enabled instances
-    enabled.json                       # enabled instance list (survives restarts)
-    caddy/
-      compose.yml                      # copied from source, unmodified
-      .env.schema
-      .env                             # identity vars + user config values
-      .caddy                           # optional Caddy route snippet
-      data/                            # certs, persistent state
-    discord-main/
-      compose.yml
-      .env.schema
-      .env
-      .caddy
-  catalog/                             # user-local component definitions
-  core/                                # core stack config
-  archived/                            # deleted instances (recoverable)
-
-${OPENPALM_STATE}/                     # disposable — don't need to back up
-  components/
-    caddy/                             # runtime config, temp files
-    discord-main/                      # logs, runtime artifacts
-  caddy/
-    components/                        # staged .caddy snippets for Caddy import
-  logs/
+~/.openpalm/
+├── config/                            # user-owned non-secret config
+│   ├── openpalm.yml                   # enabled components, feature flags, network
+│   ├── components/                    # compose overlays (core + component)
+│   │   ├── core.yml                   # base stack (system-managed)
+│   │   ├── admin.yml                  # admin overlay (system-managed)
+│   │   └── ...                        # user-installed channel overlays
+│   ├── automations/                   # scheduled tasks
+│   └── assistant/                     # user OpenCode extensions
+│
+├── vault/                             # secrets boundary
+│   ├── user.env                       # user-editable: LLM keys, provider URLs
+│   ├── user.env.schema
+│   ├── system.env                     # system-managed: admin token, HMAC secrets, paths
+│   └── system.env.schema
+│
+├── data/                              # service-managed persistent data
+│   ├── components/                    # enabled instances
+│   │   ├── enabled.json               # enabled instance list (survives restarts)
+│   │   ├── caddy/
+│   │   │   ├── compose.yml            # copied from source, unmodified
+│   │   │   ├── .env.schema
+│   │   │   ├── .env                   # identity vars + user config values
+│   │   │   ├── .caddy                 # optional Caddy route snippet
+│   │   │   └── data/                  # certs, persistent state
+│   │   └── discord-main/
+│   │       ├── compose.yml
+│   │       ├── .env.schema
+│   │       ├── .env
+│   │       └── .caddy
+│   ├── catalog/                       # user-local component definitions
+│   ├── archived/                      # deleted instances (recoverable)
+│   ├── caddy/                         # Caddy runtime data
+│   │   ├── Caddyfile
+│   │   └── channels/                  # .caddy snippets (import dir)
+│   └── ...                            # other service data dirs
+│
+└── logs/                              # audit and debug logs
 ```
 
 ---
@@ -530,7 +544,7 @@ registry/
 +-- index.json
 ```
 
-Installing a registry component copies its directory into `${OPENPALM_DATA}/catalog/`, making it available for instance creation. Same files, same formats.
+Installing a registry component copies its directory into `data/catalog/`, making it available for instance creation. Same files, same formats.
 
 ### Catalog entry removal
 
@@ -552,16 +566,15 @@ That's it. No code changes. No admin UI changes. The discovery scan picks it up 
 ### Phase 1: Core
 
 - [ ] Networking simplification (Caddy removal from core, Docker DNS routing)
-- [ ] Data/state directory structure: `${OPENPALM_DATA}/components/` + `${OPENPALM_STATE}/components/`
-- [ ] Preserve three-tier XDG model (CONFIG_HOME for user config, DATA_HOME for component instances, STATE_HOME for runtime)
+- [ ] Component instance directory structure: `data/components/` for instance data, `data/catalog/` for user-local definitions
 - [ ] Component directory convention: `compose.yml` + `.env.schema` + optional `.caddy`
 - [ ] Discovery: scan built-in, catalog, and registry directories; parse compose labels
 - [ ] @env-spec parser integration in admin container
-- [ ] Instance creation: copy component directory as-is, write identity vars to `.env`, create state dir
+- [ ] Instance creation: copy component directory as-is, write identity vars (`INSTANCE_ID`, `INSTANCE_DIR`) to `.env`
 - [ ] Service name collision validation against core services on instance creation
-- [ ] Compose overlay runner: build `-f` / `--env-file` chain from enabled instances
-- [ ] Caddy route staging: discover `.caddy` files, stage to import directory, reload Caddy
-- [ ] Enabled instance persistence: `enabled.json` at `DATA_HOME/components/`
+- [ ] Compose overlay runner: build `-f` / `--env-file` chain from enabled instances (prepend `--env-file vault/system.env --env-file vault/user.env`)
+- [ ] Caddy route management: discover `.caddy` files, copy to `data/caddy/channels/`, reload Caddy
+- [ ] Enabled instance persistence: `enabled.json` at `data/components/`
 - [ ] Dynamic allowlist from enabled instances
 - [ ] Unified secret manager integration for `@sensitive` fields
 
@@ -596,7 +609,7 @@ That's it. No code changes. No admin UI changes. The discovery scan picks it up 
 - [ ] `docs/components/` — per component
 - [ ] `docs/development/adding-a-component.md` — compose.yml + .env.schema + .caddy
 - [ ] Update security guide, architecture diagram, README
-- [ ] Release notes: document clean break from legacy channel format, upgrade path
+- [ ] Release notes: document `openpalm migrate` for combined FS + channel-to-component migration, upgrade path
 
 ---
 
@@ -618,15 +631,20 @@ openpalm component start <instance>        # Start a stopped instance
 openpalm component stop <instance>         # Stop a running instance
 ```
 
-### Staging Pipeline Changes
+### Staging Elimination
 
-The current staging pipeline in `packages/lib/src/control-plane/staging.ts` handles `CONFIG_HOME/channels/*.yml` files. This entire flow must be replaced:
+The staging tier (`STATE_HOME`) is eliminated in 0.10.0. The current staging pipeline in `packages/lib/src/control-plane/staging.ts` is replaced by the validate-in-place model (see [fs-mounts-refactor.md Part 4](fs-mounts-refactor.md#part-4-validation--rollback)). All staging functions are removed:
 
-- `stageChannelYmlFiles()` → removed. Component compose overlays are used directly from `DATA_HOME/components/` via `--env-file` — no staging needed.
-- `stageChannelCaddyfiles()` → replaced by component Caddy route staging from `DATA_HOME/components/*/. caddy` to `STATE_HOME/caddy/components/`.
-- `discoverStagedChannelYmls()` → replaced by reading `DATA_HOME/components/enabled.json` and building the overlay chain.
-- `buildComposeFileList()` → updated to append component overlays from enabled instances.
-- `fullComposeArgs()` in `packages/cli/src/lib/staging.ts` → updated to build `-f` and `--env-file` chains from `enabled.json`.
+- `stageChannelYmlFiles()` → removed. Component compose overlays are used directly from `data/components/` via `--env-file` — no staging needed.
+- `stageChannelCaddyfiles()` → replaced by direct copy of `.caddy` snippets from `data/components/*/.caddy` to `data/caddy/channels/`.
+- `discoverStagedChannelYmls()` → replaced by reading `data/components/enabled.json` and building the overlay chain.
+- `buildComposeFileList()` → updated to start with `config/components/core.yml` + `config/components/admin.yml` (if admin enabled), then append component overlays from enabled instances.
+- `fullComposeArgs()` in `packages/cli/src/lib/staging.ts` → rewritten. Builds the full compose invocation:
+  1. `--env-file vault/system.env --env-file vault/user.env` (always first)
+  2. `-f config/components/core.yml` (always)
+  3. `-f config/components/admin.yml` (if admin enabled in `config/openpalm.yml`)
+  4. For each enabled instance: `-f data/components/{id}/compose.yml --env-file data/components/{id}/.env`
+- `staging.ts` itself → eliminated or renamed. The staging module is replaced by a validate-and-apply module that validates proposed changes against temp copies, snapshots current state to `~/.cache/openpalm/rollback/`, and writes to live paths only after validation passes.
 
 ### Shared Library Surface
 
@@ -635,12 +653,14 @@ All component lifecycle logic lives in `@openpalm/lib`:
 ```typescript
 // packages/lib/src/control-plane/components.ts (new)
 export function discoverComponents(sources: string[]): ComponentDefinition[];
-export function createInstance(component: string, instanceId: string, dataHome: string): void;
-export function removeInstance(instanceId: string, dataHome: string): void;
-export function readEnabledInstances(dataHome: string): EnabledInstance[];
-export function writeEnabledInstances(dataHome: string, instances: EnabledInstance[]): void;
-export function buildComponentComposeArgs(dataHome: string): string[];
+export function createInstance(component: string, instanceId: string, openpalmHome: string): void;
+export function removeInstance(instanceId: string, openpalmHome: string): void;
+export function readEnabledInstances(openpalmHome: string): EnabledInstance[];
+export function writeEnabledInstances(openpalmHome: string, instances: EnabledInstance[]): void;
+export function buildComponentComposeArgs(openpalmHome: string): string[];
 ```
+
+All path resolution uses `OPENPALM_HOME` (`~/.openpalm/` by default) as the single root. The `home.ts` module (which replaces the old `paths.ts`) provides the path helpers.
 
 Both CLI and admin call these functions. The CLI calls them directly; the admin calls them from API route handlers.
 
@@ -678,7 +698,7 @@ services:
       OPENVIKING_API_KEY: ${OPENVIKING_API_KEY}
 ```
 
-When Docker Compose merges this overlay with the core `docker-compose.yml`, the `assistant` service's environment block is extended (not replaced) with the new variables. This is standard Compose merge behavior for maps.
+When Docker Compose merges this overlay with `config/components/core.yml`, the `assistant` service's environment block is extended (not replaced) with the new variables. This is standard Compose merge behavior for maps. The `${OPENVIKING_API_KEY}` reference is resolved by Docker Compose from the vault env files (`--env-file vault/system.env --env-file vault/user.env`) or from the component's own `--env-file`.
 
 ### Constraints
 
@@ -701,49 +721,56 @@ When Docker Compose merges this overlay with the core `docker-compose.yml`, the 
 
 > Added 2026-03-18 by agent review consensus (4/5 agents). The clean break from legacy channels (review-decisions Q8) is a breaking change that requires explicit user communication.
 
+### `openpalm migrate` — Combined Migration Tool
+
+The 0.10.0 upgrade involves two breaking changes: the filesystem layout (XDG to `~/.openpalm/`) and the channel-to-component transition. Both are handled by a single `openpalm migrate` command. See [fs-mounts-refactor.md Part 8](fs-mounts-refactor.md#part-8-migration-09x--0100) for the full migration flow.
+
+The migration tool handles:
+1. **Directory relocation** — XDG directories (`~/.config/openpalm/`, `~/.local/share/openpalm/`, `~/.local/state/openpalm/`) to `~/.openpalm/`
+2. **Env file splitting** — `secrets.env` + `stack.env` to `vault/user.env` + `vault/system.env`
+3. **Channel-to-component conversion** — legacy `.yml` overlays in `channels/` move to `config/components/`
+
 ### Migration Detection
 
-On first startup after upgrade, the admin and CLI detect legacy channel installations:
+On first startup after upgrade (if `openpalm migrate` has not been run), the admin and CLI detect the old XDG layout:
 
-1. **Scan `CONFIG_HOME/channels/`** for `.yml` files.
-2. **If found:** display a migration notice (do NOT silently ignore).
+1. **Scan for `~/.config/openpalm/`**, `~/.local/share/openpalm/`, `~/.local/state/openpalm/`.
+2. **If found:** display a migration notice directing the user to run `openpalm migrate`.
 
 ### Admin UI Banner
 
-When legacy channels are detected, display a persistent banner on the Overview tab:
+When a legacy installation is detected:
 
 ```
-⚠️ Legacy channels detected
-Your channels from v0.9.x need to be reinstalled as components.
-Your channel files are preserved at CONFIG_HOME/channels/ — they are not deleted.
+Legacy installation detected
+Run `openpalm migrate` to move to the new ~/.openpalm/ layout.
+Your files are preserved — nothing is deleted until you run `openpalm migrate --cleanup`.
 [View upgrade guide] [Dismiss]
 ```
 
 ### CLI Warning
 
-When `openpalm status` or `openpalm up` detects legacy channels:
+When `openpalm status` or `openpalm up` detects the old layout:
 
 ```
-WARNING: Found legacy channel files in ~/.config/openpalm/channels/
-These channels are no longer loaded in v0.10.0.
-To reinstall as components: openpalm component add <channel-name>
+WARNING: Legacy XDG installation detected.
+Run `openpalm migrate` to upgrade to the ~/.openpalm/ layout.
 See: docs/upgrade-0.10.0.md
 ```
 
 ### Pre-Upgrade Export (Future)
 
-A `openpalm export-config` command that dumps current channel configs, secrets, and connection profiles to a single file would reduce upgrade friction. This is recommended but not required for 0.10.0 — the migration detection and documentation are sufficient.
+A `openpalm export-config` command that dumps current channel configs, secrets, and connection profiles to a single file would reduce upgrade friction. This is recommended but not required for 0.10.0 — the migration tool and documentation are sufficient.
 
 ### Upgrade Steps (documented in release notes)
 
-1. Back up `CONFIG_HOME/` and `DATA_HOME/` (standard backup procedure)
-2. Note your current channel configurations (which channels, what secrets)
-3. Upgrade to 0.10.0 (`openpalm update` or pull new images)
-4. Reinstall channels as components (`openpalm component add discord`, etc.)
-5. Re-enter channel secrets through the component config form
-6. Verify channels are working
+1. Back up `~/.config/openpalm/`, `~/.local/share/openpalm/`, `~/.local/state/openpalm/`
+2. Upgrade to 0.10.0 (`openpalm update` or pull new images)
+3. Run `openpalm migrate` — handles directory relocation, env file splitting, and channel-to-component conversion
+4. Verify the stack is working: `openpalm status`
+5. Optionally clean up old directories: `openpalm migrate --cleanup`
 
-Legacy channel files in `CONFIG_HOME/channels/` are preserved (not deleted) but no longer loaded.
+Old XDG directories are preserved (not deleted) until the user explicitly runs `openpalm migrate --cleanup`.
 
 ---
 
@@ -756,12 +783,12 @@ Legacy channel files in `CONFIG_HOME/channels/` are preserved (not deleted) but 
 | Test Area | Description |
 |-----------|-------------|
 | Component directory validation | `compose.yml` + `.env.schema` contract enforcement |
-| Instance creation | Copy directory, write identity vars, create state dir |
+| Instance creation | Copy directory, write identity vars (`INSTANCE_ID`, `INSTANCE_DIR`) |
 | Instance ID collision | Reject names that collide with core services |
 | `enabled.json` persistence | Read/write/fallback to presence-based discovery |
-| Compose overlay chain | Correct `-f` and `--env-file` ordering |
+| Compose overlay chain | Correct `-f` and `--env-file` ordering (vault env files first, then core.yml, then component overlays) |
 | Dynamic allowlist | `buildAllowlist()` includes component instances |
-| Caddy route staging | Discover `.caddy` files, stage to import dir |
+| Caddy route management | Discover `.caddy` files, copy to `data/caddy/channels/` |
 | Instance lifecycle | Create → configure → start → stop → delete → archive |
 
 ### Admin API Tests (packages/admin)
@@ -782,15 +809,15 @@ Legacy channel files in `CONFIG_HOME/channels/` are preserved (not deleted) but 
 |-----------|-------------|
 | Component lifecycle | Create → configure → start → verify → stop → delete |
 | Setup wizard | Optional components step |
-| Migration detection | Legacy `CONFIG_HOME/channels/*.yml` → banner displayed |
+| Migration detection | Legacy XDG layout detected → banner directing to `openpalm migrate` |
 | Multi-instance | Two instances of same component, different configs |
 
 ### Test Migration Budget
 
 The component system invalidates ~30-40% of existing admin unit tests (channel/registry/staging tests). Budget 3-5 working days for test migration. Key files requiring rewrite:
 
-- `channels.test.ts` — legacy channel discovery/install/uninstall
-- `staging.test.ts` — channel staging pipeline
-- `lifecycle.test.ts` — lifecycle transitions with channel artifacts
-- `setup-wizard.test.ts` (Playwright) — wizard channel selection step
-- Mocked E2E tests — registry/channels UI contracts
+- `channels.test.ts` — legacy channel discovery/install/uninstall (replaced by component discovery)
+- `staging.test.ts` — staging pipeline (eliminated; replaced by validate-and-apply tests)
+- `lifecycle.test.ts` — lifecycle transitions with channel artifacts (updated for `~/.openpalm/` paths)
+- `setup-wizard.test.ts` (Playwright) — wizard channel selection step (updated for component selection)
+- Mocked E2E tests — registry/channels UI contracts (updated for components UI)

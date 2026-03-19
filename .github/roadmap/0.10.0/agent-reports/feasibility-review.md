@@ -301,3 +301,199 @@ The components plan shows Caddy as a component (`services/caddy/compose.yml`). B
 | **Total** | | **30-44 days** |
 
 This is achievable in 6 weeks with 1-2 developers, with reasonable buffer for the inevitable surprises in a foundational rewrite.
+
+---
+
+## Addendum: Filesystem & Mounts Refactor Feasibility Review (2026-03-19)
+
+### Summary
+
+The FS refactor proposal (`fs-mounts-refactor.md`) collapses the three-tier XDG layout (`~/.config/openpalm`, `~/.local/share/openpalm`, `~/.local/state/openpalm`) into a single `~/.openpalm/` root with `config/`, `vault/`, `data/`, `logs/` subdirectories and `~/.cache/openpalm/` for ephemeral data. It eliminates the staging tier entirely (replacing it with validate-in-place + snapshot rollback), splits `secrets.env` + `stack.env` into `vault/user.env` + `vault/system.env` with strict per-container mount isolation, and adds hot-reload of `user.env` via a file watcher in the assistant entrypoint. This is a well-reasoned simplification that addresses real operational pain (31 directories across 3 trees, 3-hop secret pipeline, no rollback). However, it is a pervasive change that touches every layer of the stack and is being proposed alongside the component system rewrite, which already rewrites the same code.
+
+### Effort Estimate
+
+**Direct code changes: 12-18 working days.** File-by-file breakdown:
+
+**`@openpalm/lib` (packages/lib/src/control-plane/) — 19 files affected:**
+
+| File | Lines | Change Scope | Days |
+|------|-------|-------------|------|
+| `paths.ts` (78 lines) | Full rewrite | `resolveConfigHome()` / `resolveDataHome()` / `resolveStateHome()` replaced with `resolveOpenPalmHome()` + subdirectory helpers. `ensureXdgDirs()` replaced with new directory tree creation. | 0.5 |
+| `staging.ts` (399 lines) | ~70% rewrite | Staging tier elimination. `stageSecretsEnv()`, `stagedEnvFile()`, `stagedStackEnvFile()`, `buildEnvFiles()`, `stageStackEnv()`, `stageChannelYmlFiles()`, `stageChannelCaddyfiles()`, `stageAutomationFiles()`, `stageEnvSchemas()`, `persistArtifacts()` — all must be rewritten or removed. Replaced with validate-in-place + snapshot flow. | 3-4 |
+| `lifecycle.ts` (382 lines) | ~50% rewrite | `createState()` must read from new paths. `buildComposeFileList()` reads from `config/components/` instead of `stateDir/artifacts/`. `buildEnvFiles()` returns `vault/system.env` + `vault/user.env`. `isSetupComplete()` reads from `vault/system.env`. `validateEnvironment()` validates against new schema locations. | 2-3 |
+| `types.ts` (164 lines) | Moderate | `ControlPlaneState` loses `stateDir`, gains `openPalmHome` or equivalent. `configDir` / `dataDir` become sub-paths of `~/.openpalm/`. Add `vaultDir`, `logsDir`, `cacheDir`. | 0.5 |
+| `secrets.ts` (178 lines) | Full rewrite | `secrets.env` path references become `vault/user.env`. `loadSecretsEnvFile()` reads from `vault/user.env`. `ensureSecrets()` seeds `vault/user.env` + `vault/system.env`. `patchSecretsEnvFile()` writes to vault. | 1-2 |
+| `core-assets.ts` (320 lines) | Moderate | All `resolveDataHome()` calls change. Caddyfile lives in `data/caddy/Caddyfile`. Schema files move to `vault/`. `refreshCoreAssets()` targets new paths. | 1 |
+| `setup-status.ts` (31 lines) | Rewrite | `isSetupComplete()` reads `vault/system.env` instead of `stateDir/artifacts/stack.env`. | 0.25 |
+| `docker.ts` (449 lines) | Moderate | `composeFile()` reads from `config/components/core.yml` instead of `stateDir/artifacts/docker-compose.yml`. Env file loading changes. | 0.5 |
+| `channels.ts` (199 lines) | Already being rewritten by #301 | — |
+| Other lib files (audit, scheduler, env, connection-*, memory-config, stack-spec, setup) | Path adjustments | Each file that references `configDir`, `dataDir`, or `stateDir` needs path updates. 10+ files with 3-50 references each. | 1-2 |
+
+**`packages/admin` — 62 files reference XDG paths:**
+- `hooks.server.ts` — startup apply rewrite (no more `ensureXdgDirs()` + staging pipeline)
+- `lib/server/staging.ts` — thin wrapper; tracks lib changes
+- ~20 API route handlers reference `state.stateDir`, `state.configDir`, `state.dataDir`
+- ~26 test files with 964 total `configDir`/`dataDir`/`stateDir` references
+- **Estimate: 2-3 days** (mostly mechanical path substitution, but test fixtures need rebuilding)
+
+**`packages/cli` — 14 files affected:**
+- `lib/staging.ts` — `ensureStagedState()` and `fullComposeArgs()` rewrite
+- `lib/env.ts`, `commands/install.ts` — path changes
+- 8 test files with references to XDG env vars
+- **Estimate: 1-2 days**
+
+**Asset files:**
+- `assets/docker-compose.yml` — all 16 bind mount paths change (e.g., `${OPENPALM_DATA_HOME:-...}/memory:/data` becomes `${OPENPALM_HOME:-...}/data/memory:/data`)
+- `assets/admin.yml` — all 14 bind mount paths change; admin's clever "mount same host path" pattern must be redesigned since the admin no longer needs to mount 3 separate XDG trees
+- `compose.dev.yaml` — env file paths change
+- `assets/Caddyfile` — channel import paths change
+- **Estimate: 1-2 days**
+
+**Dev environment:**
+- `scripts/dev-setup.sh` — full rewrite of directory creation and env seeding (currently creates `.dev/config`, `.dev/data`, `.dev/state`; must become `.dev/config`, `.dev/vault`, `.dev/data`, `.dev/logs`, `.dev/cache`)
+- `scripts/dev-e2e-test.sh`, `scripts/release-e2e-test.sh`, `scripts/upgrade-test.sh` — path updates
+- **Estimate: 1 day**
+
+**Documentation — 17+ docs files with hardcoded XDG paths:**
+- `docs/technical/directory-structure.md`, `docs/technical/environment-and-mounts.md`, `docs/technical/core-principles.md`, `docs/backup-restore.md`, `docs/manual-setup.md`, `docs/managing-openpalm.md`, `CLAUDE.md`, etc.
+- **Estimate: 1-2 days**
+
+**New code (validate-in-place + rollback + hot-reload):**
+- Rollback snapshot mechanism: ~100-150 lines
+- Validate-before-write pipeline: ~150-200 lines (compose config dry-run, varlock validation against temp copies, Caddy validate)
+- Hot-reload file watcher: ~50 lines in assistant entrypoint (TypeScript, as shown in proposal)
+- **Estimate: 2-3 days**
+
+**Test migration:**
+- 4,443 lines across 8 key test files directly test staging/path/secret behavior
+- 964 `configDir`/`dataDir`/`stateDir` references across 26 test files
+- Every test fixture that creates temp directories with XDG layout needs updating
+- **Estimate: 3-4 days** (overlaps heavily with test migration already budgeted for #301)
+
+### Scope Impact
+
+**Net effect on 0.10.0 total effort: adds 5-10 days beyond what #301 already requires, but replaces some #301 work.**
+
+The critical insight: the component system (#301) already rewrites `staging.ts`, `lifecycle.ts`, `channels.ts`, `buildComposeFileList()`, `fullComposeArgs()`, and the admin API's staging pipeline. The FS refactor rewrites the same files. Doing both simultaneously means each piece of code is rewritten once (with both the new component model AND the new directory layout), rather than rewriting for components in 0.10.0 and then rewriting again for FS layout in a future release.
+
+Quantified overlap:
+- `staging.ts` — #301 rewrites ~60% (channel staging removal), FS refactor rewrites ~70% (staging tier elimination). Combined: ~85% rewrite. **Not additive — one rewrite covers both.**
+- `lifecycle.ts` — #301 rewrites `buildComposeFileList()` and `buildManagedServices()`. FS refactor rewrites `createState()`, path resolution, and env file chains. **Partially additive — different functions in the same file.**
+- `paths.ts` — #301 does not touch this. FS refactor rewrites it entirely. **Purely additive.**
+- `secrets.ts` — #301 does not rewrite secrets management (that is #300). FS refactor rewrites the secret file layout. **Purely additive.**
+- `docker-compose.yml` bind mounts — #301 may add component mounts but does not change core service mounts. FS refactor changes all of them. **Purely additive.**
+
+Of the 12-18 day FS refactor estimate:
+- ~4-6 days overlap with work #301 already requires (staging rewrite, compose file list builder, test migration)
+- ~8-12 days are net-new work (paths.ts, secrets layout, compose bind mounts, rollback mechanism, hot-reload, dev setup, documentation)
+
+**Updated scope impact: +8-12 net working days added to 0.10.0.**
+
+My previous revised scope was 30-44 days. Adding the FS refactor makes it 38-56 days. This is still within reach for 2 developers over 6 weeks (60 working days) but leaves very little buffer.
+
+### Synergy with Component System
+
+**Doing both simultaneously simplifies the long-term outcome but complicates the 0.10.0 development process.**
+
+Positive synergy:
+1. **Single rewrite of staging pipeline.** The component system eliminates channel-specific staging (`stageChannelYmlFiles`, `stageChannelCaddyfiles`). The FS refactor eliminates the staging tier itself (`persistArtifacts` writing to `STATE_HOME/artifacts/`). Doing both means `staging.ts` is rewritten once with a clear new model: components live in `config/components/`, validation happens in-place, and rollback uses `~/.cache/openpalm/rollback/`.
+
+2. **Component compose overlays align with new directory layout.** The component plan has instances at `${OPENPALM_DATA}/components/`. The FS refactor puts everything under `~/.openpalm/`. The compose invocation in the FS refactor (`-f ~/.openpalm/config/components/core.yml -f ~/.openpalm/config/components/channel-slack.yml --env-file ~/.openpalm/vault/system.env --env-file ~/.openpalm/vault/user.env`) is cleaner than mixing XDG paths with component data paths.
+
+3. **`ControlPlaneState` type only changes once.** Currently `{ stateDir, configDir, dataDir }`. The component system would add component-related fields. The FS refactor would replace the three dirs with a single root. Doing both means the type changes once.
+
+4. **Env file simplification benefits components.** The FS refactor's two-file model (`vault/user.env` + `vault/system.env`) is simpler for the component system to work with than the current three-hop chain (`CONFIG_HOME/secrets.env` -> `DATA_HOME/stack.env` -> `STATE_HOME/artifacts/` copies). The compose invocation for components becomes deterministic: `--env-file vault/system.env --env-file vault/user.env --env-file components/discord-main/.env`.
+
+Negative synergy:
+1. **Two breaking changes compound migration complexity.** Users upgrading from 0.9.x face both "your channels are now components" AND "your files moved from 3 XDG directories to `~/.openpalm/`". The migration script must handle both.
+
+2. **Debugging difficulty.** During development, when something breaks, it is harder to determine whether the issue is from the component model change or the directory layout change. Isolating bugs in a dual-rewrite is significantly harder than in a single-rewrite.
+
+3. **The component plan already uses XDG paths.** The `openpalm-components-plan.md` explicitly says "Preserve three-tier XDG model" and references `${OPENPALM_CONFIG}`, `${OPENPALM_DATA}`, `${OPENPALM_STATE}` throughout. The FS refactor contradicts this. The component plan would need to be revised to use the new layout, adding coordination overhead.
+
+### Migration Complexity
+
+**Moderate-high.** The migration from current XDG layout to `~/.openpalm/` involves:
+
+1. **Structural relocation of ~31 directories.** Every file currently at `~/.config/openpalm/*` moves to `~/.openpalm/config/*` (or `vault/*` for secrets). Every file at `~/.local/share/openpalm/*` moves to `~/.openpalm/data/*`. `~/.local/state/openpalm/*` is eliminated (no staging tier). This is not a simple rename — it is a scatter-gather operation where `secrets.env` goes to `vault/user.env`, `stack.env` splits between `vault/system.env` and `config/openpalm.yml`, and `STATE_HOME/artifacts/*` simply disappears.
+
+2. **Env file content splitting.** The current `secrets.env` contains both user secrets (LLM keys) and system secrets (ADMIN_TOKEN, MEMORY_AUTH_TOKEN). The FS refactor splits these into `vault/user.env` (user-editable) and `vault/system.env` (system-managed). The current `stack.env` contains paths, UID/GID, image tags, and channel HMAC secrets — all of which go into `vault/system.env`. A migration tool must parse both existing files and correctly distribute keys into the two new files.
+
+3. **Compose file path references.** Every running container's volume mounts reference the old paths. The migration must be: stop stack, relocate files, update compose paths, restart stack. There is no hot-migration path.
+
+4. **Dev environment parallel migration.** The current `.dev/config`, `.dev/data`, `.dev/state` structure must change to `.dev/config`, `.dev/vault`, `.dev/data`, `.dev/logs`. All developers must run the new `dev-setup.sh` after pulling the changes. The `compose.dev.yaml` env file paths change.
+
+**Migration tool estimate: 2-3 days to build a `openpalm migrate-layout` command that:**
+- Detects old XDG layout
+- Creates new `~/.openpalm/` tree
+- Copies files to new locations
+- Splits env files correctly
+- Validates the result
+- Offers rollback if migration fails
+
+This migration tool is required if the FS refactor ships. Without it, users must manually reorganize their filesystem — which is unreasonable.
+
+### Risk Assessment
+
+**Risk 6: Dual Breaking Change Compounds User Upgrade Pain**
+**Likelihood: HIGH | Impact: HIGH**
+
+Users upgrading from 0.9.x face:
+(a) Channel format change (channels -> components) — must reinstall all channels
+(b) Filesystem layout change (XDG -> ~/.openpalm/) — must relocate all files + re-enter secrets
+
+If either migration fails, the user is in a broken state. If both fail simultaneously, recovery is complex. The channel migration depends on the filesystem migration completing first (component overlays expect the new paths). This creates a strict ordering requirement in the migration tool.
+
+**Mitigation:** Ship `openpalm migrate` as a single command that handles both changes atomically. Test extensively with the `scripts/upgrade-test.sh` harness.
+
+**Risk 7: Staging Elimination Removes a Safety Net**
+**Likelihood: MEDIUM | Impact: MEDIUM**
+
+The current staging tier, despite its complexity, provides a genuine safety property: user-editable files in CONFIG_HOME are never read directly by containers. If a user corrupts `secrets.env`, the last-staged copy in STATE_HOME continues to work until the next apply. The validate-in-place model removes this buffer — a validation bug or race condition means corrupted files go live immediately.
+
+The proposal's mitigation (snapshot to `~/.cache/openpalm/rollback/`) is weaker than the current model because:
+- The rollback directory is in `~/.cache/`, which tools like `bleachbit` or manual cache clearing may delete
+- The snapshot is only taken during apply operations, not continuously
+- There is no equivalent of "containers keep running with last-known-good staged files"
+
+**Mitigation:** Ensure the rollback snapshot is taken before every write, not just during explicit `apply` operations. Consider keeping rollback outside `~/.cache/` (perhaps `~/.openpalm/backups/`).
+
+**Risk 8: Hot-Reload File Watcher Introduces Complexity in the Assistant Container**
+**Likelihood: MEDIUM | Impact: LOW**
+
+The proposal adds a `fs.watch()` call in the assistant entrypoint that modifies `process.env` at runtime when `user.env` changes. This is elegant for the user-facing use case (add an API key without restarting) but introduces:
+- Race conditions if `user.env` is written partially (editor save in progress)
+- Platform-specific `fs.watch` behavior differences (inotify vs kqueue vs polling)
+- Security surface: the assistant can observe when secrets change (timing side-channel)
+- The assistant runs OpenCode, which may cache provider instances; changing `process.env.OPENAI_API_KEY` may not propagate to already-instantiated AI SDK clients
+
+**Mitigation:** Use debouncing (100ms delay after last change event). Read the full file atomically. Document that hot-reload applies to new requests only, not in-flight sessions. Accept that some providers may require a session restart to pick up new keys. This is low risk because hot-reload is a convenience feature — the restart path still works.
+
+### Recommendations
+
+14. **ADD the FS refactor to 0.10.0 scope, but ONLY if the component system rewrite is committed.** The FS refactor makes most sense when done alongside #301 because both rewrite the same code. Doing the FS refactor alone (without #301) or after #301 (as a separate release) doubles the rewrite effort on `staging.ts`, `lifecycle.ts`, and the test suite. The natural pairing is: "0.10.0 is the big infrastructure overhaul — new extension model, new directory layout, clean break." This is a legitimate "rip off the bandaid" moment.
+
+15. **UPDATE the component plan (`openpalm-components-plan.md`) to use `~/.openpalm/` paths.** The current plan references `${OPENPALM_CONFIG}`, `${OPENPALM_DATA}`, `${OPENPALM_STATE}` and explicitly says "Preserve three-tier XDG model." If the FS refactor is adopted, the component plan must be revised. Component instances would live at `~/.openpalm/data/components/` (not `${OPENPALM_DATA}/components/`), and `enabled.json` would move accordingly.
+
+16. **ADD a unified migration tool to the scope.** A `openpalm migrate` command that handles both the XDG-to-openpalm-home relocation and the channel-to-component transition in a single atomic operation. **Estimate: 3-4 days** (includes the env file splitting logic, directory relocation, and validation). This is non-negotiable if both breaking changes ship in the same release.
+
+17. **DEFER hot-reload to a fast-follow or 0.10.1.** The file watcher in the assistant entrypoint is a convenience feature, not a structural requirement. The FS refactor's core value is the simplified directory layout, staging elimination, and secret isolation. Hot-reload adds 1-2 days of work plus testing complexity (platform-specific `fs.watch` behavior, race conditions, SDK client caching). Ship it as a polish item after the core layout is stable.
+
+18. **UPDATE rollback storage location.** Move rollback from `~/.cache/openpalm/rollback/` to `~/.openpalm/backups/rollback/`. The `~/.cache/` location is semantically correct (ephemeral, regenerable) but operationally risky — cache-cleaning tools may delete it at the worst time. The proposal already shows `~/.openpalm/backups/` in the layout (`fs-layout.md`). Use it.
+
+19. **UPDATE the revised 0.10.0 scope estimate.** With the FS refactor included:
+
+| Issue | Scope | Estimated Days |
+|-------|-------|---------------|
+| #301 Components (Phases 1-4) | Full component system with new directory layout | 22-30 (was 20-26; +2-4 for FS path integration) |
+| FS refactor (net-new work) | paths.ts, secrets layout, compose mounts, rollback mechanism, dev setup, docs | 8-12 |
+| Migration tool | `openpalm migrate` covering both layout and channel->component transition | 3-4 |
+| #300 Phase 0-1 | Varlock hardening + auth refactor (vault/system.env aligns with new layout) | 4-6 |
+| #13 Advanced channels | Closed by #301 | 0-2 |
+| Test migration | Update test suites for both component model and new paths | 4-6 (was 3-5; +1 for path changes) |
+| Buffer | Integration testing, edge cases, docs | 3-5 |
+| **Total** | | **44-65 days** |
+
+This is achievable with 2 developers over 6-8 weeks but exceeds the capacity of a solo developer. If only one developer is available, defer the FS refactor to 0.10.1 (a quick follow-up that rewrites paths after the component system is stable).
+
+20. **REMOVE the `openpalm.yml` config file from the FS refactor scope for 0.10.0.** The proposal introduces `config/openpalm.yml` as a human-readable stack config file (enabled components, feature flags, network settings). This overlaps with the component system's `enabled.json` and the existing `stack.env` settings. Having both `openpalm.yml` and `enabled.json` as sources of truth for which components are enabled is a design conflict that must be resolved before implementation. Defer `openpalm.yml` to 0.10.1 and use `enabled.json` as the sole persistence mechanism for 0.10.0.

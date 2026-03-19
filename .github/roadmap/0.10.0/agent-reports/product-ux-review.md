@@ -276,3 +276,166 @@ That is 5 tabs -- one fewer than today. Knowledge stats, password manager UI, an
 14. **DEFER: The `KnowledgeTab` admin UI (from knowledge-system-roadmap Phase 4D) to the milestone that includes the eval framework.** Knowledge stats without the eval framework and Q-values are not actionable for users.
 
 15. **UPDATE the unified registry plan:** Clarify what happens to the existing `registryInstall` and `registryUninstall` functions in the admin client code (`+page.svelte` lines 368-401). These currently work with `type: 'channel' | 'automation'`. The unified registry plan removes the type distinction for components but keeps automations separate. The client API needs a migration path for this type parameter change.
+
+---
+
+## Addendum: Filesystem & Mounts Refactor UX Review (2026-03-19)
+
+### Summary
+
+The `fs-mounts-refactor.md` proposal replaces the three-tier XDG layout (`~/.config/openpalm`, `~/.local/share/openpalm`, `~/.local/state/openpalm`) with a single `~/.openpalm/` root containing `config/`, `vault/`, `data/`, and `logs/`. It eliminates the staging tier in favor of validate-in-place with snapshot rollback, introduces hot-reload of LLM keys via a file watcher on `vault/user.env`, and adds an explicit `openpalm.yml` stack configuration file. This is a significant simplification of the mental model and daily operations, but it arrives in the same release as the legacy channel clean break and the component system rewrite, creating a triple-breaking-change upgrade.
+
+### User Experience Assessment
+
+**New users.** The proposed layout is unambiguously better for new users. A single `~/.openpalm/` directory with four clearly named subdirectories (`config/`, `vault/`, `data/`, `logs/`) maps directly to user intent: "where do I configure things," "where are my secrets," "where is my data," "where are the logs." The current XDG layout requires users to understand the distinction between `~/.config/openpalm`, `~/.local/share/openpalm`, and `~/.local/state/openpalm` -- three directories that most self-hosted users have never navigated to before. In onboarding friction terms, `cd ~/.openpalm && ls` is a one-step mental model; `find ~/.config/openpalm ~/.local/share/openpalm ~/.local/state/openpalm` is a three-step scavenger hunt.
+
+**Existing users.** This is the pain point. Users who have running 0.9.x stacks must move from three XDG directories to `~/.openpalm/`. Combined with the legacy channel clean break (reinstall channels as components) and the env file restructuring (single `secrets.env` becomes `vault/user.env` + `vault/system.env`), the upgrade requires touching every operational assumption the user has built. This is manageable only if the CLI provides an automated migration command.
+
+**Power users.** Power users who have scripts, aliases, or automation referencing XDG paths will need to update them. However, power users will also immediately appreciate the consolidation -- shell completion on `~/.openpalm/` is faster than navigating three XDG trees, and the explicit `openpalm.yml` gives them a single file to understand what their stack does. The `vault/` separation is intuitive for anyone with security awareness: secrets in one place, config in another, with clear mount boundaries.
+
+### Hot-Reload UX
+
+This is the single highest-impact UX improvement in the proposal. The current workflow for adding or rotating an LLM API key is:
+
+1. Edit `~/.config/openpalm/secrets.env`
+2. Run `openpalm apply` (or equivalent admin action)
+3. Wait for staging to copy the file
+4. Wait for container restart
+5. Lose any in-progress assistant conversation context
+
+The proposed workflow is:
+
+1. Edit `~/.openpalm/vault/user.env`
+2. Done. The assistant picks it up in seconds. No restart. No lost context.
+
+This eliminates the most common friction point in daily operation. Users who rotate API keys, switch providers, or experiment with different LLM services will go from a multi-step process with downtime to an instantaneous change. The file watcher implementation in the proposal (Section 3.3) is straightforward and uses an explicit allowlist of keys (`ALLOWED_KEYS`), which is the correct safety approach -- it prevents a malicious or accidental environment variable from being injected through the user.env file.
+
+**Concern:** The hot-reload only works for the assistant. The memory service also uses LLM keys (`OPENAI_API_KEY`, `OPENAI_BASE_URL`) but receives them via `${VAR}` substitution at container creation time. If a user changes their embedding provider key in `user.env`, the assistant picks it up immediately but the memory service still has the old key until its container is recreated. The proposal should document this asymmetry clearly: "LLM keys for the assistant reload instantly. Keys used by the memory service require `openpalm apply` to take effect." Otherwise users will expect uniform hot-reload and be confused when memory operations fail after a key rotation.
+
+### Backup & Restore UX
+
+The backup simplification is significant and well-designed. Current backup requires understanding which directories matter:
+
+```bash
+# Current: which of these three do I need? All of them? Just config + data?
+tar czf backup.tar.gz ~/.config/openpalm ~/.local/share/openpalm
+# (and maybe ~/.local/state/openpalm for logs?)
+```
+
+Proposed:
+
+```bash
+tar czf backup.tar.gz ~/.openpalm
+```
+
+One directory, one command, complete backup. The intentional exclusion of `~/.cache/openpalm/` (rollback snapshots, registry cache) from the backup target is correct -- cache data is regenerable and would bloat backups unnecessarily.
+
+The restore story is equally improved. The current restore requires the admin to regenerate STATE_HOME from CONFIG + DATA, which means a `tar extract` is not sufficient -- you must also run an apply step. The proposed restore is extract-and-start: the compose files and env files are live in their final locations.
+
+**One gap:** The proposal does not address partial restore. If a user wants to restore only their secrets (because they accidentally deleted `user.env`), they need to extract a single file from the tar archive. This is a standard tar operation (`tar xzf backup.tar.gz .openpalm/vault/user.env`) but should be documented as a common recovery scenario.
+
+### Upgrade Path
+
+This is the highest-risk aspect of the proposal. The 0.9.x to 0.10.0 upgrade now involves:
+
+1. **Directory migration:** Three XDG trees to `~/.openpalm/`
+2. **Env file split:** Single `secrets.env` becomes `vault/user.env` + `vault/system.env`
+3. **Staging elimination:** `STATE_HOME/artifacts/` no longer exists
+4. **Channel migration:** Legacy `channels/*.yml` replaced by `config/components/*.yml`
+5. **Stack config:** No equivalent of `openpalm.yml` exists today
+
+That is five simultaneous structural changes. Any one of them alone would be a reasonable upgrade task. Together, they demand an automated migration tool. The proposal does not describe one.
+
+**Minimum viable migration:** The CLI `openpalm update` command must detect the old XDG layout and offer to migrate:
+
+1. Detect `~/.config/openpalm/secrets.env` exists
+2. Parse it, split user-facing keys into `vault/user.env` and system keys into `vault/system.env`
+3. Move `~/.config/openpalm/channels/` contents to `~/.openpalm/config/components/`
+4. Move `~/.local/share/openpalm/*/` data directories to `~/.openpalm/data/*/`
+5. Generate a default `openpalm.yml` based on currently enabled services
+6. Print a summary of what moved where
+7. Offer to keep the old directories as a backup (rename to `~/.config/openpalm.bak`)
+
+Without this, the upgrade is a manual file-reorganization exercise that will lose users. My original review (Recommendation #2) called for migration detection with a banner; with the filesystem refactor added, detection is insufficient -- automated migration is required.
+
+### Documentation Impact
+
+The documentation rewrite scope is substantial. Every reference to the XDG layout must be updated:
+
+| Document | Impact |
+|----------|--------|
+| `docs/technical/core-principles.md` | **Full rewrite** of Sections 1-3 (filesystem contract). The three-tier model, tier boundaries, and volume-mount contract all change. |
+| `CLAUDE.md` | **Full rewrite** of XDG Directory Model table, Architecture Rules summary, Key Files paths |
+| `packages/lib/src/control-plane/paths.ts` | **Code rewrite** -- `resolveConfigHome()`, `resolveDataHome()`, `resolveStateHome()` all change, `ensureXdgDirs()` creates different directories |
+| `packages/lib/src/control-plane/staging.ts` | **Major refactor or removal** -- staging pipeline is eliminated; validation-in-place and rollback replace it |
+| `packages/cli/src/lib/staging.ts` | **Rewrite** -- CLI staging helpers reference STATE_HOME |
+| `assets/docker-compose.yml` | **Rewrite** -- all bind mount paths change |
+| All test files referencing XDG paths | **Update** -- 12+ files in `packages/lib/src/control-plane/` reference the three-tier model |
+| Any user-facing documentation or README | **Update** -- backup instructions, configuration instructions, troubleshooting guides |
+
+This is not a cosmetic update. The filesystem contract is the foundational abstraction of the project. Changing it touches every layer: documentation, library code, CLI, admin, compose files, and tests. The documentation must be updated atomically with the code -- shipping the code change without updated docs would leave users with incorrect instructions.
+
+### Naming Assessment
+
+**`vault/` as a name.** "Vault" is a strong, intuitive name for a secrets directory. It immediately signals "sensitive content, handle with care." The only risk is confusion with HashiCorp Vault, but in context (a directory on disk, not a networked service) the meaning is clear. It is better than alternatives like `secrets/` (too generic, easily confused with Docker secrets or Kubernetes secrets) or `env/` (conflates env files with secrets).
+
+**`user.env` / `system.env` split.** The naming is clear. "User" means "you edit this." "System" means "the system manages this, hands off." The split maps to the access control model: user.env is mounted read-only into the assistant; system.env is never mounted except by admin. The names reinforce the boundary.
+
+**`openpalm.yml` as the stack config file.** Good name. It matches the project name, is discoverable (`ls ~/.openpalm/config/` immediately shows it), and the `.yml` extension signals human-editable YAML. It is better than the current implicit model where "which compose files exist in the channels directory" determines the stack configuration.
+
+### `openpalm.yml` Discoverability
+
+The explicit stack config file is a significant UX improvement over the current implicit model. Today, understanding what a stack does requires:
+
+1. List `CONFIG_HOME/channels/` to see which channels are installed
+2. Read `DATA_HOME/stack.env` to see which optional services are enabled (`OPENPALM_OLLAMA_ENABLED`, `OPENPALM_ADMIN_ENABLED`)
+3. Inspect `STATE_HOME/artifacts/` to see what was actually staged
+
+With `openpalm.yml`, the answer is in one file:
+
+```yaml
+components:
+  admin: true
+  ollama: false
+```
+
+This is immediately readable and editable. It replaces scattered boolean flags in `stack.env` with a structured, human-friendly configuration. The `features:` and `network:` sections further consolidate settings that are currently spread across environment variables.
+
+**Concern:** The proposal shows `openpalm.yml` in `config/` but does not specify what happens when `openpalm.yml` and the contents of `config/components/` disagree. If `openpalm.yml` says `ollama: false` but `config/components/ollama.yml` exists, which wins? The proposal should define precedence: `openpalm.yml` is authoritative, and a component overlay in `config/components/` is only included in the compose invocation if `openpalm.yml` enables it (or if it's not listed in `openpalm.yml`, in which case presence in `components/` implies enabled). This needs to be unambiguous.
+
+### Rollback UX
+
+`openpalm rollback` as a first-class command is excellent. The current system has no rollback mechanism at all -- if a staged apply breaks the stack, the user must manually debug compose files and env variables. The proposed flow (validate -> snapshot -> write -> deploy -> auto-rollback on failure) provides a safety net that makes configuration changes lower-risk.
+
+**Concern:** The rollback snapshot lives in `~/.cache/openpalm/rollback/` and holds only the most recent previous state. This means:
+
+1. If two consecutive applies fail, the rollback target is the state before the first apply, which is correct.
+2. But if a user runs `apply`, it succeeds, then they realize hours later the change was wrong, the rollback snapshot has already been overwritten by the successful apply's pre-snapshot. There is no "undo the last successful apply" -- only "undo the last failed apply."
+
+The proposal should clarify this limitation. For deeper history, consider keeping the last N snapshots (e.g., 3) with timestamps, and letting `openpalm rollback` accept an optional `--to <timestamp>` flag. This is a minor enhancement that significantly improves the safety story.
+
+### Interaction with Review Decisions
+
+The `review-decisions.md` document (Q2) explicitly states: **"Preserve the three-tier XDG model."** The filesystem refactor proposal directly contradicts this decision by collapsing three XDG roots into `~/.openpalm/`. This contradiction must be resolved before implementation. Either the review decision is updated to reflect the new direction, or the refactor proposal must be revised to preserve XDG compliance (e.g., `~/.config/openpalm/` for config, `~/.local/share/openpalm/` for data, but eliminate STATE_HOME and add vault/).
+
+The proposal is the better design, but the decision log must be amended to document why the earlier decision was reversed and what new information justified the change.
+
+### Recommendations
+
+16. **ADD: Automated migration tool for XDG-to-`~/.openpalm/` transition.** The CLI `openpalm update` command must detect the old three-directory XDG layout and perform an automated migration: split `secrets.env` into `vault/user.env` + `vault/system.env`, move channel overlays to `config/components/`, relocate data directories, generate a default `openpalm.yml`, and offer to keep old directories as `.bak` backups. Manual migration for five simultaneous structural changes is unacceptable.
+
+17. **UPDATE: Resolve the contradiction with review-decisions.md Q2.** The decision log says "preserve the three-tier XDG model." The filesystem refactor eliminates it. Amend the Q2 decision with rationale for why the single-root model supersedes the earlier decision, or revise the refactor to preserve XDG compliance in some form.
+
+18. **UPDATE: Document the hot-reload asymmetry.** The assistant picks up `user.env` changes instantly, but the memory service (and any other container receiving keys via `${VAR}` substitution) does not. Document clearly which services hot-reload and which require `openpalm apply` after a key change. Consider adding a CLI convenience command: `openpalm reload-keys` that recreates only the containers that need updated env vars (memory, guardian) without touching the assistant.
+
+19. **UPDATE: Define `openpalm.yml` vs `config/components/` precedence.** Specify what happens when the stack config file and the component overlay directory disagree (e.g., `ollama: false` in YAML but `ollama.yml` exists on disk). Recommendation: `openpalm.yml` is authoritative; component overlays are only included when enabled in the YAML file.
+
+20. **UPDATE: Expand rollback to retain multiple snapshots.** The single-snapshot rollback only protects against failed applies, not regretted successful applies. Keep the last 3 snapshots with timestamps in `~/.cache/openpalm/rollback/` and add `openpalm rollback --list` and `openpalm rollback --to <timestamp>` for deeper undo capability.
+
+21. **ADD: Document partial restore procedures.** The one-tar backup is a strong improvement, but users need documented procedures for common partial-restore scenarios: recovering just secrets (`vault/user.env`), recovering just a specific service's data (`data/memory/`), or recovering configuration without overwriting current data.
+
+22. **DEFER: Ship the filesystem refactor and the component system in separate minor releases if possible.** Two breaking structural changes in one release (directory layout + component system) compounds upgrade risk. Ideally: 0.10.0 ships the component system with the existing XDG layout, 0.11.0 ships the filesystem consolidation. If they must ship together, the automated migration tool (Recommendation #16) is non-negotiable.
+
+23. **UPDATE: Clarify the `~/.cache/openpalm/` relationship to `~/.openpalm/`.** The proposal splits state between two root paths (`~/.openpalm/` and `~/.cache/openpalm/`). This partially undermines the "single root" simplification. Consider whether rollback snapshots and registry cache could live under `~/.openpalm/.cache/` instead -- still excluded from backups via documentation convention, but discoverable under the single root. The XDG cache convention is technically correct but reintroduces the "where is my OpenPalm stuff?" scavenger hunt for the cache portion.
+
+24. **ADD: Include `openpalm doctor` or `openpalm status` command output in the proposal.** A single-root layout enables a clean status command that reports on all four subdirectories: config file count, vault health (schemas match, no empty required keys), data directory sizes, log file sizes. This would be a natural complement to the simplified layout and a strong onboarding tool.
