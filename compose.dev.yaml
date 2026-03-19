@@ -61,8 +61,10 @@ services:
       dockerfile: core/memory/Dockerfile
     image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/memory:${OPENPALM_IMAGE_TAG:-latest}
 
-  # Voice channel dev override: mount local source instead of npm install
+  # Voice channel dev override: mount local source instead of npm install.
+  # Requires voice.yml overlay loaded before this file (-f channels/voice.yml -f compose.dev.yaml).
   channel-voice:
+    image: ${OPENPALM_IMAGE_NAMESPACE:-openpalm}/channel:${OPENPALM_IMAGE_TAG:-latest}
     ports:
       - "8186:8186"
     volumes:

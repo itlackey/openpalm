@@ -1,5 +1,7 @@
 /**
  * STT and TTS API calls. Both use OpenAI-compatible APIs.
+ * Auth headers are only sent when an API key is configured,
+ * allowing keyless local providers (whisper-local, kokoro, piper).
  */
 
 import { createLogger } from '@openpalm/channels-sdk'
@@ -7,7 +9,7 @@ import { config } from './config'
 
 const log = createLogger('channel-voice')
 
-// ── Timeout helper ──────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
@@ -24,11 +26,31 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+/** Build auth headers only when a key is present (keyless providers get none). */
+function authHeaders(apiKey: string): Record<string, string> {
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+}
+
+/** Strip markdown syntax so TTS reads clean prose. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 // ── STT ─────────────────────────────────────────────────────────────────
 
 /**
  * Transcribe audio via OpenAI-compatible STT API.
- * Accepts the raw File from the client's FormData.
+ * Auth header is omitted for keyless providers (e.g. local whisper).
  */
 export async function transcribe(audioFile: File): Promise<string> {
   const form = new FormData()
@@ -39,7 +61,7 @@ export async function transcribe(audioFile: File): Promise<string> {
     `${config.stt.baseUrl}/v1/audio/transcriptions`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${config.stt.apiKey}` },
+      headers: authHeaders(config.stt.apiKey),
       body: form,
     },
     config.stt.timeoutMs,
@@ -58,26 +80,11 @@ export async function transcribe(audioFile: File): Promise<string> {
 
 /**
  * Synthesize text to audio via OpenAI-compatible TTS API.
- * Returns base64-encoded mp3 string, or null if TTS is not configured or fails.
- * TTS failure is non-fatal — the client still gets the text response.
+ * Returns base64-encoded mp3, or null if TTS is not configured or fails.
+ * Auth header is omitted for keyless providers (e.g. kokoro, piper).
  */
-/** Strip markdown syntax so TTS reads clean prose. */
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, '')       // remove code blocks
-    .replace(/`([^`]+)`/g, '$1')          // inline code → plain text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')    // bold → plain
-    .replace(/\*([^*]+)\*/g, '$1')        // italic → plain
-    .replace(/^#{1,6}\s+/gm, '')          // headings → plain
-    .replace(/^\s*[-*+]\s+/gm, '')        // list markers → plain
-    .replace(/^\s*\d+\.\s+/gm, '')        // numbered lists → plain
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → text only
-    .replace(/\n{3,}/g, '\n\n')           // collapse excess newlines
-    .trim()
-}
-
 export async function synthesize(text: string): Promise<string | null> {
-  if (!text.trim() || !config.tts.apiKey) return null
+  if (!text.trim() || !config.tts.configured) return null
 
   const cleanText = stripMarkdown(text)
   if (!cleanText) return null
@@ -89,7 +96,7 @@ export async function synthesize(text: string): Promise<string | null> {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${config.tts.apiKey}`,
+          ...authHeaders(config.tts.apiKey),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -130,7 +137,7 @@ export async function chatCompletion(prompt: string): Promise<string> {
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.llm.apiKey}`,
+        ...authHeaders(config.llm.apiKey),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

@@ -1,4 +1,4 @@
-const CACHE = 'voice-v2'
+const CACHE = 'voice-v3'
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest']
 
 self.addEventListener('install', (e) => {
@@ -14,13 +14,18 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url)
-  if (url.pathname.startsWith('/api/')) return
-  // Network-first for all assets (cache is offline fallback only)
+  // Only cache same-origin GET requests; skip API calls and non-GET methods
+  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) return
+  // Network-first: update cache on success, serve from cache when offline
   e.respondWith(
     fetch(e.request).then((res) => {
       const clone = res.clone()
       caches.open(CACHE).then((c) => c.put(e.request, clone))
       return res
-    }).catch(() => caches.match(e.request))
+    }).catch(() =>
+      caches.match(e.request).then((cached) =>
+        cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })
+      )
+    )
   )
 })

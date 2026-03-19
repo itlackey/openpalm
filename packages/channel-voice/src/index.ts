@@ -11,7 +11,7 @@
  *   GET  /*             — Static file serving from web/ directory
  */
 
-import { extname, join, resolve } from 'node:path'
+import { extname, join, resolve, sep } from 'node:path'
 import { BaseChannel, type HandleResult, createLogger } from '@openpalm/channels-sdk'
 import type { GuardianSuccessResponse } from '@openpalm/channels-sdk'
 import { config } from './config'
@@ -46,8 +46,8 @@ export default class VoiceChannel extends BaseChannel {
       return this.json(200, {
         ok: true,
         service: 'channel-voice',
-        stt: { model: config.stt.model, configured: !!config.stt.apiKey },
-        tts: { model: config.tts.model, voice: config.tts.voice, configured: !!config.tts.apiKey },
+        stt: { model: config.stt.model, configured: config.stt.configured },
+        tts: { model: config.tts.model, voice: config.tts.voice, configured: config.tts.configured },
         llm: { model: config.llm.model, configured: !!config.llm.apiKey },
       })
     }
@@ -82,8 +82,11 @@ export default class VoiceChannel extends BaseChannel {
       return this.json(413, { error: 'Audio too large (max 25MB)' })
     }
 
-    const userId = req.headers.get('x-forwarded-for')
-      || req.headers.get('x-real-ip')
+    // Use client-provided ID (from x-client-id header or form field),
+    // falling back to x-forwarded-for (first IP only) or a default.
+    const clientId = (form.get('clientId') as string | null)
+      || req.headers.get('x-client-id')
+      || (req.headers.get('x-forwarded-for') || '').split(',')[0].trim()
       || 'voice-user'
 
     // Step 1: STT — transcribe audio, or use provided text (browser STT fallback)
@@ -91,7 +94,7 @@ export default class VoiceChannel extends BaseChannel {
     if (typeof textField === 'string' && textField.trim()) {
       transcript = textField.trim()
     } else if (audioFile instanceof File) {
-      if (!config.stt.apiKey) {
+      if (!config.stt.configured) {
         return this.json(400, { error: 'STT not configured', code: 'stt_not_configured' })
       }
       try {
@@ -111,7 +114,7 @@ export default class VoiceChannel extends BaseChannel {
     // Step 2: Forward transcript to guardian, fall back to direct LLM
     let answer: string
     try {
-      const guardianResp = await this.forward({ userId, text: transcript })
+      const guardianResp = await this.forward({ userId: clientId, text: transcript })
 
       if (!guardianResp.ok) {
         this.log('error', 'Guardian error', { status: guardianResp.status })
@@ -145,8 +148,8 @@ export default class VoiceChannel extends BaseChannel {
     const pathname = url.pathname === '/' ? '/index.html' : url.pathname
     const filePath = resolve(join(config.server.webRoot, pathname.replace(/^\/+/, '')))
 
-    // Prevent path traversal
-    if (!filePath.startsWith(config.server.webRoot)) {
+    // Prevent path traversal — ensure resolved path is strictly inside webRoot
+    if (!filePath.startsWith(config.server.webRoot + sep) && filePath !== config.server.webRoot) {
       return new Response('Forbidden', { status: 403 })
     }
 
@@ -185,8 +188,8 @@ export default class VoiceChannel extends BaseChannel {
 if (import.meta.main) {
   const log = createLogger('channel-voice')
   log.info('config', {
-    stt: config.stt.apiKey ? `${config.stt.baseUrl} (${config.stt.model})` : 'not configured — browser fallback',
-    tts: config.tts.apiKey ? `${config.tts.baseUrl} (${config.tts.model}, ${config.tts.voice})` : 'not configured — browser fallback',
+    stt: config.stt.configured ? `${config.stt.baseUrl} (${config.stt.model})` : 'not configured — browser fallback',
+    tts: config.tts.configured ? `${config.tts.baseUrl} (${config.tts.model}, ${config.tts.voice})` : 'not configured — browser fallback',
   })
   const channel = new VoiceChannel()
   channel.start()

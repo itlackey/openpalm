@@ -7,52 +7,69 @@ import { resolve } from 'node:path'
 
 interface Config {
   server: { webRoot: string }
-  stt: { baseUrl: string; apiKey: string; model: string; timeoutMs: number }
-  tts: { baseUrl: string; apiKey: string; model: string; voice: string; timeoutMs: number }
+  stt: { baseUrl: string; apiKey: string; model: string; timeoutMs: number; configured: boolean }
+  tts: { baseUrl: string; apiKey: string; model: string; voice: string; timeoutMs: number; configured: boolean }
   llm: { baseUrl: string; apiKey: string; model: string; timeoutMs: number; systemPrompt: string }
 }
 
+// env uses ?? so an explicit empty value (KEY=) clears the default.
+// envOrDefault uses || so empty strings still get the fallback (for models, voices, etc).
 function env(key: string, fallback = ''): string {
+  return Bun.env[key] ?? fallback
+}
+
+function envOrDefault(key: string, fallback: string): string {
   return Bun.env[key] || fallback
 }
 
 function envInt(key: string, fallback: number): number {
   const v = Bun.env[key]
-  if (!v) return fallback
+  if (v === undefined || v === '') return fallback
   const n = parseInt(v, 10)
   return Number.isNaN(n) ? fallback : n
 }
 
 // Resolve API key: check dedicated key first, then shared OPENAI_API_KEY.
-// Only use OPENAI_API_KEY if the dedicated key is truly unset (not present in env at all),
-// to avoid shell-inherited vars overriding .env values unexpectedly.
+// Falls back to OPENAI_API_KEY only when the dedicated key is absent or
+// explicitly empty — an empty dedicated key means "no key" (keyless provider).
 function resolveApiKey(dedicatedKey: string): string {
   const dedicated = Bun.env[dedicatedKey]
   if (dedicated !== undefined && dedicated !== '') return dedicated
-  return Bun.env.OPENAI_API_KEY || ''
+  return Bun.env.OPENAI_API_KEY ?? ''
 }
+
+// STT/TTS are considered "configured" when a base URL is set (even without
+// a key — local providers like whisper-local, kokoro, piper are keyless).
+function isProviderConfigured(baseUrl: string): boolean {
+  return baseUrl !== ''
+}
+
+const sttBaseUrl = env('STT_BASE_URL').replace(/\/$/, '')
+const ttsBaseUrl = env('TTS_BASE_URL').replace(/\/$/, '')
 
 export const config: Config = {
   server: {
     webRoot: resolve(env('WEB_ROOT', new URL('../web', import.meta.url).pathname)),
   },
   stt: {
-    baseUrl: env('STT_BASE_URL', 'https://api.openai.com').replace(/\/$/, ''),
+    baseUrl: sttBaseUrl,
     apiKey: resolveApiKey('STT_API_KEY'),
-    model: env('STT_MODEL', 'whisper-1'),
+    model: envOrDefault('STT_MODEL', 'whisper-1'),
     timeoutMs: envInt('STT_TIMEOUT_MS', 30_000),
+    configured: isProviderConfigured(sttBaseUrl),
   },
   tts: {
-    baseUrl: env('TTS_BASE_URL', 'https://api.openai.com').replace(/\/$/, ''),
+    baseUrl: ttsBaseUrl,
     apiKey: resolveApiKey('TTS_API_KEY'),
-    model: env('TTS_MODEL', 'tts-1'),
-    voice: env('TTS_VOICE', 'alloy'),
+    model: envOrDefault('TTS_MODEL', 'tts-1'),
+    voice: envOrDefault('TTS_VOICE', 'alloy'),
     timeoutMs: envInt('TTS_TIMEOUT_MS', 30_000),
+    configured: isProviderConfigured(ttsBaseUrl),
   },
   llm: {
-    baseUrl: env('LLM_BASE_URL', 'http://localhost:11434').replace(/\/$/, ''),
-    apiKey: env('LLM_API_KEY', 'ollama'),
-    model: env('LLM_MODEL', 'qwen2.5:3b'),
+    baseUrl: envOrDefault('LLM_BASE_URL', 'http://localhost:11434').replace(/\/$/, ''),
+    apiKey: envOrDefault('LLM_API_KEY', 'ollama'),
+    model: envOrDefault('LLM_MODEL', 'qwen2.5:3b'),
     timeoutMs: envInt('LLM_TIMEOUT_MS', 60_000),
     systemPrompt: env('LLM_SYSTEM_PROMPT', 'You are a helpful voice assistant. Respond conversationally and concisely. Do not use markdown formatting.'),
   },

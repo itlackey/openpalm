@@ -408,9 +408,13 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
 
   // Voice: TTS/STT env vars based on engine choice
   if (input.voice) {
-    // Find an OpenAI-compatible connection for cloud engines
+    // Find an OpenAI-compatible connection for cloud engines.
+    // Normalize base URL: strip trailing slashes and /v1 suffix since
+    // the voice channel providers append /v1/... themselves.
     const openaiConn = effectiveConnections.find((c) => c.provider === "openai");
-    const openaiBaseUrl = (openaiConn?.baseUrl || "https://api.openai.com").replace(/\/+$/, "");
+    const openaiBaseUrl = (openaiConn?.baseUrl || "https://api.openai.com")
+      .replace(/\/+$/, "")
+      .replace(/\/v1$/, "");
     const openaiKey = openaiConn?.apiKey || "";
 
     const { tts, stt } = input.voice;
