@@ -244,7 +244,11 @@ describe('npm bin launcher', () => {
     ) as {
       version: string;
     };
-    const expectedRange = `>=${libPkg.version} <1.0.0`;
+    const versionMatch = libPkg.version.match(/^(\d+)\.\d+\.\d+(?:-.+)?$/);
+    if (!versionMatch) throw new Error(`Unexpected lib version format: ${libPkg.version}`);
+    const libMajor = Number.parseInt(versionMatch[1], 10);
+
+    const expectedRange = `>=${libPkg.version} <${libMajor + 1}.0.0`;
 
     expect(cliPkg.dependencies?.['@openpalm/lib']).toBe(expectedRange);
 
@@ -264,10 +268,10 @@ describe('npm bin launcher', () => {
       expect(pack.exitCode).toBe(0);
 
       const tarball = readdirSync(packDir).find((name) => name.endsWith('.tgz'));
-      expect(tarball).toBeDefined();
+      if (!tarball) throw new Error('Expected bun pm pack to produce a tarball');
 
       const extract = Bun.spawnSync(
-        ['tar', '-xOf', join(packDir, tarball ?? ''), 'package/package.json'],
+        ['tar', '-xOf', join(packDir, tarball), 'package/package.json'],
         {
           stdout: 'pipe',
           stderr: 'pipe',
