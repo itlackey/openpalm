@@ -39,6 +39,8 @@ function resolveApiKey(dedicatedKey: string): string {
 
 export function hasConfiguredProvider(baseUrl: string, apiKey: string): boolean {
   if (!baseUrl) return false
+  // A provider counts as configured when it has credentials, or when it points
+  // at a non-default OpenAI-compatible base URL that may intentionally be keyless.
   return apiKey !== '' || baseUrl !== DEFAULT_OPENAI_BASE_URL
 }
 

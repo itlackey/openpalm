@@ -33,7 +33,7 @@ function createHandler(fetchFn: typeof fetch = mockGuardianFetch()) {
   return channel.createFetch(fetchFn);
 }
 
-describe("voice channel health", () => {
+describe("voice channel provider configuration", () => {
   it("GET /api/health returns 200 with STT/TTS config", async () => {
     const handler = createHandler();
     const resp = await handler(new Request("http://voice/api/health"));

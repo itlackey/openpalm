@@ -33,7 +33,7 @@ const MIME_TYPES: Record<string, string> = {
 function getSessionKey(req: Request): string | undefined {
   const raw = req.headers.get('x-openpalm-session-key')?.trim()
   if (!raw) return undefined
-  if (raw.length > 256) return raw.slice(0, 256)
+  if (raw.length > 256) return undefined
   return raw
 }
 

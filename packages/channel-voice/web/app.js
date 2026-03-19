@@ -79,14 +79,24 @@
 
   function getClientId() {
     try {
-      var key = 'voice-client-id'
-      var existing = localStorage.getItem(key)
+      var storageKey = 'voice-client-id'
+      var existing = localStorage.getItem(storageKey)
       if (existing) return existing
 
       var created = (window.crypto && typeof window.crypto.randomUUID === 'function')
         ? window.crypto.randomUUID()
-        : ('voice-' + Date.now() + '-' + Math.random().toString(16).slice(2))
-      localStorage.setItem(key, created)
+        : (function () {
+            if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+              var bytes = new Uint8Array(16)
+              window.crypto.getRandomValues(bytes)
+              var hex = Array.prototype.map.call(bytes, function (byte) {
+                return byte.toString(16).padStart(2, '0')
+              }).join('')
+              return 'voice-' + hex
+            }
+            return 'voice-' + Date.now() + '-' + Math.random().toString(16).slice(2)
+          })()
+      localStorage.setItem(storageKey, created)
       return created
     } catch (_) {
       return 'voice-anonymous'
