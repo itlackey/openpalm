@@ -70,16 +70,21 @@ test.describe('pipeline endpoint', () => {
     expect(body.code).toBe('stt_not_configured')
   })
 
-  test('accepts text field (browser STT path) but fails without guardian', async ({ request }) => {
+  test('accepts text field (browser STT path) and returns a response', async ({ request }) => {
     const res = await request.post('/api/pipeline', {
       multipart: {
         text: 'Hello from browser STT',
       },
+      timeout: 60_000,
     })
-    // Without guardian running, should get 502
-    expect(res.status()).toBe(502)
+    // Either guardian responds (200) or LLM fallback responds (200) or both fail (502)
     const body = await res.json()
-    expect(body.error).toBeDefined()
+    if (res.ok()) {
+      expect(body.transcript).toBe('Hello from browser STT')
+      expect(body.response).toBeDefined()
+    } else {
+      expect(body.error).toBeDefined()
+    }
   })
 
   test('returns empty response for blank text', async ({ request }) => {

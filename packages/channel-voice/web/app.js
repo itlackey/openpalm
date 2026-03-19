@@ -18,9 +18,12 @@
   var inputVoice = document.getElementById('setting-voice')
   var inputHaptic = document.getElementById('setting-haptic')
   var inputWakelock = document.getElementById('setting-wakelock')
+  var inputContinuous = document.getElementById('setting-continuous')
+  var continuousBtn = document.getElementById('continuous-btn')
 
   // --- State ---
   var state = 'idle'
+  var continuous = false
   var recorder = null
   var chunks = []
   var wakeLock = null
@@ -41,9 +44,11 @@
       inputVoice.value = s.voice || ''
       inputHaptic.checked = s.haptic !== false
       inputWakelock.checked = s.wakelock !== false
+      inputContinuous.checked = !!s.continuous
     } catch (_) {
       inputHaptic.checked = true
       inputWakelock.checked = true
+      inputContinuous.checked = false
     }
   }
 
@@ -51,8 +56,10 @@
     localStorage.setItem('voice-settings', JSON.stringify({
       voice: inputVoice.value,
       haptic: inputHaptic.checked,
-      wakelock: inputWakelock.checked
+      wakelock: inputWakelock.checked,
+      continuous: inputContinuous.checked
     }))
+    setContinuous(inputContinuous.checked)
   }
 
   function getSetting(key) {
@@ -60,9 +67,18 @@
       var s = JSON.parse(localStorage.getItem('voice-settings') || '{}')
       if (key === 'haptic') return s.haptic !== false
       if (key === 'wakelock') return s.wakelock !== false
+      if (key === 'continuous') return !!s.continuous
       return s[key] || ''
     } catch (_) {
-      return key === 'voice' ? '' : true
+      return key === 'voice' ? '' : (key === 'continuous' ? false : true)
+    }
+  }
+
+  function setContinuous(enabled) {
+    continuous = enabled
+    continuousBtn.setAttribute('aria-pressed', String(enabled))
+    if (enabled && state === 'idle') {
+      startRecording()
     }
   }
 
@@ -223,16 +239,22 @@
       recognition.lang = navigator.language || 'en-US'
       recognition.interimResults = false
       recognition.maxAlternatives = 1
+      var gotResult = false
       recognition.onresult = function (event) {
+        gotResult = true
         var text = event.results[0][0].transcript
         resolve(text)
       }
       recognition.onerror = function (event) {
-        reject(new Error('Speech recognition error: ' + event.error))
+        // no-speech and aborted are normal in continuous mode — treat as empty
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          resolve('')
+        } else {
+          reject(new Error('Speech recognition error: ' + event.error))
+        }
       }
       recognition.onend = function () {
-        // If no result was captured, resolve with empty string
-        resolve('')
+        if (!gotResult) resolve('')
       }
       recognition.start()
     })
@@ -301,8 +323,13 @@
       releaseWakeLock()
 
       if (!text || !text.trim()) {
-        addLog('SYS', 'No speech detected')
-        setState('idle', 'ready')
+        if (continuous) {
+          setState('idle', 'listening...')
+          setTimeout(function () { startRecording() }, 300)
+        } else {
+          addLog('SYS', 'No speech detected')
+          setState('idle', 'ready')
+        }
         return
       }
 
@@ -374,6 +401,11 @@
 
       setState('idle', 'ready')
       haptic(30)
+
+      // Auto-restart if continuous listening is on
+      if (continuous) {
+        setTimeout(function () { startRecording() }, 300)
+      }
     } catch (err) {
       addLog('ERR', 'Request failed: ' + err.message)
       setState('idle', 'offline')
@@ -394,6 +426,8 @@
 
   function stopRecording() {
     if (state !== 'recording') return
+    // If user manually stops, also turn off continuous
+    if (continuous) setContinuous(false)
     if (recorder) {
       stopRecordingAndSendAudio()
     }
@@ -416,6 +450,16 @@
       e.preventDefault()
       toggleRecording()
     }
+  })
+
+  continuousBtn.addEventListener('click', function () {
+    setContinuous(!continuous)
+    // Persist to settings
+    try {
+      var s = JSON.parse(localStorage.getItem('voice-settings') || '{}')
+      s.continuous = continuous
+      localStorage.setItem('voice-settings', JSON.stringify(s))
+    } catch (_) {}
   })
 
   settingsBtn.addEventListener('click', function () {
@@ -468,6 +512,8 @@
 
   // --- Init ---
   loadSettings()
+  continuous = getSetting('continuous')
+  continuousBtn.setAttribute('aria-pressed', String(continuous))
   setState('idle', navigator.onLine ? 'ready' : 'offline')
   addLog('SYS', 'Voice channel ready. Tap the microphone or press Space to begin.')
   checkCapabilities()
