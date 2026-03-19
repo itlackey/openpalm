@@ -22,7 +22,7 @@ These are hard constraints that must never be violated during development:
 
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. The admin container, when present, provides a web UI and API for remote/assistant-driven stack operations via docker-socket-proxy. Only one orchestrator should manage compose operations at a time. The Docker socket is never exposed to any other container.
 2. **Guardian-only ingress.** All channel traffic enters through the guardian, which enforces HMAC verification, timestamp skew rejection, replay detection, and rate limiting. No channel may communicate directly with the assistant.
-3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`DATA_HOME/assistant`, `CONFIG_HOME/assistant`, `DATA_HOME/opencode`, `STATE_HOME/opencode`, `WORK_DIR`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
+3. **Assistant isolation.** The assistant has no Docker socket, no host filesystem access beyond its designated mounts (`config/` ro, `vault/user.env` ro, `data/assistant/`, `data/stash/`, `data/workspace/`, `logs/opencode/`). When the admin service is present, the assistant interacts with the stack through the admin API. When admin is absent, assistant stack-management tools are unavailable — the assistant operates with memory tools only.
 4. **LAN-first by default.** Admin interfaces, dashboards, and channels are LAN-restricted by default. Nothing is publicly exposed without explicit user opt-in.
 
 ---
@@ -122,6 +122,42 @@ Bind-mounting a host path over a container path **obscures** pre-existing contai
 ### F) User accessibility
 
 All host-mounted directories must remain readable/writable by the host user (ownership/permissions policy is part of the contract). The purpose is to allow users to easily view logs, edit files, and backup and restore these files.
+
+---
+
+## Shared control-plane library (`@openpalm/lib`)
+
+All portable control-plane logic — lifecycle management, component operations, secret resolution, path helpers, validation, Docker invocation, and configuration assembly — lives in `packages/lib/` (`@openpalm/lib`). Both the CLI and admin import from this package. **No control-plane logic may be duplicated between consumers.**
+
+**Rules:**
+
+* New control-plane functionality MUST be implemented in `@openpalm/lib`, not in CLI or admin source directly.
+* The CLI calls lib functions directly. The admin calls them from API route handlers. The scheduler calls them for automation execution. All get identical behavior.
+* If a function exists in the admin that should be reusable (e.g., compose invocation, env file parsing, component discovery), it must be extracted to lib.
+* Thin wrapper modules in consumers (e.g., `packages/admin/src/lib/server/control-plane.ts`) are acceptable for re-exporting lib symbols with consumer-specific initialization, but must not contain independent logic.
+* Test coverage for control-plane logic belongs in lib's test suite, not duplicated across consumer test suites.
+
+**Rationale:** The CLI must work without the admin container. The admin must work without the CLI. The scheduler must work without either. If control-plane logic is scattered across consumers, these guarantees break and behavior diverges.
+
+---
+
+## Service port assignments
+
+All OpenPalm services use the **38XX port range** to avoid conflicts with common development tools and other self-hosted services.
+
+| Service | Internal Port | Default Host Bind | Purpose |
+|---------|--------------|-------------------|---------|
+| **Assistant** (OpenCode) | 3800 | `127.0.0.1:3800` | OpenCode web UI + API |
+| **Voice channel** | 3810 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
+| **Admin** | 3880 | `127.0.0.1:3880` | Admin UI + API |
+| **Admin OpenCode** (#304) | 3881 | `127.0.0.1:3881` | Brokered admin OpenCode instance |
+| **Ingress** (Caddy) | 80 | `127.0.0.1:3880` → Caddy → services | Reverse proxy (maps to 38XX internally) |
+| **Guardian** | 3899 | (internal only) | HMAC verification + rate limiting |
+| **Scheduler** | 3897 | (internal only) | Automation scheduler |
+| **Memory** | 3898 | (internal only) | Memory service API |
+| **Channel Chat** | 3820 | (internal only) | Chat channel adapter |
+
+Port assignments are defined via `OPENPALM_*_PORT` variables in `vault/system.env` and referenced in compose files via `${VAR}` substitution. The ingress port (Caddy's external bind) defaults to `3880` but is configurable via `OPENPALM_INGRESS_PORT`.
 
 ---
 

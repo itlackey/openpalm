@@ -349,7 +349,9 @@ The core abstraction that makes provider swap possible.
 
 ### 2.1 — `SecretBackend` interface
 
-**File:** `packages/admin/src/lib/server/secret-backend.ts`
+**File:** `packages/lib/src/control-plane/secret-backend.ts`
+
+> **Lib-first rule:** The `SecretBackend` interface and all implementations (`PlaintextBackend`, `PassBackend`) live in `@openpalm/lib`, not in admin. Both CLI and admin import from lib. The admin re-exports via its barrel (`packages/admin/src/lib/server/control-plane.ts`) for convenience but adds no independent logic.
 
 ```typescript
 /**
@@ -631,7 +633,7 @@ export class PlaintextBackend implements SecretBackend {
 
 ### 2.3 — Backend registry and auto-detection
 
-**File:** `packages/admin/src/lib/server/secret-backend-registry.ts`
+**File:** `packages/lib/src/control-plane/secret-backend-registry.ts`
 
 ```typescript
 import type { SecretBackend } from "./secret-backend.js";

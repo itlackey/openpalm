@@ -166,14 +166,16 @@ FS Refactor (Phase 0)
 
 ## Phasing
 
-### Phase 0: Filesystem Refactor (Week 1-2)
+### Phase 0: Filesystem Refactor + Port Standardization (Week 1-2)
 
 - Implement `~/.openpalm/` directory structure
 - Implement vault boundary and two-file env model
 - Rewrite `paths.ts` → `home.ts`, eliminate `staging.ts`
 - Implement validate-in-place + rollback
 - Implement `openpalm migrate` tool
-- Update compose files for new bind mount paths
+- Update compose files for new bind mount paths and 38XX port range
+- Standardize all service ports: assistant=3800, chat=3820, admin=3880, admin-opencode=3881, scheduler=3897, memory=3898, guardian=3899
+- Update Caddyfile upstreams, healthchecks, and test fixtures for new ports
 - Update dev-setup.sh for new layout
 
 ### Phase 1: Component System Core (Week 2-4)
@@ -214,6 +216,47 @@ FS Refactor (Phase 0)
 
 ---
 
+## Cross-Cutting: Shared Library Enforcement
+
+All control-plane logic MUST live in `packages/lib/` (`@openpalm/lib`). This is not new — it's an existing rule — but 0.10.0 reinforces it as a hard constraint because the component system, secrets backend, filesystem refactor, and validation/rollback pipeline all introduce substantial new functionality that CLI, admin, and scheduler must share.
+
+**Rule:** When implementing any feature from this roadmap, place the logic in `@openpalm/lib` first. CLI and admin are thin consumers that call lib functions — CLI calls them directly, admin calls them from API route handlers. No independent control-plane logic in consumers.
+
+See `docs/technical/core-principles.md` § "Shared control-plane library" for the full rule.
+
+---
+
+## Cross-Cutting: Port Standardization (38XX Range)
+
+All services move to the **38XX port range** to avoid conflicts with common dev tools and other self-hosted services.
+
+| Service | Old Port | New Port | Notes |
+|---------|----------|----------|-------|
+| Assistant (OpenCode) | 4096 | **3800** | Web UI + API |
+| Voice channel | — | **3810** | New in 0.10.0 (default for #302 when it ships) |
+| Chat channel | 8080 | **3820** | Channel adapter |
+| Admin UI + API | 8100 | **3880** | SvelteKit server |
+| Admin OpenCode | 4097 | **3881** | Brokered instance (#304) |
+| Scheduler | 8090 | **3897** | Internal only |
+| Memory | 8080 | **3898** | Internal only |
+| Guardian | 8080 | **3899** | HMAC verification |
+| Ingress (Caddy) | 8080 | **3880** | Configurable via `OPENPALM_INGRESS_PORT` |
+
+**Implementation tasks:**
+- Update `assets/docker-compose.yml` — all `PORT` env vars and host port binds
+- Update `assets/admin.yml` — admin port, admin OpenCode port, Caddy upstream
+- Update `assets/Caddyfile` — `reverse_proxy admin:3880`
+- Update `vault/system.env` template — `OPENPALM_INGRESS_PORT=3880`
+- Update all healthcheck commands referencing old ports
+- Update `packages/lib/` constants (if any hardcoded port references exist)
+- Update channel compose overlays in `registry/components/`
+- Update `CLAUDE.md` dev commands and key URLs
+- Update test fixtures and E2E test URLs
+
+This is a mechanical change with no architectural risk. It ships as part of Phase 0 (filesystem refactor) since compose files are being rewritten anyway.
+
+---
+
 ## Breaking Changes
 
 | Change | Impact | Migration |
@@ -223,6 +266,7 @@ FS Refactor (Phase 0)
 | Staging tier eliminated | STATE_HOME no longer exists | Automatic (staging was system-internal) |
 | Legacy channels removed | `CONFIG_HOME/channels/*.yml` no longer loaded | Reinstall as components via admin UI or CLI |
 | ADMIN_TOKEN / ASSISTANT_TOKEN split | Scripts using ADMIN_TOKEN for assistant calls | Update to ASSISTANT_TOKEN where appropriate |
+| Service ports move to 38XX range | All port references (scripts, bookmarks, configs) | Assistant 4096→3800, Admin 8100→3880, Guardian 8080→3899 |
 
 ---
 

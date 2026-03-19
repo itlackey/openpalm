@@ -619,6 +619,8 @@ That's it. No code changes. No admin UI changes. The discovery scan picks it up 
 
 The CLI (`packages/cli/`) must support the full component lifecycle without requiring the admin container. Both CLI and admin import from `@openpalm/lib`, so the component logic lives in lib and is consumed by both.
 
+**Lib-first rule (mandatory):** ALL component lifecycle logic — discovery, instance creation, validation, compose chain building, enabled.json persistence, Caddy route management — MUST be implemented in `packages/lib/src/control-plane/`. The CLI and admin are thin consumers. The CLI calls lib functions directly. The admin calls them from API route handlers. Neither may contain independent control-plane logic. This ensures identical behavior regardless of whether the user manages their stack via CLI or admin UI.
+
 ### CLI Commands
 
 ```
