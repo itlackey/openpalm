@@ -298,28 +298,28 @@ cat >"${OPENPALM_DATA_HOME}/memory/default_config.json" <<'MEMCFG'
 {
   "mem0": {
     "llm": {
-      "provider": "openai",
+      "provider": "ollama",
       "config": {
         "model": "qwen2.5-coder:3b",
         "temperature": 0.1,
         "max_tokens": 2000,
-        "api_key": "ollama",
-        "openai_base_url": "http://host.docker.internal:11434/v1"
+        "api_key": "not-needed",
+        "openai_base_url": "http://host.docker.internal:11434"
       }
     },
     "embedder": {
-      "provider": "openai",
+      "provider": "ollama",
       "config": {
-        "model": "nomic-embed-text",
-        "api_key": "ollama",
-        "openai_base_url": "http://host.docker.internal:11434/v1"
+        "model": "nomic-embed-text:latest",
+        "api_key": "not-needed",
+        "openai_base_url": "http://host.docker.internal:11434"
       }
     },
     "vector_store": {
-      "provider": "qdrant",
+      "provider": "sqlite-vec",
       "config": {
         "collection_name": "memory",
-        "path": "/data/qdrant",
+        "db_path": "/data/memory.db",
         "embedding_model_dims": 768
       }
     }

@@ -12,7 +12,7 @@ v0.10.0 is a structural release that rebuilds the extension model, filesystem la
 
 1. **Unified Component System** — replaces the legacy channel/service distinction with a single "component" abstraction backed by compose overlays and `.env.schema` config forms
 2. **Filesystem Simplification** — collapses three XDG directories into `~/.openpalm/` with a vault-based secrets boundary, eliminates the staging tier, adds validate-in-place with snapshot rollback
-3. **Secrets Management** — splits secrets into `user.env` (hot-reloadable LLM keys) and `system.env` (admin-managed tokens), introduces ADMIN_TOKEN/ASSISTANT_TOKEN split, adds pluggable encrypted backend via `pass`
+3. **Secrets Management** — splits secrets into `user.env` (hot-reloadable user keys) and `system.env` (admin-managed tokens), introduces ADMIN_TOKEN/ASSISTANT_TOKEN split, adds pluggable encrypted backend via `pass`
 
 ---
 
@@ -25,6 +25,7 @@ v0.10.0 is a structural release that rebuilds the extension model, filesystem la
 The cornerstone of v0.10.0. Every optional container — channels, services, infrastructure — becomes a "component" with a standardized directory structure: `compose.yml` + `.env.schema` + optional `.caddy`.
 
 **Deliverables:**
+
 - Component lifecycle: create, configure, start, stop, delete, archive
 - Admin API: `/api/components`, `/api/instances`, config form generation from `.env.schema`
 - Admin UI: Components tab replacing Containers + Registry
@@ -48,6 +49,7 @@ The cornerstone of v0.10.0. Every optional container — channels, services, inf
 Introduces a provider-agnostic secrets backend with `PlaintextBackend` as default and `pass` (GPG-encrypted) as opt-in.
 
 **Deliverables:**
+
 - **Phase 0:** Varlock hardening — file permissions (`0o600`), redact schema for log safety
 - **Phase 1:** Auth refactor — ADMIN_TOKEN / ASSISTANT_TOKEN split across all admin routes, guardian, and scheduler
 - **Phase 2:** Secret backend abstraction — `SecretBackend` interface + `PlaintextBackend` handling `vault/user.env` + `vault/system.env`
@@ -67,6 +69,7 @@ Introduces a provider-agnostic secrets backend with `PlaintextBackend` as defaul
 Replaces the three-tier XDG layout with a single `~/.openpalm/` root. Unanimously approved by all 5 review agents.
 
 **Deliverables:**
+
 - **Single root:** `~/.openpalm/` with `config/`, `vault/`, `data/`, `logs/`
 - **Vault boundary:** `vault/user.env` (user-editable LLM keys) + `vault/system.env` (system-managed tokens). Admin mounts full vault rw; assistant mounts only `user.env` ro; no other container mounts vault
 - **Staging elimination:** replace CONFIG→STATE copy pipeline with validate-in-place + `~/.cache/openpalm/rollback/` snapshot
@@ -89,6 +92,7 @@ Replaces the three-tier XDG layout with a single `~/.openpalm/` root. Unanimousl
 Adds OpenViking as an optional knowledge component with assistant tool integration.
 
 **Deliverables:**
+
 - **Phase 1A:** Viking component directory — `registry/components/openviking/compose.yml` + `.env.schema`
 - **Phase 1B:** Viking assistant tools — `vikingFetch()` + 6 tool wrappers (add-resource, search, get-resource, list-resources, add-session-memory, search-sessions)
 - **Phase 1C:** Session memory extraction — conditional hooks in `MemoryContextPlugin` for Viking session commit
@@ -108,12 +112,14 @@ Adds OpenViking as an optional knowledge component with assistant tool integrati
 Embeds an admin-authorized OpenCode instance inside the admin container for diagnostics and configuration help.
 
 **Deliverables:**
+
 - **Phase 1:** Foundations — path helpers, config seeding, supervisor/broker module, status/start APIs, OpenCode/Bun installation in admin Dockerfile (runtime only, not build tool)
 - **Phase 2:** Admin-authorized diagnostics — user and assistant sessions, message proxying via `POST /admin/elevated/session/:id/message`, diagnostics and configuration help
 
 **Deferred to 0.11.0:** Phase 3 (Admin-mediated remediation), Phase 4 (Hardening — session TTL, one-shot grants)
 
 **Key design decisions:**
+
 - Uses ADMIN_TOKEN (full admin-level agent, not assistant) — [review-decisions.md Q4](review-decisions.md)
 - Shell automation fallback ensures eval/maintenance work without it — [review-decisions.md Q5](review-decisions.md)
 
@@ -126,6 +132,7 @@ Embeds an admin-authorized OpenCode instance inside the admin container for diag
 Pure additive deployment target — Azure Container Apps with Key Vault integration. Develops independently of all other 0.10.0 work.
 
 **Deliverables:**
+
 - Deployment script (`deploy/azure/deploy-aca.sh`) with Key Vault managed identity
 - ARM/Bicep templates or az CLI automation
 - Channel management via `deploy-aca.sh add-channel`
@@ -160,6 +167,7 @@ FS Refactor (Phase 0)
 ## Phasing
 
 ### Phase 0: Filesystem Refactor (Week 1-2)
+
 - Implement `~/.openpalm/` directory structure
 - Implement vault boundary and two-file env model
 - Rewrite `paths.ts` → `home.ts`, eliminate `staging.ts`
@@ -169,6 +177,7 @@ FS Refactor (Phase 0)
 - Update dev-setup.sh for new layout
 
 ### Phase 1: Component System Core (Week 2-4)
+
 - Component type definitions in `@openpalm/lib`
 - Instance lifecycle (create, configure, start, stop, delete)
 - `enabled.json` persistence, compose overlay chain builder
@@ -177,6 +186,7 @@ FS Refactor (Phase 0)
 - Registry migration (`registry/channels/` → `registry/components/`)
 
 ### Phase 2: Secrets & Auth (Week 3-5, parallel with Phase 1)
+
 - #300 Phase 0: File permissions hardening
 - #300 Phase 1: ADMIN_TOKEN / ASSISTANT_TOKEN split
 - #300 Phase 2-3: SecretBackend + PlaintextBackend + PassBackend
@@ -184,6 +194,7 @@ FS Refactor (Phase 0)
 - Hot-reload file watcher for `vault/user.env`
 
 ### Phase 3: Admin UI + Features (Week 4-6)
+
 - Components tab (replaces Containers + Registry tabs)
 - `.env.schema` form renderer with `@sensitive` handling
 - Setup wizard component selection step
@@ -191,12 +202,14 @@ FS Refactor (Phase 0)
 - #304 Phase 1-2: Brokered admin OpenCode instance
 
 ### Phase 4: Viking + Polish (Week 5-7)
+
 - #298 Phase 1A-1D: Viking component + assistant tools
 - Registry CI validation for component directories
 - Component testing (unit, E2E lifecycle, migration regression)
 - Documentation: upgrade guide, component developer guide, release notes
 
 ### Phase 5: Azure (parallel track)
+
 - #315: ACA deployment script, Key Vault integration, docs
 
 ---
