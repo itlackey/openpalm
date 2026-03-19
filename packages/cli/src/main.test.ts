@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { detectHostInfo, main, reconcileStackEnvImageTag, resolveRequestedImageTag, upsertEnvValue } from './main.ts';
 
 // Helpers to mock Bun.spawn and Bun.which for tests that would otherwise
@@ -228,6 +229,61 @@ describe('npm bin launcher', () => {
     const launcher = readFileSync(new URL('../bin/openpalm.js', import.meta.url), 'utf8');
 
     expect(launcher.startsWith('#!/usr/bin/env bun\n')).toBe(true);
+  });
+
+  it('packs a real semver range for @openpalm/lib so published installs can resolve the latest compatible lib', {
+    timeout: 15000,
+  }, () => {
+    const cliPkg = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as {
+      dependencies?: Record<string, string>;
+    };
+    const libPkg = JSON.parse(
+      readFileSync(new URL('../../lib/package.json', import.meta.url), 'utf8'),
+    ) as {
+      version: string;
+    };
+    const expectedRange = `>=${libPkg.version} <1.0.0`;
+
+    expect(cliPkg.dependencies?.['@openpalm/lib']).toBe(expectedRange);
+
+    const packageDir = fileURLToPath(new URL('../', import.meta.url));
+    const packDir = mkdtempSync(join(tmpdir(), 'openpalm-cli-pack-'));
+
+    try {
+      const pack = Bun.spawnSync(
+        [process.execPath, 'pm', 'pack', '--destination', packDir, '--quiet'],
+        {
+          cwd: packageDir,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      );
+
+      expect(pack.exitCode).toBe(0);
+
+      const tarball = readdirSync(packDir).find((name) => name.endsWith('.tgz'));
+      expect(tarball).toBeDefined();
+
+      const extract = Bun.spawnSync(
+        ['tar', '-xOf', join(packDir, tarball ?? ''), 'package/package.json'],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      );
+
+      expect(extract.exitCode).toBe(0);
+
+      const packedPkg = JSON.parse(new TextDecoder().decode(extract.stdout)) as {
+        dependencies?: Record<string, string>;
+      };
+
+      expect(packedPkg.dependencies?.['@openpalm/lib']).toBe(expectedRange);
+    } finally {
+      rmSync(packDir, { recursive: true, force: true });
+    }
   });
 });
 
