@@ -24,6 +24,7 @@ import { isSetupComplete } from "./setup-status.js";
 import {
   performSetup,
   buildSecretsFromSetup,
+  buildSystemSecretsFromSetup,
   buildConnectionEnvVarMap,
 } from "./setup.js";
 import type { SetupInput, SetupConnection } from "./setup.js";
@@ -474,12 +475,7 @@ describe("Broken/Corrupt State", () => {
   it("isSetupComplete falls back to true when admin token is set but OPENPALM_SETUP_COMPLETE missing", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_IMAGE_TAG=latest\n"
-    );
-
-    writeFileSync(
-      join(vaultDir, "user.env"),
-      "export OPENPALM_ADMIN_TOKEN=my-real-token\n"
+      "OPENPALM_IMAGE_TAG=latest\nexport OPENPALM_ADMIN_TOKEN=my-real-token\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
@@ -578,16 +574,7 @@ describe("Environment Edge Cases", () => {
   it("isSetupComplete detects OPENPALM_ADMIN_TOKEN when ADMIN_TOKEN is commented out", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "SOME_OTHER_KEY=value\n"
-    );
-
-    writeFileSync(
-      join(vaultDir, "user.env"),
-      [
-        "export OPENPALM_ADMIN_TOKEN=real-token-here",
-        "# export ADMIN_TOKEN=",
-        "",
-      ].join("\n")
+      "SOME_OTHER_KEY=value\nexport OPENPALM_ADMIN_TOKEN=real-token-here\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
@@ -856,12 +843,13 @@ describe("performSetup end-to-end artifacts", () => {
     expect(existsSync(join(dataDir, "caddy", "Caddyfile"))).toBe(true);
   });
 
-  it("writes user.env with correct admin token to both OPENPALM_ADMIN_TOKEN and ADMIN_TOKEN", async () => {
+  it("writes admin and assistant tokens to system.env", async () => {
     await performSetup(makeValidInput(), createStubAssetProvider());
 
-    const secrets = parseEnvFile(join(vaultDir, "user.env"));
+    const secrets = parseEnvFile(join(vaultDir, "system.env"));
     expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
-    expect(secrets.ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(typeof secrets.ASSISTANT_TOKEN).toBe("string");
+    expect(secrets.ASSISTANT_TOKEN).not.toBe("test-admin-token-12345");
   });
 
   it("creates connection profiles document with correct assignments", async () => {
@@ -1081,11 +1069,7 @@ describe("isSetupComplete edge cases", () => {
   it("falls back to OPENPALM_ADMIN_TOKEN presence when OPENPALM_SETUP_COMPLETE not in system.env", () => {
     writeFileSync(
       join(vaultDir, "system.env"),
-      "OPENPALM_IMAGE_TAG=latest\n"
-    );
-    writeFileSync(
-      join(vaultDir, "user.env"),
-      "export OPENPALM_ADMIN_TOKEN=my-admin-token\n"
+      "OPENPALM_IMAGE_TAG=latest\nexport OPENPALM_ADMIN_TOKEN=my-admin-token\n"
     );
 
     expect(isSetupComplete(vaultDir)).toBe(true);
@@ -1147,6 +1131,19 @@ describe("buildSecretsFromSetup edge cases", () => {
       expect(secrets.SYSTEM_LLM_PROVIDER).toBe(provider);
       expect(secrets[envKey]).toBe("sk-test");
     }
+  });
+});
+
+describe("buildSystemSecretsFromSetup edge cases", () => {
+  it("reuses existing assistant and memory tokens when provided", () => {
+    const input = makeValidInput();
+    const secrets = buildSystemSecretsFromSetup(input, {
+      ASSISTANT_TOKEN: "existing-assistant-token",
+      MEMORY_AUTH_TOKEN: "existing-memory-token",
+    });
+    expect(secrets.OPENPALM_ADMIN_TOKEN).toBe("test-admin-token-12345");
+    expect(secrets.ASSISTANT_TOKEN).toBe("existing-assistant-token");
+    expect(secrets.MEMORY_AUTH_TOKEN).toBe("existing-memory-token");
   });
 });
 

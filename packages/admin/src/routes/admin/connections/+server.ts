@@ -1,6 +1,6 @@
 /**
  * GET  /admin/connections — Return current connection config values (masked).
- * POST /admin/connections — Patch secrets.env with provided connection keys,
+ * POST /admin/connections — Patch vault/user.env with provided connection keys,
  *       or perform a unified system connection save when `provider` key is present.
  *
  * Only keys in ALLOWED_CONNECTION_KEYS are readable/writable via this endpoint.
@@ -62,7 +62,7 @@ export const GET: RequestHandler = async (event) => {
   const actor = getActor(event);
   const callerType = getCallerType(event);
 
-  const raw = readSecretsEnvFile(state.configDir);
+  const raw = readSecretsEnvFile(state.vaultDir);
   const connections: Record<string, string> = {};
   for (const key of ALLOWED_CONNECTION_KEYS) {
     const value = raw[key] ?? "";
@@ -131,14 +131,14 @@ export const POST: RequestHandler = async (event) => {
   }
 
   try {
-    patchSecretsEnvFile(state.configDir, patches);
+    patchSecretsEnvFile(state.vaultDir, patches);
   } catch (err) {
     appendAudit(
       state, actor, "connections.patch",
       { keys: Object.keys(patches), error: String(err) },
       false, requestId, callerType
     );
-    return errorResponse(500, "internal_error", "Failed to update secrets.env", {}, requestId);
+    return errorResponse(500, "internal_error", "Failed to update vault/user.env", {}, requestId);
   }
 
   appendAudit(
@@ -182,7 +182,7 @@ async function handleUnifiedSave(
     return errorResponse(400, 'bad_request', capabilitiesValidation.message, {}, requestId);
   }
 
-  // 1. Build secrets.env patches
+  // 1. Build vault/user.env patches
   const patches: Record<string, string> = {};
 
   // Map provider → env var, patch API key
@@ -207,14 +207,14 @@ async function handleUnifiedSave(
   patches.MEMORY_USER_ID = memoryUserId;
 
   try {
-    patchSecretsEnvFile(state.configDir, patches);
+    patchSecretsEnvFile(state.vaultDir, patches);
   } catch (err) {
     appendAudit(
       state, actor, "connections.unified",
       { provider, error: String(err) },
       false, requestId, callerType
     );
-    return errorResponse(500, "internal_error", "Failed to update secrets.env", {}, requestId);
+    return errorResponse(500, "internal_error", "Failed to update vault/user.env", {}, requestId);
   }
 
   // 2. Build and write Memory config
@@ -365,7 +365,7 @@ async function handleCanonicalDtoSave(
   }
 
   try {
-    patchSecretsEnvFile(state.configDir, patches);
+    patchSecretsEnvFile(state.vaultDir, patches);
     writeConnectionProfilesDocument(state.configDir, {
       version: 1,
       profiles: parsedProfiles,

@@ -18,7 +18,7 @@ import {
   resolveLogsDir,
   resolveCacheHome,
 } from "./home.js";
-import { loadSecretsEnvFile } from "./secrets.js";
+import { ensureSecrets, loadSecretsEnvFile, readSystemSecretsEnvFile, updateSystemSecretsEnv } from "./secrets.js";
 import {
   resolveArtifacts,
   persistConfiguration,
@@ -51,21 +51,15 @@ export function createState(
   const logsDir = resolveLogsDir();
   const cacheDir = resolveCacheHome();
 
-  const fileEnv = loadSecretsEnvFile(vaultDir);
-  const resolvedAdminToken =
-    adminToken ?? fileEnv.OPENPALM_ADMIN_TOKEN ?? fileEnv.ADMIN_TOKEN ?? process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "";
-
   const services: Record<string, "running" | "stopped"> = {};
   for (const name of CORE_SERVICES) {
     services[name] = "stopped";
   }
 
-  const persistedSecrets = loadPersistedChannelSecrets(vaultDir);
-  const channelSecrets: Record<string, string> = { ...persistedSecrets };
-
   const setupToken = randomHex(16);
-  const state: ControlPlaneState = {
-    adminToken: resolvedAdminToken,
+  const bootstrapState: ControlPlaneState = {
+    adminToken: adminToken ?? process.env.OPENPALM_ADMIN_TOKEN ?? process.env.ADMIN_TOKEN ?? "",
+    assistantToken: "",
     setupToken,
     homeDir,
     configDir,
@@ -77,12 +71,46 @@ export function createState(
     artifacts: { compose: "", caddyfile: "" },
     artifactMeta: [],
     audit: [],
-    channelSecrets
+    channelSecrets: {},
   };
 
-  writeSetupTokenFile(state);
+  ensureSecrets(bootstrapState);
 
-  return state;
+  const fileEnv = loadSecretsEnvFile(vaultDir);
+  const systemEnv = readSystemSecretsEnvFile(vaultDir);
+  // Precedence: explicit parameter > system.env > user.env > process.env.
+  bootstrapState.adminToken =
+    adminToken
+      ?? systemEnv.OPENPALM_ADMIN_TOKEN
+      ?? systemEnv.ADMIN_TOKEN
+      ?? fileEnv.OPENPALM_ADMIN_TOKEN
+      ?? fileEnv.ADMIN_TOKEN
+      ?? process.env.OPENPALM_ADMIN_TOKEN
+      ?? process.env.ADMIN_TOKEN
+      ?? "";
+  bootstrapState.assistantToken =
+    systemEnv.ASSISTANT_TOKEN
+      ?? process.env.ASSISTANT_TOKEN
+      ?? "";
+
+  // Backfill: if admin token was resolved from user.env (legacy) but not in
+  // system.env, migrate it so system-managed credentials don't live in the
+  // user-editable file indefinitely.
+  if (
+    bootstrapState.adminToken &&
+    !systemEnv.OPENPALM_ADMIN_TOKEN &&
+    (fileEnv.OPENPALM_ADMIN_TOKEN || fileEnv.ADMIN_TOKEN)
+  ) {
+    updateSystemSecretsEnv(bootstrapState, { OPENPALM_ADMIN_TOKEN: bootstrapState.adminToken });
+  }
+
+  bootstrapState.channelSecrets = {
+    ...loadPersistedChannelSecrets(vaultDir),
+  };
+
+  writeSetupTokenFile(bootstrapState);
+
+  return bootstrapState;
 }
 
 /**

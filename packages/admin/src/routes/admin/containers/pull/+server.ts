@@ -2,7 +2,7 @@ import {
   getRequestId,
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getActor,
   getCallerType
 } from "$lib/server/helpers.js";
@@ -17,7 +17,7 @@ const logger = createLogger("containers-pull");
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   logger.info("pull request received", { requestId });
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();

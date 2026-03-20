@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("ensureSecrets", () => {
-  test("seeds user.env with default keys on first run", () => {
+  test("seeds vault env files with default keys on first run", () => {
     const vaultDir = join(rootDir, "vault");
     mkdirSync(vaultDir, { recursive: true });
 
@@ -34,8 +34,28 @@ describe("ensureSecrets", () => {
 
     ensureSecrets(state);
 
-    const secrets = readFileSync(join(vaultDir, "user.env"), "utf-8");
-    expect(secrets).toContain("OPENAI_API_KEY=");
-    expect(secrets).toContain("EMBEDDING_MODEL=");
+    const userEnv = readFileSync(join(vaultDir, "user.env"), "utf-8");
+    const systemEnv = readFileSync(join(vaultDir, "system.env"), "utf-8");
+    expect(userEnv).toContain("OPENAI_API_KEY=");
+    expect(userEnv).toContain("EMBEDDING_MODEL=");
+    expect(systemEnv).toContain("OPENPALM_ADMIN_TOKEN=");
+    expect(systemEnv).toContain("ASSISTANT_TOKEN=");
+    expect(systemEnv).toContain("MEMORY_AUTH_TOKEN=");
+    expect(existsSync(join(vaultDir, "system.env"))).toBe(true);
+  });
+
+  test("applies strict permissions to vault files", () => {
+    const vaultDir = join(rootDir, "vault");
+    const state = {
+      configDir: join(rootDir, "config"),
+      vaultDir,
+      adminToken: "preconfigured-token"
+    } as ControlPlaneState;
+
+    ensureSecrets(state);
+
+    expect(statSync(vaultDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(vaultDir, "user.env")).mode & 0o777).toBe(0o600);
+    expect(statSync(join(vaultDir, "system.env")).mode & 0o777).toBe(0o600);
   });
 });

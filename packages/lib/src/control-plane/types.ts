@@ -115,6 +115,7 @@ export type ArtifactMeta = {
 
 export type ControlPlaneState = {
   adminToken: string;
+  assistantToken: string;
   setupToken: string;
   homeDir: string;
   configDir: string;

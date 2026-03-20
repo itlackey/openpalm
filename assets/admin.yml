@@ -86,6 +86,13 @@ services:
       - ${OPENPALM_HOME}/data/admin:/home/node
       - ${OPENPALM_HOME}/data/workspace:/work
       - ${HOME}/.cache/openpalm/registry:/cache/registry
+      # GPG agent socket for pass backend (read-only; only needed when pass is active)
+      - type: bind
+        source: ${GNUPGHOME:-${HOME}/.gnupg}
+        target: /home/node/.gnupg
+        read_only: true
+        bind:
+          create_host_path: true
     networks: [ assistant_net, admin_docker_net ]
     depends_on:
       docker-socket-proxy:

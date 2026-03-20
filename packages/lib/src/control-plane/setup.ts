@@ -8,6 +8,7 @@
  * — those happen separately in the caller after setup completes.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { createLogger } from "../logger.js";
 import {
   PROVIDER_KEY_MAP,
@@ -19,7 +20,9 @@ import { ensureHomeDirs } from "./home.js";
 import {
   ensureSecrets,
   updateSecretsEnv,
+  updateSystemSecretsEnv,
   ensureOpenCodeConfig,
+  readSystemSecretsEnvFile,
 } from "./secrets.js";
 import { ensureConnectionProfilesStore, writeConnectionsDocument } from "./connection-profiles.js";
 import { buildMem0Mapping } from "./connection-mapping.js";
@@ -368,10 +371,6 @@ export function validateSetupInput(input: unknown): { valid: boolean; errors: st
 export function buildSecretsFromSetup(input: SetupInput): Record<string, string> {
   const updates: Record<string, string> = {};
 
-  // Admin token
-  updates.OPENPALM_ADMIN_TOKEN = input.adminToken;
-  updates.ADMIN_TOKEN = input.adminToken;
-
   // Owner info — strip control characters to prevent env-file injection
   const ownerName = (input.ownerName?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
   const ownerEmail = (input.ownerEmail?.trim() ?? "").replace(/[\r\n\0]/g, "").slice(0, 200);
@@ -445,6 +444,17 @@ export function buildSecretsFromSetup(input: SetupInput): Record<string, string>
   }
 
   return updates;
+}
+
+export function buildSystemSecretsFromSetup(
+  input: SetupInput,
+  existingSystemEnv: Record<string, string> = {}
+): Record<string, string> {
+  return {
+    OPENPALM_ADMIN_TOKEN: input.adminToken,
+    ASSISTANT_TOKEN: existingSystemEnv.ASSISTANT_TOKEN || randomBytes(32).toString("hex"),
+    MEMORY_AUTH_TOKEN: existingSystemEnv.MEMORY_AUTH_TOKEN || randomBytes(32).toString("hex"),
+  };
 }
 
 // ── Connection Env Var Map Builder ───────────────────────────────────────
@@ -522,20 +532,23 @@ export async function performSetup(
   // Pass already-resolved connections to avoid a second resolveOllamaUrls call
   const updates = buildSecretsFromSetup({ ...input, connections: effectiveConnections });
 
-  // ── Persist secrets.env ──────────────────────────────────────────────
+  // ── Persist vault env files ──────────────────────────────────────────
   try {
     ensureHomeDirs();
     ensureSecrets(state);
     ensureConnectionProfilesStore(state.configDir);
+    const existingSystemEnv = readSystemSecretsEnvFile(state.vaultDir);
     updateSecretsEnv(state, updates);
+    updateSystemSecretsEnv(state, buildSystemSecretsFromSetup(input, existingSystemEnv));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("failed to update secrets.env", { error: message });
-    return { ok: false, error: `Failed to update secrets.env: ${message}` };
+    logger.error("failed to update vault env files", { error: message });
+    return { ok: false, error: `Failed to update vault env files: ${message}` };
   }
 
   // Update state with new admin token
   state.adminToken = input.adminToken;
+  state.assistantToken = readSystemSecretsEnvFile(state.vaultDir).ASSISTANT_TOKEN ?? state.assistantToken;
   writeSetupTokenFile(state);
 
   // ── Build and persist Memory config ──────────────────────────────────

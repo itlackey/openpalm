@@ -187,10 +187,21 @@ export {
   PLAIN_CONFIG_KEYS,
   ensureSecrets,
   updateSecretsEnv,
+  updateSystemSecretsEnv,
   readSecretsEnvFile,
+  readSystemSecretsEnvFile,
   patchSecretsEnvFile,
   maskConnectionValue,
   ensureOpenCodeConfig,
+  detectSecretBackend,
+  type SecretBackend,
+  type SecretEntryMetadata,
+  readSecretProviderConfig,
+  writeSecretProviderConfig,
+  deriveComponentSecretRegistrations,
+  registerComponentSensitiveFields,
+  deregisterComponentSensitiveFields,
+  listComponentSensitiveFields,
 } from "@openpalm/lib";
 
 // ── channels.ts (non-registry functions pass through directly) ───────

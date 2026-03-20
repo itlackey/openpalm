@@ -6,7 +6,7 @@ import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
   errorResponse,
-  requireAdmin,
+  requireAuth,
   getRequestId,
   getActor,
   getCallerType
@@ -24,7 +24,7 @@ function isValidServiceName(name: string): boolean {
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authError = requireAdmin(event, requestId);
+  const authError = requireAuth(event, requestId);
   if (authError) return authError;
 
   const state = getState();

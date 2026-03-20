@@ -105,12 +105,48 @@ export {
   PLAIN_CONFIG_KEYS,
   ensureSecrets,
   updateSecretsEnv,
+  updateSystemSecretsEnv,
   readSecretsEnvFile,
+  readSystemSecretsEnvFile,
   patchSecretsEnvFile,
   maskConnectionValue,
   loadSecretsEnvFile,
   ensureOpenCodeConfig,
 } from "./control-plane/secrets.js";
+export {
+  detectSecretBackend,
+  PlaintextBackend,
+  PassBackend,
+  validatePassEntryName,
+} from "./control-plane/secret-backend.js";
+export type {
+  SecretBackend,
+  SecretBackendCapabilities,
+} from "./control-plane/secret-backend.js";
+export type {
+  SecretScope,
+  SecretKind,
+  SecretEntryMetadata,
+} from "./control-plane/secret-mappings.js";
+export {
+  getCoreSecretMappings,
+} from "./control-plane/secret-mappings.js";
+export {
+  readSecretProviderConfig,
+  writeSecretProviderConfig,
+} from "./control-plane/provider-config.js";
+export {
+  generateRedactSchema,
+} from "./control-plane/redact-schema.js";
+export {
+  generatePassSchema,
+} from "./control-plane/pass-schema.js";
+export {
+  deriveComponentSecretRegistrations,
+  registerComponentSensitiveFields,
+  deregisterComponentSensitiveFields,
+  listComponentSensitiveFields,
+} from "./control-plane/component-secrets.js";
 
 // ── Setup Status ────────────────────────────────────────────────────────
 export {

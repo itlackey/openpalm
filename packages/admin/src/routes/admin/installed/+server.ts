@@ -5,7 +5,7 @@ import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
 import {
   jsonResponse,
-  requireAdmin,
+  requireAuth,
   getRequestId,
   getActor,
   getCallerType
@@ -14,7 +14,7 @@ import { appendAudit } from "$lib/server/control-plane.js";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const authErr = requireAdmin(event, requestId);
+  const authErr = requireAuth(event, requestId);
   if (authErr) return authErr;
 
   const state = getState();
