@@ -394,7 +394,11 @@ export {
   buildChannelCredentialEnvVars,
 } from "./control-plane/setup.js";
 
-// ── Components (v0.10.0) ─────────────────────────────────────────────
+// ── Viking Config ───────────────────────────────────────────────────────
+export { assembleVikingConfig, validateVikingConfigOpts } from "./control-plane/viking-config.js";
+export type { VikingConfigOpts } from "./control-plane/viking-config.js";
+
+// ── Components (v0.10.0) ────────────────────────────────────────────────
 export type {
   ComponentDefinition,
   ComponentSource,
@@ -421,7 +425,7 @@ export {
   buildAllowlist,
 } from "./control-plane/components.js";
 
-// ── Instance Lifecycle ─────────────────────────────────────────────────
+// ── Instance Lifecycle ──────────────────────────────────────────────────
 export type { EnvSchemaField } from "./control-plane/instance-lifecycle.js";
 export {
   createInstance,
