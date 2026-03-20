@@ -66,7 +66,7 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8100:8100"
-      - "${OPENPALM_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:4097:4097"
+      - "${OPENPALM_ADMIN_OPENCODE_BIND_ADDRESS:-127.0.0.1}:${OPENPALM_ADMIN_OPENCODE_PORT:-3881}:4097"
     environment:
       PORT: "8100"
       HOME: ${OPENPALM_DATA_HOME:-${HOME}/.local/share/openpalm}/admin
