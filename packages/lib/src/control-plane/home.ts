@@ -19,14 +19,6 @@ export function resolveHome(): string {
   const home = homedir();
   if (home) return home;
 
-  if (process.env.HOME && process.env.HOME.trim() !== "") {
-    return process.env.HOME;
-  }
-
-  if (process.platform === "win32" && process.env.USERPROFILE && process.env.USERPROFILE.trim() !== "") {
-    return process.env.USERPROFILE;
-  }
-
   return tmpdir();
 }
 
