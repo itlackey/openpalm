@@ -105,22 +105,24 @@ Adds OpenViking as an optional knowledge component with assistant tool integrati
 
 ---
 
-### [#304 — Brokered Admin OpenCode Instance (Phases 1-2)](https://github.com/itlackey/openpalm/issues/304)
+### [#304 — Admin OpenCode Instance](https://github.com/itlackey/openpalm/issues/304)
 
-**Scope:** Phase 1-2 | **Effort:** 8-10 days | **Priority:** Medium (benefits from #300 Phase 1 auth refactor)
+**Scope:** Simplified (direct access) | **Effort:** 1-2 days | **Priority:** Medium
 
-Embeds an admin-authorized OpenCode instance inside the admin container for diagnostics and configuration help.
+Admin-authorized OpenCode instance inside the admin container, accessed directly via `localhost:3881` — same pattern as the assistant at `localhost:3800`. No broker, no intermediary API, no session proxying.
 
 **Deliverables:**
 
-- **Phase 1:** Foundations — path helpers, config seeding, supervisor/broker module, status/start APIs, OpenCode/Bun installation in admin Dockerfile (runtime only, not build tool)
-- **Phase 2:** Admin-authorized diagnostics — user and assistant sessions, message proxying via `POST /admin/elevated/session/:id/message`, diagnostics and configuration help
-
-**Deferred to 0.11.0:** Phase 3 (Admin-mediated remediation), Phase 4 (Hardening — session TTL, one-shot grants)
+- OpenCode auto-starts with admin container (entrypoint) — already implemented
+- Direct web UI access at `localhost:3881` (host-only) — already wired in compose
+- Config seeding with admin-tools plugin — already implemented
+- Admin UI link/status indicator for admin OpenCode
+- Documentation and test updates
 
 **Key design decisions:**
 
 - Uses ADMIN_TOKEN (full admin-level agent, not assistant) — [review-decisions.md Q4](review-decisions.md)
+- Direct host-only access, no Caddy route, no broker layer — user accesses web UI directly
 - Shell automation fallback ensures eval/maintenance work without it — [review-decisions.md Q5](review-decisions.md)
 
 ---
@@ -155,7 +157,7 @@ FS Refactor (Phase 0)
     │
     └──▶ #300 Secrets (Phases 0-4)
             │
-            └──▶ #304 Brokered Instance (Phases 1-2)
+            └──▶ #304 Admin OpenCode Instance
 
 #315 Azure  ── independent, parallel track
 ```
@@ -201,7 +203,7 @@ FS Refactor (Phase 0)
 - `.env.schema` form renderer with `@sensitive` handling
 - Setup wizard component selection step
 - Migration detection banner
-- #304 Phase 1-2: Brokered admin OpenCode instance
+- #304 Admin OpenCode instance (direct access at localhost:3881)
 
 ### Phase 4: Viking + Polish (Week 5-7)
 
@@ -236,7 +238,7 @@ All services move to the **38XX port range** to avoid conflicts with common dev 
 | Voice channel | — | **3810** | New in 0.10.0 (default for #302 when it ships) |
 | Chat channel | 8080 | **3820** | Channel adapter |
 | Admin UI + API | 8100 | **3880** | SvelteKit server |
-| Admin OpenCode | 4097 | **3881** | Brokered instance (#304) |
+| Admin OpenCode | 4097 | **3881** | Admin OpenCode web UI (#304) |
 | Scheduler | 8090 | **3897** | Internal only |
 | Memory | 8080 | **3898** | Internal only |
 | Guardian | 8080 | **3899** | HMAC verification |

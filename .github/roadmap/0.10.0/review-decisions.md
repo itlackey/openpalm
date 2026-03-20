@@ -78,19 +78,19 @@ secrets model unreconciled — now reconciled under unified manager).
 
 ---
 
-## Q4. Brokered Admin Instance Token
+## Q4. Admin OpenCode Instance Token
 
 **Decision: ADMIN_TOKEN — full admin-level agent.**
 
-The brokered OpenCode instance (#304) is an admin-level agent embedded in the admin UI.
-It assists the user directly and can take requests from the assistant. It gets full admin
+The admin OpenCode instance (#304) is an admin-level agent embedded in the admin container.
+It assists the user directly via the OpenCode web UI at `localhost:3881`. It gets full admin
 API access by design — this is NOT a violation of assistant isolation because it IS an
-admin agent, not the assistant.
+admin agent, not the assistant. The user accesses it directly (same pattern as the assistant
+at `localhost:3800`) — no broker, no intermediary, no session proxying.
 
 **Affected plans:** knowledge-system-roadmap.md, openpalm-pass-impl-v3.md
 
-**Resolves:** H7 (broker token undefined). The broker module pattern is unnecessary —
-the instance has direct admin access.
+**Resolves:** H7 (broker token undefined). Direct access model — no broker needed.
 
 ---
 
@@ -100,7 +100,7 @@ the instance has direct admin access.
 
 Extend the automation system's `shell` action type to run eval and maintenance scripts
 directly. No OpenCode dependency. Eval suites and maintenance tasks are shell-executable
-with appropriate env access. The brokered instance calls these later when available, but
+with appropriate env access. The admin instance calls these later when available, but
 they work standalone via scheduled automations.
 
 **Affected plans:** knowledge-system-roadmap.md (Phases 3 and 4C need fallback paths)
@@ -213,7 +213,7 @@ These decisions create several cascading changes beyond the direct fixes:
    - Provide ad-hoc secret storage API (for assistant-discovered credentials, etc.)
    - Integrate with the component lifecycle (secrets provisioned on install, cleaned on delete)
 
-3. **ADMIN_TOKEN for brokered instance** simplifies the broker design significantly.
+3. **ADMIN_TOKEN for admin instance** simplifies the design — no broker needed.
    No new token type, no mediation layer. But it means the admin UI must isolate the
    embedded OpenCode instance's UI context carefully (it has admin power but should
    present as a helpful assistant to the user).

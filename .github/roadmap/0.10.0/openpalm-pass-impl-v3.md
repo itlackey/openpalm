@@ -153,14 +153,14 @@ The pass store is scoped to the OpenPalm install (not `~/.password-store`), maki
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│ ADMIN OPENCODE INSTANCE (brokered, #304)                        │
+│ ADMIN OPENCODE INSTANCE (#304)                                  │
 │  Auth: ADMIN_TOKEN (full admin-level access)                    │
 │  Embedded inside admin container — NOT a separate service        │
+│  Access: Direct web UI at localhost:3881 (host-only)            │
 │  Can: call ALL admin API endpoints including /admin/secrets      │
-│  Can: accept requests from the assistant for privileged ops      │
 │  Note: This is an admin agent, not the assistant. Assistant      │
-│        isolation is preserved — the brokered instance bridges    │
-│        the gap when the assistant needs admin operations.        │
+│        isolation is preserved. User accesses admin OpenCode      │
+│        directly — same pattern as assistant at localhost:3800.   │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -173,8 +173,8 @@ The pass store is scoped to the OpenPalm install (not `~/.password-store`), maki
 │  Cannot: call /admin/secrets, write API keys                    │
 │  Cannot: access vault/system.env (not mounted)                  │
 │  Note: The assistant is isolated. It does NOT have ADMIN_TOKEN. │
-│        For privileged operations, it requests them through the  │
-│        brokered admin OpenCode instance.                        │
+│        For privileged operations, it calls allowlisted admin    │
+│        API endpoints using ASSISTANT_TOKEN.                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

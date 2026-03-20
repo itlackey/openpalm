@@ -150,7 +150,7 @@ All OpenPalm services use the **38XX port range** to avoid conflicts with common
 | **Assistant** (OpenCode) | 3800 | `127.0.0.1:3800` | OpenCode web UI + API |
 | **Voice channel** | 3810 | `127.0.0.1:3810` | Voice interface (TTS/STT) |
 | **Admin** | 3880 | `127.0.0.1:3880` | Admin UI + API |
-| **Admin OpenCode** (#304) | 3881 | `127.0.0.1:3881` | Brokered admin OpenCode instance |
+| **Admin OpenCode** (#304) | 3881 | `127.0.0.1:3881` | Admin OpenCode web UI + API (host-only) |
 | **Ingress** (Caddy) | 80 | `127.0.0.1:3080` → Caddy → services | Reverse proxy (maps to 38XX internally) |
 | **Guardian** | 3899 | (internal only) | HMAC verification + rate limiting |
 | **Scheduler** | 3897 | (internal only) | Automation scheduler |

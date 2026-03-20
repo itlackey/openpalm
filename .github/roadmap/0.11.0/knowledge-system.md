@@ -50,7 +50,7 @@ Client config generation: `GET /admin/mcp/config` returns pre-filled config for 
 
 ### Goal
 
-Measure assistant quality over time. Eval suites are shell-executable scripts that work standalone via scheduled automations. When the brokered admin OpenCode instance (#304) is available, it can invoke these scripts and provide LLM-augmented analysis.
+Measure assistant quality over time. Eval suites are shell-executable scripts that work standalone via scheduled automations. When the admin OpenCode instance (#304) is available, it can invoke these scripts and provide LLM-augmented analysis.
 
 ### Implementation
 

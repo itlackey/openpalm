@@ -10,7 +10,7 @@
 ## Dependencies and sequencing
 
 - Depends on the filesystem/vault refactor landing first or in lockstep because issue #300 assumes `~/.openpalm/vault/user.env` + `~/.openpalm/vault/system.env` and the mount contract from `docs/technical/core-principles.md`.
-- Unblocks issue #304 because the brokered admin OpenCode instance must use `ADMIN_TOKEN`, while the assistant continues to use `ASSISTANT_TOKEN`.
+- Unblocks issue #304 because the admin OpenCode instance uses `ADMIN_TOKEN`, while the assistant continues to use `ASSISTANT_TOKEN`.
 - Should follow the direction in `.github/roadmap/0.10.0/openpalm-pass-impl-v3.md`, but implementation details must be normalized to the current repo layout and the lib-first rule.
 - Existing code still centers on XDG paths, `secrets.env`, `stack.env`, and admin-only auth in several places, so this work includes both migration and replacement rather than additive endpoints only.
 
@@ -76,7 +76,7 @@
   - remove backend entries and deregister mappings on instance deletion,
   - keep this logic in `packages/lib/` so it is reusable by #301 component flows.
 - Add admin audit retrieval changes if needed so secrets events appear in the combined audit feed without exposing values. The current audit route is in `packages/admin/src/routes/admin/audit/+server.ts:47`.
-- Document how this API becomes the privileged path that #304 will call through its brokered admin instance, while the assistant remains unable to call secrets endpoints directly.
+- Document how this API is the privileged path — the admin OpenCode instance (#304) has direct access via ADMIN_TOKEN, while the assistant remains unable to call secrets endpoints directly.
 
 ## Code workstreams
 

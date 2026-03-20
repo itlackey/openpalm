@@ -14,7 +14,7 @@ component system rewrite (#301) consumes most of the 0.10.0 development window.
 
 | # | Feature | How Knowledge Work Connects |
 |---|---------|----------------------------|
-| **304** | Brokered admin OpenCode instance | **Admin-level agent with full ADMIN_TOKEN access** — runs learning maintenance, curation, and eval jobs. Has direct admin API access (no broker mediation layer). When available, invokes shell-based eval/maintenance scripts; but those scripts work standalone via scheduled automations as a fallback |
+| **304** | Admin OpenCode instance | **Admin-level agent with full ADMIN_TOKEN access** — runs learning maintenance, curation, and eval jobs. Accessed directly via web UI at `localhost:3881`. When available, invokes shell-based eval/maintenance scripts; but those scripts work standalone via scheduled automations as a fallback |
 | **298** | OpenViking integration | **Optional structured knowledge component** — enhances search and context retrieval when installed, but the core learning lifecycle (Q-values, feedback, memory injection) works without it |
 | **301** | Configurable services | **Component system** that Viking uses for installation — compose overlay, `.env.schema`, cross-component env injection. MCP server component deferred to 0.11.0 |
 | **300** | Password manager (Varlock) | API keys for embedding providers and LLM judge stored securely via improved Varlock |
@@ -306,7 +306,7 @@ as a **component** via the component registry, not hardcoded in compose.
 2. **Includes Viking tools** — When OpenViking is installed, the MCP server
    exposes Viking search/browse alongside admin and memory tools.
 
-3. **Admin-side OpenCode can use it** — The brokered instance (#304) gets MCP
+3. **Admin-side OpenCode can use it** — The admin instance (#304) gets MCP
    access to Viking for knowledge-aware diagnostics.
 
 ### Implementation Plan
@@ -403,7 +403,7 @@ Same as original plan.
 
 Measure assistant quality over time. Eval suites are **shell-executable
 scripts** (using the `shell` automation action type) that work standalone via
-scheduled automations. When the brokered admin OpenCode instance (#304) is
+scheduled automations. When the admin OpenCode instance (#304) is
 available, it can invoke these scripts and provide LLM-augmented analysis of
 results, but #304 is not required for eval to function.
 
@@ -411,7 +411,7 @@ results, but #304 is not required for eval to function.
 
 1. **Eval suites are shell-executable scripts first** — Each eval suite is a
    standalone CLI script that can be invoked via the `shell` automation action
-   type. This ensures eval runs even without #304. The brokered instance
+   type. This ensures eval runs even without #304. The admin instance
    enhances eval (LLM-graded analysis, natural language reporting) but is not
    a prerequisite.
 
@@ -449,7 +449,7 @@ packages/eval/
 ```
 
 The runner calls the admin API directly using ADMIN_TOKEN (available in the
-shell environment via `~/.openpalm/vault/system.env`). No dependency on the brokered instance.
+shell environment via `~/.openpalm/vault/system.env`). No dependency on the admin instance.
 
 #### Phase 3B: Eval Suites (2 days)
 
@@ -540,9 +540,9 @@ MemRL shows some failures encode useful near-correct reasoning).
    database. The core learning lifecycle works entirely through the memory
    service without requiring Viking.
 
-4. **Maintenance via shell automations with optional brokered enhancement**
+4. **Maintenance via shell automations with optional admin OpenCode enhancement**
    (#304) — Learning curation, duplicate detection, and Q-value recalculation
-   are implemented as shell-executable scripts. The brokered instance can invoke
+   are implemented as shell-executable scripts. The admin instance can invoke
    these for LLM-augmented reasoning, but the scripts work standalone via
    scheduled `shell` automations.
 
@@ -597,7 +597,7 @@ Update `assembleContext()`:
 #### Phase 4C: Automated Maintenance (2 days)
 
 Maintenance tasks are **shell-executable scripts** that work standalone via
-scheduled `shell` automations. The brokered admin OpenCode instance (#304) can
+scheduled `shell` automations. The admin OpenCode instance (#304) can
 invoke these for LLM-augmented reasoning when available.
 
 **Shell automation scripts** (primary path, no #304 dependency):
@@ -618,7 +618,7 @@ action:
   timeout: 120000
 ```
 
-**Brokered instance enhancement** (when #304 is available):
+**Admin instance enhancement** (when #304 is available):
 
 | Automation | Schedule | Admin Instance Prompt |
 |-----------|----------|-------------------|

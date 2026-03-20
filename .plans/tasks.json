@@ -595,8 +595,8 @@
   },
   {
     "issue": "#304",
-    "title": "Brokered admin OpenCode instance",
-    "description": "Add a broker-managed admin OpenCode runtime inside the admin container, with admin-mediated status and session APIs, strict auth boundaries, audit attribution, and no new public ingress.",
+    "title": "Admin OpenCode instance",
+    "description": "Admin-authorized OpenCode instance inside the admin container, auto-started by entrypoint, accessed directly via localhost:3881. No broker, no intermediary — same pattern as assistant at localhost:3800.",
     "status": "pending",
     "plan_file": ".plans/issue-304-brokered-admin-opencode.md",
     "references": [
