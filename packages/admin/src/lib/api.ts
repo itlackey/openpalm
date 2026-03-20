@@ -1,4 +1,5 @@
 import type {
+  AdminOpenCodeStatusResponse,
   HealthPayload,
   ContainerListResponse,
   AutomationsResponse,
@@ -132,6 +133,19 @@ export async function fetchAccessScope(token: string): Promise<{
   }
   const data = (await res.json()) as { accessScope?: 'host' | 'lan' | 'custom' };
   return { ok: true, status: res.status, accessScope: data.accessScope };
+}
+
+export async function fetchAdminOpenCodeStatus(
+  token: string
+): Promise<AdminOpenCodeStatusResponse> {
+  const res = await get('/admin/opencode/status', token);
+  if (res.status === 401) {
+    throw Object.assign(new Error('Invalid admin token.'), { status: 401 });
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return (await res.json()) as AdminOpenCodeStatusResponse;
 }
 
 export async function fetchContainers(token: string): Promise<ContainerListResponse> {

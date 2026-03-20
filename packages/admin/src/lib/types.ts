@@ -1,5 +1,10 @@
 export type HealthPayload = { status: string; service: string };
 
+export type AdminOpenCodeStatusResponse = {
+  status: 'ready' | 'unavailable';
+  url: string;
+};
+
 export type DockerContainer = {
   ID: string;
   Name: string;

@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test';
 
+const ASSISTANT_OPENCODE_URL = 'http://localhost:4096';
+const ADMIN_OPENCODE_URL = 'http://localhost:3881';
+
 /**
  * OpenCode Web UI tests — require RUN_DOCKER_STACK_TESTS=1 and a running compose stack.
  *
- * These hit the assistant container directly on port 4096 (and the Caddy proxy on 8080)
- * rather than the admin preview server, since OpenCode runs in its own container.
+ * These hit the assistant and admin OpenCode instances directly on their localhost-bound
+ * ports rather than going through the Svelte preview server.
  *
  * OpenCode auth is disabled by default — the host-only bind address (127.0.0.1)
  * provides the security boundary. No Basic auth headers are needed.
@@ -15,19 +18,19 @@ test.describe('OpenCode Web UI', () => {
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
 	test('health check endpoint responds', async ({ request }) => {
-		const response = await request.get('http://localhost:4096', {
+		const response = await request.get(ASSISTANT_OPENCODE_URL, {
 			headers: { 'content-type': 'application/json' }
 		});
 		expect(response.status()).toBeLessThan(500);
 	});
 
 	test('web UI loads and shows OpenCode', async ({ page }) => {
-		await page.goto('http://localhost:4096', { timeout: 15000 });
+		await page.goto(ASSISTANT_OPENCODE_URL, { timeout: 15000 });
 		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
 	});
 
 	test('core UI elements are present', async ({ page }) => {
-		await page.goto('http://localhost:4096', { timeout: 15000 });
+		await page.goto(ASSISTANT_OPENCODE_URL, { timeout: 15000 });
 		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
 
 		// Home screen shows project picker — click into the first project
@@ -53,7 +56,7 @@ test.describe('OpenCode Web UI', () => {
 
 	test('new session can be created', async ({ request }) => {
 		// Use the API directly to verify session creation — avoids flaky UI overlay issues
-		const res = await request.post('http://localhost:4096/session', {
+		const res = await request.post(`${ASSISTANT_OPENCODE_URL}/session`, {
 			headers: { 'content-type': 'application/json' },
 			data: { title: 'e2e-new-session-test' },
 			timeout: 10000
@@ -64,7 +67,7 @@ test.describe('OpenCode Web UI', () => {
 	});
 
 	test('assistant plugins loaded', async ({ request }) => {
-		const response = await request.get('http://localhost:4096/config', {
+		const response = await request.get(`${ASSISTANT_OPENCODE_URL}/config`, {
 			headers: { 'content-type': 'application/json' },
 			timeout: 10000
 		});
@@ -79,15 +82,34 @@ test.describe('OpenCode Web UI', () => {
 	});
 });
 
-test.describe('OpenCode Caddy Proxy', () => {
+test.describe('Admin OpenCode Web UI', () => {
 	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-	test('Caddy proxy routes admin traffic', async ({ request }) => {
-		// Caddy proxies /admin/* to admin:8100 — verify admin API is reachable via Caddy
-		const response = await request.get('http://localhost:8080/admin/health', { timeout: 10000 });
-		expect(response.ok()).toBeTruthy();
+	test('admin OpenCode is reachable on the configured localhost port', async ({ page }) => {
+		await page.goto(ADMIN_OPENCODE_URL, { timeout: 15000 });
+		await expect(page).toHaveTitle('OpenCode', { timeout: 10000 });
+	});
+
+	test('admin tools config is available', async ({ request }) => {
+		const response = await request.get(`${ADMIN_OPENCODE_URL}/config`, {
+			headers: { 'content-type': 'application/json' },
+			timeout: 10000
+		});
+
+		expect(response.ok(), `GET /config failed: ${response.status()}`).toBeTruthy();
 		const data = await response.json();
-		expect(data).toHaveProperty('status');
+		expect(JSON.stringify(data)).toContain('@openpalm/admin-tools');
+	});
+});
+
+test.describe('No default Caddy ingress', () => {
+	const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
+	test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
+
+	test('OpenCode is not exposed through the legacy Caddy port by default', async ({ request }) => {
+		await expect(
+			request.get('http://localhost:8080/opencode/config', { timeout: 5000 })
+		).rejects.toThrow(/ECONNREFUSED|connect|socket/i);
 	});
 });
